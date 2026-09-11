@@ -355,13 +355,54 @@ wait_healthy() {
 	return 1
 }
 
-# True (0) when MODEL_FAIL_FAST is set and a finding (condition:false + hit:true,
-# optionally matching the MODEL_FAIL_FAST substring) is present in the output.
+# The assertions that count as findings, by assertion class. Shared by the
+# in-run fail-fast poll and the end-of-run report so the two cannot disagree.
+#
+# Always / AlwaysOrUnreachable / Unreachable are universal: one false
+# evaluation is a failure, here and on the platform alike.
+#
+# Sometimes is existential -- satisfied by a single true evaluation anywhere in
+# the run -- so an individual false is normal and is NOT a finding. Its failure
+# mode is the opposite one, never satisfied at all, which the report checks
+# separately over the coverage sondes.
+#
+# The exception is the shared internal helpers, whose Sometimes assertions are
+# invariants wearing the wrong primitive: `assert.Sometimes(IsTolerated(err),
+# ...)` in internal/ledger.go claims every call either succeeds or fails
+# transiently. On the platform, fault injection can legitimately break a single
+# attempt; locally there is none and the gRPC interceptors retry transients to
+# a definitive outcome, so the condition must hold on every call and a false is
+# a genuine non-transient failure. They keep universal treatment until they are
+# retyped to AlwaysOrUnreachable, which is what they actually assert.
+# scripts/check-repo-invariants pins this list against those call sites.
+STRICT_SOMETIMES='["should be able to create ledger","should always be able to get created ledger","should be able to get a random ledger"]'
+
+failed_assertions() {
+	[ -s "$ASSERTIONS" ] || return 0
+	if command -v jq >/dev/null 2>&1; then
+		jq -c --argjson strict "$STRICT_SOMETIMES" '
+			select(.antithesis_assert.hit == true and .antithesis_assert.condition == false)
+			| .antithesis_assert
+			| select(.display_type != "Sometimes" or (.message as $m | $strict | index($m)))
+			| {display_type, message, details}' "$ASSERTIONS" 2>/dev/null
+		return 0
+	fi
+
+	# Without jq the class split is unavailable. Drop the coverage sondes,
+	# which are false by design, and treat every other false as a finding --
+	# over-reporting a rare Sometimes beats missing a real invariant.
+	grep -E '"hit":[[:space:]]*true' "$ASSERTIONS" 2>/dev/null \
+		| grep -E '"condition":[[:space:]]*false' \
+		| grep -v 'singleton_driver_model: coverage '
+}
+
+# True (0) when MODEL_FAIL_FAST is set and a finding is present in the output,
+# optionally matching the MODEL_FAIL_FAST substring.
 check_fail_fast() {
 	case "$MODEL_FAIL_FAST" in ''|0|off|false|no) return 1 ;; esac
 	[ -s "$ASSERTIONS" ] || return 1
 	local ff
-	ff="$(grep -E '"condition":[[:space:]]*false' "$ASSERTIONS" 2>/dev/null | grep -E '"hit":[[:space:]]*true')"
+	ff="$(failed_assertions)"
 	[ -n "$ff" ] || return 1
 	if [ "$MODEL_FAIL_FAST" != "1" ]; then
 		ff="$(printf '%s\n' "$ff" | grep -F "$MODEL_FAIL_FAST")"
@@ -391,8 +432,15 @@ has_verified_model_outcome() {
 # ---------------------------------------------------------------------------
 # --restore drives S3 backups (to MinIO), so the server and ledgerctl need the
 # s3 build tag; the light default build stubs S3 out.
-server_tags=""
-[ "$RESTORE" = 1 ] && server_tags="-tags s3"
+#
+# Pebble's internal invariant checks (iterator bound violations, key ordering,
+# ...) ride the `invariants` build tag — the Antithesis image gets them
+# through -race, and a misuse they catch panics loudly there while an
+# untagged build silently tolerates it. The local server is always built with
+# the tag so both environments police the same store invariants; the cost is
+# a few percent, not race-detector overhead.
+server_tags="-tags invariants"
+[ "$RESTORE" = 1 ] && server_tags="-tags invariants,s3"
 build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
 if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
@@ -476,6 +524,7 @@ fi
 LEDGER_GRPC_ADDR="$ADDR_LIST" \
 ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
 MODEL_DEBUG="${MODEL_DEBUG:-}" \
+MODEL_DUMP_BATCHES="${MODEL_DUMP_BATCHES:-}" \
 MODEL_LEDGERS="${MODEL_LEDGERS:-}" \
 MODEL_WORKERS="${MODEL_WORKERS:-}" \
 MODEL_MAX_SECONDS="$(( DURATION + 15 ))" \
@@ -549,24 +598,10 @@ log "topology: $NODES node(s)"
 
 findings=0
 
-# 1. Failed assertions (condition:false AND hit:true) from the driver model. We
-# deliberately do NOT exclude "Sometimes" here, unlike a platform run. On the
-# antithesis platform an individual Sometimes:false is expected noise (it fails
-# only if never true across the whole campaign, and fault injection can
-# legitimately make a single attempt fail). singleton_driver_model's only
-# Sometimes assertions are the "success-or-transient" idiom from the
-# CreateLedger/GetLedger helpers (cond = `err == nil || IsTransient(err)`); with
-# transients retried to a definitive outcome that condition must hold on every
-# call, so a Sometimes:false here is a genuine non-transient failure worth
-# surfacing. (This would over-report a pure reachability Sometimes such as
-# `Sometimes(commitIndex > 0)`; this script only runs singleton_driver_model,
-# which has none of those.)
+# 1. Failed assertions from the driver model (see failed_assertions for how
+# each assertion class is treated).
 if [ -s "$ASSERTIONS" ]; then
-	if command -v jq >/dev/null 2>&1; then
-		failed="$(jq -c 'select(.antithesis_assert.hit == true and .antithesis_assert.condition == false) | .antithesis_assert | {display_type, message, details}' "$ASSERTIONS" 2>/dev/null)"
-	else
-		failed="$(grep -E '"hit":true' "$ASSERTIONS" 2>/dev/null | grep -E '"condition":false')"
-	fi
+	failed="$(failed_assertions)"
 	if [ -n "$failed" ]; then
 		echo "MODEL FINDINGS (failed assertions):"
 		echo "$failed"
@@ -647,6 +682,45 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then
 	echo
 	echo "RESTORE CYCLE FAILURES: $RESTORE_FAILED_CYCLES cycle(s) failed (see 'restore:' lines above)"
 	findings=$((findings + 1))
+fi
+
+# 9. Coverage sondes that were registered but never satisfied. A Sometimes is
+# existential, so its failure mode is "never true anywhere in the run" -- which
+# is exactly the claim the query oracle needs: an index that never served a
+# page the model verified was not tested, however green the run looks. The
+# required set is the registrations themselves (the driver emits every sonde
+# with hit:false before the first query), so nothing is duplicated here and the
+# two cannot drift.
+#
+# Antithesis needs no equivalent: it explores a branching tree and steers
+# toward unsatisfied sondes, so it enforces this itself. This gate exists
+# because a local run is one short linear trajectory with no guidance.
+unsatisfied_coverage() {
+	[ -s "$ASSERTIONS" ] || return 0
+	command -v jq >/dev/null 2>&1 || return 0
+
+	# The output carries non-assertion lines (the SDK version block), so the
+	# message is matched only where one exists: an unguarded startswith aborts
+	# jq, and with stderr silenced the gate would then pass vacuously.
+	jq -r -s '
+		[.[] | .antithesis_assert
+		 | select(type == "object" and (.message | type) == "string")
+		 | select(.message | startswith("singleton_driver_model: coverage "))] as $c
+		| ([$c[] | select(.hit == false) | .message] | unique) as $registered
+		| ([$c[] | select(.hit == true and .condition == true) | .message] | unique) as $satisfied
+		| $registered - $satisfied
+		| .[]' "$ASSERTIONS" 2>/dev/null
+}
+
+if [ "$findings" -eq 0 ]; then
+	missing="$(unsatisfied_coverage)"
+	if [ -n "$missing" ]; then
+		echo
+		echo "COVERAGE SONDES NEVER SATISFIED: the oracle predicted no served page for"
+		printf '  %s\n' "$missing"
+		echo "  (the run proves nothing about these; lengthen it or fix the generator's weighting)"
+		findings=$((findings + $(printf '%s\n' "$missing" | grep -c .)))
+	fi
 fi
 
 echo "-----------------------------------------------------"

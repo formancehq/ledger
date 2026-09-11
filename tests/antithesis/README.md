@@ -52,7 +52,10 @@ swallows a stream truncation will silently report "all green" on a real bug.
 The workload uses a layered predicate set (`internal/client.go`):
 
 - `IsTransient(err)` — retry-safe set, what the retry interceptor handles.
-  Covers `Unavailable | DeadlineExceeded | ExternalServiceError`.
+  Covers `Unavailable | DeadlineExceeded | ExternalServiceError |
+  WritesBlockedDiskFull` (the write gate's
+  `ResourceExhausted / WRITES_BLOCKED_DISK_FULL` refusal: rejected before
+  consensus, so the bulk did not commit and a retry is sound).
 - `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
   finding; the driver just exits.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
@@ -156,7 +159,10 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   the fuzzer "this branch matters."
 - A `Reachable("X")` with no upstream `Sometimes` that fires when X is true
   is passive: Antithesis cannot bias toward making X happen. Prefer pairing
-  them when the path is fragile.
+  them when the path is fragile. When the sonde and the `Reachable` would
+  carry the same predicate, drop the `Reachable` — both are `mustHit`, so the
+  `Sometimes` alone enforces it and additionally gives the fuzzer a gradient.
+  `singleton_driver_model/coverage.go` is the worked example.
 - Never use `panic` / `log.Fatal` / `os.Exit` to signal a finding from a
   driver — they kill the worker without producing a structured signal.
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for

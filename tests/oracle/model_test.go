@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -241,6 +242,66 @@ func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
 	require.True(t, res.OK)
 	rl := res.State.Ledger("L")
 	require.Equal(t, "8", dec(rl.vol(VolumeKey{"g:1", "USD"}).Input))
+}
+
+// Asset touches land in everAsset iff the cell escapes the server's exclusion
+// projection, which is derived at END of bulk (end-of-bulk chart, final merged
+// volumes) — not per order.
+func TestGlobalState_Apply_AssetTouchExclusions(t *testing.T) {
+	t.Parallel()
+
+	// Transient at order time but un-churned within the same bulk: the
+	// end-of-bulk chart classifies the cell NORMAL, so the touch is recorded.
+	churned := NewGlobalState().Apply(bulkOf(
+		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.TxReq("world", "t:1", "USD", 5),
+		oracletest.TxReq("t:1", "world", "USD", 5),
+		oracletest.RemoveTypeReq("t"),
+	))
+	require.True(t, churned.OK)
+	require.True(t, churned.State.Ledger("L").HasEverAsset("t:1", "USD", 0))
+
+	// Steady-state transient (zero pre-bulk value, transient at end of bulk):
+	// carried on TransientVolumes, never recorded.
+	steady := NewGlobalState().Apply(bulkOf(
+		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.TxReq("world", "t:1", "USD", 5),
+		oracletest.TxReq("t:1", "world", "USD", 5),
+	))
+	require.True(t, steady.OK)
+	require.False(t, steady.State.Ledger("L").HasEverAsset("t:1", "USD", 0))
+
+	eph := NewGlobalState().Apply(bulkOf(oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL))).State
+
+	// Ephemeral drained across two orders of one bulk: the purge is decided on
+	// the end-of-bulk balance, so the touch is excluded even though the first
+	// order left the cell non-zero.
+	drained := eph.Apply(bulkOf(
+		oracletest.TxReq("world", "e:1", "USD", 5),
+		oracletest.TxReq("e:1", "world", "USD", 5),
+	))
+	require.True(t, drained.OK)
+	require.False(t, drained.State.Ledger("L").HasEverAsset("e:1", "USD", 0))
+
+	// Ephemeral left non-zero: kept, recorded.
+	kept := eph.Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 5)))
+	require.True(t, kept.OK)
+	require.True(t, kept.State.Ledger("L").HasEverAsset("e:1", "USD", 0))
+
+	// Exclusion is per (account, asset) cell: a recorded USD touch survives a
+	// later bulk whose EUR wash on the same (now transient) account is excluded.
+	funded := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "g:1", "USD", 5)))
+	require.True(t, funded.OK)
+	require.True(t, funded.State.Ledger("L").HasEverAsset("g:1", "USD", 0))
+
+	washed := funded.State.Apply(bulkOf(
+		oracletest.AddTypeReqP("g", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.TxReq("world", "g:1", "EUR", 3),
+		oracletest.TxReq("g:1", "world", "EUR", 3),
+	))
+	require.True(t, washed.OK)
+	require.True(t, washed.State.Ledger("L").HasEverAsset("g:1", "USD", 0))
+	require.False(t, washed.State.Ledger("L").HasEverAsset("g:1", "EUR", 0))
 }
 
 func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
@@ -525,4 +586,144 @@ func TestApplyTransaction_EmptyBeatsFsmRejection(t *testing.T) {
 	}})
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonValidation, res.Reason)
+}
+
+func TestHasAccount_MetadataOnlyMembership(t *testing.T) {
+	t.Parallel()
+
+	// a:1 holds volumes; m:1 holds ONLY metadata (no volume cell). Both are in
+	// the merged V+M universe; z:9 is in neither. The metadata-only account is
+	// the regression case: a volumes-map miss must fall through to the
+	// metadata scan.
+	s := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "a:1", "USD", 5),
+		oracletest.AddAccountMetaReq("m:1", "k", commonpb.NewStringValue("v")),
+	)).State
+
+	ls := s.Ledger("L")
+	require.True(t, ls.HasAccount("a:1"))
+	require.True(t, ls.HasAccount("world"))
+	require.True(t, ls.HasAccount("m:1"))
+	require.False(t, ls.HasAccount("z:9"))
+}
+
+// The three end-of-bulk volume annotations must land on exactly the logs whose
+// order touched the cell, split into the same classes partitionVolumes and
+// splitPurged produce.
+func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
+	t.Parallel()
+
+	base := NewGlobalState().Apply(bulkOf(
+		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+		oracletest.AddTypeReqP("t", commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT),
+		oracletest.AddTypeReqP("n", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+		oracletest.TxReq("world", "e:1", "USD", 7),
+	))
+	require.True(t, base.OK)
+
+	got := base.State.Apply(bulkOf(
+		oracletest.TxReq("e:1", "world", "USD", 7), // drains a funded ephemeral
+		oracletest.TxReqMulti(false, // three first writes in one order
+			commonpb.NewPosting("world", "n:3", "USD", big.NewInt(1)),
+			commonpb.NewPosting("world", "n:1", "USD", big.NewInt(1)),
+			commonpb.NewPosting("world", "n:2", "USD", big.NewInt(1)),
+		),
+		oracletest.TxReq("world", "e:2", "USD", 4), // creates...
+		oracletest.TxReq("e:2", "world", "USD", 4), // ...and drains it in the same bulk
+		oracletest.TxReq("world", "t:1", "USD", 2), // steady-state transient:
+		oracletest.TxReq("t:1", "world", "USD", 2), // never persisted, never annotated
+	))
+	require.True(t, got.OK)
+
+	type ann struct{ purged, newKept, ephemeral string }
+
+	have := map[uint64]ann{}
+	for _, row := range got.State.Ledger("L").LogRows() {
+		have[row.ID] = ann{row.PurgedVolumes, row.NewKeptVolumes, row.EphemeralVolumes}
+	}
+
+	require.Equal(t, map[uint64]ann{
+		1:  {},                                   // added_account_type: no cells
+		2:  {},                                   //
+		3:  {},                                   //
+		4:  {newKept: "e:1:USD,world:USD"},       // both cells born here, both survive
+		5:  {purged: "e:1:USD"},                  // drained a cell that held 7
+		6:  {newKept: "n:1:USD,n:2:USD,n:3:USD"}, // sorted, and world was already recorded
+		7:  {ephemeral: "e:2:USD"},               // born and zeroed inside the bulk,
+		8:  {ephemeral: "e:2:USD"},               // so both its orders carry it
+		9:  {},                                   // transient, absent before the bulk
+		10: {},                                   //
+	}, have)
+}
+
+// The volume annotations are part of a state's identity: the same transactions
+// grouped into different bulks leave identical volumes and identical logs, yet
+// the FSM annotates them differently. A fingerprint that collapsed the two
+// would let the checker substitute one candidate base for the other.
+func TestGlobalState_Fingerprint_DistinguishesVolumeAnnotations(t *testing.T) {
+	t.Parallel()
+
+	one := NewGlobalState().
+		Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5))).State.
+		Apply(bulkOf(oracletest.TxReq("world", "a:2", "USD", 5)))
+	require.True(t, one.OK)
+
+	together := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "a:1", "USD", 5),
+		oracletest.TxReq("world", "a:2", "USD", 5),
+	))
+	require.True(t, together.OK)
+
+	// Everything else about the two ledgers agrees.
+	require.Equal(t, one.State.Ledger("L").LogKinds(), together.State.Ledger("L").LogKinds())
+	require.Equal(t, one.State.Ledger("L").volumes.Fingerprint(), together.State.Ledger("L").volumes.Fingerprint())
+
+	// world is born inside the second bulk, so its second order is annotated
+	// too; across two bulks it is already old by then.
+	require.Equal(t, "a:2:USD", one.State.Ledger("L").LogRows()[1].NewKeptVolumes)
+	require.Equal(t, "a:2:USD,world:USD", together.State.Ledger("L").LogRows()[1].NewKeptVolumes)
+
+	require.NotEqual(t, hashState(one.State), hashState(together.State))
+}
+
+// A second creation of a live index is rejected (EN-2009).
+func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
+	t.Parallel()
+
+	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+
+	first := NewGlobalState().Apply(bulkOf(oracletest.CreateIndexReq(id)))
+	require.True(t, first.OK)
+
+	dup := first.State.Apply(bulkOf(oracletest.CreateIndexReq(id)))
+	require.False(t, dup.OK)
+	require.Equal(t, domain.ErrReasonIndexAlreadyExists, dup.Reason)
+
+	// Dropping frees the name again.
+	dropped := first.State.Apply(bulkOf(oracletest.DropIndexReq(id)))
+	require.True(t, dropped.OK)
+	require.True(t, dropped.State.Apply(bulkOf(oracletest.CreateIndexReq(id))).OK)
+
+	// The schema check still owns a first creation over an undeclared field.
+	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared")
+	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema,
+		NewGlobalState().Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason)
+
+	// A metadata index is duplicable exactly like a builtin one, and dropping
+	// its declaration takes the index with it, so the name frees up again.
+	declared := NewGlobalState().Apply(bulkOf(
+		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared", commonpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.CreateIndexReq(metaID),
+	))
+	require.True(t, declared.OK)
+	require.Equal(t, domain.ErrReasonIndexAlreadyExists,
+		declared.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason)
+
+	removed := declared.State.Apply(bulkOf(
+		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "undeclared"),
+	))
+	require.True(t, removed.OK)
+	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema,
+		removed.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason,
+		"the index died with its declaration, so this is a fresh creation again")
 }

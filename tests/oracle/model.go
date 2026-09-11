@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -85,12 +86,60 @@ type LedgerState struct {
 	txByRef               Map[string, int]
 	transactionFieldTypes Map[string, commonpb.MetadataType]
 
+	// indexes tracks the read-store indexes the ledger has, keyed by canonical
+	// IndexID string. The value is the readiness flag: false = ambiguous (created,
+	// backfill may still be BUILDING on some replica — a not-ready error is
+	// tolerated), true = active (confirmed READY on all replicas — results are
+	// required). CreateIndex adds an ambiguous entry; the driver's readiness
+	// poller flips it to active; DropIndex removes it (instantaneous: a
+	// linearizable read issued after the drop's response observes it gone).
+	indexes Map[string, bool]
+
+	// logs is the ledger's log stream: index i holds the log with ledger-local
+	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
+	// (initialised to 1 at CreateLedger, so the first apply lands on 1). Every
+	// committed ledger-scoped order appends exactly one entry; a rejected one
+	// appends none, since the workload never opts into skippable_reasons —
+	// which is what makes a skip consume a log id (processor.go's skip branch)
+	// without committing anything.
+	logs List[*logRecord]
+
+	// retypeWindows holds, per canonical metadata-index ID, the SET of declared
+	// types the index's served version may still be bound to while retype
+	// rewrites converge (EN-1724), encoded as a bitmask over MetadataType. The
+	// schema flips at commit — fieldTypes above hold the new type — but each
+	// replica serves its current version's bound type until that rewrite's
+	// atomic switch, and a CHAIN of retypes advances the replica through every
+	// intermediate binding: each switch briefly serves the superseded target
+	// before the next rewrite lands. A query during the window is therefore
+	// legal under any accumulated type, each as a whole window. A
+	// SetMetadataFieldType on an indexed key adds the type it supersedes;
+	// closed by the driver once every replica provably switched with no
+	// rewrite pending; dies with the index on removal.
+	retypeWindows Map[string, uint32]
+
+	// everAsset is the account-by-asset index projection: the set of
+	// (account, assetBase, precision) any committed, non-excluded posting has ever
+	// touched, on either side. This is the exact set the has-asset filter serves
+	// (see recordAssetTouches) — a monotonic history, NOT the current volume set:
+	// an account drained to zero and purged from the volume table stays here.
+	everAsset Map[assetTouch, struct{}]
+
 	// compiledChart memoizes compiled() for the current types value — nil means
 	// not yet compiled (an empty chart compiles to a non-nil empty slice). Every
 	// types rebind must reset it to nil. Derived state: never mutated in place
 	// (only replaced), so forks may share it, and it is no part of the state's
 	// identity (collections/Fingerprint exclude it).
 	compiledChart []accounttype.CompiledType
+}
+
+// assetTouch identifies one account's historical touch of an (assetBase,
+// precision) pair — a member of the account-by-asset index the has-asset filter
+// reads. precision is uint32 to match AccountHasAssetCondition.
+type assetTouch struct {
+	address   string
+	base      string
+	precision uint32
 }
 
 func NewLedgerState() LedgerState {
@@ -105,6 +154,11 @@ func NewLedgerState() LedgerState {
 		txs:                   NewList[*txRecord](txTerm),
 		txByRef:               NewMap[string, int](stringComparer{}, txRefTerm),
 		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
+
+		indexes:       NewMap[string, bool](stringComparer{}, indexTerm),
+		retypeWindows: NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
+		logs:          NewList[*logRecord](logTerm),
+		everAsset:     NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
 	}
 }
 
@@ -122,7 +176,7 @@ func (s *LedgerState) collections() []interface {
 	}{
 		s.types, s.volumes, s.metadata, s.ledgerMeta,
 		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
-		s.txs,
+		s.txs, s.indexes, s.everAsset, s.logs, s.retypeWindows,
 	}
 }
 
@@ -227,6 +281,63 @@ func fieldTypeTerm(tag string) func(string, commonpb.MetadataType) Digest {
 	}
 }
 
+// indexTerm fingerprints one index-registry entry. Readiness is part of the
+// identity: two bases differing only in whether an index exists or is active
+// predict different query outcomes, so they must not dedup.
+func indexTerm(canonical string, active bool) Digest {
+	t := newTerm("IX")
+	t.str(canonical)
+	t.boolean(active)
+
+	return t.sum()
+}
+
+// retypeWindowTerm fingerprints one open retype window. Part of the identity:
+// bases differing only in whether a window is open — or in which types it has
+// accumulated — accept different query outcomes, so they must not dedup.
+func retypeWindowTerm(canonical string, typeMask uint32) Digest {
+	t := newTerm("RW")
+	t.str(canonical)
+	t.u64(uint64(typeMask))
+
+	return t.sum()
+}
+
+// assetTouchTerm fingerprints one ever-touched (account, assetBase, precision)
+// member. Derivable from the tx log + chart, but two partial candidate-base
+// foldings can reach equal logs with a different ever-touched set (types added
+// at different points change per-order purge exclusion), so the set carries
+// its own terms to keep dedup from collapsing bases that predict different
+// has-asset outcomes.
+func assetTouchTerm(k assetTouch, _ struct{}) Digest {
+	t := newTerm("EA")
+	t.str(k.address, k.base)
+	t.u64(uint64(k.precision))
+
+	return t.sum()
+}
+
+type assetTouchComparer struct{}
+
+func (assetTouchComparer) Compare(a, b assetTouch) int {
+	if c := strings.Compare(a.address, b.address); c != 0 {
+		return c
+	}
+
+	if c := strings.Compare(a.base, b.base); c != 0 {
+		return c
+	}
+
+	switch {
+	case a.precision < b.precision:
+		return -1
+	case a.precision > b.precision:
+		return 1
+	default:
+		return 0
+	}
+}
+
 func txRefTerm(ref string, id int) Digest {
 	t := newTerm("R")
 	t.str(ref)
@@ -245,6 +356,45 @@ func txRefTerm(ref string, id int) Digest {
 // relationships (revertedBy, revertsTransaction, revertedAt) distinguish
 // serializations where the same id is reverted by, or reverts, a different
 // transaction.
+// logRecord is one entry of the ledger log stream. The id is DERIVED, never
+// taken from the server: the stream is dense from 1, so the model can predict
+// it, and predicting it is what lets a mis-assigned id be caught at all. The
+// date and the global sequence are learned from the commit response
+// (LearnLogDate, LearnLogSequence): both are server-assigned with no derivable
+// value — the sequence spans every ledger and the technical entries between
+// them — and a zero or nil one means not yet learned.
+type logRecord struct {
+	id      uint64
+	kind    string
+	payload string
+	// purged, newKept and ephemeral are the volume annotations the FSM hangs
+	// on this log: the cells this order touched that the end-of-bulk partition
+	// classified as drained-to-zero, newly kept, and created-and-zeroed within
+	// the bulk. Derived, never learned — the model runs the same partition.
+	purged    string
+	newKept   string
+	ephemeral string
+	date      *commonpb.Timestamp
+	sequence  uint64
+	// txID links a created_transaction / reverted_transaction log to the
+	// transaction it announces, so the transaction embedded in the served log
+	// can be held to the same record ListTransactions is held to. Zero for
+	// every other kind.
+	txID uint64
+}
+
+func logTerm(idx int, l *logRecord) Digest {
+	t := newTerm("LOG")
+	t.u64(uint64(idx), l.id, l.sequence, l.txID)
+	t.str(l.kind, l.payload, l.purged, l.newKept, l.ephemeral)
+
+	// A nil date (not yet learned) must not collide with any concrete value.
+	t.boolean(l.date != nil)
+	t.u64(l.date.GetData())
+
+	return t.sum()
+}
+
 func txTerm(idx int, tx *txRecord) Digest {
 	t := newTerm("TX")
 	t.u64(uint64(idx), tx.id)
@@ -257,8 +407,33 @@ func txTerm(idx int, tx *txRecord) Digest {
 	// Same for revertedAt.
 	t.boolean(tx.timestamp != nil)
 	t.u64(tx.timestamp.GetData())
+	t.boolean(tx.insertedAt != nil)
+	t.u64(tx.insertedAt.GetData())
 	t.boolean(tx.revertedAt != nil)
 	t.u64(tx.revertedAt.GetData())
+
+	// The snapshot is frozen at the transaction's own sequence, so two states
+	// agreeing on current balances can still disagree on it.
+	for _, key := range sortedVolumeKeys(tx.pcv) {
+		vp := tx.pcv[key]
+		t.str(key.Address, key.Asset)
+		t.str(vp.Input.Dec(), vp.Output.Dec())
+	}
+
+	// indexedAddrs is derived at end of bulk, but two partial foldings can
+	// stamp the same postings differently (exclusion depends on the chart and
+	// balances at the stamping bulk's end), and the stamps drive address-query
+	// predictions — so they are part of the record's identity.
+	addrs := make([]string, 0, len(tx.indexedAddrs))
+	for a := range tx.indexedAddrs {
+		addrs = append(addrs, a)
+	}
+	sort.Strings(addrs)
+	t.u64(uint64(len(addrs)))
+	for _, a := range addrs {
+		t.str(a)
+		t.u64(uint64(tx.indexedAddrs[a]))
+	}
 
 	var amt uint256.Int
 	t.u64(uint64(len(tx.postings)))
@@ -470,8 +645,12 @@ type txRecord struct {
 	// timestamp is the user-supplied CreateTransaction timestamp, stored verbatim
 	// and echoed on reads. nil when the client sent none — the server then stamps
 	// its own command date, which the model cannot predict, so reads skip the
-	// timestamp check for such records.
+	// timestamp check for such records. The checker may later fill a nil via
+	// LearnTxStamps with the value the commit response carried.
 	timestamp *commonpb.Timestamp
+	// insertedAt is always server-stamped (never client-supplied), so it starts
+	// nil and is known only once the checker learns it from the commit response.
+	insertedAt *commonpb.Timestamp
 	// Revert relationships, mirroring the server's Transaction fields: on a
 	// reverted original, revertedBy carries the compensating transaction's id
 	// and revertedAt its timestamp (nil when the compensating transaction is
@@ -481,7 +660,25 @@ type txRecord struct {
 	revertedBy         uint64
 	revertedAt         *commonpb.Timestamp
 	revertsTransaction uint64
+	// pcv is the transaction's post-commit volumes: for every cell its own
+	// postings touched, the running volume once they had all applied. An
+	// immutable historical snapshot, so a read must echo it unchanged however
+	// far the balances have since moved. Derived, never learned.
+	pcv map[VolumeKey]VolumePair
+	// indexedAddrs is the transaction's account→tx index membership: per
+	// posting-side account, which role rows (AddrIndexedSource /
+	// AddrIndexedDestination bits) the index builder writes for this
+	// transaction. Stamped at end of bulk (recordIndexedAddrs) — a posting side
+	// whose cell lands in the exclusion projection gets no row. The any-role
+	// index is the union of the two bits.
+	indexedAddrs map[string]uint8
 }
+
+// Bits of txRecord.indexedAddrs / IndexedAddrs.
+const (
+	AddrIndexedSource      uint8 = 1 << 0
+	AddrIndexedDestination uint8 = 1 << 1
+)
 
 // revertEffect is a committed revert's predicted effect: the original
 // transaction id (echoed as reverted_transaction_id) and the reversed postings.
@@ -524,6 +721,10 @@ func LedgerOf(req *servicepb.Request) string {
 		return r.SetMetadataFieldType.GetLedger()
 	case *servicepb.Request_RemoveMetadataFieldType:
 		return r.RemoveMetadataFieldType.GetLedger()
+	case *servicepb.Request_CreateIndex:
+		return r.CreateIndex.GetLedger()
+	case *servicepb.Request_DropIndex:
+		return r.DropIndex.GetLedger()
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
 	}
@@ -534,6 +735,34 @@ func LedgerOf(req *servicepb.Request) string {
 // end-of-bulk transient violation on any touched ledger — rejects the whole bulk
 // and leaves every ledger unchanged. A bulk may span ledgers; each request is
 // routed to its own ledger's sub-state and the end-of-bulk checks run per ledger.
+// SeedInitialSchema declares a ledger's metadata field types the way
+// CreateLedger's initial_schema does: state only, no log.
+//
+// The distinction is load-bearing. Replaying the declarations as
+// SetMetadataFieldType requests through Apply reaches the same schema state,
+// but on the server those types are recorded at creation and never processed
+// as apply orders — they consume no ledger-local log id and never appear in
+// ListLogs. Seeding through Apply would therefore put one phantom log at the
+// head of the stream per declared field and shift every real log's id by that
+// many.
+func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
+	next := g.clone()
+
+	for _, req := range reqs {
+		name := LedgerOf(req)
+
+		ls, ok := next.ledgers[name]
+		if !ok {
+			ls = NewLedgerState()
+		}
+
+		ls.applyOne(req, map[VolumeKey]bool{})
+		next.ledgers[name] = ls
+	}
+
+	return next
+}
+
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	// Admission validates every order's structure and converts the whole batch
 	// before it reaches the FSM, so a single malformed order rejects the entire
@@ -568,6 +797,17 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
 
+	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
+	// log's volume annotations on the cells THAT order touched, so the union
+	// alone cannot reproduce them.
+	type orderTouch struct {
+		ledger string
+		logIdx int
+		cells  map[VolumeKey]bool
+	}
+
+	var orderTouches []orderTouch
+
 	for _, req := range bulk.Requests {
 		name := LedgerOf(req)
 
@@ -583,7 +823,28 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			touched[name] = cells
 		}
 
-		oc := ls.applyOne(req, cells)
+		orderCells := map[VolumeKey]bool{}
+
+		oc := ls.applyOne(req, orderCells)
+
+		for key := range orderCells {
+			cells[key] = true
+		}
+
+		logsBefore := ls.logs.Len()
+
+		if oc.OK {
+			// Appended centrally rather than per handler: every committed
+			// ledger-scoped order produces exactly one log, so a handler that
+			// forgot would silently shorten the stream and mis-id every log
+			// after it.
+			ls.appendLog(req, oc.TxID)
+		}
+
+		if ls.logs.Len() > logsBefore {
+			orderTouches = append(orderTouches, orderTouch{ledger: name, logIdx: ls.logs.Len() - 1, cells: orderCells})
+		}
+
 		// applyOne rebinds ls's persistent collections; write the updated value
 		// back so the working copy sees the mutation.
 		next.ledgers[name] = ls
@@ -606,7 +867,18 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			return ApplyResult{OK: false, Reason: reason, State: g, Orders: orders}
 		}
 
-		ls.purgeZeroBalance(cells)
+		ls.recordAssetTouches(&base, cells)
+		ls.recordIndexedAddrs(&base, uint64(base.Txs().Len())+1)
+
+		purged := ls.purgeZeroBalance(cells)
+
+		ann := ls.classifyVolumes(&base, cells, purged)
+		for _, ot := range orderTouches {
+			if ot.ledger == name {
+				ls.annotateLog(ot.logIdx, ot.cells, ann)
+			}
+		}
+
 		next.ledgers[name] = ls
 	}
 
@@ -640,6 +912,292 @@ func RequestsEqual(a, b []*servicepb.Request) bool {
 	}
 
 	return true
+}
+
+// LogIDs returns the ledger-local ids of every committed log, ascending. The
+// stream is dense from 1, so this is 1..Len() — returned explicitly so callers
+// need not depend on that density holding.
+func (s LedgerState) LogIDs() []uint64 {
+	out := make([]uint64, 0, s.logs.Len())
+	for i := range s.logs.Len() {
+		out = append(out, s.logs.Get(i).id)
+	}
+
+	return out
+}
+
+// logKindFor names the LedgerLogPayload arm a committed request produces, or
+// "" for a request that appends nothing to the ledger log stream. It is
+// derived from the request rather than declared by each apply* handler, so a
+// new request type cannot silently append a log of the wrong kind — or, if it
+// is unmodelled, reach the stream at all: the default panics in lockstep with
+// applyOne's own unmodelled-request panic.
+//
+// Only orders processed through processApply join the stream. processApply is
+// what consumes LedgerBoundaries.NextLogId, and the index builder folds a log
+// into the per-ledger limb ListLogs reads only when its payload is the Apply
+// arm. Ledger metadata is the exception: processAddLedgerMetadata and its
+// delete twin are dispatched as their own LedgerScopedOrder and return a
+// top-level SavedLedgerMetadata / DeletedLedgerMetadata payload, so they take
+// no ledger-local id and never appear in ListLogs.
+func logKindFor(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_AddAccountType:
+		return "added_account_type"
+	case *servicepb.Request_RemoveAccountType:
+		return "removed_account_type"
+	case *servicepb.Request_SaveLedgerMetadata, *servicepb.Request_DeleteLedgerMetadata:
+		return ""
+	case *servicepb.Request_SetMetadataFieldType:
+		return "set_metadata_field_type"
+	case *servicepb.Request_RemoveMetadataFieldType:
+		return "removed_metadata_field_type"
+	case *servicepb.Request_CreateIndex:
+		return "create_index"
+	case *servicepb.Request_DropIndex:
+		return "drop_index"
+	case *servicepb.Request_Apply:
+		switch r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
+			return "created_transaction"
+		case *servicepb.LedgerAction_AddMetadata:
+			return "saved_metadata"
+		case *servicepb.LedgerAction_DeleteMetadata:
+			return "deleted_metadata"
+		case *servicepb.LedgerAction_RevertTransaction:
+			return "reverted_transaction"
+		}
+	}
+
+	panic(fmt.Sprintf("model: no log kind for request %T", req.GetType()))
+}
+
+// logPayloadFor renders the payload a committed request implies, canonically,
+// so a served log can be held to it field for field (CanonicalServedLogPayload
+// renders the served side into the same shape — the two must agree).
+//
+// Transaction logs render empty: their content is server-assigned and is
+// validated against the model's transaction records by the ListTransactions
+// path, which compares ids, references, revert relationships and stamps.
+func logPayloadFor(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_AddAccountType:
+		at := r.AddAccountType.GetAccountType()
+
+		return "type=" + at.GetName() + "|pattern=" + at.GetPattern()
+	case *servicepb.Request_RemoveAccountType:
+		return "type=" + r.RemoveAccountType.GetName()
+	case *servicepb.Request_SetMetadataFieldType:
+		return "target=" + strconv.Itoa(int(r.SetMetadataFieldType.GetTargetType())) +
+			"|key=" + r.SetMetadataFieldType.GetKey() +
+			"|type=" + strconv.Itoa(int(r.SetMetadataFieldType.GetType()))
+	case *servicepb.Request_RemoveMetadataFieldType:
+		return "target=" + strconv.Itoa(int(r.RemoveMetadataFieldType.GetTargetType())) +
+			"|key=" + r.RemoveMetadataFieldType.GetKey()
+	case *servicepb.Request_CreateIndex:
+		return "index=" + indexes.Canonical(r.CreateIndex.GetId())
+	case *servicepb.Request_DropIndex:
+		return "index=" + indexes.Canonical(r.DropIndex.GetId())
+	case *servicepb.Request_Apply:
+		switch a := r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_AddMetadata:
+			return "target=" + canonicalTarget(a.AddMetadata.GetTarget()) + "|" + canonicalMetadata(a.AddMetadata.GetMetadata())
+		case *servicepb.LedgerAction_DeleteMetadata:
+			return "target=" + canonicalTarget(a.DeleteMetadata.GetTarget()) + "|key=" + a.DeleteMetadata.GetKey()
+		}
+	}
+
+	return ""
+}
+
+// CanonicalServedLogPayload renders a served log's payload the way
+// logPayloadFor renders the request that produced it. Empty means the payload
+// is one this rendering does not pin (a transaction).
+func CanonicalServedLogPayload(data *commonpb.LedgerLogPayload) string {
+	switch {
+	case data.GetAddedAccountType() != nil:
+		at := data.GetAddedAccountType().GetAccountType()
+
+		return "type=" + at.GetName() + "|pattern=" + at.GetPattern()
+	case data.GetRemovedAccountType() != nil:
+		return "type=" + data.GetRemovedAccountType().GetName()
+	case data.GetSetMetadataFieldType() != nil:
+		f := data.GetSetMetadataFieldType()
+
+		return "target=" + strconv.Itoa(int(f.GetTargetType())) +
+			"|key=" + f.GetKey() +
+			"|type=" + strconv.Itoa(int(f.GetType()))
+	case data.GetRemovedMetadataFieldType() != nil:
+		f := data.GetRemovedMetadataFieldType()
+
+		return "target=" + strconv.Itoa(int(f.GetTargetType())) + "|key=" + f.GetKey()
+	case data.GetCreateIndex() != nil:
+		return "index=" + indexes.Canonical(data.GetCreateIndex().GetId())
+	case data.GetDropIndex() != nil:
+		return "index=" + indexes.Canonical(data.GetDropIndex().GetId())
+	case data.GetSavedMetadata() != nil:
+		m := data.GetSavedMetadata()
+
+		return "target=" + canonicalTarget(m.GetTarget()) + "|" + canonicalMetadata(m.GetMetadata())
+	case data.GetDeletedMetadata() != nil:
+		m := data.GetDeletedMetadata()
+
+		return "target=" + canonicalTarget(m.GetTarget()) + "|key=" + m.GetKey()
+	default:
+		return ""
+	}
+}
+
+// canonicalTarget names a metadata target: an account by address, a
+// transaction by id.
+func canonicalTarget(t *commonpb.Target) string {
+	if acct := t.GetAccount(); acct != nil {
+		return "acct:" + acct.GetAddr()
+	}
+
+	return "tx:" + strconv.FormatUint(t.GetTransactionId(), 10)
+}
+
+// canonicalMetadata renders a metadata map key-sorted, values type-tagged
+// (MetaValueString), so equality of the rendering is equality of the map.
+func canonicalMetadata(m map[string]*commonpb.MetadataValue) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+
+	sort.Strings(keys)
+
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+MetaValueString(m[k]))
+	}
+
+	return strings.Join(parts, ",")
+}
+
+// appendLog records the log a committed request produced, if it produced one.
+// The id is the stream's position, dense from 1.
+func (s *LedgerState) appendLog(req *servicepb.Request, txID uint64) {
+	kind := logKindFor(req)
+	if kind == "" {
+		return
+	}
+
+	s.logs = s.logs.Append(&logRecord{
+		id:      uint64(s.logs.Len()) + 1,
+		kind:    kind,
+		payload: logPayloadFor(req),
+		txID:    txID,
+	})
+}
+
+// volumeAnnotations are the three per-log volume lists the FSM derives at end
+// of bulk (write_set_new_volumes.go): a purged cell that held a non-zero value
+// before the bulk drained to zero, one that was created and zeroed inside the
+// bulk is ephemeral, and a surviving cell that did not exist before is newly
+// kept. "Did not exist" covers an absent cell and a zero placeholder alike,
+// matching isNewVolumeUpdate.
+type volumeAnnotations struct {
+	purged    map[VolumeKey]bool
+	newKept   map[VolumeKey]bool
+	ephemeral map[VolumeKey]bool
+}
+
+// classifyVolumes runs the model's copy of that partition over the cells this
+// bulk touched in one ledger. purged names the cells purgeZeroBalance dropped;
+// s is the post-purge state and base the pre-bulk one.
+//
+// A steady-state TRANSIENT cell — one matching a transient type whose pre-bulk
+// value is absent or zero — is carved out: partitionVolumes files it under
+// `transient`, which is neither `kept` nor `purged`, and only those two feed
+// the annotation sets. Such a cell therefore carries no annotation whatever its
+// closing balance.
+func (s *LedgerState) classifyVolumes(base *LedgerState, touched, purged map[VolumeKey]bool) volumeAnnotations {
+	out := volumeAnnotations{
+		purged:    map[VolumeKey]bool{},
+		newKept:   map[VolumeKey]bool{},
+		ephemeral: map[VolumeKey]bool{},
+	}
+
+	compiled := s.compiled()
+
+	for key := range touched {
+		prior := base.vol(key)
+		newCell := prior.Input.IsZero() && prior.Output.IsZero()
+
+		if newCell {
+			if t := s.match(key.Address, compiled); t != nil &&
+				t.Persistence == commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+				continue
+			}
+		}
+
+		switch {
+		case purged[key] && newCell:
+			out.ephemeral[key] = true
+		case purged[key]:
+			out.purged[key] = true
+		case newCell:
+			// Not purged and not transient, so the cell is in the FSM's `kept`
+			// partition — the only classification left for a first write.
+			out.newKept[key] = true
+		}
+	}
+
+	return out
+}
+
+// sortedVolumeKeys orders a cell map for stable hashing and rendering.
+func sortedVolumeKeys[V any](cells map[VolumeKey]V) []VolumeKey {
+	keys := make([]VolumeKey, 0, len(cells))
+	for key := range cells {
+		keys = append(keys, key)
+	}
+
+	sort.Slice(keys, func(a, b int) bool { return CompareVolumeKey(keys[a], keys[b]) < 0 })
+
+	return keys
+}
+
+// renderTouchedVolumes names a set of cells the way the FSM orders them on a
+// log: deduplicated, ascending by account then asset. Colour is a dimension of
+// the server's key that the model does not carry, so a colour split cannot be
+// caught here.
+func renderTouchedVolumes(cells map[VolumeKey]bool) string {
+	if len(cells) == 0 {
+		return ""
+	}
+
+	keys := sortedVolumeKeys(cells)
+
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, key.Address+":"+key.Asset)
+	}
+
+	return strings.Join(parts, ",")
+}
+
+// annotateLog hangs one order's share of the bulk's volume classification on
+// the log it produced: the cells IT touched, intersected with each class.
+func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeAnnotations) {
+	intersect := func(set map[VolumeKey]bool) map[VolumeKey]bool {
+		out := map[VolumeKey]bool{}
+		for key := range cells {
+			if set[key] {
+				out[key] = true
+			}
+		}
+
+		return out
+	}
+
+	rec := *s.logs.Get(idx)
+	rec.purged = renderTouchedVolumes(intersect(ann.purged))
+	rec.newKept = renderTouchedVolumes(intersect(ann.newKept))
+	rec.ephemeral = renderTouchedVolumes(intersect(ann.ephemeral))
+	s.logs = s.logs.Set(idx, &rec)
 }
 
 // applyOne mutates the (already-forked) working state for one request and
@@ -680,6 +1238,12 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 
 	case *servicepb.Request_RemoveMetadataFieldType:
 		return s.applyRemoveMetadataFieldType(r.RemoveMetadataFieldType)
+
+	case *servicepb.Request_CreateIndex:
+		return s.applyCreateIndex(r.CreateIndex)
+
+	case *servicepb.Request_DropIndex:
+		return s.applyDropIndex(r.DropIndex)
 
 	case *servicepb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
@@ -756,6 +1320,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 		postings:  postings,
 		metadata:  ct.GetMetadata(),
 		timestamp: ct.GetTimestamp(),
+		pcv:       pcv,
 	})
 	if ref != "" {
 		s.txByRef = s.txByRef.Set(ref, int(id))
@@ -829,7 +1394,14 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 	reverted.revertedAt = revertTS
 	s.txs = s.txs.Set(int(id-1), &reverted)
 
-	s.txs = s.txs.Append(&txRecord{id: revertID, postings: reversed, metadata: rt.GetMetadata(), timestamp: revertTS, revertsTransaction: orig.id})
+	s.txs = s.txs.Append(&txRecord{
+		id:                 revertID,
+		postings:           reversed,
+		metadata:           rt.GetMetadata(),
+		timestamp:          revertTS,
+		revertsTransaction: orig.id,
+		pcv:                pcv,
+	})
 
 	return OrderResult{
 		OK:     true,
@@ -914,6 +1486,107 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, to
 	}
 
 	return pcv, ""
+}
+
+// recordAssetTouches folds this bulk's touched cells into the ever-touched
+// account-by-asset set, mirroring the read-store index writer. The index
+// builder walks every posting and skips cells in the exclusion projection
+// (LedgerLog.PurgedVolumes ∪ AppliedProposal.TransientVolumes), which the FSM
+// derives at END of bulk from the final merged volumes and the end-of-bulk
+// chart (partitionVolumes). Mirrored per touched cell:
+//
+//   - TRANSIENT-matched, all-zero pre-bulk value: steady-state transient —
+//     carried on TransientVolumes, excluded.
+//   - TRANSIENT-matched, non-zero pre-bulk value (grandfathered) or
+//     EPHEMERAL-matched: excluded when the bulk leaves the cell at zero
+//     balance (purged), recorded otherwise.
+//   - NORMAL or unmatched: always recorded.
+//
+// base is the pre-bulk state (the preloaded Old the server classifies on). A
+// touch is permanent once recorded (the index never deletes keys), so a purge
+// in a LATER bulk does not un-record it. Must run before purgeZeroBalance —
+// the classification reads the pre-purge end-of-bulk balance.
+func (s *LedgerState) recordAssetTouches(base *LedgerState, touched map[VolumeKey]bool) {
+	compiled := s.compiled()
+	for key := range touched {
+		if s.cellExcluded(base, key, compiled) {
+			continue
+		}
+
+		assetBase, prec := domain.ParseAssetPrecision(key.Asset)
+		s.everAsset = s.everAsset.Set(assetTouch{address: key.Address, base: assetBase, precision: uint32(prec)}, struct{}{})
+	}
+}
+
+// cellExcluded is the model's copy of the per-cell verdict behind the server's
+// exclusion projection (LedgerLog.PurgedVolumes ∪ AppliedProposal
+// .TransientVolumes), evaluated at END of bulk on the final pre-purge volumes
+// with the end-of-bulk chart:
+//
+//   - TRANSIENT-matched, all-zero pre-bulk value: steady-state transient —
+//     carried on TransientVolumes, excluded.
+//   - TRANSIENT-matched, non-zero pre-bulk value (grandfathered) or
+//     EPHEMERAL-matched: excluded when the bulk leaves the cell at zero
+//     balance (purged), kept otherwise.
+//   - NORMAL or unmatched: never excluded.
+//
+// base is the pre-bulk state (the preloaded Old the server classifies on). Must
+// run before purgeZeroBalance — the verdict reads the pre-purge balance. A cell
+// the bulk never wrote (absent from volumes) is vacuously excluded.
+func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []accounttype.CompiledType) bool {
+	vp, ok := s.volumes.Get(key)
+	if !ok {
+		return true
+	}
+
+	t := s.match(key.Address, compiled)
+	if t == nil {
+		return false
+	}
+
+	switch t.Persistence {
+	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
+		bv := base.vol(key)
+		if bv.Input.IsZero() && bv.Output.IsZero() {
+			return true
+		}
+
+		return vp.Input.Cmp(&vp.Output) == 0
+	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL:
+		return vp.Input.Cmp(&vp.Output) == 0
+	default:
+		return false
+	}
+}
+
+// recordIndexedAddrs stamps every transaction this bulk appended (ids in
+// (firstNew-1, len(txs)]) with its account→tx index membership: for each
+// posting side, the (account, role) pair is indexed unless the posting's cell
+// is in the end-of-bulk exclusion projection — mirroring the index builder's
+// per-posting sourceExcluded/destinationExcluded skip. The any-role index is
+// the union of the two sides, so only source/destination bits are stored.
+// Replacing the records is safe: they were allocated by this Apply, so no
+// older clone aliases them. Must run before purgeZeroBalance, like
+// recordAssetTouches.
+func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
+	compiled := s.compiled()
+
+	for id := firstNew; id <= uint64(s.txs.Len()); id++ {
+		rec := *s.txs.Get(int(id - 1))
+		rec.indexedAddrs = map[string]uint8{}
+
+		for _, p := range rec.postings {
+			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset()}, compiled) {
+				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
+			}
+
+			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset()}, compiled) {
+				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
+			}
+		}
+
+		s.txs = s.txs.Set(int(id-1), &rec)
+	}
 }
 
 // applyAddMetadata predicts a SaveMetadata, dispatching on the target. Metadata
@@ -1035,6 +1708,56 @@ func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetad
 	return OrderResult{OK: true}
 }
 
+// applyCreateIndex records a newly created index as ambiguous (readiness unknown
+// until the driver's poller confirms it READY). Creating one that already
+// exists is rejected (EN-2009); the checks run in processCreateIndex's order,
+// existence before target validation.
+func (s *LedgerState) applyCreateIndex(req *servicepb.CreateIndexRequest) OrderResult {
+	canonical := indexes.Canonical(req.GetId())
+	if s.indexes.Has(canonical) {
+		return OrderResult{Reason: domain.ErrReasonIndexAlreadyExists}
+	}
+
+	// A metadata index targets a declared schema field; creating one for an
+	// undeclared (target, key) is rejected (validateIndexTarget).
+	if meta, ok := req.GetId().GetKind().(*commonpb.IndexID_Metadata); ok {
+		if !s.fieldTypes(meta.Metadata.GetTarget()).Has(meta.Metadata.GetKey()) {
+			return OrderResult{Reason: domain.ErrReasonMetadataFieldNotInSchema}
+		}
+	}
+
+	s.indexes = s.indexes.Set(canonical, false) // ambiguous: created, readiness not yet confirmed
+
+	return OrderResult{OK: true}
+}
+
+// fieldTypes returns the declared-type map for a metadata target. Ledger-target
+// declarations exist but have no index surface; unknown targets are the empty
+// map (the caller treats every key as undeclared).
+func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonpb.MetadataType] {
+	switch target {
+	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+		return s.accountFieldTypes
+	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+		return s.ledgerFieldTypes
+	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+		return s.transactionFieldTypes
+	default:
+		return NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("XF"))
+	}
+}
+
+// applyDropIndex removes an index. Drop is instantaneous: once this order is in
+// the committed prefix, a linearizable read issued after its response observes
+// it gone. Dropping an absent index is a harmless no-op.
+func (s *LedgerState) applyDropIndex(req *servicepb.DropIndexRequest) OrderResult {
+	canonical := indexes.Canonical(req.GetId())
+	s.indexes = s.indexes.Delete(canonical)
+	s.retypeWindows = s.retypeWindows.Delete(canonical)
+
+	return OrderResult{OK: true}
+}
+
 // applySetMetadataFieldType declares (or re-declares) a metadata field's type.
 //
 // Stored values are immutable: declaring a type only records the declared type
@@ -1042,6 +1765,26 @@ func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetad
 // a value survives any retype chain losslessly (a STRING "01" retyped INT64 then
 // back to STRING still reads "01"). Always succeeds.
 func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldTypeRequest) OrderResult {
+	// A retype of an indexed key opens a serving window: the index keeps
+	// answering under the type it was built with until the background rewrite
+	// switches, so both types stay legal until the driver observes the switch
+	// on every replica. A CHAINED retype mid-window adds the type it
+	// supersedes to the window's set: each rewrite switch advances the
+	// replica's served version through that intermediate binding before the
+	// next rewrite lands, so a query may legally observe any of them until
+	// the driver proves the chain quiescent. CreateIndex requires a declared
+	// field, so the previous type always exists here. Ledger-target keys have
+	// no metadata index.
+	if tt := req.GetTargetType(); tt == commonpb.TargetType_TARGET_TYPE_ACCOUNT || tt == commonpb.TargetType_TARGET_TYPE_TRANSACTION {
+		canonical := indexes.Canonical(indexes.MetadataID(tt, req.GetKey()))
+		if s.indexes.Has(canonical) {
+			if oldType, declared := s.FieldTypeFor(tt, req.GetKey()); declared {
+				mask, _ := s.retypeWindows.Get(canonical)
+				s.retypeWindows = s.retypeWindows.Set(canonical, mask|1<<uint(oldType))
+			}
+		}
+	}
+
 	switch req.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		s.accountFieldTypes = s.accountFieldTypes.Set(req.GetKey(), req.GetType())
@@ -1059,6 +1802,10 @@ func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldT
 // applyRemoveMetadataFieldType drops a field's declared type. Stored values are
 // untouched; without a declared type, reads no longer coerce the key. Removing an
 // undeclared field is a no-op, matching the server. Always succeeds.
+//
+// A metadata index on the removed field cannot outlive its declaration — the
+// server drops it in the same order (the RemovedMetadataFieldType log carries
+// the DroppedIndex), so the model removes it too.
 func (s *LedgerState) applyRemoveMetadataFieldType(req *servicepb.RemoveMetadataFieldTypeRequest) OrderResult {
 	switch req.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
@@ -1070,6 +1817,10 @@ func (s *LedgerState) applyRemoveMetadataFieldType(req *servicepb.RemoveMetadata
 	default:
 		panic(fmt.Sprintf("model: RemoveMetadataFieldType target %v is unmodeled", req.GetTargetType()))
 	}
+
+	removedCanonical := indexes.Canonical(indexes.MetadataID(req.GetTargetType(), req.GetKey()))
+	s.indexes = s.indexes.Delete(removedCanonical)
+	s.retypeWindows = s.retypeWindows.Delete(removedCanonical)
 
 	return OrderResult{OK: true}
 }
@@ -1109,8 +1860,10 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 
 // purgeZeroBalance drops touched EPHEMERAL/TRANSIENT cells that landed at a zero
 // balance, mirroring the server's post-commit write-set sweep (PR #151).
-func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) {
+func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey]bool {
+	purged := map[VolumeKey]bool{}
 	compiled := s.compiled()
+
 	for key := range touched {
 		vp, ok := s.volumes.Get(key)
 		if !ok {
@@ -1127,7 +1880,10 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) {
 			commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
 			if vp.Input.Cmp(&vp.Output) == 0 {
 				s.volumes = s.volumes.Delete(key)
+				purged[key] = true
 			}
 		}
 	}
+
+	return purged
 }
