@@ -527,6 +527,10 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 	sleep 1
 done
 
+# A driver can exit after the final poll but before the deadline check ends the loop.
+# Record that exit before sending our own shutdown signal.
+if ! kill -0 "$DRIVER_PID" 2>/dev/null; then DRIVER_EXITED_EARLY=1; fi
+
 log "stopping driver..."
 kill "$DRIVER_PID" 2>/dev/null
 for _ in $(seq 1 5); do kill -0 "$DRIVER_PID" 2>/dev/null || break; sleep 1; done

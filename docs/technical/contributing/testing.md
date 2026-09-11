@@ -635,6 +635,27 @@ go test -tags integration ./...
 
 Tests built with event-sink feature tags such as `kafka` or `clickhouse` start Testcontainers from package `TestMain`, so they require Docker access even when using `-run '^$'` for compile-only checks.
 
+### Optional-feature internal tests
+
+CI's `Tests` job runs `just test-internal-coverage` after light unit coverage.
+It selects `./internal/...` with every optional feature tag from `all_tags` and
+the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
+tests, S3 and Azure backup tests, and the S3 bootstrap lifecycle regression.
+Full-tag E2E runs select different packages and do not execute these assertions.
+The separate `integration` tag is not enabled by this recipe.
+
+Kafka, ClickHouse and S3 tests require Docker for their Testcontainers; NATS
+runs in-process, and the current internal Azure and Databricks tests require
+no cloud credentials. Reproduce the CI step with:
+
+```bash
+nix develop --command just test-internal-coverage
+```
+
+The job uploads `build/coverage/internal.out` alongside `unit.out`. CI coverage
+merging requires the internal profile, and `just coverage-all` also includes
+this suite. A failure blocks the existing `Tests` release and image gates.
+
 ### E2E Tests
 
 ```bash
@@ -661,8 +682,8 @@ plain `-tags e2e` run neither builds nor runs them:
 
 The bootstrap regression `TestRestoreDownloadStopsWithFxApplication` also needs
 the `s3` tag to compile the production S3 backend, but uses an in-process HTTP
-server and requires no MinIO or Docker. CI's `Tests` job runs it separately with
-the race detector:
+server and requires no MinIO or Docker when run alone. CI's `Tests` job includes
+it in the optional-feature internal suite. Run just this regression with:
 
 ```bash
 nix develop --command go test -race -tags s3 ./internal/bootstrap \

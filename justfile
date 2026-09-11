@@ -168,6 +168,15 @@ test-coverage:
     GOTOOLCHAIN=$(go env GOVERSION) go test -race -coverprofile={{coverage_dir}}/unit.out -coverpkg={{coverage_pkgs}} ./... -timeout 20m
     echo "Coverage profile: {{coverage_dir}}/unit.out"
 
+# Execute internal assertions behind optional feature tags (requires Docker).
+test-internal-coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    echo "==> Internal tests with optional features and coverage..."
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "{{all_tags}}" -coverprofile={{coverage_dir}}/internal.out -coverpkg={{coverage_pkgs}} ./internal/... -timeout 20m
+    echo "Coverage profile: {{coverage_dir}}/internal.out"
+
 # Run E2E tests with coverage. The CI gates invoke this recipe once for each
 # isolated Business/Cluster job. Every invocation uses the full tag set: the
 # feature-gated suites (s3, azure, clickhouse, nats, ...) are only compiled
@@ -217,7 +226,7 @@ coverage-merge:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     profiles=()
-    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
+    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
         [ -f "$f" ] && profiles+=("$f")
     done
     if [ ${#profiles[@]} -eq 0 ]; then
@@ -241,7 +250,7 @@ coverage-html: coverage-merge
     echo "HTML report: {{coverage_dir}}/coverage.html"
 
 # Run all tests with coverage and merge
-coverage-all: test-coverage test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
+coverage-all: test-coverage test-internal-coverage test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
 
 # Run Schemathesis API conformity and fuzzing tests
 test-schemathesis:

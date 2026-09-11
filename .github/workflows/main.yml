@@ -70,16 +70,17 @@ jobs:
       - name: Run unit tests with coverage
         run: >
           nix develop --command just test-coverage
-      - name: Test restore download Fx lifecycle with the S3 backend
+      - name: Run internal tests with optional features and coverage
         run: >
-          nix develop --command go test -race -tags s3 ./internal/bootstrap
-          -run '^TestRestoreDownloadStopsWithFxApplication$' -count=1 -timeout 2m
+          nix develop --command just test-internal-coverage
       - name: Upload coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-unit
-          path: build/coverage/unit.out
+          path: |
+            build/coverage/unit.out
+            build/coverage/internal.out
           retention-days: 7
           if-no-files-found: ignore
 
@@ -221,7 +222,7 @@ jobs:
         run: |
           nix develop --command bash -c '
             cd build/coverage
-            required_profiles=(e2e-business.out e2e-cluster.out)
+            required_profiles=(internal.out e2e-business.out e2e-cluster.out)
             for f in "${required_profiles[@]}"; do
               if [ ! -s "$f" ]; then
                 echo "Missing required coverage profile: $f"
