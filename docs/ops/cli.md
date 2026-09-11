@@ -3631,10 +3631,13 @@ idle or max-stream timeouts (1.2 TB restores routinely take several hours).
 Press `Ctrl+C` to cancel the running download cleanly — the CLI issues a
 server-side `CancelDownload` so the staging directory is wiped before the
 process exits. Stopping the restore-mode server also cancels and joins the
-active job before its staging resources are closed. The current service runner
-passes no deadline to Fx `Stop`, so `--total-stop-timeout` does not bound this
-join. Backend initialization or staging cleanup can delay exit; forced process
-termination can leave staging files or an uncleanly closed staging store. See
+active job before its staging resources are closed. The service runner
+enforces `--total-stop-timeout` across all Fx stop hooks, including
+`--grace-period`. If that deadline expires, shutdown returns an error and the
+command exits unsuccessfully, even if a hook is still waiting for backend
+initialization or staging cleanup. Interrupted cleanup can leave staging files
+or an uncleanly closed staging store. Deferred log-export cleanup runs after
+the Fx lifecycle and is outside this timeout. See
 [restore shutdown](backup-restore.md#step-1-download) for the cleanup sequence.
 
 The server downloads files in parallel; tune the worker count with the server
