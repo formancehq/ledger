@@ -9,7 +9,7 @@ Two leader-only background workers that tail the global log.
 
 | Document | Description |
 |----------|-------------|
-| [events.md](events.md) | Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP). |
+| [events.md](events.md) | Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP), including HTTP acknowledgement and redirect rules. |
 | [mirror.md](mirror.md) | Mirror worker, ascending HTTP continuation, v2 source payload identity contract, and promotion at cutover. |
 | [cel-rewrite.md](cel-rewrite.md) | CEL rewrite engine that transforms transactions during mirror translation (rename addresses, transform metadata, drop transactions). |
 

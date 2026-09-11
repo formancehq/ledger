@@ -24,7 +24,6 @@ type HTTPSinkConfig struct {
 }
 
 // HTTPSink publishes events to an HTTP endpoint via POST requests.
-// Each batch is sent as a single POST with a JSON array or protobuf body.
 // Events are sent one at a time to allow the receiver to process them individually.
 type HTTPSink struct {
 	client   *http.Client
@@ -42,6 +41,19 @@ func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
 	return &HTTPSink{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				// A bodyless GET cannot acknowledge the event POST. Return the
+				// redirect response so post reports its non-2xx status as a failure.
+				if req.Method != http.MethodPost {
+					return http.ErrUseLastResponse
+				}
+				// Installing a policy replaces net/http's default redirect limit.
+				if len(via) >= 10 {
+					return errors.New("stopped after 10 redirects")
+				}
+
+				return nil
+			},
 		},
 		endpoint: cfg.Endpoint,
 		secret:   cfg.Secret,
