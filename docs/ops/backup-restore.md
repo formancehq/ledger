@@ -126,6 +126,10 @@ manifest, is not a usable backup.
 
 ---
 
+The restore validation step above is recommended, but not enforced by
+finalization. Offline bootstrap runs Checker only with `--validate`; see
+[Validate](#step-2-validate-recommended) for the operational recommendation.
+
 ## Backup ()
 
 ### CLI Command
@@ -409,7 +413,18 @@ uncleanly closed staging store; size the process termination grace period
 accordingly. Staging-store close errors are logged under the existing close
 policy and are not returned by the restore stop hook.
 
-### Step 2: Validate
+### Step 2: Validate (Recommended)
+
+Checker validation is an operator-invoked integrity check, outside the normal
+request-processing path. During restore it checks the staged data before it
+becomes live: `restore validate` invokes it through the restore-mode server's
+gRPC API, while offline `store bootstrap --validate` runs it without a server.
+It is not an automatic prerequisite of `FinalizeRestore`.
+
+For recovery and restore drills, run validation after download and incremental
+replay complete, before finalization. Investigate any reported integrity errors
+before proceeding. The numbered workflow is the recommended operational
+sequence; the server does not enforce successful validation before finalization.
 
 ```bash
 ledgerctl restore validate
@@ -462,7 +477,18 @@ ledgerctl restore finalize --yes
 | `--yes`, `-y` | No | Skip confirmation prompt |
 | `--timeout` | No | Request timeout (default: 10s) |
 
-Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup as live data:
+Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup as live data.
+
+`FinalizeRestore` does not run Checker or require a prior successful
+`ValidateRestore` call. Successful finalization therefore does not establish
+that the restored data passed integrity validation. To make validation success
+a condition of finalization in an operator script, use:
+
+```bash
+ledgerctl restore validate && ledgerctl restore finalize
+```
+
+Finalization performs these steps:
 
 1. Prepares the staged store ([Backup Preparation on Restore](#backup-preparation-on-restore): applied index preserved as the genesis boundary, persisted config/bloom/peers/cache reset).
 2. Reads back `lastAppliedIndex` and `lastAppliedTimestamp` from the prepared store.
@@ -537,7 +563,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 | `--azure-endpoint` | | Custom Azure endpoint (for Azurite) |
 | `--bucket-id` | | Namespace prefix for backup files (default: uses cluster-id from config) |
 | `--data-dir` | | Target data directory (required, must be fresh) |
-| `--validate` | `false` | Run integrity checks after download |
+| `--validate` | `false` | Run Checker after download/replay and before finalization; abort on validation failure |
 | `-y, --yes` | `false` | Skip confirmation prompt |
 
 ### How It Works
@@ -546,11 +572,15 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 2. **Download**: Reads the manifest from the configured backend, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`.
 3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
 4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
-5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`.
+5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
 6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
 7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
 8. **Finalize**: Hard-links staging to `{data-dir}/checkpoints/0`, writes the `RESTORED` marker JSON.
 9. **Cleanup**: Removes the staging directory.
+
+Use `--validate` for recovery and restore drills so integrity checks succeed
+before the data is finalized. Its default of `false` makes it opt-in; successful
+bootstrap without this flag is not evidence that Checker passed.
 
 ### When to Use
 
