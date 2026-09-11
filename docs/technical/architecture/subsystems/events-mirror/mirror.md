@@ -130,6 +130,23 @@ ledger log. Incremental backup exports that log row and `RebuildDelta` replays
 it into the restored transaction projection, so a post-checkpoint mirror ingest
 keeps the same `insertedAt` and `updatedAt` across a cross-cluster restore.
 
+For v2 `REVERTED_TRANSACTION`, the original identity comes from
+`data.revertedTransaction.id`, and the compensating transaction comes from
+`data.transaction` (its ID, reverse postings, metadata and timestamp). In
+v2.4.7, `logs.data` stores this full nested payload; the separate hash
+`logs.memento` contains `revertedTransactionID`. PostgreSQL ingestion selects
+`data`, so the memento field must never substitute for the nested identity.
+Missing or null original IDs fail translation; an explicit original ID of zero
+is valid. No orders or advanced source cursor are returned for a failed batch.
+
+This mapping preserves the existing apply contract: reverse postings update
+volumes, the original transaction is marked reverted and linked to the
+compensating ID, and the compensating state and ledger log link back to the
+original. Plausible balances alone cannot establish correct ingestion. The
+upstream-encoded fixtures under `internal/adapter/v2/testdata/` exercise both
+translation and its composition with order processing, including an unrelated
+transaction zero. These tests do not exercise PostgreSQL I/O or HTTP pagination.
+
 `FillGap` is the explicit "we know there's a v2 log here but we have no payload for it" marker — it lets the v3 ledger advance its own logical sequence even when the source skipped one.
 
 ### CEL rewrite rules
