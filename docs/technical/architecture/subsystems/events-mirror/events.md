@@ -700,3 +700,9 @@ The HTTP sink sends each event as an individual HTTP POST request with the follo
 ### ClickHouse Sink Details
 
 The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
+
+NATS diagnostic credential extraction follows the driver's whitespace and
+implicit-scheme handling. ClickHouse diagnostics also register decoded
+`http_proxy` URLs, including malformed proxies whose parse errors are embedded
+as plain text by the driver. These adaptations happen before constructor errors
+can reach the manager.
