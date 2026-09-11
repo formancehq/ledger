@@ -471,11 +471,11 @@ var _ = Describe("Mirror", Ordered, func() {
 				CreateLedger: &servicepb.CreateLedgerRequest{
 					Name: ledgerName,
 					Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-					MirrorSource: &commonpb.MirrorSourceConfig{
+					MirrorSource: &commonpb.MirrorSourceConfigInput{
 						LedgerName: "default",
 						BatchSize:  2,
-						Type: &commonpb.MirrorSourceConfig_Http{
-							Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: mockV2.URL()},
+						Type: &commonpb.MirrorSourceConfigInput_Http{
+							Http: &commonpb.HttpMirrorSourceConfigInput{BaseUrl: mockV2.URL()},
 						},
 					},
 				},
