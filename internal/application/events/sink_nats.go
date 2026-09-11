@@ -44,7 +44,20 @@ type NATSSink struct {
 
 // NewNATSSink creates a new NATS JetStream sink.
 func NewNATSSink(cfg NATSSinkConfig) (result *NATSSink, retErr error) {
-	sanitizer := newSinkErrorSanitizer(strings.Split(cfg.URL, ","))
+	connectionURLs := strings.Split(cfg.URL, ",")
+	// The driver trims entries and accepts endpoints without an explicit scheme.
+	// Retain raw echoes and register credentials from the driver's accepted form.
+	for _, raw := range strings.Split(cfg.URL, ",") {
+		normalized := strings.TrimSuffix(strings.TrimSpace(raw), "/")
+		if normalized == "" {
+			continue
+		}
+		if !strings.Contains(normalized, "://") {
+			normalized = "nats://" + normalized
+		}
+		connectionURLs = append(connectionURLs, normalized)
+	}
+	sanitizer := newSinkErrorSanitizer(connectionURLs)
 	defer sanitizer.sanitizeReturned(&retErr)
 	conn, err := nats.Connect(cfg.URL)
 	if err != nil {
