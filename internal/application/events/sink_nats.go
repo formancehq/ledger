@@ -47,7 +47,7 @@ func NewNATSSink(cfg NATSSinkConfig) (result *NATSSink, retErr error) {
 	connectionURLs := strings.Split(cfg.URL, ",")
 	// The driver trims entries and accepts endpoints without an explicit scheme.
 	// Retain raw echoes and register credentials from the driver's accepted form.
-	for _, raw := range strings.Split(cfg.URL, ",") {
+	for raw := range strings.SplitSeq(cfg.URL, ",") {
 		normalized := strings.TrimSuffix(strings.TrimSpace(raw), "/")
 		if normalized == "" {
 			continue
