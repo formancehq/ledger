@@ -121,8 +121,12 @@ recomputed from the redacted response.
 A rejected order can contain a configuration that cannot be normalized. Its
 public item retains the other business fields, omits that configuration and sets
 `configurationUnavailable`. It never falls back to the raw URL, DSN or parser
-error. A missing audit entry or missing/nil outcome is an integrity error and
+error. A missing audit entry, missing/nil outcome, undecodable order bytes, or
+unrecognized order scope is an integrity error and
 fails the read; it is never projected as a successful but incomplete response.
+For a rejected sink creation, the sink name is inside the omitted configuration;
+the public order intentionally contains only `configurationUnavailable`. Fields
+outside configuration (such as the ledger name on ledger-scoped orders) remain.
 Internal evidence remains available to the server's integrity machinery.
 
 ## Validation requirements

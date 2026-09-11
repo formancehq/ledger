@@ -79,6 +79,7 @@ func publicOrder(order *raftcmdpb.Order) (*publicauditpb.Order, error) {
 		if create := source.GetCreateLedger(); create != nil {
 			config, err := connectionconfig.Mirror(create.GetMirrorSource())
 			if err != nil {
+				// Parser diagnostics can contain credentials; expose only the flag.
 				config = nil
 			}
 			target.Payload = &publicauditpb.LedgerScopedOrder_CreateLedger{CreateLedger: &publicauditpb.CreateLedgerOrder{
@@ -99,6 +100,7 @@ func publicOrder(order *raftcmdpb.Order) (*publicauditpb.Order, error) {
 		if add := source.GetAddEventsSink(); add != nil {
 			config, err := connectionconfig.Sink(add.GetConfig())
 			if err != nil {
+				// Parser diagnostics can contain credentials; expose only the flag.
 				config = nil
 			}
 			target.Payload = &publicauditpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &publicauditpb.AddEventsSinkOrder{

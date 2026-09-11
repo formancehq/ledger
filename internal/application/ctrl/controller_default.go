@@ -1902,7 +1902,12 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 
 	entry.Items = items
 
-	return readprojection.Audit(entry)
+	projected, err := readprojection.Audit(entry)
+	if err != nil {
+		return nil, fmt.Errorf("projecting audit entry %d: %w", sequence, err)
+	}
+
+	return projected, nil
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.
