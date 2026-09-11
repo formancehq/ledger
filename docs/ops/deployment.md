@@ -67,6 +67,12 @@ Available flags for `run`:
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
+The service address published to peers uses the host from `--advertise-addr`
+and the port from `--grpc-port`. IPv6 hosts retain their brackets: for example,
+`--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` publishes
+`[2001:db8::1]:8888` for service RPCs while keeping `[2001:db8::1]:7777` for Raft.
+IPv4 addresses and hostnames use the same host with the configured service port.
+
 ### Configuration
 
 Options can be provided via:

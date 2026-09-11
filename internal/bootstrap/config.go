@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
@@ -395,13 +396,13 @@ func (c Config) validateAuthConfig() error {
 }
 
 // ServiceAdvertiseAddr returns the routable gRPC service address for this node.
-// It derives the hostname from the Raft advertise address and uses the gRPC port,
-// so that other nodes can reach this node's service API.
+// It derives the host from the Raft advertise address and uses the gRPC port,
+// preserving IPv6 brackets so other nodes can reach this node's service API.
 func (c Config) ServiceAdvertiseAddr() string {
 	host, _, err := net.SplitHostPort(c.RaftConfig.AdvertiseAddr)
 	if err != nil {
 		host = c.RaftConfig.AdvertiseAddr
 	}
 
-	return fmt.Sprintf("%s:%d", host, c.GRPCPort)
+	return net.JoinHostPort(host, strconv.Itoa(c.GRPCPort))
 }
