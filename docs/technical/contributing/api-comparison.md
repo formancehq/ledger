@@ -830,7 +830,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `ListNumscripts` | List the greatest version of each saved numscript | ✅ |
 | `ListNumscriptVersions` | List the latest pointer and every stored version | ✅ |
 | `ListAuditEntries` | Stream audit log entries (success + failure). Request is `{ options }` only — no dedicated filter fields. Follows the shared `ListOptions` contract: cursor/page_size/reverse/checkpoint_id plus a bare-audit-field `QueryFilter` (outcome, ledger, caller_subject, order_type, seq, proposal_id, timestamp, log_seq — bare fields resolved against the audit query target, EN-1549 replacing the old `audit[...]` syntax) resolved through the audit secondary index. Ledger scope and outcome selection are expressed as filter conditions | ✅ |
-| `GetAuditEntry` | Get a single audit entry by sequence number | ✅ |
+| `GetAuditEntry` | Get a structured `publicaudit.AuditEntry` by sequence number, with typed `items[].order`; raw serialized orders and signed payload bytes are absent | ✅ |
 | `ListLogs` | Stream system logs for a ledger (requires `ledger` field; supports `log_id` and date filters for pagination). Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`), same as the HTTP `GET /v3/{ledgerName}/logs` route | ✅ |
 | `GetLog` | Get a single system log by bucket-wide sequence number. No ledger identity in the request → requires `ledger` ops-read (granular `ledger:OpsRead`), like the HTTP `GET /v3/_/logs/{sequence}` route | ✅ |
 | `ListSigningKeys` | Stream all registered signing keys | ✅ |
@@ -841,6 +841,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
 | `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
 
+Audit read RPCs and HTTP routes return the same structured public view. Connection configurations are normalized and annotated secrets masked; invalid configurations are omitted with `configurationUnavailable`. Failure reason remains public, but historical message/context are protected. `hash` identifies stored evidence and `signature.keyId` identifies its original signer; neither authenticates the display. Internal raw queries and authoritative signed audit bytes are unchanged.
 
 ### Apply Method
 

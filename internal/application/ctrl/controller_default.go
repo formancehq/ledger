@@ -18,13 +18,14 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/application/readprojection"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -1714,7 +1715,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // iterates ascending by sequence (oldest first) — this is the audit trail's
 // natural read order and is preserved from the pre-ListOptions behavior.
 // reverse=true iterates descending (newest first).
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error) {
 	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
 }
 
@@ -1724,7 +1725,7 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize ui
 // readstore snapshot (EN-1339), then trim candidates to the main snapshot's
 // audit horizon. There is no scan-time predicate fallback for unsupported
 // expressions; they are rejected with InvalidArgument.
-func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_audit_entries",
 		trace.WithAttributes(
 			attribute.Int("page_size", int(pageSize)),
@@ -1848,10 +1849,10 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 
 	closeHandle = false
 	if auditSnap != nil {
-		return cursor.NewClosingCursor(c, joinedCloser{auditSnap, handle}), nil
+		return readprojection.NewAuditCursor(cursor.NewClosingCursor(c, joinedCloser{auditSnap, handle})), nil
 	}
 
-	return cursor.NewClosingCursor(c, handle), nil
+	return readprojection.NewAuditCursor(cursor.NewClosingCursor(c, handle)), nil
 }
 
 // GetLog returns a single system log by sequence number.
@@ -1875,8 +1876,9 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 	return log, nil
 }
 
-// GetAuditEntry returns a single audit entry by sequence number, with items populated.
-func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+// GetAuditEntry returns a structured public view with typed order details.
+// Original evidence stays inside the query/storage boundary.
+func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint64) (*publicauditpb.AuditEntry, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1900,7 +1902,12 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 
 	entry.Items = items
 
-	return entry, nil
+	projected, err := readprojection.Audit(entry)
+	if err != nil {
+		return nil, fmt.Errorf("projecting audit entry %d: %w", sequence, err)
+	}
+
+	return projected, nil
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.

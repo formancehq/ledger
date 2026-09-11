@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"7"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"9"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -73,10 +73,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 8:
+leader. For example, with a schema implementing revision 9:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 8' \
+grpcurl -plaintext -H 'ledger-protocol-version: 9' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -128,7 +128,8 @@ contract. Ordinary secret masking, diagnostic wording, internal behavior and
 compatible additions do not automatically require a bump. Record the assessment
 in the PR; do not infer incompatibility merely because output differs. Revision
 8 changes operational connection fields from strings to structured messages.
-The audit response contract is unchanged.
+Revision 9 replaces public audit evidence with typed views. Each change introduces
+a distinct incompatible contract and increments the revision in its own PR.
 
 This obligation applies to AI agents throughout pre-release development, even
 though older Ledger versions and storage formats are not supported. Before
@@ -161,3 +162,6 @@ forwarding so the gate cannot make the repository's own clients incompatible.
 
 Structured connection input/output messages require revision 8 on top of the
 revision 7 Apply contract: existing configuration fields change message types.
+
+Typed public audit views require revision 9 on top of structured connections:
+ListAuditEntries and GetAuditEntry return the public audit message contract.

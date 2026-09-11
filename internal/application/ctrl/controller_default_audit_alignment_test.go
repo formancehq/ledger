@@ -20,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -128,7 +129,7 @@ func auditLedgerFilter(ledger string) *commonpb.QueryFilter {
 	}}}
 }
 
-func collectAuditSequences(t *testing.T, c cursor.Cursor[*auditpb.AuditEntry]) []uint64 {
+func collectAuditSequences(t *testing.T, c cursor.Cursor[*publicauditpb.AuditEntry]) []uint64 {
 	t.Helper()
 
 	entries, err := cursor.Collect(c)

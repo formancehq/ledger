@@ -33,8 +33,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -849,7 +849,7 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 	})
 }
 
-func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
+func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*publicauditpb.AuditEntry, error) {
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
 		return nil, err
 	}
@@ -881,7 +881,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	pageSize := ctrl.ClampPageSize(opts.GetPageSize())
 	fetchSize := pageSizePlusOne(pageSize)
 
-	var c cursor.Cursor[*auditpb.AuditEntry]
+	var c cursor.Cursor[*publicauditpb.AuditEntry]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
 		mainStore, readIdx, openErr := impl.openCheckpointStores(ctx, cpID)
@@ -908,7 +908,7 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 		return fmt.Errorf("listing audit entries: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *auditpb.AuditEntry) string {
+	return sendPagedToStream(ctx, c, stream, "audit entry", pageSize, func(e *publicauditpb.AuditEntry) string {
 		return strconv.FormatUint(e.GetSequence(), 10)
 	})
 }

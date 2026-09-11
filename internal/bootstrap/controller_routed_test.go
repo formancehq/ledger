@@ -12,8 +12,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -158,7 +158,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list audit entries",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListAuditEntries(barrierHorizonMatcher(42), uint32(10), uint64(0), nil, false).
-					Return(cursor.NewSliceCursor([]*auditpb.AuditEntry{}), nil)
+					Return(cursor.NewSliceCursor([]*publicauditpb.AuditEntry{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListAuditEntries(ctx, 10, 0, nil, false)

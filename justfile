@@ -274,8 +274,8 @@ generate:
 # Generate gRPC code from protobuf files
 generate-proto:
     @echo "Generating gRPC code from proto files..."
-    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
-    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
+    rm -f internal/proto/rafttransportpb/*.pb.go internal/proto/commonpb/*.pb.go internal/proto/servicepb/*.pb.go internal/proto/raftcmdpb/*.pb.go internal/proto/snapshotpb/*.pb.go internal/proto/clusterpb/*.pb.go internal/proto/clusterbootstrappb/*.pb.go internal/proto/auditpb/*.pb.go internal/proto/publicauditpb/*.pb.go internal/proto/signaturepb/*.pb.go internal/proto/eventspb/*.pb.go internal/proto/restorepb/*.pb.go internal/proto/proposalpb/*.pb.go || true
+    mkdir -p internal/proto/clusterpb internal/proto/clusterbootstrappb internal/proto/rafttransportpb internal/proto/auditpb internal/proto/publicauditpb internal/proto/signaturepb internal/proto/eventspb internal/proto/restorepb internal/proto/proposalpb
     @cd tools/protoc-gen-dethash && go build -o ../../build/protoc-gen-dethash .
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
@@ -317,6 +317,7 @@ generate-proto:
         misc/proto/raft_cmd.proto \
         misc/proto/snapshot.proto \
         misc/proto/audit.proto \
+        misc/proto/audit_view.proto \
         misc/proto/signature.proto \
         misc/proto/events.proto \
         misc/proto/restore.proto \

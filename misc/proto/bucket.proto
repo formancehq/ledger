@@ -6,7 +6,7 @@ package ledger;
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 
 import "common.proto";
-import "audit.proto";
+import "audit_view.proto";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
 
@@ -57,9 +57,9 @@ service BucketService {
   // CheckStore verifies store integrity (hash chain and derived data consistency)
   rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
   // ListAuditEntries streams audit trail entries (success and failure)
-  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry);
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream publicaudit.AuditEntry);
   // GetAuditEntry returns a single audit entry by sequence number
-  rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry);
+  rpc GetAuditEntry(GetAuditEntryRequest) returns (publicaudit.AuditEntry);
   // GetEventsSinks returns the current per-sink configurations and statuses
   rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
   // ListLogs streams system logs; when ledger is set, streams only logs for that ledger

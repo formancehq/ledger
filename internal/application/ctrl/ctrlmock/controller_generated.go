@@ -14,8 +14,8 @@ import (
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	publicauditpb "github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	query "github.com/formancehq/ledger/v3/internal/query"
 	gomock "go.uber.org/mock/gomock"
@@ -151,10 +151,10 @@ func (mr *MockControllerMockRecorder) GetAccount(ctx, ledgerName, address, opts 
 }
 
 // GetAuditEntry mocks base method.
-func (m *MockController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (m *MockController) GetAuditEntry(ctx context.Context, sequence uint64) (*publicauditpb.AuditEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAuditEntry", ctx, sequence)
-	ret0, _ := ret[0].(*auditpb.AuditEntry)
+	ret0, _ := ret[0].(*publicauditpb.AuditEntry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -362,10 +362,10 @@ func (mr *MockControllerMockRecorder) ListAccounts(ctx, ledgerName, pageSize, af
 }
 
 // ListAuditEntries mocks base method.
-func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, pageSize, afterSequence, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*auditpb.AuditEntry])
+	ret0, _ := ret[0].(cursor.Cursor[*publicauditpb.AuditEntry])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

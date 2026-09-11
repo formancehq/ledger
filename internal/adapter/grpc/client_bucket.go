@@ -13,8 +13,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -193,7 +193,7 @@ func (g *BucketGrpcClient) GetLedgerByName(ctx context.Context, name string) (*c
 	})
 }
 
-func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (g *BucketGrpcClient) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error) {
 	var cursorStr string
 	if afterSequence > 0 {
 		cursorStr = strconv.FormatUint(afterSequence, 10)
@@ -220,7 +220,7 @@ func (g *BucketGrpcClient) GetLog(ctx context.Context, sequence uint64) (*common
 	})
 }
 
-func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (g *BucketGrpcClient) GetAuditEntry(ctx context.Context, sequence uint64) (*publicauditpb.AuditEntry, error) {
 	return g.client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
 		Sequence: sequence,
 	})

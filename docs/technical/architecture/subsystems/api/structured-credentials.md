@@ -1,12 +1,12 @@
-# Structured credentials
+# Structured credentials and public audit views
 
 ## Requirement and decision
 
 EN-1632, EN-1634 and EN-1635 require configuration reads to retain useful
 connection information without disclosing sink or mirror credentials. The
 alternative to PR #1963 moves parsing from each read-time redactor to the
-construction of operational configurations. Audit reads remain unchanged at this
-stage and can still return raw orders and signed evidence containing credentials.
+construction of operational configurations. Public audit reads expose typed
+business details, not opaque binary proof envelopes that can contain secrets.
 
 Input APIs continue accepting connection URLs and DSNs. Their protobuf input
 messages are distinct from operational configuration messages. The latter store
@@ -45,7 +45,8 @@ registrations and incompatible protobuf types are programming errors and fail
 loudly.
 
 All normalizers are compiled into every build, without importing driver
-libraries or depending on sink build tags. Admission and deterministic apply must derive the same operational configuration even
+libraries or depending on sink build tags. Admission, deterministic apply and
+public audit projection must derive the same operational configuration even
 when a node cannot run that sink. The separate runtime factory registry in
 `internal/application/events` may use build-tagged driver adapters; it controls
 which connections the process can open, not how audited input is normalized.
@@ -89,11 +90,11 @@ repeated messages and message-valued maps. Empty secrets stay empty. Unknown
 wire fields are discarded from the public copy because their confidentiality
 cannot be established from the schema. Original values remain unchanged.
 
-Sensitivity is declared on credential fields and mirror diagnostics that may
+Sensitivity is declared on credential fields and mirror/audit diagnostics that may
 embed credentials. Sink adapters sanitize their errors before persistence;
 `SinkError.message` remains visible so clients retain useful failure diagnostics.
 Types used exclusively as inputs carry no sensitivity annotations:
-configuration responses use operational messages before masking. Shared
+public reads normalize them into operational messages before masking. Shared
 input/output types, such as Kafka and Databricks configurations, retain their
 annotations because they are also exposed in public views. URL query values and
 unrecognized database option values are
@@ -110,11 +111,23 @@ omit the entire server-signature envelope; returning a signature alongside an
 altered payload would misrepresent what it authenticates. Write-response signing
 and stored log evidence remain separate from this read projection.
 
-Audit responses still expose internal audit entries, including original serialized
-orders and signed batch payloads. The projector is not applied to those bytes:
-masking a protobuf byte field cannot recursively protect its encoded contents.
-A separate public audit contract is required before audit reads can omit that
-original evidence. Configuration and log masking alone do not close this path.
+`publicauditpb.AuditEntry` is a separate public contract. It contains typed orders,
+outcome, identity, ordering and caller information. It has no `serializedOrder`,
+raw signed batch payload or technical execution metadata. Signature information
+identifies the original key only; it does not assert that this display was
+verified or signed. The hash identifies the original evidence and cannot be
+recomputed from the redacted response.
+
+A rejected order can contain a configuration that cannot be normalized. Its
+public item retains the other business fields, omits that configuration and sets
+`configurationUnavailable`. It never falls back to the raw URL, DSN or parser
+error. A missing audit entry, missing/nil outcome, undecodable order bytes, or
+unrecognized order scope is an integrity error and
+fails the read; it is never projected as a successful but incomplete response.
+For a rejected sink creation, the sink name is inside the omitted configuration;
+the public order intentionally contains only `configurationUnavailable`. Fields
+outside configuration (such as the ledger name on ledger-scoped orders) remain.
+Internal evidence remains available to the server's integrity machinery.
 
 ## Validation requirements
 
@@ -123,8 +136,10 @@ original evidence. Configuration and log masking alone do not close this path.
 - Normalization is deterministic and leaves accepted input and signed bytes
   unchanged; live logs and stored configs contain structured values.
 - Binary gRPC, HTTP and CLI structured output mask annotated secrets, including
-  nested options, mirror diagnostics and checkpoint reads. Sanitized sink
+  nested options, mirror/audit diagnostics and checkpoint reads. Sanitized sink
   diagnostics remain visible.
+- Public audit schemas have no path to raw input configurations or signed bytes;
+  malformed rejected configuration remains inspectable without leaking it.
 - A non-empty post-checkpoint delta proves logical live/restore parity, including
   sink removal, and passes the current checker without claiming its future scope.
 
@@ -132,3 +147,10 @@ NATS server entries with a scheme but no host (for example `nats://`) are
 rejected with a static configuration error. An empty server list continues to
 select the driver default; an explicit malformed entry is not rewritten into
 a different destination.
+
+Audit projection errors identify the entry sequence and order index when an order
+cannot be decoded or projected, including during streaming list reads. An absent
+input configuration remains absent without `configurationUnavailable`: the flag
+reports a normalization failure, not absence. The public success outcome shares
+the ordering-only internal success message; changes to that shared message must
+be reviewed as public API changes.
