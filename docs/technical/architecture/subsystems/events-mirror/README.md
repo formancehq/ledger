@@ -13,6 +13,10 @@ Two leader-only background workers that tail the global log.
 | [mirror.md](mirror.md) | Mirror worker that ingests Ledger v2 logs (HTTP or PostgreSQL) into a v3 mirror ledger, with promotion to normal mode at cutover. |
 | [cel-rewrite.md](cel-rewrite.md) | CEL rewrite engine that transforms transactions during mirror translation (rename addresses, transform metadata, drop transactions). |
 
+Mirror [source initialization and cancellation](mirror.md#source-initialization-and-cancellation)
+documents generation ownership, shutdown ordering, and source cleanup when
+PostgreSQL startup is blocked.
+
 ## Related
 
 - [Consensus](../consensus/) — both workers tail the Raft log, both checkpoint via Raft.

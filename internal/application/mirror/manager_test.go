@@ -227,10 +227,41 @@ func TestManager_StopFencesLaterLeadershipGain(t *testing.T) {
 
 	m.OnLeadershipChange(true)
 
-	_, isLeader, stopped := m.leadershipSnapshot()
-	require.True(t, stopped)
-	require.False(t, isLeader)
+	leadership := m.leadershipSnapshot()
+	require.True(t, leadership.stopped)
+	require.False(t, leadership.isLeader)
 	require.Empty(t, workerNames(m), "a leadership callback after Stop must not recreate mirror workers")
+}
+
+func TestManager_LeadershipChangesCancelInitialization(t *testing.T) {
+	t.Parallel()
+
+	builder, store := newTestBuilder(t)
+	m := newTestManager(t, store, builder)
+	m.OnLeadershipChange(true)
+	first := m.leadershipSnapshot()
+	require.NoError(t, first.initializationCtx.Err())
+
+	m.OnLeadershipChange(false)
+	require.ErrorIs(t, first.initializationCtx.Err(), context.Canceled,
+		"loss must cancel initialization before its callback returns")
+
+	m.OnLeadershipChange(true)
+	second := m.leadershipSnapshot()
+	require.Greater(t, second.generation, first.generation)
+	require.NoError(t, second.initializationCtx.Err())
+
+	m.OnLeadershipChange(true)
+	third := m.leadershipSnapshot()
+	require.ErrorIs(t, second.initializationCtx.Err(), context.Canceled,
+		"every superseding generation must cancel prior initialization")
+	require.NoError(t, third.initializationCtx.Err())
+
+	m.Stop()
+	require.ErrorIs(t, third.initializationCtx.Err(), context.Canceled)
+	m.OnLeadershipChange(true)
+	require.Equal(t, third.generation+1, m.leadershipSnapshot().generation,
+		"late gain must not create a new generation after Stop")
 }
 
 func TestManager_SupersededLossCannotTearDownCurrentGeneration(t *testing.T) {
@@ -242,11 +273,11 @@ func TestManager_SupersededLossCannotTearDownCurrentGeneration(t *testing.T) {
 	}
 
 	m.OnLeadershipChange(false)
-	staleGeneration, staleIsLeader, staleStopped := m.leadershipSnapshot()
+	staleLeadership := m.leadershipSnapshot()
 	m.OnLeadershipChange(true)
 
 	m.mu.Lock()
-	m.reconcileGeneration(staleGeneration, staleIsLeader, staleStopped)
+	m.reconcileGeneration(staleLeadership)
 	m.mu.Unlock()
 
 	require.Contains(t, m.workers, "current", "a superseded leadership loss must not tear down current-generation mirror workers")

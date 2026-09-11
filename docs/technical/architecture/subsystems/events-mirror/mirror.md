@@ -26,6 +26,35 @@ cannot recreate a mirror worker during Fx teardown.
 
 Reconciliation is in `Manager.reconcileGeneration()`.
 
+### Source initialization and cancellation
+
+Each leader generation owns an initialization context. The Manager captures
+that context together with the generation when reconciliation starts, and
+passes it to source construction, including PostgreSQL's `_system.ledgers`
+bucket lookup. Recording a newer leadership transition cancels the previous
+context synchronously. `Stop` cancels it before waiting for the reconciliation
+loop. A source database lock therefore cannot keep that lookup waiting after
+leadership loss or shutdown until a database timeout or manual lock release.
+
+The leadership mutex protects the generation and its context; it is never
+held during database I/O, worker teardown, or loop draining. Reconciliation
+owns the worker-map mutex and may briefly take the leadership mutex for a
+snapshot or generation check. Leadership callbacks and `Stop` release the
+leadership mutex before notifying, draining, or acquiring the worker-map mutex.
+
+Rewrite rules are compiled before allocating a source. A failed PostgreSQL
+constructor closes its pool; a successful source whose generation has become
+stale is closed before worker startup. Once ownership transfers to a Worker,
+`Worker.Stop` cancels and joins its runtime loop and closes the source.
+Existing workers are torn down by reconciliation after canceled construction
+unwinds, or by `Stop` after the manager loop exits.
+
+Initialization cancellation does not provide atomic authorization for worker
+startup or proposals. The existing post-start generation check still stops a
+worker if leadership changes across startup. Shared Node leadership leases and
+lease-scoped runtime execution are separate work (EN-1963). Cancellation also
+cannot undo an external operation that has already completed.
+
 The Worker (`worker.go:27-175`) is a polling loop:
 
 | Setting | Default | Source |
