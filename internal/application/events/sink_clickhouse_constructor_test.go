@@ -5,6 +5,7 @@ package events
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
@@ -117,4 +118,14 @@ func TestClickHouseSinkPublishSanitizesDriverError(t *testing.T) {
 	require.Contains(t, err.Error(), "authentication failed")
 	require.Contains(t, err.Error(), "warehouse.example")
 	require.NotContains(t, err.Error(), "warehouse-secret")
+}
+
+func TestClickHouseConstructorSanitizesNestedProxy(t *testing.T) {
+	t.Parallel()
+	proxy := "http://alice:proxy-password@localhost:invalid-port"
+	sink, err := NewClickHouseSink(context.Background(), ClickHouseSinkConfig{DSN: "http://localhost:8123/default?http_proxy=" + url.QueryEscape(proxy)})
+	require.Nil(t, sink)
+	require.ErrorContains(t, err, "http_proxy")
+	require.ErrorContains(t, err, "invalid port")
+	require.NotContains(t, err.Error(), "proxy-password")
 }
