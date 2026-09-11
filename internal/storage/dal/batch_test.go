@@ -40,6 +40,77 @@ func TestBatch_CommitAndCancel(t *testing.T) {
 	require.NoError(t, closer.Close())
 }
 
+// TestBatch_CommitFinalizesBatch checks session state and data visibility, not
+// pool release: deleting only Close still leaves these assertions passing.
+// BenchmarkBatch_Commit provides comparative allocation evidence, without a
+// production test hook or access to the returned pooled batch.
+func TestBatch_CommitFinalizesBatch(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+
+	require.NoError(t, batch.Commit())
+	require.Nil(t, batch.batch)
+
+	// Only inspect the session after finalization, never the pooled batch.
+	require.NoError(t, batch.Cancel())
+	require.NoError(t, batch.Cancel())
+	require.ErrorContains(t, batch.Commit(), "already committed")
+	require.Nil(t, batch.batch)
+
+	// The write itself must remain visible after the batch was finalized.
+	val, closer, err := s.Get([]byte("key1"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("val1"), val)
+	require.NoError(t, closer.Close())
+}
+
+func TestBatch_CommitFailureRetainsBatch(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir()
+	db, err := pebble.Open(path, &pebble.Options{})
+	require.NoError(t, err)
+	require.NoError(t, db.Close())
+	db, err = pebble.Open(path, &pebble.Options{ReadOnly: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close()) })
+
+	batch := NewWriteSessionFromDB(db)
+	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+	owned := batch.batch
+
+	err = batch.Commit()
+	require.ErrorIs(t, err, pebble.ErrReadOnly)
+	require.ErrorContains(t, err, "committing write session")
+	require.False(t, batch.committed)
+	require.Same(t, owned, batch.batch)
+	require.NoError(t, batch.Cancel())
+	require.Nil(t, batch.batch)
+	require.NoError(t, batch.Cancel())
+}
+
+// BenchmarkBatch_Commit reports the allocation cost of repeated sessions. It
+// can compare batch reuse against an omitted Close without inspecting pooled
+// objects or making nondeterministic sync.Pool reuse a test assertion.
+func BenchmarkBatch_Commit(b *testing.B) {
+	db, err := pebble.Open(b.TempDir(), &pebble.Options{})
+	require.NoError(b, err)
+	b.Cleanup(func() { require.NoError(b, db.Close()) })
+	key := []byte("key1")
+	value := make([]byte, 32<<10)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for b.Loop() {
+		batch := NewWriteSessionFromDB(db)
+		require.NoError(b, batch.SetBytes(key, value))
+		require.NoError(b, batch.Commit())
+	}
+}
+
 func TestBatch_CancelBeforeCommit(t *testing.T) {
 	t.Parallel()
 
@@ -261,6 +332,74 @@ func TestBatch_SetProtoAfterCommit(t *testing.T) {
 	err := batch.SetProto([]byte("key"), nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already committed")
+}
+
+func TestBatch_RawSetAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.Commit())
+
+	err := batch.Set([]byte("key"), []byte("val"), pebble.NoSync)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already committed")
+}
+
+func TestBatch_RawDeleteRangeAfterCommit(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.Commit())
+
+	err := batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "already committed")
+}
+
+func TestBatch_CancelIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+
+	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
+	require.NoError(t, batch.Cancel())
+	require.NoError(t, batch.Cancel())
+	require.NoError(t, batch.Cancel())
+
+	// Data should NOT be committed after cancel.
+	_, _, err := s.Get([]byte("key1"))
+	require.Error(t, err)
+}
+
+func TestBatch_CommitAfterCancel(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+
+	require.NoError(t, batch.Cancel())
+
+	err := batch.Commit()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "cancelled")
+}
+
+func TestBatch_MutationsAfterCancel(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.Cancel())
+
+	require.ErrorContains(t, batch.Set([]byte("k"), []byte("v"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.SetBytes([]byte("k"), []byte("v")), "cancelled")
+	require.ErrorContains(t, batch.DeleteKey([]byte("k")), "cancelled")
+	require.ErrorContains(t, batch.SingleDeleteKey([]byte("k")), "cancelled")
+	require.ErrorContains(t, batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.DeleteRangeNoSync([]byte("a"), []byte("z")), "cancelled")
 }
 
 func TestBatch_DeleteRangeWithSet(t *testing.T) {

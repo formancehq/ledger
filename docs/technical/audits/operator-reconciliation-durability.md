@@ -71,6 +71,7 @@ actually inspected, and do not publish to Jira as part of this audit.
 
 | Adjacent domain | Boundary |
 | --- | --- |
+| `configuration-startup-contracts` | Owns static admitted/defaulted Cluster-spec-to-server args/environment value translation, parameter validation and consumer wiring. This domain retains workload selection, repeated reconciliation and durable rollout/rotation transitions. Deduplicate shared symptoms by root cause and required correction. |
 | `raft-membership-leadership` | Owns Raft safety and internal membership algorithms. This domain owns the controller's membership postcondition checks and ordering with replicas/PVCs. |
 | `persistence-restore-replay` | Owns checkpoint, replay and restore data correctness. This domain owns restore-mode/CLI/volume handoffs and backup Job/result/CR orchestration. |
 | `idempotency-retries-partial-failures` | Owns service/API retry semantics. This domain owns reconciliation identity and interpretation of ambiguous Kubernetes/exec/Job outcomes. |

@@ -49,6 +49,12 @@ Restore mode does not register Discovery: its service gate provides the
 compatibility error without requiring a preliminary Discovery call, while
 health and reflection remain exempt.
 
+Revision 6 (EN-2009) makes fresh `CreateIndex` requests strict: an existing
+ledger/canonical index identity returns `INDEX_ALREADY_EXISTS` (`AlreadyExists`)
+instead of overwriting the registry. Retained batch idempotency retries still
+return the frozen outcome. This incompatible semantic change requires matching
+clients and servers; apply semantics must agree across every replica.
+
 Revision 5 (EN-1623) removes internal index/coverage details from public
 error messages and ErrorInfo metadata while retaining their reasons and status
 codes. Internal read failures in restore validation retain `Internal` with a

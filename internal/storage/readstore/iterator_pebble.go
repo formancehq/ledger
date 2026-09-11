@@ -236,16 +236,22 @@ type PebbleReverseAccountIterator struct {
 }
 
 // newSingleTypeReverseAccountIterator creates a reverse account iterator for one attribute type.
-func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string) (*PebbleReverseAccountIterator, error) {
+func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte, ledgerName string, addrPrefix string) (*PebbleReverseAccountIterator, error) {
 	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = attrType
 	copy(prefix[2:], ledgerName)
 
-	upperBound := IncrementBytes(prefix)
+	// Bounds mirror newSingleTypeAccountIterator: an empty addrPrefix scans
+	// the whole ledger, a non-empty one scans that address range.
+	lowerBound := make([]byte, len(prefix)+len(addrPrefix))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], addrPrefix)
+
+	upperBound := IncrementBytes(lowerBound)
 
 	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: prefix,
+		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
 	if err != nil {
@@ -261,12 +267,20 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 // NewPebbleReverseAccountIterator creates a reverse account iterator that merges
 // V and M attribute types, yielding unique addresses in descending order.
 func NewPebbleReverseAccountIterator(reader dal.PebbleReader, ledgerName string) (*OrIterator[Desc], error) {
-	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName)
+	return NewPebbleReverseAccountPrefixIterator(reader, ledgerName, "")
+}
+
+// NewPebbleReverseAccountPrefixIterator is the descending twin of
+// NewPebbleAccountPrefixIterator: unique addresses under addrPrefix, high to
+// low. Accounts are entity-ordered in the attributes zone, so an address
+// prefix match streams in both directions (EN-1966).
+func NewPebbleReverseAccountPrefixIterator(reader dal.PebbleReader, ledgerName string, addrPrefix string) (*OrIterator[Desc], error) {
+	vIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrVolume, ledgerName, addrPrefix)
 	if err != nil {
 		return nil, err
 	}
 
-	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName)
+	mIter, err := newSingleTypeReverseAccountIterator(reader, dal.SubAttrMetadata, ledgerName, addrPrefix)
 	if err != nil {
 		vIter.Close()
 
@@ -604,6 +618,42 @@ func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledgerName string) (*Pe
 	}, nil
 }
 
+// NewPebbleReverseTxRangeIterator is NewPebbleReverseTxIterator restricted to
+// [lower, upper) on the transaction id, mirroring NewPebbleTxRangeIterator's
+// bound construction. A nil bound means "open on that side". The traversal
+// logic is unchanged: Last/Prev/SeekLT all respect the Pebble bounds, so the
+// descending id-range scan streams exactly like the ascending one (EN-1966).
+func NewPebbleReverseTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*PebbleReverseTxIterator, error) {
+	prefix := txAttributeCode(ledgerName)
+
+	lowerBound := make([]byte, len(prefix)+len(lower))
+	copy(lowerBound, prefix)
+	copy(lowerBound[len(prefix):], lower)
+
+	var upperBound []byte
+	if upper != nil {
+		upperBound = make([]byte, len(prefix)+len(upper))
+		copy(upperBound, prefix)
+		copy(upperBound[len(prefix):], upper)
+	} else {
+		upperBound = IncrementBytes(prefix)
+	}
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: lowerBound,
+		UpperBound: upperBound,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &PebbleReverseTxIterator{
+		iter:     iter,
+		prefix:   prefix,
+		idOffset: len(prefix),
+	}, nil
+}
+
 func (it *PebbleReverseTxIterator) Next() bool {
 	if it.exhausted {
 		return false
@@ -742,8 +792,25 @@ func (it *PebbleReverseTxIterator) extractTxID(key []byte) []byte {
 	return key[it.idOffset : it.idOffset+8]
 }
 
+// LedgerLogRangeIterator streams ledger-local log IDs in a half-open range.
+// Keys: [0x09][ledger 64B][logID_BE(8B)], one key per log ID.
+type LedgerLogRangeIterator struct {
+	*BoundedEntityIterator
+}
+
+// NewLedgerLogRangeIterator creates a bounded forward iterator over log IDs.
+// Nil bounds are open; lower is inclusive and upper is exclusive.
+func NewLedgerLogRangeIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string, lower, upper []byte) (*LedgerLogRangeIterator, error) {
+	inner, err := NewBoundedEntityIterator(reader, LedgerLogPrefix(kb, ledgerName), lower, upper, 8)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LedgerLogRangeIterator{BoundedEntityIterator: inner}, nil
+}
+
 // LedgerLogIterator iterates over log IDs from the read index (Pebble).
-// Keys: [0x09][ledger\x00][logID_BE(8B)].
+// Keys: [0x09][ledger 64B][logID_BE(8B)].
 type LedgerLogIterator struct {
 	inner *PrefixIterator
 }
@@ -766,161 +833,31 @@ func (it *LedgerLogIterator) Seek(target []byte) bool { return it.inner.Seek(tar
 func (it *LedgerLogIterator) Err() error              { return it.inner.Err() }
 func (it *LedgerLogIterator) Close()                  { it.inner.Close() }
 
-// PebbleTxRangeIterator iterates over transaction IDs within a [min, max) range.
-// Used for compileTxIDCondition range scans.
+// PebbleTxRangeIterator streams canonical transaction IDs in a half-open range.
+// Transaction attributes have one key per ID, so plain Next advances without
+// deduplication or incrementing the ID (which would wrap at MaxUint64).
 type PebbleTxRangeIterator struct {
-	iter       *pebble.Iterator
-	lowerBound []byte // stored for Seek initial positioning
-	idOffset   int
+	*BoundedEntityIterator
+}
 
-	current   []byte
-	started   bool
-	exhausted bool
-	floor     seekFloor
+// NewReverseLedgerLogIterator is the descending twin of NewLedgerLogIterator:
+// log ids under the ledger's log prefix, high to low. Logs are entity-ordered
+// in the index, so the scan streams in both directions (EN-1966).
+func NewReverseLedgerLogIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string) (*ReversePrefixIterator, error) {
+	prefix := LedgerLogPrefix(kb, ledgerName)
+
+	return NewReversePrefixIterator(reader, prefix, len(prefix), 8)
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
+// Nil bounds are open; lower is inclusive and upper is exclusive.
 func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*PebbleTxRangeIterator, error) {
-	prefix := txAttributeCode(ledgerName)
-
-	lowerBound := make([]byte, len(prefix)+len(lower))
-	copy(lowerBound, prefix)
-	copy(lowerBound[len(prefix):], lower)
-
-	var upperBound []byte
-	if upper != nil {
-		upperBound = make([]byte, len(prefix)+len(upper))
-		copy(upperBound, prefix)
-		copy(upperBound[len(prefix):], upper)
-	} else {
-		upperBound = IncrementBytes(prefix)
-	}
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	inner, err := NewBoundedEntityIterator(reader, txAttributeCode(ledgerName), lower, upper, 8)
 	if err != nil {
 		return nil, err
 	}
 
-	return &PebbleTxRangeIterator{
-		iter:       iter,
-		lowerBound: lowerBound,
-		idOffset:   len(prefix),
-	}, nil
-}
-
-func (it *PebbleTxRangeIterator) Next() bool {
-	if it.exhausted {
-		return false
-	}
-
-	if !it.started {
-		it.started = true
-		if !it.iter.SeekGE(it.lowerBound) {
-			it.exhausted = true
-
-			return false
-		}
-
-		txID := it.extractTxID(it.iter.Key())
-		if txID != nil {
-			it.current = copyBytes(txID)
-
-			return true
-		}
-	}
-
-	// Skip byLog entries for current txID
-	nextTxID := incrementUint64Bytes(it.current)
-	seekKey := make([]byte, it.idOffset+8)
-	// Reconstruct the prefix from the current Pebble key.
-	if k := it.iter.Key(); len(k) >= it.idOffset {
-		copy(seekKey, k[:it.idOffset])
-	}
-
-	copy(seekKey[it.idOffset:], nextTxID)
-
-	if !it.iter.SeekGE(seekKey) {
-		it.exhausted = true
-
-		return false
-	}
-
-	txID := it.extractTxID(it.iter.Key())
-	if txID != nil {
-		it.current = copyBytes(txID)
-
-		return true
-	}
-
-	it.exhausted = true
-
-	return false
-}
-
-func (it *PebbleTxRangeIterator) Current() []byte { return it.current }
-
-func (it *PebbleTxRangeIterator) Seek(target []byte) bool {
-	// A prior failed seek at or below target proves this one empty too.
-	if it.floor.covers(target) {
-		it.exhausted = true
-
-		return false
-	}
-
-	// Absolute reposition: clear the exhausted latch so a re-seek after
-	// exhaustion still finds entities (the body re-seeks from target).
-	it.exhausted = false
-
-	it.started = true
-
-	// Build seek key from stored lower bound prefix + target
-	seekKey := make([]byte, it.idOffset+len(target))
-	copy(seekKey, it.lowerBound[:min(it.idOffset, len(it.lowerBound))])
-	copy(seekKey[it.idOffset:], target)
-
-	if !it.iter.SeekGE(seekKey) {
-		it.exhausted = true
-		it.floor.fail(target, it.iter.Error())
-
-		return false
-	}
-
-	txID := it.extractTxID(it.iter.Key())
-	if txID != nil && compareEntities(txID, target) >= 0 {
-		it.current = copyBytes(txID)
-
-		return true
-	}
-
-	it.exhausted = true
-	it.floor.fail(target, it.iter.Error())
-
-	return false
-}
-
-func (it *PebbleTxRangeIterator) Err() error {
-	if it.iter == nil {
-		return nil
-	}
-
-	return it.iter.Error()
-}
-
-func (it *PebbleTxRangeIterator) Close() {
-	if it.iter != nil {
-		_ = it.iter.Close()
-	}
-}
-
-func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
-	if len(key) < it.idOffset+8 {
-		return nil
-	}
-
-	return key[it.idOffset : it.idOffset+8]
+	return &PebbleTxRangeIterator{BoundedEntityIterator: inner}, nil
 }
 
 // --- transaction prefix helper ---

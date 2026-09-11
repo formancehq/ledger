@@ -41,6 +41,19 @@ although the template update and earlier membership removals may already have
 succeeded. A later reconciliation checks membership again and skips ordinals
 already removed.
 
+## Declarative ledger indexes
+
+For a Ledger with `spec.indexes`, reconciliation lists the current registry and
+creates only missing indexes. Creation is strict: if another writer creates the
+index after the list, `INDEX_ALREADY_EXISTS` is reported through
+`IndexesSynced=False` and reconciliation is retried. The failed creation adds
+no entry to `status.appliedIndexes`; successful earlier operations in the same
+pass remain recorded. For an identity that was not previously tracked, the next
+pass lists the registry again and leaves the external index unowned. Existing
+ownership entries are retained: replacement of a previously tracked index and
+recovery after a lost successful create response or status update remain
+separate ownership concerns.
+
 ## Custom Resources
 
 | Resource | Scope | Description |

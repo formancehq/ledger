@@ -35,6 +35,8 @@ type adapterFixture struct {
 	authCapture        string
 	homeCapture        string
 	validationRunDir   string
+	sharedCacheRoot    string
+	goCache            string
 	knownFindingsPath  string
 	reviewContextPath  string
 	invocationCount    string
@@ -169,6 +171,16 @@ func newAdapterFixture(t *testing.T) adapterFixture {
 	require.NoError(t, os.MkdirAll(temporaryDirectory, 0o755))
 	validationRunDir := filepath.Join(temporaryDirectory, "validation-run")
 	require.NoError(t, os.MkdirAll(validationRunDir, 0o755))
+	sharedCacheRoot := filepath.Join(temporaryDirectory, "shared-cache")
+	goCache := filepath.Join(sharedCacheRoot, "go-build-generations", "generations", "gen-1-1-1", "cache")
+	require.NoError(t, os.MkdirAll(filepath.Dir(goCache), 0o755))
+	require.NoError(t, os.MkdirAll(goCache, 0o755))
+	writeFile(t, filepath.Join(filepath.Dir(goCache), ".ledger-ai-go-cache-generation"), "ledger-ai-go-cache-generation-v1\n", 0o644)
+	var err error
+	sharedCacheRoot, err = filepath.EvalSymlinks(sharedCacheRoot)
+	require.NoError(t, err)
+	goCache, err = filepath.EvalSymlinks(goCache)
+	require.NoError(t, err)
 	userHome := filepath.Join(temporaryDirectory, "user-home")
 	userCodexHome := filepath.Join(userHome, ".codex")
 	for _, directory := range []string{
@@ -202,6 +214,8 @@ func newAdapterFixture(t *testing.T) adapterFixture {
 		authCapture:        filepath.Join(temporaryDirectory, "auth.txt"),
 		homeCapture:        filepath.Join(temporaryDirectory, "isolated-home.txt"),
 		validationRunDir:   validationRunDir,
+		sharedCacheRoot:    sharedCacheRoot,
+		goCache:            goCache,
 		knownFindingsPath:  filepath.Join(temporaryDirectory, "known-findings.json"),
 		reviewContextPath:  filepath.Join(temporaryDirectory, "pr-metadata.json"),
 		invocationCount:    filepath.Join(temporaryDirectory, "invocation-count"),
@@ -265,6 +279,8 @@ func runAdapter(t *testing.T, fixture adapterFixture, extraEnvironment map[strin
 		"PATH":                           fixture.path,
 		"TMPDIR":                         filepath.Join(fixture.temporaryDirectory, "tmp"),
 		"VALIDATION_RUN_DIR":             fixture.validationRunDir,
+		"LEDGER_AI_CACHE_ROOT":           fixture.sharedCacheRoot,
+		"GOCACHE":                        fixture.goCache,
 		"AI_REVIEW_RESULT":               fixture.resultPath,
 		"AI_REVIEW_HEAD":                 testHead,
 		"AI_REVIEW_WORKTREE_FINGERPRINT": testFingerprint,

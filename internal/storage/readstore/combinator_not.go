@@ -147,6 +147,12 @@ func (it *NotIterator[D]) Close() {
 	it.child.Close()
 }
 
+// Not creates a NOT over operands travelling in D's direction. See And for
+// why both a generic and a named spelling exist.
+func Not[D Direction](universe, child Iterator[D]) *NotIterator[D] {
+	return newNotIterator[D](universe, child)
+}
+
 // Direction is the compile-time direction witness; see Iterator.Direction.
 func (it *NotIterator[D]) Direction() (d D) { return }
 

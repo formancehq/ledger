@@ -26,6 +26,30 @@ Source: `internal/proto/commonpb/common.pb.go:2527-2550`.
 
 Build progress is deliberately absent from the registry row: it is a per-replica concern. Queries consult the per-replica `IndexVersionState.CurrentVersion`, and the status API derives its display from that state next to the row's cluster-wide `forward_encoding_version`.
 
+## Strict creation
+
+[EN-2009](https://formance-team.atlassian.net/browse/EN-2009) requires a
+successful fresh creation to mean that an index was actually created. This
+keeps creation audit records unambiguous and avoids resetting a live registry
+row. Strict rejection follows named-resource creation semantics; there is no
+ensure/upsert mode or automatic skip. Operator ownership recovery and
+conditional deletion of a replaced index remain separate concerns.
+
+`CreateIndex` creates one registry entry per `(ledger, canonical IndexID)`.
+The FSM reads that entry through its declared, scoped coverage before writing;
+read or coverage failures propagate. An existing entry returns
+`INDEX_ALREADY_EXISTS` (HTTP `409`, gRPC `AlreadyExists`) regardless of local
+build progress or an in-flight schema rewrite. It does not reset `created_at`,
+`forward_encoding_version`, bindings, or per-replica state, and emits no
+`CreatedIndexLog` or new skipped-order log. A duplicate inside one atomic batch
+fails the batch, rolling back earlier orders in that batch.
+
+A retained batch idempotency key still replays the original batch result before
+executing orders. This is distinct from a new create request, including one
+with a different key. A committed drop or metadata-field removal deletes the
+registry entry and permits a later fresh creation. Recreate starts the registry
+version at 1; local version allocation retains its existing high-water guard.
+
 ## Per-Replica Version State
 
 `readstore.IndexVersionState` is the only state that decides which keyspace queries scan on this replica. It lives under `SubInternalIndexVersion` in Pebble and is **not part of the audit chain** — it is a projection (a per-replica view of cluster-wide rewrite progress).
@@ -82,7 +106,7 @@ The atomic switch is a single Pebble batch commit that flips `Pending → Curren
 
 A rewrite is driven by `indexbuilder.Builder` (`internal/application/indexbuilder/`). The relevant entry points:
 
-- `handleCreatedIndexLog` — allocates `next = HighWater + 1`. An initial index is promoted directly to `CurrentVersion=next`; a later index gets `CurrentVersion=0`, `PendingVersion=next`, a persisted version-state row, and a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
+- `handleCreatedIndexLog` — allocates `next = HighWater + 1`. An initial index, the log-date builtin aside, is promoted directly to `CurrentVersion=next`; a later index gets `CurrentVersion=0`, `PendingVersion=next`, a persisted version-state row, and a `backfillTask` (`internal/application/indexbuilder/index_config.go`).
 - `backfillTask` — opaque cursor that replays historical logs into `v_pending`, persisting progress in Pebble so a node restart resumes mid-rewrite (`internal/application/indexbuilder/backfill.go:21-32`).
 - `completeBackfill` — when the cursor reaches the global indexer cursor, the **atomic switch** runs: `CurrentVersion ← PendingVersion`, `PendingVersion ← 0`, in one Pebble batch (`backfill.go:1197+`).
 - `handleDroppedIndexLog` — removes the index from the in-memory config, cancels in-flight work, tombstones `IndexVersionState` while preserving `HighWater`, and purges metadata forward (`0x01`), existence (`0x02`), and reverse-map (`0x03`) rows in the same fold batch (`index_config.go`).
@@ -104,16 +128,18 @@ stateDiagram-v2
 
 An index gets a fast path when it is declared in the **same atomic apply batch** as the `CreateLedger` that creates its ledger, before any indexable data log for that ledger. The FSM classifies this per-proposal — a ledger is treated as "born empty" until it emits its first indexable data log — and stamps the result on a new `CreatedIndexLog.initial` boolean.
 
-- **Initial index** (`CreatedIndexLog.initial == true`): there is no history to replay, so the indexbuilder allocates `next = HighWater + 1`, promotes it straight to `CurrentVersion=next`, and schedules **no** historical backfill. On the first incarnation `next` is 1; after a drop/recreate it is higher. `GetIndexStatus` immediately reports `current_version > 0` and carries no backfill cursor.
+- **Initial index** (`CreatedIndexLog.initial == true`, the log-date builtin excepted — see below): there is no *entity* history to replay, so the indexbuilder allocates `next = HighWater + 1`, promotes it straight to `CurrentVersion=next`, and schedules **no** historical backfill. On the first incarnation `next` is 1; after a drop/recreate it is higher. `GetIndexStatus` immediately reports `current_version > 0` and carries no backfill cursor.
 - **Later index** (`CreatedIndexLog.initial == false`): this covers an index added to a ledger that already holds data, **and** an index created in a separate apply batch even if the ledger is still empty. It is seeded with `CurrentVersion=0` and `PendingVersion=HighWater+1`, backfilled from cursor `0`, and gated by `current_version == 0` (queries get `ErrIndexBuilding`) until the backfill completes and the atomic switch flips the served version.
 
 The classification is deliberately conservative: only the same-atomic-batch-before-any-data case qualifies as initial. A separate-batch index on a still-empty ledger backfills exactly as before — safe (it replays an empty history and completes immediately), just not routed through the zero-cost promotion.
+
+The log-date builtin is the exception to the fast path: born-empty means no indexable *data* log, and such a ledger can already carry configuration logs — the `CreateIndex` log itself among them — whose dates belong in the index. It therefore backfills in both classifications (`isLogDateIndex`, EN-1987).
 
 ## Restore Lifecycle
 
 The index registry (the bucket-scoped `Index` rows under `SubAttrIndex`) is a persisted projection of the audited order stream, so a cross-cluster restore must reproduce it the same way the live apply path built it: the checkpoint's attribute zone carries the rows as of the checkpoint, and `RebuildDelta` (`internal/infra/backup/rebuild.go`, shared with `ledgerctl store bootstrap`) folds every post-checkpoint ledger log into them. The replay evidence is the exported logs themselves — each registry mutation is derived from a log payload alone, never from state the source cluster held outside the export:
 
-- **`CreateIndex`** writes the same fresh registry row the live `processCreateIndex` writes, at `forward_encoding_version` 1, stamped with the enclosing `LedgerLog`'s date (the apply-time effective date). A duplicate `CreateIndex` overwrites the row, matching the live handler.
+- **`CreateIndex`** writes the same fresh registry row the live `processCreateIndex` writes, at `forward_encoding_version` 1, stamped with the enclosing `LedgerLog`'s date (the apply-time effective date). The live FSM rejects duplicate creation, so a failed duplicate contributes no creation log to replay. Replay continues to fold accepted creation logs into fresh registry rows. The indexbuilder retains its guards against repeated log processing.
 - **`SetMetadataFieldType`** applies the retype cascade: when a registry row covers the retyped `(target, key)`, its `forward_encoding_version` is bumped, mirroring the live `processSetMetadataFieldType`. A field with no covering index is a registry no-op.
 - **`DropIndex`** deletes the registry row.
 - **`RemovedMetadataFieldType`** carries the removal cascade in the log itself: the payload names the index the removal dropped (`dropped_index`), and the row is deleted from the log alone — the replay never re-derives which index a removal covered.

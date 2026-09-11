@@ -728,10 +728,9 @@ func (w *attributeReplayWriter) SetMetadataFieldType(ledger string, target commo
 	return w.putIndex(ledger, id, row)
 }
 
-// CreateIndex writes the registry row the live processCreateIndex writes: a
-// fresh entry at forward-encoding version 1, stamped with the log's apply
-// date. A duplicate CreateIndex overwrites the row, matching the live
-// handler.
+// CreateIndex folds an accepted creation log into a fresh registry row at
+// forward-encoding version 1, stamped with the log's apply date. Fresh duplicate
+// orders are rejected by the live FSM and produce no creation log to replay.
 func (w *attributeReplayWriter) CreateIndex(ledger string, id *commonpb.IndexID, createdAt *commonpb.Timestamp) error {
 	return w.putIndex(ledger, id, &commonpb.Index{
 		Id:                     id,

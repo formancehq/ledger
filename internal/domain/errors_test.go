@@ -328,6 +328,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrMirrorV2LogIDInvalid":          &ErrMirrorV2LogIDInvalid{},
 		"ErrPreparedQueryAlreadyExists":    &ErrPreparedQueryAlreadyExists{},
 		"ErrPreparedQueryNotFound":         &ErrPreparedQueryNotFound{},
+		"ErrIndexAlreadyExists":            &ErrIndexAlreadyExists{},
 		"ErrIndexNotFound":                 &ErrIndexNotFound{},
 		"ErrMetadataFieldNotInSchema":      &ErrMetadataFieldNotInSchema{},
 		"ErrIndexBuilding":                 &ErrIndexBuilding{},

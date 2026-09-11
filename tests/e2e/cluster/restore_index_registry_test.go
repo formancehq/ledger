@@ -26,6 +26,9 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 )
 
 // This suite pins the dropped-index loss the model test surfaced
@@ -253,10 +256,27 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(removed.GetDroppedIndex()).ToNot(BeNil(), "live premise: the removal must drop the checkpoint-seeded index")
 		})
 
+		It("audits rejected duplicate creations in the delta without resetting registry rows", func() {
+			for _, key := range []string{retypedKey, deltaKey} {
+				before := registryRow(client, key)
+				Expect(before).NotTo(BeNil())
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-duplicate-"+key,
+					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
+				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
+				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
+				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_ALREADY_EXISTS"))
+				Expect(proto.Equal(registryRow(client, key), before)).To(BeTrue())
+			}
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty())
+		})
+
 		It("exports the delta and captures the source registry", func() {
 			incResp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
+			Expect(incResp.GetAuditEntriesExported()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
 
 			sourceRows = map[string]*commonpb.Index{
 				retypedKey: registryRow(client, retypedKey),
@@ -393,6 +413,34 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty(), "CheckStore errors on the restored store: %v", result.Errors)
+		})
+
+		It("retains duplicate failure audits and rejects fresh creates after restore", func() {
+			entries, err := actions.ListAuditEntries(ctx, client, true)
+			Expect(err).To(Succeed())
+			for _, key := range []string{retypedKey, deltaKey} {
+				found := 0
+				for _, entry := range entries {
+					if entry.GetIdempotency().GetKey() == "idxreg-duplicate-"+key {
+						found++
+						Expect(entry.GetFailure().GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS))
+						full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
+						Expect(err).To(Succeed())
+						Expect(full.GetItems()).To(HaveLen(1))
+						Expect(full.GetItems()[0].GetLogSequence()).To(BeZero())
+					}
+				}
+				Expect(found).To(Equal(1), "failed duplicate audit for %s must survive the delta", key)
+				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-restored-duplicate-"+key,
+					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
+				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
+				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
+				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_ALREADY_EXISTS"))
+				Expect(proto.Equal(registryRow(client, key), sourceRows[key])).To(BeTrue())
+			}
+			result, err := actions.CollectCheckStoreEvents(ctx, client)
+			Expect(err).To(Succeed())
+			Expect(result.Errors).To(BeEmpty())
 		})
 
 		It("drops the retyped index when its field is removed", func() {

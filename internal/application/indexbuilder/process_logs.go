@@ -154,10 +154,23 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 
+			// A ledger's creation log bounds a future initial index's replay:
+			// every log of that ledger is at or above this sequence. Recorded
+			// only here, so the entry proves this process folded the creation
+			// itself — after a restart it is absent and the replay falls back
+			// to the whole log rather than trusting a later first-seen log
+			// (recordLedgerCreation).
+			if cl := log.GetPayload().GetCreateLedger(); cl != nil {
+				b.recordLedgerCreation(cl.GetName(), log.GetSequence())
+
+				continue
+			}
+
 			// Handle ledger deletion: remove all read indexes for the deleted ledger.
 			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
 				if dl.DeleteLedger != nil {
 					name := dl.DeleteLedger.GetName()
+					delete(b.ledgerFirstSeq, name)
 					if err := readstore.DeleteLedgerIndexes(batch, name); err != nil {
 						_ = batch.Cancel()
 
@@ -629,6 +642,32 @@ func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
 	}
 }
 
+// backfillLogDateRow indexes one replayed log's date when cfg builds the log
+// date index. The date index covers every log of the ledger — a date filter
+// reads the same universe ListLogs scans — so this runs for a config-mutation
+// log too, while the entity projections in indexLogEntry stay specific to a
+// data log's payload. A no-op for any other backfill kind. The caller has
+// already established that log belongs to the ledger being backfilled.
+func (b *Builder) backfillLogDateRow(cfg *ledgerIndexConfig, log *commonpb.Log) error {
+	if !cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
+		return nil
+	}
+
+	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	if !ok {
+		return nil
+	}
+
+	ledgerLog := applyLog.Apply.GetLog()
+	if ledgerLog == nil || ledgerLog.GetData() == nil {
+		return nil
+	}
+
+	b.wb.SetEventSequence(log.GetSequence())
+
+	return b.wb.WriteLedgerLogDateIndex(b.kb, applyLog.Apply.GetLedgerName(), ledgerLog.GetDate().GetData(), ledgerLog.GetId())
+}
+
 // indexLogEntry dispatches a single log entry to the appropriate index handler.
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
@@ -672,18 +711,13 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return err
 	}
 
-	// Index log date for date range filtering (opt-in via log date builtin index).
-	if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
-		if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
-			return err
-		}
-	}
-
 	// Schema logs are deliberately absent from this switch. The only caller,
 	// processBackfill, gates on isDataLog, which admits exactly
 	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
 	// / OrderSkipped and switches on the same discriminator used here — so a
-	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive.
+	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive,
+	// and neither can the CreateIndex / DropIndex cases below, which the live
+	// path reaches through indexPayload.
 	// Schema handling belongs to the live path (indexPayload), where
 	// SetMetadataFieldType defers to addSchemaRewriteTask / processSchemaRewrite
 	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype

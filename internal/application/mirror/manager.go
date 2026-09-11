@@ -44,10 +44,15 @@ type Manager struct {
 	workers             map[string]*Worker
 	resourcesGeneration uint64
 
+	// Reconciliation may acquire leadershipMu while holding mu. Transitions
+	// must release leadershipMu before draining or acquiring mu; cancellation
+	// here only signals initialization and never waits for source cleanup.
 	leadershipMu         sync.Mutex
 	leadershipGeneration uint64
 	isLeader             bool
 	stopped              bool
+	initializationCtx    context.Context
+	cancelInitialization context.CancelFunc
 
 	w worker.Worker
 }
@@ -85,6 +90,9 @@ func (m *Manager) Stop() {
 	m.leadershipGeneration++
 	m.isLeader = false
 	m.stopped = true
+	if m.cancelInitialization != nil {
+		m.cancelInitialization()
+	}
 	m.leadershipMu.Unlock()
 
 	m.w.Stop()
@@ -100,6 +108,8 @@ func (m *Manager) Stop() {
 // the caller: bootstrap invokes it synchronously from the Raft observer so
 // transitions are recorded in order without blocking the Raft processing loop
 // on Pebble reads or worker startup.
+// Canceling the prior generation also interrupts source initialization before
+// the queued reconciliation can run.
 func (m *Manager) OnLeadershipChange(isLeader bool) {
 	m.leadershipMu.Lock()
 	if m.stopped {
@@ -110,6 +120,14 @@ func (m *Manager) OnLeadershipChange(isLeader bool) {
 
 	m.leadershipGeneration++
 	m.isLeader = isLeader
+	if m.cancelInitialization != nil {
+		m.cancelInitialization()
+	}
+	m.initializationCtx = nil
+	m.cancelInitialization = nil
+	if isLeader {
+		m.initializationCtx, m.cancelInitialization = context.WithCancel(context.Background())
+	}
 	m.leadershipMu.Unlock()
 
 	m.notifications.NotifyConfigChanged()
@@ -134,11 +152,25 @@ func (m *Manager) loop(stop <-chan struct{}) {
 	)
 }
 
-func (m *Manager) leadershipSnapshot() (uint64, bool, bool) {
+// managerLeadership captures initialization ownership atomically. A follower
+// has no initialization context because it cannot construct sources.
+type managerLeadership struct {
+	generation        uint64
+	isLeader          bool
+	stopped           bool
+	initializationCtx context.Context
+}
+
+func (m *Manager) leadershipSnapshot() managerLeadership {
 	m.leadershipMu.Lock()
 	defer m.leadershipMu.Unlock()
 
-	return m.leadershipGeneration, m.isLeader, m.stopped
+	return managerLeadership{
+		generation:        m.leadershipGeneration,
+		isLeader:          m.isLeader,
+		stopped:           m.stopped,
+		initializationCtx: m.initializationCtx,
+	}
 }
 
 func (m *Manager) isCurrentLeader(generation uint64) bool {
@@ -158,15 +190,15 @@ func (m *Manager) isCurrentGeneration(generation uint64) bool {
 // reconcile reads the current mirror ledger configurations from the store and
 // starts or stops workers as needed. Must be called under lock.
 func (m *Manager) reconcile() {
-	generation, isLeader, stopped := m.leadershipSnapshot()
-	m.reconcileGeneration(generation, isLeader, stopped)
+	m.reconcileGeneration(m.leadershipSnapshot())
 }
 
 // reconcileGeneration applies one captured leadership generation. A transition
 // can arrive after the loop wakes but before it acquires m.mu, so reject a
 // superseded generation before either teardown or startup mutates ownership.
 // Must be called under lock.
-func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool) {
+func (m *Manager) reconcileGeneration(leadership managerLeadership) {
+	generation := leadership.generation
 	if !m.isCurrentGeneration(generation) {
 		return
 	}
@@ -175,7 +207,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 		m.resourcesGeneration = generation
 	}
 
-	if stopped || !isLeader {
+	if leadership.stopped || !leadership.isLeader {
 		m.teardown()
 
 		return
@@ -188,7 +220,7 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 		return
 	}
 
-	mirrorLedgers, err := query.ReadMirrorLedgers(context.Background(), mirrorHandle)
+	mirrorLedgers, err := query.ReadMirrorLedgers(leadership.initializationCtx, mirrorHandle)
 	_ = mirrorHandle.Close()
 
 	if err != nil {
@@ -235,13 +267,6 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 			continue
 		}
 
-		source, err := createSource(info.GetMirrorSource())
-		if err != nil {
-			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to create mirror source: %v", err)
-
-			continue
-		}
-
 		rewriter, err := celrewrite.NewRewriter(info.GetMirrorSource().GetRewriteRules())
 		if err != nil {
 			// Rules are validated at admission time, so a compile failure here
@@ -249,6 +274,23 @@ func (m *Manager) reconcileGeneration(generation uint64, isLeader, stopped bool)
 			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to build mirror rewriter: %v", err)
 
 			continue
+		}
+
+		source, err := createSource(leadership.initializationCtx, info.GetMirrorSource())
+		if err != nil {
+			if !m.isCurrentLeader(generation) {
+				return
+			}
+			m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to create mirror source: %v", err)
+
+			continue
+		}
+		if !m.isCurrentLeader(generation) {
+			if err := source.Close(); err != nil {
+				m.logger.WithFields(map[string]any{"ledger": name}).Errorf("Failed to close superseded mirror source: %v", err)
+			}
+
+			return
 		}
 
 		batchSize := int(info.GetMirrorSource().GetBatchSize())
@@ -280,7 +322,7 @@ func (m *Manager) teardown() {
 
 // createSource builds a Source from a MirrorSourceConfig oneof.
 // todo: add pluggable source factory
-func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
+func createSource(ctx context.Context, cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 	switch s := cfg.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:
 		var httpClient *http.Client
@@ -290,7 +332,7 @@ func createSource(cfg *commonpb.MirrorSourceConfig) (v2.Source, error) {
 
 		return v2.NewHTTPSource(s.Http.GetBaseUrl(), cfg.GetLedgerName(), httpClient), nil
 	case *commonpb.MirrorSourceConfig_Postgres:
-		return v2.NewPostgresSource(context.Background(), s.Postgres, cfg.GetLedgerName())
+		return v2.NewPostgresSource(ctx, s.Postgres, cfg.GetLedgerName())
 	default:
 		return nil, fmt.Errorf("unsupported mirror source type: %T", s)
 	}

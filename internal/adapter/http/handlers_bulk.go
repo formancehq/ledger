@@ -368,21 +368,20 @@ func perElementStatus(err error) int {
 // bulkErrorDescription applies the same diagnostics and public presentation as
 // single-request errors while preserving the bulk envelope, reasons and rollup.
 func bulkErrorDescription(r *http.Request, err error) string {
-	message := err.Error()
-	if perElementStatus(err) != http.StatusInternalServerError {
-		return message
+	internal := perElementStatus(err) == http.StatusInternalServerError
+	var id string
+	if internal {
+		id = correlationID(r)
+		recordHTTPInternalError(r, id, err)
 	}
-	id := correlationID(r)
-	recordHTTPInternalError(r, id, err)
 	if d, ok := apierr.Describe(err); ok {
-		if d.PublicOverride {
-			return d.Message
-		}
-
-		return message
+		return d.Message
+	}
+	if internal {
+		return fmt.Sprintf("internal server error (correlation ID: %s)", id)
 	}
 
-	return fmt.Sprintf("internal server error (correlation ID: %s)", id)
+	return err.Error()
 }
 
 // bulkErrorCode returns a machine-readable code for a per-element bulk failure.

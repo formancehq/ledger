@@ -1240,6 +1240,8 @@ enum ErrorReason {
   // Permanent (Kind=ResourceExhausted): retrying cannot create another ID.
   // See EN-1860.
   ERROR_REASON_SEQUENCE_EXHAUSTED = 67;
+  // A fresh CreateIndex targets an existing ledger/canonical IndexID.
+  ERROR_REASON_INDEX_ALREADY_EXISTS = 68;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

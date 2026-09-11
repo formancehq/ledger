@@ -70,34 +70,43 @@ func requireTransactionID(w http.ResponseWriter, r *http.Request) (uint64, bool)
 	return transactionID, true
 }
 
-// requireCanonicalID extracts, path-unescapes, and non-empty-validates the
-// {canonicalId} URL parameter shared by every single-index route (get / status
-// / inspect / drop, both bucket- and ledger-scoped).
-//
-// A canonical index id can contain characters that are reserved in a path
-// segment — most importantly the metadata form `metadata:<target>:<key>` where
-// <key> is a namespaced metadata key such as `formance.com/reviewed`. The
-// slash and colon must be percent-encoded by the client (`%2F`, `%3A`); chi
-// routes on r.URL.RawPath and hands back the still-escaped segment via
-// URLParam, so ParseCanonical would otherwise see the literal `%2F`/`%3A` and
-// reject or mis-parse the id. Unescape here before handing it to the caller so
-// every canonical-id route addresses namespaced keys correctly.
+// requireCanonicalID extracts the decoded, non-empty index ID shared by all
+// single-index routes (get/status/inspect/drop, bucket- and ledger-scoped).
+// Namespaced metadata keys may include a slash encoded as %2F in the segment.
 func requireCanonicalID(w http.ResponseWriter, r *http.Request) (string, bool) {
-	raw := chi.URLParam(r, "canonicalId")
-	if raw == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("index id is required"))
+	return requirePathParameter(w, r, "canonicalId", "index id")
+}
+
+// requireMetadataKey preserves the identity of metadata keys carried in a URL
+// segment. Business validation, including rejection of percent characters,
+// remains in admission, as for keys supplied through JSON or gRPC.
+func requireMetadataKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	return requirePathParameter(w, r, "key", "metadata key")
+}
+
+// requirePathParameter decodes a chi path parameter exactly once overall. Chi
+// matches RawPath when present, otherwise Path, which net/url already decoded.
+// Unconditionally unescaping would turn a double-encoded %252F into a slash
+// when RawPath is empty, selecting a different key.
+func requirePathParameter(w http.ResponseWriter, r *http.Request, name, label string) (string, bool) {
+	value := chi.URLParam(r, name)
+	if value == "" {
+		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("%s is required", label))
 
 		return "", false
 	}
 
-	canonical, err := url.PathUnescape(raw)
-	if err != nil {
-		writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid index id encoding: %w", err))
+	if r.URL.RawPath != "" {
+		var err error
+		value, err = url.PathUnescape(value)
+		if err != nil {
+			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid %s encoding: %w", label, err))
 
-		return "", false
+			return "", false
+		}
 	}
 
-	return canonical, true
+	return value, true
 }
 
 const (

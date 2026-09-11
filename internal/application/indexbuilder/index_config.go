@@ -358,6 +358,15 @@ func (c *ledgerIndexConfig) indexesPostingDerived() bool {
 		c.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 }
 
+// isLogDateIndex reports whether id is the log date builtin — the one index
+// whose rows are per-log rather than per-entity, so its history is every log
+// of the ledger.
+func isLogDateIndex(id *commonpb.IndexID) bool {
+	k, ok := id.GetKind().(*commonpb.IndexID_LogBuiltin)
+
+	return ok && k.LogBuiltin == commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE
+}
+
 // isLogBuiltinIndexed checks if a specific log builtin index is enabled.
 // Returns false if the receiver is nil (unknown ledger).
 func (c *ledgerIndexConfig) isLogBuiltinIndexed(index commonpb.LogBuiltinIndex) bool {
@@ -395,7 +404,7 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 // declared on a born-empty ledger), there is no local history to replay — the
 // index is promoted straight to live at HighWater+1 and NO backfill is scheduled.
 //
-// Idempotency: when the same CreateIndex is replayed (or re-submitted) against
+// Log replay idempotency: when the same CreatedIndexLog is folded again against
 // an index this replica has already promoted to live, we skip the reset and
 // backfill scheduling so the builder does not redo work that has already
 // completed — and, more importantly, does not knock a live index back into
@@ -410,12 +419,12 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 
 	// The per-replica readiness signal is IndexVersionState.CurrentVersion
 	// (EN-1323). If this replica has already promoted the index to live
-	// (current != 0), a repeated CreatedIndexLog — a duplicate CreateIndex
-	// re-emitted by the processor, or an apply replay — must be a no-op:
-	// allocating a new pending version and rescheduling a backfill would
+	// (current != 0), a repeated CreatedIndexLog during replay must be a no-op.
+	// Allocating a new pending version and rescheduling a backfill would
 	// flip an already-live index back to ErrIndexBuilding. This mirrors the
 	// loadIndexRegistry boot guard and covers both the EN-1564 initial fast
-	// path and the normal post-backfill live state.
+	// path and the normal post-backfill live state. Fresh duplicate requests
+	// are rejected by the FSM before emitting a log.
 	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
 		return nil
 	} else if pending != 0 {
@@ -448,7 +457,15 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// the log folds during a backfill or a rebuild replay.
 	boundType, declared := log.GetBoundType(), log.GetBoundTypeDeclared()
 
-	if log.GetInitial() {
+	// Born-empty means the ledger has emitted no indexable DATA log yet
+	// (processing.isIndexableDataPayload), which is what makes the shortcut
+	// sound for an entity index: there is nothing to replay. A log date index
+	// covers every log of the ledger, and such a ledger can already carry
+	// config-mutation logs — a schema declaration earlier in the proposal, and
+	// this CreateIndex log itself, whose date row the live path cannot write
+	// because it reads the config before this handler registers the index — so
+	// it takes the backfill path and reaches them.
+	if log.GetInitial() && !isLogDateIndex(id) {
 		state := readstore.IndexVersionState{
 			CurrentVersion:      next,
 			PendingVersion:      0,
@@ -496,6 +513,18 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	}
 
 	b.putVersionState(ledgerName, indexes.Canonical(id), state)
+
+	// An initial log-date index only has its own ledger's logs to replay, and
+	// this run folded the first of them, so the replay starts there instead of
+	// walking the whole global log (EN-1987). Any other index either has real
+	// history behind it or is not initial, and starts from zero.
+	if log.GetInitial() {
+		if first := b.ledgerFirstSeq[ledgerName]; first > 0 {
+			b.addBackfillTask(ledgerName, id, first-1)
+
+			return nil
+		}
+	}
 
 	b.scheduleBackfillForIndex(ledgerName, id)
 

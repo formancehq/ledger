@@ -13,7 +13,7 @@ This document compares the POC's API with the original Formance ledger API and d
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version` (currently `"4"`). Missing,
+business RPC, equal to `pkg/grpcprotocol.Version`. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,
@@ -228,6 +228,14 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Revert metadata (typed values — string, integer, boolean — preserved losslessly; unsupported values rejected with `400 INVALID_REQUEST`)
 - ✅ Verification that transaction is not already reverted
 
+**Optional HTTP body.** A missing or empty revert body keeps the default options.
+A supplied JSON body is decoded regardless of `Content-Length`, including
+HTTP/1.1 chunked requests; `force`, `atEffectiveDate` and `metadata` reach the
+same Apply payload for known and unknown lengths. Malformed or truncated JSON
+returns `400 INVALID_REQUEST` before Apply, including extra values or non-whitespace
+after the first value. The complete body, including trailing whitespace, counts
+towards the 4 MiB limit (`413 BODY_TOO_LARGE`), independently of framing.
+
 **Navigable revert relationship.** The revert link is a first-class part of the
 transaction representation (`GET`/list), not metadata — the platform never writes
 `com.formance.spec/*` keys. A transaction exposes:
@@ -257,6 +265,12 @@ navigable in the representation but not queryable (v3-only, no parity baseline).
 - `GET /v3/{ledgerName}/metadata-schema` - Get metadata schema (per-field declared type)
 - `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
 - `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
+
+All metadata-key path parameters above use one URL-decoding pass, including
+schema PUT/DELETE. A JSON key `formance.com/reviewed` is addressed with
+`formance.com%2Freviewed`; double-encoded `%252F` retains a percent-containing
+key and is rejected by metadata admission with HTTP 400. Canonical index IDs
+use the same single-decoding rule.
 
 Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /v3/{ledgerName}` or `GET /v3/` (list ledgers). It uses the same typed value system as account/transaction metadata.
 
@@ -621,7 +635,12 @@ See [Idempotency](../architecture/subsystems/admission/idempotency.md) for detai
 local `IndexVersionState` (`current_version`, `pending_version`), not
 by a cluster-wide flag.
 
-- `CreateIndex` registers the index at `forward_encoding_version = 1`
+- `CreateIndex` is strict: an existing `(ledger, canonical IndexID)` fails
+  with `INDEX_ALREADY_EXISTS` (HTTP `409`, gRPC `AlreadyExists`), including
+  while building or retyping. The registry and local build state remain
+  unchanged. Retained batch-idempotency replay keeps returning its original
+  result.
+- `CreateIndex` registers a new index at `forward_encoding_version = 1`
   and each replica starts a local backfill. When the backfill catches
   up to the global indexer cursor, the replica performs a local atomic
   switch (`current_version` 0 → 1) in a single Pebble batch. There is
@@ -973,7 +992,18 @@ The decoded representation lives at the adapter boundary by design, not in `inte
 
 **Mismatch policy.** A reason ledger knows is a reason whose legitimate wire codes it knows: `CodeForKind(KindForReason(reason))`, today exactly one code, since every enum reason is encoded through `describableToGRPCStatus` and nothing else. Validation stays reason-keyed rather than kind-keyed so a reason that must travel under a second code can be widened alone. A known reason arriving under a code outside that set is a protocol fault, not a business outcome: every consumer branches on `apierr.InvalidWire` and answers its own internal-error representation — `500 INTERNAL_ERROR` + correlation ID on REST (unitary *and* per bulk element), `codes.Unknown` + correlation ID on gRPC, the invalid-pair message on `ledgerctl` — so the received message and metadata are dropped rather than echoed as trusted business information. An unknown reason cannot be validated and is preserved verbatim — reason, message, metadata and exact status.
 
+On internal forwarding hops, `grpcerr.OriginalStatus` preserves decoded statuses
+through outer error wrappers and before cursor cancellation normalization. The
+original code, public message, and every status detail survive the hop; raw
+transport cancellation still follows the caller-context policy. Regression
+tests cover both production cursor types, wrapped repeated hops, exact REST/bulk
+message parity, and complete gRPC status parity between leader and followers.
+Unitary and bulk HTTP responses use the descriptor message for recognized
+public errors, omitting outer routing or Raft prefixes on both local and
+forwarded paths; internal-error sanitization remains in force.
+
 **Client-side usage (Go):**
+
 ```go
 import (
     "google.golang.org/genproto/googleapis/rpc/errdetails"

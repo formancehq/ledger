@@ -1464,10 +1464,13 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		return readstore.NewSliceIterator(nil), nil
 	}
 
-	prefix := readstore.LedgerLogPrefix(ctx.kb, ctx.ledgerName)
-
-	// Equality optimization: single logID -> check existence in the index
-	if bounds.isEquality() {
+	// Point-read path: a single-value equality (min == v, max == v+1) or a
+	// singleton MaxUint64 bound ([MaxUint64, ∞) collapses to {MaxUint64})
+	// resolves through the index directly rather than a range leaf. The
+	// MaxUint64 case is handled explicitly because its inclusive bound cannot
+	// be represented by hasMax (applyMaxInclusiveUint drops it), and a range
+	// leaf built on the transaction-ID pattern must not increment MaxUint64.
+	if bounds.isEquality() || (bounds.hasMin && !bounds.hasMax && bounds.min == math.MaxUint64) {
 		logIDBytes := make([]byte, 8)
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
 		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
@@ -1491,49 +1494,33 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		}), nil
 	}
 
-	// Range scan on the ledger logs index
-	entityOffset := len(prefix)
-	lower := make([]byte, 0, len(prefix)+8)
-	lower = append(lower, prefix...)
-	upper := make([]byte, 0, len(prefix)+8)
-	upper = append(upper, prefix...)
+	// Bounded range leaf: ledger-log keys are physically ordered by log ID, so
+	// a streaming leaf yields IDs in ascending order without materializing and
+	// sorting the whole range. lower/upper are the 8-byte BE ID bounds; an
+	// absent upper bound is closed by the successor of the prefix (see
+	// LedgerLogRangeIterator), which keeps a MaxUint64 log ID included.
+	var lower, upper []byte
 
 	if bounds.hasMin {
-		minBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(minBytes, bounds.min)
-		lower = append(lower, minBytes...)
+		lower = make([]byte, 8)
+		binary.BigEndian.PutUint64(lower, bounds.min)
 	}
 
 	if bounds.hasMax {
-		maxBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(maxBytes, bounds.max)
-		upper = append(upper, maxBytes...)
-	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		upper = make([]byte, 8)
+		binary.BigEndian.PutUint64(upper, bounds.max)
 	}
 
-	if !bounds.hasMin {
-		lower = prefix
-	}
-
-	entityLen := 8
-
-	iter, rErr := readstore.NewRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen)
+	iter, rErr := readstore.NewLedgerLogRangeIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, lower, upper)
 	if rErr != nil {
 		return nil, fmt.Errorf("creating log ID range iterator: %w", rErr)
 	}
 
-	stats := &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(llog:%s:id range)", ctx.ledgerName),
-		Kind:   "Range",
+	return trackIterator(iter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("LedgerLogRangeIterator(%s:id range)", ctx.ledgerName),
+		Kind:   "LedgerLogRange",
 		Prefix: "llog",
-	}
-	matIter, err := materializeIterator(iter, ctx.profile, stats)
-	if err != nil {
-		return nil, err
-	}
-
-	return trackIterator(matIter, ctx.profile, stats), nil
+	}), nil
 }
 
 // checkIndexed verifies that an Index entry exists in the bucket-scoped
@@ -1565,7 +1552,10 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 //     EVERY index kind — builtin (reference, timestamp, inserted_at,
 //     address, log_date) and metadata alike. Non-initial indexes allocate
 //     PendingVersion=HighWater+1 and completeBackfill promotes it; indexes
-//     declared on a born-empty ledger take the direct-ready fast path.
+//     declared on a born-empty ledger take the direct-ready fast path,
+//     the log-date builtin aside — it covers every log of the ledger, so
+//     it backfills from either classification and is refused until its
+//     switch (EN-1987).
 //   - A wrapped error on Pebble I/O failure (per CLAUDE.md invariant
 //     #7 the silent "treat as building" fallback is forbidden).
 //

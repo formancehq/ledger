@@ -277,11 +277,15 @@ if [[ -n "${VALIDATION_RUN_DIR:-}" ]]; then
                 ;;
         esac
     done
-    for dir in go-build go-mod go-path xdg golangci-lint; do
+    for dir in go-mod go-path xdg golangci-lint; do
         mkdir -p "$shared_cache_root/$dir"
     done
+    source "$(dirname "${BASH_SOURCE[0]}")/agent-cache-contract"
+    managed_go_cache_valid "$shared_cache_root" "${GOCACHE:-}" || {
+        echo "ai-review-codex: GOCACHE is not a managed validation generation" >&2
+        exit 1
+    }
     export LEDGER_AI_CACHE_ROOT="$shared_cache_root"
-    export GOCACHE="$shared_cache_root/go-build"
     export GOMODCACHE="$shared_cache_root/go-mod"
     export GOPATH="$shared_cache_root/go-path"
     export TMPDIR="$run_dir/tmp"
