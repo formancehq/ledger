@@ -1749,7 +1749,7 @@ func TestAppend_StaleEntriesPiggybackedHardStateIsPersisted(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	w := newTestWALDir(t, dir)
+	w := newTestWALAt(t, dir)
 
 	// Seed a snapshot at index 2 so writing entries 3..5 is legal and
 	// "stale" entries at index 1..2 fall before the cached window.
@@ -1778,25 +1778,10 @@ func TestAppend_StaleEntriesPiggybackedHardStateIsPersisted(t *testing.T) {
 	require.NoError(t, w.Close())
 
 	// Reopen and verify the persisted HardState carries the bumped commit.
-	reopened := newTestWALDir(t, dir)
+	reopened := newTestWALAt(t, dir)
 
 	hs, _, err := reopened.InitialState()
 	require.NoError(t, err)
 	require.Equal(t, uint64(10), hs.GetCommit(),
 		"piggy-backed HardState commit on a stale-entry Append must survive across restart (#301)")
-}
-
-// newTestWALDir is a variant of newTestWAL that lets the caller control
-// the storage directory so a WAL can be closed and reopened in-place.
-func newTestWALDir(t *testing.T, dir string) *DefaultWAL {
-	t.Helper()
-
-	ctx := logging.TestingContext()
-	logger := logging.FromContext(ctx)
-	meter := noop.NewMeterProvider().Meter("test")
-
-	w, err := New(dir, logger, meter)
-	require.NoError(t, err)
-
-	return w
 }
