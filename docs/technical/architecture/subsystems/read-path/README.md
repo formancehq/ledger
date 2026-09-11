@@ -19,7 +19,7 @@ and the pipeline pages.
 | [iterator-seek-contract.md](iterator-seek-contract.md) | Absolute SeekGE/SeekLE semantics across the iterator algebra, the AddressTxIterator materialized union, and the seekFloor/seekCeil exhaustion-proof cache. |
 | [read-snapshot-consistency.md](read-snapshot-consistency.md) | Single-snapshot rule for controller reads that stitch LedgerInfo with attribute data. |
 | [readstore-event-keys.md](readstore-event-keys.md) | Append-only metadata/existence event resolution, lease-bounded reclamation, and edge-triggered GC cycles. |
-| [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, bloom acceleration. |
+| [prepared-queries.md](prepared-queries.md) | Named pre-validated query templates: lifecycle, filter DSL, execution, shared unfiltered volume aggregation, bloom acceleration. |
 | [query-checkpoints.md](query-checkpoints.md) | Point-in-time snapshots of main store and read index for historical queries. |
 | [typed-metadata.md](typed-metadata.md) | Typed values, immutable primary metadata, declared schemas, and versioned index coercion. |
 | [query-filter.md](query-filter.md) | Canonical HTTP QueryFilter surface: dual-format filter, parameter classification, textual/structured asymmetries, date coercion, AND-combination, audit text-only. |
