@@ -1,0 +1,34 @@
+package main
+
+import (
+	"encoding/json"
+	"math/big"
+	"os"
+	stdtime "time"
+
+	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	ledger "github.com/formancehq/ledger/internal"
+)
+
+func main() {
+	at := time.New(stdtime.Date(2024, 1, 1, 0, 0, 0, 0, stdtime.UTC))
+	later := time.New(stdtime.Date(2024, 1, 1, 1, 0, 0, 0, stdtime.UTC))
+	unrelated := ledger.NewTransaction().WithID(0).WithTimestamp(at).WithInsertedAt(at).WithUpdatedAt(at).WithPostings(ledger.NewPosting("world", "unrelated", "USD", big.NewInt(25)))
+	original := ledger.NewTransaction().WithID(1).WithTimestamp(at).WithInsertedAt(at).WithUpdatedAt(at).WithPostings(ledger.NewPosting("world", "alice", "USD", big.NewInt(100)))
+	compensating := ledger.NewTransaction().WithID(2).WithTimestamp(later).WithInsertedAt(later).WithUpdatedAt(later).WithPostings(ledger.NewPosting("alice", "world", "USD", big.NewInt(100)))
+	compensating.Metadata = ledger.MarkReverts(compensating.Metadata, 1)
+	payloads := map[string]any{
+		"v2.4.7-new-transaction-0.json":      ledger.CreatedTransaction{Transaction: unrelated, AccountMetadata: ledger.AccountMetadata{}},
+		"v2.4.7-new-transaction-1.json":      ledger.CreatedTransaction{Transaction: original, AccountMetadata: ledger.AccountMetadata{}},
+		"v2.4.7-reverted-transaction-1.json": ledger.RevertedTransaction{RevertedTransaction: original.WithRevertedAt(later).WithUpdatedAt(later), RevertTransaction: compensating},
+	}
+	for name, payload := range payloads {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			panic(err)
+		}
+		if err := os.WriteFile(os.Args[1]+"/"+name, data, 0644); err != nil {
+			panic(err)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package v2
 
 import (
 	stdjson "encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"sync"
@@ -255,6 +256,12 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcm
 
 		return nil, 0, fmt.Errorf("unmarshaling REVERTED_TRANSACTION data: %w", err)
 	}
+	if data.RevertedTransaction.ID == nil {
+		resetV2RevertData(data)
+		v2RevertPool.Put(data)
+
+		return nil, 0, errors.New("REVERTED_TRANSACTION data is missing revertedTransaction.id")
+	}
 
 	revertTxID := data.RevertTransaction.ID
 	newNextTxID := expectedNextTxID
@@ -290,7 +297,7 @@ func translateRevertedTransaction(v2Log V2Log, expectedNextTxID uint64) (*raftcm
 		V2LogId: v2Log.ID,
 		Data: &raftcmdpb.MirrorLogEntry_RevertedTransaction{
 			RevertedTransaction: &raftcmdpb.MirrorRevertedTransaction{
-				RevertedTransactionId: data.RevertedTransactionID,
+				RevertedTransactionId: *data.RevertedTransaction.ID,
 				NewTransactionId:      revertTxID,
 				ReversePostings:       postings,
 				Metadata:              translateMetadataMap(data.RevertTransaction.Metadata),
