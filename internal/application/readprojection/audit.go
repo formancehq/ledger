@@ -22,7 +22,7 @@ import (
 // shadowed by protobuf merging, cannot reach the public response schema.
 func Audit(entry *auditpb.AuditEntry) (*publicauditpb.AuditEntry, error) {
 	if entry == nil {
-		return nil, nil
+		return nil, errors.New("audit entry is nil")
 	}
 	result := &publicauditpb.AuditEntry{
 		Sequence: entry.GetSequence(), Timestamp: entry.GetTimestamp(), ProposalId: entry.GetProposalId(),
@@ -32,9 +32,17 @@ func Audit(entry *auditpb.AuditEntry) (*publicauditpb.AuditEntry, error) {
 	}
 	switch outcome := entry.GetOutcome().(type) {
 	case *auditpb.AuditEntry_Success:
+		if outcome == nil || outcome.Success == nil {
+			return nil, fmt.Errorf("audit entry %d has a nil success outcome", entry.GetSequence())
+		}
 		result.Outcome = &publicauditpb.AuditEntry_Success{Success: outcome.Success}
 	case *auditpb.AuditEntry_Failure:
+		if outcome == nil || outcome.Failure == nil {
+			return nil, fmt.Errorf("audit entry %d has a nil failure outcome", entry.GetSequence())
+		}
 		result.Outcome = &publicauditpb.AuditEntry_Failure{Failure: &publicauditpb.AuditFailure{Reason: outcome.Failure.GetReason(), Message: outcome.Failure.GetMessage(), Context: outcome.Failure.GetContext()}}
+	default:
+		return nil, fmt.Errorf("audit entry %d has no recognized outcome", entry.GetSequence())
 	}
 	if signature := entry.GetSignature(); signature != nil {
 		result.Signature = &publicauditpb.SignatureInfo{KeyId: signature.GetKeyId()}

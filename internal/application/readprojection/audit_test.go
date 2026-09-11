@@ -125,7 +125,7 @@ func TestAuditShadowedWireCredentialsHaveNoPublicCarrier(t *testing.T) {
 	require.NoError(t, err)
 	for _, raw := range [][]byte{orderWire, append(bytes.Clone(orderWire), otherWire...)} {
 		original := bytes.Clone(raw)
-		entry := &auditpb.AuditEntry{Items: []*auditpb.AuditItem{{SerializedOrder: raw}}}
+		entry := &auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}, Items: []*auditpb.AuditItem{{SerializedOrder: raw}}}
 		view, err := Audit(entry)
 		require.NoError(t, err)
 		encoded, err := view.MarshalVT()
@@ -147,7 +147,7 @@ func TestAuditInvalidConfigurationRemainsReadable(t *testing.T) {
 	for _, order := range orders {
 		raw, err := order.MarshalVT()
 		require.NoError(t, err)
-		view, err := Audit(&auditpb.AuditEntry{Items: []*auditpb.AuditItem{{SerializedOrder: raw}}})
+		view, err := Audit(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}, Items: []*auditpb.AuditItem{{SerializedOrder: raw}}})
 		require.NoError(t, err)
 		if add := view.GetItems()[0].GetOrder().GetSystemScoped().GetAddEventsSink(); add != nil {
 			require.True(t, add.GetConfigurationUnavailable())
@@ -192,7 +192,7 @@ func TestAuditUnknownFieldsAndTechnicalDataAreOmitted(t *testing.T) {
 	order := &raftcmdpb.Order{Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte("technical-secret")}, Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{RemoveEventsSink: remove}}}}
 	raw, err := order.MarshalVT()
 	require.NoError(t, err)
-	entry := &auditpb.AuditEntry{Items: []*auditpb.AuditItem{{SerializedOrder: raw}}}
+	entry := &auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}, Items: []*auditpb.AuditItem{{SerializedOrder: raw}}}
 	before := proto.Clone(entry)
 	view, err := Audit(entry)
 	require.NoError(t, err)
@@ -206,7 +206,7 @@ func TestAuditUnknownFieldsAndTechnicalDataAreOmitted(t *testing.T) {
 
 func TestAuditCursorAndMalformedOrders(t *testing.T) {
 	t.Parallel()
-	c := NewAuditCursor(cursor.NewSliceCursor([]*auditpb.AuditEntry{{Sequence: 9}, {Sequence: 10}}))
+	c := NewAuditCursor(cursor.NewSliceCursor([]*auditpb.AuditEntry{{Sequence: 9, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}}, {Sequence: 10, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}}}))
 	first, err := c.Next()
 	require.NoError(t, err)
 	require.EqualValues(t, 9, first.GetSequence())
@@ -216,10 +216,10 @@ func TestAuditCursorAndMalformedOrders(t *testing.T) {
 	_, err = c.Next()
 	require.ErrorIs(t, err, io.EOF)
 	require.NoError(t, c.Close())
-	_, err = Audit(&auditpb.AuditEntry{Items: []*auditpb.AuditItem{{SerializedOrder: []byte{0xff}}}})
+	_, err = Audit(&auditpb.AuditEntry{Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}}, Items: []*auditpb.AuditItem{{SerializedOrder: []byte{0xff}}}})
 	require.ErrorContains(t, err, "decoding audit order")
 	nilView, err := Audit(nil)
-	require.NoError(t, err)
+	require.EqualError(t, err, "audit entry is nil")
 	require.Nil(t, nilView)
 }
 
@@ -241,4 +241,24 @@ func TestAuditFailureRetainsReasonWithoutHistoricalDiagnostics(t *testing.T) {
 	require.NotContains(t, string(data), "historical-secret")
 	require.NotContains(t, string(data), "historical-context-secret")
 	require.True(t, proto.Equal(original, entry))
+}
+
+func TestAuditRejectsMissingOutcome(t *testing.T) {
+	t.Parallel()
+	for name, entry := range map[string]*auditpb.AuditEntry{
+		"missing":             {},
+		"nil success wrapper": {Outcome: (*auditpb.AuditEntry_Success)(nil)},
+		"nil success payload": {Outcome: &auditpb.AuditEntry_Success{}},
+		"nil failure wrapper": {Outcome: (*auditpb.AuditEntry_Failure)(nil)},
+		"nil failure payload": {Outcome: &auditpb.AuditEntry_Failure{}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			var view *publicauditpb.AuditEntry
+			var err error
+			require.NotPanics(t, func() { view, err = Audit(entry) })
+			require.ErrorContains(t, err, "outcome")
+			require.Nil(t, view)
+		})
+	}
 }

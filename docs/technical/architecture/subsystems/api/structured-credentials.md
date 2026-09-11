@@ -121,7 +121,9 @@ recomputed from the redacted response.
 A rejected order can contain a configuration that cannot be normalized. Its
 public item retains the other business fields, omits that configuration and sets
 `configurationUnavailable`. It never falls back to the raw URL, DSN or parser
-error. Internal evidence remains available to the server's integrity machinery.
+error. A missing audit entry or missing/nil outcome is an integrity error and
+fails the read; it is never projected as a successful but incomplete response.
+Internal evidence remains available to the server's integrity machinery.
 
 ## Validation requirements
 
