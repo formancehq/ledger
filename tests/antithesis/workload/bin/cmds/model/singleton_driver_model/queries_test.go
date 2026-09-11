@@ -747,3 +747,37 @@ func TestAccountMatches_RejectsColouredVolumes(t *testing.T) {
 	})
 	require.False(t, accountMatches(ls, "acc:1", acct))
 }
+
+// The volume lists carry one entry per asset. A repeat collapses into the
+// comparison's map and is counted once, so without an explicit check it would
+// pass — and only the first copy is ever read, hiding whatever the second one
+// carries.
+func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
+	t.Parallel()
+
+	ls := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5)).Ledger("L")
+
+	usd := func(in, out, bal string) *commonpb.AccountVolume {
+		return &commonpb.AccountVolume{
+			Asset:   "USD",
+			Volumes: &commonpb.VolumesWithBalance{Input: in, Output: out, Balance: bal},
+		}
+	}
+
+	acct := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{usd("5", "0", "5")}}
+	require.True(t, accountMatches(ls, "acc:1", acct))
+
+	acct.Volumes = append(acct.Volumes, usd("5", "0", "5"))
+	require.False(t, accountMatches(ls, "acc:1", acct), "an exact repeat is still malformed")
+
+	rec := ls.Txs().Get(0)
+	snapshot := serverPCVFromRec(rec)
+	require.True(t, pcvSnapshotMatches(rec.PostCommitVolumes(), snapshot))
+
+	byAccount := snapshot.GetVolumesByAccount()["acc:1"]
+	byAccount.Volumes = append(byAccount.Volumes, &commonpb.VolumeEntry{
+		Asset: "USD", Volumes: &commonpb.Volumes{Input: "999", Output: "0"},
+	})
+	require.False(t, pcvSnapshotMatches(rec.PostCommitVolumes(), snapshot),
+		"the second copy is never read, so it must not be tolerated")
+}

@@ -585,6 +585,9 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		}
 	}
 
+	// One entry per asset, per the list's contract. A repeat would collapse
+	// into this map and be counted once, so the exact comparison below would
+	// never see it.
 	server := map[string]struct{ in, out uint256.Int }{}
 	for _, av := range serverAcct.GetVolumes() {
 		// No generated posting carries a colour, so a coloured bucket is a row
@@ -599,6 +602,10 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 			return false
 		}
 		if err := out.SetFromDecimal(av.GetVolumes().GetOutput()); err != nil {
+			return false
+		}
+
+		if _, dup := server[av.GetAsset()]; dup {
 			return false
 		}
 
@@ -687,7 +694,8 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 
 // pcvSnapshotMatches compares a served post-commit snapshot against the
 // model's cell for cell, in both directions: an absent cell and a fabricated
-// one are equally wrong. A coloured entry fails outright — no generated
+// one are equally wrong, and so is a repeated one — only the first copy of a
+// cell is ever read, so a duplicate would hide whatever the second carries. A coloured entry fails outright — no generated
 // posting carries a colour, so the model's colourless key addresses every cell
 // the run can produce.
 func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.PostCommitVolumes) bool {
@@ -699,7 +707,12 @@ func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *co
 				return false
 			}
 
-			served[oracle.VolumeKey{Address: account, Asset: entry.GetAsset()}] = struct{}{}
+			key := oracle.VolumeKey{Address: account, Asset: entry.GetAsset()}
+			if _, dup := served[key]; dup {
+				return false
+			}
+
+			served[key] = struct{}{}
 		}
 	}
 
