@@ -16,8 +16,8 @@ import (
 // be identified from local configuration; adapters must handle such errors at
 // their source rather than assuming arbitrary remote text is safe.
 type sinkErrorSanitizer struct {
-	replacements []string
-	credentials  []string
+	replacements           []string
+	credentialReplacements []string
 }
 
 func newSinkErrorSanitizer(connectionURLs []string, credentials ...string) sinkErrorSanitizer {
@@ -52,7 +52,7 @@ func newSinkErrorSanitizer(connectionURLs []string, credentials ...string) sinkE
 			pairs[variant] = "[redacted]"
 		}
 	}
-	sanitizer := sinkErrorSanitizer{credentials: sinkReplacementPairs(pairs)}
+	sanitizer := sinkErrorSanitizer{credentialReplacements: sinkReplacementPairs(pairs)}
 	for _, raw := range connectionURLs {
 		sanitizer.addURL(pairs, raw)
 	}
@@ -73,7 +73,7 @@ func (s sinkErrorSanitizer) addURL(pairs map[string]string, raw string) {
 		safe.User = nil
 		// Credential echoes outside userinfo/query must not bypass replacement when
 		// the complete URL is replaced in one pass.
-		replacer := strings.NewReplacer(s.credentials...)
+		replacer := strings.NewReplacer(s.credentialReplacements...)
 		safe.Scheme = replacer.Replace(safe.Scheme)
 		safe.Host = replacer.Replace(safe.Host)
 		safe.Opaque = replacer.Replace(safe.Opaque)
@@ -151,7 +151,7 @@ func (s sinkErrorSanitizer) sanitize(err error) error {
 	return &sinkDiagnosticError{message: message, cause: err}
 }
 
-func (s sinkErrorSanitizer) finish(err *error) { *err = s.sanitize(*err) }
+func (s sinkErrorSanitizer) sanitizeReturned(err *error) { *err = s.sanitize(*err) }
 
 type sinkDiagnosticError struct {
 	message string

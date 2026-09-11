@@ -110,7 +110,7 @@ type ClickHouseSink struct {
 // the target table with a structured JSON column.
 func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (result *ClickHouseSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer([]string{cfg.DSN})
-	defer sanitizer.finish(&retErr)
+	defer sanitizer.sanitizeReturned(&retErr)
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("parsing ClickHouse DSN: %w", err)
@@ -170,7 +170,7 @@ func initializeClickHouseSink(ctx context.Context, conn driver.Conn, configuredT
 }
 
 func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.table)
 	if err != nil {
 		return fmt.Errorf("preparing ClickHouse batch: %w", err)
@@ -204,7 +204,7 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 }
 
 func (s *ClickHouseSink) Close() (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 
 	return s.conn.Close()
 }
