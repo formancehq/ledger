@@ -61,7 +61,7 @@ func TestNATSSinkIntegration_AdmittedLedgerNames(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, token string }{
 		{"a..b", "a%2E%2Eb"}, {".orders", "%2Eorders"}, {"orders.", "orders%2E"},
-		{"orders", "orders"}, {"a.b", "a%2Eb"}, {"_system", "%5Fsystem"}, {"A_z:0-9", "A_z:0-9"},
+		{"orders", "orders"}, {"a.b", "a%2Eb"}, {"_systemx", "_systemx"}, {"A_z:0-9", "A_z:0-9"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// Admission.Admit coverage is in TestAdmit_CreateLedgerNamesForEventRouting; this

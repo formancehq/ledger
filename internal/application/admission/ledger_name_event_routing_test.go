@@ -24,7 +24,7 @@ import (
 func TestAdmit_CreateLedgerNamesForEventRouting(t *testing.T) {
 	t.Parallel()
 
-	for _, name := range []string{"orders", "a.b", "a..b", ".orders", "orders.", ".", "_system", "a-b_0", strings.Repeat("a", dal.LedgerNameFixedSize)} {
+	for _, name := range []string{"orders", "a.b", "a..b", ".orders", "orders.", ".", "_systemx", "__system", "_System", "a-b_0", strings.Repeat("a", dal.LedgerNameFixedSize)} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			store := createTestStore(t)
@@ -57,6 +57,7 @@ func TestAdmit_CreateLedgerNamesForEventRouting(t *testing.T) {
 	}{
 		{"", domain.ErrLedgerNameRequired},
 		{"_", ErrLedgerNameReservedPrefix},
+		{"_system", ErrLedgerNameReservedPrefix},
 		{"a b", domain.ErrLedgerNameInvalidChar},
 		{"a\x00b", domain.ErrLedgerNameInvalidChar},
 	} {

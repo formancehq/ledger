@@ -65,3 +65,10 @@ require.ErrorIs(t, err, domain.ErrAccountAddressEmpty)
 ```
 
 `require.ErrorIs` matches both admission-side wraps and FSM-side wraps because the sentinel is shared. If a future refactor moves a check between layers, the test does not have to change.
+
+## Reserved ledger names
+
+Admission rejects the exact names `_` (system API routes) and `_system`
+(system events) on every ledger-scoped write, before proposing to Raft.
+This applies equally to HTTP and gRPC. Other underscore-prefixed names,
+including `_systemx` and `_System`, remain valid.

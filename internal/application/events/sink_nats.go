@@ -94,8 +94,6 @@ func (s *NATSSink) subject(event *eventspb.Event) string {
 	switch ledger {
 	case "":
 		ledger = "_system"
-	case "_system":
-		ledger = "%5Fsystem"
 	default:
 		// Escape the escape marker first so encoding remains unambiguous.
 		ledger = strings.ReplaceAll(ledger, "%", "%25")

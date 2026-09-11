@@ -4789,8 +4789,9 @@ Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, *
 
 NATS subjects are `{topic}.{ledgerToken}.{lowercaseEventType}`. Ledger-name dots
 are encoded as `%2E`, so ledger `a..b` publishes under
-`ledger.events.a%2E%2Eb.created_ledger` with topic `ledger.events`. The real ledger
-`_system` uses `%5Fsystem`; `_system` alone denotes an empty event ledger.
+`ledger.events.a%2E%2Eb.created_ledger` with topic `ledger.events`. The token
+`_system` denotes an empty event ledger; exact ledger names `_` and `_system`
+are reserved and rejected at admission.
 Ordinary names such as `orders` are unchanged. Update exact consumer filters,
 stream subjects and NATS permissions for encoded names; a dotted name is now
 one token, not a subject hierarchy. Payloads retain the original ledger name.

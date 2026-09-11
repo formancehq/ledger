@@ -19,7 +19,7 @@ import (
 func TestNATSSinkSubjectLedgerToken(t *testing.T) {
 	t.Parallel()
 	sink := &NATSSink{topic: "events"}
-	names := []string{"orders", "a..b", ".orders", "orders.", "a.b", "_system", ".", strings.Repeat(".", dal.LedgerNameFixedSize)}
+	names := []string{"orders", "a..b", ".orders", "orders.", "a.b", "_systemx", ".", strings.Repeat(".", dal.LedgerNameFixedSize)}
 	// Every admitted character is exercised at both token boundaries.
 	for _, c := range "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-" {
 		names = append(names, string(c)+"name"+string(c))

@@ -77,10 +77,7 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: ErrLedgerNameReservedPrefix,
 		},
 		{
-			// The guard covers every ledger-scoped order, not just CreateLedger:
-			// a "_" ledger persisted before this reservation (e.g. on upgrade)
-			// can never be written to either, so its /v3/_/… routes stay
-			// unreachable-via-ledger for good.
+			// The guard covers every ledger-scoped order, not just CreateLedger.
 			name: "reserved '_' rejected on Apply too",
 			order: &raftcmdpb.Order{
 				Type: &raftcmdpb.Order_LedgerScoped{
@@ -95,8 +92,37 @@ func TestValidateOrder_LedgerName(t *testing.T) {
 			wantErr: ErrLedgerNameReservedPrefix,
 		},
 		{
-			// Only the exact segment "_" is reserved (it backs the /v3/_/…
-			// system route namespace); names that merely start with '_' remain
+			name: "reserved '_system' ledger name rejected",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_system",
+						Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+							CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// The guard covers every ledger-scoped order, not just CreateLedger.
+			name: "reserved '_system' rejected on Apply too",
+			order: &raftcmdpb.Order{
+				Type: &raftcmdpb.Order_LedgerScoped{
+					LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+						Ledger: "_system",
+						Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+							Apply: &raftcmdpb.LedgerApplyOrder{},
+						},
+					},
+				},
+			},
+			wantErr: ErrLedgerNameReservedPrefix,
+		},
+		{
+			// The exact names "_" and "_system" are reserved; other names
+			// that merely start with '_' remain
 			// valid ledger names.
 			name: "underscore-prefixed name is allowed",
 			order: &raftcmdpb.Order{
