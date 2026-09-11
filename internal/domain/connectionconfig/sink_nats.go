@@ -18,12 +18,17 @@ func normalizeNatsSink(input *commonpb.NatsSinkConfigInput) (*commonpb.NatsSinkC
 	cfg := &commonpb.NatsSinkConfig{Topic: input.GetTopic()}
 	defaultScheme := "nats"
 	for raw := range strings.SplitSeq(input.GetUrl(), ",") {
-		raw = strings.TrimSuffix(strings.TrimSpace(raw), "/")
+		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			continue
 		}
 		if !strings.Contains(raw, "://") {
 			raw = defaultScheme + "://" + raw
+		}
+		// Preserve the scheme delimiter so an empty host is rejected rather
+		// than reinterpreted as a hostname.
+		if !strings.HasSuffix(raw, "://") {
+			raw = strings.TrimSuffix(raw, "/")
 		}
 		server, err := parseURL(raw, "nats")
 		if err != nil {

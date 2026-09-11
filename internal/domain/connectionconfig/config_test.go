@@ -305,3 +305,15 @@ func TestURLFragmentsAreRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestNATSEmptyHostIsRejected(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{"nats://", "tls://", "ws://", " nats:// ", "nats://,nats://second:4223"} {
+		t.Run(raw, func(t *testing.T) {
+			t.Parallel()
+			config, err := Sink(&commonpb.SinkConfigInput{Type: &commonpb.SinkConfigInput_Nats{Nats: &commonpb.NatsSinkConfigInput{Url: raw}}})
+			require.EqualError(t, err, "invalid connection URL")
+			require.Nil(t, config)
+		})
+	}
+}

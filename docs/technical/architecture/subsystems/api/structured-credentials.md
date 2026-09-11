@@ -127,3 +127,8 @@ original evidence. Configuration and log masking alone do not close this path.
   diagnostics remain visible.
 - A non-empty post-checkpoint delta proves logical live/restore parity, including
   sink removal, and passes the current checker without claiming its future scope.
+
+NATS server entries with a scheme but no host (for example `nats://`) are
+rejected with a static configuration error. An empty server list continues to
+select the driver default; an explicit malformed entry is not rewritten into
+a different destination.
