@@ -19,13 +19,13 @@
     "internal/adapter/grpc/errors*.go",
     "internal/adapter/http/server.go",
     "internal/adapter/http/handlers_health*.go",
-    "internal/adapter/http/handlers_*z*.go",
     "internal/adapter/http/error_handler*.go",
     "internal/adapter/grpcerr/**",
     "internal/adapter/apierr/**",
     "internal/domain/errors.go",
     "misc/proto/cluster.proto",
-    "internal/infra/node/leadership_gain*.go"
+    "internal/infra/node/leadership_gain*.go",
+    "internal/adapter/http/handler.go"
   ],
   "related_docs": [
     "AGENTS.md",
