@@ -262,7 +262,7 @@ func TestWaitForCheckpointReturnsTerminalProjectionFailure(t *testing.T) {
 	s := newTestStore(t)
 	waitErr := make(chan error, 1)
 	go func() {
-		waitErr <- s.WaitForCheckpoint(context.Background(), dir)
+		waitErr <- s.WaitForCheckpoint(context.Background(), dir, nil)
 	}()
 
 	s.SetReadProjectionFailed()

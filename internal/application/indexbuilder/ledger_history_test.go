@@ -508,6 +508,7 @@ func TestWorkerPublishesTerminalFailureWhenHistoryReplayIsIncomplete(t *testing.
 	require.ErrorIs(t, b.readStore.WaitForCheckpoint(
 		context.Background(),
 		filepath.Join(t.TempDir(), "pending"),
+		nil,
 	), readstore.ErrReadProjectionFailed)
 }
 
@@ -536,6 +537,7 @@ func TestWorkerPublishesTerminalFailureForReplayTimeHistoryError(t *testing.T) {
 	require.ErrorIs(t, b.readStore.WaitForCheckpoint(
 		context.Background(),
 		filepath.Join(t.TempDir(), "pending"),
+		nil,
 	), readstore.ErrReadProjectionFailed)
 }
 
@@ -558,6 +560,7 @@ func TestWorkerPublishesTerminalFailureForBootHistoryInvariant(t *testing.T) {
 	require.ErrorIs(t, b.readStore.WaitForCheckpoint(
 		context.Background(),
 		filepath.Join(t.TempDir(), "pending"),
+		nil,
 	), readstore.ErrReadProjectionFailed)
 }
 
