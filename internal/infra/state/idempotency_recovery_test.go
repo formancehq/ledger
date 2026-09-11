@@ -23,9 +23,9 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	batch := store.OpenWriteSession()
 
 	values := map[string]*commonpb.IdempotencyKeyValue{
-		"alpha": {FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000},
-		"beta":  {FirstLogSequence: 2, LogCount: 2, CreatedAt: 2_000_000},
-		"gamma": {FirstLogSequence: 3, LogCount: 1, CreatedAt: 3_000_000},
+		"alpha": {FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000, ExpiresAt: 61_000_000},
+		"beta":  {FirstLogSequence: 2, LogCount: 2, CreatedAt: 2_000_000}, // ExpiresAt 0: never expires
+		"gamma": {FirstLogSequence: 3, LogCount: 1, CreatedAt: 3_000_000, ExpiresAt: 63_000_000},
 	}
 
 	for key, value := range values {
@@ -35,7 +35,7 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	// Simulate a node restart: brand new in-memory store, then restore.
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 
 	for key := range values {
 		_, ok := idemp.Get(key)
@@ -55,16 +55,17 @@ func TestIdempotencyStore_RestoreFromStore_RebuildsMapFromPebble(t *testing.T) {
 		require.Equal(t, want.GetFirstLogSequence(), got.GetFirstLogSequence())
 		require.Equal(t, want.GetLogCount(), got.GetLogCount())
 		require.Equal(t, want.GetCreatedAt(), got.GetCreatedAt())
+		require.Equal(t, want.GetExpiresAt(), got.GetExpiresAt())
 	}
 }
 
 // TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge
-// pins the determinism contract: recovery MUST NOT filter expired entries
-// based on the local wall-clock TTL. Two nodes that restart at different
-// moments would otherwise produce divergent maps for the same applied
-// index, violating the cache-is-source-of-authority invariant. Stale
-// entries are removed exclusively by the Raft-replicated
-// IdempotencyEviction command, which carries a deterministic cutoff.
+// pins the determinism contract: recovery MUST NOT filter entries by their
+// frozen expires_at. Two nodes that restart at different moments would
+// otherwise produce divergent maps for the same applied index, violating the
+// cache-is-source-of-authority invariant. Stale entries are removed
+// exclusively by the Raft-replicated IdempotencyEviction command, which
+// carries a deterministic cutoff.
 func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *testing.T) {
 	t.Parallel()
 
@@ -73,7 +74,9 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 	const (
 		ancientCreatedAt uint64 = 1
 		freshCreatedAt   uint64 = 1_000_000_000
-		ttlMicros        uint64 = 1_000 // intentionally tiny: every entry is "expired" by wall-clock
+		// ancient's expiry sits in the distant past: the entry is already
+		// expired by its own frozen expires_at, yet recovery must still load it.
+		ancientExpiresAt uint64 = 2
 	)
 
 	batch := store.OpenWriteSession()
@@ -82,6 +85,7 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 		FirstLogSequence: 1,
 		LogCount:         1,
 		CreatedAt:        ancientCreatedAt,
+		ExpiresAt:        ancientExpiresAt,
 	}))
 	require.NoError(t, SaveIdempotencyKey(batch, "fresh", &commonpb.IdempotencyKeyValue{
 		FirstLogSequence: 2,
@@ -90,7 +94,7 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 	}))
 	require.NoError(t, batch.Commit())
 
-	idemp := NewIdempotencyStore(ttlMicros)
+	idemp := NewIdempotencyStore()
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -102,6 +106,7 @@ func TestIdempotencyStore_RestoreFromStore_LoadsAllEntriesRegardlessOfAge(t *tes
 	got, ok := idemp.Get("ancient")
 	require.True(t, ok, "expired entries MUST be restored — eviction is the Raft command's job, not boot's")
 	require.Equal(t, uint64(1), got.GetFirstLogSequence())
+	require.Equal(t, ancientExpiresAt, got.GetExpiresAt(), "the frozen expires_at must round-trip through recovery")
 
 	got, ok = idemp.Get("fresh")
 	require.True(t, ok)
@@ -116,7 +121,7 @@ func TestIdempotencyStore_RestoreFromStore_EmptyStore(t *testing.T) {
 
 	store := newTestStore(t)
 
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -148,7 +153,7 @@ func TestIdempotencyStore_RestoreFromStore_OverwritesPriorEntries(t *testing.T) 
 	}))
 	require.NoError(t, batch.Commit())
 
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	// Pre-populate with a value that ONLY lives in memory.
 	idemp.Put("memory-only", &commonpb.IdempotencyKeyValue{FirstLogSequence: 99, LogCount: 1})
 

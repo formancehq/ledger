@@ -391,10 +391,9 @@ validated with the customer's load.
 ### Long client retry window
 
 Set `--idempotency-ttl` to at least the maximum retry window promised to clients.
-Treat changing it as an intentional migration, not ordinary tuning, and keep it
-consistent across nodes. Non-zero persisted values are validated at startup;
-for backward compatibility, a persisted `0` is treated as an older unset field
-and may transition to a finite value without the unsafe override. `0` means keys
+It seeds the desired TTL in the Raft-replicated cluster policy; the effective TTL
+changes through a cluster-policy revision bump, not a restart or config
+validation, so keep the desired value consistent across nodes. `0` means keys
 never expire and must be paired with a deliberate storage-growth policy.
 
 ### High-throughput ingestion
@@ -418,8 +417,8 @@ Before go-live, verify:
   leader after one node is stopped;
 - PVC retention, backup retention, encryption, and restore procedures match the
   customer's RPO/RTO;
-- `node-id`, `cluster-id`, advertised address, data paths, and idempotency TTL are
-  stable across restarts;
+- `node-id`, `cluster-id`, advertised address, and data paths are stable across
+  restarts;
 - TLS and authentication are enabled, and the Raft port is not publicly exposed;
 - memory estimates fit below `GOMEMLIMIT` and the container limit;
 - steady-state and peak disk usage stay below alert thresholds;

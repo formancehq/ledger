@@ -1148,6 +1148,108 @@ func TestRebuildDelta_IdempotencyConflictKeepsDeltaOutcome(t *testing.T) {
 	require.Equal(t, uint64(1), v.GetFirstLogSequence(), "the original success survives")
 }
 
+// TestRebuildDelta_IdempotencyExpiresAtRoundtrips is the lowest-level check of
+// the Rebuilt (delta-derived) path: RebuildDelta reconstructs the SubIdempKeys
+// value's expires_at from the audit chain AND, because that value is non-zero,
+// its eviction time-index entry — so a restored cluster expires and evicts the
+// outcome on the same schedule as the source. Its Preserved (checkpoint-carried)
+// counterpart is TestRebuildDelta_PreservesCheckpointExpiresAt. The cross-
+// lifecycle restore parity required by invariant #11 — both classifications
+// through a real checkpoint + restore + CheckStore — is proved by
+// tests/e2e/cluster/restore_idempotency_test.go.
+func TestRebuildDelta_IdempotencyExpiresAtRoundtrips(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		key       = "idem-ttl-key"
+		createdAt = uint64(1_000_000)
+		expiresAt = uint64(61_000_000)
+	)
+
+	entry := keyedAuditSuccess(1, key, createdAt, 1, 1)
+	entry.Idempotency.ExpiresAt = expiresAt
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldAuditKey(1), entry))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 0, fillGapOrder("l", 1))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// The rebuilt main key carries the chain-derived expiry.
+	v, err := state.LoadIdempotencyKey(handle, key)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.Equal(t, expiresAt, v.GetExpiresAt(), "the frozen expires_at must be rebuilt from the audit chain")
+
+	// The eviction time index was reconstructed at that expiry, so a leader scan
+	// at/after it finds exactly this outcome — restore preserves eviction timing.
+	hashes, _, err := state.NewIdempotencyStore().ScanExpiredKeyHashes(handle, expiresAt, 100)
+	require.NoError(t, err)
+	require.Len(t, hashes, 1, "the rebuilt outcome must have a time-index entry at its expires_at")
+}
+
+// TestRebuildDelta_PreservesCheckpointExpiresAt is a unit-level check that
+// RebuildDelta leaves a checkpoint-carried outcome's expires_at and time-index
+// untouched while folding unrelated delta keys (the Preserved half's fold
+// behaviour); the expected expiry is a literal, independent of the shared audit
+// decoder. It does not run a real checkpoint/export/restore — the full
+// cross-lifecycle parity (real backup + delta + ApplyExportsAndRebuild + literal
+// source-vs-restored comparison) is TestBackup_IdempotencyExpiresAtRestoreParity,
+// and the production restore + CheckStore is the e2e restore_idempotency suite.
+func TestRebuildDelta_PreservesCheckpointExpiresAt(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	const (
+		checkpointKey = "idem-checkpoint-key"
+		checkpointExp = uint64(61_000_000)
+		deltaKey      = "idem-delta-key"
+	)
+
+	batch := store.OpenWriteSession()
+	// Checkpoint-carried outcome with a finite expiry (Preserved via the SST
+	// copy); SaveIdempotencyKey also writes its eviction time-index entry.
+	require.NoError(t, state.SaveIdempotencyKey(batch, checkpointKey, &commonpb.IdempotencyKeyValue{
+		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000, ExpiresAt: checkpointExp,
+	}))
+	// An unrelated keyed outcome in the exported delta, so RebuildDelta does real
+	// work (proving the fold ran) without touching the checkpoint key.
+	require.NoError(t, batch.SetProto(coldAuditKey(2), keyedAuditSuccess(2, deltaKey, 2_000_000, 2, 2)))
+	require.NoError(t, batch.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("l", 2))))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	// The fold ran: the unrelated delta key was rebuilt.
+	dv, err := state.LoadIdempotencyKey(handle, deltaKey)
+	require.NoError(t, err)
+	require.NotNil(t, dv, "the delta key must be rebuilt (this is not a vacuous pass)")
+
+	// The checkpoint outcome's frozen expiry survives untouched.
+	v, err := state.LoadIdempotencyKey(handle, checkpointKey)
+	require.NoError(t, err)
+	require.NotNil(t, v)
+	require.Equal(t, checkpointExp, v.GetExpiresAt(), "the checkpoint-carried expires_at must survive RebuildDelta")
+
+	// Its eviction time-index entry is intact (the delta key froze no expiry, so it
+	// has none), so a leader scan still evicts the checkpoint outcome on schedule.
+	hashes, _, err := state.NewIdempotencyStore().ScanExpiredKeyHashes(handle, checkpointExp, 100)
+	require.NoError(t, err)
+	require.Len(t, hashes, 1, "the checkpoint outcome's time-index entry must survive at its expires_at")
+}
+
 // Same, but the original outcome lives in the checkpoint SSTs (present in the
 // store before the rebuild) rather than an earlier delta entry — the rebuild
 // skips the delta conflict, so nothing overwrites it.
@@ -1558,4 +1660,98 @@ func TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces(t *testing.T) {
 	err := writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
 		commonpb.MetadataType_METADATA_TYPE_INT64)
 	require.ErrorContains(t, err, "retype cascade")
+}
+
+// TestBackup_IdempotencyExpiresAtRestoreParity is the full cross-lifecycle proof
+// (invariant #11) for the Rebuilt path: a keyed outcome frozen with a finite
+// expires_at AFTER the full checkpoint must survive a real backup + incremental
+// delta + ApplyExportsAndRebuild, with its expires_at and eviction time-index
+// compared literally against the source store.
+func TestBackup_IdempotencyExpiresAtRestoreParity(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bucketID  = "bucket"
+		key       = "idem-restore-key"
+		createdAt = uint64(1_000_000)
+		expiresAt = uint64(61_000_000)
+	)
+
+	ctx := context.Background()
+	src := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+
+	// Pre-checkpoint state so the full checkpoint is non-trivial.
+	pre := src.OpenWriteSession()
+	require.NoError(t, pre.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, pre.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, pre.Commit())
+	require.NoError(t, src.Flush())
+
+	full, err := RunBackup(ctx, testLogger(), src, storage, bucketID, "bk-full")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, full.LastLogSequence)
+
+	// After the checkpoint: freeze a keyed outcome with a finite expires_at. Its
+	// audit entry rides the incremental delta (Rebuilt path); the live projection
+	// is written on the source exactly as SaveIdempotencyKey does at freeze time.
+	entry := keyedAuditSuccess(2, key, createdAt, 2, 2)
+	entry.Idempotency.ExpiresAt = expiresAt
+
+	post := src.OpenWriteSession()
+	require.NoError(t, post.SetProto(coldLogKey(2), createLedgerLog(2, "ledger", 2)))
+	require.NoError(t, post.SetProto(coldAuditKey(2), entry))
+	require.NoError(t, post.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("ledger", 2))))
+	require.NoError(t, state.SaveIdempotencyKey(post, key, &commonpb.IdempotencyKeyValue{
+		FirstLogSequence: 2, LogCount: 1, CreatedAt: createdAt, ExpiresAt: expiresAt,
+	}))
+	require.NoError(t, post.Commit())
+	require.NoError(t, src.Flush())
+
+	inc, err := RunIncrementalBackup(ctx, testLogger(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.Positive(t, inc.LogEntriesExported, "the post-checkpoint keyed outcome must export")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+
+	// Restore: reproduce the checkpoint content on dst, then apply the delta and
+	// rebuild. The keyed outcome's projection is Rebuilt from the exported audit.
+	dst := newBackupTestStore(t)
+	seed := dst.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, ApplyExportsAndRebuild(ctx, testLogger(), storage, dst, manifest))
+
+	// Literal source-vs-restored comparison of expires_at and the time-index.
+	srcH, err := src.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = srcH.Close() }()
+
+	dstH, err := dst.NewDirectReadHandle()
+	require.NoError(t, err)
+
+	defer func() { _ = dstH.Close() }()
+
+	srcRow, err := state.LoadIdempotencyKey(srcH, key)
+	require.NoError(t, err)
+	require.NotNil(t, srcRow)
+
+	dstRow, err := state.LoadIdempotencyKey(dstH, key)
+	require.NoError(t, err)
+	require.NotNil(t, dstRow, "the keyed outcome must be rebuilt on the restored store")
+	require.Equal(t, expiresAt, dstRow.GetExpiresAt(), "restored expires_at must be the frozen value")
+	require.Equal(t, srcRow.GetExpiresAt(), dstRow.GetExpiresAt(), "restored expires_at must equal the source")
+
+	// Eviction-timing parity: a leader scan at the expiry finds exactly the
+	// outcome on both stores.
+	srcHashes, _, err := state.NewIdempotencyStore().ScanExpiredKeyHashes(srcH, expiresAt, 100)
+	require.NoError(t, err)
+
+	dstHashes, _, err := state.NewIdempotencyStore().ScanExpiredKeyHashes(dstH, expiresAt, 100)
+	require.NoError(t, err)
+	require.Len(t, dstHashes, 1, "restored time-index has the outcome at its expires_at")
+	require.Equal(t, len(srcHashes), len(dstHashes), "source and restored eviction schedules match")
 }

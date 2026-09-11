@@ -94,7 +94,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			// serialization the checker walks is covered.
 			batch := dataStore.OpenWriteSession()
 			require.NoError(t, machine.recordIdempotencyFailure(
-				batch, idempotencyKey, []byte("proposal-hash"), tc.err, proposalCreatedAt))
+				batch, idempotencyKey, []byte("proposal-hash"), tc.err, proposalCreatedAt, 0))
 			require.NoError(t, batch.Commit())
 
 			handle, err := dataStore.NewDirectReadHandle()

@@ -21,10 +21,10 @@ import (
 // TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned is the
 // regression coverage for the batch-boundary bug flagged on PR #208.
 //
-// The time index key is [zone(1)][sub(1)][created_at(8)][hash(16)].
-// Multiple entries can share the same created_at. Before the fix, the
+// The time index key is [zone(1)][sub(1)][expires_at(8)][hash(16)].
+// Multiple entries can share the same expires_at. Before the fix, the
 // FSM's DeleteRange upper bound was derived from the timestamp alone:
-// rangeEnd = [zone][sub][created_at+1]. If the leader scan stopped at
+// rangeEnd = [zone][sub][expires_at+1]. If the leader scan stopped at
 // maxKeys in the middle of a group of siblings sharing a timestamp,
 // the range delete would purge their time-index entries even though
 // only the first N hashes were in the proposal. The unscanned main
@@ -40,7 +40,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 
 	store := newTestStore(t)
 
-	// Insert 5 entries that all share the same created_at and 1 entry at an
+	// Insert 5 entries that all share the same expires_at and 1 entry at an
 	// earlier timestamp (so we can verify it is also evicted).
 	const sharedTs uint64 = 1_000_000
 	const earlierTs uint64 = sharedTs - 1
@@ -54,7 +54,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 		"key-earlier", // earlier timestamp
 	}
 
-	idemp := NewIdempotencyStore(60_000_000)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
 
 	for _, k := range keys {
@@ -63,7 +63,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 			ts = earlierTs
 		}
 
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		// Mirror the in-memory map: production paths always Put alongside
 		// the Pebble write, and RestoreFromStore rebuilds the map from
@@ -152,12 +152,12 @@ func TestIdempotencyEviction_LastScannedKeyExcludesSiblingsLexically(t *testing.
 	store := newTestStore(t)
 
 	const ts uint64 = 42
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
 
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
@@ -218,11 +218,11 @@ func TestIdempotencyEviction_DoubleApplyIsNoOp(t *testing.T) {
 	const ts uint64 = 1_000_000
 
 	keys := []string{"a", "b", "c"}
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 
 	batch := store.OpenWriteSession()
 	for _, k := range keys {
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts}
 		require.NoError(t, SaveIdempotencyKey(batch, k, value))
 		idemp.Put(k, value)
 	}
@@ -277,14 +277,14 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 
 	const ts uint64 = 100
 
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
 
 	// Use distinct timestamps per key to make the time-index ordering
 	// (and the bounded scan) deterministic.
 	for i := range 4 {
 		key := []byte{byte('a' + i)}
-		value := &commonpb.IdempotencyKeyValue{CreatedAt: ts + uint64(i)}
+		value := &commonpb.IdempotencyKeyValue{ExpiresAt: ts + uint64(i)}
 		require.NoError(t, SaveIdempotencyKey(batch, string(key), value))
 		idemp.Put(string(key), value)
 	}
@@ -388,9 +388,9 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	// to propose (otherwise proposeFn is never invoked).
 	const expiredTs uint64 = 1
 
-	idemp := NewIdempotencyStore(0)
+	idemp := NewIdempotencyStore()
 	batch := store.OpenWriteSession()
-	value := &commonpb.IdempotencyKeyValue{CreatedAt: expiredTs}
+	value := &commonpb.IdempotencyKeyValue{ExpiresAt: expiredTs}
 	require.NoError(t, SaveIdempotencyKey(batch, "stop-test", value))
 	idemp.Put("stop-test", value)
 	require.NoError(t, batch.Commit())
@@ -420,7 +420,6 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 		store,
 		idemp,
 		10*time.Millisecond,
-		0, // ttl=0 ⇒ every entry counts as expired given expiredTs above
 	)
 
 	scheduler.Start()
@@ -448,4 +447,115 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 	require.True(t, ok, "callback never observed ctx.Done()")
 	require.True(t, errors.Is(got, context.Canceled),
 		"proposeFn ctx must be cancelled by Stop, got %v", got)
+}
+
+// countIdemTimeIndexRows counts eviction time-index rows
+// ([0x05][0x02][expires_at 8B][hash 16B]) whose hash suffix matches keyHash.
+func countIdemTimeIndexRows(t *testing.T, reader dal.PebbleReader, keyHash []byte) int {
+	t.Helper()
+
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
+		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
+	})
+	require.NoError(t, err)
+
+	defer func() { _ = iter.Close() }()
+
+	n := 0
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		k := iter.Key()
+		if len(k) == 2+8+16 && bytes.Equal(k[10:26], keyHash) {
+			n++
+		}
+	}
+
+	require.NoError(t, iter.Error())
+
+	return n
+}
+
+// TestEviction_ReusedKeyLifecycleThroughCompaction is the storage-lifecycle proof
+// for the SingleDelete->Delete fix. An expired-then-reused key is Set twice on the
+// same main Pebble key, so eviction must Delete it (SingleDelete over two Sets is
+// undefined and can resurrect the stale outcome at compaction). The test asserts
+// the exact precondition (two expiry-index rows, one logical eviction), then that
+// the outcome stays gone across the delete, CompactAll, and close/reopen
+// boundaries, with the expiry index drained.
+func TestEviction_ReusedKeyLifecycleThroughCompaction(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	store := openStoreAt(t, dir)
+
+	idemp := NewIdempotencyStore()
+
+	const (
+		key  = "reused-key"
+		expA = uint64(10_000_000)
+		expB = uint64(20_000_000)
+	)
+
+	keyHash := HashIdempotencyKey(key)
+
+	writeIdem := func(v *commonpb.IdempotencyKeyValue) {
+		b := store.OpenWriteSession()
+		require.NoError(t, SaveIdempotencyKey(b, key, v))
+		require.NoError(t, b.Commit())
+		idemp.Put(key, v)
+		require.NoError(t, store.Flush())
+	}
+
+	// A, then reuse with B — a second Set on the same main key, flushed into
+	// separate SSTs (the shape under which a SingleDelete could resurrect A).
+	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 1, LogCount: 1, CreatedAt: 1, ExpiresAt: expA})
+	// Compact A to a lower level before the reuse: with A and B in the same level a
+	// single SingleDelete would merge them away, hiding the resurrection this guards.
+	require.NoError(t, store.CompactAll())
+	writeIdem(&commonpb.IdempotencyKeyValue{FirstLogSequence: 2, LogCount: 1, CreatedAt: 2, ExpiresAt: expB})
+
+	// Precondition: exactly two expiry-index rows for the reused hash (A and B).
+	pre, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	require.Equal(t, 2, countIdemTimeIndexRows(t, pre, keyHash[:]),
+		"reuse must leave two expiry-index rows for the same hash")
+	_ = pre.Close()
+
+	// Evict B: one logical eviction (the second scanned occurrence of the hash is a
+	// map-gated no-op), one plain Delete on the twice-Set main key.
+	scan, err := store.NewReadHandle()
+	require.NoError(t, err)
+	hashes, lastKey, err := idemp.ScanExpiredKeyHashes(scan, expB, 100)
+	require.NoError(t, err)
+	_ = scan.Close()
+
+	evictBatch := store.OpenWriteSession()
+	evicted, err := idemp.Evict(evictBatch, expB, lastKey, hashes)
+	require.NoError(t, err)
+	require.NoError(t, evictBatch.Commit())
+	require.Equal(t, 1, evicted, "the reused key must be exactly one logical eviction")
+
+	assertGone := func(s *dal.Store, phase string) {
+		h, err := s.NewDirectReadHandle()
+		require.NoError(t, err)
+
+		defer func() { _ = h.Close() }()
+
+		v, err := LoadIdempotencyKey(h, key)
+		require.NoError(t, err)
+		require.Nil(t, v, "%s: the reused main key must be absent", phase)
+		require.Equal(t, 0, countIdemTimeIndexRows(t, h, keyHash[:]), "%s: the expiry index must be empty", phase)
+	}
+
+	assertGone(store, "after delete")
+	require.NoError(t, store.CompactAll())
+	assertGone(store, "after CompactAll")
+
+	// Close and reopen on the same directory: a restarting node rebuilds only from
+	// what survived to disk, so a resurrected Set would reappear here.
+	require.NoError(t, store.Close())
+	reopened := openStoreAt(t, dir)
+	t.Cleanup(func() { _ = reopened.Close() })
+	assertGone(reopened, "after reopen")
 }

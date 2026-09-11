@@ -75,7 +75,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 			attrs := attributes.New()
 			c, err := cache.New(1, meters.Meter("test"))
 			require.NoError(t, err)
-			registry := state.NewStateRegistry(c, attrs, 0)
+			registry := state.NewStateRegistry(c, attrs)
 			notifier := signal.NewNotifications()
 			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), notifier, nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
 			require.NoError(t, err)

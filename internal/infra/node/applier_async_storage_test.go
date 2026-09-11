@@ -154,7 +154,7 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 	nodeCache, err := cache.New(1000, nil)
 	require.NoError(t, err)
 
-	nodeRegistry := state.NewStateRegistry(nodeCache, attributes.New(), 0)
+	nodeRegistry := state.NewStateRegistry(nodeCache, attributes.New())
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,

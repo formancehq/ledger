@@ -40,7 +40,7 @@ func TestSentinelTracerIsolatedAcrossBatches(t *testing.T) {
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
 
-	reg := NewStateRegistry(c, attributes.New(), 0)
+	reg := NewStateRegistry(c, attributes.New())
 	snap := NewCacheSnapshotter(logger, reg, nil)
 	machine, err := NewMachine(
 		logger, reg, snap, dataStore, dal.NewSentinelFactory(dataStore, true), meterProvider,
