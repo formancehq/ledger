@@ -291,8 +291,19 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
 	if err != nil {
-		// Both markers are present, so this directory is damaged rather than
-		// late; the error surfaces as-is, like the read index's below.
+		// A delete unlinks the directory under the open. The registry row is
+		// removed in the committed batch that precedes the unlink, and both
+		// markers prove this replica applied the creation, so a row missing
+		// here means this replica applied the delete too — no barrier needed,
+		// unlike resolveMissingMarker's absent-row case. The filesystem
+		// carries no such ordering: RemoveAll unlinks children in readdir
+		// order, so the marker cannot answer this.
+		if exists, existsErr := impl.queryCheckpointExists(checkpointID); existsErr == nil && !exists {
+			return nil, nil, commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
+		}
+
+		// Nothing deleted it, so the directory it vouched for is damaged rather
+		// than late; the error surfaces as-is, like the read index's below.
 		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
 

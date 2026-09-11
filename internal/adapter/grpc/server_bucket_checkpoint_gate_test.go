@@ -49,6 +49,16 @@ func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
 	return &BucketServiceServerImpl{logger: testLogger(), store: store}
 }
 
+// forgetCheckpoint removes the registry row the way a committed delete does,
+// before its files are unlinked.
+func forgetCheckpoint(t *testing.T, store *dal.Store) {
+	t.Helper()
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.DeleteQueryCheckpointFromBatch(batch, gateCheckpointID))
+	require.NoError(t, batch.Commit())
+}
+
 func unmark(t *testing.T, dir string) {
 	t.Helper()
 
@@ -129,4 +139,34 @@ func TestOpenCheckpointStoresSurfacesDamagedMainStore(t *testing.T) {
 	var notFound *commonpb.NotFoundError
 	require.False(t, errors.As(err, &notFound), "the checkpoint exists; only this replica's copy is damaged")
 	require.Equal(t, codes.Unknown, status.Code(convertToGRPCError(err, testLogger())))
+}
+
+// A delete unlinks the directory under a read that already passed the marker
+// check. The checkpoint is gone, so the read is permanently NotFound rather
+// than the damage signal below.
+func TestOpenCheckpointStoresReportsDeletedCheckpointAsNotFound(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	// RemoveAll unlinks children in readdir order, so the marker can outlive
+	// the MANIFEST: the gate still sees both markers and the open still fails.
+	forgetCheckpoint(t, impl.store)
+	manifests, err := filepath.Glob(filepath.Join(impl.store.QueryCheckpointMainDir(gateCheckpointID), "MANIFEST-*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifests)
+	for _, manifest := range manifests {
+		require.NoError(t, os.Remove(manifest))
+	}
+
+	main, readIndex, err := impl.openCheckpointStores(context.Background(), gateCheckpointID)
+	require.Nil(t, main)
+	require.Nil(t, readIndex)
+
+	var notFound *commonpb.NotFoundError
+	require.ErrorAs(t, err, &notFound)
+
+	notReady := &domain.ErrCheckpointNotReady{}
+	require.False(t, errors.As(err, &notReady), "a deleted checkpoint must not be advertised as retryable")
+	require.Equal(t, codes.NotFound, status.Code(convertToGRPCError(err, testLogger())))
 }
