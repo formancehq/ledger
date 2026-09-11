@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"7"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"8"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -61,8 +61,8 @@ codes. Internal read failures in restore validation retain `Internal` with a
 sanitized correlation message. AuditFailure records retain their original
 diagnostic message and context.
 
-Revision 7 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
-remaining exposed fields. Clients and servers built against revision 6 would
+Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
+remaining exposed fields. Clients and servers built against revision 7 would
 therefore decode the same varint fields with different meanings.
 
 ## Client and deployment scope
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 7:
+leader. For example, with a schema implementing revision 8:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 7' \
+grpcurl -plaintext -H 'ledger-protocol-version: 8' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
