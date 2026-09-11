@@ -14,6 +14,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
+// ErrPostgresIAMRequiresTLS identifies a parsed connection whose TLS policy
+// would expose an IAM bearer credential. Parser failures remain distinct.
+var ErrPostgresIAMRequiresTLS = errors.New("AWS IAM requires explicit TLS on every PostgreSQL endpoint")
+
 // Mirror normalizes a source without changing its accepted, signed input.
 func Mirror(input *commonpb.MirrorSourceConfigInput) (*commonpb.MirrorSourceConfig, error) {
 	if input == nil {
@@ -50,7 +54,7 @@ func Mirror(input *commonpb.MirrorSourceConfigInput) (*commonpb.MirrorSourceConf
 			return nil, err
 		}
 		if source.Postgres.GetAwsIamAuth() != nil && !PostgresEnforcesTLS(connection) {
-			return nil, errors.New("AWS IAM requires explicit TLS on every PostgreSQL endpoint")
+			return nil, ErrPostgresIAMRequiresTLS
 		}
 		out.Type = &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{Connection: connection, AwsIamAuth: source.Postgres.GetAwsIamAuth().CloneVT()}}
 	default:
@@ -64,6 +68,11 @@ func parseURL(raw, kind string) (*commonpb.ConnectionURL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Opaque != "" || u.Host == "" {
 		return nil, errors.New("invalid connection URL")
+	}
+	// No structured field can preserve a fragment. Dropping it can change
+	// requests made by adapters that append paths to the rendered base URL.
+	if strings.Contains(raw, "#") {
+		return nil, errors.New("connection URL fragments are unsupported")
 	}
 	valid := u.Scheme == "http" || u.Scheme == "https"
 	if kind == "nats" {
