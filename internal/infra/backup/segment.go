@@ -10,12 +10,12 @@ import "fmt"
 
 // ExportLogSegmentKey returns the S3 key for part `part` of a log export.
 func ExportLogSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/backups/exports/logs-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
+	return fmt.Sprintf("%s/exports/logs-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
 }
 
 // ExportAuditSegmentKey returns the S3 key for part `part` of an audit-entry export.
 func ExportAuditSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/backups/exports/audit-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
+	return fmt.Sprintf("%s/exports/audit-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
 }
 
 // ExportAuditItemSegmentKey returns the S3 key for part `part` of an audit-item
@@ -23,7 +23,7 @@ func ExportAuditSegmentKey(bucketID string, startSeq, endSeq uint64, part int) s
 // live in a separate subzone from audit entries and must be exported alongside
 // them, or a restored incremental backup cannot reconstruct the hash chain.
 func ExportAuditItemSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/backups/exports/audit-items-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
+	return fmt.Sprintf("%s/exports/audit-items-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
 }
 
 // ExportAppliedProposalSegmentKey returns the S3 key for part `part` of an
@@ -32,7 +32,7 @@ func ExportAuditItemSegmentKey(bucketID string, startSeq, endSeq uint64, part in
 // without this segment would leave the index builder unable to learn the
 // transient-account exclusion set for replayed logs.
 func ExportAppliedProposalSegmentKey(bucketID string, startSeq, endSeq uint64, part int) string {
-	return fmt.Sprintf("%s/backups/exports/applied-proposals-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
+	return fmt.Sprintf("%s/exports/applied-proposals-%020d-%020d-%05d.bin", bucketID, startSeq, endSeq, part)
 }
 
 // CheckpointFileKey returns the content-addressed S3 key for a checkpoint file.
@@ -52,10 +52,10 @@ func CheckpointFileKey(bucketID, filename, contentHash string) string {
 
 // CheckpointPrefix returns the key prefix shared by every checkpoint file.
 func CheckpointPrefix(bucketID string) string {
-	return bucketID + "/backups/data/"
+	return bucketID + "/data/"
 }
 
 // ExportPrefix returns the key prefix shared by every export segment.
 func ExportPrefix(bucketID string) string {
-	return bucketID + "/backups/exports/"
+	return bucketID + "/exports/"
 }

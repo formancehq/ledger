@@ -187,7 +187,7 @@ func WriteManifest(ctx context.Context, storage Storage, key string, manifest *M
 
 // ManifestKey returns the S3 key for the manifest file.
 func ManifestKey(bucketID string) string {
-	return bucketID + "/backups/manifest.json"
+	return bucketID + "/manifest.json"
 }
 
 // ReadManifestOrEmpty reads a manifest from storage, returning an empty
