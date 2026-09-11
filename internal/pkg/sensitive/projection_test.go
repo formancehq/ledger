@@ -127,3 +127,11 @@ func TestCloneSensitiveOneofs(t *testing.T) {
 		}
 	}
 }
+
+func TestCloneMasksMirrorDiagnostic(t *testing.T) {
+	t.Parallel()
+	source := &commonpb.MirrorSyncError{Message: "connection password=sentinel"}
+	projected := Clone(source)
+	require.Equal(t, Marker, projected.GetMessage())
+	require.Equal(t, "connection password=sentinel", source.GetMessage())
+}
