@@ -1,9 +1,12 @@
 package bootstrap
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -196,6 +199,50 @@ func TestValidateCommittedMetadataLimits(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), "--cluster-policy-revision",
 				"the failure must name the remedy")
+		})
+	}
+}
+
+// Force may replace identity, but it must not bypass a committed policy that
+// this node cannot supersede or persist the new identity on that failed boot.
+func TestValidateOrPersistConfig_ForcedIdentityPreservesMetadataGuard(t *testing.T) {
+	t.Parallel()
+	for _, field := range []string{"node", "cluster"} {
+		t.Run(field, func(t *testing.T) {
+			t.Parallel()
+			for _, revision := range []uint64{1, 2} {
+				t.Run(strconv.FormatUint(revision, 10), func(t *testing.T) {
+					t.Parallel()
+					store := newTestStore(t)
+					logger := logging.Testing()
+					cfg := validBaseConfig()
+					require.NoError(t, ValidateOrPersistConfig(store, cfg, logger, false))
+					original, err := LoadPersistedConfig(store)
+					require.NoError(t, err)
+					commitPolicy(t, store, &commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 10})
+					if field == "node" {
+						cfg.RaftConfig.NodeID++
+					} else {
+						cfg.ClusterID += "-changed"
+					}
+					cfg.ClusterPolicyRevision = revision
+					err = ValidateOrPersistConfig(store, cfg, logger, true)
+					require.ErrorContains(t, err, "--cluster-policy-revision")
+					persisted, err := LoadPersistedConfig(store)
+					require.NoError(t, err)
+					require.Equal(t, original.GetNodeId(), persisted.GetNodeId())
+					require.Equal(t, original.GetClusterId(), persisted.GetClusterId())
+
+					// The same override succeeds once the desired policy can replace the
+					// incomplete committed policy, and only then persists the new identity.
+					cfg.ClusterPolicyRevision = 3
+					require.NoError(t, ValidateOrPersistConfig(store, cfg, logger, true))
+					persisted, err = LoadPersistedConfig(store)
+					require.NoError(t, err)
+					require.Equal(t, cfg.RaftConfig.NodeID, persisted.GetNodeId())
+					require.Equal(t, cfg.ClusterID, persisted.GetClusterId())
+				})
+			}
 		})
 	}
 }

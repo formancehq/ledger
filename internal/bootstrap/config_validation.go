@@ -68,8 +68,8 @@ func (e *SchemaVersionError) Error() string {
 // the current values. On subsequent boots, it compares node-id, cluster-id, and
 // storage schema version and returns an error on mismatch unless force is true.
 //
-// Schema version mismatches are never bypassed by force — they indicate data
-// incompatibility that would lead to corruption.
+// Schema version mismatches and committed metadata policy validation are never
+// bypassed by force.
 func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger, force bool) error {
 	persisted, err := LoadPersistedConfig(store)
 	if err != nil {
@@ -131,6 +131,12 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		}
 	}
 
+	// Validate the committed policy before a forced identity overwrite so a
+	// rejected boot leaves the persisted identity unchanged.
+	if err := validateCommittedMetadataLimits(store, cfg); err != nil {
+		return err
+	}
+
 	// Subsequent boot: validate critical parameters
 	var mismatches []*ConfigMismatchError
 
@@ -175,7 +181,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		return mismatches[0]
 	}
 
-	return validateCommittedMetadataLimits(store, cfg)
+	return nil
 }
 
 // validateCommittedMetadataLimits refuses to boot against a committed cluster
