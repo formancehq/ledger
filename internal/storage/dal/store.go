@@ -998,6 +998,8 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 
 	// fsync the parent so the rename itself is durable.
 	if err := FsyncDir(base); err != nil {
+		_ = os.RemoveAll(dir) // best-effort cleanup of the failed attempt
+
 		return "", fmt.Errorf("fsync query checkpoint %d parent: %w", id, err)
 	}
 

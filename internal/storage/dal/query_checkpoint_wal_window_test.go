@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -70,14 +71,13 @@ func TestQueryCheckpointIsOpenableBeforeItIsComplete(t *testing.T) {
 	defer func() { _ = partial.Close() }()
 
 	_, _, err = partial.Get([]byte("committed-key"))
-	require.Error(t, err, "the staged checkpoint serves a state missing a committed write")
+	require.ErrorIs(t, err, pebble.ErrNotFound, "the staged checkpoint serves the write as absent, not as a read failure")
 }
 
 // TestCreateQueryCheckpointRedundantCallIsNoOp pins that a second checkpoint for
-// the same id succeeds against the already-materialized directory. The applier
-// re-runs this while replaying the spool or the WAL after a restart, and pebble
-// rejects an existing destination, so the redundant call has to be recognized
-// and skipped — the same guard the read index half carries.
+// the same id keeps the materialized directory instead of rebuilding it: pebble
+// rejects an existing destination, so the call has to recognize and skip it —
+// the same guard the read index half carries.
 func TestCreateQueryCheckpointRedundantCallIsNoOp(t *testing.T) {
 	t.Parallel()
 
@@ -132,10 +132,28 @@ func TestCreateQueryCheckpointRebuildsUnmarkedDir(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(dir, checkpointReadyMarker)))
 	require.False(t, CheckpointDirReady(dir))
 
+	stale := filepath.Join(dir, "stale.sst")
+	require.NoError(t, os.WriteFile(stale, []byte("x"), 0o640))
+
 	rebuilt, err := s.CreateQueryCheckpoint(1)
 	require.NoError(t, err)
 	require.Equal(t, dir, rebuilt)
 	require.True(t, CheckpointDirReady(rebuilt))
+	require.NoFileExists(t, stale, "the unmarked directory must be discarded, not reused")
+}
+
+// TestCreateQueryCheckpointOnClosedStore pins that the failure path surfaces the
+// store's own error rather than a partially built directory.
+func TestCreateQueryCheckpointOnClosedStore(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	require.NoError(t, s.Close())
+
+	_, err := s.CreateQueryCheckpoint(1)
+	require.ErrorIs(t, err, ErrStoreClosed)
+	require.NoDirExists(t, s.QueryCheckpointMainDir(1))
+	require.NoDirExists(t, s.QueryCheckpointMainDir(1)+".tmp")
 }
 
 // TestCreateQueryCheckpointLeavesNoTempDir pins that the temp directory the

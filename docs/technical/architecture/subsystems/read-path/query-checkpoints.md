@@ -89,7 +89,7 @@ Both halves materialize asynchronously and **per-replica** (steps 4 and 6), by d
   worker keeps retrying and restores readiness after a successful fold; because
   there is no checkpoint reconciler, the failed checkpoint is deleted and
   recreated through the normal client/operator recovery path.
-- **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node whose builder has not yet crossed the checkpoint log, `openCheckpointStores` finds no `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
+- **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node where either half is still unmaterialized — the applier has not finished the main store, or the builder has not yet crossed the checkpoint log — `openCheckpointStores` finds a missing `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
 - **A read for a checkpoint id that does not exist returns `NotFound`.** If there is no `.ready` marker *and* no `QueryCheckpointState` entry for the id, `openCheckpointStores` returns `NotFound` (permanent) so clients stop retrying — distinct from the retryable `Unavailable` above.
 - **A damaged directory fails permanently instead of retrying forever.** Both markers present means each half was complete when it was published, so a read-only open that then fails is damage, not lag: the error surfaces as-is and reaches the client as a sanitized permanent `Unknown` carrying a correlation ID (the node log holds the cause), never the retryable `Unavailable` that `actions.GRPCRetryPolicy` would retry 50 times. Recovery is the same delete-and-recreate as the cases below.
 - **A crash inside a materialization is finished on restart; nothing else degrades to wrong data.** There is no historical reconstruction — each half instead keeps its recovery source intact until it is marked: the live main store stays at `H` while the Applier is gated, and the read index's cursor stays before the checkpoint log (steps 4 and 6). A replica that dies at any point of either materialization reopens, rebuilds the missing half from that source, and serves the checkpoint. Reads meanwhile return the retryable `Unavailable`. Two cases stay `Unavailable` on a replica for good, because that replica never had the source: one that never applied the creation entry (it joined through a later snapshot, or had to resync from the leader after the crash), and one whose audit projection is disabled or failed (the builder moves past the log without materializing). For those the operator/client deletes and recreates the checkpoint (the `AcquireCheckpoint` client helper does so on timeout); deleting it makes reads return `NotFound`.
@@ -214,9 +214,11 @@ data/
   query-checkpoints/
     1/
       main/              # Pebble checkpoint of main store
-        .ready           # readiness marker, written last by the applier
+        .ready           # readiness marker, published with the directory
+      main.tmp/          # only while materializing, or left by a crash
       readindex/         # Pebble checkpoint of read index
         .ready           # readiness marker, written last by the index builder
+      readindex.tmp/     # only while materializing, or left by a crash
     2/
       main/
         .ready
