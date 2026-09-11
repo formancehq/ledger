@@ -45,6 +45,18 @@ func (s *observedNATSSink) Publish(ctx context.Context, batch []*eventspb.Event)
 	}
 }
 
+func (s *observedNATSSink) awaitResult(t *testing.T) error {
+	t.Helper()
+	select {
+	case err := <-s.results:
+		return err
+	case <-time.After(10 * time.Second):
+		t.Fatal("no observed NATS publication")
+
+		return nil
+	}
+}
+
 func TestNATSSinkIntegration_AdmittedLedgerNames(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, token string }{
@@ -82,31 +94,23 @@ func TestNATSSinkIntegration_AdmittedLedgerNames(t *testing.T) {
 			defer emitter.Stop()
 			second.Start()
 			defer second.Stop()
-			awaitResult := func() error {
-				select {
-				case err := <-sink.results:
-					return err
-				case <-time.After(10 * time.Second):
-					t.Fatal("no observed NATS publication")
-
-					return nil
-				}
-			}
-			firstErr := awaitResult()
+			firstErr := sink.awaitResult(t)
 			cursor, err := query.ReadSinkCursor(store, "nats")
 			require.NoError(t, err)
 			require.Zero(t, cursor, "publication must not be acknowledged before Publish returns")
 			require.Eventually(t, func() bool {
 				c, e := query.ReadSinkCursor(store, "second")
+
 				return e == nil && c == 2
 			}, 5*time.Second, 10*time.Millisecond)
 			require.Len(t, healthy.getEvents(), 2, "second sink progresses independently")
 			if firstErr != nil {
 				// Diagnostic assertions preserve the fail-before evidence: a second real
 				// retry cannot bypass the invalid subject or acknowledge either event.
-				require.Contains(t, firstErr.Error(), "events."+tc.name+".created_ledger")
+				require.Contains(t, firstErr.Error(), "publishing event seq=1")
+				require.ErrorIs(t, firstErr, jetstream.ErrNoStreamResponse)
 				sink.resume <- struct{}{}
-				retryErr := awaitResult()
+				retryErr := sink.awaitResult(t)
 				require.Error(t, retryErr)
 				info, err := stream.Info(t.Context())
 				require.NoError(t, err)
@@ -120,6 +124,7 @@ func TestNATSSinkIntegration_AdmittedLedgerNames(t *testing.T) {
 			sink.resume <- struct{}{}
 			require.Eventually(t, func() bool {
 				c, e := query.ReadSinkCursor(store, "nats")
+
 				return e == nil && c == 2
 			}, 5*time.Second, 10*time.Millisecond)
 			info, err := stream.Info(t.Context())
@@ -173,19 +178,9 @@ func TestNATSSinkIntegration_NameRetryAfterStreamRecovery(t *testing.T) {
 	emitter := events.NewEmitter(store, sink, "retry", &directProposer{store: store}, newPlanBuilder(t, store), logging.Testing(), cfg)
 	emitter.Start()
 	defer emitter.Stop()
-	awaitResult := func() error {
-		select {
-		case err := <-sink.results:
-			return err
-		case <-time.After(10 * time.Second):
-			t.Fatal("no observed NATS publication")
-
-			return nil
-		}
-	}
 	// A real missing stream produces one failed attempt. Provisioning it is
 	// synchronized before allowing the emitter to retry the same pending batch.
-	err = awaitResult()
+	err = sink.awaitResult(t)
 	require.ErrorIs(t, err, jetstream.ErrNoStreamResponse)
 	require.Contains(t, err.Error(), "events.a%2E%2Eb.created_ledger")
 	cursor, err := query.ReadSinkCursor(store, "retry")
@@ -198,10 +193,11 @@ func TestNATSSinkIntegration_NameRetryAfterStreamRecovery(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, info.State.Msgs)
 	sink.resume <- struct{}{}
-	require.NoError(t, awaitResult()) // Exactly the second observed attempt succeeds.
+	require.NoError(t, sink.awaitResult(t)) // Exactly the second observed attempt succeeds.
 	sink.resume <- struct{}{}
 	require.Eventually(t, func() bool {
 		c, e := query.ReadSinkCursor(store, "retry")
+
 		return e == nil && c == 2
 	}, 5*time.Second, 10*time.Millisecond)
 	emitter.Stop()
