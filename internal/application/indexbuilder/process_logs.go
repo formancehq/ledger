@@ -629,26 +629,13 @@ func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
 	}
 }
 
-// indexLogEntry dispatches a single log entry to the appropriate index handler.
+// indexLogEntry backfills a ledger log's identity/date and entity indexes.
+// Configuration and schema mutations are owned exclusively by the live fold.
 // It does NOT call WriteProgress — the caller batches that.
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
 func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync) error {
 	if log.GetPayload() == nil {
-		return nil
-	}
-
-	// Handle ledger deletion: remove all read indexes for the deleted ledger.
-	if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
-		if dl.DeleteLedger != nil && b.wb.Batch() != nil {
-			name := dl.DeleteLedger.GetName()
-			if err := readstore.DeleteLedgerIndexes(b.wb.Batch(), name); err != nil {
-				return err
-			}
-
-			b.markLedgerDeletedInBatch(name)
-		}
-
 		return nil
 	}
 
@@ -662,8 +649,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	if ledgerLog == nil || ledgerLog.GetData() == nil {
 		return nil
 	}
-
-	excludedVolumes := proposals.excludedForLog(log.GetSequence(), ledgerName, ledgerLog)
 
 	b.wb.SetEventSequence(log.GetSequence())
 
@@ -679,18 +664,15 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		}
 	}
 
-	// Schema logs are deliberately absent from this switch. The only caller,
-	// processBackfill, gates on isDataLog, which admits exactly
-	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
-	// / OrderSkipped and switches on the same discriminator used here — so a
-	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive.
-	// Schema handling belongs to the live path (indexPayload), where
-	// SetMetadataFieldType defers to addSchemaRewriteTask / processSchemaRewrite
-	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype
-	// that lands mid-backfill is handled by addSchemaRewriteTask resetting the
-	// in-flight cursor, not by replaying the schema log here. Do NOT add a case
-	// for them without also changing isDataLog: an unreachable second
-	// implementation of the schema rewrite is what this replaced.
+	// A date index covers the complete ledger log universe, including config
+	// and schema logs. Only after writing those common projections may replay
+	// exclude payloads whose lifecycle effects were already applied live.
+	if !isDataLog(log) {
+		return nil
+	}
+
+	excludedVolumes := proposals.excludedForLog(log.GetSequence(), ledgerName, ledgerLog)
+
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
@@ -700,12 +682,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
-	case *commonpb.LedgerLogPayload_CreateIndex:
-		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
-	case *commonpb.LedgerLogPayload_DropIndex:
-		if err := b.handleDroppedIndexLog(b.kb, ledgerName, p.DropIndex); err != nil {
-			return err
-		}
 	}
 
 	return nil

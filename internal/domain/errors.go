@@ -497,6 +497,18 @@ var (
 	// defined by its filter). Rejecting nil keeps the stored query intact and the
 	// audit trail deterministic on wire-replay.
 	ErrPreparedQueryFilterRequired = NewValidationSentinel("prepared query filter is required")
+	// ErrPreparedQueryAggregateTarget guards ExecutePreparedQuery:
+	// AGGREGATE_VOLUMES folds the volume cells of the accounts a query selects,
+	// so it is only meaningful for an ACCOUNTS-target query. Returning it as a
+	// bare error sent clients a sanitised codes.Unknown — the "unclassified
+	// server fault" bucket — for what is a caller mistake; the model-checking
+	// driver surfaced that (EN-1629).
+	ErrPreparedQueryAggregateTarget = NewValidationSentinel("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+	// ErrQueryModeUnsupported guards ExecutePreparedQuery against a mode outside
+	// the QueryMode enum. Reachable from the wire (proto3 carries an unknown
+	// enum value through as its number), so it is a caller error rather than an
+	// invariant breach. The offending value is deliberately not echoed back.
+	ErrQueryModeUnsupported = NewValidationSentinel("unsupported query mode")
 	// Signing-key identifier sentinels stay local: request signing is a
 	// ledger-internal feature, not part of the Formance-wide invariants in
 	// github.com/formancehq/invariants.

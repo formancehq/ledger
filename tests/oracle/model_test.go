@@ -686,6 +686,204 @@ func TestGlobalState_Fingerprint_DistinguishesVolumeAnnotations(t *testing.T) {
 	require.NotEqual(t, hashState(one.State), hashState(together.State))
 }
 
+// pqReq builds a CreatePreparedQuery request on ledger "L".
+func pqReq(name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Ledger: "L",
+				Query:  &commonpb.PreparedQuery{Name: name, Target: target, Filter: filter},
+			},
+		},
+	}
+}
+
+// pqUpdateReq builds an UpdatePreparedQuery request on ledger "L".
+func pqUpdateReq(name string, filter *commonpb.QueryFilter) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+				Ledger: "L",
+				Name:   name,
+				Filter: filter,
+			},
+		},
+	}
+}
+
+// pqDeleteReq builds a DeletePreparedQuery request on ledger "L".
+func pqDeleteReq(name string) *servicepb.Request {
+	return &servicepb.Request{
+		Type: &servicepb.Request_DeletePreparedQuery{
+			DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{Ledger: "L", Name: name},
+		},
+	}
+}
+
+// pqFilter builds an address-prefix filter, valid on every executable target
+// this test needs it for.
+func pqFilter(prefix string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: prefix},
+			},
+		},
+	}
+}
+
+func TestGlobalState_Apply_PreparedQueryLifecycle(t *testing.T) {
+	t.Parallel()
+
+	base := NewGlobalState()
+
+	created := base.Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))))
+	require.True(t, created.OK)
+
+	stored, ok := created.State.Ledger("L").PreparedQuery("q")
+	require.True(t, ok)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, stored.GetTarget())
+	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
+	// Immutability: deriving `created` never touched base.
+	require.False(t, base.Ledger("L").PreparedQueries().Has("q"))
+
+	dup := created.State.Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, pqFilter("b:"))))
+	require.False(t, dup.OK)
+	require.Equal(t, domain.ErrReasonPreparedQueryAlreadyExists, dup.Reason)
+
+	updated := created.State.Apply(bulkOf(pqUpdateReq("q", pqFilter("b:"))))
+	require.True(t, updated.OK)
+
+	after, ok := updated.State.Ledger("L").PreparedQuery("q")
+	require.True(t, ok)
+	require.Equal(t, "b:", after.GetFilter().GetAddress().GetHardcodedPrefix())
+	// The target is fixed at creation: an update carries no target field, and
+	// the FSM validates the new filter against the stored one.
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, after.GetTarget())
+
+	missingUpdate := base.Apply(bulkOf(pqUpdateReq("nope", pqFilter("c:"))))
+	require.False(t, missingUpdate.OK)
+	require.Equal(t, domain.ErrReasonPreparedQueryNotFound, missingUpdate.Reason)
+
+	deleted := updated.State.Apply(bulkOf(pqDeleteReq("q")))
+	require.True(t, deleted.OK)
+	require.False(t, deleted.State.Ledger("L").PreparedQueries().Has("q"))
+
+	// Unlike DropIndex, deleting an absent query is not a no-op.
+	gone := deleted.State.Apply(bulkOf(pqDeleteReq("q")))
+	require.False(t, gone.OK)
+	require.Equal(t, domain.ErrReasonPreparedQueryNotFound, gone.Reason)
+}
+
+// TestGlobalState_Apply_PreparedQueryAppendsNoLog pins the load-bearing
+// consequence of prepared-query orders returning a TOP-LEVEL LogPayload arm:
+// they consume no ledger-local log id. If logKindFor ever named a kind for
+// them, every subsequent log's id would shift past the server's and the log
+// query validation would report findings against a correct server.
+func TestGlobalState_Apply_PreparedQueryAppendsNoLog(t *testing.T) {
+	t.Parallel()
+
+	seeded := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.True(t, seeded.OK)
+	require.Equal(t, []uint64{1}, seeded.State.Ledger("L").LogIDs())
+
+	after := seeded.State.
+		Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")))).State.
+		Apply(bulkOf(pqUpdateReq("q", pqFilter("b:")))).State.
+		Apply(bulkOf(pqDeleteReq("q"))).State
+
+	require.Equal(t, []uint64{1}, after.Ledger("L").LogIDs())
+
+	// The next real order still takes id 2 — no phantom id was consumed.
+	next := after.Apply(bulkOf(oracletest.TxReq("world", "a:2", "USD", 5)))
+	require.True(t, next.OK)
+	require.Equal(t, []uint64{1, 2}, next.State.Ledger("L").LogIDs())
+}
+
+// TestLedgerState_Fingerprint_DistinguishesPreparedQueryFilters pins the
+// registry as part of the state's identity: two bases differing only in a
+// stored filter predict different execution windows, so candidate-base dedup
+// must not collapse them.
+func TestLedgerState_Fingerprint_DistinguishesPreparedQueryFilters(t *testing.T) {
+	t.Parallel()
+
+	created := NewGlobalState().Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")))).State
+	rewritten := created.Apply(bulkOf(pqUpdateReq("q", pqFilter("b:")))).State
+
+	require.NotEqual(t, hashState(created), hashState(rewritten))
+}
+
+// TestGlobalState_Apply_PreparedQueryValidation pins the model's validation
+// gates to the FSM's: each case is a payload processCreatePreparedQuery /
+// processUpdatePreparedQuery rejects before it reaches the registry.
+func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
+	t.Parallel()
+
+	// An accounts-only condition is invalid on a LOGS target.
+	logsWithAddress := pqReq("bad-target-cond", commonpb.QueryTarget_QUERY_TARGET_LOGS, pqFilter("a:"))
+
+	seeded := NewGlobalState().Apply(bulkOf(pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))))
+	require.True(t, seeded.OK)
+
+	for _, tc := range []struct {
+		name   string
+		base   GlobalState
+		req    *servicepb.Request
+		reason string
+	}{
+		{"empty name", NewGlobalState(), pqReq("", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
+		{"non-printable name", NewGlobalState(), pqReq("a\x01b", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
+		{"non-executable target", NewGlobalState(), pqReq("audit", commonpb.QueryTarget_QUERY_TARGET_AUDIT, nil), domain.ErrReasonValidation},
+		// A target-invalid condition surfaces the filter compiler's own reason,
+		// not the generic validation one — the model reports whatever
+		// ValidateFilterForTarget reports, so the two cannot drift.
+		{"condition invalid for target", NewGlobalState(), logsWithAddress, domain.ErrReasonFilterCompilation},
+		{"update with nil filter", seeded.State, pqUpdateReq("q", nil), domain.ErrReasonValidation},
+		{"delete with empty name", seeded.State, pqDeleteReq(""), domain.ErrReasonValidation},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			res := tc.base.Apply(bulkOf(tc.req))
+			require.False(t, res.OK)
+			require.Equal(t, tc.reason, res.Reason)
+		})
+	}
+}
+
+// TestGlobalState_Apply_PreparedQueryNilFilterOnCreate pins the create/update
+// asymmetry: the FSM accepts a nil filter at creation (it means "no filter")
+// and rejects one on update, where it would silently erase the definition.
+func TestGlobalState_Apply_PreparedQueryNilFilterOnCreate(t *testing.T) {
+	t.Parallel()
+
+	created := NewGlobalState().Apply(bulkOf(pqReq("universe", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)))
+	require.True(t, created.OK)
+
+	stored, ok := created.State.Ledger("L").PreparedQuery("universe")
+	require.True(t, ok)
+	require.Nil(t, stored.GetFilter())
+}
+
+// TestGlobalState_Apply_PreparedQueryNoAliasing pins that committed state never
+// aliases the submitted request: mutating the proto after apply must not reach
+// the registry.
+func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
+	t.Parallel()
+
+	req := pqReq("q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:"))
+
+	created := NewGlobalState().Apply(bulkOf(req))
+	require.True(t, created.OK)
+
+	submitted := req.GetType().(*servicepb.Request_CreatePreparedQuery).CreatePreparedQuery.GetQuery()
+	submitted.GetFilter().GetAddress().Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "mutated:"}
+
+	stored, ok := created.State.Ledger("L").PreparedQuery("q")
+	require.True(t, ok)
+	require.Equal(t, "a:", stored.GetFilter().GetAddress().GetHardcodedPrefix())
+}
+
 // A second creation of a live index is rejected (EN-2009).
 func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
 	t.Parallel()

@@ -84,10 +84,12 @@ func Execute(
 		}
 	}
 
-	// Validate mode compatibility
+	// Validate mode compatibility. A typed business error, not a bare one: both
+	// guards reject a caller mistake, and a bare error reaches the client as the
+	// sanitised codes.Unknown reserved for server faults.
 	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
 		pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return nil, errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+		return nil, &domain.BusinessError{Err: domain.ErrPreparedQueryAggregateTarget}
 	}
 
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
@@ -172,7 +174,7 @@ func Execute(
 		}
 
 	default:
-		return nil, fmt.Errorf("unknown query mode: %v", req.GetMode())
+		return nil, &domain.BusinessError{Err: domain.ErrQueryModeUnsupported}
 	}
 
 	return resp, nil

@@ -451,11 +451,14 @@ restart. It catches:
 
 It exercises the chart of accounts, transactions and reverts (with post-commit
 volumes), account/transaction/ledger metadata, the typed-metadata schema and
-its index lifecycle (create, retype with serving-window closure, remove), and
-the transient/ephemeral persistence classes — and reads them back: account,
-whole-ledger, transaction-by-id, and declared-schema reads, plus the filtered,
-paginated list surface (ListAccounts, ListTransactions, ListLogs, indexed
-metadata-range queries) are all validated against the model.
+its index lifecycle (create, retype with serving-window closure, remove), the
+prepared-query registry (create, update, delete), and the transient/ephemeral
+persistence classes — and reads them back: account, whole-ledger,
+transaction-by-id, and declared-schema reads, the filtered, paginated list
+surface (ListAccounts, ListTransactions, ListLogs, indexed metadata-range
+queries), and the prepared-query surface (ListPreparedQueries, and
+ExecutePreparedQuery in both LIST and AGGREGATE_VOLUMES mode, with generated
+parameter bindings) are all validated against the model.
 
 #### How it works
 
@@ -481,6 +484,8 @@ the harness around it:
 | `queries.go` / `queries_logs.go` (driver) | Filtered, paginated list reads (ListAccounts, ListTransactions, ListLogs) generated against the model's committed state and validated window-by-window. |
 | `indexes.go` (driver) | Metadata-index lifecycle: create/retype/remove generation, readiness polling, retype-window bookkeeping, and indexed range-query validation. |
 | `metadata_filters.go` (driver) | Typed metadata filter generation shared by the query validators. |
+| `prepared_queries.go` (driver) | Prepared-query registry lifecycle generation, and the parameterize/substitute pair: a concrete filter's leaves become parameter references at creation, and binding them back at execution reproduces it — so the query evaluators above are reused unchanged. |
+| `prepared_queries_read.go` (driver) | `ListPreparedQueries` and `ExecutePreparedQuery` (LIST and AGGREGATE_VOLUMES) validation. Each candidate base supplies its OWN stored definition, so a concurrent update or delete is a legal alternative rather than a finding. |
 
 The key primitive is **`candidateBases`**: a committed bulk drains in
 log-sequence order, so the committed model state is its exact predecessor and
@@ -593,7 +598,7 @@ Where to make the matching change:
 | Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `tests/oracle/model.go`. |
 | New or changed response field the test should check | Update the validator in `validate.go` and the predicted effect it compares against. |
 | New rejection reason | Return the matching `domain.ErrReason*` from the right model branch so `validateFailure` can explain it. |
-| New persisted projection or read surface | Point reads: add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. Filtered/paginated list surfaces: follow the `queries.go` / `queries_logs.go` pattern (generate against committed model state, validate the returned window). Index-backed reads: `indexes.go`. |
+| New persisted projection or read surface | Point reads: add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. Filtered/paginated list surfaces: follow the `queries.go` / `queries_logs.go` pattern (generate against committed model state, validate the returned window). Index-backed reads: `indexes.go`. Prepared queries: model the registry op in `tests/oracle/model.go` (`LedgerOf`, `logKindFor`, `applyOne` in lockstep) and validate in `prepared_queries_read.go`. |
 
 To diagnose a finding deterministically, capture the run with
 `MODEL_DUMP_BATCHES=1` and feed the dump back through the model offline:
