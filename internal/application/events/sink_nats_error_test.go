@@ -59,11 +59,13 @@ func TestNATSSinkConstructorSanitizesTokenForms(t *testing.T) {
 					line, err := reader.ReadString('\n')
 					if err != nil {
 						done <- err
+
 						return
 					}
 					if strings.HasPrefix(line, "CONNECT ") {
 						_, err = fmt.Fprint(conn, "-ERR 'rejected token-secret'\r\n")
 						done <- err
+
 						return
 					}
 				}
