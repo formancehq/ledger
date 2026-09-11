@@ -63,6 +63,7 @@ func TestProcessAddLedgerMetadata_KeysOffEnvelope(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
 		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)

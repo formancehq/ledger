@@ -76,9 +76,9 @@ traverse it, so they cannot drift apart. HTTP, public gRPC and bulk converge on
 **Mirror ingestion** — `Worker.processBatch`
 (`internal/application/mirror/worker.go`) checks the translated and rewritten
 orders against the committed cluster policy before building or proposing the
-batch. `domain.ValidateOrderMetadata` checks metadata shape and per-entity
-ceilings through the shared walker, and the worker checks the total across all
-orders against the command ceiling. This includes external HTTP and PostgreSQL
+batch. `domain.ValidateCommandMetadata` checks metadata shape, per-entity ceilings
+and the total across all orders through the shared walker. Admission uses the
+same helper, including deterministic account and key error selection. This includes external HTTP and PostgreSQL
 sources, which need not have enforced the destination's limits.
 
 `processMirrorIngest` rechecks the order and proposal-wide byte budget against
@@ -97,6 +97,14 @@ script runs, and two individually-legal halves can exceed the entity ceiling
 together. The FSM reads the ceilings from the committed policy through the Scope
 — never from node-local configuration, which would make one committed entry
 apply differently per node (invariant #2).
+
+Direct account, transaction and ledger metadata saves, and transaction
+reversals, recheck non-empty caller maps against the current committed policy
+before changing metadata, balances or reversal state. They also validate the
+proposal-wide budget, so a policy tightened between admission and apply cannot
+be bypassed by spreading caller metadata across several orders. Empty maps
+store no metadata and contribute no bytes. Existing transaction-not-found and
+already-reverted checks still precede metadata validation for reversals.
 
 `ProcessOrders` seeds a proposal-wide budget with every order's input metadata,
 including bare keys in deletion and schema orders. Each transaction replaces

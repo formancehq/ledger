@@ -444,3 +444,17 @@ func TestMirrorDeletedMetadataValidation(t *testing.T) {
 	require.Equal(t, domain.MetadataLimitDimensionCommand, failure.Metadata()["dimension"])
 	require.Equal(t, "64", failure.Metadata()["actual"])
 }
+
+func TestValidateOrderMetadataShapeSelectsStableKey(t *testing.T) {
+	t.Parallel()
+	order := metadataAddOrder(map[string]*commonpb.MetadataValue{
+		"z": metadataStringValue("invalid\x00"),
+		"a": metadataStringValue("invalid\x00"),
+	})
+	for range 100 {
+		var keyErr *domain.ErrMetadataKeyValidation
+		require.ErrorAs(t, validateOrderMetadata(order), &keyErr)
+		require.Equal(t, "a", keyErr.Key)
+		require.ErrorIs(t, keyErr, domain.ErrMetadataValueContainsNullByte)
+	}
+}

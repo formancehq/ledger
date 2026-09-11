@@ -51,3 +51,21 @@ func TestValidateOrderMetadataDeterministicAccountAndKey(t *testing.T) {
 		require.Equal(t, "a", key.Key)
 	}
 }
+
+func TestValidateCommandMetadataCountsMapsAndBareKeys(t *testing.T) {
+	t.Parallel()
+	orders := []*raftcmdpb.Order{
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: map[string]*commonpb.MetadataValue{"key": commonpb.NewStringValue("value")}}}}}},
+		{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{Data: &raftcmdpb.MirrorLogEntry_DeletedMetadata{DeletedMetadata: &raftcmdpb.MirrorDeletedMetadata{Key: "bare"}}}}}}}},
+	}
+	limits := MetadataLimits{MaxEntriesPerEntity: 2, MaxKeyBytes: 4, MaxValueBytes: 5, MaxTotalBytesPerEntity: 8, MaxTotalBytesPerCommand: 12}
+	require.NoError(t, ValidateCommandMetadata(orders, limits))
+	limits.MaxTotalBytesPerCommand = 11
+	for _, order := range orders {
+		require.NoError(t, ValidateCommandMetadata([]*raftcmdpb.Order{order}, limits))
+	}
+	var limitErr *ErrMetadataLimitExceeded
+	require.ErrorAs(t, ValidateCommandMetadata(orders, limits), &limitErr)
+	require.Equal(t, MetadataLimitDimensionCommand, limitErr.Dimension)
+	require.EqualValues(t, 12, limitErr.Actual)
+}

@@ -301,7 +301,10 @@ The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
 
 Mirror workers enforce the same ceilings on translated batches before proposal,
 and mirror FSM apply rechecks the committed policy before mutation. A rejected
-batch retains its applied cursor for retry.
+batch retains its applied cursor for retry. Direct account, transaction and ledger
+metadata saves, and reversals, also recheck non-empty input and the proposal-wide
+byte budget at apply, using the current committed policy rather than the policy
+observed during admission.
 
 OpenAPI documents these configurable ceilings in descriptions rather than fixed
 `maxLength` or `maxProperties` constraints, so clients can use the effective

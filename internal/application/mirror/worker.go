@@ -389,14 +389,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("reading mirror metadata policy: %w", err)
 	}
 	limits := domain.MetadataLimitsFromPolicy(policy)
-	var metadataBytes uint64
-	for _, order := range orders {
-		if err := domain.ValidateOrderMetadata(order, limits); err != nil {
-			return false, &domain.BusinessError{Err: err}
-		}
-		metadataBytes += domain.OrderMetadataSize(order)
-	}
-	if err := limits.ValidateCommandBytes(metadataBytes); err != nil {
+	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
 		return false, &domain.BusinessError{Err: err}
 	}
 	w.nextTxID = newNextTxID

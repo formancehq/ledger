@@ -11,7 +11,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -121,12 +120,7 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 // are safe for Pebble key encoding. Shape only — the size contract is enforced
 // per command by validateCommandMetadata, which needs the replicated ceilings.
 func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
-	return domain.WalkOrderMetadata(order, domain.MetadataWalk{
-		VisitMap: func(account string, m map[string]*commonpb.MetadataValue) domain.Describable {
-			return wrapMetadataAccountError(account, validateMetadataMap(m))
-		},
-		VisitKey: domain.ValidateMetadataKey,
-	})
+	return domain.ValidateOrderMetadataShape(order)
 }
 
 // validateOrderAccountAddresses validates account addresses in non-transaction orders
@@ -392,72 +386,12 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 	return nil
 }
 
-// validateMetadataMap validates all keys and values in a metadata map.
-// Value-level failures are wrapped in ErrMetadataKeyValidation so the
-// offending key reaches operator logs and the gRPC ErrorInfo metadata
-// (rather than being dropped, which the first pass of this refactor did
-// before paul-nicolas's review).
-func validateMetadataMap(m map[string]*commonpb.MetadataValue) domain.Describable {
-	for key, value := range m {
-		if err := domain.ValidateMetadataKey(key); err != nil {
-			return err
-		}
-
-		if err := domain.ValidateMetadataValue(value); err != nil {
-			return &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
-		}
-	}
-
-	return nil
-}
-
-// validateCommandMetadata enforces the metadata size contract over a whole
-// command — the batch of orders that becomes one atomic, signed Raft proposal.
-//
-// It is the single admission-side gate for the size ceilings, so direct HTTP,
-// public gRPC and bulk converge on requestsToOrders. Mirror workers use a
-// separate proposal path. Every metadata-bearing order shape is
-// reached through domain.WalkOrderMetadata.
-//
-// The per-entity ceilings are checked order by order, then the accumulated total
-// against the per-command ceiling — so a caller cannot defeat the per-entity
-// bound by spreading one large payload across many entities in a single command.
-// The limits come from the committed cluster policy, which the FSM reads too, so
-// admission and apply agree on every node.
+// validateCommandMetadata applies the shared admission and mirror metadata
+// contract using the committed policy, preserving the application error wrapper.
 func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLimits) error {
-	var total uint64
-
-	for _, order := range orders {
-		if err := validateOrderMetadataLimits(order, limits); err != nil {
-			return &domain.BusinessError{Err: err}
-		}
-
-		total += domain.OrderMetadataSize(order)
-	}
-
-	if err := limits.ValidateCommandBytes(total); err != nil {
+	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
 		return &domain.BusinessError{Err: err}
 	}
 
 	return nil
-}
-
-// validateOrderMetadataLimits checks one order's metadata against the per-entity
-// ceilings and the per-key ceiling.
-func validateOrderMetadataLimits(order *raftcmdpb.Order, limits domain.MetadataLimits) domain.Describable {
-	return domain.WalkOrderMetadata(order, domain.MetadataWalk{
-		VisitMap: func(account string, m map[string]*commonpb.MetadataValue) domain.Describable {
-			return wrapMetadataAccountError(account, limits.ValidateMap(m))
-		},
-		VisitKey: limits.ValidateKey,
-	})
-}
-
-// wrapMetadataAccountError preserves account attribution for both shape and size errors.
-func wrapMetadataAccountError(account string, err domain.Describable) domain.Describable {
-	if err == nil || account == "" {
-		return err
-	}
-
-	return &domain.ErrAccountValidation{Account: account, Cause: err}
 }

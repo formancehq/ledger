@@ -149,26 +149,42 @@ func OrderMetadataSize(order *raftcmdpb.Order) uint64 {
 // ValidateOrderMetadata checks the shape and size of every metadata payload.
 // Account and key traversal is sorted so replicated rejection details are stable.
 func ValidateOrderMetadata(order *raftcmdpb.Order, limits MetadataLimits) Describable {
+	return validateOrderMetadata(order, func(metadata map[string]*commonpb.MetadataValue) Describable {
+		if err := validateMetadataShape(metadata); err != nil {
+			return err
+		}
+
+		return limits.ValidateMap(metadata)
+	}, func(key string) Describable {
+		if err := ValidateMetadataKey(key); err != nil {
+			return err
+		}
+
+		return limits.ValidateKey(key)
+	})
+}
+
+// ValidateOrderMetadataShape checks storage-safe keys and values before the
+// caller has loaded the committed size policy.
+func ValidateOrderMetadataShape(order *raftcmdpb.Order) Describable {
+	return validateOrderMetadata(order, validateMetadataShape, ValidateMetadataKey)
+}
+
+func validateOrderMetadata(order *raftcmdpb.Order, validateMap func(map[string]*commonpb.MetadataValue) Describable, validateKey func(string) Describable) Describable {
 	return WalkOrderMetadata(order, MetadataWalk{
 		VisitMap: func(account string, metadata map[string]*commonpb.MetadataValue) Describable {
-			err := validateOrderMetadataMap(metadata, limits)
+			err := validateMap(metadata)
 			if err == nil || account == "" {
 				return err
 			}
 
 			return &ErrAccountValidation{Account: account, Cause: err}
 		},
-		VisitKey: func(key string) Describable {
-			if err := ValidateMetadataKey(key); err != nil {
-				return err
-			}
-
-			return limits.ValidateKey(key)
-		},
+		VisitKey: validateKey,
 	})
 }
 
-func validateOrderMetadataMap(metadata map[string]*commonpb.MetadataValue, limits MetadataLimits) Describable {
+func validateMetadataShape(metadata map[string]*commonpb.MetadataValue) Describable {
 	for _, key := range slices.Sorted(maps.Keys(metadata)) {
 		if err := ValidateMetadataKey(key); err != nil {
 			return err
@@ -178,5 +194,20 @@ func validateOrderMetadataMap(metadata map[string]*commonpb.MetadataValue, limit
 		}
 	}
 
-	return limits.ValidateMap(metadata)
+	return nil
+}
+
+// ValidateCommandMetadata validates every order's shape and entity ceilings,
+// then bounds their combined maps and bare keys by the command ceiling.
+// Callers wrap the returned domain error at their application boundary.
+func ValidateCommandMetadata(orders []*raftcmdpb.Order, limits MetadataLimits) Describable {
+	var total uint64
+	for _, order := range orders {
+		if err := ValidateOrderMetadata(order, limits); err != nil {
+			return err
+		}
+		total += OrderMetadataSize(order)
+	}
+
+	return limits.ValidateCommandBytes(total)
 }

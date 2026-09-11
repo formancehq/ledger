@@ -18,6 +18,10 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 		return nil, loadErr
 	}
 
+	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
+		return nil, err
+	}
+
 	// Stored values are immutable and reads return them verbatim;
 	// declared_type only governs forward-index encoding on the indexer
 	// side. The indexer no longer needs the FSM-captured previous

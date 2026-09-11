@@ -33,6 +33,10 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 		return nil, domain.ErrTargetRequired
 	}
 
+	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
+		return nil, err
+	}
+
 	loggedTarget := order.GetTarget()
 
 	// Validate account address against account types.
