@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -109,7 +110,13 @@ type ClickHouseSink struct {
 // NewClickHouseSink creates a new ClickHouse sink, connects, and auto-creates
 // the target table with a structured JSON column.
 func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (result *ClickHouseSink, retErr error) {
-	sanitizer := newSinkErrorSanitizer([]string{cfg.DSN})
+	connectionURLs := []string{cfg.DSN}
+	if parsed, err := url.Parse(cfg.DSN); err == nil {
+		// The driver embeds decoded proxy parse errors as text, losing their URL
+		// error type. Register the nested URL even when that URL is malformed.
+		connectionURLs = append(connectionURLs, parsed.Query()["http_proxy"]...)
+	}
+	sanitizer := newSinkErrorSanitizer(connectionURLs)
 	defer sanitizer.sanitizeReturned(&retErr)
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
