@@ -74,6 +74,8 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 	// bootstrap branch), so enabling TLS here makes the reconcile reach
 	// `required` immediately and the AUTH_ED25519_KEYS assertion below holds.
 	ls.Spec.TLS = &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "authsts-tls"}
+	enabled := true
+	ls.Spec.Auth = &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled}
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
 	// Create credentials with matching selector.
@@ -123,6 +125,7 @@ func TestReconcile_AuthKeysStatefulSet(t *testing.T) {
 
 	// Verify the AUTH_ED25519_KEYS env var points at the mounted file.
 	authEd25519 := findEnv(container.Env, "AUTH_ED25519_KEYS")
+	assertNoEnv(t, container.Env, "AUTH_AUDIENCE")
 	if assert.NotNil(t, authEd25519, "AUTH_ED25519_KEYS env var should be set when credentials exist") {
 		assert.Equal(t, "/auth-keys/auth-keys.json", authEd25519.Value)
 	}

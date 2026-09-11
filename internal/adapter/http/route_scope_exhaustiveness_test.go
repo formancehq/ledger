@@ -288,6 +288,7 @@ func testClaims(scopes ...string) *oidc.AccessTokenClaims {
 	claims.Issuer = testAuthIssuer
 	claims.Subject = "test-user"
 	claims.IssuedAt = oidc.Time(now.Unix())
+	claims.Audience = oidc.Audience{"urn:formance:ledger:test"}
 	claims.Expiration = oidc.Time(now.Add(1 * time.Hour).Unix())
 	claims.Scopes = oidc.SpaceDelimitedArray(scopes)
 
@@ -322,6 +323,7 @@ func newScopedHandler(t *testing.T, keySet oidc.KeySet) http.Handler {
 
 	return NewHandler(logging.Testing(), inertBackend(), internalauth.AuthConfig{
 		Enabled:      true,
+		Audience:     "urn:formance:ledger:test",
 		KeySet:       keySet,
 		Issuer:       testAuthIssuer,
 		Service:      "ledger",

@@ -299,6 +299,14 @@ func WithAuthIssuer(issuer string) testservice.InstrumentationFunc {
 	}
 }
 
+func WithAuthAudience(audience string) testservice.InstrumentationFunc {
+	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
+		cfg.AppendArgs("--auth-audience", audience)
+
+		return nil
+	}
+}
+
 func WithAuthService(service string) testservice.InstrumentationFunc {
 	return func(ctx context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--auth-service", service)

@@ -4,16 +4,63 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestBuildAuthConfigAudience(t *testing.T) {
+	t.Parallel()
+	configured := AuthFlagConfig{
+		Enabled:  true,
+		Issuer:   "https://issuer.example.com",
+		Audience: "urn:formance:ledger:production-eu",
+		Service:  "different-scope-prefix",
+	}
+	cfg, err := buildAuthConfig(Config{AuthConfig: configured}, logging.Testing(), oidc.NewStaticKeySet())
+	require.NoError(t, err)
+	require.Equal(t, configured.Audience, cfg.Audience)
+	require.Equal(t, configured.Service, cfg.Service)
+}
+
+func TestBuildAuthConfigSeparateKeySources(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	keyID, err := signing.GenerateKeyPair(dir)
+	require.NoError(t, err)
+	data, err := json.Marshal(internalauth.Ed25519KeysConfig{Keys: []internalauth.Ed25519KeyEntry{{
+		KeyID: keyID, PublicKeyFile: filepath.Join(dir, "pubkey.hex"), Scopes: []string{"ledger:read"},
+	}}})
+	require.NoError(t, err)
+	configPath := filepath.Join(dir, "auth-keys.json")
+	require.NoError(t, os.WriteFile(configPath, data, 0o600))
+
+	for _, withOIDC := range []bool{false, true} {
+		t.Run(strconv.FormatBool(withOIDC), func(t *testing.T) {
+			t.Parallel()
+			var oidcKeys oidc.KeySet
+			if withOIDC {
+				oidcKeys = oidc.NewStaticKeySet()
+			}
+			cfg, err := buildAuthConfig(Config{AuthConfig: AuthFlagConfig{
+				Enabled: true, Ed25519KeysFile: configPath,
+			}}, logging.Testing(), oidcKeys)
+			require.NoError(t, err)
+			require.Equal(t, oidcKeys, cfg.KeySet)
+			require.NotNil(t, cfg.Ed25519KeySet)
+			require.Equal(t, []string{"ledger:read"}, cfg.Ed25519AllowedScopes[keyID])
+		})
+	}
+}
 
 func TestLoadScopeMapping_FromFile(t *testing.T) {
 	t.Parallel()

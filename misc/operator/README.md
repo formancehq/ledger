@@ -131,6 +131,38 @@ spec:
   goMemLimitRatio: 90
 ```
 
+## Authentication audience
+
+Set `spec.auth.audience` to an explicit identifier for the deployment whenever
+OIDC authentication is enabled. Set
+`spec.auth.enabled: true` explicitly for both authentication formats.
+The operator passes the audience as `AUTH_AUDIENCE` to
+every node. OIDC JWTs must include that identifier in their
+`aud` claim; tokens with a missing or different audience are rejected.
+
+For example, an OIDC deployment can use:
+
+```yaml
+spec:
+  tls:
+    enabled: true
+  auth:
+    enabled: true
+    audience: ledger-production
+    issuer: https://auth.example.com
+```
+
+Choose distinct OIDC audiences for deployments that must not accept one another's
+tokens. The audience has no default and is independent of the scope prefix and
+cluster ID. The operator rejects enabled OIDC authentication with a missing or
+blank audience, including when OIDC and static credentials coexist.
+
+Static Ed25519 JWT authentication does not require or validate audience, even in
+a mixed deployment. Its keys must be dedicated to one deployment and JWT
+authentication. Do not share those keys across deployments or reuse them for
+request/response signing. A deployment using only static `Credentials` can omit
+`spec.auth.audience`; configure `spec.auth.enabled: true` and TLS explicitly.
+
 ## Helm Values
 
 | Key | Default | Description |

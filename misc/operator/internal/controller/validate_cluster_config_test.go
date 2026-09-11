@@ -56,19 +56,19 @@ func TestValidateClusterConfig_AuthRequiresTLS(t *testing.T) {
 	}{
 		{
 			name:    "auth enabled + tls enabled is accepted",
-			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 			tls:     &ledgerv1alpha1.TLSConfig{Enabled: true},
 			wantErr: false,
 		},
 		{
 			name:    "auth enabled + tls disabled is rejected",
-			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 			tls:     &ledgerv1alpha1.TLSConfig{Enabled: false},
 			wantErr: true,
 		},
 		{
 			name:    "auth enabled + tls nil is rejected",
-			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled},
+			auth:    &ledgerv1alpha1.AuthorizationConfig{Enabled: &enabled, Audience: "ledger-production"},
 			tls:     nil,
 			wantErr: true,
 		},
@@ -195,4 +195,40 @@ func TestValidateClusterConfig_CoversPreparedQueries(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "bloom.preparedQueries.fpRate")
+}
+
+func TestValidateClusterConfig_OIDCRequiresAudience(t *testing.T) {
+	t.Parallel()
+	enabled := true
+	disabled := false
+	for _, tc := range []struct {
+		name     string
+		enabled  *bool
+		issuer   string
+		issuers  []string
+		audience string
+		wantErr  bool
+	}{
+		{name: "OIDC missing", enabled: &enabled, issuer: "https://issuer.example.com", wantErr: true},
+		{name: "OIDC blank", enabled: &enabled, issuer: "https://issuer.example.com", audience: " \t", wantErr: true},
+		{name: "OIDC explicit", enabled: &enabled, issuer: "https://issuer.example.com", audience: "ledger-production"},
+		{name: "OIDC issuers missing", enabled: &enabled, issuers: []string{"https://issuer.example.com"}, wantErr: true},
+		{name: "OIDC issuers explicit", enabled: &enabled, issuers: []string{"https://issuer.example.com"}, audience: "ledger-production"},
+		{name: "static only without audience", enabled: &enabled},
+		{name: "disabled", enabled: &disabled},
+		{name: "unset"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := validateClusterConfig(&ledgerv1alpha1.ClusterSpec{
+				Auth: &ledgerv1alpha1.AuthorizationConfig{Enabled: tc.enabled, Issuer: tc.issuer, Issuers: tc.issuers, Audience: tc.audience},
+				TLS:  &ledgerv1alpha1.TLSConfig{Enabled: true},
+			})
+			if tc.wantErr {
+				require.EqualError(t, err, "auth.enabled with an OIDC issuer requires a non-empty auth.audience for this deployment")
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }

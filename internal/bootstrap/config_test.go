@@ -273,32 +273,61 @@ func TestValidateAuthConfig(t *testing.T) {
 		wantErr string
 	}{
 		{
-			name:    "auth enabled with issuer over TLS required",
+			name:    "OIDC without audience",
 			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			tlsMode: TLSModeRequired,
+			wantErr: "requires a non-empty --auth-audience",
+		},
+		{
+			name:    "Ed25519 without audience",
+			auth:    AuthFlagConfig{Enabled: true, Ed25519KeysFile: "/path/to/keys"},
+			tlsMode: TLSModeRequired,
+		},
+		{
+			name:    "mixed authentication without OIDC audience",
+			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
+			tlsMode: TLSModeRequired,
+			wantErr: "requires a non-empty --auth-audience",
+		},
+		{
+			name:    "blank audience",
+			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Audience: " \t"},
+			tlsMode: TLSModeRequired,
+			wantErr: "requires a non-empty --auth-audience",
+		},
+		{
+			name:    "audience with auth disabled",
+			auth:    AuthFlagConfig{Audience: "urn:formance:ledger:test"},
+			tlsMode: TLSModeRequired,
+			wantErr: "--auth-audience",
+		},
+		{
+			name:    "auth enabled with issuer over TLS required",
+			auth:    AuthFlagConfig{Enabled: true, Audience: "urn:formance:ledger:test", Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeRequired,
 			wantErr: "",
 		},
 		{
 			name:    "auth enabled with issuer over TLS optional is rejected",
-			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			auth:    AuthFlagConfig{Enabled: true, Audience: "urn:formance:ledger:test", Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeOptional,
 			wantErr: "--auth-enabled requires --tls-mode=required",
 		},
 		{
 			name:    "auth enabled with ed25519 keys file over TLS",
-			auth:    AuthFlagConfig{Enabled: true, Ed25519KeysFile: "/path/to/keys"},
+			auth:    AuthFlagConfig{Enabled: true, Audience: "urn:formance:ledger:test", Ed25519KeysFile: "/path/to/keys"},
 			tlsMode: TLSModeRequired,
 			wantErr: "",
 		},
 		{
 			name:    "auth enabled with both issuer and ed25519 over TLS",
-			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
+			auth:    AuthFlagConfig{Enabled: true, Audience: "urn:formance:ledger:test", Issuer: "https://issuer.example.com", Ed25519KeysFile: "/path/to/keys"},
 			tlsMode: TLSModeRequired,
 			wantErr: "",
 		},
 		{
 			name:    "auth enabled with credentials but TLS disabled",
-			auth:    AuthFlagConfig{Enabled: true, Issuer: "https://issuer.example.com"},
+			auth:    AuthFlagConfig{Enabled: true, Audience: "urn:formance:ledger:test", Issuer: "https://issuer.example.com"},
 			tlsMode: TLSModeDisabled,
 			wantErr: "--auth-enabled requires --tls-mode=required",
 		},
