@@ -93,6 +93,7 @@ type DatabricksSinkConfig struct {
 
 // DatabricksSink publishes events to a Databricks Delta table via SQL Warehouse.
 type DatabricksSink struct {
+	errors         sinkErrorSanitizer
 	db             *sql.DB
 	qualifiedTable string
 }
@@ -138,7 +139,9 @@ func newDatabricksConnector(cfg DatabricksSinkConfig) (driver.Connector, error) 
 //
 // Authentication: exactly one of PAT (Token) or OAuth M2M (OAuthClientID +
 // OAuthClientSecret) must be configured.
-func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (*DatabricksSink, error) {
+func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (result *DatabricksSink, retErr error) {
+	sanitizer := newSinkErrorSanitizer(nil, cfg.Token, cfg.OAuthClientSecret)
+	defer sanitizer.sanitizeReturned(&retErr)
 	connector, err := newDatabricksConnector(cfg)
 	if err != nil {
 		return nil, err
@@ -176,12 +179,14 @@ func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (*Databric
 	success = true
 
 	return &DatabricksSink{
+		errors:         sanitizer,
 		db:             db,
 		qualifiedTable: qualifiedTable,
 	}, nil
 }
 
-func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) error {
+func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
 	if len(events) == 0 {
 		return nil
 	}
@@ -220,6 +225,8 @@ func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) 
 	return nil
 }
 
-func (s *DatabricksSink) Close() error {
+func (s *DatabricksSink) Close() (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
+
 	return s.db.Close()
 }

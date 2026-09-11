@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -46,7 +47,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 				t.Parallel()
 				backend := NewMockBackend(gomock.NewController(t))
 				if tc.want != nil {
-					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 						requests := req.GetUnsigned().GetRequests()
 						require.Len(t, requests, 1)
 						require.Equal(t, "ledger1", requests[0].GetApply().GetLedger())
@@ -72,7 +73,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 						}
 						require.Equal(t, tc.want, commonpb.MetadataValueToAny(md["count"]))
 
-						return []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: logData}}}}}}, nil
+						return &domain.ApplyResult{Logs: []*commonpb.Log{{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Data: logData}}}}}}}, nil
 					})
 				}
 				path := "/v3/ledger1/accounts/users:001/metadata"

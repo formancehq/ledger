@@ -148,6 +148,21 @@ var _ = Describe("Simple cluster", func() {
 		})
 
 		It("should restore the state after follower comes back", func() {
+			DeferCleanup(func() {
+				if !CurrentSpecReport().Failed() {
+					return
+				}
+				for i, server := range servers {
+					diagnosticCtx, cancel := context.WithTimeout(ctx, time.Second)
+					state, err := server.ClusterClient.GetClusterState(diagnosticCtx, &clusterpb.GetClusterStateRequest{
+						NodeId: uint32(i + 1),
+					})
+					cancel()
+					AddReportEntry(fmt.Sprintf("follower catch-up: node %d", i+1),
+						fmt.Sprintf("state=%v error=%v", state, err))
+				}
+			})
+
 			lid := *leaderID
 
 			_, err := servers[lid-1].Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
@@ -159,14 +174,19 @@ var _ = Describe("Simple cluster", func() {
 				WithTimeout(30*time.Second).
 				WithPolling(500*time.Millisecond).
 				Should(BeFollower(), "Timed out waiting for node to become follower")
+			// Eventually cannot interrupt a blocked streaming RPC. Bound the
+			// whole polling window so a stalled read barrier fails this spec
+			// and captures Raft/Pebble progress instead of timing out the suite.
+			readCtx, cancelRead := context.WithTimeout(ctx, 5*time.Second)
+			defer cancelRead()
 			Eventually(func(g Gomega) bool {
-				ledgers, err := actions.ListLedgers(ctx, servers[followerID-1].Client)
+				ledgers, err := actions.ListLedgers(readCtx, servers[followerID-1].Client)
 				g.Expect(err).To(Succeed())
 				_, found := ledgers[ledgerName]
 				return found
 			}).To(BeTrue())
 
-			ledger, err := servers[followerID-1].Client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+			ledger, err := servers[followerID-1].Client.GetLedger(readCtx, &servicepb.GetLedgerRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())

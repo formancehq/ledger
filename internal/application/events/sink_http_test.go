@@ -183,3 +183,58 @@ func TestHTTPSink_Close(t *testing.T) {
 	err = sink.Close()
 	require.NoError(t, err)
 }
+
+func TestHTTPSinkTransportErrorIsPublishable(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic(http.ErrAbortHandler)
+	}))
+	defer server.Close()
+	sink, err := NewHTTPSink(HTTPSinkConfig{
+		Endpoint: "http://alice:EXAMPLE_PASSWORD@" + server.URL[len("http://"):] + "/events?api_key=EXAMPLE_API_KEY",
+		Format:   FormatProto,
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, sink.Close()) }()
+	err = sink.Publish(context.Background(), []*eventspb.Event{{LogSequence: 1}})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "EXAMPLE_PASSWORD")
+	require.NotContains(t, err.Error(), "EXAMPLE_API_KEY")
+	require.Contains(t, err.Error(), server.URL[len("http://"):])
+	require.Contains(t, err.Error(), "posting event seq=1")
+	require.Contains(t, err.Error(), "EOF")
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestHTTPSinkRedirectFailureSanitizesActualURL(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/events" {
+			http.Redirect(w, r, "/next?credential=EXAMPLE_CREDENTIAL", http.StatusTemporaryRedirect)
+
+			return
+		}
+		panic(http.ErrAbortHandler)
+	}))
+	defer server.Close()
+	sink, err := NewHTTPSink(HTTPSinkConfig{Endpoint: server.URL + "/events?credential=EXAMPLE_CREDENTIAL", Format: FormatProto})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, sink.Close()) }()
+	err = sink.Publish(t.Context(), []*eventspb.Event{{LogSequence: 1}})
+	require.Error(t, err)
+	require.NotContains(t, err.Error(), "EXAMPLE_CREDENTIAL")
+	require.Contains(t, err.Error(), "/next?")
+	require.Contains(t, err.Error(), "EOF")
+	require.ErrorIs(t, err, io.EOF)
+}
+
+func TestHTTPSinkMalformedURLDiagnosticIsSafe(t *testing.T) {
+	t.Parallel()
+	sink, err := NewHTTPSink(HTTPSinkConfig{Endpoint: "https://alice:EXAMPLE_PASSWORD@example.com/\n", Format: FormatProto})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, sink.Close()) }()
+	err = sink.Publish(t.Context(), []*eventspb.Event{{LogSequence: 1}})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "invalid control character")
+	require.NotContains(t, err.Error(), "EXAMPLE_PASSWORD")
+}

@@ -3,10 +3,16 @@
 package events
 
 import (
+	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/IBM/sarama/mocks"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 
 func TestConfigureSASL_Empty(t *testing.T) {
@@ -115,4 +121,34 @@ func TestScramClient_Begin(t *testing.T) {
 	response, err := client.Step("")
 	require.NoError(t, err)
 	require.NotEmpty(t, response)
+}
+
+func TestKafkaSinkPublishSanitizesDeliveryError(t *testing.T) {
+	t.Parallel()
+	cfg := sarama.NewConfig()
+	cfg.Producer.Return.Successes = true
+	cfg.Producer.Return.Errors = true
+	producer := mocks.NewAsyncProducer(t, cfg)
+	producer.ExpectInputAndFail(errors.New("authentication failed with broker-password"))
+	sink := &KafkaSink{
+		producer: producer,
+		topic:    "ledger-events",
+		format:   FormatProto,
+		closing:  make(chan struct{}),
+		done:     make(chan struct{}),
+		errors:   newSinkErrorSanitizer(nil, "broker-password"),
+	}
+	go sink.dispatchDeliveries()
+	t.Cleanup(func() { require.NoError(t, sink.Close()) })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	err := sink.Publish(ctx, []*eventspb.Event{{LogSequence: 42}})
+	require.Error(t, err)
+	require.NoError(t, ctx.Err(), "test must observe the producer failure, not a timeout")
+	var failures sarama.ProducerErrors
+	require.ErrorAs(t, err, &failures)
+	require.Len(t, failures, 1)
+	require.Contains(t, err.Error(), "ledger-events")
+	require.Contains(t, err.Error(), "authentication failed")
+	require.NotContains(t, err.Error(), "broker-password")
 }
