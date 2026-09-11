@@ -11,13 +11,11 @@
 //     cluster-id metadata (+ cluster-secret bearer when configured),
 //     used by a joining node before it has any user identity.
 //
-// Both adapters share the same underlying state machine: validate the
-// request → mutate the local transport pools so the leader can reach
-// the peer → propose the matching ConfChange. Keeping that sequence in
-// a single type prevents the two adapters from drifting (e.g. one
-// forgetting to add the peer to the service pool, or one ignoring a
-// future per-operation invariant such as "no membership change while
-// in maintenance mode").
+// Both adapters share the same underlying state machine:
+// validate the request → propose the matching ConfChange. Only observation
+// of the committed change updates membership and transport routing. A rejected
+// request must never install uncommitted peer addresses. Keeping admission in
+// a single type prevents the two adapters from drifting.
 //
 // The adapter layer is still responsible for:
 //   - authentication (different on each surface),
@@ -37,8 +35,11 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
+
+// InstanceIDLen is re-exported for transport adapters so every membership
+// surface enforces the same wire identity length.
+const InstanceIDLen = membership.InstanceIDLen
 
 // Peer is the minimal view of a cluster member as returned by ListPeers.
 // It is intentionally proto-free so the application layer does not leak
@@ -48,13 +49,12 @@ type Peer struct {
 	ID             uint64
 	RaftAddress    string
 	ServiceAddress string
+	InstanceID     []byte
 }
 
 // Service is the single owner of cluster membership operations.
 type Service struct {
 	node             *node.Node
-	raftTransport    *node.DefaultTransport
-	servicePool      *transport.ConnectionPool
 	infraMembership  *membership.Membership
 	logger           logging.Logger
 	localRaftAddr    string
@@ -63,16 +63,12 @@ type Service struct {
 
 func NewService(
 	n *node.Node,
-	raftTransport *node.DefaultTransport,
-	servicePool *transport.ConnectionPool,
 	infraMembership *membership.Membership,
 	logger logging.Logger,
 	localRaftAddr, localServiceAddr string,
 ) *Service {
 	return &Service{
 		node:             n,
-		raftTransport:    raftTransport,
-		servicePool:      servicePool,
 		infraMembership:  infraMembership,
 		logger:           logger.WithField("component", "cluster-membership"),
 		localRaftAddr:    localRaftAddr,
@@ -87,16 +83,26 @@ func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 	return s.infraMembership.IsRemoved(nodeID, instanceID)
 }
 
-// AddLearner wires the new peer into the local transport pools and
-// proposes the AddLearner ConfChange on the leader. The caller must
-// have already routed the request to the leader. instanceID is the
-// joining peer's 16-byte identity UUID (EN-1045); may be empty for
-// legacy clients that predate the field.
+// AddLearner proposes administrative registration on the leader. The committed
+// ConfChange observer updates membership and attempts transport wiring.
+// instanceID must be the target's persisted WAL/PVC identity.
 //
 // Returns node.ErrNodeAlreadyInCluster on idempotent retries; adapters
 // map that to their transport-specific "already-exists" status.
 func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
-	if err := validatePeer(nodeID, raftAddr, serviceAddr); err != nil {
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, false)
+}
+
+// JoinAsLearner registers a node that is booting with an empty WAL and no
+// CLUSTER_JOINED marker. Keeping this entry point distinct from the admin
+// AddLearner operation preserves EN-1436's stale-progress fail-fast without
+// inferring caller intent from a missing instanceID sentinel.
+func (s *Service) JoinAsLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
+	return s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID, true)
+}
+
+func (s *Service) addLearner(ctx context.Context, nodeID uint64, raftAddr, serviceAddr string, instanceID []byte, bootJoin bool) error {
+	if err := validatePeer(nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return err
 	}
 
@@ -104,18 +110,20 @@ func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		"learnerNodeID":  nodeID,
 		"raftAddress":    raftAddr,
 		"serviceAddress": serviceAddr,
-	}).Infof("AddLearner: wiring peer and proposing ConfChange")
+	}).Infof("AddLearner: proposing ConfChange")
 
-	s.raftTransport.AddPeer(nodeID, raftAddr)
+	// A learner does not contribute to the current voter quorum, so its
+	// addition can commit before connecting to it. finishReady attempts to wire
+	// the committed endpoints before resolving the proposal's future. Pre-wiring
+	// here would replace live routing even when identity admission rejects.
 
-	if err := s.servicePool.AddPeer(nodeID, serviceAddr); err != nil {
-		// Non-fatal: the leader can still propose the ConfChange; the
-		// service pool will be refreshed by the ConfChange observer
-		// after commit. Surface as a warning so it stays visible.
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("AddLearner: failed to add learner to service pool")
+	var err error
+	if bootJoin {
+		err = s.node.JoinAsLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID)
+	} else {
+		err = s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID)
 	}
-
-	if err := s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID); err != nil {
+	if err != nil {
 		return fmt.Errorf("adding learner: %w", err)
 	}
 
@@ -162,27 +170,24 @@ func (s *Service) RemoveNode(ctx context.Context, nodeID uint64, force bool) err
 
 // ListPeers returns the current cluster members enriched with their
 // Raft and service addresses. The local node fills in its own
-// addresses from the constructor; remote addresses come from the
-// transport / service pools populated by the ConfChange observer.
+// addresses from the constructor; remote addresses and identities come
+// from the same membership snapshot as the configured member list.
 func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
-	clusterState, err := s.node.GetClusterState(ctx)
+	configuredPeers, err := s.node.GetConfiguredPeers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("reading cluster state: %w", err)
 	}
 
 	localNodeID := s.node.GetNodeID()
-	peers := make([]Peer, 0, len(clusterState.GetNodes()))
+	peers := make([]Peer, 0, len(configuredPeers))
 
-	for _, n := range clusterState.GetNodes() {
-		nodeID := uint64(n.GetId())
+	for _, peer := range configuredPeers {
+		nodeID := peer.ID
 
-		var raftAddr, serviceAddr string
+		raftAddr, serviceAddr := peer.Address, peer.ServiceAddress
 		if nodeID == localNodeID {
 			raftAddr = s.localRaftAddr
 			serviceAddr = s.localServiceAddr
-		} else {
-			raftAddr = s.raftTransport.GetPeerAddress(nodeID)
-			serviceAddr = s.servicePool.GetPeerAddress(nodeID)
 		}
 
 		if raftAddr == "" || serviceAddr == "" {
@@ -193,13 +198,14 @@ func (s *Service) ListPeers(ctx context.Context) ([]Peer, error) {
 			ID:             nodeID,
 			RaftAddress:    raftAddr,
 			ServiceAddress: serviceAddr,
+			InstanceID:     peer.InstanceID,
 		})
 	}
 
 	return peers, nil
 }
 
-func validatePeer(nodeID uint64, raftAddr, serviceAddr string) error {
+func validatePeer(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
 	if nodeID == 0 {
 		return errors.New("node_id must be non-zero")
 	}
@@ -210,6 +216,10 @@ func validatePeer(nodeID uint64, raftAddr, serviceAddr string) error {
 
 	if serviceAddr == "" {
 		return errors.New("service_address is required")
+	}
+
+	if err := membership.ValidateInstanceID(instanceID); err != nil {
+		return err
 	}
 
 	return nil

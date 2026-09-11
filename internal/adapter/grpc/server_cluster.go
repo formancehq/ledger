@@ -7,6 +7,8 @@ import (
 	"time"
 
 	ggrpc "google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -16,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
+	raftmembership "github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/diskusage"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -300,6 +303,9 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
 		return nil, err
 	}
+	if err := raftmembership.ValidateInstanceID(req.GetInstanceId()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 
 	impl.logger.WithFields(map[string]any{
 		"requestedNodeID":      req.GetNodeId(),
@@ -322,12 +328,10 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 		return client.AddLearner(ctx, req)
 	}
 
-	// The admin cluster.AddLearner RPC (fctl / ledgerctl "cluster add-learner")
-	// doesn't carry the joining peer's instance_id — the peer isn't booted
-	// yet at this point. The row is refreshed with the correct instance_id
-	// when the peer later goes through JoinAsLearner. See EN-1045 and
-	// docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
-	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), nil); err != nil {
+	// Administrative registration is allowed only for a concrete peer
+	// incarnation. The caller must read the target's persisted INSTANCE_ID;
+	// creating an identity-less phantom member is forbidden.
+	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
 		return nil, err
 	}
 

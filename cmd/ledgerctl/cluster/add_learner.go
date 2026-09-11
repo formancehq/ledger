@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -9,16 +10,17 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
 // NewAddLearnerCommand creates the cluster add-learner command.
 func NewAddLearnerCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:               "add-learner <node-id> <raft-address> <service-address>",
+		Use:               "add-learner <node-id> <raft-address> <service-address> <instance-id>",
 		Short:             "Add a non-voting learner node to the cluster",
-		Long:              "Add a learner (non-voting) node to the Raft cluster. The request is forwarded to the leader.",
-		Args:              cobra.ExactArgs(3),
+		Long:              "Add a learner (non-voting) node to the Raft cluster. instance-id is the 32-character hexadecimal encoding of the target's persisted INSTANCE_ID file. The request is forwarded to the leader.",
+		Args:              cobra.ExactArgs(4),
 		ValidArgsFunction: cobra.NoFileCompletions,
 		RunE:              runAddLearner,
 	}
@@ -40,6 +42,13 @@ func runAddLearner(cmd *cobra.Command, args []string) error {
 
 	raftAddress := args[1]
 	serviceAddress := args[2]
+	instanceID, err := hex.DecodeString(args[3])
+	if err != nil {
+		return fmt.Errorf("invalid instance ID %q: expected hexadecimal: %w", args[3], err)
+	}
+	if err := membership.ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("invalid instance ID %q: %w", args[3], err)
+	}
 
 	client, conn, err := cmdutil.GetClusterClient(cmd)
 	if err != nil {
@@ -55,6 +64,7 @@ func runAddLearner(cmd *cobra.Command, args []string) error {
 		NodeId:         nodeID,
 		RaftAddress:    raftAddress,
 		ServiceAddress: serviceAddress,
+		InstanceId:     instanceID,
 	})
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to add learner", err)

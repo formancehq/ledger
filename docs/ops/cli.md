@@ -1858,7 +1858,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"5"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"8"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -2680,7 +2680,7 @@ ledgerctl cluster transfer-leader 3 --timeout 5s
 Add a non-voting (learner) node to the Raft cluster. The request is forwarded to the current leader.
 
 ```bash
-ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
+ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instance-id> [flags]
 ```
 
 **Flags:**
@@ -2691,6 +2691,9 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
 
 **Behavior:**
 - The request is forwarded to the current leader if sent to a follower
+- `instance-id` is the 32-character hexadecimal encoding of the target node's 16-byte persisted `INSTANCE_ID` file
+- An existing member with replicated progress rejects a different identity with `FailedPrecondition`; retrying the same active identity returns `AlreadyExists`. With no replicated progress, a different identity refreshes the registration.
+- For stale progress, retire the old instance, remove its membership, then retry. If quorum is unavailable, use the leader-only `cluster remove-node --force` procedure in [Cluster operations](./cluster-operations.md), ensuring the retired instance cannot rejoin.
 - The leader proposes a ConfChange to add the node as a learner (non-voting member)
 - Once committed, all nodes add the learner to their transport and service pool
 - The learner receives log entries and snapshots but cannot vote or become leader
@@ -2698,11 +2701,14 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> [flags]
 **Example:**
 
 ```bash
+# Read the target's binary INSTANCE_ID marker as hexadecimal
+INSTANCE_ID_HEX=$(od -An -tx1 /var/lib/ledger/wal/INSTANCE_ID | tr -d ' \n')
+
 # Add node 4 as a learner
-ledgerctl cluster add-learner 4 node-4:7777 node-4:8888
+ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
 
 # Add a learner using custom timeout
-ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 --timeout 30s
+ledgerctl cluster add-learner 5 node-5:7777 node-5:8888 "$INSTANCE_ID_HEX" --timeout 30s
 ```
 
 #### cluster promote-learner
@@ -2753,7 +2759,7 @@ ledgerctl cluster remove-node <node-id> [flags]
 - The request is forwarded to the current leader if sent to a follower
 - The leader proposes a ConfChange to remove the node from the cluster
 - Once committed, all nodes remove the peer from their transport and service pool
-- The leader waits for the committed Raft index to be durable in the FSM, including the peer-row deletion and, when an instance ID exists, the removed-member tombstone; this uses the caller's `--timeout` rather than a separate fixed five-second wait
+- The leader waits for the committed Raft index to be durable in the FSM, including the peer-row deletion and its mandatory removed-member tombstone; this uses the caller's `--timeout` rather than a separate fixed five-second wait
 - If the caller timeout expires after the Raft removal committed, the server returns `Unavailable` with reason `RAFT_NODE_REMOVAL_COMMITTED`; confirm the node is absent with `cluster status`
 - Removing an already-absent node returns `NotFound` with reason `RAFT_NODE_NOT_IN_CLUSTER`
 - Cannot remove the leader node; use `cluster transfer-leader` first
@@ -4356,6 +4362,8 @@ metadata does not match the configured secret with `codes.Unauthenticated`.
 The comparison is constant-time. Leaving `--cluster-secret` empty preserves the
 historical unauthenticated behavior for single-node setups; multi-node
 deployments **MUST** set it.
+
+Peer discovery also fails immediately when a discovered member has a missing or malformed 16-byte `instance_id`; retrying cannot repair this invalid cluster identity. Transient discovery failures still use exponential backoff.
 
 **Joining fails fast on a secret mismatch.** A node started with `--join`
 against a cluster whose RaftServer requires a secret will **not** retry

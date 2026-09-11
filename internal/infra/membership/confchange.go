@@ -9,15 +9,28 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+// InstanceIDLen is the fixed size of the UUID that identifies one concrete
+// peer WAL/PVC incarnation. Every configured Raft member must carry one.
+const InstanceIDLen = 16
+
+// ValidateInstanceID enforces the membership identity invariant at every
+// admission and persistence boundary.
+func ValidateInstanceID(instanceID []byte) error {
+	if len(instanceID) != InstanceIDLen {
+		return fmt.Errorf("instance_id must be %d bytes, got %d", InstanceIDLen, len(instanceID))
+	}
+
+	return nil
+}
+
 // ConfChangeContext carries peer addresses alongside a Raft ConfChange so that
 // all nodes (not just the leader) can learn the new peer's addresses when the
 // ConfChange is committed.
 //
-// InstanceID (EN-1045) is a 16-byte UUID identifying the specific (pod, PVC)
-// incarnation of this peer. Populated on Add/AddLearner from the JoinAsLearner
-// RPC; empty for bootstrap-initial-peer entries whose instance IDs are not
-// known at cluster-formation time (they get filled in when the peer later
-// joins). See docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
+// InstanceID (EN-1045) is the required 16-byte UUID identifying the specific
+// (pod, PVC) incarnation of this peer. Every registration and removal context
+// carries it; promotions repeat the registered learner identity and addresses.
+// See docs/technical/architecture/subsystems/consensus/removed-member-registry.md.
 type ConfChangeContext struct {
 	RaftAddress    string `json:"raftAddress"`
 	ServiceAddress string `json:"serviceAddress"`
@@ -36,13 +49,6 @@ func (c ConfChangeContext) Equal(other ConfChangeContext) bool {
 	return c.RaftAddress == other.RaftAddress &&
 		c.ServiceAddress == other.ServiceAddress &&
 		bytes.Equal(c.InstanceID, other.InstanceID)
-}
-
-// HasPeerRegistration reports whether the context carries data that should
-// create or refresh a peer row. Promotion contexts contain only ProposalID and
-// must not overwrite the existing row with empty addresses.
-func (c ConfChangeContext) HasPeerRegistration() bool {
-	return c.RaftAddress != "" || c.ServiceAddress != "" || len(c.InstanceID) > 0
 }
 
 // MarshalConfChangeContext serialises a ConfChangeContext to JSON bytes
@@ -123,16 +129,14 @@ func UnmarshalConfChangeV2(entry *raftpb.Entry) (*raftpb.ConfChangeV2, bool, err
 // cc.Context carries a payload:
 //   - Add / AddLearnerNode carry the joining peer's addresses and
 //     instanceID (see JoinAsLearner path).
-//   - UpdateNode carries the same payload as Add/AddLearner and is used
-//     to refresh an existing peer row — currently the admin
-//     cluster.AddLearner + boot flow (EN-1045) where the row was
-//     initially written with a nil instance_id.
+//   - UpdateNode carries the same payload as Add/AddLearner and refreshes
+//     an existing peer row only while that learner has no replicated progress.
 //   - RemoveNode carries the removed peer's instanceID so the FSM apply
 //     path lands the corresponding RemovedMemberEntry atomically with the
 //     peer row delete (EN-1045). The RaftAddress / ServiceAddress fields
 //     on the RemoveNode ctx are empty by convention.
-//   - PromoteLearner sends AddNode with a correlation-only Context. Callers
-//     must use HasPeerRegistration before treating it as an address payload.
+//   - PromoteLearner sends AddNode with the registered learner identity and
+//     addresses, plus ProposalID for an explicit administrative promotion.
 //
 // A single cc.Context carries exactly one peer identity. A ConfChangeV2
 // that bundles multiple Add/AddLearner/UpdateNode/RemoveNode changes with
@@ -187,4 +191,35 @@ func WalkConfChangeContexts(cc *raftpb.ConfChangeV2, fn func(raftpb.ConfChangeTy
 	}
 
 	return nil
+}
+
+// ValidateConfChangeIdentities enforces the universal member-identity
+// invariant before either the deterministic FSM write or RawNode's ConfState
+// mutation runs. Promotions carry full registration data too: accepting an
+// empty AddNode would let Raft create an identity-less voter. Validation uses
+// only the committed payload, never a node-local cache or a Pebble read.
+func ValidateConfChangeIdentities(cc *raftpb.ConfChangeV2) error {
+	return WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *ConfChangeContext) error {
+		switch t {
+		case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:
+			if ctx == nil {
+				return fmt.Errorf("invariant: ConfChange registration for peer %d has no payload", nodeID)
+			}
+			if ctx.RaftAddress == "" || ctx.ServiceAddress == "" {
+				return fmt.Errorf("invariant: ConfChange registration for peer %d requires raft and service addresses", nodeID)
+			}
+		case raftpb.ConfChangeRemoveNode:
+			if ctx == nil {
+				return fmt.Errorf("invariant: ConfChange removal for peer %d has no context", nodeID)
+			}
+		default:
+			return nil
+		}
+
+		if err := ValidateInstanceID(ctx.InstanceID); err != nil {
+			return fmt.Errorf("invariant: ConfChange for peer %d has invalid identity: %w", nodeID, err)
+		}
+
+		return nil
+	})
 }

@@ -88,6 +88,18 @@ type nodeProvideResult struct {
 	FreshStart walFreshStart
 }
 
+// provideNodeConfig establishes the peer identity before exposing the Raft
+// configuration to any dependent provider. In particular, provideWAL depends
+// on node.NodeConfig (rather than the broader Config) so Fx cannot create WAL
+// artifacts before INSTANCE_ID has been read or persisted.
+func provideNodeConfig(cfg Config) (node.NodeConfig, error) {
+	return buildNodeConfig(cfg)
+}
+
+func provideWAL(cfg node.NodeConfig, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
+	return wal.New(cfg.WalDir, logger, meterProvider.Meter("wal"))
+}
+
 func Module() fx.Option {
 	return fx.Options(
 		transport.Module(),
@@ -161,9 +173,7 @@ func Module() fx.Option {
 
 				return store, nil
 			},
-			func(cfg Config, logger logging.Logger, meterProvider metric.MeterProvider) (*wal.DefaultWAL, error) {
-				return wal.New(cfg.RaftConfig.WalDir, logger, meterProvider.Meter("wal"))
-			},
+			provideWAL,
 			func(cfg Config, logger logging.Logger) (*spool.Default, error) {
 				return spool.NewDefault(spool.DefaultSpoolConfig{
 					Dir:             filepath.Join(cfg.DataDir, "spool"),
@@ -377,7 +387,7 @@ func Module() fx.Option {
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
 			buildResponseSigner,
-			buildNodeConfig,
+			provideNodeConfig,
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},
@@ -452,13 +462,13 @@ func Module() fx.Option {
 					meterProvider.Meter("storage"),
 				)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, infraMembership *raftmembership.Membership, cfg Config, logger logging.Logger) *membership.Service {
+			func(n *node.Node, infraMembership *raftmembership.Membership, cfg Config, logger logging.Logger) *membership.Service {
 				return membership.NewService(
-					n, raftTransport, servicePool, infraMembership, logger,
+					n, infraMembership, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``)),
+			},
 			func(builder *plan.Builder, n *node.Node, store *dal.Store, cfg Config, logger logging.Logger) *backupapp.Orchestrator {
 				return backupapp.NewOrchestrator(newBackupProposer(builder, n), store, logger, n.GetNodeID(), backupapp.NewExecutorRegistry(), cfg.BackupMaxSegmentBytes)
 			},

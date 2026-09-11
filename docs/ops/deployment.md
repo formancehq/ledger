@@ -60,7 +60,7 @@ Available flags for `run`:
 - `--wal-dir`: WAL directory for Raft (default: `./wal`)
 - `--data-dir`: Data directory for application storage (default: `./data`)
 - `--bootstrap`: Initialize a new single-node cluster (mutually exclusive with `--join`)
-- `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying until the discovery deadline (EN-1080). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
+- `--join`: Raft transport address of an existing cluster member to join as a learner (e.g., `--join node-1:7777`; mutually exclusive with `--bootstrap`). Discovery and learner registration go through the inter-node `ClusterBootstrapService` on the RaftServer — no user JWT is required. If the target cluster enforces a `--cluster-secret` and this node's secret is missing or wrong, startup **fails fast** with an actionable error rather than retrying until startup is cancelled (EN-1080). See the [`--cluster-secret`](cli.md#server-cluster-secret-flag) section.
 - `--learner-promotion-threshold`: Max log entry lag before auto-promoting a caught-up learner to voter (default: `100`, `0` = disable auto-promotion)
 - `--http-port`: HTTP server port (default: `9000`)
 - `--health-check-interval`: Interval between disk usage health checks (default: `30s`)
@@ -354,7 +354,7 @@ The operator creates a StatefulSet with a headless service for automatic discove
 
 ### Automatic Cluster Initialization
 
-Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subsequent pods use `--join` to contact pod-0's RaftServer address and join the cluster as learner (non-voting) nodes. The `--join` flag triggers peer discovery (`ClusterBootstrapService.GetPeers`) from the existing cluster member with retry and exponential backoff (up to 60 seconds), allowing the bootstrap node time to start.
+Pod 0 uses the `--bootstrap` flag to create a new single-node cluster. All subsequent pods use `--join` to contact pod-0's RaftServer address and join the cluster as learner (non-voting) nodes. The `--join` flag triggers peer discovery (`ClusterBootstrapService.GetPeers`) from the existing cluster member with retry and exponential backoff until the startup context is cancelled, allowing the bootstrap node time to start. A discovered peer with a missing or malformed 16-byte instance identity fails startup immediately instead of being retried.
 
 Once a learner has caught up with the leader's log (within the threshold configured by `--learner-promotion-threshold`, default: 100 entries), it is automatically promoted to a full voting member.
 
@@ -658,6 +658,8 @@ config:
 > **Tuning compaction margin**: The `compactionMargin` controls how many WAL entries are retained after compaction, allowing followers that are slightly behind to catch up without needing a full snapshot transfer. Increase this value if followers frequently fall behind.
 
 ### Configuration Safety Checks at Startup
+
+Before opening the WAL, startup validates the persisted `INSTANCE_ID`. If any durable WAL marker exists but `INSTANCE_ID` is missing, startup fails rather than generating a replacement identity. This check is not bypassed by `--unsafe-skip-config-validation`; see [membership recovery](../technical/architecture/subsystems/consensus/removed-member-registry.md).
 
 The server persists critical configuration parameters in Pebble under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
 

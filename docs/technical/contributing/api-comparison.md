@@ -21,7 +21,9 @@ matching signed negative and unsigned nonnegative metadata values. See
 ### Service protocol compatibility (EN-1851)
 
 The v3 gRPC service requires one `ledger-protocol-version` metadata value per
-business RPC, equal to `pkg/grpcprotocol.Version`. Missing,
+business RPC, equal to `pkg/grpcprotocol.Version` (currently `"8"`). Revision 8
+requires the target's 16-byte `instance_id` on administrative `AddLearner`
+requests; revision 7 clients that omit it are incompatible. Missing,
 invalid, duplicate, or different revisions fail with `FailedPrecondition` before
 business handler execution. This applies to unary and streaming Bucket, Cluster,
 and Restore operations, including internal forwarding. Discovery, gRPC health,
@@ -789,6 +791,18 @@ See [Global Log Architecture](../architecture/subsystems/consensus/global-log.md
 ## gRPC API
 
 The POC provides a gRPC API for internal service communication (Raft node forwarding to leader) and can be used by clients.
+
+### Cluster membership wire contract
+
+Ledger v3 requires a concrete 16-byte member identity on every membership
+creation and discovery message. `ClusterService.AddLearnerRequest.instance_id`
+is required and contains the raw bytes from the target's persisted
+`INSTANCE_ID` marker. The inter-node `JoinAsLearnerRequest.instance_id` has the
+same contract, and `ClusterBootstrapService.GetPeers` returns each member's ID
+in `PeerInfo.instance_id`. Missing or incorrectly sized registration identities
+are rejected with gRPC `InvalidArgument`. Peer discovery aborts startup when a
+returned member has an invalid identity, rather than retrying a malformed
+response. There is no identity-less compatibility path because v3 is unreleased.
 
 ### BucketService Methods
 
