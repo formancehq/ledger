@@ -157,6 +157,7 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 | Operator | File | Purpose |
 |----------|------|---------|
 | `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
+| `BoundedEntityIterator` with `LedgerLogRangeIterator`/`PebbleTxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
 | `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
 | `OrIterator[D]` | `combinator_or.go` | Merge-union. |
 | `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |

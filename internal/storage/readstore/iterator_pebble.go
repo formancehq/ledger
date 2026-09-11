@@ -742,8 +742,25 @@ func (it *PebbleReverseTxIterator) extractTxID(key []byte) []byte {
 	return key[it.idOffset : it.idOffset+8]
 }
 
+// LedgerLogRangeIterator streams ledger-local log IDs in a half-open range.
+// Keys: [0x09][ledger 64B][logID_BE(8B)], one key per log ID.
+type LedgerLogRangeIterator struct {
+	*BoundedEntityIterator
+}
+
+// NewLedgerLogRangeIterator creates a bounded forward iterator over log IDs.
+// Nil bounds are open; lower is inclusive and upper is exclusive.
+func NewLedgerLogRangeIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName string, lower, upper []byte) (*LedgerLogRangeIterator, error) {
+	inner, err := NewBoundedEntityIterator(reader, LedgerLogPrefix(kb, ledgerName), lower, upper, 8)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LedgerLogRangeIterator{BoundedEntityIterator: inner}, nil
+}
+
 // LedgerLogIterator iterates over log IDs from the read index (Pebble).
-// Keys: [0x09][ledger\x00][logID_BE(8B)].
+// Keys: [0x09][ledger 64B][logID_BE(8B)].
 type LedgerLogIterator struct {
 	inner *PrefixIterator
 }
@@ -766,161 +783,22 @@ func (it *LedgerLogIterator) Seek(target []byte) bool { return it.inner.Seek(tar
 func (it *LedgerLogIterator) Err() error              { return it.inner.Err() }
 func (it *LedgerLogIterator) Close()                  { it.inner.Close() }
 
-// PebbleTxRangeIterator iterates over transaction IDs within a [min, max) range.
-// Used for compileTxIDCondition range scans.
+// PebbleTxRangeIterator streams canonical transaction IDs in a half-open range.
+// Transaction attributes have one key per ID, so plain Next advances without
+// deduplication or incrementing the ID (which would wrap at MaxUint64).
 type PebbleTxRangeIterator struct {
-	iter       *pebble.Iterator
-	lowerBound []byte // stored for Seek initial positioning
-	idOffset   int
-
-	current   []byte
-	started   bool
-	exhausted bool
-	floor     seekFloor
+	*BoundedEntityIterator
 }
 
 // NewPebbleTxRangeIterator creates a bounded transaction iterator for range queries.
+// Nil bounds are open; lower is inclusive and upper is exclusive.
 func NewPebbleTxRangeIterator(reader dal.PebbleReader, ledgerName string, lower, upper []byte) (*PebbleTxRangeIterator, error) {
-	prefix := txAttributeCode(ledgerName)
-
-	lowerBound := make([]byte, len(prefix)+len(lower))
-	copy(lowerBound, prefix)
-	copy(lowerBound[len(prefix):], lower)
-
-	var upperBound []byte
-	if upper != nil {
-		upperBound = make([]byte, len(prefix)+len(upper))
-		copy(upperBound, prefix)
-		copy(upperBound[len(prefix):], upper)
-	} else {
-		upperBound = IncrementBytes(prefix)
-	}
-
-	iter, err := reader.NewIter(&pebble.IterOptions{
-		LowerBound: lowerBound,
-		UpperBound: upperBound,
-	})
+	inner, err := NewBoundedEntityIterator(reader, txAttributeCode(ledgerName), lower, upper, 8)
 	if err != nil {
 		return nil, err
 	}
 
-	return &PebbleTxRangeIterator{
-		iter:       iter,
-		lowerBound: lowerBound,
-		idOffset:   len(prefix),
-	}, nil
-}
-
-func (it *PebbleTxRangeIterator) Next() bool {
-	if it.exhausted {
-		return false
-	}
-
-	if !it.started {
-		it.started = true
-		if !it.iter.SeekGE(it.lowerBound) {
-			it.exhausted = true
-
-			return false
-		}
-
-		txID := it.extractTxID(it.iter.Key())
-		if txID != nil {
-			it.current = copyBytes(txID)
-
-			return true
-		}
-	}
-
-	// Skip byLog entries for current txID
-	nextTxID := incrementUint64Bytes(it.current)
-	seekKey := make([]byte, it.idOffset+8)
-	// Reconstruct the prefix from the current Pebble key.
-	if k := it.iter.Key(); len(k) >= it.idOffset {
-		copy(seekKey, k[:it.idOffset])
-	}
-
-	copy(seekKey[it.idOffset:], nextTxID)
-
-	if !it.iter.SeekGE(seekKey) {
-		it.exhausted = true
-
-		return false
-	}
-
-	txID := it.extractTxID(it.iter.Key())
-	if txID != nil {
-		it.current = copyBytes(txID)
-
-		return true
-	}
-
-	it.exhausted = true
-
-	return false
-}
-
-func (it *PebbleTxRangeIterator) Current() []byte { return it.current }
-
-func (it *PebbleTxRangeIterator) Seek(target []byte) bool {
-	// A prior failed seek at or below target proves this one empty too.
-	if it.floor.covers(target) {
-		it.exhausted = true
-
-		return false
-	}
-
-	// Absolute reposition: clear the exhausted latch so a re-seek after
-	// exhaustion still finds entities (the body re-seeks from target).
-	it.exhausted = false
-
-	it.started = true
-
-	// Build seek key from stored lower bound prefix + target
-	seekKey := make([]byte, it.idOffset+len(target))
-	copy(seekKey, it.lowerBound[:min(it.idOffset, len(it.lowerBound))])
-	copy(seekKey[it.idOffset:], target)
-
-	if !it.iter.SeekGE(seekKey) {
-		it.exhausted = true
-		it.floor.fail(target, it.iter.Error())
-
-		return false
-	}
-
-	txID := it.extractTxID(it.iter.Key())
-	if txID != nil && compareEntities(txID, target) >= 0 {
-		it.current = copyBytes(txID)
-
-		return true
-	}
-
-	it.exhausted = true
-	it.floor.fail(target, it.iter.Error())
-
-	return false
-}
-
-func (it *PebbleTxRangeIterator) Err() error {
-	if it.iter == nil {
-		return nil
-	}
-
-	return it.iter.Error()
-}
-
-func (it *PebbleTxRangeIterator) Close() {
-	if it.iter != nil {
-		_ = it.iter.Close()
-	}
-}
-
-func (it *PebbleTxRangeIterator) extractTxID(key []byte) []byte {
-	if len(key) < it.idOffset+8 {
-		return nil
-	}
-
-	return key[it.idOffset : it.idOffset+8]
+	return &PebbleTxRangeIterator{BoundedEntityIterator: inner}, nil
 }
 
 // --- transaction prefix helper ---
