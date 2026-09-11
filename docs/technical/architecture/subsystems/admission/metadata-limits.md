@@ -106,6 +106,13 @@ be bypassed by spreading caller metadata across several orders. Empty maps
 store no metadata and contribute no bytes. Existing transaction-not-found and
 already-reverted checks still precede metadata validation for reversals.
 
+Metadata deletion and field-type set/remove orders recheck their bare key and
+the same proposal-wide budget against the committed policy before mutation.
+This includes account, transaction and ledger metadata deletion. The limit check precedes
+key-existence checks so a skippable `METADATA_NOT_FOUND` outcome cannot bypass
+the ceiling. A batch containing only bare keys therefore cannot bypass a tighter
+key or command ceiling committed after admission.
+
 `ProcessOrders` seeds a proposal-wide budget with every order's input metadata,
 including bare keys in deletion and schema orders. Each transaction replaces
 its input contribution with the merged transaction and account maps, then

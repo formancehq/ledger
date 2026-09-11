@@ -120,6 +120,10 @@ func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, 
 		return nil, domain.ErrMetadataKeyRequired
 	}
 
+	if err := validateMetadataKeyAtApply(order.GetKey(), ctx); err != nil {
+		return nil, err
+	}
+
 	loggedTarget := order.GetTarget()
 
 	switch target := order.GetTarget().GetTarget().(type) {

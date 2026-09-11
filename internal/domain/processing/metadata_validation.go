@@ -29,3 +29,22 @@ func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *C
 
 	return limits.ValidateCommandBytes(total)
 }
+
+// validateMetadataKeyAtApply bounds bare caller keys against the committed
+// policy before a delete or schema change mutates state.
+func validateMetadataKeyAtApply(key string, ctx *Context) domain.Describable {
+	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
+	if err := limits.ValidateKey(key); err != nil {
+		return err
+	}
+	// The command budget already includes every caller key and any earlier
+	// generated metadata. Direct handler callers execute only this order.
+	var total uint64
+	if ctx.metadataBudget != nil {
+		total = ctx.metadataBudget.bytes
+	} else {
+		total = uint64(len(key))
+	}
+
+	return limits.ValidateCommandBytes(total)
+}

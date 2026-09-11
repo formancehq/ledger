@@ -64,6 +64,10 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 		return nil, loadErr
 	}
 
+	if err := validateMetadataKeyAtApply(order.GetKey(), ctx); err != nil {
+		return nil, err
+	}
+
 	metaKey := domain.LedgerMetadataKey{
 		// Key off the command envelope, never the loaded projection's
 		// mutable name field (see processAddLedgerMetadata).
