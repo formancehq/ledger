@@ -4787,6 +4787,17 @@ Add or update (upsert) a named event sink configuration. The configuration is re
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 
+NATS subjects are `{topic}.{ledgerToken}.{lowercaseEventType}`. Ledger-name dots
+are encoded as `%2E`, so ledger `a..b` publishes under
+`ledger.events.a%2E%2Eb.created_ledger` with topic `ledger.events`. The token
+`_system` denotes an empty event ledger; exact ledger names `_` and `_system`
+are reserved and rejected at admission.
+Ordinary names such as `orders` are unchanged. Update exact consumer filters,
+stream subjects and NATS permissions for encoded names; a dotted name is now
+one token, not a subject hierarchy. Payloads retain the original ledger name.
+See the [NATS routing contract](../technical/architecture/subsystems/events-mirror/events.md#nats-ledger-name-routing-en-2023)
+for examples and wildcard behavior.
+
 ```bash
 # Add a NATS sink with default settings
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events

@@ -29,18 +29,10 @@ var (
 	// instead of stalling — or corrupting — the mirror on every batch.
 	ErrMirrorRewriteRuleInvalid = domain.NewValidationSentinel("mirrorSource.rewriteRules: each rule must have a boolean match and a cel expression returning a transaction")
 
-	// ErrLedgerNameReservedPrefix rejects the ledger name "_". That single
-	// segment is reserved for system / non-ledger HTTP routes, which all live
-	// under /v3/_/… (e.g. GET /v3/_/audit-entries, /v3/_/indexes,
-	// /v3/_/events-sinks, /v3/_/signing-keys) and share the /v3/{ledgerName} path
-	// namespace. A ledger named "_" would be shadowed by that fixed segment.
-	// Reserving the one segment "_" — rather than an ever-growing list of
-	// individual reserved words — keeps the guard in lock-step with the route
-	// table for free and applies uniformly across transports (see
-	// internal/adapter/http/handler.go). Enforced on every ledger-scoped order
-	// (validateOrderLedgerName), not just CreateLedger, so a "_" ledger can never
-	// be created or written to.
-	ErrLedgerNameReservedPrefix = domain.NewValidationSentinel("ledger name \"_\" is reserved for system API routes")
+	// ErrLedgerNameReservedPrefix rejects the exact names "_" (system API
+	// routes) and "_system" (system events) on every ledger-scoped order.
+	// Other underscore-prefixed names remain valid.
+	ErrLedgerNameReservedPrefix = domain.NewValidationSentinel("ledger names \"_\" and \"_system\" are reserved for system use")
 
 	// ErrIndexTargetUnsupported rejects a CreateIndex order for an IndexID the
 	// builder has no backfill path for: a metadata target other than
