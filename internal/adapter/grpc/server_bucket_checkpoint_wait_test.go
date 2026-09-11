@@ -9,11 +9,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/metadata"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -92,13 +94,15 @@ func TestApplyWaitsForCreatedQueryCheckpoint(t *testing.T) {
 				require.NoError(t, readstore.MarkCheckpointReady(mkdirAllForCheckpoint(t, dir)))
 			}
 
-			mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(test.logs, nil)
+			mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: test.logs}, nil)
 
 			// A deadline is the only observable difference between "waited" and
 			// "did not wait": an unmaterialized checkpoint parks until the
 			// context expires, anything else returns well inside it.
 			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 			defer cancel()
+			// A caller cannot bypass fresh-creation readiness by spoofing provenance.
+			ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(metadataKeyApplyReplayed, "true"))
 
 			req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_CreateQueryCheckpoint{

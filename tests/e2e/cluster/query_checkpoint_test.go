@@ -6,6 +6,8 @@ import (
 	"context"
 	"io"
 	"math/big"
+	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -497,6 +499,78 @@ var _ = Describe("Query Checkpoints (multi-node readiness)", Ordered, func() {
 			}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
 		}
 	})
+
+	for _, route := range []string{"leader", "follower"} {
+		It("replays a deleted checkpoint through the "+route+" without recreating it", func() {
+			ctx, cancelCase := context.WithTimeout(ctx, 2*time.Minute)
+			defer cancelCase()
+			state, err := servers[0].ClusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+			Expect(err).To(Succeed())
+			Expect(state.GetLeader()).NotTo(BeZero())
+
+			var servingNode *testutil.ServiceWithClient
+			for _, node := range servers {
+				if (node.NodeID == state.GetLeader()) == (route == "leader") {
+					servingNode = node
+					break
+				}
+			}
+			Expect(servingNode).NotTo(BeNil())
+
+			request := actions.WithIdempotencyKey("deleted-checkpoint-replay-"+route, actions.CreateQueryCheckpointAction())
+			original, err := servingNode.Client.Apply(ctx, request)
+			Expect(err).To(Succeed())
+			Expect(original.GetLogs()).To(HaveLen(1))
+			created := original.GetLogs()[0].GetPayload().GetCreatedQueryCheckpoint()
+			Expect(created).NotTo(BeNil())
+			checkpointID := created.GetCheckpointId()
+			Expect(checkpointID).NotTo(BeZero())
+
+			marker := func(node *testutil.ServiceWithClient) string {
+				return filepath.Join(node.DataDir, "query-checkpoints", strconv.FormatUint(checkpointID, 10), "readindex", ".ready")
+			}
+			for _, node := range servers {
+				Eventually(func() error {
+					_, err := os.Stat(marker(node))
+					return err
+				}, 30*time.Second, 100*time.Millisecond).Should(Succeed())
+			}
+
+			deleted, err := servingNode.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteQueryCheckpointAction(checkpointID)))
+			Expect(err).To(Succeed())
+			Expect(deleted.GetLogs()).To(HaveLen(1))
+			for _, node := range servers {
+				Eventually(func() bool {
+					_, err := os.Stat(marker(node))
+					return os.IsNotExist(err)
+				}, 30*time.Second, 100*time.Millisecond).Should(BeTrue())
+			}
+
+			// A replay must return the historical result even though its readiness
+			// marker has been deleted and will never become ready again.
+			replayCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			defer cancel()
+			replayed, err := servingNode.Client.Apply(replayCtx, request)
+			Expect(err).To(Succeed())
+			Expect(logSequences(replayed.GetLogs())).To(Equal(logSequences(original.GetLogs())))
+			Expect(replayed.GetLogs()[0].GetPayload().GetCreatedQueryCheckpoint().GetCheckpointId()).To(Equal(checkpointID))
+
+			// A subsequent real mutation proves replay consumed no new log sequence.
+			barrier, err := servingNode.Client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("qcp-replay-barrier-"+route, nil)))
+			Expect(err).To(Succeed())
+			Expect(barrier.GetLogs()).To(HaveLen(1))
+			Expect(barrier.GetLogs()[0].GetSequence()).To(Equal(deleted.GetLogs()[0].GetSequence() + 1))
+			for _, node := range servers {
+				_, err := os.Stat(marker(node))
+				Expect(os.IsNotExist(err)).To(BeTrue())
+				checkpoints, err := node.ClusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+				Expect(err).To(Succeed())
+				for _, checkpoint := range checkpoints.GetCheckpoints() {
+					Expect(checkpoint.GetCheckpointId()).NotTo(Equal(checkpointID))
+				}
+			}
+		})
+	}
 
 	It("returns NotFound (not Unavailable) for a checkpoint id that was never created", func() {
 		_, err := servers[0].Client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{

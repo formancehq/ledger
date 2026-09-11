@@ -53,8 +53,8 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(err)
 	}
 
-	// Apply does not return until the read index checkpoint is materialized on
-	// the serving node, so a read at the returned ID succeeds immediately there.
+	// A new creation waits for local readiness unless deleted meanwhile. A keyed
+	// replay returns the historical result without guaranteeing current readiness.
 	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		if spinner != nil {

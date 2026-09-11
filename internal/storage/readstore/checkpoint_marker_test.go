@@ -2,8 +2,10 @@ package readstore
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -126,7 +128,7 @@ func TestWaitForCheckpointFastPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	require.NoError(t, s.WaitForCheckpoint(ctx, dir))
+	require.NoError(t, s.WaitForCheckpoint(ctx, dir, nil))
 }
 
 // TestWaitForCheckpointBlocksUntilMarker reproduces the EN-1460 create-side
@@ -143,7 +145,7 @@ func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		waitErr <- s.WaitForCheckpoint(ctx, dir)
+		waitErr <- s.WaitForCheckpoint(ctx, dir, nil)
 	}()
 
 	// The waiter must not return yet — the marker is absent.
@@ -180,7 +182,7 @@ func TestWaitForCheckpointContextCancel(t *testing.T) {
 
 	waitErr := make(chan error, 1)
 	go func() {
-		waitErr <- s.WaitForCheckpoint(ctx, dir)
+		waitErr <- s.WaitForCheckpoint(ctx, dir, nil)
 	}()
 
 	select {
@@ -197,4 +199,58 @@ func TestWaitForCheckpointContextCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("WaitForCheckpoint did not return after context cancel")
 	}
+}
+
+// Deletion must release a waiter even when the index builder sends no progress.
+func TestWaitForCheckpointDeletedWhileWaiting(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	dir := t.TempDir()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	checked := make(chan struct{}, 1)
+	var deleted atomic.Bool
+	waitErr := make(chan error, 1)
+	go func() {
+		waitErr <- s.WaitForCheckpoint(ctx, dir, func() (bool, error) {
+			value := deleted.Load()
+			select {
+			case checked <- struct{}{}:
+			default:
+			}
+
+			return value, nil
+		})
+	}()
+	select {
+	case <-checked:
+	case <-ctx.Done():
+		t.Fatal("checkpoint lifecycle was never checked")
+	}
+	select {
+	case err := <-waitErr:
+		t.Fatalf("wait returned while checkpoint was still live: %v", err)
+	default:
+	}
+	deleted.Store(true)
+	select {
+	case err := <-waitErr:
+		require.NoError(t, err)
+	case <-ctx.Done():
+		t.Fatal("deletion did not release checkpoint wait")
+	}
+	require.False(t, CheckpointDirReady(dir))
+}
+
+func TestWaitForCheckpointDeletionCheckError(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	dir := t.TempDir()
+	// The lifecycle check must not be bypassed by the ready-marker fast path.
+	require.NoError(t, MarkCheckpointReady(dir))
+	wantErr := errors.New("checkpoint lifecycle unavailable")
+	err := s.WaitForCheckpoint(context.Background(), dir, func() (bool, error) {
+		return false, wantErr
+	})
+	require.ErrorIs(t, err, wantErr)
 }

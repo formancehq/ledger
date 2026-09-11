@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -257,7 +258,7 @@ func TestApply_RequiresBusinessScopes(t *testing.T) {
 
 		controller := NewMockController(gomock.NewController(t))
 		if expectApply {
-			controller.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, nil)
+			controller.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{}, nil)
 		}
 
 		histogram, err := noop.NewMeterProvider().Meter("test").Int64Histogram("grpc.apply.duration")

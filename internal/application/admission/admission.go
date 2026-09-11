@@ -502,7 +502,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (logs []*commonpb.Log, err error) {
+func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (response *domain.ApplyResult, err error) {
 	if err := a.writeGate.CheckWritesAllowed(); err != nil {
 		return nil, err
 	}
@@ -820,7 +820,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Microseconds())
 	}()
 
-	logs = make([]*commonpb.Log, len(result.Logs))
+	logs := make([]*commonpb.Log, len(result.Logs))
 
 	// A referenced log is resolved from the permanent log history. The read
 	// needs a read handle, which the raw store is not; open one lazily, only
@@ -859,7 +859,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 		logs[i] = log
 	}
 
-	return logs, err
+	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {

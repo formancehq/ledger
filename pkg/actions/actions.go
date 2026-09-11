@@ -637,7 +637,9 @@ func DeletePreparedQueryAction(ledger, name string) *servicepb.Request {
 // CreateQueryCheckpointAction creates an action for taking a query checkpoint.
 // The checkpoint is a batch trigger: admission accepts it only as the last
 // action of a batch. With response payloads enabled, Apply waits until the read
-// index checkpoint is materialized on the serving node. With skip_response,
+// index checkpoint is materialized on the serving node, unless deleted meanwhile.
+// An idempotent replay returns the historical result without waiting or recreating
+// the checkpoint; it makes no current readiness/existence guarantee. With skip_response,
 // only the leader is guaranteed ready; a forwarding follower skips its local
 // wait because the leader has already stripped the checkpoint ID.
 func CreateQueryCheckpointAction() *servicepb.Request {

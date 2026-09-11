@@ -111,7 +111,7 @@ var (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
-	Admit(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error)
+	Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error)
 	Barrier(ctx context.Context) (uint64, error)
 }
 
@@ -2098,12 +2098,12 @@ func (ctrl *DefaultController) Barrier(ctx context.Context) (uint64, error) {
 	return ctrl.admission.Barrier(ctx)
 }
 
-// Apply applies a list of envelopes and returns the resulting logs.
+// Apply applies a list of envelopes and returns logs with execution provenance.
 // The controller forwards envelopes to the Raft admission layer, which
 // verifies signatures (for signed envelopes) and unwraps them into Requests.
 // The FSM is responsible for interpreting orders, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency.
-func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	// Non-authoritative peek for metrics and the empty-batch guard. A signed
 	// payload is opaque until admission verifies its signature over the raw
 	// bytes, so a peek failure here (e.g. a tampered payload) must defer to
@@ -2126,7 +2126,7 @@ func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRe
 		return nil, errors.New("at least one request is required")
 	}
 
-	logs, err := ctrl.admission.Admit(ctx, req)
+	result, err := ctrl.admission.Admit(ctx, req)
 
 	ctrl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
 		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
@@ -2135,7 +2135,7 @@ func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRe
 		return nil, fmt.Errorf("applying raft requests: %w", err)
 	}
 
-	return logs, nil
+	return result, nil
 }
 
 var _ Controller = (*DefaultController)(nil)

@@ -4942,7 +4942,8 @@ ledgerctl query-checkpoint create [flags]
 - Submits a `create_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 - Routes through Raft so the checkpoint is replicated to all nodes
 - The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is materialized by the index builder on each replica
-- The command does not return until the read index checkpoint is materialized on the node it talked to, so a point-in-time read there succeeds immediately
+- A newly executed creation waits for the serving node's read-index marker, unless concurrent deletion supersedes it. If the checkpoint remains live, a point-in-time read there succeeds immediately
+- A retry with the same `--idempotency-key` returns the historical result without waiting or recreating the checkpoint, even if the original call is still materializing or the checkpoint has been deleted
 - Reports the checkpoint id and max sequence; `--json` emits `{"checkpointId":…,"maxSequence":…}` unchanged
 - Checkpoints are stored under `{dataDir}/query-checkpoints/{id}/main/` and `{dataDir}/query-checkpoints/{id}/readindex/`
 - Not cleaned up on restart — use `query-checkpoint delete` to remove

@@ -18,6 +18,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -129,7 +130,7 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 			var captured *commonpb.CallerSnapshot
 			controller := NewMockController(gomock.NewController(t))
 			controller.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-				func(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+				func(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 					requests := req.GetUnsigned().GetRequests()
 					require.Len(t, requests, 1)
 					test.assertBatch(t, requests[0])

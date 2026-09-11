@@ -51,9 +51,32 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 
 The read index materializes asynchronously and **per-replica** (step 5). Readiness on a node is signalled solely by the local `.ready` marker; there is **no** cross-node readiness map and **no** background reconciler.
 
-- **With response payloads enabled, `Apply` blocks on the serving node's marker before returning.** The `Apply` handler executes in this order: `ctrl.Apply` returns the committed logs → the handler scans those logs for a `CreatedQueryCheckpointLog` and, for each one, waits (`readStore.WaitForCheckpoint`) for that checkpoint's local `.ready` marker → response signing → `skip_response` payload stripping → return. The wait therefore precedes stripping, which nils out the payload carrying the id, and it locates the log by payload type rather than by position, because the checkpoint trigger is the batch's *last* action. An immediate read at the returned `checkpoint_id` **routed back to that node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
-- **With response payloads enabled, a follower waits for its own marker after the leader waited for the leader's.** A follower's `Apply` forwards the batch to the leader through `BucketGrpcClient.Apply`; the leader's handler waits for the leader's marker, and the forwarding node then waits for its own. The node the client is actually talking to is therefore ready when the call returns, at the cost of a second wait on the follower path.
-- **With `skip_response=true`, only the leader is guaranteed ready.** The follower forwards `skip_response` unchanged. The leader waits for its local marker and strips the payload carrying the checkpoint ID before returning to the follower. The follower therefore has no checkpoint payload to wait on and can return before its own marker is ready. The client receives no checkpoint ID in this response; a subsequent checkpoint read on a replica that is not ready returns the retryable error described below.
+- **For a newly executed creation with response payloads enabled, `Apply` waits for the serving node's marker unless deletion supersedes it.** The `Apply` handler executes in this order: `ctrl.Apply` returns the committed logs and execution provenance → for a new execution, the handler scans those logs for a `CreatedQueryCheckpointLog` and, for each one, waits (`readStore.WaitForCheckpoint`) for that checkpoint's local `.ready` marker → response signing → `skip_response` payload stripping → return. The wait therefore precedes stripping, which nils out the payload carrying the id, and it locates the log by payload type rather than by position, because the checkpoint trigger is the batch's *last* action. If the checkpoint remains live, an immediate read at the returned `checkpoint_id` **routed back to that node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
+- **For a newly executed creation with response payloads enabled, a follower waits for its own marker after the leader waited for the leader's.** A follower's `Apply` forwards the batch to the leader through `BucketGrpcClient.Apply`; the leader's handler waits for the leader's marker, and the forwarding node then waits for its own. The node the client is actually talking to is therefore ready when the call returns, at the cost of a second wait on the follower path.
+- **For a new creation that remains live, with `skip_response=true`, only the leader is guaranteed ready.** The follower forwards `skip_response` unchanged. The leader waits for its local marker and strips the payload carrying the checkpoint ID before returning to the follower. The follower therefore has no checkpoint payload to wait on and can return before its own marker is ready. The client receives no checkpoint ID in this response; a subsequent checkpoint read on a replica that is not ready returns the retryable error described below.
+- **An idempotent replay returns the historical outcome immediately.** A keyed
+  creation can be retried after deletion or while its first call is still
+  materializing. The retry returns the original log/checkpoint IDs without
+  creating a new log, recreating the checkpoint, or waiting for a marker.
+  Success records the original mutation; it does not promise that the resource
+  still exists or is currently ready. The FSM sets `Replayed` at the deduplication
+  gate; admission and the controller retain it alongside the resolved logs.
+  The leader emits the server-produced `ledger-apply-replayed` response trailer,
+  and forwarding followers require and preserve it. A request header cannot
+  suppress the wait. Inferring replay from log payloads or marker existence
+  would confuse historical results with fresh creations or follower lag.
+- **Deletion supersedes an in-flight new creation's readiness wait.** Each wait
+  checks a fresh, consistent main-store snapshot: an absent checkpoint row
+  with a next checkpoint ID greater than this ID proves it was allocated and
+  subsequently deleted. Absence before allocation is follower lag and continues
+  waiting. The wait rechecks after read-index progress and at most every 100 ms,
+  so deletion still ends it if indexing stalls. It returns the committed
+  creation success, without recreating files. A deletion racing after readiness
+  can still make a subsequent read return `NotFound`; success is not a resource
+  lease. The registry deletion commits before filesystem cleanup, so the wait
+  can end while cleanup is still removing directories. No durable tombstone or
+  new restore state is introduced; the existing checkpoint counter and registry
+  provide the lifecycle evidence.
 - **Audit is part of the readiness promise.** The checkpoint log carries `H`.
   The normal builder does not publish `.ready` until the audit projection has
   certified `H`, so a filtered audit query cannot be frozen against an
@@ -160,7 +183,7 @@ rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQu
 | `GetQueryCheckpointSchedule` | ClusterService | Get the current schedule (read, any node) |
 | `Apply(SetQueryCheckpointScheduleRequest)` | BucketService | Set the schedule (write, leader-only) |
 | `Apply(DeleteQueryCheckpointScheduleRequest)` | BucketService | Delete the schedule (write, leader-only) |
-| `Apply(CreateQueryCheckpointRequest)` | BucketService | Create a checkpoint (write, leader-only). Returns the id and max sequence in the `CreatedQueryCheckpointLog`; blocks on the serving node's `.ready` marker |
+| `Apply(CreateQueryCheckpointRequest)` | BucketService | Create a checkpoint (write, leader-only). Returns the id and max sequence in the `CreatedQueryCheckpointLog`; new execution waits for readiness unless deleted; replay returns the historical result |
 | `Apply(DeleteQueryCheckpointRequest)` | BucketService | Delete a checkpoint (write, leader-only) |
 
 ClusterService keeps only the three read RPCs. EN-1954 removed its
