@@ -30,11 +30,13 @@ func (f *upstreamLogFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if f.failNext {
 		f.failNext = false
 		http.Error(w, "injected fetch failure", http.StatusServiceUnavailable)
+
 		return
 	}
 	size, err := strconv.Atoi(r.URL.Query().Get("pageSize"))
 	if err != nil || size <= 0 {
-		http.Error(w, "invalid pageSize", 400)
+		http.Error(w, "invalid pageSize", http.StatusBadRequest)
+
 		return
 	}
 	var filter struct {
@@ -44,7 +46,8 @@ func (f *upstreamLogFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if q := r.URL.Query().Get("query"); q != "" {
 		if err := json.Unmarshal([]byte(q), &filter); err != nil {
-			http.Error(w, err.Error(), 400)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+
 			return
 		}
 	}
@@ -61,6 +64,7 @@ func (f *upstreamLogFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if a.ID > b.ID {
 			return 1
 		}
+
 		return 0
 	})
 	if r.URL.Query().Get("sort") != "id:asc" {
@@ -73,7 +77,9 @@ func (f *upstreamLogFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	// A real server also returns opaque next/previous tokens. The adapter's
 	// boundary-based request must not depend on a token retained by this fixture.
-	_ = json.NewEncoder(w).Encode(V2LogPage{Cursor: V2LogCursor{Data: logs, PageSize: size, HasMore: more}})
+	if err := json.NewEncoder(w).Encode(V2LogPage{Cursor: V2LogCursor{Data: logs, PageSize: size, HasMore: more}}); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 func TestHTTPSource_AscendingHistory(t *testing.T) {
@@ -140,6 +146,7 @@ func logIDs(logs []V2Log) []uint64 {
 	for i, log := range logs {
 		ids[i] = log.ID
 	}
+
 	return ids
 }
 
