@@ -53,6 +53,7 @@ Examples:
 	cmd.Flags().String("target", "", "Target type for metadata index: account, transaction, or ledger")
 	cmdutil.RegisterEnumCompletion(cmd, "target", cmdutil.TargetTypeOptions()...)
 	cmd.Flags().String("key", "", "Metadata key name (for metadata index)")
+	cmd.Flags().String("idempotency-key", "", "Batch idempotency key, recorded in the audit and included in the signature")
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
 	return cmd
@@ -146,7 +147,8 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		},
 	}
 
-	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
+	idempotencyKey, _ := cmd.Flags().GetString("idempotency-key")
+	applyReq, err := cmdutil.BuildApplyRequestWithIdempotencyKey(cmd, idempotencyKey, requests...)
 	if err != nil {
 		spinner.Fail("Failed to sign request")
 

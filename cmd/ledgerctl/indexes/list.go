@@ -34,6 +34,7 @@ Examples:
 	}
 
 	cmd.Flags().String("ledger", "", "Name of the ledger")
+	cmd.Flags().String("creation-key-prefix", "", "Filter by audited singleton creation key prefix (attribution only, not authorization; scans all audit pages)")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -85,6 +86,21 @@ func runListIndexes(cmd *cobra.Command, _ []string) error {
 		}
 
 		entries = append(entries, idx)
+	}
+
+	prefix, _ := cmd.Flags().GetString("creation-key-prefix")
+	if cmd.Flags().Changed("creation-key-prefix") && prefix == "" {
+		_ = spinner.Stop()
+
+		return errors.New("creation-key-prefix must not be empty")
+	}
+	if prefix != "" {
+		entries, err = filterIndexesByCreationKey(ctx, client, ledgerName, prefix, entries)
+		if err != nil {
+			_ = spinner.Stop()
+
+			return err
+		}
 	}
 
 	// The per-replica readiness signal lives in IndexEntry.current_version

@@ -79,16 +79,21 @@ func VerifyResponseSignatures(cmd *cobra.Command, logs []*commonpb.Log) error {
 // key is configured on the command flags, unsigned otherwise. Signing the batch
 // authenticates its composition and ordering.
 func BuildApplyRequest(cmd *cobra.Command, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
+	return BuildApplyRequestWithIdempotencyKey(cmd, "", requests...)
+}
+
+// BuildApplyRequestWithIdempotencyKey binds the key into the batch before signing.
+func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey string, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
 		return nil, err
 	}
 
 	if privKey == nil {
-		return servicepb.UnsignedApplyRequest("", requests...), nil
+		return servicepb.UnsignedApplyRequest(idempotencyKey, requests...), nil
 	}
 
-	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: requests}, keyID, privKey)
+	sb, err := signing.Sign(&servicepb.ApplyBatch{Requests: requests, IdempotencyKey: idempotencyKey}, keyID, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign batch: %w", err)
 	}

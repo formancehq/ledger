@@ -347,13 +347,13 @@ func canonicalList(indexes []managedIndex) []string {
 	return out
 }
 
-// nextAppliedIndexes computes the operator-owned set to persist in
-// status.appliedIndexes after applying diff: the previously-owned set plus the
-// indexes just created, minus the indexes just dropped. Indexes that were
-// desired but already existed (never in diff.toCreate) are deliberately NOT
-// adopted — the operator only ever owns (and can therefore later drop) indexes
-// it created itself, so externally-created indexes are never dropped even when
-// they appear in spec.indexes and are later removed.
+// nextAppliedIndexes computes the observed operator-created set to persist in
+// status.appliedIndexes after applying diff: the audit-attributed set plus the
+// indexes just created, minus the indexes just dropped. The caller reconstructs
+// oldApplied from current audit attribution instead of trusting prior status.
+// Desired indexes already present without matching audit attribution are not
+// adopted. Attribution excludes replacements visible at its read; a manual
+// replacement between that read and an unguarded drop remains an accepted race.
 func nextAppliedIndexes(oldApplied []string, diff indexDiff) []string {
 	owned := make(map[string]struct{}, len(oldApplied)+len(diff.toCreate))
 	for _, canonical := range oldApplied {

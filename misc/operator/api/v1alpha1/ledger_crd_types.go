@@ -473,9 +473,10 @@ type LedgerCRDStatus struct {
 	AppliedSpecHash string `json:"appliedSpecHash,omitempty"`
 
 	// AppliedIndexes is the set of index identifiers (canonical form) the
-	// operator has created on this ledger. It is the operator-owned set that
-	// scopes index drops: only indexes listed here are ever dropped, so
-	// externally-created and CRD-unrepresentable indexes are preserved.
+	// operator has created on this ledger, reconstructed from successful audit
+	// creations attributed to this resource UID and matching the current index.
+	// This is an observation, not deletion authority. Managed indexes must be
+	// changed through spec.indexes, not manually replaced during reconciliation.
 	// +optional
 	// +listType=atomic
 	AppliedIndexes []string `json:"appliedIndexes,omitempty"`

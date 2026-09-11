@@ -2,7 +2,10 @@ package controller
 
 import (
 	"context"
+	"errors"
+	"sort"
 
+	"github.com/google/uuid"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -97,15 +100,15 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 	log := ctrl.LoggerFrom(ctx)
 	ledgerName := ledger.Spec.Name
 
-	// Persist ownership from the changes that actually succeeded, on every
-	// return path. If a create succeeds and a later command fails, the created
-	// index must still be recorded as operator-owned — otherwise the next
-	// reconcile sees it as pre-existing and can never drop it. createdOK and
-	// droppedOK accumulate only the operations that completed.
-	oldApplied := ledger.Status.AppliedIndexes
+	if ledger.UID == "" {
+		return false, errors.New("index reconciliation requires a persisted Ledger UID")
+	}
+	creationPrefix := "ledger-operator/index/" + string(ledger.UID) + "/"
 	var createdOK, droppedOK []managedIndex
+	// Status is an observation reconstructed from the audit, never authority.
+	var applied []string
 	defer func() {
-		ledger.Status.AppliedIndexes = nextAppliedIndexes(oldApplied, indexDiff{toCreate: createdOK, toDrop: droppedOK})
+		ledger.Status.AppliedIndexes = nextAppliedIndexes(applied, indexDiff{toCreate: createdOK, toDrop: droppedOK})
 	}()
 
 	desired := desiredIndexes(ledger.Spec.Indexes)
@@ -119,6 +122,19 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 	if err != nil {
 		return false, err
 	}
+
+	attributedOut, err := exec("indexes", "list", "--ledger", ledgerName, "--json", "--creation-key-prefix", creationPrefix)
+	if err != nil {
+		return false, err
+	}
+	attributed, err := parseActualIndexes(attributedOut)
+	if err != nil {
+		return false, err
+	}
+	for canonical := range attributed {
+		applied = append(applied, canonical)
+	}
+	sort.Strings(applied)
 
 	changed := false
 
@@ -154,10 +170,10 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 		}
 	}
 
-	diff := diffIndexes(desired, actual, ledger.Status.AppliedIndexes)
+	diff := diffIndexes(desired, actual, applied)
 
 	for _, mi := range diff.toCreate {
-		if _, createErr := exec(mi.createArgs(ledgerName)...); createErr != nil {
+		if _, createErr := exec(append(mi.createArgs(ledgerName), "--idempotency-key", creationPrefix+uuid.NewString())...); createErr != nil {
 			return false, createErr
 		}
 
@@ -167,6 +183,9 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 	}
 
 	for _, mi := range diff.toDrop {
+		// Attribution was checked against the current creation in Ledger. A manual
+		// replacement after that check can race this unguarded drop; operator-managed
+		// indexes must only be changed through the Kubernetes declaration.
 		// Issue a drop command only for indexes still present; ones already
 		// gone out-of-band need no command but must still be relinquished from
 		// ownership below so a later external recreate is not mistaken as ours.
@@ -184,7 +203,7 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 
 	// ledger.Status.AppliedIndexes is written by the deferred func above from
 	// createdOK/droppedOK, so partial progress on an error path is still
-	// recorded. Only indexes the operator created are ever recorded — a desired
-	// index that already existed is never adopted, so it is never dropped later.
+	// recorded. A desired index already present without matching creation audit
+	// evidence is not adopted. The next pass reconstructs attribution again.
 	return !changed, nil
 }
