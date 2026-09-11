@@ -36,7 +36,7 @@ type HTTPSink struct {
 // NewHTTPSink creates a new HTTP webhook sink.
 func NewHTTPSink(cfg HTTPSinkConfig) (result *HTTPSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer([]string{cfg.Endpoint}, cfg.Secret)
-	defer sanitizer.finish(&retErr)
+	defer sanitizer.sanitizeReturned(&retErr)
 	if cfg.Endpoint == "" {
 		return nil, errors.New("HTTP sink endpoint is required")
 	}
@@ -66,7 +66,7 @@ func NewHTTPSink(cfg HTTPSinkConfig) (result *HTTPSink, retErr error) {
 }
 
 func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
@@ -82,7 +82,7 @@ func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) (retEr
 }
 
 func (s *HTTPSink) Close() (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	s.client.CloseIdleConnections()
 
 	return nil
