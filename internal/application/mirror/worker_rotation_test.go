@@ -79,6 +79,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 			notifier := signal.NewNotifications()
 			machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keystore.NewKeyStore(), state.NewSharedState(), notifier, nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
 			require.NoError(t, err)
+			writeMirrorMetadataPolicy(t, store, mirrorMetadataPolicy())
 			require.NoError(t, state.NewRecovery(machine, store).RecoverState())
 			key := domain.LedgerKey{Name: "mirrored"}
 			info := &commonpb.LedgerInfo{Name: key.Name, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}

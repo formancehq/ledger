@@ -1,6 +1,9 @@
 package domain
 
 import (
+	"maps"
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -105,7 +108,8 @@ func walkMirrorMetadata(entry *raftcmdpb.MirrorLogEntry, walk MetadataWalk) Desc
 // map value carries nothing and is skipped rather than reported: an absent map
 // is not a validation failure.
 func walkAccountMetadata(accountMetadata map[string]*commonpb.MetadataMap, walk MetadataWalk) Describable {
-	for account, mm := range accountMetadata {
+	for _, account := range slices.Sorted(maps.Keys(accountMetadata)) {
+		mm := accountMetadata[account]
 		if mm == nil {
 			continue
 		}
@@ -140,4 +144,39 @@ func OrderMetadataSize(order *raftcmdpb.Order) uint64 {
 	})
 
 	return total
+}
+
+// ValidateOrderMetadata checks the shape and size of every metadata payload.
+// Account and key traversal is sorted so replicated rejection details are stable.
+func ValidateOrderMetadata(order *raftcmdpb.Order, limits MetadataLimits) Describable {
+	return WalkOrderMetadata(order, MetadataWalk{
+		VisitMap: func(account string, metadata map[string]*commonpb.MetadataValue) Describable {
+			err := validateOrderMetadataMap(metadata, limits)
+			if err == nil || account == "" {
+				return err
+			}
+
+			return &ErrAccountValidation{Account: account, Cause: err}
+		},
+		VisitKey: func(key string) Describable {
+			if err := ValidateMetadataKey(key); err != nil {
+				return err
+			}
+
+			return limits.ValidateKey(key)
+		},
+	})
+}
+
+func validateOrderMetadataMap(metadata map[string]*commonpb.MetadataValue, limits MetadataLimits) Describable {
+	for _, key := range slices.Sorted(maps.Keys(metadata)) {
+		if err := ValidateMetadataKey(key); err != nil {
+			return err
+		}
+		if err := ValidateMetadataValue(metadata[key]); err != nil {
+			return &ErrMetadataKeyValidation{Key: key, Cause: err}
+		}
+	}
+
+	return limits.ValidateMap(metadata)
 }

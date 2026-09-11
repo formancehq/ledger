@@ -20,7 +20,7 @@ ingest, and the metadata a Numscript program produces.
 | Total per command | 256 KiB | `--metadata-max-command-bytes` | `metadata_max_command_bytes` |
 
 An *entity* is one transaction, one account, or one ledger. A *command* is one
-`ApplyBatch` — the atomic, signed unit that becomes a single Raft proposal — so
+atomic, signed Raft proposal (an `ApplyBatch` or mirror batch), so
 the per-command ceiling is what stops a caller from defeating the per-entity
 bound by spreading a payload across many entities in one request.
 
@@ -70,8 +70,24 @@ disagree about whether the same payload fits.
 the orders exist. It walks every metadata-bearing order shape through
 `domain.WalkOrderMetadata` (`internal/domain/order_metadata.go`), the single source of truth for *where* metadata lives in an
 order; the shape validation, the size validation and the byte accounting all
-traverse it, so they cannot drift apart. All four public entry paths converge on
-`requestsToOrders`, so one gate covers them.
+traverse it, so they cannot drift apart. HTTP, public gRPC and bulk converge on
+`requestsToOrders`. Mirror workers use a separate proposal path.
+
+**Mirror ingestion** — `Worker.processBatch`
+(`internal/application/mirror/worker.go`) checks the translated and rewritten
+orders against the committed cluster policy before building or proposing the
+batch. `domain.ValidateOrderMetadata` checks metadata shape and per-entity
+ceilings through the shared walker, and the worker checks the total across all
+orders against the command ceiling. This includes external HTTP and PostgreSQL
+sources, which need not have enforced the destination's limits.
+
+`processMirrorIngest` rechecks the order and proposal-wide byte budget against
+the FSM's committed policy before mutating state. This protects against a policy
+change between the worker's check and apply. Already-applied source entries
+remain idempotent no-ops. A rejected batch does not advance the durable mirror
+cursor; the worker reports the error and retries. Reduce the source batch size
+for aggregate overflow, or correct the source/rewrite output or raise the
+replicated limits for an oversized individual entry.
 
 **FSM apply** — `processCreateTransaction`
 (`internal/domain/processing/processor_transaction.go`) re-checks the *merged*
@@ -119,7 +135,8 @@ loudly at three points rather than silently removing the protection:
 2. `validateCommittedMetadataLimits` refuses to boot against a *committed* policy
    with no ceilings when `--cluster-policy-revision` cannot supersede it — the
    one case the reconciler provably cannot repair. It is not bypassable with
-   `--unsafe-skip-config-validation`.
+   `--unsafe-skip-config-validation`: the policy check runs before a forced
+   identity override can persist the new identity.
 3. `processSetClusterPolicy` refuses to commit such a policy at all.
 
 The ceilings must also be mutually satisfiable: `key ≤ entity`,

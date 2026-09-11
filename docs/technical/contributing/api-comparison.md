@@ -286,8 +286,8 @@ Ledger metadata is stored separately from ledger configuration (LedgerInfo) and 
 ingest share the same limits; Numscript-produced metadata is checked during FSM
 apply after merging it with caller metadata. Limits bound metadata carried or
 produced by one command, not an entity's accumulated stored metadata across
-successive writes. A command is one atomic `ApplyBatch`, including all entities
-and orders it contains.
+successive writes. A command is one atomic Raft proposal (`ApplyBatch` or mirror batch), including
+all entities and orders it contains.
 
 The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
 
@@ -298,6 +298,10 @@ The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
 | `metadata_max_value_bytes` | 16384 | Measured bytes per value |
 | `metadata_max_entity_bytes` | 65536 | Key and value bytes per entity |
 | `metadata_max_command_bytes` | 262144 | Key and value bytes across the command |
+
+Mirror workers enforce the same ceilings on translated batches before proposal,
+and mirror FSM apply rechecks the committed policy before mutation. A rejected
+batch retains its applied cursor for retry.
 
 OpenAPI documents these configurable ceilings in descriptions rather than fixed
 `maxLength` or `maxProperties` constraints, so clients can use the effective

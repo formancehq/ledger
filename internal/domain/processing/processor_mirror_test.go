@@ -19,6 +19,7 @@ func TestMirrorIngestRejectsExhaustedTransactionIDWithoutMutation(t *testing.T) 
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -125,6 +126,7 @@ func TestMirrorIngestAllowsLastTransactionAndLedgerLogIDs(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -207,6 +209,7 @@ func TestMirrorIngestAcceptsTerminalV2HighWaterWithoutContiguityWrap(t *testing.
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -284,6 +287,7 @@ func TestMirrorIngest_FillGap(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -356,6 +360,7 @@ func TestMirrorIngest_CreatedTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -568,6 +573,7 @@ func TestMirrorIngest_AdvancesLastMirrorV2LogId(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -954,6 +960,7 @@ func TestMirrorIngest_CreatedTransaction_AbsentVolumes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1027,6 +1034,7 @@ func TestMirrorIngest_RevertedTransaction_AbsentVolumes(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1097,6 +1105,7 @@ func TestMirrorIngest_RevertedTransaction_LinksOriginal(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

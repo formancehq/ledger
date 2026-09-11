@@ -114,6 +114,23 @@ func processMirrorIngest(ledger string, order *raftcmdpb.MirrorIngestOrder, ctx 
 		return nil, exhausted
 	}
 
+	// Worker admission can race a committed policy update. Recheck against
+	// replicated state before any child handler mutates metadata or balances.
+	wrapped := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger, Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: order},
+	}}}
+	limits := domain.MetadataLimitsFromPolicy(s.GetClusterPolicy())
+	if err := domain.ValidateOrderMetadata(wrapped, limits); err != nil {
+		return nil, err
+	}
+	total := domain.OrderMetadataSize(wrapped)
+	if ctx.metadataBudget != nil {
+		total = ctx.metadataBudget.bytes
+	}
+	if err := limits.ValidateCommandBytes(total); err != nil {
+		return nil, err
+	}
+
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
 	ctx.LedgerInfo = info

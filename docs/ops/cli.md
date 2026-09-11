@@ -3867,8 +3867,9 @@ ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags.
 
 The metadata ceilings follow the same rule: raising one without bumping
 `--cluster-policy-revision` logs a payload-divergence error and changes nothing.
-They are enforced for HTTP, public gRPC, bulk and mirror admission, and for the
-metadata a Numscript program merges in; a violation returns HTTP 400 / gRPC
+They are enforced for HTTP, public gRPC and bulk admission, mirror batches before
+proposal and during apply, and metadata a Numscript program merges in. Public
+API violations return HTTP 400 / gRPC
 `InvalidArgument` with reason `METADATA_LIMIT_EXCEEDED`. Zero is rejected at
 boot rather than treated as unlimited, and a node refuses to start against a
 committed policy carrying no ceilings when `--cluster-policy-revision` cannot
