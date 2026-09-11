@@ -1800,3 +1800,58 @@ func newTestWALDir(t *testing.T, dir string) *DefaultWAL {
 
 	return w
 }
+
+// TestCreateSnapshot_SaveFailure_KeepsPreviousSnapshotRetryable makes the
+// snapshot file unwritable for a reason a later attempt can retry. The previous
+// snapshot must stay published, so the same index is accepted again once the
+// directory is usable.
+func TestCreateSnapshot_SaveFailure_KeepsPreviousSnapshotRetryable(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{ent(1, 1, nil), ent(2, 1, nil), ent(3, 1, nil)}))
+
+	cs := &raftpb.ConfState{Voters: []uint64{1}}
+
+	snapPath := filepath.Join(dir, snapDir)
+	require.NoError(t, os.RemoveAll(snapPath))
+	require.NoError(t, os.WriteFile(snapPath, nil, 0600))
+
+	err := w.CreateSnapshot(2, cs, nil)
+	require.ErrorContains(t, err, "saving snapshot file")
+	require.NotErrorIs(t, err, ErrWALDirectoryMissing)
+
+	snap, err := w.Snapshot()
+	require.NoError(t, err)
+	require.Zero(t, snap.GetMetadata().GetIndex(), "a snapshot whose file was never written must not be published")
+
+	require.NoError(t, os.Remove(snapPath))
+
+	require.NoError(t, w.CreateSnapshot(2, cs, nil))
+
+	snap, err = w.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), snap.GetMetadata().GetIndex())
+}
+
+// TestCreateSnapshot_WALDirectoryMissing_IsTerminal removes the whole WAL
+// directory underneath a live WAL. CreateSnapshot must report the terminal
+// sentinel, publish nothing and recreate nothing.
+func TestCreateSnapshot_WALDirectoryMissing_IsTerminal(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "wal")
+	w := newTestWALAt(t, dir)
+	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{ent(1, 1, nil), ent(2, 1, nil)}))
+
+	require.NoError(t, os.RemoveAll(dir))
+
+	err := w.CreateSnapshot(2, &raftpb.ConfState{Voters: []uint64{1}}, nil)
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+
+	snap, err := w.Snapshot()
+	require.NoError(t, err)
+	require.Zero(t, snap.GetMetadata().GetIndex())
+	require.NoDirExists(t, dir)
+}
