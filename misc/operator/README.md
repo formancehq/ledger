@@ -10,7 +10,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Persistent storage** for WAL and data volumes
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
-- **Backups** to S3-compatible backends
+- **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
 - **Credentials** for application-level access control
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
