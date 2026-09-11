@@ -416,7 +416,9 @@ an integer or underflow to zero. Numeric strings remain strings; null and other
 metadata types retain their existing handling.
 
 The JSON adapter exposes explicit number-preserving decode helpers for these
-metadata consumers. Its ordinary decoders retain their existing behavior.
+metadata consumers. Unitary reversals validate the complete body with the standard
+JSON decoder and enable `UseNumber`, preserving strict document validation for
+both known-length and chunked bodies. Ordinary shared decoders retain their existing behavior.
 Custom metadata JSON decoders opt in themselves, since an outer decoder's
 configuration does not propagate into a custom `UnmarshalJSON` method. This
 changes input conversion only; protobuf contracts, stored representations,

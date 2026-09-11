@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,7 +32,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		body, err := io.ReadAll(r.Body)
 		if err == nil && len(body) != 0 {
 			if !json.Valid(body) {
-				err = fmt.Errorf("expected a single valid JSON value")
+				err = errors.New("expected a single valid JSON value")
 			} else {
 				decoder := json.NewDecoder(bytes.NewReader(body))
 				decoder.UseNumber()

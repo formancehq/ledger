@@ -19,7 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// Exercise the registered routes with known-length bodies and compare native
+// Exercise registered routes, including unknown-length revert bodies, and compare native
 // integers at Apply, before any response JSON decoding can mask precision loss.
 func TestMetadataIntegers_Routes(t *testing.T) {
 	t.Parallel()
@@ -40,7 +40,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 		{"1.0", uint64(1)}, {"1e3", uint64(1000)}, {"1e-400", nil}, {"1.5", nil}, {"9007199254740993.5", nil},
 		{"-9223372036854775809", nil}, {"18446744073709551616", nil},
 	}
-	for _, route := range []string{"account", "create", "createAccount", "revert"} {
+	for _, route := range []string{"account", "create", "createAccount", "revert", "revertUnknownLength"} {
 		for _, tc := range cases {
 			t.Run(route+"/"+tc.token, func(t *testing.T) {
 				t.Parallel()
@@ -66,7 +66,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 							}
 							require.Equal(t, tc.want, commonpb.MetadataValueToAny(cmd.GetAccountMetadata()["users:001"].GetValues()["count"]))
 							logData.Payload = &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{Transaction: &commonpb.Transaction{Id: 1}}}
-						case "revert":
+						case "revert", "revertUnknownLength":
 							md = action.GetRevertTransaction().GetMetadata()
 							logData.Payload = &commonpb.LedgerLogPayload_RevertedTransaction{RevertedTransaction: &commonpb.RevertedTransaction{RevertTransaction: &commonpb.Transaction{Id: 2}}}
 						}
@@ -86,7 +86,7 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 						body = fmt.Sprintf(`{"postings":[{"source":"world","destination":"users:001","asset":"USD","amount":1}],"accountMetadata":{"users:001":{"count":%s}}}`, tc.token)
 					}
 					status = http.StatusCreated
-				case "revert":
+				case "revert", "revertUnknownLength":
 					path = "/v3/ledger1/transactions/1/revert"
 					body = fmt.Sprintf(`{"metadata":{"count":%s}}`, tc.token)
 					status = http.StatusCreated
@@ -96,6 +96,9 @@ func TestMetadataIntegers_Routes(t *testing.T) {
 				}
 				r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
 				require.Positive(t, r.ContentLength)
+				if route == "revertUnknownLength" {
+					r.ContentLength = -1
+				}
 				w := httptest.NewRecorder()
 				NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{}).ServeHTTP(w, r)
 				require.Equal(t, status, w.Code, w.Body.String())
