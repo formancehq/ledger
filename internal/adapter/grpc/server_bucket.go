@@ -272,24 +272,39 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// Opening a not-yet-materialized directory would surface an opaque,
 	// non-retryable Unknown (EN-1460).
 	//
-	// The read-index .ready marker is written atomically last by the builder, so
-	// it is a reliable readiness gate for the read index. The main store has no
-	// such marker (the applier checkpoints straight into {id}/main), so we gate it
-	// by attempting the read-only open: any failure on a checkpoint whose read
-	// index is ready is treated as "main store not materialized here yet" and
-	// routed through resolveMissingMarker, which returns a retryable
-	// ErrCheckpointNotReady for a registered checkpoint (or NotFound after a
-	// barrier confirms it does not exist).
-	if !readstore.CheckpointDirReady(readIndexPath) {
+	// Both halves write their .ready marker atomically last, after the directory
+	// it vouches for has been renamed into place, so the pair of markers is the
+	// gate. Neither marker says anything about the other half; a missing one
+	// means "not materialized here yet" and routes through
+	// resolveMissingMarker, which returns a retryable ErrCheckpointNotReady for
+	// a registered checkpoint (or NotFound after a barrier confirms it does not
+	// exist).
+	//
+	// Openability is not a completeness gate, so the markers are checked before
+	// the open rather than inferred from it: pebble writes the MANIFEST that
+	// makes a directory openable BEFORE it copies the WAL files, so an unmarked
+	// directory can open cleanly while missing every write still resident in the
+	// source memtable.
+	if !dal.CheckpointDirReady(readIndexPath) || !dal.CheckpointDirReady(mainPath) {
 		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
 	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
 	if err != nil {
-		// The read index is ready but the main store is not openable yet — most
-		// likely the applier's main checkpoint has not landed on this replica.
-		// Never surface a raw Unknown: classify as not-ready / not-found.
-		return nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
+		// A delete unlinks the directory under the open. The registry row is
+		// removed in the committed batch that precedes the unlink, and both
+		// markers prove this replica applied the creation, so a row missing
+		// here means this replica applied the delete too — no barrier needed,
+		// unlike resolveMissingMarker's absent-row case. The filesystem
+		// carries no such ordering: RemoveAll unlinks children in readdir
+		// order, so the marker cannot answer this.
+		if exists, existsErr := impl.queryCheckpointExists(checkpointID); existsErr == nil && !exists {
+			return nil, nil, commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
+		}
+
+		// Nothing deleted it, so the directory it vouched for is damaged rather
+		// than late; the error surfaces as-is, like the read index's below.
+		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
 
 	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
