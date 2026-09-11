@@ -39,7 +39,11 @@ func TestGRPCHealthUpdater_ReadinessIndependentOfDiskSkew(t *testing.T) {
 			ns.EXPECT().GetLeader().Return(tt.leader).AnyTimes()
 
 			hs := health.NewServer()
-			u := &GRPCHealthUpdater{node: ns, healthServer: hs, clusterPolicyReady: func() bool { return true }}
+			u := &GRPCHealthUpdater{
+				node: ns, healthServer: hs,
+				clusterPolicyReady: func() bool { return true },
+				readProjectionOK:   func() bool { return true },
+			}
 
 			u.update()
 
@@ -66,7 +70,11 @@ func TestGRPCHealthUpdater_WaitsForClusterPolicy(t *testing.T) {
 
 	hs := health.NewServer()
 	policyReady := false
-	u := &GRPCHealthUpdater{node: ns, healthServer: hs, clusterPolicyReady: func() bool { return policyReady }}
+	u := &GRPCHealthUpdater{
+		node: ns, healthServer: hs,
+		clusterPolicyReady: func() bool { return policyReady },
+		readProjectionOK:   func() bool { return true },
+	}
 
 	u.update()
 	resp, err := hs.Check(context.Background(), &healthpb.HealthCheckRequest{Service: ""})
@@ -80,4 +88,31 @@ func TestGRPCHealthUpdater_WaitsForClusterPolicy(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, healthpb.HealthCheckResponse_SERVING, resp.GetStatus(),
 		"once the policy is committed the node becomes serving")
+}
+
+func TestGRPCHealthUpdater_StopsServingWhenReadProjectionFails(t *testing.T) {
+	t.Parallel()
+
+	ns := NewMocknodeState(gomock.NewController(t))
+	ns.EXPECT().IsHealthy().Return(true).AnyTimes()
+	ns.EXPECT().GetLeader().Return(uint64(2)).AnyTimes()
+
+	hs := health.NewServer()
+	projectionHealthy := true
+	u := &GRPCHealthUpdater{
+		node: ns, healthServer: hs,
+		clusterPolicyReady: func() bool { return true },
+		readProjectionOK:   func() bool { return projectionHealthy },
+	}
+
+	u.update()
+	resp, err := hs.Check(context.Background(), &healthpb.HealthCheckRequest{Service: ""})
+	require.NoError(t, err)
+	require.Equal(t, healthpb.HealthCheckResponse_SERVING, resp.GetStatus())
+
+	projectionHealthy = false
+	u.update()
+	resp, err = hs.Check(context.Background(), &healthpb.HealthCheckRequest{Service: ""})
+	require.NoError(t, err)
+	require.Equal(t, healthpb.HealthCheckResponse_NOT_SERVING, resp.GetStatus())
 }

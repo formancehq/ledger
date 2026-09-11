@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -46,7 +48,26 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 // Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
 // and are reserved for audit-style indexes (see #436); they aren't tied
 // to any ledger and don't trigger per-ledger backfill paths.
-func (b *Builder) initIndexConfig(ctx context.Context) error {
+func (b *Builder) initIndexConfig(ctx context.Context) (err error) {
+	snapshot := b.readStore.NewSnapshot()
+	defer func() {
+		if closeErr := snapshot.Close(); closeErr != nil {
+			err = errors.Join(err, fmt.Errorf("closing read-store index config snapshot: %w", closeErr))
+		}
+	}()
+
+	if err := b.loadLedgerHistory(snapshot); err != nil {
+		return fmt.Errorf("reading ledger history state: %w", err)
+	}
+
+	return b.initIndexConfigAfterHistory(ctx)
+}
+
+// initIndexConfigAfterHistory rebuilds registry-derived state after the caller
+// has loaded a coherent ledger-history snapshot. bootInit uses this split so it
+// can pin the history tracker and indexbuilder cursor before reading the main
+// registry, avoiding a boot-time guess about whether an index needs backfill.
+func (b *Builder) initIndexConfigAfterHistory(ctx context.Context) error {
 	// Reset builder-local init state so every attempt (including a retry
 	// after a partial failure) starts from a clean slate. backfillTasks
 	// and schemaRewriteTasks are slices appended to by
@@ -59,6 +80,7 @@ func (b *Builder) initIndexConfig(ctx context.Context) error {
 	b.backfillTasks = nil
 	b.schemaRewriteTasks = nil
 	b.indexVersions = nil
+	b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
 
 	handle, err := b.pebbleStore.NewDirectReadHandle()
 	if err != nil {
@@ -226,7 +248,12 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		}
 
 		canonical := indexes.Canonical(idx.GetId())
-		cfg.byCanonical[canonical] = idx
+		state, stateExists := b.versionStateFor(ledgerName, canonical)
+		if stateExists && (state.CurrentVersion != 0 || state.PendingVersion != 0) {
+			if _, historyExists := b.historyStateFor(ledgerName); !historyExists {
+				return historyReplayInvariantf("active IndexVersionState for %q/%s has no ledger history state", ledgerName, canonical)
+			}
+		}
 
 		// Every index kind (builtin tx/account/log and metadata) records a
 		// per-replica IndexVersionState: handleCreatedIndexLog allocates
@@ -240,14 +267,49 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		// locally); a drop+recreate tombstones the version state (current
 		// and pending both zero, only the high-water kept), so a genuine
 		// rebuild still re-enters this branch with current == 0.
-		if current, _ := b.versionFor(ledgerName, canonical); current != 0 {
+		if state.CurrentVersion != 0 {
+			cfg.byCanonical[canonical] = idx
+
+			continue
+		}
+		if state.PendingVersion != 0 {
+			cfg.byCanonical[canonical] = idx
+			b.scheduleBackfillForIndex(ledgerName, idx.GetId())
+
 			continue
 		}
 
-		b.scheduleBackfillForIndex(ledgerName, idx.GetId())
+		if b.unresolvedIndexes[ledgerName] == nil {
+			if b.unresolvedIndexes == nil {
+				b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
+			}
+			b.unresolvedIndexes[ledgerName] = make(map[string]*commonpb.Index)
+		}
+		b.unresolvedIndexes[ledgerName][canonical] = idx
 	}
 
 	return iter.Err()
+}
+
+func (b *Builder) validateHistoryReplayState() error {
+	for ledger, indexesByCanonical := range b.unresolvedIndexes {
+		for canonical := range indexesByCanonical {
+			return historyReplayInvariantf("index registry entry %q/%s was not resolved by CreatedIndex replay", ledger, canonical)
+		}
+	}
+
+	for ledger := range b.indexConfig {
+		if _, ok := b.historyStateFor(ledger); !ok {
+			return historyReplayInvariantf("active ledger %q has no EMPTY/NON_EMPTY history state after catch-up", ledger)
+		}
+	}
+	for ledger := range b.ledgerHistory {
+		if _, ok := b.indexConfig[ledger]; !ok {
+			return historyReplayInvariantf("ledger history state for inactive ledger %q survived catch-up", ledger)
+		}
+	}
+
+	return nil
 }
 
 // scheduleBackfillForIndex dispatches a backfill task for a freshly-created or
@@ -284,6 +346,7 @@ func (b *Builder) stripBuildingIndexes() func() {
 		ledger string
 		key    string
 		entry  *commonpb.Index
+		task   *backfillTask
 	}
 
 	var removed []stripped
@@ -301,12 +364,15 @@ func (b *Builder) stripBuildingIndexes() func() {
 			continue
 		}
 
-		removed = append(removed, stripped{ledger: task.ledger, key: key, entry: entry})
+		removed = append(removed, stripped{ledger: task.ledger, key: key, entry: entry, task: task})
 		delete(cfg.byCanonical, key)
 	}
 
 	return func() {
 		for _, s := range removed {
+			if !slices.Contains(b.backfillTasks, s.task) {
+				continue
+			}
 			cfg := b.indexConfig[s.ledger]
 			if cfg == nil {
 				continue
@@ -397,12 +463,8 @@ func (b *Builder) getOrCreateLedgerConfig(ledger string) *ledgerIndexConfig {
 }
 
 // handleCreatedIndexLog updates the index config cache when a CreateIndex log is processed.
-// A non-initial index starts locally unbuilt and gets a backfill task that
-// replays historical logs. An initial index takes the fast path below.
-//
-// Initial fast path (EN-1564): when the log carries the initial flag (index
-// declared on a born-empty ledger), there is no local history to replay — the
-// index is promoted straight to live at HighWater+1 and NO backfill is scheduled.
+// The indexbuilder-owned durable ledger history tracker decides whether there
+// is business history to replay, independently of proposal boundaries.
 //
 // Log replay idempotency: when the same CreatedIndexLog is folded again against
 // an index this replica has already promoted to live, we skip the reset and
@@ -415,17 +477,25 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		return nil
 	}
 
-	cfg := b.getOrCreateLedgerConfig(ledgerName)
+	historyState, historyExists := b.historyStateFor(ledgerName)
+	if !historyExists {
+		return historyReplayInvariantf("CreateIndex for %q has no EMPTY/NON_EMPTY history state", ledgerName)
+	}
+	if historyState != ledgerHistoryEmpty && historyState != ledgerHistoryNonEmpty {
+		return historyReplayInvariantf("CreateIndex for %q has invalid history state %d", ledgerName, historyState)
+	}
+
+	canonical := indexes.Canonical(id)
 
 	// The per-replica readiness signal is IndexVersionState.CurrentVersion
 	// (EN-1323). If this replica has already promoted the index to live
 	// (current != 0), a repeated CreatedIndexLog during replay must be a no-op.
 	// Allocating a new pending version and rescheduling a backfill would
 	// flip an already-live index back to ErrIndexBuilding. This mirrors the
-	// loadIndexRegistry boot guard and covers both the EN-1564 initial fast
+	// loadIndexRegistry boot guard and covers both the EN-1771 EMPTY fast
 	// path and the normal post-backfill live state. Fresh duplicate requests
 	// are rejected by the FSM before emitting a log.
-	if current, pending := b.versionFor(ledgerName, indexes.Canonical(id)); current != 0 {
+	if current, pending := b.versionFor(ledgerName, canonical); current != 0 {
 		return nil
 	} else if pending != 0 {
 		// A build for this incarnation is already in flight: the running
@@ -436,19 +506,59 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		return nil
 	}
 
-	cfg.byCanonical[indexes.Canonical(id)] = &commonpb.Index{
+	cfg, cfgExisted := b.indexConfig[ledgerName]
+	if !cfgExisted {
+		cfg = newLedgerIndexConfig()
+		b.indexConfig[ledgerName] = cfg
+	}
+	priorIndex, hadPriorIndex := cfg.byCanonical[canonical]
+	priorVersion, hadPriorVersion := b.versionStateFor(ledgerName, canonical)
+	priorTasks := slices.Clone(b.backfillTasks)
+	priorUnresolved := cloneIndexMap(b.unresolvedIndexes[ledgerName])
+	_, hadUnresolvedLedger := b.unresolvedIndexes[ledgerName]
+	b.recordFoldRollback(func() {
+		switch {
+		case !cfgExisted:
+			delete(b.indexConfig, ledgerName)
+		case hadPriorIndex:
+			cfg.byCanonical[canonical] = priorIndex
+		default:
+			delete(cfg.byCanonical, canonical)
+		}
+
+		if hadPriorVersion {
+			b.putVersionState(ledgerName, canonical, priorVersion)
+		} else if inner := b.indexVersions[ledgerName]; inner != nil {
+			delete(inner, canonical)
+			if len(inner) == 0 {
+				delete(b.indexVersions, ledgerName)
+			}
+		}
+		b.backfillTasks = priorTasks
+		if hadUnresolvedLedger {
+			b.unresolvedIndexes[ledgerName] = priorUnresolved
+		} else {
+			delete(b.unresolvedIndexes, ledgerName)
+		}
+	})
+
+	cfg.byCanonical[canonical] = &commonpb.Index{
 		Id:                     id,
 		ForwardEncodingVersion: 1,
 	}
+	if unresolved := b.unresolvedIndexes[ledgerName]; unresolved != nil {
+		delete(unresolved, canonical)
+		if len(unresolved) == 0 {
+			delete(b.unresolvedIndexes, ledgerName)
+		}
+	}
 
-	// EN-1564: an index declared on a born-empty ledger has no local history to
-	// replay. Promote it straight to live at HighWater+1 and skip the backfill;
-	// the live indexing path maintains it from ledger birth. Persist so a reboot
-	// sees current!=0 and loadIndexRegistry skips scheduling a backfill.
 	// A prior incarnation's tombstone holds the high-water version; a fresh
 	// index allocates above it so no keyspace is ever written by two passes.
-	prior, _ := b.versionStateFor(ledgerName, indexes.Canonical(id))
-	next := prior.HighWater + 1
+	if priorVersion.HighWater == ^uint32(0) {
+		return fmt.Errorf("invariant: IndexVersionState high-water exhausted for %q/%s", ledgerName, canonical)
+	}
+	next := priorVersion.HighWater + 1
 
 	// The first version binds to the declared type stamped into the log by
 	// the FSM at mint time — the schema entry in force at exactly this log's
@@ -457,15 +567,11 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 	// the log folds during a backfill or a rebuild replay.
 	boundType, declared := log.GetBoundType(), log.GetBoundTypeDeclared()
 
-	// Born-empty means the ledger has emitted no indexable DATA log yet
-	// (processing.isIndexableDataPayload), which is what makes the shortcut
-	// sound for an entity index: there is nothing to replay. A log date index
-	// covers every log of the ledger, and such a ledger can already carry
-	// config-mutation logs — a schema declaration earlier in the proposal, and
-	// this CreateIndex log itself, whose date row the live path cannot write
-	// because it reads the config before this handler registers the index — so
-	// it takes the backfill path and reaches them.
-	if log.GetInitial() && !isLogDateIndex(id) {
+	if b.wb == nil || b.wb.Batch() == nil {
+		return historyReplayInvariantf("CreateIndex for %q encountered without an active readstore batch", ledgerName)
+	}
+
+	if historyState == ledgerHistoryEmpty {
 		state := readstore.IndexVersionState{
 			CurrentVersion:      next,
 			PendingVersion:      0,
@@ -474,15 +580,11 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 			CurrentTypeDeclared: declared,
 		}
 
-		if b.wb != nil && b.readStore != nil {
-			if batch := b.wb.Batch(); batch != nil {
-				if err := b.readStore.WriteIndexVersionState(batch, ledgerName, indexes.Canonical(id), state); err != nil {
-					return fmt.Errorf("persisting IndexVersionState on initial CreateIndex: %w", err)
-				}
-			}
+		if err := b.readStore.WriteIndexVersionState(b.wb.Batch(), ledgerName, canonical, state); err != nil {
+			return fmt.Errorf("persisting IndexVersionState on EMPTY CreateIndex: %w", err)
 		}
 
-		b.putVersionState(ledgerName, indexes.Canonical(id), state)
+		b.putVersionState(ledgerName, canonical, state)
 
 		return nil
 	}
@@ -504,31 +606,25 @@ func (b *Builder) handleCreatedIndexLog(ledgerName string, log *commonpb.Created
 		PendingTypeDeclared: declared,
 	}
 
-	if b.wb != nil && b.readStore != nil {
-		if batch := b.wb.Batch(); batch != nil {
-			if err := b.readStore.WriteIndexVersionState(batch, ledgerName, indexes.Canonical(id), state); err != nil {
-				return fmt.Errorf("persisting IndexVersionState on CreateIndex: %w", err)
-			}
-		}
+	if err := b.readStore.WriteIndexVersionState(b.wb.Batch(), ledgerName, canonical, state); err != nil {
+		return fmt.Errorf("persisting IndexVersionState on NON_EMPTY CreateIndex: %w", err)
 	}
 
-	b.putVersionState(ledgerName, indexes.Canonical(id), state)
-
-	// An initial log-date index only has its own ledger's logs to replay, and
-	// this run folded the first of them, so the replay starts there instead of
-	// walking the whole global log (EN-1987). Any other index either has real
-	// history behind it or is not initial, and starts from zero.
-	if log.GetInitial() {
-		if first := b.ledgerFirstSeq[ledgerName]; first > 0 {
-			b.addBackfillTask(ledgerName, id, first-1)
-
-			return nil
-		}
-	}
+	b.putVersionState(ledgerName, canonical, state)
 
 	b.scheduleBackfillForIndex(ledgerName, id)
 
 	return nil
+}
+
+func cloneIndexMap(in map[string]*commonpb.Index) map[string]*commonpb.Index {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]*commonpb.Index, len(in))
+	maps.Copy(out, in)
+
+	return out
 }
 
 // handleDroppedIndexLog updates the index config cache when a DropIndex log
@@ -542,20 +638,40 @@ func (b *Builder) handleDroppedIndexLog(kb *dal.KeyBuilder, ledger string, log *
 		return nil
 	}
 
-	cfg := b.getOrCreateLedgerConfig(ledger)
-	delete(cfg.byCanonical, indexes.Canonical(id))
-	b.removeBackfillTask(ledger, id)
+	cfg, cfgExisted := b.indexConfig[ledger]
+	if !cfgExisted {
+		cfg = newLedgerIndexConfig()
+		b.indexConfig[ledger] = cfg
+	}
+	canonical := indexes.Canonical(id)
+	priorIndex, hadPriorIndex := cfg.byCanonical[canonical]
+	b.recordFoldRollback(func() {
+		switch {
+		case !cfgExisted:
+			delete(b.indexConfig, ledger)
+		case hadPriorIndex:
+			cfg.byCanonical[canonical] = priorIndex
+		default:
+			delete(cfg.byCanonical, canonical)
+		}
+	})
+	delete(cfg.byCanonical, canonical)
+	if err := b.removeBackfillTask(ledger, id); err != nil {
+		return err
+	}
 
 	// Tombstoned, never deleted: the record keeps the high-water version so a
 	// re-created index cannot reuse a keyspace this incarnation wrote.
 	// Queries read a tombstone exactly like an absent record (removed, not
 	// building) — see PinnedVersionResolver.
-	if err := b.tombstoneVersionState(ledger, indexes.Canonical(id)); err != nil {
+	if err := b.tombstoneVersionState(ledger, canonical); err != nil {
 		return err
 	}
 
 	if meta, ok := id.GetKind().(*commonpb.IndexID_Metadata); ok && meta.Metadata != nil {
-		b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey())
+		if err := b.removeSchemaRewriteTaskByField(ledger, meta.Metadata.GetTarget(), meta.Metadata.GetKey()); err != nil {
+			return err
+		}
 
 		// The rows go with the index, in the same fold batch: all versions of
 		// the forward index, exists index and reverse map by field-bounded

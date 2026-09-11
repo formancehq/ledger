@@ -93,7 +93,7 @@ For an already served metadata index, a retype performs this lifecycle:
 5. after the scan and log-alignment gate complete, atomically promote pending
    to current and garbage-collect the old version.
 
-If a retype arrives during an initial index backfill, the builder abandons the
+If a retype arrives during a creation backfill, the builder abandons the
 partially populated pending version, allocates a fresh `HighWater+1` version,
 and resets the persisted `BackfillKey` cursor to replay from the beginning.
 Reusing the partial keyspace would mix encodings at identical event sequences.

@@ -37,7 +37,18 @@ import (
 // the end. Raft progress can still advance without native movement when the
 // fixed source snapshot contains only no-op, failed, or technical Raft entries.
 func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
-	defer b.rollbackFoldBatch()
+	defer func() {
+		b.rollbackFoldBatch()
+		b.wb.Reset()
+	}()
+
+	// The projection batch containing a checkpoint log may already be durable
+	// when filesystem materialization fails. Retry that side effect before
+	// consuming later logs; replaying the committed batch would duplicate
+	// lifecycle mutations such as the ledger-history tracker.
+	if err := b.materializePendingCheckpoint(ctx); err != nil {
+		return cursor, err
+	}
 
 	handle, err := b.pebbleStore.NewReadHandle()
 	if err != nil {
@@ -84,11 +95,16 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 	defer func() { _ = proposals.close() }()
 
-	// Track whether we advanced the cursor without persisting it yet.
+	// cursor is the last durably committed native sequence and is therefore the
+	// safe value returned on failure. unpersistedCursor is the latest sequence
+	// consumed from this snapshot; loop bounds must use it so coalesced empty
+	// batches cannot read beyond the fixed target on a continuation call.
 	needsPersist := false
+	unpersistedCursor := cursor
+	unpersistedCount := 0
 	startCursor := cursor
 	lastProgressLog := time.Now()
-	persistAppliedProposalProgress := func(batch *dal.WriteSession, lastProcessedSeq uint64) error {
+	persistAppliedProposalProgress := func(batch *dal.WriteSession, lastProcessedSeq uint64) (uint64, error) {
 		proposals.advanceBefore(lastProcessedSeq + 1)
 		// Surface any non-EOF iterator error the AppliedProposal cursor
 		// saw during this advance. Letting it slide would mean the
@@ -96,20 +112,20 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// indexer would persist account->tx mappings for volumes that
 		// should have been skipped.
 		if err := proposals.err(); err != nil {
-			return fmt.Errorf("applied proposal cursor failed: %w", err)
+			return b.lastAppliedProposalSeq, fmt.Errorf("applied proposal cursor failed: %w", err)
 		}
 		if seq := proposals.resumeSequence(); seq > b.lastAppliedProposalSeq {
 			if err := b.readStore.WriteAppliedProposalProgress(batch, seq); err != nil {
-				return err
+				return b.lastAppliedProposalSeq, err
 			}
 
-			b.lastAppliedProposalSeq = seq
+			return seq, nil
 		}
 
-		return nil
+		return b.lastAppliedProposalSeq, nil
 	}
 
-	for cursor < targetSequence {
+	for unpersistedCursor < targetSequence {
 		var (
 			batchCount                int
 			lastSeq                   uint64
@@ -128,7 +144,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// target so later commits visible through a newly-opened continuation
 		// snapshot cannot pull the target forward between deadline-driven calls.
 		batchLimit := b.batchSize
-		if remaining := targetSequence - cursor; remaining < uint64(batchLimit) {
+		if remaining := targetSequence - unpersistedCursor; remaining < uint64(batchLimit) {
 			batchLimit = int(remaining)
 		}
 
@@ -154,36 +170,41 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 
-			// A ledger's creation log bounds a future initial index's replay:
-			// every log of that ledger is at or above this sequence. Recorded
-			// only here, so the entry proves this process folded the creation
-			// itself — after a restart it is absent and the replay falls back
-			// to the whole log rather than trusting a later first-seen log
-			// (recordLedgerCreation).
-			if cl := log.GetPayload().GetCreateLedger(); cl != nil {
-				b.recordLedgerCreation(cl.GetName(), log.GetSequence())
+			if cl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_CreateLedger); ok {
+				if cl.CreateLedger == nil {
+					_ = batch.Cancel()
+
+					return cursor, historyReplayInvariantf("nil CreatedLedger payload")
+				}
+				if err := b.observeCreatedLedger(cl.CreateLedger.GetName()); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
 
 				continue
 			}
 
 			// Handle ledger deletion: remove all read indexes for the deleted ledger.
 			if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
-				if dl.DeleteLedger != nil {
-					name := dl.DeleteLedger.GetName()
-					delete(b.ledgerFirstSeq, name)
-					if err := readstore.DeleteLedgerIndexes(batch, name); err != nil {
-						_ = batch.Cancel()
+				if dl.DeleteLedger == nil {
+					_ = batch.Cancel()
 
-						return cursor, err
-					}
-
-					b.markLedgerDeletedInBatch(name)
-					// Live delete: evict the in-memory version state too so a
-					// same-name recreate is treated as genuinely new. (The
-					// backfill replay path deliberately does NOT do this — see
-					// dropLedgerVersionState.)
-					b.dropLedgerVersionState(name)
+					return cursor, historyReplayInvariantf("nil DeletedLedger payload")
 				}
+				name := dl.DeleteLedger.GetName()
+				if err := readstore.DeleteLedgerIndexes(batch, name); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
+				if err := b.observeDeletedLedger(name); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
+
+				b.markLedgerDeletedInBatch(name)
 
 				continue
 			}
@@ -234,6 +255,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			if ledgerLog == nil || ledgerLog.GetData() == nil {
 				continue
 			}
+			historyBefore, historyExists := b.historyStateFor(ledgerName)
+			category := commonpb.LedgerLogCategoryOf(ledgerLog.GetData())
+			if err := b.observeLedgerPayload(ledgerName, ledgerLog.GetData()); err != nil {
+				_ = batch.Cancel()
+
+				return cursor, err
+			}
 
 			cfg := b.ledgerConfig(ledgerName)
 			var excludedVolumes map[domain.AccountAssetKey]struct{}
@@ -252,8 +280,22 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 
-			// Index log date for date range filtering (opt-in via log date builtin index).
-			if cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE) {
+			// log_date covers every ledger-local log, including CONTROL. While a
+			// ledger remains EMPTY we stage date rows proactively so a later
+			// CreateIndex can become live immediately without a global replay;
+			// this also covers the CreateIndex log itself because it is CONTROL.
+			// If the first HISTORY arrives before log_date is registered, discard
+			// the speculative prefix in this same fold: a genuine late index will
+			// rebuild the complete stream through its normal backfill.
+			logDateActive := cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+			wasEmpty := historyExists && historyBefore == ledgerHistoryEmpty
+			if wasEmpty && category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY && !logDateActive {
+				if err := readstore.DeleteLedgerIndexPrefix(batch, readstore.PrefixLedgerLogDate, ledgerName); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
+			} else if logDateActive || wasEmpty {
 				if err := b.wb.WriteLedgerLogDateIndex(b.kb, ledgerName, ledgerLog.GetDate().GetData(), ledgerLog.GetId()); err != nil {
 					_ = batch.Cancel()
 
@@ -286,7 +328,8 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			// Persist only AppliedProposal entries whose log range is fully behind lastSeq.
-			if err := persistAppliedProposalProgress(batch, lastSeq); err != nil {
+			appliedProposalSeq, err := persistAppliedProposalProgress(batch, lastSeq)
+			if err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -317,6 +360,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			b.commitFoldBatch()
+			b.lastAppliedProposalSeq = appliedProposalSeq
+			cursor = lastSeq
+			unpersistedCursor = cursor
+			b.lastIndexedSeq.Store(cursor)
+			b.logsIndexed.Add(uint64(batchCount + unpersistedCount))
+			unpersistedCount = 0
+			b.readStore.NotifyProgress()
 
 			needsPersist = false
 		} else {
@@ -324,6 +374,8 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			b.wb.Reset()
 			b.rollbackFoldBatch()
 			needsPersist = true
+			unpersistedCursor = lastSeq
+			unpersistedCount += batchCount
 		}
 
 		// Materialize a query checkpoint inline, at the exact moment the builder
@@ -341,46 +393,14 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// return the retryable ErrCheckpointNotReady (Unavailable) until the
 		// client deletes and recreates it (see openCheckpointStores).
 		if cpID := pendingCheckpointCreate; cpID > 0 {
-			for {
-				err := b.readStore.WaitForAuditRaftProgress(ctx, pendingCheckpointHorizon)
-				if errors.Is(err, readstore.ErrAuditProjectionUnavailable) ||
-					errors.Is(err, readstore.ErrAuditProjectionFailed) {
-					auditState := "disabled"
-					if errors.Is(err, readstore.ErrAuditProjectionFailed) {
-						auditState = "failed"
-					}
-					b.logger.WithFields(map[string]any{
-						"checkpointID": cpID,
-						"horizon":      pendingCheckpointHorizon,
-						"auditState":   auditState,
-					}).Infof("Query checkpoint remains unavailable because the audit projection cannot certify it")
-
-					break
-				}
-				if err != nil {
-					return cursor, fmt.Errorf("waiting for audit projection before query checkpoint %d: %w", cpID, err)
-				}
-
-				_, _, auditGeneration := b.readStore.AuditProjectionStateWithGeneration()
-				if err := b.createReadIndexCheckpoint(cpID, auditGeneration); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
-					b.logger.WithFields(map[string]any{
-						"checkpointID": cpID,
-						"horizon":      pendingCheckpointHorizon,
-					}).Infof("Audit projection changed during query checkpoint materialization; retrying")
-
-					continue
-				} else if err != nil {
-					return cursor, err
-				}
-
-				break
+			b.pendingCheckpointMaterialization = pendingCheckpointMaterialization{
+				id:      cpID,
+				horizon: pendingCheckpointHorizon,
+			}
+			if err := b.materializePendingCheckpoint(ctx); err != nil {
+				return cursor, err
 			}
 		}
-
-		cursor = lastSeq
-		b.lastIndexedSeq.Store(cursor)
-		b.logsIndexed.Add(uint64(batchCount))
-		b.readStore.NotifyProgress()
 
 		if cpID := pendingCheckpointDelete; cpID > 0 {
 			b.deleteReadIndexCheckpoint(cpID)
@@ -396,9 +416,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// Periodic progress logging for long catch-up runs.
 		if now := time.Now(); now.Sub(lastProgressLog) >= 10*time.Second {
 			b.logger.WithFields(map[string]any{
-				"cursor":  cursor,
+				"cursor":  max(cursor, unpersistedCursor),
 				"from":    startCursor,
-				"indexed": cursor - startCursor,
+				"indexed": max(cursor, unpersistedCursor) - startCursor,
 			}).Infof("processLogs progress")
 
 			lastProgressLog = now
@@ -407,7 +427,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		if eof {
 			break
 		}
-		if cursor >= targetSequence {
+		if unpersistedCursor >= targetSequence {
 			break
 		}
 
@@ -421,19 +441,20 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	// This reduces fsyncs from O(logs/batchSize) to O(1) when no indexes are active.
 	if needsPersist {
 		batch := b.readStore.NewBatch()
-		if err := b.readStore.WriteProgress(batch, cursor); err != nil {
+		if err := b.readStore.WriteProgress(batch, unpersistedCursor); err != nil {
 			_ = batch.Cancel()
 
 			return cursor, fmt.Errorf("writing progress: %w", err)
 		}
 
-		if err := persistAppliedProposalProgress(batch, cursor); err != nil {
+		appliedProposalSeq, err := persistAppliedProposalProgress(batch, unpersistedCursor)
+		if err != nil {
 			_ = batch.Cancel()
 
 			return cursor, fmt.Errorf("writing applied proposal progress: %w", err)
 		}
 
-		if cursor >= targetSequence {
+		if unpersistedCursor >= targetSequence {
 			if err := b.readStore.WriteRaftProgress(batch, targetAppliedIndex); err != nil {
 				_ = batch.Cancel()
 
@@ -446,6 +467,12 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 			return cursor, fmt.Errorf("committing progress: %w", err)
 		}
+
+		b.lastAppliedProposalSeq = appliedProposalSeq
+		cursor = unpersistedCursor
+		b.lastIndexedSeq.Store(cursor)
+		b.logsIndexed.Add(uint64(unpersistedCount))
+		b.readStore.NotifyProgress()
 	}
 
 	// Raft can advance without producing a system log (no-op, rejected, or
@@ -472,6 +499,51 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	}
 
 	return cursor, nil
+}
+
+func (b *Builder) materializePendingCheckpoint(ctx context.Context) error {
+	pending := b.pendingCheckpointMaterialization
+	if pending.id == 0 {
+		return nil
+	}
+
+	for {
+		err := b.readStore.WaitForAuditRaftProgress(ctx, pending.horizon)
+		if errors.Is(err, readstore.ErrAuditProjectionUnavailable) ||
+			errors.Is(err, readstore.ErrAuditProjectionFailed) {
+			auditState := "disabled"
+			if errors.Is(err, readstore.ErrAuditProjectionFailed) {
+				auditState = "failed"
+			}
+			b.logger.WithFields(map[string]any{
+				"checkpointID": pending.id,
+				"horizon":      pending.horizon,
+				"auditState":   auditState,
+			}).Infof("Query checkpoint remains unavailable because the audit projection cannot certify it")
+			b.pendingCheckpointMaterialization = pendingCheckpointMaterialization{}
+
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("waiting for audit projection before query checkpoint %d: %w", pending.id, err)
+		}
+
+		_, _, auditGeneration := b.readStore.AuditProjectionStateWithGeneration()
+		if err := b.createReadIndexCheckpoint(pending.id, auditGeneration); errors.Is(err, readstore.ErrAuditProjectionUnavailable) {
+			b.logger.WithFields(map[string]any{
+				"checkpointID": pending.id,
+				"horizon":      pending.horizon,
+			}).Infof("Audit projection changed during query checkpoint materialization; retrying")
+
+			continue
+		} else if err != nil {
+			return err
+		}
+
+		b.pendingCheckpointMaterialization = pendingCheckpointMaterialization{}
+
+		return nil
+	}
 }
 
 // indexPayload dispatches a ledger log payload to the appropriate index handler.
@@ -679,14 +751,19 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 
 	// Handle ledger deletion: remove all read indexes for the deleted ledger.
 	if dl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
-		if dl.DeleteLedger != nil && b.wb.Batch() != nil {
-			name := dl.DeleteLedger.GetName()
-			if err := readstore.DeleteLedgerIndexes(b.wb.Batch(), name); err != nil {
-				return err
-			}
-
-			b.markLedgerDeletedInBatch(name)
+		if dl.DeleteLedger == nil {
+			return errors.New("invariant: nil DeletedLedger payload")
 		}
+		if b.wb.Batch() == nil {
+			return errors.New("invariant: DeletedLedger encountered without an active readstore batch")
+		}
+
+		name := dl.DeleteLedger.GetName()
+		if err := readstore.DeleteLedgerIndexes(b.wb.Batch(), name); err != nil {
+			return err
+		}
+
+		b.markLedgerDeletedInBatch(name)
 
 		return nil
 	}
@@ -712,7 +789,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	}
 
 	// Schema logs are deliberately absent from this switch. The only caller,
-	// processBackfill, gates on isDataLog, which admits exactly
+	// processBackfill, gates on the generated HISTORY category, which admits exactly
 	// CreatedTransaction / RevertedTransaction / SavedMetadata / DeletedMetadata
 	// / OrderSkipped and switches on the same discriminator used here — so a
 	// SetMetadataFieldType or RemovedMetadataFieldType log can never arrive,
@@ -723,8 +800,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// and RemovedMetadataFieldType to handleRemovedMetadataFieldType. A retype
 	// that lands mid-backfill is handled by addSchemaRewriteTask resetting the
 	// in-flight cursor, not by replaying the schema log here. Do NOT add a case
-	// for them without also changing isDataLog: an unreachable second
-	// implementation of the schema rewrite is what this replaced.
+	// for CONTROL payloads without also changing their protobuf category
+	// annotation: an unreachable second implementation of the schema rewrite is
+	// what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
@@ -734,12 +812,6 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
 		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
-	case *commonpb.LedgerLogPayload_CreateIndex:
-		return b.handleCreatedIndexLog(ledgerName, p.CreateIndex)
-	case *commonpb.LedgerLogPayload_DropIndex:
-		if err := b.handleDroppedIndexLog(b.kb, ledgerName, p.DropIndex); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -1069,23 +1141,6 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 func (b *Builder) markLedgerDeletedInBatch(name string) {
 	b.deletedThisBatch[name] = struct{}{}
 	b.seenAcctAsset = make(map[string]struct{})
-}
-
-// dropLedgerVersionState evicts every in-memory per-index version state for a
-// ledger — the whole-ledger counterpart of dropVersionState. It mirrors the
-// persisted wipe DeleteLedgerIndexes performs on the SubInternalIndexVersion
-// prefix, so a same-name recreate in the same process starts from a clean
-// CurrentVersion == 0: otherwise the handleCreatedIndexLog readiness guard would
-// read the dead generation's CurrentVersion != 0, skip seeding fresh state and
-// scheduling the backfill, and strand the new index behind ErrIndexBuilding.
-//
-// This lives on the LIVE DeleteLedger apply path only (processLogs), NOT in
-// markLedgerDeletedInBatch: the backfill replay path also calls that helper for
-// a historical delete of the task ledger, where the in-progress version state
-// tracks the RECREATED generation the backfill is building and must survive so
-// completeBackfill can promote it.
-func (b *Builder) dropLedgerVersionState(name string) {
-	delete(b.indexVersions, name)
 }
 
 // readstoreKeyExists reports whether key is present in committed read-store

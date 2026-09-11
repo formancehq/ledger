@@ -153,6 +153,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 	)
 
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metaKey)
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 	canonical := indexes.Canonical(id)
 	kb := dal.NewKeyBuilder()
 

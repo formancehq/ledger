@@ -2,6 +2,7 @@ package indexbuilder
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sync/atomic"
@@ -58,6 +59,17 @@ type Builder struct {
 	// Active backfill tasks for BUILDING indexes.
 	backfillTasks []*backfillTask
 
+	// ledgerHistory is the committed per-ledger EMPTY/NON_EMPTY tracker for
+	// the current ledger incarnation. historyOverlay holds only the current
+	// processLogs batch and is merged after its durable commit.
+	ledgerHistory  map[string]ledgerHistoryState
+	historyOverlay map[string]ledgerHistoryMutation
+
+	// unresolvedIndexes are registry entries whose local IndexVersionState is
+	// absent/tombstoned at boot. They remain inactive until replay reaches the
+	// corresponding CreatedIndexLog and can decide EMPTY versus NON_EMPTY.
+	unresolvedIndexes map[string]map[string]*commonpb.Index
+
 	// Active schema rewrite tasks for deferred SetMetadataFieldType processing.
 	schemaRewriteTasks []*schemaRewriteTask
 
@@ -89,20 +101,16 @@ type Builder struct {
 	projectionTargetSequence     uint64
 	projectionTargetAppliedIndex uint64
 
+	// pendingCheckpointMaterialization retains a checkpoint action after its
+	// projection batch and cursor have committed but the filesystem snapshot
+	// failed transiently. The next processLogs call retries it before reading
+	// later logs, without replaying the already-committed batch.
+	pendingCheckpointMaterialization pendingCheckpointMaterialization
+
 	// Reusable scratch objects to reduce allocations in the hot loop.
 	kb       *dal.KeyBuilder
 	wb       *readstore.WriteBatch
 	accounts map[string]struct{}
-
-	// ledgerFirstSeq holds the global sequence of a ledger's creation log, for
-	// ledgers whose creation THIS process folded. No log of the ledger sits
-	// below it, so it bounds the replay of an index declared while the ledger
-	// was still born-empty (CreatedIndexLog.initial). Recording only the
-	// creation log is what makes the bound sound: a restart between the
-	// creation and the CreateIndex log leaves no entry, and the replay then
-	// covers the whole log instead of starting after a config log it would
-	// never index.
-	ledgerFirstSeq map[string]uint64
 
 	// seenAcctAsset deduplicates account-by-asset index writes within the
 	// in-flight batch: it holds the AccountByAssetKey bytes (as string) already
@@ -140,6 +148,11 @@ type Builder struct {
 	// nil in the common data-only fold and outside processLogs.
 	foldRollbacks []func()
 	foldBatchOpen bool
+}
+
+type pendingCheckpointMaterialization struct {
+	id      uint64
+	horizon uint64
 }
 
 // versionFor returns (current, pending) for an indexed (ledger, canonicalID).
@@ -204,7 +217,7 @@ func (b *Builder) putVersionState(ledgerName, canonicalID string, state readstor
 // permanent events already occupy (the same-sequence retraction such reuse
 // forces can never win — see IndexVersionState.HighWater).
 func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
-	prior, _ := b.versionStateFor(ledgerName, canonicalID)
+	prior, priorExists := b.versionStateFor(ledgerName, canonicalID)
 
 	tomb := readstore.IndexVersionState{
 		HighWater: max(prior.HighWater, prior.CurrentVersion, prior.PendingVersion),
@@ -222,6 +235,19 @@ func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
 	}
 
 	b.putVersionState(ledgerName, canonicalID, tomb)
+	b.recordFoldRollback(func() {
+		if priorExists {
+			b.putVersionState(ledgerName, canonicalID, prior)
+
+			return
+		}
+		if inner := b.indexVersions[ledgerName]; inner != nil {
+			delete(inner, canonicalID)
+			if len(inner) == 0 {
+				delete(b.indexVersions, ledgerName)
+			}
+		}
+	})
 
 	return nil
 }
@@ -525,7 +551,6 @@ func NewBuilder(
 		kb:             dal.NewKeyBuilder(),
 		wb:             readstore.NewWriteBatch(),
 		accounts:       make(map[string]struct{}, 64),
-		ledgerFirstSeq: make(map[string]uint64, 8),
 	}
 }
 
@@ -533,19 +558,6 @@ func NewBuilder(
 // per-batch account-by-asset dedup set. This is the single place a batch is
 // bound for index processing, so the dedup set can never be left stale (or
 // grow unbounded) relative to the batch it tracks.
-// recordLedgerCreation notes where a ledger's log history begins, bounding a
-// later initial index's backfill. First writer wins: a replay that re-folds
-// the creation log must not move a bound the live fold already set.
-func (b *Builder) recordLedgerCreation(ledgerName string, sequence uint64) {
-	if b.ledgerFirstSeq == nil || ledgerName == "" || sequence == 0 {
-		return
-	}
-
-	if _, seen := b.ledgerFirstSeq[ledgerName]; !seen {
-		b.ledgerFirstSeq[ledgerName] = sequence
-	}
-}
-
 func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})
@@ -556,6 +568,7 @@ func (b *Builder) initFoldBatch(batch *dal.WriteSession) {
 	b.initBatch(batch)
 	b.foldRollbacks = nil
 	b.foldBatchOpen = true
+	b.historyOverlay = make(map[string]ledgerHistoryMutation)
 }
 
 func (b *Builder) recordFoldRollback(rollback func()) {
@@ -574,11 +587,25 @@ func (b *Builder) rollbackFoldBatch() {
 		rollback()
 	}
 	b.foldRollbacks = nil
+	b.historyOverlay = nil
 }
 
 func (b *Builder) commitFoldBatch() {
+	if b.ledgerHistory == nil {
+		b.ledgerHistory = make(map[string]ledgerHistoryState)
+	}
+	for ledger, mutation := range b.historyOverlay {
+		if mutation.deleted {
+			delete(b.ledgerHistory, ledger)
+
+			continue
+		}
+
+		b.ledgerHistory[ledger] = mutation.state
+	}
 	b.foldBatchOpen = false
 	b.foldRollbacks = nil
+	b.historyOverlay = nil
 }
 
 // SetNotifications sets the dedicated Notifications signal for the builder.
@@ -667,15 +694,26 @@ func (b *Builder) loop(ctx context.Context) {
 	// backoff until it succeeds or shutdown is requested. initIndexConfig
 	// resets its own state, so re-running it on retry is idempotent.
 	var (
-		cursor     uint64
-		pebbleLast uint64
-		err        error
+		cursor           uint64
+		pebbleLast       uint64
+		err              error
+		bootInvariantErr error
 	)
 	worker.RetryWithBackoff(stop, b.logger, func() error {
 		cursor, pebbleLast, err = b.bootInit(ctx)
+		if errors.Is(err, errHistoryReplayInvariant) {
+			bootInvariantErr = err
+
+			return nil
+		}
 
 		return err
 	})
+	if bootInvariantErr != nil {
+		b.failHistoryReplay(bootInvariantErr)
+
+		return
+	}
 
 	// RetryWithBackoff returns only on success or when stop is closed. If
 	// the context was cancelled we never got a good init — return without
@@ -710,6 +748,7 @@ func (b *Builder) loop(ctx context.Context) {
 	savedBatchSize := b.batchSize
 	b.batchSize = max(b.batchSize, 10_000)
 	restoreIndexes := b.stripBuildingIndexes()
+	replayValidationPending := true
 
 	for {
 		select {
@@ -725,8 +764,6 @@ func (b *Builder) loop(ctx context.Context) {
 		deadline := time.Now().Add(catchUpBudget)
 
 		if cursor, err = b.processLogs(ctx, cursor, deadline); err != nil {
-			b.logger.Errorf("Error during initial catch-up: %v", err)
-
 			break
 		}
 
@@ -737,6 +774,22 @@ func (b *Builder) loop(ctx context.Context) {
 
 	restoreIndexes()
 	b.batchSize = savedBatchSize
+	if errors.Is(err, errHistoryReplayInvariant) {
+		b.failHistoryReplay(err)
+
+		return
+	}
+	if err != nil {
+		b.logger.Errorf("Error during initial catch-up: %v", err)
+	}
+	if err == nil {
+		if validationErr := b.validateHistoryReplayState(); validationErr != nil {
+			b.failHistoryReplay(validationErr)
+
+			return
+		}
+		replayValidationPending = false
+	}
 
 	if cursor > prevCursor {
 		b.logger.WithFields(map[string]any{
@@ -746,7 +799,12 @@ func (b *Builder) loop(ctx context.Context) {
 		}).Infof("Initial catch-up complete")
 	}
 
-	b.processBackgroundTasks(ctx, stop, cursor)
+	// A checkpoint retry must freeze the readstore exactly at its committed log
+	// boundary. Backfills and GC also mutate the readstore, so hold them until
+	// materialization succeeds (or is abandoned because audit is unavailable).
+	if b.pendingCheckpointMaterialization.id == 0 {
+		b.processBackgroundTasks(ctx, stop, cursor)
+	}
 
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -774,10 +832,23 @@ func (b *Builder) loop(ctx context.Context) {
 
 		prevCursor := cursor
 		if cursor, err = b.processLogs(ctx, cursor, logDeadline); err != nil {
+			if errors.Is(err, errHistoryReplayInvariant) {
+				b.failHistoryReplay(err)
+
+				return
+			}
 			b.logger.Errorf("Error processing logs: %v", err)
 		}
 
 		logsProcessed := cursor > prevCursor
+		if replayValidationPending && err == nil && !logsProcessed {
+			if validationErr := b.validateHistoryReplayState(); validationErr != nil {
+				b.failHistoryReplay(validationErr)
+
+				return
+			}
+			replayValidationPending = false
+		}
 
 		// When processLogs had nothing to do (cluster idle), give backfills
 		// a much larger budget — the full tick interval instead of just 50ms.
@@ -787,8 +858,10 @@ func (b *Builder) loop(ctx context.Context) {
 			b.backfillBudget = 50 * time.Millisecond
 		}
 
-		b.processBackgroundTasks(ctx, stop, cursor)
-		b.runEventGC(cursor)
+		if b.pendingCheckpointMaterialization.id == 0 {
+			b.processBackgroundTasks(ctx, stop, cursor)
+			b.runEventGC(cursor)
+		}
 
 		// Always wake projection-progress and checkpoint-readiness waiters.
 		// Without this, a waiter that enters Wait() between the last
@@ -796,6 +869,11 @@ func (b *Builder) loop(ctx context.Context) {
 		// tick could miss the broadcast and block until new logs arrive.
 		b.readStore.NotifyProgress()
 	}
+}
+
+func (b *Builder) failHistoryReplay(err error) {
+	b.logger.Errorf("Indexbuilder history replay invariant failed: %v", err)
+	b.readStore.SetReadProjectionFailed()
 }
 
 // bootInit runs the index builder's boot prologue as a single retryable unit:
@@ -807,13 +885,31 @@ func (b *Builder) loop(ctx context.Context) {
 // and query.ReadLastSequence stay best-effort (they tolerate failure today);
 // only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
 func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
-	if err := b.initIndexConfig(ctx); err != nil {
-		return 0, 0, fmt.Errorf("initializing index config: %w", err)
+	snapshot := b.readStore.NewSnapshot()
+	closeSnapshot := func(operationErr error) error {
+		closeErr := snapshot.Close()
+		if closeErr != nil {
+			closeErr = fmt.Errorf("closing read-store boot snapshot: %w", closeErr)
+		}
+
+		return errors.Join(operationErr, closeErr)
+	}
+	cursor, err = b.readStore.LastIndexedSequenceFrom(snapshot)
+	if err != nil {
+		return 0, 0, closeSnapshot(fmt.Errorf("reading last indexed sequence: %w", err))
+	}
+	if err := b.loadLedgerHistory(snapshot); err != nil {
+		return 0, 0, closeSnapshot(fmt.Errorf("reading ledger history state: %w", err))
+	}
+	if err := closeSnapshot(nil); err != nil {
+		return 0, 0, err
+	}
+	if cursor == 0 && len(b.ledgerHistory) != 0 {
+		return 0, 0, historyReplayInvariantf("ledger history state exists while indexbuilder cursor is zero")
 	}
 
-	cursor, err = b.readStore.LastIndexedSequence()
-	if err != nil {
-		return 0, 0, fmt.Errorf("reading last indexed sequence: %w", err)
+	if err := b.initIndexConfigAfterHistory(ctx); err != nil {
+		return 0, 0, fmt.Errorf("initializing index config: %w", err)
 	}
 
 	// Recover AppliedProposal sync progress (best-effort: a corrupt cursor

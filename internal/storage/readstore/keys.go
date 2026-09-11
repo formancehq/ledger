@@ -52,6 +52,10 @@ const (
 	// SubInternalAuditRaftProgress is the equivalent causal certificate for
 	// the audit secondary index. It is independent from the native audit cursor.
 	SubInternalAuditRaftProgress byte = 0x08
+	// SubInternalLedgerHistory stores the indexbuilder-owned per-ledger
+	// EMPTY/NON_EMPTY history classification for the current incarnation.
+	// Layout: [0xFE][0x09][ledgerName padded 64B] -> state byte.
+	SubInternalLedgerHistory byte = 0x09
 )
 
 // AuditField discriminates the indexed field within the audit-index keyspace.
@@ -651,6 +655,22 @@ func IndexVersionStateKey(kb *dal.KeyBuilder, ledgerName string, canonicalID str
 //	[0xFE][0x04]
 func IndexVersionStatePrefix() []byte {
 	return []byte{PrefixInternal, SubInternalIndexVersion}
+}
+
+// LedgerHistoryStateKey builds the indexbuilder's per-ledger history key.
+//
+//	[0xFE][0x09][ledgerName padded 64B]
+func LedgerHistoryStateKey(kb *dal.KeyBuilder, ledgerName string) []byte {
+	return kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalLedgerHistory).
+		PutLedgerNameFixed(ledgerName).
+		Consume()
+}
+
+// LedgerHistoryStatePrefix returns the global prefix used at indexbuilder boot.
+func LedgerHistoryStatePrefix() []byte {
+	return []byte{PrefixInternal, SubInternalLedgerHistory}
 }
 
 // AppliedProposalProgressKey returns the full key for the AppliedProposal

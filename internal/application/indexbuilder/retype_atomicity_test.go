@@ -38,6 +38,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, key)
 	canonical := indexes.Canonical(id)
+	persistLedgerHistory(t, b, ledger, ledgerHistoryNonEmpty)
 	before := readstore.IndexVersionState{
 		CurrentVersion:  0,
 		PendingVersion:  1,

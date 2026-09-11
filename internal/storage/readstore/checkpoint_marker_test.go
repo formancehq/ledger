@@ -254,3 +254,17 @@ func TestWaitForCheckpointDeletionCheckError(t *testing.T) {
 	})
 	require.ErrorIs(t, err, wantErr)
 }
+
+func TestWaitForCheckpointReturnsTerminalProjectionFailure(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "pending")
+	s := newTestStore(t)
+	waitErr := make(chan error, 1)
+	go func() {
+		waitErr <- s.WaitForCheckpoint(context.Background(), dir, nil)
+	}()
+
+	s.SetReadProjectionFailed()
+	require.ErrorIs(t, <-waitErr, ErrReadProjectionFailed)
+}
