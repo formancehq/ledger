@@ -305,21 +305,12 @@ func (b *Builder) flushPromotions() {
 // not flushed, and a kill before Pebble's next flush reopens with the version
 // retained and this pass retires it again. The index id comes from the state's
 // own key, so a retained version is reclaimed whether or not the registry
-// still lists the index.
+// still lists the index; a retained version the key cannot address is an
+// invariant failure, logged on every pass (commitRetirement).
 func (b *Builder) retirePrevious() {
 	for ledgerName, inner := range b.indexVersions {
 		for canonical, state := range inner {
 			if state.PreviousVersion == 0 {
-				continue
-			}
-
-			id, err := indexes.ParseCanonical(canonical)
-			if err != nil {
-				continue
-			}
-
-			meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
-			if !ok || meta.Metadata == nil {
 				continue
 			}
 
@@ -331,7 +322,7 @@ func (b *Builder) retirePrevious() {
 				continue
 			}
 
-			if err := b.commitRetirement(ledgerName, canonical, meta.Metadata, state); err != nil {
+			if err := b.commitRetirement(ledgerName, canonical, state); err != nil {
 				b.logger.WithFields(map[string]any{
 					"ledger":    ledgerName,
 					"canonical": canonical,
@@ -343,11 +334,26 @@ func (b *Builder) retirePrevious() {
 	}
 }
 
-func (b *Builder) commitRetirement(ledgerName, canonical string, meta *commonpb.MetadataIndexID, state readstore.IndexVersionState) error {
-	ns := namespaceForTarget(meta.GetTarget())
+// commitRetirement purges state's retained version. Only a metadata rewrite
+// switch retains a version (promotedState), so a retained version on any
+// other index is an invariant failure.
+func (b *Builder) commitRetirement(ledgerName, canonical string, state readstore.IndexVersionState) error {
+	id, err := indexes.ParseCanonical(canonical)
+	if err != nil {
+		return fmt.Errorf("invariant: retained version %d on unparsable index %s/%s: %w",
+			state.PreviousVersion, ledgerName, canonical, err)
+	}
+
+	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	if !ok || meta.Metadata == nil {
+		return fmt.Errorf("invariant: retained version %d on non-metadata index %s/%s",
+			state.PreviousVersion, ledgerName, canonical)
+	}
+
+	ns := namespaceForTarget(meta.Metadata.GetTarget())
 	if ns == "" {
 		return fmt.Errorf("invariant: retained version %d on index %s/%s with unknown target %s",
-			state.PreviousVersion, ledgerName, canonical, meta.GetTarget())
+			state.PreviousVersion, ledgerName, canonical, meta.Metadata.GetTarget())
 	}
 
 	retired := state
@@ -363,13 +369,15 @@ func (b *Builder) commitRetirement(ledgerName, canonical string, meta *commonpb.
 		return fmt.Errorf("persisting retirement: %w", err)
 	}
 
-	if err := b.gcVersionAt(batch, dal.NewKeyBuilder(), ledgerName, ns, meta.GetKey(), state.PreviousVersion); err != nil {
+	if err := b.gcVersionAt(batch, dal.NewKeyBuilder(), ledgerName, ns, meta.Metadata.GetKey(), state.PreviousVersion); err != nil {
 		b.discardBatch(batch)
 
 		return fmt.Errorf("gc retired keyspace: %w", err)
 	}
 
 	if err := batch.Commit(); err != nil {
+		b.discardBatch(batch)
+
 		return fmt.Errorf("committing retirement: %w", err)
 	}
 

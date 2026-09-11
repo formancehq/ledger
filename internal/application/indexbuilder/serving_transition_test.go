@@ -587,3 +587,27 @@ func TestBumpPendingVersion_KeepsTheRetainedVersion(t *testing.T) {
 	assert.Zero(t, state.PreviousVersion, "and is retired once its gate opens")
 	assert.Equal(t, uint32(3), state.PendingVersion, "retirement leaves the pending slot alone")
 }
+
+// Only a metadata rewrite switch retains a version, so a retained version on
+// any other index is an invariant failure: reported, never silently skipped,
+// and the state left as it is.
+func TestCommitRetirement_RejectsANonMetadataIndex(t *testing.T) {
+	t.Parallel()
+
+	b, _ := newKillableTestBuilder(t)
+
+	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	retained := readstore.IndexVersionState{CurrentVersion: 2, HighWater: 2, PreviousVersion: 1}
+	seedFlushedVersionState(t, b, canonical, retained)
+
+	err := b.commitRetirement(servingTestLedger, canonical, retained)
+	require.ErrorContains(t, err, "invariant")
+
+	err = b.commitRetirement(servingTestLedger, "not-a-canonical-id", retained)
+	require.ErrorContains(t, err, "invariant")
+
+	b.retirePrevious()
+
+	state, _ := b.versionStateFor(servingTestLedger, canonical)
+	assert.Equal(t, uint32(1), state.PreviousVersion, "the pass reports and leaves the state alone")
+}
