@@ -3,6 +3,7 @@ package admission
 import (
 	"crypto/ed25519"
 	"errors"
+	"net/url"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
