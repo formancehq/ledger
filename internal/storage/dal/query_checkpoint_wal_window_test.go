@@ -87,10 +87,34 @@ func TestCreateQueryCheckpointRedundantCallIsNoOp(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, CheckpointDirReady(dir))
 
+	sentinel := filepath.Join(dir, "sentinel.marker")
+	require.NoError(t, os.WriteFile(sentinel, []byte("x"), 0o640))
+
 	again, err := s.CreateQueryCheckpoint(1)
 	require.NoError(t, err)
 	require.Equal(t, dir, again)
 	require.True(t, CheckpointDirReady(again))
+	require.FileExists(t, sentinel, "a redundant call must not rebuild the directory")
+}
+
+// A temp directory left by a crash must not poison every later attempt for that
+// id: pebble refuses an existing destination, so the stale one is cleared first.
+func TestCreateQueryCheckpointClearsStaleTempDir(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	dir, err := s.CreateQueryCheckpoint(1)
+	require.NoError(t, err)
+
+	tmpDir := dir + ".tmp"
+	require.NoError(t, os.Rename(dir, tmpDir))
+
+	again, err := s.CreateQueryCheckpoint(1)
+	require.NoError(t, err)
+	require.Equal(t, dir, again)
+	require.True(t, CheckpointDirReady(again))
+	require.NoDirExists(t, tmpDir)
 }
 
 // TestCreateQueryCheckpointRebuildsUnmarkedDir pins the crash case: a final
