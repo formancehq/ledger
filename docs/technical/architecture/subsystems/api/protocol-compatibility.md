@@ -127,7 +127,7 @@ identify a concrete interoperability failure with the existing client/server
 contract. Ordinary secret masking, diagnostic wording, internal behavior and
 compatible additions do not automatically require a bump. Record the assessment
 in the PR; do not infer incompatibility merely because output differs. Revision
-7 changes operational connection fields from strings to structured messages.
+8 changes operational connection fields from strings to structured messages.
 The audit response contract is unchanged.
 
 This obligation applies to AI agents throughout pre-release development, even

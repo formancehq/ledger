@@ -73,7 +73,7 @@ func TestRedactSinkConfig_Databricks_OAuthM2M(t *testing.T) {
 	assert.Equal(t, secretSet, redacted.GetDatabricks().GetOauthM2M().GetClientSecret())
 }
 
-func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
+func TestRedactSinkConfig_Databricks_EmptySecretsRemainEmpty(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
@@ -128,7 +128,7 @@ func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
 	assert.Equal(t, secretSet, redacted.GetKafka().GetSaslPassword())
 }
 
-func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
+func TestRedactSinkConfig_ClickHouse_StructuredPasswordRedacted(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
