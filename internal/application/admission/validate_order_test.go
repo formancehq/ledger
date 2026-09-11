@@ -983,6 +983,17 @@ func TestValidateOrder_MirrorIAMRegion(t *testing.T) {
 				},
 			}},
 		},
+
+		{
+			name: "postgres mirror with IAM auth and malformed DSN reports syntax failure",
+			src: &commonpb.MirrorSourceConfigInput{Type: &commonpb.MirrorSourceConfigInput_Postgres{
+				Postgres: &commonpb.PostgresMirrorSourceConfigInput{
+					Dsn:        "postgres://user:secret%xx@host/db?sslmode=require",
+					AwsIamAuth: &commonpb.PostgresAwsIamAuth{Region: "eu-west-1"},
+				},
+			}},
+			wantErr: ErrMirrorConnectionInvalid,
+		},
 		{
 			name: "postgres mirror with IAM auth missing region rejected at admission",
 			src: &commonpb.MirrorSourceConfigInput{Type: &commonpb.MirrorSourceConfigInput_Postgres{

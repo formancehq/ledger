@@ -17,7 +17,7 @@ import (
 
 func TestURLComponentsPreserveRequestBytes(t *testing.T) {
 	t.Parallel()
-	for _, raw := range []string{"https://user:sentinel@host:443/a%2Fb?q=one%20two&q=one+two&flag&blank=&X-Signature=secret", "https://host/path?", "https://[::1]:443/path?z=%2f&a=%2F"} {
+	for _, raw := range []string{"https://user:sentinel@host:443/a%2Fb?q=one%20two&q=one+two&flag&blank=&X-Signature=secret", "https://host/path?", "https://host/a%23b?value=%23", "https://[::1]:443/path?z=%2f&a=%2F"} {
 		t.Run(raw, func(t *testing.T) {
 			t.Parallel()
 			cfg, err := parseURL(raw, "http")
@@ -288,6 +288,20 @@ func TestNATSDriverServerParity(t *testing.T) {
 			}
 			require.NotEmpty(t, before.addresses)
 			require.Equal(t, before.addresses, after.addresses)
+		})
+	}
+}
+
+func TestURLFragmentsAreRejected(t *testing.T) {
+	t.Parallel()
+	for _, kind := range []string{"http", "nats", "proxy"} {
+		t.Run(kind, func(t *testing.T) {
+			t.Parallel()
+			for _, fragment := range []string{"#fragment-secret", "#"} {
+				config, err := parseURL("https://user:password@host/path"+fragment, kind)
+				require.EqualError(t, err, "connection URL fragments are unsupported")
+				require.Nil(t, config)
+			}
 		})
 	}
 }
