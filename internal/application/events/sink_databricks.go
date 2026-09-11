@@ -141,7 +141,7 @@ func newDatabricksConnector(cfg DatabricksSinkConfig) (driver.Connector, error) 
 // OAuthClientSecret) must be configured.
 func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (result *DatabricksSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer(nil, cfg.Token, cfg.OAuthClientSecret)
-	defer sanitizer.finish(&retErr)
+	defer sanitizer.sanitizeReturned(&retErr)
 	connector, err := newDatabricksConnector(cfg)
 	if err != nil {
 		return nil, err
@@ -186,7 +186,7 @@ func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (result *D
 }
 
 func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	if len(events) == 0 {
 		return nil
 	}
@@ -226,7 +226,7 @@ func (s *DatabricksSink) Publish(ctx context.Context, events []*eventspb.Event) 
 }
 
 func (s *DatabricksSink) Close() (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 
 	return s.db.Close()
 }

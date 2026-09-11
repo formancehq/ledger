@@ -61,7 +61,7 @@ type KafkaSink struct {
 // NewKafkaSink creates a new Kafka sink.
 func NewKafkaSink(cfg KafkaSinkConfig) (result *KafkaSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer(nil, cfg.SASLPassword)
-	defer sanitizer.finish(&retErr)
+	defer sanitizer.sanitizeReturned(&retErr)
 	saramaCfg := sarama.NewConfig()
 	saramaCfg.Producer.Return.Successes = true
 	saramaCfg.Producer.Return.Errors = true
@@ -97,7 +97,7 @@ func NewKafkaSink(cfg KafkaSinkConfig) (result *KafkaSink, retErr error) {
 }
 
 func (s *KafkaSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	if !s.beginPublish() {
 		return kafkaSinkClosedError()
 	}
@@ -157,7 +157,7 @@ func (s *KafkaSink) Publish(ctx context.Context, events []*eventspb.Event) (retE
 }
 
 func (s *KafkaSink) Close() (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	shouldClose := false
 
 	s.closeMu.Lock()
