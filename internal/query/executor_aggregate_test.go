@@ -243,7 +243,7 @@ func TestExecute_NilFilterAggregateUsesPinnedSnapshot(t *testing.T) {
 			seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 			seedVolumes(t, store, attrs, "l", seededVolume{account: "a", asset: "USD/2", input: 10})
 
-			opener := &mutatingQueryHandleStore{store: store, afterOpen: func() {
+			opener := &mutatingQueryHandleStore{Store: store, afterOpen: func() {
 				// The reservation must already protect history before this callback.
 				require.Zero(t, rs.Leases().BeginGC(100))
 				switch mutation {
@@ -281,7 +281,7 @@ func TestExecute_NilFilterAggregateValidatesPinnedTarget(t *testing.T) {
 	rs := newTestReadStore(t)
 	attrs := attributes.New()
 	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil)
-	opener := &mutatingQueryHandleStore{store: store, afterOpen: func() {
+	opener := &mutatingQueryHandleStore{Store: store, afterOpen: func() {
 		seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, nil)
 	}}
 	resp, err := query.Execute(t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
