@@ -7,6 +7,16 @@ Ledger v3 exposes two types of APIs:
 1. **HTTP REST API**: Public API for clients (documented here)
 2. **gRPC API**: Inter-node communication and programmatic API (see [gRPC API](grpc-api.md))
 
+## HTTP server lifecycle
+
+Normal and restore mode supervise the HTTP endpoint through the bootstrap
+lifecycle. Listener bind errors fail startup synchronously. An unexpected
+`http.Server.Serve` error requests application shutdown and is returned during
+cleanup, causing the service runner to exit unsuccessfully. Normal shutdown
+ignores `http.ErrServerClosed` and drains active requests within the stop context.
+Temporary accept errors remain subject to the standard HTTP server retry policy.
+The endpoint retains its 10-second header read timeout and 120-second idle timeout.
+
 ## HTTP REST API
 
 ### Base URL

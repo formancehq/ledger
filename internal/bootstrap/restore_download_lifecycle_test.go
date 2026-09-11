@@ -51,7 +51,7 @@ func (l *restoreLifecycleEvents) stopPhases() []string {
 		switch {
 		case strings.Contains(name, "RestoreServiceServerImpl).BeginShutdown"):
 			phases = append(phases, "close admission and cancel download")
-		case strings.Contains(name, "httpserver.NewHook."):
+		case strings.Contains(name, ".httpServerHook."):
 			phases = append(phases, "stop HTTP")
 		case strings.Contains(name, ".grpcServerHook."):
 			phases = append(phases, "stop gRPC")
