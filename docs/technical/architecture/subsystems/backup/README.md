@@ -158,3 +158,8 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 | Restore orchestration | `internal/infra/backup/restore.go` |
 | Delta projection rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/` |
 | `Backup` / `BackupRun` CRDs | `misc/operator/api/v1alpha1/` |
+
+
+The [incremental restore contract](incremental-restore-contract.md#structured-sink-and-mirror-configurations)
+also covers structured sink and mirror configurations, including sink removal
+and replacement and mirror promotion/deletion after the checkpoint.

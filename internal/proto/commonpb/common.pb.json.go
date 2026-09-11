@@ -40,9 +40,11 @@ func (x *Log) MarshalJSON() ([]byte, error) {
 	}
 
 	aux := Aux{
-		Sequence:          x.GetSequence(),
-		Payload:           x.GetPayload(),
-		ResponseSignature: protoFieldJSON(x.GetResponseSignature()),
+		Sequence: x.GetSequence(),
+		Payload:  x.GetPayload(),
+	}
+	if x.GetResponseSignature() != nil {
+		aux.ResponseSignature = protoFieldJSON(x.GetResponseSignature())
 	}
 
 	return json.Marshal(aux)
@@ -527,9 +529,14 @@ func (x *LedgerInfo) MarshalJSON() ([]byte, error) {
 	aux := Aux{
 		Name:                   x.GetName(),
 		MetadataSchema:         protoFieldJSON(x.GetMetadataSchema()),
-		MirrorSource:           protoFieldJSON(x.GetMirrorSource()),
-		MirrorSyncProgress:     protoFieldJSON(x.GetMirrorSyncProgress()),
 		DefaultEnforcementMode: x.GetDefaultEnforcementMode().String(),
+	}
+
+	if x.GetMirrorSource() != nil {
+		aux.MirrorSource = protoFieldJSON(x.GetMirrorSource())
+	}
+	if x.GetMirrorSyncProgress() != nil {
+		aux.MirrorSyncProgress = protoFieldJSON(x.GetMirrorSyncProgress())
 	}
 
 	if x.GetMode() != LedgerMode_LEDGER_MODE_NORMAL {

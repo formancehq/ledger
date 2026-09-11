@@ -202,27 +202,25 @@ After promotion, the ledger accepts normal write requests. The boundary's `last_
 
 ## Configuration
 
-Mirror mode is configured at ledger creation:
+Creation requests and accepted orders carry `MirrorSourceConfigInput`, retaining
+HTTP URLs or PostgreSQL URI/keyword DSNs. `connectionconfig.Mirror` derives a
+separate `MirrorSourceConfig` before state mutation. `LedgerInfo` and the
+creation log own independent copies of this normalized configuration.
 
-```protobuf
-message CreateLedgerOrder {
-  ...
-  optional MirrorSourceConfig mirror_source = N;
-}
+HTTP source and OAuth token endpoints use parsed `ConnectionURL` components.
+PostgreSQL uses a `DatabaseConnection` with independent addresses, optional
+username/database/password, and settings. Optional presence distinguishes an
+explicit empty override from an omitted driver default. IAM region and role ARN
+remain separate fields. The IAM admission guard inspects explicit TLS mode and
+TCP hosts without invoking pgx or reading local resources.
 
-message MirrorSourceConfig {
-  string ledger_name = 1;
-  oneof type {
-    HttpMirrorSourceConfig     http     = 2;
-    PostgresMirrorSourceConfig postgres = 3;
-  }
-  uint32 batch_size = 4;
-  reserved 5;  // was address_rewrite_rules (regex); replaced by rewrite_rules
-  repeated MirrorRewriteRule rewrite_rules = 6;  // see "CEL rewrite rules"
-}
-```
-
-A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which is what the manager looks at to decide whether to spin up a worker.
+Runtime source creation renders the normalized fields for the existing clients;
+pgx environment and file defaults remain runtime behavior. Public source reads
+are structured and mask only annotated sensitive values. Promotion clears the
+source both live and during incremental restore. See
+[structured credentials](../api/structured-credentials.md) for the audit and
+public read boundaries. A configured mirror has `LedgerInfo.mode = MIRROR`,
+which the manager uses to start its worker.
 
 ## Declaring indexes on a mirror ledger (operator)
 

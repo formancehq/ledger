@@ -7,7 +7,7 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
 
-// Marks fields that must not appear verbatim in a detached public projection.
+// Sensitive fields are retained internally and removed from public read projections.
 // Strings are replaced with a marker; other field kinds are cleared.
 extend google.protobuf.FieldOptions {
   bool sensitive = 50125;
@@ -551,7 +551,63 @@ message DeletedQueryCheckpointLog {
   fixed64 checkpoint_id = 1;
 }
 
+// Parsed connection components. No original URL/DSN is persisted here.
+message ConnectionAddress {
+  string host = 1;
+  optional uint32 port = 2;
+}
+
+message ConnectionQueryParameter {
+  string escaped_name = 1;
+  optional string escaped_value = 2 [(sensitive) = true];
+}
+
+message ConnectionURL {
+  string scheme = 1;
+  ConnectionAddress address = 2;
+  string escaped_path = 3;
+  string username = 4;
+  optional string password = 5 [(sensitive) = true];
+  repeated ConnectionQueryParameter query = 6;
+  string token = 7 [(sensitive) = true];
+}
+
+// Known operational settings remain readable; opaque extension values and
+// credentials have explicit sensitivity, including nested proxy URL values.
+message ConnectionOption {
+  string name = 1;
+  oneof value {
+    string public_text = 2;
+    string secret_text = 3 [(sensitive) = true];
+    ConnectionURL url = 4;
+  }
+}
+
+message DatabaseConnection {
+  string scheme = 1;
+  repeated ConnectionAddress addresses = 2;
+  optional string username = 3;
+  optional string password = 4 [(sensitive) = true];
+  optional string database = 5;
+  repeated ConnectionOption options = 6;
+}
+
 // SinkConfig wraps a single sink configuration with per-sink settings.
+message SinkConfigInput {
+  string name = 1;  // Stable identifier for per-sink cursor and status keys
+  oneof type {
+    NatsSinkConfigInput nats = 2;
+    ClickHouseSinkConfigInput clickhouse = 3;
+    KafkaSinkConfig kafka = 4;
+    HttpSinkConfigInput http = 5;
+    DatabricksSinkConfig databricks = 6;
+  }
+  string format = 7;          // "json" or "protobuf" (default: "json")
+  int32 batch_size = 8;       // Max events per batch (default: 64)
+  int64 batch_delay_ms = 9;   // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 10;  // Empty = all events (default)
+}
+
 message SinkConfig {
   string name = 1;  // Stable identifier for per-sink cursor and status keys
   oneof type {
@@ -581,14 +637,24 @@ message SinkError {
 }
 
 // NatsSinkConfig holds NATS JetStream sink configuration.
-message NatsSinkConfig {
+message NatsSinkConfigInput {
   string url = 1;
   string topic = 2;
 }
 
+message NatsSinkConfig {
+  repeated ConnectionURL servers = 1;
+  string topic = 2;
+}
+
 // ClickHouseSinkConfig holds ClickHouse sink configuration.
-message ClickHouseSinkConfig {
+message ClickHouseSinkConfigInput {
   string dsn = 1;    // e.g. "clickhouse://user:pass@host:9000/db"
+  string table = 2;  // Table name (default: "ledger_events")
+}
+
+message ClickHouseSinkConfig {
+  DatabaseConnection connection = 1; // Parsed connection fields; no original DSN.
   string table = 2;  // Table name (default: "ledger_events")
 }
 
@@ -603,8 +669,13 @@ message KafkaSinkConfig {
 }
 
 // HttpSinkConfig holds HTTP webhook sink configuration.
-message HttpSinkConfig {
+message HttpSinkConfigInput {
   string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
+  string secret = 2;            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+}
+
+message HttpSinkConfig {
+  ConnectionURL endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
   string secret = 2 [(sensitive) = true];            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
 }
 
@@ -810,6 +881,19 @@ enum LedgerMode {
   LEDGER_MODE_MIRROR = 1;
 }
 
+message MirrorSourceConfigInput {
+  string ledger_name = 1;  // Source ledger name (common to all source types)
+  oneof type {
+    HttpMirrorSourceConfigInput http = 2;
+    PostgresMirrorSourceConfigInput postgres = 3;
+  }
+  uint32 batch_size = 4;  // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
+  // Ordered rewrite rules applied to every mirror log entry as v2 logs are
+  // translated into v3 orders. Each rule can rename address segments, transform
+  // metadata, or drop transactions. See MirrorRewriteRule.
+  repeated MirrorRewriteRule rewrite_rules = 5;
+}
+
 message MirrorSourceConfig {
   string ledger_name = 1;  // Source ledger name (common to all source types)
   oneof type {
@@ -1000,20 +1084,42 @@ message SetAccountMetadataFromAddressReplacement {
 
 message DropAction {}
 
-message HttpMirrorSourceConfig {
+message HttpMirrorSourceConfigInput {
   string base_url = 1;
+  OAuth2ClientCredentialsInput oauth2_client_credentials = 2;
+}
+
+message HttpMirrorSourceConfig {
+  ConnectionURL base_url = 1;
   OAuth2ClientCredentials oauth2_client_credentials = 2;
+}
+
+message OAuth2ClientCredentialsInput {
+  string client_id = 1;
+  string client_secret = 2;
+  string token_endpoint = 3;
+  repeated string scopes = 4;
 }
 
 message OAuth2ClientCredentials {
   string client_id = 1;
   string client_secret = 2 [(sensitive) = true];
-  string token_endpoint = 3;
+  ConnectionURL token_endpoint = 3;
   repeated string scopes = 4;
 }
 
-message PostgresMirrorSourceConfig {
+message PostgresMirrorSourceConfigInput {
   string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+  // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
+  // authentication token on every new pool connection. Ambient AWS credentials
+  // (IRSA, instance profile, env vars, profile) are loaded via the default
+  // AWS SDK chain; this message only carries the region needed to sign the
+  // token, which must match the RDS instance's region.
+  PostgresAwsIamAuth aws_iam_auth = 2;
+}
+
+message PostgresMirrorSourceConfig {
+  DatabaseConnection connection = 1; // Parsed connection fields; no original DSN.
   // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
   // authentication token on every new pool connection. Ambient AWS credentials
   // (IRSA, instance profile, env vars, profile) are loaded via the default

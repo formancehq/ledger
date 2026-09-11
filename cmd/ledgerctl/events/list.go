@@ -7,8 +7,10 @@ import (
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
+	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -117,19 +119,19 @@ func runList(cmd *cobra.Command, _ []string) error {
 		case *commonpb.SinkConfig_Nats:
 			data = append(data,
 				[]string{"Type", "NATS"},
-				[]string{"URL", s.Nats.GetUrl()},
+				[]string{"Connection", protojson.Format(sensitive.Clone(s.Nats))},
 				[]string{"Topic", s.Nats.GetTopic()},
 			)
 		case *commonpb.SinkConfig_Http:
 			data = append(data,
 				[]string{"Type", "HTTP"},
-				[]string{"Endpoint", s.Http.GetEndpoint()},
+				[]string{"Endpoint", protojson.Format(sensitive.Clone(s.Http.GetEndpoint()))},
 				[]string{"Secret", redactSecret(s.Http.GetSecret())},
 			)
 		case *commonpb.SinkConfig_Clickhouse:
 			data = append(data,
 				[]string{"Type", "ClickHouse"},
-				[]string{"DSN", cmdutil.ObfuscateDSN(s.Clickhouse.GetDsn())},
+				[]string{"Connection", protojson.Format(sensitive.Clone(s.Clickhouse.GetConnection()))},
 				[]string{"Table", s.Clickhouse.GetTable()},
 			)
 		case *commonpb.SinkConfig_Kafka:

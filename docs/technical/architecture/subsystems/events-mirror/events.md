@@ -371,66 +371,28 @@ The event system is configured at runtime via gRPC RPCs that go through Raft con
 - **Granular add/remove**: Add or remove individual sinks without affecting others
 - **Implicit enable/disable**: Having at least one sink = events enabled; zero sinks = events disabled
 
-#### SinkConfig Message
+#### Input and operational configuration
 
-```protobuf
-message SinkConfig {
-  string name = 1;                       // Stable identifier for per-sink cursor/status keys
-  oneof type {
-    NatsSinkConfig nats = 2;             // NATS JetStream sink
-    ClickHouseSinkConfig clickhouse = 6; // ClickHouse analytics sink
-    KafkaSinkConfig kafka = 7;           // Apache Kafka sink
-    HttpSinkConfig http = 8;             // HTTP webhook sink
-    DatabricksSinkConfig databricks = 10; // Databricks SQL Warehouse sink
-  }
-  string format = 3;                     // "json" or "protobuf" (default: "json")
-  int32 batch_size = 4;                  // Max events per batch (default: 64)
-  int64 batch_delay_ms = 5;              // Max delay before flush in ms (default: 10)
-  repeated EventType event_types = 9;    // Empty = all events (default)
-}
+`AddEventsSinkRequest` and the accepted order carry `SinkConfigInput`: NATS
+server URLs, ClickHouse DSNs and HTTP endpoint strings remain convenient inputs.
+The processor derives a new `SinkConfig` through the deterministic
+`connectionconfig.Sink` normalizer. The added-sink log and primary-store
+configuration contain only the operational structure:
 
-message NatsSinkConfig {
-  string url = 1;                // NATS server URL
-  string topic = 2;              // Topic/subject for events
-}
+- NATS: ordered `ConnectionURL` servers, with token or username/password fields.
+- ClickHouse: `DatabaseConnection` with addresses, database, credentials and
+  independent options; proxy URLs have their own parsed components.
+- HTTP: a `ConnectionURL` endpoint and an independent HMAC secret.
+- Kafka and Databricks: their existing structured settings and credentials.
 
-message ClickHouseSinkConfig {
-  string dsn = 1;                // e.g. "clickhouse://user:pass@host:9000/db"
-  string table = 2;              // Table name (default: "ledger_events")
-}
-
-message KafkaSinkConfig {
-  repeated string brokers = 1;   // e.g. ["localhost:9092"]
-  string topic = 2;              // Kafka topic name
-  bool tls = 3;                  // Enable TLS
-  string sasl_mechanism = 4;     // SASL mechanism: "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
-  string sasl_username = 5;
-  string sasl_password = 6;
-}
-
-message HttpSinkConfig {
-  string endpoint = 1;           // Target URL (e.g. "https://example.com/webhooks/ledger")
-  string secret = 2;             // Optional HMAC-SHA256 secret for X-Webhook-Signature header
-}
-
-message DatabricksSinkConfig {
-  string server_hostname = 1;    // e.g. "adb-123456.azuredatabricks.net"
-  string http_path = 2;          // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
-  string catalog = 4;            // Unity Catalog name (e.g. "main")
-  string schema = 5;             // Schema name (e.g. "default")
-  string table = 6;              // Table name (default: "ledger_events")
-  int32 port = 7;                // Port number (default: 443)
-  oneof auth {                   // Exactly one auth method must be set
-    string token = 3;                  // Personal Access Token (PAT)
-    DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
-  }
-}
-
-message DatabricksOAuthM2M {
-  string client_id = 1;
-  string client_secret = 2;
-}
-```
+Workers render these components for drivers that require a connection string.
+They never read the original input from the audit. Public read copies apply
+protobuf `sensitive` annotations to credentials, query values, opaque options
+and mirror diagnostic messages. Sink adapters sanitize errors before they are
+recorded in `SinkError.message`; public reads preserve these useful diagnostics.
+See [the projection contract](../api/structured-credentials.md)
+for original signed evidence, checker integration and restore semantics.
+The canonical field definitions are in `misc/proto/common.proto`.
 
 Each `SinkConfig` carries its own `format`, `batch_size`, `batch_delay_ms`, and `event_types` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x06][0x08][name]`) and status (`[0x06][0x0A][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
 

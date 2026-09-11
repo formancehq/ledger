@@ -2,13 +2,11 @@ package admission
 
 import (
 	"crypto/ed25519"
-	"net/url"
-	"strings"
-
-	"github.com/jackc/pgx/v5/pgxpool"
+	"errors"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -350,13 +348,9 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	}
 }
 
-// validateOrderMirrorSource enforces structural well-formedness on the
-// optional MirrorSource carried by a CreateLedger order. Mirror ledgers go
-// through the standard create path, so a missing/blank field reaches the
-// FSM and is only surfaced when the mirror worker actually tries to open a
-// connection -- well after the ledger has been persisted via Raft. This
-// gate fails fast at admission so a malformed mirror config is rejected
-// before it lands in the audit chain.
+// validateOrderMirrorSource checks required fields, rewrite rules and the IAM
+// TLS policy before admission. Complete connection normalization happens during
+// processing; malformed non-IAM URLs or DSNs can be recorded as rejected orders.
 func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// System-scoped orders carry no mirror source. The proto-generated
 	// GetLedgerScoped/GetPayload getters are nil-safe by themselves, but
@@ -401,51 +395,19 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 
 	// The SigV4 token written to ConnConfig.Password is a short-lived bearer
 	// credential; admitting a mirror with a non-TLS sslmode would let it
-	// travel in cleartext. Use pgx's own parser to avoid string-level
-	// bypasses (e.g. quoted keyword=value DSN fragments). The same guard
-	// runs at the runtime layer for direct gRPC callers; this admission
-	// gate fails earlier, before the order touches the audit chain.
-	if !dsnEnforcesTLS(pg.GetDsn()) {
-		return ErrMirrorIAMRequiresTLS
+	// travel in cleartext. Normalize explicit connection parameters without
+	// consulting the environment, then require TLS on every TCP endpoint.
+	// Runtime also checks the driver configuration before connecting; this
+	// admission gate fails before the order touches the audit chain.
+	if _, err := connectionconfig.Mirror(src); err != nil {
+		if errors.Is(err, connectionconfig.ErrPostgresIAMRequiresTLS) {
+			return ErrMirrorIAMRequiresTLS
+		}
+
+		return ErrMirrorConnectionInvalid
 	}
 
 	return nil
-}
-
-// dsnEnforcesTLS reports whether the DSN meets the admission gate for IAM
-// auth: URI form, explicit sslmode in the raw string, and TLS on every
-// pgx connect attempt. Mirrors the runtime gate in internal/adapter/v2 —
-// see the comment on buildPgxPoolConfig for the full rationale.
-//
-// Duplicated in-file to keep admission independent of the v2 adapter
-// package. On parse error, returns false; the runtime gate surfaces a more
-// precise error when the mirror worker actually starts.
-func dsnEnforcesTLS(dsn string) bool {
-	if !strings.HasPrefix(dsn, "postgres://") && !strings.HasPrefix(dsn, "postgresql://") {
-		return false
-	}
-
-	u, err := url.Parse(dsn)
-	if err != nil || !u.Query().Has("sslmode") {
-		return false
-	}
-
-	cfg, err := pgxpool.ParseConfig(dsn)
-	if err != nil {
-		return false
-	}
-
-	if cfg.ConnConfig.TLSConfig == nil {
-		return false
-	}
-
-	for _, fb := range cfg.ConnConfig.Fallbacks {
-		if fb == nil || fb.TLSConfig == nil {
-			return false
-		}
-	}
-
-	return true
 }
 
 // validateOrderSigningKey rejects a signing-key registration whose public key is

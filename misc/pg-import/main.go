@@ -322,11 +322,11 @@ func createMirrorLedger(
 			CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: name,
 				Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-				MirrorSource: &commonpb.MirrorSourceConfig{
+				MirrorSource: &commonpb.MirrorSourceConfigInput{
 					LedgerName: sourceLedgerName,
 					BatchSize:  batchSize,
-					Type: &commonpb.MirrorSourceConfig_Postgres{
-						Postgres: &commonpb.PostgresMirrorSourceConfig{
+					Type: &commonpb.MirrorSourceConfigInput_Postgres{
+						Postgres: &commonpb.PostgresMirrorSourceConfigInput{
 							Dsn: dsn,
 						},
 					},

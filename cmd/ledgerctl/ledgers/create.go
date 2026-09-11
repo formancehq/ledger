@@ -11,6 +11,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -168,7 +169,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	ledger := createLedgerLog.ToLedgerInfo()
+	ledger := sensitive.Clone(createLedgerLog.ToLedgerInfo())
 
 	spinner.Success("Created")
 

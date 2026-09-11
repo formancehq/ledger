@@ -90,13 +90,13 @@ var _ = Describe("Events Sinks NATS", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Add NATS sink via Apply
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfigInput{
 			Name:         "nats-e2e",
 			Format:       "json",
 			BatchSize:    10,
 			BatchDelayMs: 50,
-			Type: &commonpb.SinkConfig_Nats{
-				Nats: &commonpb.NatsSinkConfig{
+			Type: &commonpb.SinkConfigInput_Nats{
+				Nats: &commonpb.NatsSinkConfigInput{
 					Url:   ns.ClientURL(),
 					Topic: topic,
 				},

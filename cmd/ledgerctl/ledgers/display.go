@@ -11,7 +11,7 @@ import (
 	"go.yaml.in/yaml/v3"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -46,14 +46,14 @@ func renderMirrorSource(src *commonpb.MirrorSourceConfig) {
 	switch s := src.GetType().(type) {
 	case *commonpb.MirrorSourceConfig_Http:
 		pterm.Printf("  Type:    HTTP\n")
-		pterm.Printf("  URL:     %s\n", s.Http.GetBaseUrl())
+		pterm.Printf("  URL:     %s\n", protojson.Format(sensitive.Clone(s.Http.GetBaseUrl())))
 
 		if cc := s.Http.GetOauth2ClientCredentials(); cc != nil {
-			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.GetClientId(), cc.GetTokenEndpoint())
+			pterm.Printf("  OAuth2:  client_id=%s endpoint=%s\n", cc.GetClientId(), protojson.Format(sensitive.Clone(cc.GetTokenEndpoint())))
 		}
 	case *commonpb.MirrorSourceConfig_Postgres:
 		pterm.Printf("  Type:    PostgreSQL\n")
-		pterm.Printf("  DSN:     %s\n", cmdutil.ObfuscateDSN(s.Postgres.GetDsn()))
+		pterm.Printf("  Connection: %s\n", protojson.Format(sensitive.Clone(s.Postgres.GetConnection())))
 
 		if iam := s.Postgres.GetAwsIamAuth(); iam != nil {
 			pterm.Printf("  IAM:     AWS RDS IAM auth (region=%s)\n", iam.GetRegion())
@@ -139,7 +139,7 @@ func renderMirrorSyncProgress(progress *commonpb.MirrorSyncProgress) {
 
 // parseMirrorFlags parses mirror-related flags and returns the mode and source config.
 // If any --mirror-* flag is explicitly set, mode is inferred as "mirror".
-func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMode, *commonpb.MirrorSourceConfig, error) {
+func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMode, *commonpb.MirrorSourceConfigInput, error) {
 	modeStr, _ := cmd.Flags().GetString("mode")
 
 	// Auto-infer mirror mode when mirror flags are explicitly provided
@@ -188,7 +188,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		return 0, nil, err
 	}
 
-	cfg := &commonpb.MirrorSourceConfig{
+	cfg := &commonpb.MirrorSourceConfigInput{
 		LedgerName:   sourceLedgerName,
 		BatchSize:    batchSize,
 		RewriteRules: rewriteRules,
@@ -201,7 +201,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			return 0, nil, errors.New("--mirror-base-url is required for http mirror source")
 		}
 
-		httpCfg := &commonpb.HttpMirrorSourceConfig{
+		httpCfg := &commonpb.HttpMirrorSourceConfigInput{
 			BaseUrl: baseURL,
 		}
 		oauth2ClientID, _ := cmd.Flags().GetString("mirror-oauth2-client-id")
@@ -210,7 +210,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 		if oauth2ClientID != "" || oauth2TokenEndpoint != "" {
 			oauth2ClientSecret, _ := cmd.Flags().GetString("mirror-oauth2-client-secret")
 			oauth2Scopes, _ := cmd.Flags().GetStringArray("mirror-oauth2-scopes")
-			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{
+			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentialsInput{
 				ClientId:      oauth2ClientID,
 				ClientSecret:  oauth2ClientSecret,
 				TokenEndpoint: oauth2TokenEndpoint,
@@ -218,7 +218,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			}
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Http{
+		cfg.Type = &commonpb.MirrorSourceConfigInput_Http{
 			Http: httpCfg,
 		}
 	case "postgres":
@@ -227,7 +227,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			return 0, nil, errors.New("--mirror-dsn is required for postgres mirror source")
 		}
 
-		pgCfg := &commonpb.PostgresMirrorSourceConfig{
+		pgCfg := &commonpb.PostgresMirrorSourceConfigInput{
 			Dsn: dsn,
 		}
 
@@ -252,7 +252,7 @@ func parseMirrorFlags(cmd *cobra.Command, ledgerName string) (commonpb.LedgerMod
 			pgCfg.AwsIamAuth.AssumeRoleArn = assumeRoleArn
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
+		cfg.Type = &commonpb.MirrorSourceConfigInput_Postgres{
 			Postgres: pgCfg,
 		}
 	default:

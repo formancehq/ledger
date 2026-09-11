@@ -2313,8 +2313,7 @@ paths:
                       sinks:
                         type: array
                         items:
-                          type: object
-                          description: SinkConfig (protobuf JSON representation)
+                          $ref: '#/components/schemas/SinkConfig'
                       sinkStatuses:
                         type: array
                         items:
@@ -3218,7 +3217,7 @@ components:
           default: NORMAL
           description: Ledger mode. MIRROR creates a read-only ledger that syncs from an external v2 source.
         mirrorSource:
-          $ref: '#/components/schemas/MirrorSourceConfig'
+          $ref: '#/components/schemas/MirrorSourceConfigInput'
         defaultEnforcementMode:
           type: string
           enum:
@@ -3298,30 +3297,30 @@ components:
         name:
           type: string
           description: Name of the ledger
-        created_at:
+        createdAt:
           type: string
           format: date-time
           description: Creation timestamp (ISO 8601 format)
-        deleted_at:
+        deletedAt:
           type: string
           format: date-time
           description: Soft delete timestamp (null if not deleted)
           nullable: true
-        metadata_schema:
+        metadataSchema:
           type: object
           description: Per-key metadata type declarations
           nullable: true
         mode:
           type: string
           enum:
-            - NORMAL
-            - MIRROR
-          description: Ledger mode (NORMAL or MIRROR)
-        mirror_source:
+            - LEDGER_MODE_NORMAL
+            - LEDGER_MODE_MIRROR
+          description: Ledger mode; omitted for LEDGER_MODE_NORMAL.
+        mirrorSource:
           $ref: '#/components/schemas/MirrorSourceConfig'
-        mirror_sync_progress:
+        mirrorSyncProgress:
           $ref: '#/components/schemas/MirrorSyncProgress'
-        account_types:
+        accountTypes:
           type: object
           description: Per-type account address validation
           additionalProperties:
@@ -3344,54 +3343,56 @@ components:
                 additionalProperties:
                   $ref: '#/components/schemas/SegmentType'
           nullable: true
-        default_enforcement_mode:
+        defaultEnforcementMode:
           type: string
+          enum:
+            - CHART_ENFORCEMENT_STRICT
+            - CHART_ENFORCEMENT_AUDIT
           description: Default enforcement for unmatched accounts
 
     MirrorSyncProgress:
       type: object
-      description: Sync progress for MIRROR ledgers (populated at read time)
-      required:
-        - state
-        - cursor
-        - sourceLogCount
-        - remainingLogs
+      description: |
+        Sync progress for mirror ledgers, populated at read time using protobuf
+        JSON. Zero counters and the default MIRROR_SYNC_STATE_SYNCING state are
+        omitted; an empty object represents syncing with all counters at zero.
       properties:
         state:
           type: string
           enum:
-            - SYNCING
-            - FOLLOWING
-          description: Current sync state (SYNCING = catching up, FOLLOWING = up to date)
+            - MIRROR_SYNC_STATE_SYNCING
+            - MIRROR_SYNC_STATE_FOLLOWING
+          description: Current sync state; omitted while syncing, FOLLOWING means up to date.
         cursor:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Last ingested v2 log ID
+          type: string
+          pattern: '^[0-9]+$'
+          description: Last ingested v2 log ID, encoded as a decimal uint64 string; omitted when zero.
         sourceLogCount:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Latest known log ID in the v2 source
+          type: string
+          pattern: '^[0-9]+$'
+          description: Latest known log ID in the v2 source, encoded as a decimal uint64 string; omitted when zero.
         remainingLogs:
-          type: integer
-          format: uint64
-          minimum: 0
-          description: Number of remaining logs to sync (sourceLogCount - cursor)
+          type: string
+          pattern: '^[0-9]+$'
+          description: Number of remaining logs to sync (sourceLogCount - cursor), encoded as a decimal uint64 string; omitted when zero.
         error:
           $ref: '#/components/schemas/MirrorSyncError'
 
     MirrorSyncError:
       type: object
-      description: Most recent mirror sync error (null if healthy)
+      description: Most recent mirror sync error; the error field is omitted when healthy.
       properties:
         message:
           type: string
-          description: Error message
+          description: Redaction marker for a nonempty connector diagnostic; omitted when empty.
         occurredAt:
-          type: string
-          format: date-time
-          description: When the error occurred
+          type: object
+          description: Error timestamp in protobuf JSON; omitted when unavailable.
+          properties:
+            data:
+              type: string
+              pattern: '^[0-9]+$'
+              description: Microseconds since the Unix epoch, encoded as a decimal uint64 string; omitted when zero.
 
     CreateTransactionRequest:
       type: object
@@ -4491,7 +4492,177 @@ components:
           type: string
           description: Total amount sent (as big integer string)
 
+    ConnectionAddress:
+      type: object
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+          format: uint32
+
+    ConnectionQueryParameter:
+      type: object
+      description: Ordered escaped parameter; an absent value represents a valueless parameter.
+      properties:
+        escapedName:
+          type: string
+        escapedValue:
+          type: string
+          description: Nonempty values are masked with [redacted].
+
+    ConnectionURL:
+      type: object
+      description: Parsed connection fields, with no original URL string.
+      properties:
+        scheme:
+          type: string
+        address:
+          $ref: '#/components/schemas/ConnectionAddress'
+        escapedPath:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+          description: Nonempty passwords are masked with [redacted].
+        token:
+          type: string
+          description: Nonempty NATS tokens are masked with [redacted].
+        query:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionQueryParameter'
+
+    ConnectionOption:
+      type: object
+      description: A normalized option; its value is one of publicText, secretText or url.
+      properties:
+        name:
+          type: string
+        publicText:
+          type: string
+        secretText:
+          type: string
+          description: Nonempty values are masked with [redacted].
+        url:
+          $ref: '#/components/schemas/ConnectionURL'
+
+    DatabaseConnection:
+      type: object
+      description: Structured PostgreSQL or ClickHouse connection; no original DSN.
+      properties:
+        scheme:
+          type: string
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionAddress'
+        username:
+          type: string
+        password:
+          type: string
+          description: Nonempty passwords are masked with [redacted].
+        database:
+          type: string
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectionOption'
+
     MirrorSourceConfig:
+      type: object
+      description: Structured source returned on reads, with annotated secrets masked.
+      properties:
+        ledgerName:
+          type: string
+        batchSize:
+          type: integer
+          format: uint32
+        rewriteRules:
+          type: array
+          items:
+            $ref: '#/components/schemas/MirrorRewriteRule'
+        http:
+          type: object
+          properties:
+            baseUrl:
+              $ref: '#/components/schemas/ConnectionURL'
+            oauth2ClientCredentials:
+              type: object
+              properties:
+                clientId:
+                  type: string
+                clientSecret:
+                  type: string
+                  description: Nonempty secrets are masked with [redacted].
+                tokenEndpoint:
+                  $ref: '#/components/schemas/ConnectionURL'
+                scopes:
+                  type: array
+                  items:
+                    type: string
+        postgres:
+          type: object
+          properties:
+            connection:
+              $ref: '#/components/schemas/DatabaseConnection'
+            awsIamAuth:
+              type: object
+              properties:
+                region:
+                  type: string
+                assumeRoleArn:
+                  type: string
+
+    SinkConfig:
+      type: object
+      description: Structured sink configuration; credentials and opaque option values are masked.
+      properties:
+        name:
+          type: string
+        format:
+          type: string
+        batchSize:
+          type: integer
+        batchDelayMs:
+          type: string
+        eventTypes:
+          type: array
+          items:
+            type: string
+        nats:
+          type: object
+          properties:
+            topic:
+              type: string
+            servers:
+              type: array
+              items:
+                $ref: '#/components/schemas/ConnectionURL'
+        clickhouse:
+          type: object
+          properties:
+            table:
+              type: string
+            connection:
+              $ref: '#/components/schemas/DatabaseConnection'
+        http:
+          type: object
+          properties:
+            endpoint:
+              $ref: '#/components/schemas/ConnectionURL'
+            secret:
+              type: string
+              description: Nonempty HMAC secrets are masked with [redacted].
+        kafka:
+          type: object
+          description: Brokers, topic, TLS and SASL settings; saslPassword is masked.
+        databricks:
+          type: object
+          description: Warehouse settings; token and oauthM2m.clientSecret are masked.
+
+    MirrorSourceConfigInput:
       type: object
       description: Configuration for the mirror source (required when mode is MIRROR)
       required:

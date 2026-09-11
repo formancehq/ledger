@@ -650,3 +650,30 @@ for the race this design eliminated.
 - `persistedIndex` is an operational guardrail and backpressure signal (rare), not a rotation input.
 - Checkpoint-triggering orders are always the last in their proposal AND the last in their PrepareEntries slice, keeping `runCommitter` the sole writer to the main store.
 - `AttributeLoader` coordinates concurrent attribute loads to prevent duplicate store reads.
+
+
+## Sink and mirror connection normalization
+
+Accepted `AddEventsSinkOrder` and `CreateLedgerOrder` retain the raw
+`SinkConfigInput` and `MirrorSourceConfigInput`. The processors call the pure
+`internal/domain/connectionconfig.Sink` and `Mirror` functions to construct owned
+operational configurations. URL and DSN components become structured addresses,
+paths, options, and explicitly sensitive credential fields. Parsing uses only
+committed input; it must not read environment variables, files, DNS, ambient
+credentials, or driver defaults that depend on the current node.
+
+Normalization happens before the corresponding successful state mutation.
+Invalid connection syntax returns a static validation failure without embedding
+the submitted connection string. Ledger creation normalizes before allocating
+its identifier or writing its ledger and boundary state. The accepted order,
+including nested messages and slices, remains unchanged for audit capture.
+`LedgerInfo` and `CreatedLedgerLog` own separate deep copies of the normalized
+mirror source. The sink log owns its normalized configuration; `WriteSet.Absorb`
+projects that value into the sink attribute store.
+
+These operational projections preserve credentials for workers. Public read
+redaction is a separate adapter responsibility and must not change the stored
+configuration, raw audited order, or signed evidence. Workers reconstruct driver
+inputs from the structured fields, applying local runtime behavior only outside
+Raft apply. Restore copies the normalized log values rather than reparsing them;
+see [incremental restore parity](../backup/incremental-restore-contract.md).

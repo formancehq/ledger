@@ -16,6 +16,14 @@ integer schema spans `-9223372036854775808` through `18446744073709551615`,
 matching signed negative and unsigned nonnegative metadata values. See
 [Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
 
+Connection configuration reads now return structured components rather than
+URL/DSN strings. Both transports use the same protobuf `sensitive` annotations:
+nonempty credentials and opaque option values are masked; operational connection
+fields remain visible. Input APIs retain their URL/DSN convenience formats.
+Ledger/log checkpoint reads use the same projection after snapshot selection.
+Read-side logs omit their raw response-signature envelope. See
+[the public projection contract](../architecture/subsystems/api/structured-credentials.md).
+
 ## Summary
 
 ### Service protocol compatibility (EN-1851)
@@ -832,6 +840,7 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetLedgerStats` | Get aggregate usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) | ✅ |
 | `AggregateVolumes` | Per-asset aggregated volumes for filtered accounts | ✅ |
 | `InspectIndex` | Inspect metadata index (distinct values, facets, summary) | ✅ |
+
 
 ### Apply Method
 
