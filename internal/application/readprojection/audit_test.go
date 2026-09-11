@@ -262,3 +262,20 @@ func TestAuditRejectsMissingOutcome(t *testing.T) {
 		})
 	}
 }
+
+func TestAuditCursorErrorsIdentifyEntryAndOrder(t *testing.T) {
+	t.Parallel()
+	for name, data := range map[string][]byte{"undecodable": {0xff}, "missing scope": {}} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			c := NewAuditCursor(cursor.NewSliceCursor([]*auditpb.AuditEntry{{
+				Sequence: 42, Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+				Items: []*auditpb.AuditItem{{OrderIndex: 7, SerializedOrder: data}},
+			}}))
+			_, err := c.Next()
+			require.ErrorContains(t, err, "audit entry 42")
+			require.ErrorContains(t, err, "order 7")
+			require.NoError(t, c.Close())
+		})
+	}
+}

@@ -147,3 +147,10 @@ NATS server entries with a scheme but no host (for example `nats://`) are
 rejected with a static configuration error. An empty server list continues to
 select the driver default; an explicit malformed entry is not rewritten into
 a different destination.
+
+Audit projection errors identify the entry sequence and order index when an order
+cannot be decoded or projected, including during streaming list reads. An absent
+input configuration remains absent without `configurationUnavailable`: the flag
+reports a normalization failure, not absence. The public success outcome shares
+the ordering-only internal success message; changes to that shared message must
+be reviewed as public API changes.

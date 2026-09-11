@@ -35,6 +35,9 @@ func Audit(entry *auditpb.AuditEntry) (*publicauditpb.AuditEntry, error) {
 		if outcome == nil || outcome.Success == nil {
 			return nil, fmt.Errorf("audit entry %d has a nil success outcome", entry.GetSequence())
 		}
+		// Success intentionally shares the ordering-only schema with audit evidence.
+		// New fields on that message must also be reviewed as public API fields.
+		// The final sensitive.Clone detaches the shared message.
 		result.Outcome = &publicauditpb.AuditEntry_Success{Success: outcome.Success}
 	case *auditpb.AuditEntry_Failure:
 		if outcome == nil || outcome.Failure == nil {
@@ -53,11 +56,11 @@ func Audit(entry *auditpb.AuditEntry) (*publicauditpb.AuditEntry, error) {
 		}
 		order := &raftcmdpb.Order{}
 		if err := order.UnmarshalVT(item.GetSerializedOrder()); err != nil {
-			return nil, fmt.Errorf("decoding audit order %d for public view: %w", item.GetOrderIndex(), err)
+			return nil, fmt.Errorf("decoding audit order %d in audit entry %d for public view: %w", item.GetOrderIndex(), entry.GetSequence(), err)
 		}
 		view, err := publicOrder(order)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("projecting order %d in audit entry %d: %w", item.GetOrderIndex(), entry.GetSequence(), err)
 		}
 		result.Items = append(result.Items, &publicauditpb.AuditItem{
 			OrderIndex: item.GetOrderIndex(), LogSequence: item.GetLogSequence(), Order: view,
