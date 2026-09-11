@@ -130,6 +130,9 @@ A restore is **a node-level disaster-recovery operation**, not an in-cluster ope
 
 ## Scheduling
 
+See [Operator backup scheduling](operator-scheduling.md) for the Kubernetes
+completion cursors, zero-retention behavior, and reconciliation failure ordering.
+
 The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind a `BackupSchedule` with **two separate cron fields** — `Full` and `Incremental` — so operators can run a full checkpoint less often than the incremental segments. The Operator submits a `BackupOrder` (full) or `IncrementalBackupOrder` at each cron tick; the FSM enforces mutual exclusion; the executor on the leader does the upload. One-off backups can also be triggered manually through the same gRPC surface.
 
 `IncrementalBackupOrder` is the right primitive for tight RPO targets — it flushes the in-progress segment without taking a fresh full checkpoint.

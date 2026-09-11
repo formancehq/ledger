@@ -48,6 +48,18 @@ spec:
 
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.
+Setting either limit to zero removes all terminal runs of that outcome without
+resetting the cron schedule, including after an operator restart. The first run
+is immediate; subsequent runs follow the cron expression after the latest
+completed run of that type, whether it succeeded or failed. A failed run does
+not trigger an immediate retry outside the schedule.
+
+Completion cursors and successful-result summaries persist in `Backup.status`
+before history is deleted. Incremental scheduling remains enabled after the
+last successful full run is pruned. Pending or Running runs still block another
+scheduled run of the same type. See the
+[scheduling contract](../technical/architecture/subsystems/backup/operator-scheduling.md)
+for failure ordering and status field semantics.
 
 ### Long-Term Retention
 

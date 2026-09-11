@@ -54,6 +54,13 @@ ownership entries are retained: replacement of a previously tracked index and
 recovery after a lost successful create response or status update remain
 separate ownership concerns.
 
+## Backup scheduling
+
+Backup schedules preserve their completion cursors in `Backup.status` before
+pruning run history. Zero retention therefore preserves scheduling across
+operator restarts. See the [scheduling contract](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md)
+and [backup operations guide](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator).
+
 ## Custom Resources
 
 | Resource | Scope | Description |

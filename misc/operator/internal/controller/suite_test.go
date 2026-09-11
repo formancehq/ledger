@@ -102,8 +102,9 @@ func TestMain(m *testing.M) {
 	}
 
 	if err := (&BackupReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		APIReader: mgr.GetAPIReader(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up Backup controller: %v", err))
 	}
