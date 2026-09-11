@@ -24,10 +24,8 @@ func (s *Server) handleDeleteAccountMetadata(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	key := chi.URLParam(r, "key")
-	if key == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("metadata key is required"))
-
+	key, ok := requireMetadataKey(w, r)
+	if !ok {
 		return
 	}
 
