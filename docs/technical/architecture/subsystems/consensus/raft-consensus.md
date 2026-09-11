@@ -127,6 +127,25 @@ not itself terminate idle tasks or join `Run`. Task/drain completion may still
 be pending, so a timeout must not be treated as permission to close the node's
 storage or transport. `Stop` after `Run` has exited returns immediately.
 
+Failed startup has its own cleanup owner: Fx does not call `OnStop` for a hook
+whose `OnStart` failed. The bootstrap node hook waits for readiness or `Run`
+completion after startup cancellation. Readiness synchronizes initialization
+of the node's completion state before calling `Stop`; this also covers
+cancellation before the `Run` goroutine starts. If the node is still running,
+the hook calls `Stop` with a context independent of the startup deadline and
+joins `Run` before cancelling its run context and returning the startup error.
+Cancellation observed together with readiness follows this cleanup path too.
+
+This cleanup can outlast the startup deadline. Fx's outer `App.Start` may
+already have returned its context error while the hook finishes cleanup;
+that outer return is not proof of node termination. Rollback starts after the
+hook returns, and Fx v1.24.0 reuses the startup context for rollback, so an
+expired context skips dependency stop hooks. The guarantee here is that the
+failed node hook joins `Run`, not that Fx necessarily closes the dependencies.
+A stalled initialization or drain can therefore retain the hook and its
+resources until it completes. Fatal `Run` errors retain their existing
+process-failure behavior.
+
 #### Applier
 
 `internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This provides two levels of pipelining:
