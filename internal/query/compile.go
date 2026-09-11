@@ -1572,9 +1572,12 @@ func checkIndexed(ctx *compileCtx, id *commonpb.IndexID, label string) error {
 // Returns the resolved CurrentVersion on success — callers that key
 // their forward index on the version (metadata) use it; builtin
 // callers ignore it. The version comes from `ctx.indexVersionFor`,
-// which MUST be bound to the iteration snapshot — never the live
-// store — so the gate and the scan observe the same point-in-time
-// view of the atomic-switch state.
+// which MUST read the version state through the iteration snapshot so
+// the gate and the scan observe the same point-in-time view of the
+// atomic-switch state; only its in-flight check consults the live
+// tracker (readstore.Store.PinnedVersionResolver), which serves the
+// version a promotion replaced while that promotion is committed but not
+// yet flushed, and refuses when nothing is retained.
 func requireIndexReady(ctx *compileCtx, id *commonpb.IndexID, label string) (readstore.ResolvedIndexVersion, error) {
 	if err := checkIndexed(ctx, id, label); err != nil {
 		return readstore.ResolvedIndexVersion{}, err

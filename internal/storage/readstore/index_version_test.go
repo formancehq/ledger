@@ -173,7 +173,7 @@ func TestSnapshotVersionResolver_TornReadIsImpossible(t *testing.T) {
 	require.NoError(t, switchBatch.Commit())
 
 	// The snapshot, taken before the switch, MUST still see v=1.
-	resolveFromSnap := readstore.SnapshotVersionResolver(snap, ledger)
+	resolveFromSnap := store.SnapshotVersionResolver(snap, ledger)
 	gotSnap, primed, err := resolveFromSnap(canonical)
 	require.NoError(t, err)
 	require.True(t, primed)
@@ -249,7 +249,7 @@ func TestSnapshotVersionResolver_AbsentReturnsZero(t *testing.T) {
 
 	defer func() { _ = snap.Close() }()
 
-	got, primed, err := readstore.SnapshotVersionResolver(snap, "ledger1")("acct:metadata:never-built")
+	got, primed, err := store.SnapshotVersionResolver(snap, "ledger1")("acct:metadata:never-built")
 	require.NoError(t, err, "absent state must NOT be reported as an error — the query layer decides what an absent record means")
 	assert.Equal(t, uint32(0), got.Version)
 	assert.False(t, primed, "absent means no record was ever written for this index on this replica")

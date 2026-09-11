@@ -100,7 +100,7 @@ v_current → served by queries
 v_pending → populated by the backfill / rewrite task
 ```
 
-The atomic switch is a single Pebble batch commit that flips `Pending → Current`. Old-version keys are garbage-collected **in the same batch as the switch for the schema-rewrite path only** — the `CreateIndex` backfill path has no `v_old` to reclaim because the index was never served before. See [indexer.md — `completeBackfill`](indexer.md#completebackfill--the-switch) for the per-path detail.
+The atomic switch is a single Pebble batch commit that flips `Pending → Current`. On the schema-rewrite path it retains the old version (`Previous*`) and its keys; they are garbage-collected by `retirePrevious` once the switch is flushed and no live read is pinned below the new version's activation, in one batch with the write that clears `Previous*`. The `CreateIndex` backfill path has no `v_old` to retain because the index was never served before. See [indexer.md — `completeBackfill`](indexer.md#completebackfill--the-switch) for the per-path detail.
 
 ## Build / Rewrite Lifecycle
 
@@ -119,7 +119,7 @@ stateDiagram-v2
     Created --> Backfilling: backfillTask runs
     Backfilling --> Backfilling: cursor advances<br/>writes to v_pending
     Backfilling --> Switched: cursor == global cursor<br/>atomic switch
-    Switched --> Steady: v_old GC
+    Switched --> Steady: v_old retired (flushed + no read pinned below activation)
     Steady --> Backfilling: SetMetadataFieldType<br/>(version++)
     Steady --> [*]: DropIndex
 ```
@@ -225,7 +225,7 @@ The controller (`internal/application/ctrl/controller_default.go`) gates the
 inspect call on the pin-aware resolved version. A replica with no live local
 version-state record returns `ErrIndexNotFound`. A version that exists locally
 but activates after the main snapshot resolves to version zero and returns the
-retryable `ErrIndexBuilding`; neither case scans an empty or future keyspace.
+retryable `ErrIndexBuilding`; neither case scans an empty or future keyspace. A promotion committed but not yet flushed resolves to the version it replaced while the state retains one (`IndexVersionState.Previous*`), and to version zero otherwise, so the scan never runs against an unflushed keyspace.
 
 ## Bloom Filter Metrics (Not Index Stats)
 

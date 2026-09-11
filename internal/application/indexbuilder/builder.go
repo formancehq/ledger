@@ -216,6 +216,176 @@ func (b *Builder) tombstoneVersionState(ledgerName, canonicalID string) error {
 	return nil
 }
 
+// writePromotion writes a promoted version state (current ← pending) into
+// batch. The promotion sequence is writePromotion, commitPromotion (mark,
+// then commit), finishPromotion; a caller whose batch does not commit
+// releases it with discardBatch. A rewrite switch retains the replaced
+// version in the state (Previous*) and leaves its keyspace in place;
+// retirePrevious purges both later.
+func (b *Builder) writePromotion(batch *dal.WriteSession, ledgerName, canonicalID string, state readstore.IndexVersionState) error {
+	return b.readStore.WriteIndexVersionState(batch, ledgerName, canonicalID, state)
+}
+
+// commitPromotion commits a batch promoting version to current. It marks the
+// version in flight immediately before commit runs, so readers do not serve
+// it from before the promoted state can be observed until the commit has been
+// flushed (the read store's promotion marks — the store has no WAL, and a
+// promotion runs beside the fold, so a kill between commit and flush would
+// otherwise reopen the node serving the superseded binding at states past
+// the promoted one). commit must be all-or-nothing — an error means nothing
+// reached the store (WriteSession.Commit and WriteBatch.Flush are) — because
+// a failed commit withdraws the mark; after a successful one only a flush may
+// lift it (finishPromotion).
+func (b *Builder) commitPromotion(ledgerName, canonicalID string, version uint32, commit func() error) error {
+	b.readStore.MarkPromotion(ledgerName, canonicalID, version)
+
+	if err := commit(); err != nil {
+		b.readStore.UnmarkPromotion(ledgerName, canonicalID, version)
+
+		return err
+	}
+
+	return nil
+}
+
+// promotionBlocked reports whether a rewrite switch on the index must wait:
+// an earlier promotion is still unflushed, or the version one replaced is
+// still retained. Either would stack a second transition on the index — two
+// unflushed versions, or a retained version overwritten while a read may
+// still be served from it. flushPromotions, run at the top of every loop
+// wake, clears both; a blocked caller defers its switch to the next tick.
+func (b *Builder) promotionBlocked(ledgerName, canonicalID string) bool {
+	state, _ := b.versionStateFor(ledgerName, canonicalID)
+
+	return state.PreviousVersion != 0 ||
+		b.readStore.PromotionInFlight(ledgerName, canonicalID, state.CurrentVersion)
+}
+
+// discardBatch releases a batch that did not commit: cancels it and unbinds
+// the shared WriteBatch if it was bound to it.
+func (b *Builder) discardBatch(batch *dal.WriteSession) {
+	_ = batch.Cancel() // releasing an uncommitted batch cannot fail in a way the caller could act on
+
+	if b.wb.Batch() == batch {
+		b.wb.Reset()
+	}
+}
+
+// finishPromotion publishes a committed promotion to the builder's cache and
+// flushes the read store so the promotion becomes servable. A flush failure is
+// not a failure of the promotion — the state is committed and cached — so it
+// is logged, the mark stays, and the next loop wake retries.
+func (b *Builder) finishPromotion(ledgerName, canonicalID string, state readstore.IndexVersionState) {
+	b.putVersionState(ledgerName, canonicalID, state)
+	b.flushPromotions()
+}
+
+// flushPromotions makes committed promotions durable and retires the versions
+// they replaced where the gate allows. It runs after every promotion and on
+// every loop wake, so a failed flush is retried and a retirement held back by
+// a read lease lands once the lease is released.
+func (b *Builder) flushPromotions() {
+	if err := b.readStore.FlushPromotions(); err != nil {
+		b.logger.Errorf("Flushing index promotions failed; promoted versions stay unserved until the flush is retried: %v", err)
+	}
+
+	b.retirePrevious()
+}
+
+// retirePrevious purges every retained version (IndexVersionState.Previous*)
+// whose gate is open: the promotion that replaced it is flushed (an
+// unflushed one still needs the fallback), and no live read lease sits in
+// [PreviousActivationSequence, ActivationSequence) — the only reads
+// PinnedVersionResolver can still serve from it; a lease below that range is
+// refused the retained version too, one at or above it is served the current
+// one. Leases are not scoped to a ledger, so a long-lived read anywhere in the
+// bucket whose position falls in that range holds the retirement. Clearing
+// the Previous* fields and deleting the keyspace share one batch, so a
+// snapshot sees the retained version with its rows or neither; the batch is
+// not flushed, and a kill before Pebble's next flush reopens with the version
+// retained and this pass retires it again. The index id comes from the state's
+// own key, so a retained version is reclaimed whether or not the registry
+// still lists the index; a retained version the key cannot address is an
+// invariant failure, logged on every pass (commitRetirement).
+func (b *Builder) retirePrevious() {
+	for ledgerName, inner := range b.indexVersions {
+		for canonical, state := range inner {
+			if state.PreviousVersion == 0 {
+				continue
+			}
+
+			if b.readStore.PromotionInFlight(ledgerName, canonical, state.CurrentVersion) {
+				continue
+			}
+
+			if b.readStore.Leases().AnyLiveIn(state.PreviousActivationSequence, state.ActivationSequence) {
+				continue
+			}
+
+			if err := b.commitRetirement(ledgerName, canonical, state); err != nil {
+				b.logger.WithFields(map[string]any{
+					"ledger":    ledgerName,
+					"canonical": canonical,
+					"version":   state.PreviousVersion,
+					"error":     err,
+				}).Errorf("Retiring replaced index version failed; retried on the next tick")
+			}
+		}
+	}
+}
+
+// commitRetirement purges state's retained version. Only a metadata rewrite
+// switch retains a version (promotedState), so a retained version on any
+// other index is an invariant failure.
+func (b *Builder) commitRetirement(ledgerName, canonical string, state readstore.IndexVersionState) error {
+	id, err := indexes.ParseCanonical(canonical)
+	if err != nil {
+		return fmt.Errorf("invariant: retained version %d on unparsable index %s/%s: %w",
+			state.PreviousVersion, ledgerName, canonical, err)
+	}
+
+	meta, ok := id.GetKind().(*commonpb.IndexID_Metadata)
+	if !ok || meta.Metadata == nil {
+		return fmt.Errorf("invariant: retained version %d on non-metadata index %s/%s",
+			state.PreviousVersion, ledgerName, canonical)
+	}
+
+	ns := namespaceForTarget(meta.Metadata.GetTarget())
+	if ns == "" {
+		return fmt.Errorf("invariant: retained version %d on index %s/%s with unknown target %s",
+			state.PreviousVersion, ledgerName, canonical, meta.Metadata.GetTarget())
+	}
+
+	retired := state
+	retired.PreviousVersion = 0
+	retired.PreviousType, retired.PreviousTypeDeclared = 0, false
+	retired.PreviousActivationSequence, retired.PreviousValidThrough = 0, 0
+
+	batch := b.readStore.NewBatch()
+
+	if err := b.readStore.WriteIndexVersionState(batch, ledgerName, canonical, retired); err != nil {
+		b.discardBatch(batch)
+
+		return fmt.Errorf("persisting retirement: %w", err)
+	}
+
+	if err := b.gcVersionAt(batch, dal.NewKeyBuilder(), ledgerName, ns, meta.Metadata.GetKey(), state.PreviousVersion); err != nil {
+		b.discardBatch(batch)
+
+		return fmt.Errorf("gc retired keyspace: %w", err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		b.discardBatch(batch)
+
+		return fmt.Errorf("committing retirement: %w", err)
+	}
+
+	b.putVersionState(ledgerName, canonical, retired)
+
+	return nil
+}
+
 // effectiveCurrentVersion returns the forward-encoding version live
 // writes should currently target on this replica. The indexer hot
 // path calls this for every metadata index touched.
@@ -736,6 +906,8 @@ func (b *Builder) loop(ctx context.Context) {
 		case <-b.notifications.LogCommitted.C():
 		case <-ticker.C:
 		}
+
+		b.flushPromotions()
 
 		// The Raft applied index can advance without the native log sequence
 		// moving (no-op, technical-only, or rejected proposal). processLogs must
