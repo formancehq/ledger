@@ -90,3 +90,40 @@ func TestClonePreservesSanitizedSinkDiagnostic(t *testing.T) {
 	require.Equal(t, source.GetMessage(), view.GetMessage())
 	require.NotSame(t, source, view)
 }
+
+func TestCloneNilNestedMessages(t *testing.T) {
+	t.Parallel()
+	source := &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
+		"absent":  nil,
+		"present": {Volumes: []*commonpb.VolumeEntry{nil, {Asset: "USD/2"}}},
+	}}
+	before := proto.Clone(source)
+	var view *commonpb.PostCommitVolumes
+	require.NotPanics(t, func() { view = Clone(source) })
+	require.True(t, proto.Equal(before, source))
+	// proto.Clone materializes nil map/list messages before redact sees them.
+	require.NotNil(t, view.GetVolumesByAccount()["absent"])
+	require.NotNil(t, view.GetVolumesByAccount()["present"].GetVolumes()[0])
+	require.Nil(t, source.GetVolumesByAccount()["absent"])
+	require.Nil(t, source.GetVolumesByAccount()["present"].GetVolumes()[0])
+	require.Len(t, view.GetVolumesByAccount()["present"].GetVolumes(), 2)
+	require.Equal(t, "USD/2", view.GetVolumesByAccount()["present"].GetVolumes()[1].GetAsset())
+}
+
+func TestCloneSensitiveOneofs(t *testing.T) {
+	t.Parallel()
+	for _, source := range []*commonpb.DatabricksSinkConfig{
+		{Auth: &commonpb.DatabricksSinkConfig_Token{Token: "credential"}},
+		{Auth: &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &commonpb.DatabricksOAuthM2M{ClientId: "visible", ClientSecret: "credential"}}},
+	} {
+		before := proto.Clone(source)
+		view := Clone(source)
+		require.True(t, proto.Equal(before, source))
+		if source.GetToken() != "" {
+			require.Equal(t, Marker, view.GetToken())
+		} else {
+			require.Equal(t, "visible", view.GetOauthM2M().GetClientId())
+			require.Equal(t, Marker, view.GetOauthM2M().GetClientSecret())
+		}
+	}
+}
