@@ -86,7 +86,13 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_FILTER_COMPILATION_ERROR,
 		commonpb.ErrorReason_ERROR_REASON_EXECUTION_PLAN_TOO_LARGE,
 		commonpb.ErrorReason_ERROR_REASON_CHECKPOINT_ID_REQUIRED,
-		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID:
+		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_INVALID,
+		// A metadata-limit violation is the caller sending too much metadata,
+		// not the server exhausting a resource: Validation (InvalidArgument /
+		// HTTP 400), never ResourceExhausted. Retrying the same payload cannot
+		// succeed, and a retryable code would make client retry policies
+		// re-drive a permanent rejection.
+		commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED:
 		return KindValidation
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,

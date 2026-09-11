@@ -430,12 +430,27 @@ message PersistedClusterState {
 
 // ClusterPolicy is the Raft-replicated cluster-wide policy for behavior that
 // must apply identically on every node during FSM apply (idempotency
-// expiration, query-checkpoint admission). revision is monotonic so a stale
-// proposal can never overwrite a newer committed policy.
+// expiration, query-checkpoint admission, metadata size ceilings). revision is
+// monotonic so a stale proposal can never overwrite a newer committed policy.
+//
+// The metadata ceilings are the configurable form of the canonical metadata
+// size contract (domain.MetadataLimits). They ride in the replicated policy
+// rather than in node-local flags because FSM apply validates the metadata a
+// Numscript program produces against them: a node-local limit would make one
+// committed entry apply differently per node.
 message ClusterPolicy {
   fixed64 revision = 1;
   fixed64 idempotency_ttl_micros = 2;  // 0 means never expires
   fixed64 query_checkpoint_limit = 3;  // must be >= 1
+  // Metadata size ceilings, each scoped to a single command. Every value must
+  // be >= 1; see domain.MetadataLimits for the measurement rule and
+  // docs/technical/architecture/subsystems/admission/metadata-limits.md for the
+  // contract.
+  fixed64 metadata_max_entries_per_entity = 4;
+  fixed64 metadata_max_key_bytes = 5;
+  fixed64 metadata_max_value_bytes = 6;
+  fixed64 metadata_max_entity_bytes = 7;
+  fixed64 metadata_max_command_bytes = 8;
 }
 
 // CreatedPreparedQueryLog records the creation of a prepared query.
@@ -1242,6 +1257,12 @@ enum ErrorReason {
   ERROR_REASON_SEQUENCE_EXHAUSTED = 67;
   // A fresh CreateIndex targets an existing ledger/canonical IndexID.
   ERROR_REASON_INDEX_ALREADY_EXISTS = 68;
+  // ERROR_REASON_METADATA_LIMIT_EXCEEDED: a command carried — or a Numscript
+  // program produced — metadata beyond a ceiling of the canonical metadata size
+  // contract (entry count, key bytes, value bytes, per-entity bytes, or
+  // per-command bytes). Permanent (Kind=Validation): the caller must send less
+  // metadata, so a retry of the same payload cannot succeed. See EN-1829.
+  ERROR_REASON_METADATA_LIMIT_EXCEEDED = 69;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

@@ -63,6 +63,7 @@ func TestProcessAddLedgerMetadata_KeysOffEnvelope(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
 		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
@@ -99,6 +100,7 @@ func TestProcessDeleteLedgerMetadata_KeysOffEnvelope(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: envelopeLedger},
 		(&commonpb.LedgerInfo{Name: divergentLedger, Id: 7}).AsReader(), nil)
@@ -201,6 +203,7 @@ func TestProcessSetMetadataFieldType_IndexCascadeKeysOffEnvelope(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 
 	const field = "color"
 	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, field)
@@ -250,6 +253,7 @@ func TestProcessRemoveMetadataFieldType_IndexCascadeKeysOffEnvelope(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 
 	const field = "color"
 	indexID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, field)

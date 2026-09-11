@@ -257,7 +257,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			name: "set_cluster_policy",
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_SetClusterPolicy{
 				SetClusterPolicy: &raftcmdpb.SetClusterPolicyOrder{
-					Policy: &commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1},
+					Policy: withMetadataLimits(&commonpb.ClusterPolicy{Revision: 1, QueryCheckpointLimit: 1}),
 				},
 			}},
 			setup: func(m *MockScope) {

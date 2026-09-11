@@ -19,6 +19,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -79,6 +80,7 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -138,6 +140,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -191,6 +194,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -246,6 +250,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -296,6 +301,7 @@ func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -347,6 +353,7 @@ func TestProcessAddMetadata_TransactionTargetMissing(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

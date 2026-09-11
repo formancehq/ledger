@@ -168,6 +168,19 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		finalMetadata = merged
 	}
 
+	// Bound the MERGED map, not the caller's. Admission already checked what the
+	// caller sent and the producer checked each Numscript key/value shape, but
+	// neither sees the union: two individually-legal halves can push one
+	// transaction past the entity ceiling. The ceilings come from the committed
+	// cluster policy through the Scope — never from node-local configuration,
+	// which would make this committed entry apply differently per node
+	// (invariant #2).
+	limits := domain.MetadataLimitsFromPolicy(s.GetClusterPolicy())
+
+	if metaErr := limits.ValidateMap(finalMetadata); metaErr != nil {
+		return nil, metaErr
+	}
+
 	if len(finalMetadata) > 0 {
 		// Stored values are immutable. Coercion to declared_type happens at read.
 		txState.Metadata = finalMetadata
@@ -197,6 +210,34 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			// Order keys take precedence: merge order entries into existing.
 			maps.Copy(existing.GetValues(), mm.GetValues())
 		}
+	}
+
+	// Same reasoning as the transaction map above, per account. Checked in its
+	// own pass — and reporting the lexicographically smallest offending account
+	// — so the rejection does not depend on Go map iteration order: this runs
+	// inside apply, where a per-node choice of error would diverge the audit
+	// chain.
+	if metaErr := validateMergedAccountMetadata(accountMetadata, limits); metaErr != nil {
+		return nil, metaErr
+	}
+
+	// Admission can only count caller input. Replace this transaction's input
+	// contribution with its merged output in the proposal-wide budget, retaining
+	// every other order's input and the output of earlier scripts.
+	inputBytes := domain.OrderMetadataSize(&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: order},
+			}},
+		}},
+	})
+	if ctx.metadataBudget == nil {
+		// Direct handler callers execute a single transaction.
+		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}
+	}
+	total := ctx.metadataBudget.bytes + transactionMetadataSize(finalMetadata, accountMetadata) - inputBytes
+	if metaErr := limits.ValidateCommandBytes(total); metaErr != nil {
+		return nil, metaErr
 	}
 
 	// Stored values are immutable; the FSM does not coerce on write and no
@@ -233,6 +274,8 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 		return nil, pcvErr
 	}
 
+	ctx.metadataBudget.bytes = total
+
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 			CreatedTransaction: &commonpb.CreatedTransaction{
@@ -250,6 +293,40 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			},
 		},
 	}, nil
+}
+
+// validateMergedAccountMetadata checks every account's merged metadata map
+// against the size contract and reports the lexicographically smallest
+// offending account. Selecting the smallest — rather than whichever account
+// iteration reaches first — is what makes the rejection deterministic: this runs
+// inside FSM apply, so two nodes iterating the same map in different orders must
+// still produce the identical error (invariant #2), and the failure is
+// hash-bound into the audit chain.
+func validateMergedAccountMetadata(
+	accountMetadata map[string]*commonpb.MetadataMap,
+	limits domain.MetadataLimits,
+) domain.Describable {
+	var (
+		worstAccount string
+		worstErr     domain.Describable
+	)
+
+	for account, mm := range accountMetadata {
+		err := limits.ValidateMap(mm.GetValues())
+		if err == nil {
+			continue
+		}
+
+		if worstErr == nil || account < worstAccount {
+			worstAccount, worstErr = account, err
+		}
+	}
+
+	if worstErr != nil {
+		return &domain.ErrAccountValidation{Account: worstAccount, Cause: worstErr}
+	}
+
+	return nil
 }
 
 // validatePostings checks that all account addresses and assets in the postings
@@ -306,4 +383,20 @@ func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.Cr
 		Postings:            order.GetPostings(),
 		TransactionMetadata: nil, // No script metadata for standard postings
 	}, nil
+}
+
+// commandMetadataBudget starts with all caller-supplied metadata in a proposal.
+// Successful transaction merges add only their generated contribution: caller
+// values win collisions, so the merged map never removes caller bytes.
+type commandMetadataBudget struct {
+	bytes uint64
+}
+
+func transactionMetadataSize(metadata map[string]*commonpb.MetadataValue, accounts map[string]*commonpb.MetadataMap) uint64 {
+	total := domain.MetadataMapSize(metadata)
+	for _, mm := range accounts {
+		total += domain.MetadataMapSize(mm.GetValues())
+	}
+
+	return total
 }

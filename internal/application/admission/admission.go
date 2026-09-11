@@ -557,7 +557,8 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	// fresh leader's reconciler commits the policy within a reconcile interval, so
 	// this blocks only during the startup window. SetClusterPolicy is exempt so
 	// the reconciler's own proposal establishes the policy.
-	if !allRequestsAreClusterPolicy(batch.requests) {
+	businessBatch := !allRequestsAreClusterPolicy(batch.requests)
+	if businessBatch {
 		if err := a.waitClusterPolicyReady(ctx); err != nil {
 			return nil, err
 		}
@@ -576,6 +577,25 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
+	}
+
+	// Enforce the metadata size contract over the whole command. It runs here,
+	// after the orders exist, because the per-command ceiling spans every order
+	// in the batch — the atomic, signed unit — not one request at a time.
+	//
+	// The ceilings live in the committed cluster policy, so this reads the same
+	// numbers the FSM will read for Numscript-produced metadata. A
+	// SetClusterPolicy-only batch is exempt: it carries no business metadata and
+	// must be able to commit the very policy these ceilings come from.
+	if businessBatch {
+		policy, policyErr := query.ReadClusterPolicy(a.store)
+		if policyErr != nil {
+			return nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
+		}
+
+		if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
+			return nil, err
+		}
 	}
 
 	// Tally per-order action counters at whichever exit Admit returns through.

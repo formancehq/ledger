@@ -1180,6 +1180,11 @@ func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
 	r.Revision = m.Revision
 	r.IdempotencyTtlMicros = m.IdempotencyTtlMicros
 	r.QueryCheckpointLimit = m.QueryCheckpointLimit
+	r.MetadataMaxEntriesPerEntity = m.MetadataMaxEntriesPerEntity
+	r.MetadataMaxKeyBytes = m.MetadataMaxKeyBytes
+	r.MetadataMaxValueBytes = m.MetadataMaxValueBytes
+	r.MetadataMaxEntityBytes = m.MetadataMaxEntityBytes
+	r.MetadataMaxCommandBytes = m.MetadataMaxCommandBytes
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -6350,6 +6355,21 @@ func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
 		return false
 	}
 	if this.QueryCheckpointLimit != that.QueryCheckpointLimit {
+		return false
+	}
+	if this.MetadataMaxEntriesPerEntity != that.MetadataMaxEntriesPerEntity {
+		return false
+	}
+	if this.MetadataMaxKeyBytes != that.MetadataMaxKeyBytes {
+		return false
+	}
+	if this.MetadataMaxValueBytes != that.MetadataMaxValueBytes {
+		return false
+	}
+	if this.MetadataMaxEntityBytes != that.MetadataMaxEntityBytes {
+		return false
+	}
+	if this.MetadataMaxCommandBytes != that.MetadataMaxCommandBytes {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -14615,6 +14635,36 @@ func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.MetadataMaxCommandBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxCommandBytes))
+		i--
+		dAtA[i] = 0x41
+	}
+	if m.MetadataMaxEntityBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxEntityBytes))
+		i--
+		dAtA[i] = 0x39
+	}
+	if m.MetadataMaxValueBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxValueBytes))
+		i--
+		dAtA[i] = 0x31
+	}
+	if m.MetadataMaxKeyBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxKeyBytes))
+		i--
+		dAtA[i] = 0x29
+	}
+	if m.MetadataMaxEntriesPerEntity != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxEntriesPerEntity))
+		i--
+		dAtA[i] = 0x21
 	}
 	if m.QueryCheckpointLimit != 0 {
 		i -= 8
@@ -23661,6 +23711,21 @@ func (m *ClusterPolicy) SizeVT() (n int) {
 		n += 9
 	}
 	if m.QueryCheckpointLimit != 0 {
+		n += 9
+	}
+	if m.MetadataMaxEntriesPerEntity != 0 {
+		n += 9
+	}
+	if m.MetadataMaxKeyBytes != 0 {
+		n += 9
+	}
+	if m.MetadataMaxValueBytes != 0 {
+		n += 9
+	}
+	if m.MetadataMaxEntityBytes != 0 {
+		n += 9
+	}
+	if m.MetadataMaxCommandBytes != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -33911,6 +33976,56 @@ func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			m.QueryCheckpointLimit = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxEntriesPerEntity", wireType)
+			}
+			m.MetadataMaxEntriesPerEntity = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxEntriesPerEntity = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 5:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxKeyBytes", wireType)
+			}
+			m.MetadataMaxKeyBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxKeyBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 6:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxValueBytes", wireType)
+			}
+			m.MetadataMaxValueBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxValueBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 7:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxEntityBytes", wireType)
+			}
+			m.MetadataMaxEntityBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxEntityBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 8:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxCommandBytes", wireType)
+			}
+			m.MetadataMaxCommandBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxCommandBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

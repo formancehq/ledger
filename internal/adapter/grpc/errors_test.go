@@ -253,6 +253,48 @@ func TestBusinessErrorToGRPCStatus_NumscriptParseError(t *testing.T) {
 	require.Equal(t, "unexpected token at line 3", info.GetMetadata()["details"])
 }
 
+// A metadata-limit violation must reach the client as InvalidArgument, never as
+// ResourceExhausted: the caller has to send less metadata, and a retryable code
+// would make client retry policies re-drive a permanent rejection. The
+// dimension/limit/actual metadata lets a caller tell "too many entries" from
+// "one value too large" without parsing the message.
+func TestBusinessErrorToGRPCStatus_MetadataLimitExceeded(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		dimension string
+	}{
+		{"entry count", domain.MetadataLimitDimensionEntries},
+		{"key size", domain.MetadataLimitDimensionKey},
+		{"value size", domain.MetadataLimitDimensionValue},
+		{"per-entity total", domain.MetadataLimitDimensionEntity},
+		{"per-command total", domain.MetadataLimitDimensionCommand},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bizErr := &domain.BusinessError{Err: &domain.ErrMetadataLimitExceeded{
+				Dimension: tt.dimension,
+				Limit:     128,
+				Actual:    129,
+			}}
+			st := businessErrorToGRPCStatus(bizErr)
+
+			require.Equal(t, codes.InvalidArgument, st.Code())
+
+			info := extractErrorInfo(t, st)
+			require.Equal(t, domain.ErrReasonMetadataLimitExceeded, info.GetReason())
+			require.Equal(t, errorDomain, info.GetDomain())
+			require.Equal(t, tt.dimension, info.GetMetadata()["dimension"])
+			require.Equal(t, "128", info.GetMetadata()["limit"])
+			require.Equal(t, "129", info.GetMetadata()["actual"])
+		})
+	}
+}
+
 func TestBusinessErrorToGRPCStatus_FilterCompilationError(t *testing.T) {
 	t.Parallel()
 

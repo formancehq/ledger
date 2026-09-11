@@ -26,6 +26,10 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 		return nil, loadErr
 	}
 
+	if err := validateMetadataKeyAtApply(order.GetKey(), ctx); err != nil {
+		return nil, err
+	}
+
 	if info.GetMetadataSchema() == nil {
 		info.MetadataSchema = &commonpb.MetadataSchema{}
 	}
@@ -100,6 +104,10 @@ func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetada
 	info, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
+	}
+
+	if err := validateMetadataKeyAtApply(order.GetKey(), ctx); err != nil {
+		return nil, err
 	}
 
 	if info.GetMetadataSchema() == nil {

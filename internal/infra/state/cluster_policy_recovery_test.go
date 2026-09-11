@@ -13,7 +13,9 @@ import (
 func TestRecoverState_ClusterPolicyRoundtrip(t *testing.T) {
 	t.Parallel()
 
-	machine, store, _ := newTestMachine(t)
+	// Deliberately the un-seeded harness: this test is about what recovery
+	// itself produces, so the machine must be genuinely fresh.
+	machine, store, _ := newTestMachineWithThreshold(t, 1000)
 
 	require.NotNil(t, machine.State.ClusterPolicy)
 	require.Equal(t, uint64(0), machine.State.ClusterPolicy.GetRevision(),

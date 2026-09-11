@@ -14,6 +14,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -174,6 +175,15 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 							Revision:             postCheckpointRevision,
 							IdempotencyTtlMicros: uint64((time.Hour).Microseconds()),
 							QueryCheckpointLimit: postCheckpointLimit,
+							// A committed policy must carry the metadata
+							// ceilings: the FSM refuses one without them, and
+							// business writes are rejected while they are
+							// absent.
+							MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+							MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+							MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+							MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+							MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 						},
 					},
 				},

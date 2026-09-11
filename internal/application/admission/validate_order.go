@@ -11,7 +11,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -118,89 +117,10 @@ func validateOrderLedgerName(order *raftcmdpb.Order) domain.Describable {
 }
 
 // validateOrderMetadata validates that all metadata keys and values in the order
-// are safe for Pebble key encoding.
+// are safe for Pebble key encoding. Shape only — the size contract is enforced
+// per command by validateCommandMetadata, which needs the replicated ceilings.
 func validateOrderMetadata(order *raftcmdpb.Order) domain.Describable {
-	ls := order.GetLedgerScoped()
-	if ls == nil {
-		return nil
-	}
-
-	switch p := ls.GetPayload().(type) {
-	case *raftcmdpb.LedgerScopedOrder_Apply:
-		return validateApplyMetadata(p.Apply)
-	case *raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata:
-		return validateMetadataMap(p.SaveLedgerMetadata.GetMetadata())
-	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
-		return domain.ValidateMetadataKey(p.DeleteLedgerMetadata.GetKey())
-	case *raftcmdpb.LedgerScopedOrder_MirrorIngest:
-		return validateMirrorMetadata(p.MirrorIngest.GetEntry())
-	default:
-		return nil
-	}
-}
-
-// validateApplyMetadata validates metadata within a LedgerApplyOrder.
-func validateApplyMetadata(apply *raftcmdpb.LedgerApplyOrder) domain.Describable {
-	switch d := apply.GetData().(type) {
-	case *raftcmdpb.LedgerApplyOrder_CreateTransaction:
-		if err := validateMetadataMap(d.CreateTransaction.GetMetadata()); err != nil {
-			return err
-		}
-
-		for account, mm := range d.CreateTransaction.GetAccountMetadata() {
-			if mm != nil {
-				if err := validateMetadataMap(mm.GetValues()); err != nil {
-					return &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-			}
-		}
-
-		return nil
-	case *raftcmdpb.LedgerApplyOrder_RevertTransaction:
-		// processRevertTransaction stores order.GetMetadata() straight into
-		// the revert log payload, so the metadata-key invariants (non-empty,
-		// no NUL bytes) must be checked here too. Without this gate a
-		// client-supplied empty or NUL-bearing key reaches the canonical
-		// Pebble key layout via the revert log and corrupts read-index
-		// entries (#322).
-		return validateMetadataMap(d.RevertTransaction.GetMetadata())
-	case *raftcmdpb.LedgerApplyOrder_AddMetadata:
-		return validateMetadataMap(d.AddMetadata.GetMetadata())
-	case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
-		return domain.ValidateMetadataKey(d.DeleteMetadata.GetKey())
-	case *raftcmdpb.LedgerApplyOrder_SetMetadataFieldType:
-		return domain.ValidateMetadataKey(d.SetMetadataFieldType.GetKey())
-	case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
-		return domain.ValidateMetadataKey(d.RemoveMetadataFieldType.GetKey())
-	default:
-		return nil
-	}
-}
-
-// validateMirrorMetadata validates metadata supplied by mirror ingest orders.
-func validateMirrorMetadata(entry *raftcmdpb.MirrorLogEntry) domain.Describable {
-	switch d := entry.GetData().(type) {
-	case *raftcmdpb.MirrorLogEntry_CreatedTransaction:
-		if err := validateMetadataMap(d.CreatedTransaction.GetMetadata()); err != nil {
-			return err
-		}
-
-		for account, mm := range d.CreatedTransaction.GetAccountMetadata() {
-			if mm != nil {
-				if err := validateMetadataMap(mm.GetValues()); err != nil {
-					return &domain.ErrAccountValidation{Account: account, Cause: err}
-				}
-			}
-		}
-
-		return nil
-	case *raftcmdpb.MirrorLogEntry_SavedMetadata:
-		return validateMetadataMap(d.SavedMetadata.GetMetadata())
-	case *raftcmdpb.MirrorLogEntry_RevertedTransaction:
-		return validateMetadataMap(d.RevertedTransaction.GetMetadata())
-	default:
-		return nil
-	}
+	return domain.ValidateOrderMetadataShape(order)
 }
 
 // validateOrderAccountAddresses validates account addresses in non-transaction orders
@@ -466,20 +386,11 @@ func validateOrderSigningKey(order *raftcmdpb.Order) domain.Describable {
 	return nil
 }
 
-// validateMetadataMap validates all keys and values in a metadata map.
-// Value-level failures are wrapped in ErrMetadataKeyValidation so the
-// offending key reaches operator logs and the gRPC ErrorInfo metadata
-// (rather than being dropped, which the first pass of this refactor did
-// before paul-nicolas's review).
-func validateMetadataMap(m map[string]*commonpb.MetadataValue) domain.Describable {
-	for key, value := range m {
-		if err := domain.ValidateMetadataKey(key); err != nil {
-			return err
-		}
-
-		if err := domain.ValidateMetadataValue(value); err != nil {
-			return &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
-		}
+// validateCommandMetadata applies the shared admission and mirror metadata
+// contract using the committed policy, preserving the application error wrapper.
+func validateCommandMetadata(orders []*raftcmdpb.Order, limits domain.MetadataLimits) error {
+	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
+		return &domain.BusinessError{Err: err}
 	}
 
 	return nil

@@ -28,6 +28,16 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 		return nil, &domain.ErrClusterPolicyInvalid{Detail: "query_checkpoint_limit must be at least 1"}
 	}
 
+	// The metadata ceilings gate business writes at admission AND inside apply
+	// (Numscript-produced metadata), so a committed policy must always carry
+	// usable numbers. A zero ceiling is the absence of configuration, never
+	// "unlimited": committing it would silently disable the protection, so it is
+	// refused here rather than repaired with a default — a node-local default
+	// would also make apply node-dependent (invariant #2).
+	if err := validateClusterPolicyMetadataLimits(newPolicy); err != nil {
+		return nil, err
+	}
+
 	current := ctx.Scope.GetClusterPolicy()
 	appliedRev := current.GetRevision()
 	newRev := newPolicy.GetRevision()
@@ -50,4 +60,19 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 
 		return nil, &domain.ErrClusterPolicyRevisionConflict{Revision: newRev}
 	}
+}
+
+// validateClusterPolicyMetadataLimits rejects a policy whose metadata ceilings
+// are unusable. Each ceiling must be at least 1, and the ceilings must be
+// mutually satisfiable: a per-value ceiling above the per-entity one — or a
+// per-entity ceiling above the per-command one — is unreachable, so an operator
+// raising it would observe no effect. Both checks are pure functions of the
+// proposed policy, so every node reaches the same verdict for one committed
+// entry.
+func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.Describable {
+	if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
+		return &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
+	}
+
+	return nil
 }
