@@ -45,7 +45,7 @@ type NATSSink struct {
 // NewNATSSink creates a new NATS JetStream sink.
 func NewNATSSink(cfg NATSSinkConfig) (result *NATSSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer(strings.Split(cfg.URL, ","))
-	defer sanitizer.finish(&retErr)
+	defer sanitizer.sanitizeReturned(&retErr)
 	conn, err := nats.Connect(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to NATS: %w", err)
@@ -68,7 +68,7 @@ func NewNATSSink(cfg NATSSinkConfig) (result *NATSSink, retErr error) {
 }
 
 func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
@@ -85,7 +85,7 @@ func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) (retEr
 }
 
 func (s *NATSSink) Close() (retErr error) {
-	defer s.errors.finish(&retErr)
+	defer s.errors.sanitizeReturned(&retErr)
 	s.conn.Close()
 
 	return nil
