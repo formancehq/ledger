@@ -224,7 +224,13 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	// Admission can only count caller input. Replace this transaction's input
 	// contribution with its merged output in the proposal-wide budget, retaining
 	// every other order's input and the output of earlier scripts.
-	inputBytes := transactionMetadataSize(order.GetMetadata(), order.GetAccountMetadata())
+	inputBytes := domain.OrderMetadataSize(&raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+			Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
+				Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{CreateTransaction: order},
+			}},
+		}},
+	})
 	if ctx.metadataBudget == nil {
 		// Direct handler callers execute a single transaction.
 		ctx.metadataBudget = &commandMetadataBudget{bytes: inputBytes}

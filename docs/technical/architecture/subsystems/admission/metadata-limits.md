@@ -143,10 +143,12 @@ rejection is permanent, and a retryable code would make client retry policies
 re-drive it. An FSM-side rejection is freezable, so a keyed retry replays it from
 the audit chain instead of re-executing.
 
-`openapi.yml` carries the constraints OAS 3.0.3 can express: `maxProperties` on
-the request-side metadata objects and `maxLength` on the `MetadataValue` string
-branch. Map-key length is not expressible (`propertyNames` is OAS 3.1), so the
-key ceiling is stated in the schema descriptions.
+`openapi.yml` documents the default ceilings in descriptions rather than fixed
+`maxProperties` or `maxLength` constraints: the effective limits come from the
+replicated cluster policy and operators can raise them. String sizes are measured
+in UTF-8 bytes, whereas `maxLength` counts characters. The schema retains the
+NUL-byte restriction on metadata strings; the server enforces the configured
+entry, key, value, entity, and command ceilings.
 
 ## Transport caps are not this contract
 
