@@ -67,10 +67,11 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 func (s *HTTPSource) FetchLogs(ctx context.Context, afterID uint64, pageSize int) ([]V2Log, bool, error) {
 	q := url.Values{}
 	q.Set("pageSize", strconv.Itoa(pageSize))
-
-	if afterID > 0 {
-		q.Set("after", strconv.FormatUint(afterID, 10))
-	}
+	q.Set("sort", "id:asc")
+	// v2 supports a numeric query filter, not an "after" parameter. Rebuild
+	// the query from the applied boundary on every fetch, including after an
+	// empty tail or a failed batch; no HTTP cursor becomes a second authority.
+	q.Set("query", fmt.Sprintf(`{"$gt":{"id":%d}}`, afterID))
 
 	resp, err := s.doGet(ctx, "logs", q)
 	if err != nil {
@@ -92,6 +93,7 @@ func (s *HTTPSource) FetchLogs(ctx context.Context, afterID uint64, pageSize int
 func (s *HTTPSource) GetLatestLogID(ctx context.Context) (uint64, error) {
 	q := url.Values{}
 	q.Set("pageSize", "1")
+	q.Set("sort", "id:desc")
 
 	resp, err := s.doGet(ctx, "logs", q)
 	if err != nil {

@@ -10,7 +10,7 @@ Two leader-only background workers that tail the global log.
 | Document | Description |
 |----------|-------------|
 | [events.md](events.md) | Domain event types and event sink system (NATS, Kafka, ClickHouse, HTTP). |
-| [mirror.md](mirror.md) | Mirror worker that ingests Ledger v2 logs (HTTP or PostgreSQL) into a v3 mirror ledger, with promotion to normal mode at cutover. |
+| [mirror.md](mirror.md) | Mirror worker that ingests Ledger v2 logs (HTTP or PostgreSQL), including ascending boundary-based HTTP continuation and promotion at cutover. |
 | [cel-rewrite.md](cel-rewrite.md) | CEL rewrite engine that transforms transactions during mirror translation (rename addresses, transform metadata, drop transactions). |
 
 Mirror [source initialization and cancellation](mirror.md#source-initialization-and-cancellation)

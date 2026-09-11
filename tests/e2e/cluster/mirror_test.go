@@ -9,6 +9,8 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -83,23 +85,9 @@ func (m *mockV2Server) resume() {
 	m.gate.Unlock()
 }
 
-// handler serves the two shapes the mirror worker issues against /logs, which
-// disagree about ordering and are distinguishable only by pageSize:
-//
-//   - HTTPSource.GetLatestLogID sends pageSize=1 with no "after" and reads
-//     Data[0] as the NEWEST log. PostgresSource implements the same interface
-//     method as SELECT MAX(id), so "newest" is the contract, and serving this
-//     shape ascending would report the OLDEST log as the source head — making
-//     MirrorSyncProgress.SourceLogCount unassertable and FOLLOWING satisfiable
-//     by any non-zero head.
-//   - HTTPSource.FetchLogs pages forward with "after" and needs ASCENDING
-//     logs; TranslateBatch enforces source-log-id contiguity. It also omits
-//     "after" when resuming from 0, which is why pageSize is the discriminator
-//     here rather than the presence of "after".
-//
-// That the two production call sites make opposite ordering assumptions about
-// the same request shape is a real question about the v2 API contract, not a
-// fixture concern. It is out of scope for this suite.
+// handler models the v2.4.7 public log-list contract: descending by default,
+// explicit ascending sort, and a numeric id filter. Page size never selects
+// ordering, and the unsupported "after" parameter is ignored by upstream.
 func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
 	// Park before the counter moves, so a paused mock leaves requestCount
 	// untouched. See pause.
@@ -111,39 +99,52 @@ func (m *mockV2Server) handler(w http.ResponseWriter, r *http.Request) {
 
 	m.requests++
 
-	// Parse "after" query param
-	afterStr := r.URL.Query().Get("after")
-	var afterID uint64
-	if afterStr != "" {
-		_, _ = fmt.Sscanf(afterStr, "%d", &afterID)
-	}
-
-	// Respect pageSize
-	pageSizeStr := r.URL.Query().Get("pageSize")
+	q := r.URL.Query()
 	pageSize := 100
-	if pageSizeStr != "" {
-		_, _ = fmt.Sscanf(pageSizeStr, "%d", &pageSize)
+	if raw := q.Get("pageSize"); raw != "" {
+		var err error
+		pageSize, err = strconv.Atoi(raw)
+		if err != nil || pageSize <= 0 {
+			http.Error(w, "invalid pageSize", http.StatusBadRequest)
+			return
+		}
 	}
 
-	// Filter logs after the given ID (ascending order)
+	var afterID uint64
+	if raw := q.Get("query"); raw != "" {
+		var filter struct {
+			GT struct {
+				ID uint64 `json:"id"`
+			} `json:"$gt"`
+		}
+		if err := json.Unmarshal([]byte(raw), &filter); err != nil {
+			http.Error(w, "invalid query", http.StatusBadRequest)
+			return
+		}
+		afterID = filter.GT.ID
+	}
+
 	var result []v2.V2Log
 	for _, log := range m.logs {
-		if log.ID > afterID {
+		if q.Get("query") == "" || log.ID > afterID {
 			result = append(result, log)
 		}
 	}
-
-	hasMore := false
-
-	if pageSize == 1 && afterStr == "" {
-		// Head probe: answer newest-first, as the contract requires.
-		if len(result) > 0 {
-			result = []v2.V2Log{result[len(result)-1]}
-			hasMore = len(m.logs) > 1
+	slices.SortFunc(result, func(a, b v2.V2Log) int {
+		if a.ID < b.ID {
+			return -1
 		}
-	} else if len(result) > pageSize {
+		if a.ID > b.ID {
+			return 1
+		}
+		return 0
+	})
+	if q.Get("sort") != "id:asc" {
+		slices.Reverse(result)
+	}
+	hasMore := len(result) > pageSize
+	if hasMore {
 		result = result[:pageSize]
-		hasMore = true
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -456,6 +457,59 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 	})
 
+	It("Should preserve every transaction across ascending HTTP pages and a tail append", func() {
+		mockV2 := newMockV2Server()
+		DeferCleanup(mockV2.Close)
+		const ledgerName = "mirror-http-pagination"
+		for id := uint64(1); id <= 3; id++ {
+			mockV2.addLog(newV2TransactionLog(id, id-1, "world", fmt.Sprintf("users:%d", id), strconv.FormatUint(id*100, 10), "USD/2"))
+		}
+		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+			Type: &servicepb.Request_CreateLedger{
+				CreateLedger: &servicepb.CreateLedgerRequest{
+					Name: ledgerName,
+					Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+					MirrorSource: &commonpb.MirrorSourceConfig{
+						LedgerName: "default",
+						BatchSize:  2,
+						Type: &commonpb.MirrorSourceConfig_Http{
+							Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: mockV2.URL()},
+						},
+					},
+				},
+			},
+		}))
+		Expect(err).To(Succeed())
+
+		assertSynced := func(count uint64) {
+			Eventually(func(g Gomega) {
+				txs, err := listAllTransactions(ctx, client, ledgerName, 10, 0)
+				g.Expect(err).To(Succeed())
+				g.Expect(txs).To(HaveLen(int(count)), "every real transaction must survive; a reached cursor alone can hide synthetic gaps")
+				byID := make(map[uint64]*commonpb.Transaction, len(txs))
+				for _, tx := range txs {
+					byID[tx.GetId()] = tx
+				}
+				for id := uint64(0); id < count; id++ {
+					g.Expect(byID).To(HaveKey(id))
+					g.Expect(byID[id].GetPostings()).To(HaveLen(1))
+					g.Expect(byID[id].GetPostings()[0].GetDestination()).To(Equal(fmt.Sprintf("users:%d", id+1)))
+				}
+				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+				g.Expect(err).To(Succeed())
+				g.Expect(info.GetMirrorSyncProgress().GetCursor()).To(Equal(count))
+				g.Expect(info.GetMirrorSyncProgress().GetSourceLogCount()).To(Equal(count))
+			}).Within(20 * time.Second).ProbeEvery(250 * time.Millisecond).Should(Succeed())
+		}
+		assertSynced(3)
+
+		// After reaching the tail, continue from the nonzero durable boundary.
+		// A retained exhausted page cursor must not hide newly appended logs.
+		mockV2.addLog(newV2TransactionLog(4, 3, "world", "users:4", "400", "USD/2"))
+		mockV2.addLog(newV2TransactionLog(5, 4, "world", "users:5", "500", "USD/2"))
+		assertSynced(5)
+	})
+
 	Context("When syncing with CEL rewrite rules", Ordered, func() {
 		var mockV2 *mockV2Server
 
@@ -497,10 +551,10 @@ var _ = Describe("Mirror", Ordered, func() {
 									Actions: []*commonpb.CreatedTransactionAction{{
 										Action: &commonpb.CreatedTransactionAction_SetMetadata{
 											SetMetadata: &commonpb.SetMetadataAction{
-											Key:    "mirrored",
-											Source: &commonpb.SetMetadataAction_Value{Value: "true"},
+												Key:    "mirrored",
+												Source: &commonpb.SetMetadataAction_Value{Value: "true"},
+											},
 										},
-									},
 									}},
 								}}},
 								// Never mirror transactions flagged skip=yes.

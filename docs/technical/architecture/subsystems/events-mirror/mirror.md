@@ -79,10 +79,28 @@ Two concrete implementations:
 
 | Adapter | Mechanism | File |
 |---------|-----------|------|
-| HTTP | `GET /v2/{ledger}/logs?pageSize=X&after=Y` against a v2 server, OAuth2 credentials supported | `source_http.go:14-88` |
+| HTTP | `GET /v2/{ledger}/logs` with `pageSize`, `sort=id:asc`, and a numeric `query` filter `{"$gt":{"id":Y}}`, OAuth2 credentials supported | `source_http.go` |
 | PostgreSQL | Direct `SELECT` on the v2 `{bucket}.logs` table; the v2 schema is discovered via `_system.ledgers` | `source_postgres.go:17-79` |
 
 Both adapters return v2 log entries in their native shape; translation to v3 orders happens upstream of the source interface.
+
+Ingestion must return the oldest available logs strictly after the supplied
+boundary, so replaying history cannot replace available transactions with
+synthetic gaps (EN-2024). The HTTP adapter uses the public sort and numeric
+ID-filter contract supported by Ledger v2.4.7. That API defaults to descending
+order and ignores `after`; reversing a truncated descending page would still
+omit older history. Every fetch builds a new ascending query from `afterID`,
+including after an empty tail, a retry, or worker restart. It does not retain
+the response's opaque continuation token. `LedgerBoundaries` remains the only
+durable ingestion position, and a speculative prefetch cannot advance it.
+The numeric filter preserves uint64 precision and needs no `afterID + 1`
+arithmetic. `GetLatestLogID` separately requests `sort=id:desc&pageSize=1`
+without a boundary filter; an ingestion batch of size one still reads ascending.
+
+The HTTP regression fixture follows upstream's default descending order,
+explicit sort/filter, and lookahead pagination independently of page size.
+Tests cover multiple pages, nonzero-boundary resume, append after an empty
+tail, fail-then-success fetching, large IDs, and absence of fabricated gaps.
 
 ## The translation layer
 
