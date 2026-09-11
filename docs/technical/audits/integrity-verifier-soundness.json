@@ -1,0 +1,72 @@
+{
+  "id": "integrity-verifier-soundness",
+  "title": "Integrity verifier scope, reconstruction and verdict soundness",
+  "purpose": "Find reachable cases where the integrity checker accepts corrupted state within its promised scope, omits required verification, or loses evidence of incomplete verification before its caller observes the result. Apply the companion evidence and ownership contract. Audit the verifier, not accounting semantics or restore correctness anew; respect documented exemptions, existing gaps and PR #1912 ownership.",
+  "paths": [
+    "internal/application/check/**",
+    "internal/domain/replay/**",
+    "internal/query/audit.go",
+    "internal/query/log.go",
+    "internal/query/applied_proposal.go",
+    "internal/storage/dal/**",
+    "internal/storage/readstore/**",
+    "internal/infra/attributes/**",
+    "internal/infra/state/audit_envelope.go",
+    "internal/infra/state/batch.go",
+    "internal/infra/state/machine.go",
+    "internal/infra/state/recovery.go",
+    "internal/domain/processing/hash*.go",
+    "internal/domain/processing/processor*.go",
+    "internal/adapter/grpc/server_bucket.go",
+    "internal/adapter/grpc/server_restore.go",
+    "cmd/ledgerctl/store/check.go",
+    "cmd/ledgerctl/store/bootstrap.go",
+    "misc/proto/audit.proto",
+    "misc/proto/bucket.proto",
+    "misc/proto/restore.proto",
+    "internal/proto/auditpb/**",
+    "internal/proto/servicepb/**",
+    "tests/e2e/business/**",
+    "tests/e2e/cluster/**"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/audits/integrity-verifier-soundness.md",
+    "docs/technical/contributing/ai-audit.md",
+    "docs/technical/contributing/ai-audit-challenge.md",
+    "docs/technical/contributing/testing.md",
+    "docs/technical/contributing/local-validation.md",
+    "docs/technical/architecture/subsystems/checker/",
+    "docs/technical/architecture/audit-vs-technical-state.md",
+    "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
+    "docs/technical/audits/accounting-invariants.json",
+    "docs/technical/audits/persistence-restore-replay.json",
+    "docs/technical/audits/read-consistency-projections.json"
+  ],
+  "invariants": [
+    "Within AGENTS.md invariant #8 and its documented scope refinements, every non-exempt primary-store projection requires reachable verification against audit-bound evidence. Inventory the current production call graph and persisted fields rather than assuming the documented pass table is exhaustive; record known gaps as prior work, not new findings.",
+    "Expected state must be derived from the verified authoritative history and the actual operation semantics, not seeded from the projection under test or justified by another unchecked projection. Shared producer/replay helpers are not inherently defective, but agreement through a shared bug is not independent correctness evidence.",
+    "The verified range must cover the history and state the check claims to verify. Empty logs, failure-only audit histories, missing prefixes/interior/tails, bound inclusivity and sequence exhaustion must not silently narrow that claim. Deduplicate the existing audit-only and log-bound work of PR #1912 before reporting any candidate.",
+    "A clean verdict requires successful completion of applicable verification and no reported corruption; nil Check error alone is insufficient because mismatches are callback events. Iterator/decode/replay failures, cancellation and truncated expectations must not be converted into an observed healthy result. Do not require all dependent passes to continue after already reported corruption.",
+    "Comparisons must detect missing, surplus and changed data where the projection contract promises those comparisons, using logical equality and lifecycle/retention semantics. Valid deletion, expiry and local index-version progress are not corruption; missing-row guarantees must be established per projection rather than assumed universally.",
+    "Primary passes must compare one pinned primary snapshot. The reverse-map exception requires its documented peer-before-primary pin and alignment rules: only aligned rows receive oracle-dependent verdicts, absence/lag is not full peer verification, and malformed/ahead cases retain their documented signals. Peer index values and usagestore are outside this checker scope."
+  ],
+  "adversarial_questions": [
+    "For each persisted primary keyspace and meaningful field, which production Check call verifies it, from which verified source, over what interval and in which comparison direction? Which unmatched-key, decoder, continue, early-return or unregistered-variant branch can omit a required comparison? Is the omission new, an approved exemption, or a known gap?",
+    "Can corrupting the source used to choose bounds hide the data that should expose corruption? Inspect audit entries, separate items, stored logs, applied proposals and proposal-boundary readers without assuming equal stream cardinality. What do empty, rejected, idempotent replay and multi-order proposals actually persist at this SHA?",
+    "After a broken chain or partial fold, which expectations are complete, which passes are suppressed or marked incomplete, and what does the consumer actually observe? Can errors from iterator creation/value/advance/termination, decoding, scratch storage, cancellation or stream delivery disappear behind progress or EOF?",
+    "Does a pass reconstruct from orders, from checked derived logs, or from unchecked live state? Can coordinated corruption of two projections make them agree, or a shared producer/replay helper reproduce the same wrong result? Identify the first missing independent check and a trusted witness; route the originating accounting or restore defect to its owner.",
+    "Do set and field comparisons distinguish absent/default/zero values, malformed keys, extra rows, typed metadata, compound identities and legitimate lifecycle removal? Can a healthy proposal-local signing cascade, ledger deletion, TTL eviction or index rewrite falsify an overbroad expectation?",
+    "What trust anchor and threat model make an alleged chain mutation detectable? Do not require detection of coordinated removal of both audit and log tails without an independent retained anchor, or claim a ClusterID-derived hash key is a secret signing authority. Unsupported stronger authenticity/completeness requirements remain questions.",
+    "Does the RPC, CLI or staged-restore consumer preserve corruption and incomplete/error signals? Separate checker-specific evidence loss from generic API adaptation, restore mutation or process lifecycle problems; inspect outside scope only far enough to establish the concrete handoff."
+  ],
+  "dynamic_checks_to_consider": [
+    "During a separately authorized read-only audit, first inventory existing checker test names and fixtures under the repository-pinned environment. A focused existing suite such as go test -race ./internal/application/check/... -count=1 is evidence only for assertions actually executed. Record exact SHA, command, tags, selected tests, result, skipped prerequisites and proof limits. This manifest change does not execute those product probes.",
+    "For each hypothesized verifier gap, specify a healthy store produced through the real apply path, one controlled post-persistence corruption, exact affected key/field and retained audit witness, expected typed event or terminal error, and the actual Check callback plus returned error. Restore the fixture or use isolated copies for a paired healthy control. A setup failure, panic or unrelated mismatch is not proof that the intended corruption was detected.",
+    "Use checker_tamper_test.go, checker_accepted_order_test.go, verify_skipped_order_test.go and projection-specific fixtures to design missing/extra/altered/malformed probes. Compare complete event sets and terminal status; where aggregation is contractual, assert identity and affected count rather than one event per row. Pair coordinated projection corruption with a witness independent of both projections.",
+    "For range hypotheses propose first/interior/last entry or item corruption, exact bound and maximum-sequence cases, failed and mixed proposals, and a missing log tail with its audit retained. Refresh PR #1912 and its regression fixtures first. Coordinated removal of the evidence is a threat-model limit unless an independent anchor exists, not another lost-tail finding.",
+    "Inspect signing_fold_window_test.go, signing_test.go, clusterpolicy_test.go and checker_reverse_map_orphans_test.go for healthy proposal-local transitions, complete versus truncated folds, peer absence/lag/alignment/ahead and malformed keys. Use deterministic barriers and isolated stores; never time.Sleep. A same-process snapshot fixture does not prove crash or restore parity.",
+    "For swallowed-error hypotheses propose injection at cursor creation, value decode, iterator termination, replay-store operation and client stream completion, after a nonempty valid prefix where relevant. Observe both callback events and terminal consumer outcome. Existing tests alone may not provide each injection seam: describe an unexecuted reproducer or permitted temporary diagnostic without tracked edits, live-store mutation or a new framework."
+  ]
+}
