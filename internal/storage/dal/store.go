@@ -933,17 +933,21 @@ const queryCheckpointsDir = "query-checkpoints"
 //
 // Durable-write order: temp directory content → its fsync → the marker (fsynced
 // with the temp directory) → the rename → the parent fsync. A crash leaves
-// nothing, a temp directory (unmarked or marked), or the finished result; every
-// caller that re-crosses the checkpoint — the applier replaying the spool or
-// the WAL, or RecoverAndReplay on restart — reaches this function again, which
-// discards any temp directory and rebuilds, and is a no-op on a marked result.
+// nothing, a temp directory (unmarked or marked), or the finished result. Any
+// of those is repaired by the next call for that id, which discards the temp
+// directory and rebuilds; RecoverAndReplay makes that call on restart, with the
+// live store still at the checkpoint's applied index.
+//
+// A call against an already-marked directory is a no-op, so the function stays
+// idempotent: the FSM cursor commits in the same batch as the trigger entry and
+// apply skips entries at or below it, so the applier does not re-cross the
+// trigger, and recovery skips a marked directory before calling.
 func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 	base := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
 	dir := filepath.Join(base, "main")
 	tmpDir := dir + ".tmp"
 
-	// pebble.Checkpoint refuses an existing destination, so the redundant call
-	// must be a no-op.
+	// pebble.Checkpoint refuses an existing destination.
 	if CheckpointDirReady(dir) {
 		return dir, nil
 	}
