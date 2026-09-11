@@ -183,25 +183,24 @@ esac
 		fixtureErr = errors.Join(fixtureErr, fmt.Errorf("expected one runner workdir, got %d", len(workDirs)))
 	}
 	var driverLog string
+	var collectedLogs strings.Builder
 	for _, workDir := range workDirs {
-		var combinedSb187 strings.Builder
 		for _, name := range []string{"driver.log", "server-0.log"} {
 			data, readErr := os.ReadFile(filepath.Join(workDir, name))
 			if readErr != nil {
-				combinedSb187.WriteString(fmt.Sprintf("\n%s: %v\n", name, readErr))
+				fmt.Fprintf(&collectedLogs, "\n%s: %v\n", name, readErr)
 				fixtureErr = errors.Join(fixtureErr, readErr)
 
 				continue
 			}
-			combinedSb187.WriteString(fmt.Sprintf("\n%s:\n%s", name, data))
+			fmt.Fprintf(&collectedLogs, "\n%s:\n%s", name, data)
 			if name == "driver.log" {
 				driverLog = strings.TrimSpace(string(data))
 			}
 		}
-		combined += combinedSb187.String()
 	}
 
-	return combined, driverLog, err, fixtureErr
+	return combined + collectedLogs.String(), driverLog, err, fixtureErr
 }
 
 func writeExecutable(t *testing.T, path, content string) {
@@ -269,7 +268,7 @@ func runModelFixtureCommand(ctx context.Context, cmd *exec.Cmd, scenario string)
 		return "", nil, err
 	}
 	defer func() { _ = clockReader.Close() }() // Covers failure before Start.
-	defer func() { _ = clockWriter.Close() }()
+	defer func() { _ = clockWriter.Close() }() // Release the pipe; reply write failures are reported separately.
 	cmd.ExtraFiles = []*os.File{eventsWriter, clockReader}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
