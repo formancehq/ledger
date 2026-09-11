@@ -40,15 +40,18 @@ func TestNATSSinkConstructorSanitizesTokenForms(t *testing.T) {
 				conn, err := listener.Accept()
 				if err != nil {
 					done <- err
+
 					return
 				}
 				defer func() { _ = conn.Close() }() // Best-effort cleanup of the rejected test peer.
 				if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 					done <- err
+
 					return
 				}
 				if _, err := fmt.Fprint(conn, "INFO {\"server_id\":\"test\",\"version\":\"2.10.0\",\"proto\":1,\"max_payload\":1048576}\r\n"); err != nil {
 					done <- err
+
 					return
 				}
 				reader := bufio.NewReader(conn)
