@@ -86,11 +86,20 @@ func (s *NATSSink) Close() error {
 }
 
 // subject returns the NATS subject for the given event.
-// Format: {topic}.{ledger}.{type} (e.g., "ledger-events.orders.COMMITTED_TRANSACTION").
+// Format: {topic}.{ledgerToken}.{type} (e.g., "ledger-events.orders.committed_transaction").
+// Keep ledger names in one token and distinguish the empty-ledger sentinel.
+// Payloads retain the original name; consumers must use this encoding in filters.
 func (s *NATSSink) subject(event *eventspb.Event) string {
 	ledger := event.GetLedger()
-	if ledger == "" {
+	switch ledger {
+	case "":
 		ledger = "_system"
+	case "_system":
+		ledger = "%5Fsystem"
+	default:
+		// Escape the escape marker first so encoding remains unambiguous.
+		ledger = strings.ReplaceAll(ledger, "%", "%25")
+		ledger = strings.ReplaceAll(ledger, ".", "%2E")
 	}
 
 	eventType := strings.ToLower(event.GetType().String())

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,7 +33,7 @@ func startTestNATSServer(t *testing.T) *server.Server {
 	// Use os.MkdirTemp instead of t.TempDir() to control cleanup ordering.
 	// t.TempDir() registers its own cleanup that can race with JetStream
 	// file handles not yet released after WaitForShutdown() on macOS.
-	storeDir, err := os.MkdirTemp("", t.Name()) //nolint:usetesting // intentional: t.TempDir() cleanup races with JetStream file handles
+	storeDir, err := os.MkdirTemp("", strings.ReplaceAll(t.Name(), "/", "_")) //nolint:usetesting // intentional: t.TempDir() cleanup races with JetStream file handles
 	require.NoError(t, err)
 
 	opts := &server.Options{
