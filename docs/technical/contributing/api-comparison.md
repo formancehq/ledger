@@ -321,8 +321,8 @@ Exceeding a ceiling returns HTTP 400 / gRPC `InvalidArgument`, reason
 `entries` and bytes to the other dimensions. Retrying the same oversized payload
 does not repair the rejection. See the [metadata limits contract](../architecture/subsystems/admission/metadata-limits.md)
 for enforcement and configuration details. These incompatible service semantics
-and the required policy fields increment the service protocol from revision 6
-to 7.
+and the required policy fields increment the service protocol from revision 7
+to 8.
 
 ### 4. Bulk Operations
 
