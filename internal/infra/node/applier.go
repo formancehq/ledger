@@ -573,6 +573,13 @@ func (a *Applier) RecoverAndReplay(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("getting store last applied index: %w", err)
 	}
 
+	// The live store still sits at the applied index it had when the process
+	// died, so a query checkpoint whose main store was left unmaterialized at
+	// that index can be rebuilt from it — before WAL replay moves the store on.
+	if err := recoverQueryCheckpointMainStores(a.store, a.logger, storeLastAppliedIndex); err != nil {
+		return false, fmt.Errorf("recovering query checkpoint main stores: %w", err)
+	}
+
 	replayStart := time.Now()
 
 	// Replay Raft WAL entries that were committed but not yet applied

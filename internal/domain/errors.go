@@ -981,12 +981,21 @@ func (e *ErrIndexBuilding) Error() string               { return "index is still
 func (*ErrIndexBuilding) Reason() string                { return ErrReasonIndexBuilding }
 func (e *ErrIndexBuilding) Metadata() map[string]string { return map[string]string{"index": e.Index} }
 
-// ErrCheckpointNotReady — a read targets a query checkpoint whose read index
-// has not been materialized yet. CreateQueryCheckpoint returns the checkpoint
-// ID as soon as the Raft log is applied, but the physical read-index directory
-// is created asynchronously by the index builder, and on a follower node the
-// builder may simply not have caught up to the checkpoint's log sequence. Both
-// are transient: the caller should retry until the directory exists. Mirrors
+// ErrCheckpointNotReady — a read targets a query checkpoint of which either
+// half has not been materialized on this replica yet. A checkpoint has two
+// physical directories — the main store, written by the applier, and the read
+// index, written by the index builder — each vouched for by its own readiness
+// marker and each able to lag the other. CreateQueryCheckpoint returns the
+// checkpoint ID once both are marked on the creator node; on any other replica
+// either half may still be catching up to the checkpoint's log sequence. All of
+// it is transient: the caller should retry until both directories are marked
+// ready. A replica that crashes mid-materialization finishes the half it was
+// building on restart (the applier rebuilds the main store from the live store,
+// still at the checkpoint's applied index; the index builder re-crosses the
+// checkpoint log, which its cursor had not yet passed). Only a replica that
+// never applied the checkpoint's creation, or whose audit projection is
+// disabled or failed, keeps answering this until the checkpoint is deleted and
+// recreated. Mirrors
 // ErrIndexBuilding — maps to KindUnavailable so gRPC clients retry deterministically
 // instead of receiving an opaque, non-retryable Unknown.
 type ErrCheckpointNotReady struct {
@@ -994,7 +1003,7 @@ type ErrCheckpointNotReady struct {
 }
 
 func (e *ErrCheckpointNotReady) Error() string {
-	return fmt.Sprintf("query checkpoint %d read index is still building", e.CheckpointID)
+	return fmt.Sprintf("query checkpoint %d is still materializing on this replica", e.CheckpointID)
 }
 func (*ErrCheckpointNotReady) Reason() string { return ErrReasonCheckpointNotReady }
 func (e *ErrCheckpointNotReady) Metadata() map[string]string {
