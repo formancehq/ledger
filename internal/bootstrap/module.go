@@ -23,10 +23,8 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
-	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
-	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
@@ -945,10 +943,8 @@ func Module() fx.Option {
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
 			// above and its doc comment for the EN-1436 ordering rationale.
-			func(lc fx.Lifecycle, cfg Config, handler http.Handler, bindings network.Bindings) {
-				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
-					httpListenerOption(bindings.HTTP, fmt.Sprintf(":%d", cfg.HTTPPort)),
-				)))
+			func(lc fx.Lifecycle, cfg Config, handler http.Handler, bindings network.Bindings, logger logging.Logger, shutdowner fx.Shutdowner) {
+				lc.Append(httpServerHook(handler, bindings.HTTP, fmt.Sprintf(":%d", cfg.HTTPPort), logger, shutdownRequester(shutdowner)))
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
