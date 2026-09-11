@@ -4059,6 +4059,13 @@ ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other fl
 
 ---
 
+### Server Advertised Addresses
+
+For server startup, `--advertise-addr` supplies the host shared by the Raft
+and service endpoints; `--grpc-port` supplies the service port. For example,
+`--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` advertises
+`[2001:db8::1]:8888` for service RPCs. See [deployment](deployment.md#command-structure).
+
 ### Server Raft Consensus Flags
 
 Tune the Raft consensus layer. These flags control election timing, message sizes, compaction, and the propose queue.

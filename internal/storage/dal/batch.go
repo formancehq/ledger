@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 )
@@ -32,8 +33,11 @@ type vtDeterministicMarshaler interface {
 // Pebble reads on the FSM hot path" structural — code that only holds a
 // *WriteSession cannot read from Pebble, by the compiler.
 //
-// Cancel must be called if the session is not committed, to release the
-// underlying batch resources.
+// A WriteSession reaches a terminal state either via a successful Commit (the
+// batch is applied, finalised exactly once and returned to Pebble's pool) or
+// via Cancel (an unfinished batch is closed at most once). After a terminal
+// state every mutator returns a documented error and never touches the
+// released batch.
 type WriteSession struct {
 	store          *Store
 	batch          *pebble.Batch
@@ -91,45 +95,84 @@ func NewWriteSessionFromDB(db *pebble.DB) *WriteSession {
 	}
 }
 
-// Cancel cancels the session and releases resources.
-func (b *WriteSession) Cancel() error {
+// checkActive returns the terminal-state error if the session has already been
+// committed or cancelled; otherwise nil. It is the single guard shared by every
+// mutator so no operation can reach the underlying Pebble batch after it has
+// been released back to Pebble's pool.
+func (b *WriteSession) checkActive() error {
 	if b.committed {
-		return nil
+		return errors.New("write session already committed")
 	}
 
-	if b.batch != nil {
-		return b.batch.Close()
+	if b.batch == nil {
+		return errors.New("write session already cancelled")
 	}
 
 	return nil
 }
 
-// Commit commits all operations atomically with NoSync.
-func (b *WriteSession) Commit() error {
-	if b.committed {
-		return errors.New("write session already committed")
+// Cancel cancels the session and releases resources. It is idempotent: once the
+// session has reached a terminal state (committed or cancelled), further calls
+// are no-ops.
+func (b *WriteSession) Cancel() error {
+	if b.committed || b.batch == nil {
+		return nil
 	}
 
-	err := b.batch.Commit(pebble.NoSync)
-	if err != nil {
+	err := b.batch.Close()
+	b.batch = nil
+
+	return err
+}
+
+// Commit commits all operations atomically with NoSync. On success the owned
+// Pebble batch is finalised exactly once: it is closed and released back to
+// Pebble's pool (or the release is deferred while the WAL commit pipeline still
+// holds a reference under NoSync), and the session enters the committed terminal
+// state. If the underlying commit fails, the batch remains owned by the session
+// so the caller can Cancel it to release resources; a failed commit is not
+// described as rolled back. A Close error after commit violates ownership: the
+// batch reference is cleared before an invariant panic, not a normal commit error.
+func (b *WriteSession) Commit() error {
+	if err := b.checkActive(); err != nil {
+		return err
+	}
+
+	if err := b.batch.Commit(pebble.NoSync); err != nil {
 		return fmt.Errorf("committing write session: %w", err)
 	}
 
 	b.committed = true
 
+	err := b.batch.Close()
+	b.batch = nil
+	if err != nil {
+		assert.Unreachable("committed write session batch failed to close", map[string]any{
+			"error": err.Error(),
+		})
+		// Unreachable is a no-op in production; data is already applied, so
+		// fail loudly instead of returning a misleading ordinary commit error.
+		panic(fmt.Errorf("write session ownership invariant: closing committed batch: %w", err))
+	}
+
 	return nil
 }
 
 // Set writes a key-value pair.
+// Returns an error if the session has reached a terminal state.
 func (b *WriteSession) Set(key, value []byte, options *pebble.WriteOptions) error {
+	if err := b.checkActive(); err != nil {
+		return err
+	}
+
 	return b.batch.Set(key, value, options)
 }
 
 // SetProto marshals msg and stores it under key with NoSync.
-// Returns an error if the session is already committed.
+// Returns an error if the session has reached a terminal state.
 func (b *WriteSession) SetProto(key []byte, msg proto.Message) error {
-	if b.committed {
-		return errors.New("write session already committed")
+	if err := b.checkActive(); err != nil {
+		return err
 	}
 
 	data, err := b.MarshalProto(msg)
@@ -147,8 +190,8 @@ func (b *WriteSession) SetProto(key []byte, msg proto.Message) error {
 // b.protoBuffer the same way SetProto does, so the typical steady-state
 // allocation count is one slice grow on the first call per session.
 func (b *WriteSession) SetProtoDeterministic(key []byte, msg vtDeterministicMarshaler) error {
-	if b.committed {
-		return errors.New("write session already committed")
+	if err := b.checkActive(); err != nil {
+		return err
 	}
 
 	size := msg.SizeVT()
@@ -162,20 +205,20 @@ func (b *WriteSession) SetProtoDeterministic(key []byte, msg vtDeterministicMars
 }
 
 // SetBytes stores raw bytes under key with NoSync.
-// Returns an error if the session is already committed.
+// Returns an error if the session has reached a terminal state.
 func (b *WriteSession) SetBytes(key, value []byte) error {
-	if b.committed {
-		return errors.New("write session already committed")
+	if err := b.checkActive(); err != nil {
+		return err
 	}
 
 	return b.batch.Set(key, value, pebble.NoSync)
 }
 
 // DeleteKey deletes a key with NoSync.
-// Returns an error if the session is already committed.
+// Returns an error if the session has reached a terminal state.
 func (b *WriteSession) DeleteKey(key []byte) error {
-	if b.committed {
-		return errors.New("write session already committed")
+	if err := b.checkActive(); err != nil {
+		return err
 	}
 
 	return b.batch.Delete(key, pebble.NoSync)
@@ -189,23 +232,28 @@ func (b *WriteSession) DeleteKey(key []byte) error {
 // produces undefined behavior — the key may reappear after compaction.
 // Only use for keys with a guaranteed write-once / delete-once lifecycle.
 func (b *WriteSession) SingleDeleteKey(key []byte) error {
-	if b.committed {
-		return errors.New("write session already committed")
+	if err := b.checkActive(); err != nil {
+		return err
 	}
 
 	return b.batch.SingleDelete(key, pebble.NoSync)
 }
 
 // DeleteRange deletes all keys in the range [start, end).
+// Returns an error if the session has reached a terminal state.
 func (b *WriteSession) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
+	if err := b.checkActive(); err != nil {
+		return err
+	}
+
 	return b.batch.DeleteRange(start, end, options)
 }
 
 // DeleteRangeNoSync deletes all keys in [start, end) with NoSync.
-// Returns an error if the session is already committed.
+// Returns an error if the session has reached a terminal state.
 func (b *WriteSession) DeleteRangeNoSync(start, end []byte) error {
-	if b.committed {
-		return errors.New("write session already committed")
+	if err := b.checkActive(); err != nil {
+		return err
 	}
 
 	return b.batch.DeleteRange(start, end, pebble.NoSync)

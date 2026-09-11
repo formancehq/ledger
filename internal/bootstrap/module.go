@@ -377,24 +377,7 @@ func Module() fx.Option {
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
 			buildResponseSigner,
-			func(cfg Config) (node.NodeConfig, error) {
-				cfg.RaftConfig.DataDir = cfg.DataDir
-				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
-				cfg.RaftConfig.SetDefaults()
-
-				// EN-1045: establish this peer's identity UUID before any
-				// membership plumbing runs. First boot generates and
-				// persists it in INSTANCE_ID under WalDir; later boots
-				// return the same value.
-				instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
-				if err != nil {
-					return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
-				}
-
-				cfg.RaftConfig.InstanceID = instanceID
-
-				return cfg.RaftConfig, nil
-			},
+			buildNodeConfig,
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},
@@ -1797,4 +1780,23 @@ func handleLeadershipChangeEvent(
 
 	eventsManager.OnLeadershipChange(e.IsLeader)
 	mirrorManager.OnLeadershipChange(e.IsLeader)
+}
+
+func buildNodeConfig(cfg Config) (node.NodeConfig, error) {
+	cfg.RaftConfig.DataDir = cfg.DataDir
+	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
+	cfg.RaftConfig.SetDefaults()
+
+	// EN-1045: establish this peer's identity UUID before any
+	// membership plumbing runs. First boot generates and
+	// persists it in INSTANCE_ID under WalDir; later boots
+	// return the same value.
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
+	}
+
+	cfg.RaftConfig.InstanceID = instanceID
+
+	return cfg.RaftConfig, nil
 }

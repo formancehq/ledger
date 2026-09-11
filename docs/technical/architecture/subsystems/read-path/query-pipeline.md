@@ -157,6 +157,7 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 | Operator | File | Purpose |
 |----------|------|---------|
 | `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
+| `BoundedEntityIterator` with `LedgerLogRangeIterator`/`PebbleTxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
 | `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
 | `OrIterator[D]` | `combinator_or.go` | Merge-union. |
 | `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
@@ -188,7 +189,20 @@ and verifies the stored projection certificate against the checkpoint's durable
 applied index. Useful for reconciliation and auditing. See
 [query-checkpoints.md](query-checkpoints.md).
 
-**Aggregate volumes.** `ExecutePreparedQuery` with the `AGGREGATE_VOLUMES` mode runs the same compiled filter to obtain a candidate account set, then loops over per-account asset volumes in the main store and sums per asset. The aggregation is computed at request time — there is no precomputed aggregate table.
+**Aggregate volumes.** `ExecutePreparedQuery` with the `AGGREGATE_VOLUMES` mode
+and an exactly nil filter calls `AggregateAllVolumes`, sharing the direct
+unfiltered aggregation path. It scans the ledger's volume entries through one
+iterator on the already-open main-store handle, bypassing filter compilation
+and account enumeration. Accounts containing only metadata contribute no volume
+rows. Any non-nil filter retains the compiled candidate-account path followed by
+per-account volume scans through `AggregateVolumes`; empty or parameterized
+filters do not qualify for the nil-filter shortcut. Both paths sum per asset at
+request time, with the same uint256 overflow checks and no precomputed aggregate
+table. The shortcut runs after the ledger and prepared-query definition have
+been loaded and the mode validated through the reserved main-store handle.
+It releases the event-history reservation before scanning volumes and opens no
+read-index snapshot. The controller's read barrier and the fixed main-store
+snapshot remain unchanged.
 
 **Inspect index** is documented under the indexer subsystem — see [indexer / indexes.md](../indexer/indexes.md#statistics-computed-on-demand).
 

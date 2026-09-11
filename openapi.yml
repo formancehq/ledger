@@ -1205,7 +1205,13 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/revert:
     post:
       summary: Revert a transaction
-      description: Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
+      description: |
+        Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
+        The body is optional; an absent or empty body uses default options. Supplied
+        options and metadata are decoded for both known-length and HTTP/1.1 chunked
+        requests. Malformed or truncated JSON, extra values and trailing non-whitespace
+        return 400 before applying the revert. The complete body, including trailing
+        whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
       operationId: revertTransaction
       tags:
         - Transactions
@@ -1239,6 +1245,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: Conflict (e.g. transaction already reverted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request body exceeds the 4 MiB limit
           content:
             application/json:
               schema:
@@ -1464,12 +1476,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TargetType'
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Metadata key name
+        - $ref: '#/components/parameters/MetadataKey'
       requestBody:
         required: true
         content:
@@ -1509,12 +1516,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TargetType'
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Metadata key name
+        - $ref: '#/components/parameters/MetadataKey'
       responses:
         '204':
           description: Metadata field type removed successfully
@@ -2831,7 +2833,11 @@ components:
       required: true
       schema:
         type: string
-      description: Metadata key
+      description: |
+        Metadata key, URL-encoded as one path segment. Encode slashes as %2F
+        (for example, formance.com%2Freviewed). Decoded exactly once; percent
+        characters remaining after decoding, including double-encoded slashes,
+        are invalid metadata keys and are rejected with HTTP 400.
 
     TargetType:
       name: targetType

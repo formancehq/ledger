@@ -17,6 +17,21 @@ By default: `http://localhost:9000`
 
 All business routes are served under the `/v3/` prefix. Ops routes (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof/`) are unversioned and served at the root.
 
+### Encoded metadata keys
+
+Metadata DELETE routes (account, transaction and ledger) and metadata-schema
+PUT/DELETE routes accept a metadata key as one URL path segment. Encode a slash
+inside the key as `%2F`: a key saved through JSON as `formance.com/reviewed` is
+addressed as `formance.com%2Freviewed`. JSON keys are not URL-decoded.
+
+Path parameters are decoded exactly once overall. Chi uses `URL.RawPath` when
+present, so the adapter unescapes that captured segment; otherwise Chi uses
+`URL.Path`, already decoded by Go. The same extraction rule applies to canonical
+index IDs. Double encoding (`formance.com%252Freviewed`) retains a literal
+`%2F` in the key and cannot select `formance.com/reviewed`. Metadata admission
+rejects percent-containing keys, including literal malformed escape sequences,
+with HTTP 400. A raw malformed URL escape is rejected by Go's HTTP parser.
+
 ### Authentication
 
 The server supports optional JWT/OIDC authentication with scope-based authorization. When enabled via `--auth-enabled`, all API requests must carry a valid Bearer token in the `Authorization` header. See [Authentication Guide](../../../../ops/authentication.md) for configuration details.
@@ -58,6 +73,18 @@ the request reaches the endpoint — so the test asserts the matched pattern on 
 
 The gRPC analogue is `internal/adapter/auth/request_scope_exhaustiveness_test.go`, which gives the
 same guarantee for the `Request` oneof.
+
+### Optional transaction revert body
+
+`POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
+or empty body. When supplied, the JSON body carries `force`, `atEffectiveDate`
+and `metadata`, independently of HTTP framing: a chunked request is decoded
+even though its content length is unknown. The complete body is read through
+the 4 MiB limit before decoding a single JSON document. Only a zero-byte body
+uses default options. Malformed or truncated JSON, extra JSON values and
+trailing non-whitespace return `400 INVALID_REQUEST` before submitting Apply.
+Trailing JSON whitespace is allowed, but counts towards the limit; exceeding
+it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
 
 ### Response Format
 
