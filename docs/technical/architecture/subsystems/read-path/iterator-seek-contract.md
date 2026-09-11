@@ -64,10 +64,40 @@ works ascending only by accident: an unpositioned child returns an empty
 forward". Descending, empty reads as "past the end", `converge` adopts it as
 the candidate and the intersection collapses to nothing.
 
-One leaf is exempt by construction: `RangeIterator` emits rows in
-`(value, entity)` order across index-value buckets, so an entity-space
-`Seek` is undefined on the raw scan. It only supports forward draining;
-every construction site materializes it into a sorted `SliceIterator` before
+### The descending algebra
+
+The combinators are direction-parameterized, so the contract above holds in
+both directions by construction rather than by mirroring. What is NOT shared
+is the leaves: a leaf whose physical traversal differs has a descending twin
+(`ReversePrefixIterator`, `ReverseEventResolveIterator`,
+`ReverseBitsetIterator`, the reverse Pebble account/tx scans), and each owes
+the same contract.
+
+One rule carries over in a form worth stating explicitly, because a paged test
+cannot see it: **`NotIterator[Desc]` re-seeks its excluded child on every
+`Seek`**, even after the child reported done — the descending form of the
+EN-1597 rule. Descending iteration can consume a finite child (the reversion
+bitset behind `reverted=false`) past a later, higher seek target; a latched
+`childDone` then leaves the NOT unable to report that the entity at target is
+excluded, and it leaks into the difference.
+
+That rule needs a dedicated regression, not a parity test: a paged traversal
+rebuilds the iterator tree for each page, so it never re-seeks a child that
+iteration already consumed and a latched `childDone` survives it green.
+`TestReverseNotIterator_SeekRepositionsConsumedChild` drives the seek
+directly.
+
+Reverse leaves also owe the **visibility gates** their ascending twin carries —
+the fold-sequence stamp on `ReversePrefixIterator`, the pin on
+`ReverseEventResolveIterator`. A gate on one side only produces rows a
+descending page shows and an ascending page hides.
+`TestIteratorPairs_GateParity` compares each direction against the
+independently declared set at a pin, which is what separates them; comparing
+the two drains to each other cannot, since a gate missing from both still
+agrees.
+
+One leaf is exempt: `RangeIterator` only supports forward draining. Every
+construction site materializes it into a sorted `SliceIterator` before
 composing, and a direct `Seek` call fails the query with an invariant
 error.
 
@@ -116,7 +146,13 @@ The contract is enforced by unit tests per leaf (`iterator_floor_test.go`,
 direction-parity suite over the shared combinators
 (`combinator_direction_test.go`, which asserts a descending traversal is the
 exact reverse of the ascending one and that `Seek` is absolute in both
-directions), and end-to-end by the contradiction specs in
+directions), by the registry-driven forward/reverse suite in
+`iterator_conformance_test.go` — every pair registered there is checked for
+set parity, gate parity, the absolute `Seek` contract and error propagation,
+and `TestConformanceRegistry_IsExhaustive` fails if a descending iterator has
+no registered pair, so a reverse leaf added later is covered whether or not
+its author remembers those four tests — and end-to-end by the contradiction
+specs in
 `tests/e2e/business/filter_nested_not_reposition_test.go`.
 
 ## The materialized union (`AddressTxIterator`)
@@ -133,11 +169,18 @@ and `Seek` are then cursor moves over a stable sorted slice. `Seek`
 binary-searches that slice, which makes it computed from `target` alone,
 idempotent, and well-defined after exhaustion for free.
 
+Both directions share one union. `addressTxUnion` owns the scan and the slice;
+`AddressTxIterator[D]` walks it in `D`'s order through a borrowed
+`SliceIterator[D]`, so the cursor arithmetic is the shared one and only the
+step differs. A descending page therefore pays the one materialization the
+ascending page already pays, and no second complete-result copy exists at any
+point.
+
 The observable requirement is on the *exposed* slice, not on how it is built:
 
 - Before any positioning call returns, the slice is **sorted and unique**.
-  `ensureMaterialized` is the single gate in front of both `Next` and
-  `Seek`, and it returns only after the sort.
+  `addressTxUnion.ensureMaterialized` is the single gate in front of `Next` and `Seek` in
+  both directions, and it returns only after the sort.
 - The order **during** materialization is unspecified. IDs are appended as
   they are scanned, deduplicated through a `uint64` set, and the completed
   slice is sorted once (`slices.SortFunc` with `bytes.Compare`, which is the

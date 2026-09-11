@@ -1,7 +1,6 @@
 package ctrl
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -269,11 +268,24 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 	}
 }
 
-// listDescFiltered collects all ascending results, reverses them, and paginates.
+// listDescFiltered serves a descending filtered page by compiling the filter
+// DIRECTLY into a descending iterator tree and paginating it.
+//
+// It used to drain every match into a slice, reverse it in place, and only
+// then apply the cursor and page size — O(M) visits and O(M) memory per page
+// in the number of matches, on what is the public default direction for
+// transactions. It is now the exact mirror of listAscending: compile, trim to
+// the main-store horizon, hand to PaginateReverse, which seeks to the cursor
+// and stops after the page lookahead (EN-1966).
+//
+// Cursor semantics are unchanged. The old skip loop dropped the descending
+// prefix of ids >= after, which is the same set PaginateReverse skips by
+// seeking to the first entity <= before and stepping over an exact match, so
+// the wire cursor keeps its meaning.
 func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
-	compiled, err := query.Compile(
+	compiled, err := query.CompileReverse(
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
@@ -285,52 +297,28 @@ func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleRe
 
 	var iter = compiled
 	if params.horizonKeep != nil {
-		iter = readstore.NewFilterIterator(compiled, params.horizonKeep)
+		iter = readstore.NewFilterReverseIterator(compiled, params.horizonKeep)
 	}
+
 	defer iter.Close()
 
-	var all [][]byte
+	var before []byte
 
-	for iter.Next() {
-		cp := make([]byte, len(iter.Current()))
-		copy(cp, iter.Current())
-		all = append(all, cp)
-	}
-
-	// Next() returns false for a storage fault as readily as for exhaustion,
-	// and FilterIterator latches a failing horizon probe the same way — so
-	// without this the page is silently truncated and returned as complete.
-	if err := iter.Err(); err != nil {
-		return fmt.Errorf("draining filtered descending list: %w", err)
-	}
-
-	// Reverse for descending order
-	for i, j := 0, len(all)-1; i < j; i, j = i+1, j-1 {
-		all[i], all[j] = all[j], all[i]
-	}
-
-	// Apply pagination: skip past after cursor
 	var zero T
 	if params.after != zero {
-		afterBytes := params.afterToBytes(params.after)
-		skip := 0
-
-		for _, id := range all {
-			if bytes.Compare(id, afterBytes) >= 0 {
-				skip++
-			} else {
-				break
-			}
-		}
-
-		all = all[skip:]
+		before = params.afterToBytes(params.after)
 	}
 
-	if uint32(len(all)) > params.pageSize {
-		all = all[:params.pageSize]
+	// PaginateReverse surfaces iter.Err(): a storage fault (or a failing
+	// horizon probe latched by FilterReverseIterator) must not come back as a
+	// short page that reads as complete — the check the drain used to do
+	// explicitly.
+	items, _, err := readstore.PaginateReverse(iter, params.pageSize, before)
+	if err != nil {
+		return fmt.Errorf("paginating filtered descending list: %w", err)
 	}
 
-	*out = all
+	*out = items
 
 	return nil
 }

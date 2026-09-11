@@ -463,10 +463,16 @@ func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition)
 	}), nil
 }
 
-// compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
-func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.EntityIterator, error) {
+// resolveFieldMetadataCtx runs everything a metadata field condition needs
+// BEFORE a leaf iterator is built: schema presence, index readiness, the
+// retype-window type binding, condition validation/coercion, and the
+// versioned index prefix. Both directions call it, so a change to any of
+// those rules lands on the ascending and descending paths at once (EN-1966).
+// It returns the possibly-coerced condition together with the metadata
+// context the type-specific compilers consume.
+func resolveFieldMetadataCtx(ctx *compileCtx, fc *commonpb.FieldCondition) (*commonpb.FieldCondition, *metadataCtx, error) {
 	if fc.GetField() == nil {
-		return nil, domain.NewFilterCompilationError("field condition has no field reference")
+		return nil, nil, domain.NewFilterCompilationError("field condition has no field reference")
 	}
 
 	ns := targetNamespace(ctx.target)
@@ -475,12 +481,12 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	// Validate index availability and condition type against declared schema type.
 	targetName := targetHumanName(ctx.target)
 	if ctx.schema == nil {
-		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		return nil, nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
 
 	fieldSchema, ok := ctx.schema[metaKey]
 	if !ok {
-		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		return nil, nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	}
 
 	metaID := indexes.MetadataID(targetTypeForQueryTarget(ctx.target), metaKey)
@@ -488,7 +494,7 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 	resolved, err := requireIndexReady(ctx, metaID,
 		fmt.Sprintf("metadata[%q] on %s", metaKey, targetName))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The condition is validated and encoded under the type BOUND to the
@@ -508,14 +514,14 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		// key. Field conditions on an undeclared key were rejected then, and
 		// the window keeps that behavior until the rewrite promotes the
 		// declared-type keyspace.
-		return nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
+		return nil, nil, &domain.BusinessError{Err: &domain.ErrIndexNotFound{Index: fmt.Sprintf("metadata[%q] on %s", metaKey, targetName)}}
 	default:
 		fieldSchema = &commonpb.MetadataFieldSchema{Type: resolved.Type}
 	}
 
 	fc, err = validateAndCoerceCondition(fc, fieldSchema)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	mc := &metadataCtx{
@@ -523,6 +529,16 @@ func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readst
 		namespace: ns,
 		metaKey:   metaKey,
 		version:   resolved.Version,
+	}
+
+	return fc, mc, nil
+}
+
+// compileFieldCondition compiles a FieldCondition (metadata filter) into a leaf iterator.
+func compileFieldCondition(ctx *compileCtx, fc *commonpb.FieldCondition) (readstore.EntityIterator, error) {
+	fc, mc, err := resolveFieldMetadataCtx(ctx, fc)
+	if err != nil {
+		return nil, err
 	}
 
 	switch cond := fc.GetCondition().(type) {
@@ -717,22 +733,7 @@ func compileIntCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.IntCon
 	}
 
 	// General range: materialize + sort
-	lower := make([]byte, 0, len(mc.prefix)+9)
-	lower = append(lower, mc.prefix...)
-	upper := make([]byte, 0, len(mc.prefix)+9)
-	upper = append(upper, mc.prefix...)
-
-	if bounds.hasMin {
-		lower = readstore.EncodeInt64(lower, bounds.min)
-	} else {
-		lower = append(lower, readstore.TypeTagInt)
-	}
-
-	if bounds.hasMax {
-		upper = readstore.EncodeInt64(upper, bounds.max)
-	} else {
-		upper = append(upper, readstore.TypeTagInt+1)
-	}
+	lower, upper := intRangeBounds(mc, bounds)
 
 	// prefix + typeTag(1) + int64(8): fixed-width values keep the entity
 	// extractable from each event group.
@@ -895,22 +896,7 @@ func compileUintCondition(ctx *compileCtx, mc *metadataCtx, cond *commonpb.UintC
 	}
 
 	// General range: materialize + sort
-	lower := make([]byte, 0, len(mc.prefix)+9)
-	lower = append(lower, mc.prefix...)
-	upper := make([]byte, 0, len(mc.prefix)+9)
-	upper = append(upper, mc.prefix...)
-
-	if bounds.hasMin {
-		lower = readstore.EncodeUint64(lower, bounds.min)
-	} else {
-		lower = append(lower, readstore.TypeTagUint)
-	}
-
-	if bounds.hasMax {
-		upper = readstore.EncodeUint64(upper, bounds.max)
-	} else {
-		upper = append(upper, readstore.TypeTagUint+1)
-	}
+	lower, upper := uintRangeBounds(mc, bounds)
 
 	iter, rErr := readstore.NewEventResolveRangeIterator(ctx.indexReader, lower, upper, len(mc.prefix), 1+8, ctx.pin)
 	if rErr != nil {
@@ -1237,18 +1223,16 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 	// builtins (id/timestamp/insertedAt/revertedAt) read transaction indexes and
 	// yield transaction-keyed entities, so they are meaningful only on the
 	// transactions target; no local guard.
-	switch cond.GetField() {
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID:
+	if cond.GetField() == commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID {
 		return compileTxIDCondition(ctx, cond.GetCond())
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
-		return compileTimestampCondition(ctx, cond.GetCond())
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
-		return compileInsertedAtCondition(ctx, cond.GetCond())
-	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
-		return compileRevertedAtCondition(ctx, cond.GetCond())
-	default:
-		return nil, domain.NewFilterCompilationError("unsupported builtin uint field: %v", cond.GetField())
 	}
+
+	arm, err := resolveTxTimestampArm(ctx, cond.GetField())
+	if err != nil {
+		return nil, err
+	}
+
+	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
 }
 
 // compileTxIDCondition filters transactions by ID using Pebble transaction updates.
@@ -1311,48 +1295,79 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 	}), nil
 }
 
-// compileTimestampCondition filters transactions by timestamp using the transaction timestamp index.
-// Requires the timestamp builtin index to be READY.
-func compileTimestampCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if _, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP),
-		"timestamp"); err != nil {
-		return nil, err
-	}
-
-	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName), "tstmp", 0)
+// timestampArm is everything a timestamp-keyed builtin scan needs that does
+// NOT depend on direction: the index it requires, the label used in errors and
+// profiling, its key prefix, the profile bucket, and whether the scan is
+// stamp-gated.
+//
+// It exists so the ascending and descending compilers cannot drift on any of
+// those. They are the values that decide which keyspace is scanned and how the
+// node is labelled in a profile, and duplicating them across two switch
+// statements is exactly the kind of divergence nothing would catch until a
+// profile read wrong or a scan read the wrong prefix.
+type timestampArm struct {
+	prefix   []byte
+	bucket   string
+	stampPin uint64
 }
 
-// compileInsertedAtCondition filters transactions by inserted_at using the transaction inserted_at index.
-// Requires the inserted_at builtin index to be READY.
-func compileInsertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if _, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT),
-		"inserted_at"); err != nil {
-		return nil, err
+// resolveTxTimestampArm gates the index and resolves the arm for a
+// timestamp-keyed transaction builtin.
+func resolveTxTimestampArm(ctx *compileCtx, field commonpb.TransactionBuiltinIndex) (timestampArm, error) {
+	var (
+		label       string
+		buildPrefix func() []byte
+		bucket      string
+		stampPin    uint64
+	)
+
+	switch field {
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
+		label, bucket = "timestamp", "tstmp"
+		buildPrefix = func() []byte { return readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName) }
+
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
+		label, bucket = "inserted_at", "txiat"
+		buildPrefix = func() []byte { return readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName) }
+
+	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
+		label, bucket = "reverted_at", "rvat"
+		buildPrefix = func() []byte { return readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName) }
+		// reverted_at is the one transaction builtin written AFTER the
+		// transaction's creation (the revert's own fold), so the TRANSACTIONS
+		// horizon trim — which proves only that the transaction existed at the
+		// pin — cannot exclude a revert folded past the main handle. The rows
+		// carry the revert fold's sequence; the scan is gated at the read's pin.
+		stampPin = ctx.pin
+
+	default:
+		return timestampArm{}, domain.NewFilterCompilationError("unsupported builtin uint field: %v", field)
 	}
 
-	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName), "txiat", 0)
+	// Gate BEFORE building the prefix. A refused index must return without
+	// touching ctx.kb, which callers that expect the refusal legitimately
+	// leave nil.
+	if _, err := requireIndexReady(ctx, indexes.TxBuiltinID(field), label); err != nil {
+		return timestampArm{}, err
+	}
+
+	return timestampArm{prefix: buildPrefix(), bucket: bucket, stampPin: stampPin}, nil
 }
 
-// compileRevertedAtCondition filters transactions by reverted_at using the transaction reverted_at index.
-// Requires the reverted_at builtin index to be READY.
-func compileRevertedAtCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
+// resolveLogDateArm is resolveTxTimestampArm for the log date builtin, whose
+// rows are written with the log itself and so need no stamp gate.
+func resolveLogDateArm(ctx *compileCtx) (timestampArm, error) {
+	// Gate before building the prefix — see resolveTxTimestampArm.
 	if _, err := requireIndexReady(ctx,
-		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT),
-		"reverted_at"); err != nil {
-		return nil, err
+		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
+		"log date"); err != nil {
+		return timestampArm{}, err
 	}
 
-	// reverted_at is the one transaction builtin written AFTER the
-	// transaction's creation (the revert's own fold), so the TRANSACTIONS
-	// horizon trim — which proves only that the transaction existed at the
-	// pin — cannot exclude a revert folded past the main handle. The rows
-	// carry the revert fold's sequence; the scan is gated at the read's pin.
-	return compileTimestampRangeCondition(ctx, cond,
-		readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName), "rvat", ctx.pin)
+	return timestampArm{
+		prefix: readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName),
+		bucket: "lldt",
+	}, nil
 }
 
 // compileTimestampRangeCondition is the shared logic for timestamp-based range scans.
@@ -1377,32 +1392,7 @@ func compileTimestampRangeCondition(
 		return readstore.NewSliceIterator(nil), nil
 	}
 
-	// Key layout: [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)]
-	entityOffset := len(ledgerPrefix) + 8
-	entityLen := 8
-
-	lower := make([]byte, 0, len(ledgerPrefix)+8)
-	lower = append(lower, ledgerPrefix...)
-	upper := make([]byte, 0, len(ledgerPrefix)+8)
-	upper = append(upper, ledgerPrefix...)
-
-	if bounds.hasMin {
-		minBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(minBytes, bounds.min)
-		lower = append(lower, minBytes...)
-	}
-
-	if bounds.hasMax {
-		maxBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(maxBytes, bounds.max)
-		upper = append(upper, maxBytes...)
-	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
-	}
-
-	if !bounds.hasMin {
-		lower = ledgerPrefix
-	}
+	lower, upper, entityOffset, entityLen := timestampRangeBounds(ledgerPrefix, bounds)
 
 	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
 	if rErr != nil {
@@ -1428,25 +1418,16 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 		return nil, domain.NewFilterCompilationError("log builtin uint condition has no value")
 	}
 
-	switch cond.GetField() {
-	case commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE:
-		return compileLogDateCondition(ctx, cond.GetCond())
-	default:
+	if cond.GetField() != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 		return nil, domain.NewFilterCompilationError("unsupported log builtin uint field: %v", cond.GetField())
 	}
-}
 
-// compileLogDateCondition filters logs by date using the ledger log date index.
-// Requires the log date builtin index to be READY.
-func compileLogDateCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.EntityIterator, error) {
-	if _, err := requireIndexReady(ctx,
-		indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),
-		"log date"); err != nil {
+	arm, err := resolveLogDateArm(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	return compileTimestampRangeCondition(ctx, cond,
-		readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName), "lldt", 0)
+	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.
@@ -1926,6 +1907,20 @@ func paramTypeName(pv *commonpb.ParameterValue) string {
 // construction, so returning one would present a truncated range as a
 // complete answer that every later check reads as clean.
 func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) (*readstore.SliceIterator[readstore.Asc], error) {
+	entities, err := materializeEntities(iter, profile, stats)
+	if err != nil {
+		return nil, err
+	}
+
+	return readstore.NewSliceIterator(entities), nil
+}
+
+// materializeEntities is the drain itself, shared by both directions: one
+// sorted slice, which either a forward or a reverse cursor then borrows. A
+// descending page over a value-ordered range therefore pays the same single
+// materialization the ascending page pays, never a second complete-result
+// copy for the reversal (EN-1966).
+func materializeEntities(iter readstore.EntityIterator, profile *QueryProfile, stats *IteratorStats) ([][]byte, error) {
 	if profile != nil {
 		profile.MaterializedRanges++
 	}
@@ -1959,7 +1954,115 @@ func materializeIterator(iter readstore.EntityIterator, profile *QueryProfile, s
 
 	sortEntities(entities)
 
-	return readstore.NewSliceIterator(entities), nil
+	return entities, nil
+}
+
+// intRangeBounds builds the [lower, upper) event-key range for a signed
+// metadata range condition. Shared by both directions so the scanned keyspace
+// cannot drift between them.
+func intRangeBounds(mc *metadataCtx, bounds resolvedIntBounds) (lower, upper []byte) {
+	lower = make([]byte, 0, len(mc.prefix)+9)
+	lower = append(lower, mc.prefix...)
+	upper = make([]byte, 0, len(mc.prefix)+9)
+	upper = append(upper, mc.prefix...)
+
+	if bounds.hasMin {
+		lower = readstore.EncodeInt64(lower, bounds.min)
+	} else {
+		lower = append(lower, readstore.TypeTagInt)
+	}
+
+	if bounds.hasMax {
+		upper = readstore.EncodeInt64(upper, bounds.max)
+	} else {
+		upper = append(upper, readstore.TypeTagInt+1)
+	}
+
+	return lower, upper
+}
+
+// uintRangeBounds is intRangeBounds for unsigned metadata ranges.
+func uintRangeBounds(mc *metadataCtx, bounds resolvedUintBounds) (lower, upper []byte) {
+	lower = make([]byte, 0, len(mc.prefix)+9)
+	lower = append(lower, mc.prefix...)
+	upper = make([]byte, 0, len(mc.prefix)+9)
+	upper = append(upper, mc.prefix...)
+
+	if bounds.hasMin {
+		lower = readstore.EncodeUint64(lower, bounds.min)
+	} else {
+		lower = append(lower, readstore.TypeTagUint)
+	}
+
+	if bounds.hasMax {
+		upper = readstore.EncodeUint64(upper, bounds.max)
+	} else {
+		upper = append(upper, readstore.TypeTagUint+1)
+	}
+
+	return lower, upper
+}
+
+// timestampRangeBounds builds the scan range and entity extraction offsets for
+// the timestamp-keyed indexes, whose layout is
+// [prefix_byte][ledger\x00][timestamp_BE(8B)][entityID_BE(8B)].
+func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower, upper []byte, entityOffset, entityLen int) {
+	entityOffset = len(ledgerPrefix) + 8
+	entityLen = 8
+
+	lower = make([]byte, 0, len(ledgerPrefix)+8)
+	lower = append(lower, ledgerPrefix...)
+	upper = make([]byte, 0, len(ledgerPrefix)+8)
+	upper = append(upper, ledgerPrefix...)
+
+	if bounds.hasMin {
+		minBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(minBytes, bounds.min)
+		lower = append(lower, minBytes...)
+	}
+
+	if bounds.hasMax {
+		maxBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(maxBytes, bounds.max)
+		upper = append(upper, maxBytes...)
+	} else {
+		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	}
+
+	if !bounds.hasMin {
+		lower = ledgerPrefix
+	}
+
+	return lower, upper, entityOffset, entityLen
+}
+
+// logIDRangeBounds builds the scan range for the ledger logs index, whose
+// entity is the 8-byte log ID directly after the ledger prefix.
+func logIDRangeBounds(prefix []byte, bounds resolvedUintBounds) (lower, upper []byte) {
+	lower = make([]byte, 0, len(prefix)+8)
+	lower = append(lower, prefix...)
+	upper = make([]byte, 0, len(prefix)+8)
+	upper = append(upper, prefix...)
+
+	if bounds.hasMin {
+		minBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(minBytes, bounds.min)
+		lower = append(lower, minBytes...)
+	}
+
+	if bounds.hasMax {
+		maxBytes := make([]byte, 8)
+		binary.BigEndian.PutUint64(maxBytes, bounds.max)
+		upper = append(upper, maxBytes...)
+	} else {
+		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+	}
+
+	if !bounds.hasMin {
+		lower = prefix
+	}
+
+	return lower, upper
 }
 
 func sortEntities(entities [][]byte) {
