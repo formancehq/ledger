@@ -139,6 +139,7 @@ func TestPostgresDriverParameterParity(t *testing.T) {
 		"host=one user='' dbname='' password=''",
 		"postgres://u:p@one:5433/db?user=&dbname=",
 		"postgres://u:p@one:5433,two,three:5434/db",
+		"postgres://one,two:5433/db",
 		"postgres://u:p@[::1]:5433/db?host=2001:db8::1",
 		"host=one,two,three port=5433,5434 user=u dbname=db password=p sslmode=require",
 		`host=one user=u dbname=db password='quoted \'password' application_name='worker'`,
@@ -316,4 +317,13 @@ func TestNATSEmptyHostIsRejected(t *testing.T) {
 			require.Nil(t, config)
 		})
 	}
+}
+
+func TestPostgresTrailingUnportedHostRejectedLikeDriver(t *testing.T) {
+	t.Parallel()
+	const raw = "postgres://one:5433,two/db"
+	_, err := pgxpool.ParseConfig(raw)
+	require.Error(t, err)
+	_, err = parseDatabase(raw, true)
+	require.Error(t, err)
 }
