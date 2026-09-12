@@ -187,7 +187,7 @@ func TestFundingTakeInsufficientFunds(t *testing.T) {
 		t.Fatalf("expected *ErrInsufficientFund, got %T", err)
 	}
 	accounts := errIns.Accounts()
-	if len(accounts) != 2 || accounts[0] != "acc1" || accounts[1] != "acc2" {
+	if len(accounts) != 2 || accounts[0] != "@acc1" || accounts[1] != "@acc2" {
 		t.Fatalf("unexpected accounts in error: %v", accounts)
 	}
 }
