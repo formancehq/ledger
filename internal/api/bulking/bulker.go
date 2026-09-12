@@ -48,6 +48,18 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, sche
 				trace.WithAttributes(attribute.Int("index", itemIndex)),
 			)
 			defer span.End()
+			// pond recovers worker panics and does not propagate them. Without
+			// this, hasError stays false and an atomic bulk commits survivors.
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					hasError.Store(true)
+					err := fmt.Errorf("bulk element panicked: %v", recovered)
+					observe.RecordError(ctx, err)
+					result <- BulkElementResult{
+						Error: err,
+					}
+				}
+			}()
 
 			select {
 			case <-ctx.Done():
