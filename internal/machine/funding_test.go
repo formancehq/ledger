@@ -163,3 +163,31 @@ func TestFundingReversal(t *testing.T) {
 		t.Fatalf("unexpected result: %v", rev)
 	}
 }
+
+func TestFundingTakeInsufficientFunds(t *testing.T) {
+	f := Funding{
+		Asset: "COIN",
+		Parts: []FundingPart{
+			{
+				Account: "acc1",
+				Amount:  NewMonetaryInt(10),
+			},
+			{
+				Account: "acc2",
+				Amount:  NewMonetaryInt(20),
+			},
+		},
+	}
+	_, _, err := f.Take(NewMonetaryInt(50))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	errIns, ok := err.(*ErrInsufficientFund)
+	if !ok {
+		t.Fatalf("expected *ErrInsufficientFund, got %T", err)
+	}
+	accounts := errIns.Accounts()
+	if len(accounts) != 2 || accounts[0] != "@acc1" || accounts[1] != "@acc2" {
+		t.Fatalf("unexpected accounts in error: %v", accounts)
+	}
+}
