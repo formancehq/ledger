@@ -2,6 +2,7 @@ package ledger
 
 import (
 	"encoding/json"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -48,8 +49,9 @@ func TestChartValidation(t *testing.T) {
 			expectedChart: ChartOfAccounts{
 				"banks": {
 					VariableSegment: &ChartVariableSegment{
-						Label:   "iban",
-						Pattern: pointer.For("^[0-9]{10}$"),
+						Label:    "iban",
+						Pattern:  pointer.For("^[0-9]{10}$"),
+						compiled: regexp.MustCompile(`^[0-9]{10}$`),
 						ChartSegment: ChartSegment{
 							FixedSegments: map[string]ChartSegment{
 								"main": {
@@ -451,6 +453,42 @@ func TestPostingValidation(t *testing.T) {
 		} else {
 			err := chart.ValidatePosting(tc.posting)
 			require.NoError(t, err, tc.name)
+		}
+	}
+}
+
+func BenchmarkFindAccountSchema(b *testing.B) {
+	chart := testChart()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := chart.FindAccountSchema("users:001:main"); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkFindAccountSchemaParsed(b *testing.B) {
+	const source = `{
+    "banks": {
+        "$iban": {
+            ".pattern": "^[0-9]{10}$",
+            "main": {}
+        }
+    }
+}`
+
+	var chart ChartOfAccounts
+	require.NoError(b, json.Unmarshal([]byte(source), &chart))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		if _, err := chart.FindAccountSchema("banks:0123456789:main"); err != nil {
+			b.Fatal(err)
 		}
 	}
 }
