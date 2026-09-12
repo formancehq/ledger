@@ -1,11 +1,17 @@
 package antithesis_test
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -33,7 +39,8 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			output, driverLog, err := runModelTestFixture(t, tt.scenario)
+			output, driverLog, err, fixtureErr := runModelTestFixture(t, tt.scenario)
+			require.NoError(t, fixtureErr, output)
 			if tt.wantPass {
 				require.NoError(t, err, output)
 			} else {
@@ -50,7 +57,7 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 	}
 }
 
-func runModelTestFixture(t *testing.T, scenario string) (string, string, error) {
+func runModelTestFixture(t *testing.T, scenario string) (string, string, error, error) {
 	t.Helper()
 
 	tempDir := t.TempDir()
@@ -61,6 +68,17 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error) 
 	require.NoError(t, os.MkdirAll(filepath.Join(harnessDir, "tests", "antithesis", "workload"), 0o755))
 	require.NoError(t, os.MkdirAll(binDir, 0o755))
 
+	// Only the fixture clock is substituted: liveness checks and reporting run
+	// unchanged. File descriptors 3/4 carry events/clock replies, respectively.
+	writeExecutable(t, filepath.Join(binDir, "date"), `#!/bin/sh
+if [ "$#" -ne 1 ] || [ "$1" != '+%s' ]; then
+	printf 'invalid-date\n' >&3
+	exit 1
+fi
+printf 'clock\n' >&3
+read -r now <&4 || exit 1
+printf '%s\n' "$now"
+`)
 	fakeGo := filepath.Join(binDir, "go")
 	fakeSeq := filepath.Join(binDir, "seq")
 	fakeServer := filepath.Join(tempDir, "fake-server")
@@ -89,11 +107,13 @@ trap 'exit 0' TERM INT
 while :; do sleep 1; done
 `)
 	writeExecutable(t, fakeDriver, `#!/bin/sh
+trap 'printf "driver-exit %s\n" "$?" >&3' EXIT
 write_assertion() {
 	printf '%s\n' "$1" >>"$ANTITHESIS_SDK_LOCAL_OUTPUT"
 }
 stay_alive() {
 	trap 'exit 0' TERM INT
+	printf 'ready\n' >&3
 	while :; do sleep 1; done
 }
 case "$FAKE_MODEL_SCENARIO" in
@@ -102,6 +122,10 @@ case "$FAKE_MODEL_SCENARIO" in
 		echo "first setup Apply entered"
 		stay_alive
 		echo "first setup Apply completed"
+		;;
+	fail-before-ready)
+		echo "injected driver failure before readiness"
+		exit 7
 		;;
 	early-exit)
 		exit 0
@@ -139,6 +163,8 @@ esac
 	defer cancel()
 	cmd := exec.CommandContext(ctx, runner, "2")
 	cmd.Env = append(os.Environ(),
+		"NODES=1",
+		"RESTORE=0",
 		"PATH="+binDir+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"IN_NIX_SHELL=1",
 		"KEEP_WORKDIR=1",
@@ -149,21 +175,217 @@ esac
 		"FAKE_DRIVER_BIN="+fakeDriver,
 		"FAKE_MODEL_SCENARIO="+scenario,
 	)
-	combined, err := cmd.CombinedOutput()
-	require.NoError(t, ctx.Err(), string(combined))
+	combined, err, fixtureErr := runModelFixtureCommand(ctx, cmd, scenario)
 
 	workDirs, globErr := filepath.Glob(filepath.Join(tempDir, "model-test.*"))
 	require.NoError(t, globErr)
-	require.Len(t, workDirs, 1, string(combined))
-	driverLogPath := filepath.Join(workDirs[0], "driver.log")
-	require.FileExists(t, driverLogPath, string(combined))
-	driverLog, readErr := os.ReadFile(driverLogPath)
-	require.NoError(t, readErr, string(combined))
+	if len(workDirs) != 1 {
+		fixtureErr = errors.Join(fixtureErr, fmt.Errorf("expected one runner workdir, got %d", len(workDirs)))
+	}
+	var driverLog string
+	var collectedLogs strings.Builder
+	for _, workDir := range workDirs {
+		for _, name := range []string{"driver.log", "server-0.log"} {
+			data, readErr := os.ReadFile(filepath.Join(workDir, name))
+			if readErr != nil {
+				fmt.Fprintf(&collectedLogs, "\n%s: %v\n", name, readErr)
+				fixtureErr = errors.Join(fixtureErr, readErr)
 
-	return string(combined), strings.TrimSpace(string(driverLog)), err
+				continue
+			}
+			fmt.Fprintf(&collectedLogs, "\n%s:\n%s", name, data)
+			if name == "driver.log" {
+				driverLog = strings.TrimSpace(string(data))
+			}
+		}
+	}
+
+	return combined + collectedLogs.String(), driverLog, err, fixtureErr
 }
 
 func writeExecutable(t *testing.T, path, content string) {
 	t.Helper()
 	require.NoError(t, os.WriteFile(path, []byte(content), 0o755))
+}
+
+// modelFixtureClock holds time before the deadline until the expected driver
+// state exists. The first two queries initialize deadline/restart bookkeeping;
+// subsequent queries guard the monitor. One live iteration follows readiness.
+// Early-exit never advances time: only the runner's real liveness check may
+// finish that scenario. The context deadline remains an infrastructure failure.
+type modelFixtureClock struct {
+	scenario      string
+	queries       int
+	ready         bool
+	observedReady bool
+	expired       bool
+	exiting       bool
+}
+
+func (clock *modelFixtureClock) event(event string) (string, error) {
+	switch event {
+	case "clock":
+		clock.queries++
+		if clock.scenario == "early-exit" || !clock.ready || clock.queries <= 2 {
+			return "100\n", nil
+		}
+		if !clock.observedReady {
+			clock.observedReady = true
+
+			return "100\n", nil
+		}
+		clock.expired = true
+
+		return "102\n", nil
+	case "ready":
+		if clock.ready || clock.exiting || clock.scenario == "early-exit" {
+			return "", fmt.Errorf("unexpected driver readiness: %+v", clock)
+		}
+		clock.ready = true
+
+		return "", nil
+	case "driver-exit 0":
+		if clock.exiting || (clock.scenario != "early-exit" && !clock.expired) {
+			return "", errors.New("driver exited before the fixture deadline")
+		}
+		clock.exiting = true
+
+		return "", nil
+	default:
+		return "", fmt.Errorf("unexpected fixture event %q", event)
+	}
+}
+
+func runModelFixtureCommand(ctx context.Context, cmd *exec.Cmd, scenario string) (string, error, error) {
+	eventsReader, eventsWriter, err := os.Pipe()
+	if err != nil {
+		return "", nil, err
+	}
+	defer func() { _ = eventsReader.Close() }() // Also interrupts the scanner on abort.
+	defer func() { _ = eventsWriter.Close() }() // Covers failure before Start.
+	clockReader, clockWriter, err := os.Pipe()
+	if err != nil {
+		return "", nil, err
+	}
+	defer func() { _ = clockReader.Close() }() // Covers failure before Start.
+	defer func() { _ = clockWriter.Close() }() // Release the pipe; reply write failures are reported separately.
+	cmd.ExtraFiles = []*os.File{eventsWriter, clockReader}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if errors.Is(err, syscall.ESRCH) {
+			return os.ErrProcessDone
+		}
+
+		return err
+	}
+	cmd.WaitDelay = time.Second
+	var output bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &output, &output
+	if err := cmd.Start(); err != nil {
+		return "", nil, err
+	}
+	_ = eventsWriter.Close() // Only descendants own the event writer now.
+	_ = clockReader.Close()  // Only fake date consumes replies.
+	finished := make(chan error, 1)
+	go func() { finished <- cmd.Wait() }()
+	events := make(chan string)
+	stop := make(chan struct{})
+	defer close(stop)
+	go func(events chan<- string) {
+		defer close(events)
+		scanner := bufio.NewScanner(eventsReader)
+		for scanner.Scan() {
+			select {
+			case events <- scanner.Text():
+			case <-stop:
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			select {
+			case events <- "event pipe: " + err.Error():
+			case <-stop:
+			}
+		}
+	}(events)
+	clock := modelFixtureClock{scenario: scenario}
+	var fixtureErr, runnerErr error
+	runnerDone := false
+	for fixtureErr == nil && (!runnerDone || events != nil) {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				events = nil // EOF is not an exit notification; wait for cmd.Wait.
+
+				continue
+			}
+			var reply string
+			reply, fixtureErr = clock.event(event)
+			if fixtureErr == nil && reply != "" {
+				_, fixtureErr = io.WriteString(clockWriter, reply)
+			}
+		case runnerErr = <-finished:
+			runnerDone = true
+			finished = nil
+			// Wait and pipe delivery are independent. Drain events before deciding
+			// success so an exit/protocol error cannot be lost to select ordering.
+		case <-ctx.Done():
+			fixtureErr = ctx.Err()
+		}
+	}
+	if fixtureErr != nil {
+		if err := cmd.Cancel(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			fixtureErr = errors.Join(fixtureErr, err)
+		}
+	} else if scenario != "early-exit" && !clock.expired {
+		fixtureErr = errors.New("runner exited before driver readiness and the fixture deadline")
+	}
+	if !runnerDone {
+		runnerErr = <-finished // Reap and finish output collection before reading logs.
+	}
+
+	return output.String(), runnerErr, fixtureErr
+}
+
+func TestRunModelFixtureReportsDriverFailure(t *testing.T) {
+	t.Parallel()
+	output, driverLog, _, err := runModelTestFixture(t, "fail-before-ready")
+	require.ErrorContains(t, err, `unexpected fixture event "driver-exit 7"`, output)
+	require.NotErrorIs(t, err, context.DeadlineExceeded, output)
+	require.Contains(t, driverLog, "injected driver failure before readiness")
+	require.Contains(t, output, "server-0.log:")
+	require.Contains(t, output, "Became leader")
+}
+
+func TestModelFixtureClockWaitsForReadiness(t *testing.T) {
+	t.Parallel()
+	clock := modelFixtureClock{scenario: "verified"}
+	// Repeated monitor probes before driver startup cannot consume its budget.
+	for range 5 {
+		reply, err := clock.event("clock")
+		require.NoError(t, err)
+		require.Equal(t, "100\n", reply)
+	}
+	_, err := clock.event("ready")
+	require.NoError(t, err)
+	reply, err := clock.event("clock")
+	require.NoError(t, err)
+	require.Equal(t, "100\n", reply)
+	reply, err = clock.event("clock")
+	require.NoError(t, err)
+	require.Equal(t, "102\n", reply)
+	_, err = clock.event("ready")
+	require.ErrorContains(t, err, "unexpected driver readiness")
+	_, err = clock.event("invalid-date")
+	require.ErrorContains(t, err, "unexpected fixture event")
+}
+
+func TestModelFixtureDrainsEventsAfterRunnerExit(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", `printf 'driver-exit 7\n' >&3; exit 7`)
+	_, _, err := runModelFixtureCommand(ctx, cmd, "verified")
+	require.ErrorContains(t, err, `unexpected fixture event "driver-exit 7"`)
 }
