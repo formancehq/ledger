@@ -163,3 +163,56 @@ func TestFundingReversal(t *testing.T) {
 		t.Fatalf("unexpected result: %v", rev)
 	}
 }
+
+func TestFundingTakeInsufficientFunds(t *testing.T) {
+	f := Funding{
+		Asset: "COIN",
+		Parts: []FundingPart{
+			{
+				Account: "acc1",
+				Amount:  NewMonetaryInt(10),
+			},
+			{
+				Account: "acc2",
+				Amount:  NewMonetaryInt(20),
+			},
+		},
+	}
+	_, _, err := f.Take(NewMonetaryInt(50))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	errIns, ok := err.(*ErrInsufficientFund)
+	if !ok {
+		t.Fatalf("expected *ErrInsufficientFund, got %T", err)
+	}
+	accounts := errIns.Accounts()
+	if len(accounts) != 2 || accounts[0] != "@acc1" || accounts[1] != "@acc2" {
+		t.Fatalf("unexpected accounts in error: %v", accounts)
+	}
+}
+
+func TestFundingConcatImmutability(t *testing.T) {
+	f1 := Funding{
+		Asset: "USD",
+		Parts: []FundingPart{
+			{Account: "acc1", Amount: NewMonetaryInt(100)},
+		},
+	}
+	f2 := Funding{
+		Asset: "USD",
+		Parts: []FundingPart{
+			{Account: "acc1", Amount: NewMonetaryInt(50)},
+		},
+	}
+	res, err := f1.Concat(f2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Parts[0].Amount.Equal(NewMonetaryInt(150)) {
+		t.Fatalf("expected concatenated total 150, got %v", res.Parts[0].Amount)
+	}
+	if !f1.Parts[0].Amount.Equal(NewMonetaryInt(100)) {
+		t.Fatalf("expected original f1 amount to remain 100, got %v", f1.Parts[0].Amount)
+	}
+}

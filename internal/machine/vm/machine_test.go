@@ -2484,3 +2484,40 @@ func (s *mockStore) GetBalances(_ context.Context, query BalanceQuery) (Balances
 func (s *mockStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
 	panic("not implemented")
 }
+
+func TestErrInsufficientFundAccountsPreserved(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `send [GEM 15] (
+		source = {
+			@users:001
+			@payments:001
+		}
+		destination = @users:002
+	)`)
+	tc.setBalance("users:001", "GEM", 3)
+	tc.setBalance("payments:001", "GEM", 4)
+
+	m := NewMachine(*tc.program)
+	store := StaticStore{}
+	for account, balances := range tc.balances {
+		store[account] = &AccountWithBalances{
+			Account: ledger.Account{Address: account},
+			Balances: func() map[string]*big.Int {
+				ret := make(map[string]*big.Int)
+				for asset, balance := range balances {
+					ret[asset] = (*big.Int)(balance)
+				}
+				return ret
+			}(),
+		}
+	}
+	require.NoError(t, m.ResolveResources(context.Background(), store))
+	require.NoError(t, m.ResolveBalances(context.Background(), store))
+	err := m.Execute()
+	require.Error(t, err)
+	var errIns *machine.ErrInsufficientFund
+	require.True(t, errors.As(err, &errIns))
+	require.NotEmpty(t, errIns.Accounts())
+}
+
+

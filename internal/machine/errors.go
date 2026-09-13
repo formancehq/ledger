@@ -32,11 +32,16 @@ func NewErrInvalidScript(f string, args ...any) *ErrInvalidScript {
 }
 
 type ErrInsufficientFund struct {
-	msg string
+	msg      string
+	accounts []string
 }
 
 func (e *ErrInsufficientFund) Error() string {
 	return e.msg
+}
+
+func (e *ErrInsufficientFund) Accounts() []string {
+	return e.accounts
 }
 
 func (e *ErrInsufficientFund) Is(err error) bool {
@@ -44,10 +49,15 @@ func (e *ErrInsufficientFund) Is(err error) bool {
 	return ok
 }
 
-func NewErrInsufficientFund(f string, args ...any) *ErrInsufficientFund {
+func NewErrInsufficientFundWithAccounts(accounts []string, f string, args ...any) *ErrInsufficientFund {
 	return &ErrInsufficientFund{
-		msg: fmt.Sprintf(f, args...),
+		msg:      fmt.Sprintf(f, args...),
+		accounts: accounts,
 	}
+}
+
+func NewErrInsufficientFund(f string, args ...any) *ErrInsufficientFund {
+	return NewErrInsufficientFundWithAccounts(nil, f, args...)
 }
 
 func IsInsufficientFundError(err error) bool {
