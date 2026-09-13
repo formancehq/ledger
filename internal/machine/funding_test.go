@@ -191,3 +191,28 @@ func TestFundingTakeInsufficientFunds(t *testing.T) {
 		t.Fatalf("unexpected accounts in error: %v", accounts)
 	}
 }
+
+func TestFundingConcatImmutability(t *testing.T) {
+	f1 := Funding{
+		Asset: "USD",
+		Parts: []FundingPart{
+			{Account: "acc1", Amount: NewMonetaryInt(100)},
+		},
+	}
+	f2 := Funding{
+		Asset: "USD",
+		Parts: []FundingPart{
+			{Account: "acc1", Amount: NewMonetaryInt(50)},
+		},
+	}
+	res, err := f1.Concat(f2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Parts[0].Amount.Equal(NewMonetaryInt(150)) {
+		t.Fatalf("expected concatenated total 150, got %v", res.Parts[0].Amount)
+	}
+	if !f1.Parts[0].Amount.Equal(NewMonetaryInt(100)) {
+		t.Fatalf("expected original f1 amount to remain 100, got %v", f1.Parts[0].Amount)
+	}
+}

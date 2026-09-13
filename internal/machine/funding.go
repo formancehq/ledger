@@ -143,9 +143,11 @@ func (f Funding) Concat(other Funding) (Funding, error) {
 	if f.Asset != other.Asset {
 		return Funding{}, errors.New("tried to concat different assets")
 	}
+	partsCopy := make([]FundingPart, len(f.Parts))
+	copy(partsCopy, f.Parts)
 	res := Funding{
 		Asset: f.Asset,
-		Parts: f.Parts,
+		Parts: partsCopy,
 	}
 	if len(res.Parts) > 0 && len(other.Parts) > 0 && res.Parts[len(res.Parts)-1].Account == other.Parts[0].Account {
 		res.Parts[len(res.Parts)-1].Amount = res.Parts[len(res.Parts)-1].Amount.Add(other.Parts[0].Amount)
