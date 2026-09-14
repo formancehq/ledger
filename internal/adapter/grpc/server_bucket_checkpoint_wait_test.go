@@ -91,7 +91,7 @@ func TestApplyWaitsForCreatedQueryCheckpoint(t *testing.T) {
 
 			for _, id := range test.markReady {
 				dir := impl.store.QueryCheckpointReadIndexDir(id)
-				require.NoError(t, readstore.MarkCheckpointReady(mkdirAllForCheckpoint(t, dir)))
+				require.NoError(t, dal.MarkCheckpointReady(mkdirAllForCheckpoint(t, dir)))
 			}
 
 			mockCtrl.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{Logs: test.logs}, nil)

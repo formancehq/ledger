@@ -12,6 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // TestCheckpointDirReadyRequiresMarker verifies readiness is keyed on the
@@ -24,10 +26,10 @@ func TestCheckpointDirReadyRequiresMarker(t *testing.T) {
 	dir := t.TempDir()
 
 	// A directory that exists but has no marker is not ready.
-	require.False(t, CheckpointDirReady(dir))
+	require.False(t, dal.CheckpointDirReady(dir))
 
-	require.NoError(t, MarkCheckpointReady(dir))
-	require.True(t, CheckpointDirReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 }
 
 // TestCreateCheckpointThenMarkIsOpenable mirrors what the index builder does
@@ -41,8 +43,8 @@ func TestCreateCheckpointThenMarkIsOpenable(t *testing.T) {
 
 	destDir := filepath.Join(t.TempDir(), "readindex")
 	require.NoError(t, s.CreateCheckpoint(destDir))
-	require.NoError(t, MarkCheckpointReady(destDir))
-	require.True(t, CheckpointDirReady(destDir))
+	require.NoError(t, dal.MarkCheckpointReady(destDir))
+	require.True(t, dal.CheckpointDirReady(destDir))
 
 	ro, err := OpenReadOnly(destDir, logging.NopZap())
 	require.NoError(t, err)
@@ -60,7 +62,7 @@ func TestCheckpointMarkerRequiresStableAuditGeneration(t *testing.T) {
 	ready, err := s.MarkCheckpointReadyAtAuditGeneration(dir, generation)
 	require.NoError(t, err)
 	require.False(t, ready)
-	require.False(t, CheckpointDirReady(dir),
+	require.False(t, dal.CheckpointDirReady(dir),
 		"a rebuild that starts during materialization must keep the checkpoint unavailable")
 
 	s.SetAuditProjectionState(false, false)
@@ -68,7 +70,7 @@ func TestCheckpointMarkerRequiresStableAuditGeneration(t *testing.T) {
 	ready, err = s.MarkCheckpointReadyAtAuditGeneration(dir, generation)
 	require.NoError(t, err)
 	require.True(t, ready)
-	require.True(t, CheckpointDirReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 }
 
 // TestCreateCheckpointFailsIfDirExists documents the pebble contract the index
@@ -123,7 +125,7 @@ func TestWaitForCheckpointFastPath(t *testing.T) {
 
 	s := newTestStore(t)
 	dir := t.TempDir()
-	require.NoError(t, MarkCheckpointReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -157,7 +159,7 @@ func TestWaitForCheckpointBlocksUntilMarker(t *testing.T) {
 
 	// Simulate the builder finishing the checkpoint: write the marker, then
 	// broadcast progress exactly as the inline path does after materialization.
-	require.NoError(t, MarkCheckpointReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
 	s.NotifyProgress()
 
 	select {
@@ -239,7 +241,7 @@ func TestWaitForCheckpointDeletedWhileWaiting(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("deletion did not release checkpoint wait")
 	}
-	require.False(t, CheckpointDirReady(dir))
+	require.False(t, dal.CheckpointDirReady(dir))
 }
 
 func TestWaitForCheckpointDeletionCheckError(t *testing.T) {
@@ -247,7 +249,7 @@ func TestWaitForCheckpointDeletionCheckError(t *testing.T) {
 	s := newTestStore(t)
 	dir := t.TempDir()
 	// The lifecycle check must not be bypassed by the ready-marker fast path.
-	require.NoError(t, MarkCheckpointReady(dir))
+	require.NoError(t, dal.MarkCheckpointReady(dir))
 	wantErr := errors.New("checkpoint lifecycle unavailable")
 	err := s.WaitForCheckpoint(context.Background(), dir, func() (bool, error) {
 		return false, wantErr
