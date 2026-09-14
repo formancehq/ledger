@@ -39,7 +39,25 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 	out, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
 
 	require.NoError(t, err)
-	require.Same(t, snapshot, internalauth.ForwardedSnapshotFromContext(out))
+	adopted := internalauth.ForwardedSnapshotFromContext(out)
+	require.Equal(t, snapshot, adopted)
+	require.NotSame(t, snapshot, adopted)
+}
+
+func TestAdoptForwardedSnapshotIfTrusted_RejectsMalformedTrustedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
+		},
+	}}
+	impl := &BucketServiceServerImpl{logger: testLogger()}
+	ctx := internalauth.WithClusterInternal(context.Background(), true)
+
+	out, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
+	require.Equal(t, codes.Internal, status.Code(err))
+	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))
 }
 
 // TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient verifies that a
@@ -69,22 +87,23 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) 
 		"the untrusted forwarded snapshot must not be adopted")
 }
 
-// TestAdoptForwardedSnapshotIfTrusted_NilForwardedNoOp verifies that an
-// absent forwarded_caller leaves the context untouched (and errors nowhere),
-// so a direct request or an unauthenticated hop falls back to building the
-// snapshot from its own claims (or nil).
-func TestAdoptForwardedSnapshotIfTrusted_NilForwardedNoOp(t *testing.T) {
+// TestAdoptForwardedSnapshotIfTrusted_RequiresSnapshotFromTrustedPeer verifies
+// that a cluster-authenticated hop cannot silently replace the original caller
+// with the leader's cluster identity. Direct requests still derive attribution
+// from their own authentication context during admission.
+func TestAdoptForwardedSnapshotIfTrusted_RequiresSnapshotFromTrustedPeer(t *testing.T) {
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
 
-	// No forwarded snapshot is fine on both a trusted and a plain context.
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
 	out, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
-	require.NoError(t, err)
+	require.Equal(t, codes.Internal, status.Code(err))
 	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))
 
+	// A direct request has no follower snapshot and resolves its local caller at
+	// the admission boundary.
 	out, err = impl.adoptForwardedSnapshotIfTrusted(context.Background(), req)
 	require.NoError(t, err)
 	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))

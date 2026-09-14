@@ -138,6 +138,9 @@ type RestoreServiceServerImpl struct {
 	stopping       bool
 	downloading    bool
 	downloaded     bool
+	validating     bool
+	validated      bool
+	finalizing     bool
 
 	// job holds the single active download (if any). Only one job runs at a
 	// time because the staging directory is a singleton. Successive Start
@@ -263,6 +266,9 @@ func (s *RestoreServiceServerImpl) closeStagingStore() {
 	}
 
 	s.stagingStore = nil
+	s.validating = false
+	s.validated = false
+	s.finalizing = false
 }
 
 // ValidateRestore runs integrity checks on the staged backup data.
@@ -275,11 +281,36 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	s.mu.Lock()
 	downloaded := s.downloaded
 	store := s.stagingStore
+	if downloaded && store != nil {
+		if s.finalizing {
+			s.mu.Unlock()
+
+			return status.Error(codes.FailedPrecondition, "restore finalization is already running")
+		}
+		if s.validating {
+			s.mu.Unlock()
+
+			return status.Error(codes.FailedPrecondition, "restore validation is already running")
+		}
+		s.validating = true
+		s.validated = false
+	}
 	s.mu.Unlock()
 
 	if !downloaded || store == nil {
 		return status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
+
+	validationPassed := false
+	defer func() {
+		s.mu.Lock()
+		if s.stagingStore == store && s.downloaded {
+			s.validated = validationPassed
+		}
+		s.validating = false
+		s.mu.Unlock()
+	}()
+
 
 	// A complete staged checkpoint includes its source persisted config; the
 	// checker independently reads the audit key from the staged store. The
@@ -298,7 +329,9 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	// idempotency pass verifies against the full audit history.
 	checker := check.NewChecker(store, attrs, nil, s.logger)
 
-	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
+	validationErrors := 0
+	var sendErr error
+	checkErr := checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		var restoreEvent restorepb.ValidateRestoreEvent
 
 		switch t := event.GetType().(type) {
@@ -310,6 +343,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 				},
 			}
 		case *servicepb.CheckStoreEvent_Error:
+			validationErrors++
 			restoreEvent.Type = &restorepb.ValidateRestoreEvent_Error{
 				Error: &restorepb.ValidateRestoreError{
 					Message: t.Error.GetMessage(),
@@ -317,11 +351,21 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 			}
 		}
 
-		err := stream.Send(&restoreEvent)
-		if err != nil {
+		if err := stream.Send(&restoreEvent); err != nil && sendErr == nil {
+			sendErr = err
 			s.logger.WithFields(map[string]any{"error": err}).Errorf("Failed to send validate event")
 		}
 	})
+	if checkErr != nil {
+		return checkErr
+	}
+	if sendErr != nil {
+		return sendErr
+	}
+
+	validationPassed = validationErrors == 0
+
+	return nil
 }
 
 // PreviewRestore returns a summary of the staged backup data.
@@ -339,7 +383,6 @@ func (s *RestoreServiceServerImpl) PreviewRestore(ctx context.Context, _ *restor
 	if !downloaded || store == nil {
 		return nil, status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
-
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {
 		return nil, fmt.Errorf("getting last applied index: %w", err)
@@ -402,11 +445,35 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	s.mu.Lock()
 	downloaded := s.downloaded
 	store := s.stagingStore
-	s.mu.Unlock()
-
+	validating := s.validating
+	validated := s.validated
 	if !downloaded || store == nil {
+		s.mu.Unlock()
+
 		return nil, status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
+	if validating {
+		s.mu.Unlock()
+
+		return nil, status.Error(codes.FailedPrecondition, "restore validation is still running")
+	}
+	if !validated {
+		s.mu.Unlock()
+
+		return nil, status.Error(codes.FailedPrecondition, "staged backup has not passed validation")
+	}
+	if s.finalizing {
+		s.mu.Unlock()
+
+		return nil, status.Error(codes.FailedPrecondition, "restore finalization is already running")
+	}
+	s.finalizing = true
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.finalizing = false
+		s.mu.Unlock()
+	}()
 
 	stagingDir := s.stagingDir()
 

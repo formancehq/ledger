@@ -1,12 +1,92 @@
 package grpc
 
 import (
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestFinalizeRestoreRequiresSuccessfulValidation(t *testing.T) {
+	t.Parallel()
+
+	server := NewRestoreServiceServer(t.TempDir(), "test-cluster", 1, noopLogger{})
+	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
+	require.NoError(t, err)
+	server.mu.Lock()
+	server.stagingStore = store
+	server.downloaded = true
+	server.mu.Unlock()
+	t.Cleanup(server.Shutdown)
+
+	_, err = server.FinalizeRestore(context.Background(), &restorepb.FinalizeRestoreRequest{})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	require.Contains(t, status.Convert(err).Message(), "has not passed validation")
+}
+
+func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
+	t.Parallel()
+
+	const clusterID = "source-cluster"
+	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{})
+	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
+	require.NoError(t, err)
+	server.mu.Lock()
+	server.stagingStore = store
+	server.downloaded = true
+	server.mu.Unlock()
+	t.Cleanup(server.Shutdown)
+
+	configBytes, err := proto.Marshal(&commonpb.PersistedConfig{ClusterId: clusterID})
+	require.NoError(t, err)
+	entry := &auditpb.AuditEntry{
+		Sequence:       1,
+		Timestamp:      &commonpb.Timestamp{Data: 1},
+		ProposalId:     1,
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: &commonpb.CallerSnapshot{},
+		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
+			Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+			Message: "rejected",
+		}},
+	}
+	header, err := state.BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	_, entry.Hash = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID).
+		Compute(nil, nil, [][]byte{header})
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, configBytes))
+	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{Sequence: 1}}))
+	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence())
+	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
+	require.NoError(t, batch.Commit())
+
+	stream := NewMockServerStreamingServer[restorepb.ValidateRestoreEvent](gomock.NewController(t))
+	stream.EXPECT().Context().Return(context.Background()).AnyTimes()
+	stream.EXPECT().Send(gomock.Any()).Return(nil).AnyTimes()
+	require.NoError(t, server.ValidateRestore(&restorepb.ValidateRestoreRequest{}, stream))
+
+	server.mu.Lock()
+	validated := server.validated
+	server.mu.Unlock()
+	require.False(t, validated)
+	_, err = server.FinalizeRestore(context.Background(), &restorepb.FinalizeRestoreRequest{})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+}
 
 func TestSafeStagingPath_Valid(t *testing.T) {
 	t.Parallel()

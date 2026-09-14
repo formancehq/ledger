@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -515,6 +516,44 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			}
 		}
 
+		// Validate replicated caller attribution before cache rotation or any
+		// business-state write. Empty Raft entries and explicit no-op proposals
+		// are consensus barriers rather than writes, so they carry no caller.
+		if entry.GetType() == raftpb.EntryNormal && len(entry.GetData()) > 0 {
+			if cmd == nil {
+				assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
+					"raftIndex": entryIndex,
+				})
+
+				_ = batch.Cancel()
+
+				return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
+			}
+
+			if len(cmd.GetOrders()) > 0 || len(cmd.GetTechnicalUpdates()) > 0 {
+				if attributionErr := attribution.Validate(cmd.GetCallerSnapshot()); attributionErr != nil {
+					invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](attributionErr)
+					if !ok {
+						_ = batch.Cancel()
+
+						return nil, fmt.Errorf("validating caller attribution: %w", attributionErr)
+					}
+
+					// The malformed entry is already committed in Raft, so advance only
+					// replicated progress. No cache rotation, HLC advancement, audit
+					// entry, or business-state mutation is allowed for the rejection.
+					fsm.State.LastAppliedIndex++
+					ret.Results = append(ret.Results, ApplyResult{
+						ProposalID:   cmd.GetId(),
+						AppliedIndex: entryIndex,
+						Error:        &domain.BusinessError{Err: invalid},
+					})
+
+					continue
+				}
+			}
+		}
+
 		preRotationPQGen0 := fsm.Registry.Cache.PreparedQueries.Gen0().Size()
 		preRotationPQGen1 := fsm.Registry.Cache.PreparedQueries.Gen1().Size()
 
@@ -595,20 +634,6 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 			}
 
 			continue
-		}
-
-		// cmd was set from decoded[i].Proposal at the top of the iteration:
-		// DecodeEntries unmarshalled it once at the applier boundary, so the
-		// hot path never re-decodes the same raft payload. The caller owns
-		// the *Proposal lifetime (VT pool); the FSM only reads from it.
-		if cmd == nil {
-			assert.Unreachable("normal entry with non-empty Data but nil Proposal", map[string]any{
-				"raftIndex": entryIndex,
-			})
-
-			_ = batch.Cancel()
-
-			return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
 		}
 
 		if len(cmd.GetOrders()) == 0 && len(cmd.GetTechnicalUpdates()) == 0 {

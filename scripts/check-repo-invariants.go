@@ -157,7 +157,11 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 	checkSleep := strings.HasSuffix(path, "_test.go")
 	checkEnvironment := isDeterministicFSMPath(path) && !checkSleep
 	checkBoundaryImport := isBusinessCorePath(path)
-	if !checkSleep && !checkEnvironment && !checkBoundaryImport {
+	checkAttributionConstruction := !checkSleep &&
+		!strings.HasPrefix(path, "internal/proto/") &&
+		path != "internal/adapter/auth/caller_snapshot.go" &&
+		path != "internal/domain/attribution/attribution.go"
+	if !checkSleep && !checkEnvironment && !checkBoundaryImport && !checkAttributionConstruction {
 		return nil, nil
 	}
 
@@ -168,10 +172,13 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 	}
 
 	var (
-		timeNames = map[string]struct{}{}
-		osNames   = map[string]struct{}{}
-		timeDot   bool
-		osDot     bool
+		timeNames        = map[string]struct{}{}
+		osNames          = map[string]struct{}{}
+		attributionNames = map[string]struct{}{}
+		commandsNames    = map[string]struct{}{}
+		authNames        = map[string]struct{}{}
+		timeDot          bool
+		osDot            bool
 	)
 
 	for _, spec := range file.Imports {
@@ -195,6 +202,18 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			osDot = name == "."
 			if name != "." && name != "_" {
 				osNames[name] = struct{}{}
+			}
+		case "github.com/formancehq/ledger/v3/internal/domain/attribution":
+			if name != "." && name != "_" {
+				attributionNames[name] = struct{}{}
+			}
+		case "github.com/formancehq/ledger/v3/internal/pkg/commands":
+			if name != "." && name != "_" {
+				commandsNames[name] = struct{}{}
+			}
+		case "github.com/formancehq/ledger/v3/internal/adapter/auth":
+			if name != "." && name != "_" {
+				authNames[name] = struct{}{}
 			}
 		}
 	}
@@ -225,6 +244,39 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 	}
 
 	ast.Inspect(file, func(node ast.Node) bool {
+		if checkAttributionConstruction {
+			if literal, ok := node.(*ast.CompositeLit); ok {
+				if selector, ok := literal.Type.(*ast.SelectorExpr); ok && selector.Sel.Name == "CallerSnapshot" {
+					findings = append(findings, goFinding(
+						fileSet,
+						path,
+						literal.Pos(),
+						"caller snapshots must be constructed by the auth or attribution package",
+					))
+				}
+			}
+
+			if assignment, ok := node.(*ast.AssignStmt); ok && !callerAssignmentAllowed(path) {
+				for _, lhs := range assignment.Lhs {
+					if selector, ok := lhs.(*ast.SelectorExpr); ok && selector.Sel.Name == "CallerSnapshot" {
+						findings = append(findings, goFinding(
+							fileSet, path, selector.Pos(),
+							"caller attribution may only be attached at admission or an allowlisted system producer",
+						))
+					}
+				}
+			}
+
+			if field, ok := node.(*ast.KeyValueExpr); ok && !callerAssignmentAllowed(path) {
+				if ident, ok := field.Key.(*ast.Ident); ok && ident.Name == "CallerSnapshot" {
+					findings = append(findings, goFinding(
+						fileSet, path, field.Pos(),
+						"caller attribution may only be attached at admission or an allowlisted system producer",
+					))
+				}
+			}
+		}
+
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
@@ -255,10 +307,76 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			))
 		}
 
+		if !checkSleep && callsAnyImportedFunction(call.Fun, attributionNames, false, "New", "NewSystem") && !attributionConstructorAllowed(path) {
+			findings = append(findings, goFinding(
+				fileSet, path, call.Fun.Pos(),
+				"attribution capabilities may only be minted at authenticated or trusted forwarding boundaries",
+			))
+		}
+
+		if !checkSleep && callsImportedFunction(call.Fun, commandsNames, false, "SystemCallerSnapshot") && !systemProducerAllowed(path) {
+			findings = append(findings, goFinding(
+				fileSet, path, call.Fun.Pos(),
+				"system caller attribution is restricted to the named producer allowlist",
+			))
+		}
+
+		if !checkSleep && callsImportedFunction(call.Fun, commandsNames, false, "NewCommand") && !proposalBuilderAllowed(path) {
+			findings = append(findings, goFinding(
+				fileSet, path, call.Fun.Pos(),
+				"write proposals may only be built by admission or an allowlisted system producer",
+			))
+		}
+
+		if !checkSleep && callsImportedFunction(call.Fun, authNames, false, "WithSystemActor") && path != "internal/bootstrap/module.go" {
+			findings = append(findings, goFinding(
+				fileSet, path, call.Fun.Pos(),
+				"system actor contexts may only be established by the bootstrap wiring for named producers",
+			))
+		}
+
+		if !checkSleep && callsImportedFunction(call.Fun, authNames, false, "WithForwardedAttribution") && path != "internal/adapter/grpc/server_bucket.go" {
+			findings = append(findings, goFinding(
+				fileSet, path, call.Fun.Pos(),
+				"forwarded attribution may only be attached after cluster-peer authentication",
+			))
+		}
+
 		return true
 	})
 
 	return findings, nil
+}
+
+func attributionConstructorAllowed(path string) bool {
+	return path == "internal/domain/attribution/attribution.go" ||
+		path == "internal/adapter/auth/caller_snapshot.go" ||
+		path == "internal/adapter/grpc/server_bucket.go" ||
+		path == "internal/pkg/commands/system_caller.go"
+}
+
+func systemProducerAllowed(path string) bool {
+	switch path {
+	case "internal/application/backup/cleanup.go",
+		"internal/application/backup/orchestrator.go",
+		"internal/application/events/emitter.go",
+		"internal/application/mirror/worker.go",
+		"internal/adapter/auth/caller_snapshot.go",
+		"internal/bootstrap/module.go":
+		return true
+	default:
+		return false
+	}
+}
+
+func proposalBuilderAllowed(path string) bool {
+	return path == "internal/application/admission/admission.go" || systemProducerAllowed(path)
+}
+
+func callerAssignmentAllowed(path string) bool {
+	return path == "internal/application/admission/admission.go" ||
+		path == "internal/infra/state/machine.go" ||
+		systemProducerAllowed(path)
 }
 
 func callsAnyImportedFunction(

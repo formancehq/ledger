@@ -187,3 +187,53 @@ func TestIsBusinessCorePathCoversRaiseFreezeAndAuditTrees(t *testing.T) {
 	require.False(t, isBusinessCorePath("internal/adapter/apierr/apierr.go"))
 	require.False(t, isBusinessCorePath("cmd/ledgerctl/cmdutil/errors.go"))
 }
+
+func TestCheckGoSourceRestrictsAttributionCapabilityMinting(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`package sample
+
+import "github.com/formancehq/ledger/v3/internal/domain/attribution"
+
+func build() { _, _ = attribution.New(nil) }
+`)
+
+	findings, err := checkGoSource("internal/application/newproducer/worker.go", source)
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "capabilities may only be minted")
+}
+
+func TestCheckGoSourceRestrictsProposalAttributionSites(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`package sample
+
+import "github.com/formancehq/ledger/v3/internal/pkg/commands"
+
+func build(cmd struct{ CallerSnapshot any }) {
+	cmd.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentBackup)
+	_ = commands.NewCommand()
+}
+`)
+
+	findings, err := checkGoSource("internal/application/newproducer/worker.go", source)
+	require.NoError(t, err)
+	require.Len(t, findings, 3)
+}
+
+func TestCheckGoSourceRestrictsForwardedAttributionSetter(t *testing.T) {
+	t.Parallel()
+
+	source := []byte(`package sample
+
+import auth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+
+func attach(ctx any, capability any) { _ = auth.WithForwardedAttribution(ctx, capability) }
+`)
+
+	findings, err := checkGoSource("internal/application/newproducer/worker.go", source)
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "cluster-peer authentication")
+}

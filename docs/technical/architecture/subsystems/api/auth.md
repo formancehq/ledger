@@ -146,19 +146,33 @@ message SystemCaller { string component = 1; }
 message AuthDisabledCaller {}
 ```
 
-It is built by `ResolveCallerSnapshot()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
+It is resolved into an opaque, validated `attribution.Capability` by
+`ResolveCallerAttribution()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
 1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a `system` principal (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`).
-2. **Forwarded snapshot** — a request forwarded by a follower uses the snapshot the follower captured, verbatim. Auth-disabled callers are the exception: every node derives that same explicit principal from its immutable local auth state, so followers omit it from the wire. This keeps plaintext clusters without a cluster secret working without making a client-supplied attribution field trustworthy.
+2. **Trusted forwarded snapshot** — a follower authenticated with the cluster secret sends the snapshot it captured, including `auth_disabled`; the leader validates and freezes it before installing an opaque capability in the context. A trusted hop that omits attribution fails. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops; because authentication is disabled in that topology, the leader derives the same explicit `auth_disabled` principal locally.
 3. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
 
-Every admitted proposal therefore records exactly one explicit principal. Authenticated identities retain their subject and stable credential source; an Ed25519 token without `sub` remains attributable by key ID. Anonymous and authentication-disabled writes are different values, and system work names its component.
+Every admitted write proposal therefore records exactly one explicit principal.
+The capability validator requires a concrete principal, a stable credential
+source for authenticated callers, canonical sorted unique scopes, and an
+allowlisted component for system work. Authenticated identities retain their
+subject and stable credential source; an Ed25519 token without `sub` remains
+attributable by key ID. Anonymous and authentication-disabled writes are
+different values, and system work names its component.
 
 The snapshot enters the audit-chain hash via `BuildHashedHeaderPayload` (see [audit-chain.md](../checker/audit-chain.md)). **It is not re-evaluated downstream** — the FSM, the checker, and any later observer see exactly what admission resolved. A token expiring between admission and FSM apply does not retroactively invalidate the proposal.
 
-### Attribution observability
+### Attribution enforcement and observability
 
-Admission emits signals when a committed write has weak attribution (`admission.observeCallerSnapshot`):
+Admission rejects missing or malformed attribution before the write gate,
+preload, proposal, or Raft. The FSM repeats the same deterministic validation
+before cache rotation or business-state mutation, and the checker rejects an
+audit entry whose hash is valid but whose attribution is semantically invalid.
+Opaque capabilities and repository invariants restrict capability creation and
+system attribution to the authenticated boundary and named producers.
+
+Admission retains post-commit diagnostic signals as a defense-in-depth check:
 
 - `admission.audit.missing_caller` (+ error log) — a proposal reached the observation seam with a missing snapshot or unset principal. This is anomalous because normal resolution is total.
 - `admission.audit.caller_subject_empty` (+ info log) — the caller has a user source (key id / issuer) but an empty subject; the entry is still attributable by source.
@@ -192,8 +206,9 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 | gRPC policy declarations | `misc/proto/bucket.proto`, `misc/proto/cluster.proto` |
 | Generated gRPC policy registry | `internal/proto/commonpb/common_rpc_auth_policy.pb.go` |
 | Ed25519 static keyset | `internal/adapter/auth/ed25519_keys.go` |
-| Caller-snapshot resolution | `internal/adapter/auth/caller_snapshot.go` |
-| System-actor snapshot + component names | `internal/pkg/commands/system_caller.go` |
+| Caller-attribution resolution | `internal/adapter/auth/caller_snapshot.go` |
+| Capability validation + system allowlist | `internal/domain/attribution/attribution.go` |
+| System-actor snapshot + component aliases | `internal/pkg/commands/system_caller.go` |
 | Attribution observability | `internal/application/admission/admission.go` (`observeCallerSnapshot`) |
 | Raft cluster-secret interceptor | `internal/adapter/grpc/raft_auth.go` |
 | OIDC discovery + composite keyset wiring | `internal/bootstrap/module.go` (around lines 1587-1652) |
