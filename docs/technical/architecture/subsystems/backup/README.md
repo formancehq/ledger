@@ -126,9 +126,14 @@ range deletes so the restored store does not resurrect them.
 
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
+The indexbuilder's `EMPTY`/`NON_EMPTY` ledger-history bytes are peer read-store state, not primary-store backup content. A restored node with a fresh read store reconstructs them by replaying the restored global log from zero; registry entries remain inactive until their `CreatedIndexLog` is reached. EMPTY ledgers promote their indexes without backfill, while NON_EMPTY ledgers schedule the normal replay. This state therefore needs no `RebuildDelta` branch: the exported log is its reconstruction evidence. Normal same-node restarts retain the byte atomically with the read-index cursor, and query checkpoints include it because they checkpoint the read store itself.
+
 A restore is **a node-level disaster-recovery operation**, not an in-cluster operation — it is not driven by a Raft order. Operators script it (or invoke it via the Operator) when a cluster needs to be rebuilt from cold.
 
 ## Scheduling
+
+See [Operator backup scheduling](operator-scheduling.md) for the Kubernetes
+completion cursors, zero-retention behavior, and reconciliation failure ordering.
 
 The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind a `BackupSchedule` with **two separate cron fields** — `Full` and `Incremental` — so operators can run a full checkpoint less often than the incremental segments. The Operator submits a `BackupOrder` (full) or `IncrementalBackupOrder` at each cron tick; the FSM enforces mutual exclusion; the executor on the leader does the upload. One-off backups can also be triggered manually through the same gRPC surface.
 

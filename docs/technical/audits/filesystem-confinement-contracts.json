@@ -1,0 +1,58 @@
+{
+  "id": "filesystem-confinement-contracts",
+  "title": "External path filesystem confinement contracts",
+  "purpose": "Find reachable violations of established filesystem authority when external RPC, peer, backup-manifest or archive names reach final open/create/remove/rename operations. Follow the companion evidence, reachability and ownership contract. Inspect lexical locality, root-scoped containment, symlink and validation/use races, destination/staging aliasing and cleanup boundaries. Do not audit restored content, replay, caller authentication or undocumented SSRF/resource policies.",
+  "paths": [
+    "internal/adapter/grpc/server_snapshot*.go",
+    "internal/adapter/grpc/file_streaming*.go",
+    "internal/adapter/grpc/snapshot_session*.go",
+    "internal/application/ctrl/file_receiver*.go",
+    "internal/application/ctrl/file_fetcher*.go",
+    "internal/application/ctrl/snapshot_fetcher*.go",
+    "internal/adapter/grpc/server_restore*.go",
+    "internal/infra/backup/manifest.go",
+    "internal/infra/backup/storage.go",
+    "internal/pkg/tarutil/**",
+    "internal/bootstrap/module.go",
+    "internal/bootstrap/module_restore.go",
+    "misc/proto/snapshot.proto",
+    "misc/proto/restore.proto"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/contributing/ai-audit.md",
+    "docs/technical/contributing/ai-audit-challenge.md",
+    "docs/technical/contributing/testing.md",
+    "docs/technical/audits/filesystem-confinement-contracts.md",
+    "docs/technical/architecture/subsystems/storage/follower-sync.md",
+    "docs/technical/architecture/subsystems/backup/README.md",
+    "docs/technical/architecture/subsystems/api/auth.md",
+    "docs/ops/backup-restore.md"
+  ],
+  "invariants": [
+    "Each hypothesis must establish a reachable production entry, external name provenance, effective server/build mode and caller guard, selected filesystem root, all transformations and the final operation. A dangerous helper or missing test alone is not a product finding. ExtractTar currently has only test callers; require a newly established production caller before treating archive extraction as exposed.",
+    "External paths must satisfy lexical locality and remain confined by a root-scoped filesystem capability at the final open/create/remove/rename, as required by AGENTS.md and follower-sync.md. Join, Clean and Rel are string operations, not symlink or validation/use containment. Establish ownership of the root itself and any parent creation; a rooted final open does not prove earlier mutations safe.",
+    "Snapshot serving must not read outside its prepared checkpoint through a request path or symlink. Follower parent creation, temporary creation, cleanup and rename must remain inside the selected staging root. Prove concrete namespace influence and timing assumptions rather than assuming an attacker can modify arbitrary host directories.",
+    "The complete peer manifest must reject cleaned duplicate destination names and destination/staging-name collisions before downloads begin, using the staging name actually derived from the raw input plus its suffix. Other alias hypotheses require evidence of the supported filesystem, reachable names and an incorrect cross-transfer effect; do not invent a universal canonical-name policy.",
+    "Failure, cancellation and retry cleanup may remove only filesystem state owned by the operation within its designated root. Trace actual creation, publication and cleanup order and assert unrelated sibling/sentinel state is preserved. Generic worker joining, checkpoint lifetime, crash recovery and content validation belong to neighboring domains.",
+    "For any newly reachable archive extraction, trace header names and supported entry types to directory/file operations, including pre-existing symlinks, repeated names and partial extraction. Do not claim that ignored link headers create links, or invent all-or-nothing extraction, permission or resource-budget requirements. Undocumented policy is an audit question.",
+    "Qualify every candidate against current guards, caller constraints, existing tests and known work. Distinguish final-operation escape or namespace corruption from content-integrity failure. Deduplicate by root cause and required correction, not by RPC, symptom or absent defense layer; first-pass findings remain hypotheses until independently challenged."
+  ],
+  "adversarial_questions": [
+    "Which registered RPC or production manifest consumer supplies the name? Does the relevant build enable the storage driver? Can the proposed input reach the filesystem operation with valid session, protocol and caller context?",
+    "Where is the root created and bound, and who can alter each parent, symlink or leaf between validation and use? Are any earlier MkdirAll, cleanup or later rename operations still pathname-based?",
+    "Do raw and cleaned names, nested paths or staging suffixes alias across parallel entries? Does rejection occur before the first FetchFile or local write, and do valid root/nested controls still work?",
+    "Can an error or cancellation delete a different transfer's staging file or unrelated state? Is the required correction namespace confinement, or solely lifecycle/retry/durability ownership already covered elsewhere?",
+    "Does any real product caller now reach ExtractTar? Which header types are actually acted on? Can the proposed symlink precondition arise in the caller-owned extraction directory?",
+    "Does an apparent restore issue concern local destination names, remote object keys, or restored content? Only the local filesystem authority chain belongs here; do not infer SSRF, object-store ACL or manifest-signature policies."
+  ],
+  "dynamic_checks_to_consider": [
+    "Use the pinned Nix environment and current existing local fixtures. Inspect test names first, then consider go test ./internal/adapter/grpc -run 'Test(StreamOneFile_PathConfinement|SnapshotService_FetchFileRejectsNonLocalPath|SafeStagingPath_)' and go test ./internal/application/ctrl -run 'Test(ValidateSnapshotManifest|FileFetcher_FetchFileOnceRejectsNonLocalPath|GRPCSnapshotFetcher_)'. Report exact checks and observations, not blanket coverage claims.",
+    "For later temporary diagnostics, allocate one owned temporary parent containing separate root and outside-sentinel directories. Drive actual serving/receiving paths with valid root/nested controls, lexical traversal, absolute names and symlink escapes; assert outside bytes and directory inventory remain unchanged and rejected serving streams disclose no sentinel bytes.",
+    "Drive whole-manifest duplicate and destination/staging collision cases through the fake peer response and assert zero FetchFile calls before rejection. For other alias cases, synchronize the exact namespace transition and verify final bytes and per-entry ownership; do not use sleeps or a probabilistic race as proof.",
+    "Use restore storageFactory fixtures to deliver a synthetic manifest and local bytes without S3 credentials. Establish StartDownloadBackup admission, name-to-downloadOneFile reachability, supported driver behavior and staging recreation order before claiming a symlink or cleanup escape. Helper-only safeStagingPath tests establish lexical behavior only.",
+    "For cleanup/retry hypotheses, use bounded fail-once-then-success fixtures and verify attempt count, final bytes, temporary cleanup and untouched sibling sentinels. Keep session lifetime and durable restart claims with their owning domains.",
+    "Inspect ExtractTar caller inventory before any archive probe. A temporary helper diagnostic may characterize traversal, entry types or existing symlink behavior, but cannot establish production exploitability. No tracked reproducer, product edit, live service, arbitrary host file, external storage or cleanup of another task's files is authorized by this checklist."
+  ]
+}

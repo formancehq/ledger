@@ -41,17 +41,14 @@ func TestListenerOptionsMakeTheServerAdoptTheBinding(t *testing.T) {
 	require.NoError(t, srv.Stop())
 }
 
-// TestHTTPListenerOptionServesTheInjectedListener and its fallback twin pin the
-// choice go-libs forces: serverport.Listen wants exactly one of listener or
-// address, and a listener silently wins over an address, so the two must never be
-// passed together.
+// Exercise injected listener precedence and configured address fallback.
 func TestHTTPListenerOptionServesTheInjectedListener(t *testing.T) {
 	t.Parallel()
 
 	listener := mustListenLoopback(t, 0)
 
 	address := listener.Addr().String()
-	stop := startHTTPHook(t, httpListenerOption(listener, "127.0.0.1:0"))
+	stop := startHTTPHook(t, listener, "127.0.0.1:0")
 
 	requireHTTPOK(t, address)
 	require.NoError(t, stop(context.Background()))
@@ -66,23 +63,32 @@ func TestHTTPListenerOptionFallsBackToTheConfiguredAddress(t *testing.T) {
 	address := probe.Addr().String()
 	require.NoError(t, probe.Close())
 
-	stop := startHTTPHook(t, httpListenerOption(nil, address))
+	stop := startHTTPHook(t, nil, address)
 
 	requireHTTPOK(t, address)
 	require.NoError(t, stop(context.Background()))
 }
 
-func startHTTPHook(t *testing.T, option httpserver.ServerOptionModifier) func(context.Context) error {
+func startHTTPHook(t *testing.T, listener net.Listener, address string) func(context.Context) error {
 	t.Helper()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	hook := httpserver.NewHook(handler, option)
+	hook := httpServerHook(handler, listener, address, logging.Testing(), func() error {
+		t.Error("normal HTTP shutdown requested failure shutdown")
+
+		return nil
+	})
 
 	ctx := httpserver.ContextWithServerInfo(logging.TestingContext())
 	require.NoError(t, hook.OnStart(ctx))
+	if listener != nil {
+		require.Equal(t, "http://"+listener.Addr().String(), httpserver.URL(ctx))
+	} else {
+		require.Equal(t, "http://"+address, httpserver.URL(ctx))
+	}
 
 	stopped := false
 	stop := func(stopCtx context.Context) error {

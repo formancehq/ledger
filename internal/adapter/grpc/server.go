@@ -31,6 +31,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
@@ -515,6 +516,12 @@ func convertToGRPCError(err error, logger logging.Logger) error {
 }
 
 func convertToGRPCErrorWithContext(ctx context.Context, err error, logger logging.Logger) error {
+	// Re-emit decoded statuses verbatim: outer routing context is diagnostic,
+	// not part of the upstream public message.
+	if st := grpcerr.OriginalStatus(err); st != nil {
+		return st.Err()
+	}
+
 	// Already a gRPC status error, return as-is
 	if _, ok := status.FromError(err); ok {
 		return err
@@ -822,6 +829,23 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 	return srv, nil
 }
 
+// serviceMaxMsgSize caps a message on the PUBLIC service plane. It is
+// deliberately its own constant rather than transport.GRPCMaxMsgSize: that one
+// is the internal Raft/snapshot transport envelope, sized for chunked snapshot
+// streaming between nodes, and the public request contract must be able to move
+// without changing how peers replicate (EN-1829).
+//
+// This is a transport backstop, not the metadata contract. What a caller may
+// store as metadata is bounded by the replicated cluster policy
+// (domain.MetadataLimits), enforced identically for HTTP, public gRPC, bulk and
+// mirror admission — a transport cap cannot express per-entry or per-entity
+// bounds, and a caller under this cap can still be rejected by those ceilings.
+//
+// The value stays at 64 MiB because RestoreService streams restore payloads on
+// this same server (see server_restore.go): lowering it to the HTTP body cap
+// would break restore.
+const serviceMaxMsgSize = 64 << 20
+
 // NewServiceServer creates a new gRPC server for service API (external).
 // This server includes OpenTelemetry instrumentation and error conversion.
 // Authentication is handled explicitly in each service method via auth.Authenticate.
@@ -859,8 +883,8 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
 		ggrpc.ReadBufferSize(transport.GRPCReadBufferSize),
 		ggrpc.WriteBufferSize(transport.GRPCWriteBufferSize),
-		ggrpc.MaxRecvMsgSize(transport.GRPCMaxMsgSize),
-		ggrpc.MaxSendMsgSize(transport.GRPCMaxMsgSize),
+		ggrpc.MaxRecvMsgSize(serviceMaxMsgSize),
+		ggrpc.MaxSendMsgSize(serviceMaxMsgSize),
 		ggrpc.ChainUnaryInterceptor(unaryInterceptors...),
 		ggrpc.ChainStreamInterceptor(streamInterceptors...),
 	}

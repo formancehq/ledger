@@ -97,7 +97,7 @@ func TestTranslateBatch_Rewrite_RevertedTransaction(t *testing.T) {
 		ID:   1,
 		Type: "REVERTED_TRANSACTION",
 		Data: mustMarshal(t, V2RevertedTransactionData{
-			RevertedTransactionID: 0,
+			RevertedTransaction: V2TransactionIdentity{ID: new(uint64(0))},
 			RevertTransaction: V2Transaction{
 				ID: 1,
 				Postings: []V2Posting{{

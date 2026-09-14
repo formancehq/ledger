@@ -90,6 +90,24 @@ func Execute(
 		return nil, errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
 	}
 
+	// The definition and volumes share the reserved main-store snapshot above.
+	// An exactly nil filter needs neither account enumeration nor a read-index
+	// snapshot. Release the event-history reservation before the single volume
+	// scan; non-nil filters keep the normal compilation and alignment path.
+	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES && pq.GetFilter() == nil {
+		releaseHold()
+		aggResult, aggErr := AggregateAllVolumes(handle, volumeAttr, ledgerInfo.GetName(), AggregateOptions{})
+		if aggErr != nil {
+			return nil, aggErr
+		}
+
+		return &servicepb.ExecutePreparedQueryResponse{
+			Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+				Aggregate: aggResult,
+			},
+		}, nil
+	}
+
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
 
 	var (

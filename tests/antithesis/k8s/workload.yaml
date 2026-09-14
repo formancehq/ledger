@@ -99,6 +99,11 @@ spec:
           value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
+        # Per-bulk driver decisions (dispatch, outcome, model verdict) in the
+        # container log, so a divergence finding carries the driver's view of
+        # every observation in the moment logs.
+        - name: MODEL_DEBUG
+          value: "1"
         # Dumps every committed ApplyRequest (base64) for exact deterministic
         # replay through the oracle (see tests/oracle/cmd/replay). Empty
         # disables; substituted by generate-manifests.sh from the

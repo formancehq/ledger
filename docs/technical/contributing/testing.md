@@ -450,10 +450,12 @@ restart. It catches:
   set.
 
 It exercises the chart of accounts, transactions and reverts (with post-commit
-volumes), account/transaction/ledger metadata, the typed-metadata schema, and
+volumes), account/transaction/ledger metadata, the typed-metadata schema and
+its index lifecycle (create, retype with serving-window closure, remove), and
 the transient/ephemeral persistence classes — and reads them back: account,
-whole-ledger, transaction-by-id, and declared-schema reads are all validated
-against the model.
+whole-ledger, transaction-by-id, and declared-schema reads, plus the filtered,
+paginated list surface (ListAccounts, ListTransactions, ListLogs, indexed
+metadata-range queries) are all validated against the model.
 
 #### How it works
 
@@ -476,6 +478,9 @@ the harness around it:
 | `search.go` (driver) | `candidateBases` — enumerates the states the server could legitimately be in. |
 | `validate.go` (driver) | The conformance checks for committed bulks, failures, and reads. |
 | `actions.go` / `reads.go` (driver) | Random bulk generation; account, whole-ledger, transaction-by-id, and metadata-schema read execution. |
+| `queries.go` / `queries_logs.go` (driver) | Filtered, paginated list reads (ListAccounts, ListTransactions, ListLogs) generated against the model's committed state and validated window-by-window. |
+| `indexes.go` (driver) | Metadata-index lifecycle: create/retype/remove generation, readiness polling, retype-window bookkeeping, and indexed range-query validation. |
+| `metadata_filters.go` (driver) | Typed metadata filter generation shared by the query validators. |
 
 The key primitive is **`candidateBases`**: a committed bulk drains in
 log-sequence order, so the committed model state is its exact predecessor and
@@ -510,6 +515,18 @@ default. A successful run also requires at least one
 `singleton_driver_model: model outcome verified` assertion hit, emitted only
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
+
+It also requires every coverage sonde to have been satisfied (see below).
+
+The local runner's shell-fixture tests use a logical clock. Time remains before
+its deadline until the fake driver has written the scenario's assertions and
+installed its shutdown handler; the runner then gets one live monitor iteration
+before expiration. The early-exit case holds time before the deadline so the
+runner must detect actual process termination. Fixture events and clock replies
+use blocking pipes, with process-group cancellation and collected server/driver
+logs on infrastructure failure. The outer timeout is a watchdog, never evidence
+that the intended model state was reached.
+
 Common tunables (full list in the script header):
 
 | Variable | Meaning |
@@ -521,6 +538,35 @@ Common tunables (full list in the script header):
 | `RESTART_INTERVAL` / `DEAD_TIME` | Cluster restart cadence and how long a killed node stays down. |
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
 | `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
+
+#### Coverage sondes
+
+A green run proves nothing about a query path it never took. `coverage.go`
+registers one `Sometimes` per index the oracle models — the nine the generator
+churns, plus one per entity target for the metadata-field indexes and one for
+the retype window — and the runner fails when any of them was never satisfied.
+A sonde is satisfied only by a page that the index was needed for AND that the
+oracle verified; a refusal the model predicted proves the lifecycle gate, not
+that the index can answer.
+
+They are `Sometimes` rather than `Reachable` because a `Reachable` hard-wires
+its condition to true and so never produces a failing evaluation for
+Antithesis to steer on. On the platform this gate is redundant: the run
+branches and biases toward unsatisfied sondes, so a reachable path is reached.
+Locally there is one linear trajectory and no guidance, which is what the gate
+covers. A full 300s three-node run satisfies all twelve.
+
+Sonde names are data-driven, so the instrumentor cannot catalogue them; they
+are registered through `assert.AssertRaw`, as `internal/block/block.go` does.
+
+Because these sondes are false by design on most queries, the runner treats
+assertion classes differently: a false `Always` / `AlwaysOrUnreachable` /
+`Unreachable` is a finding, a false `Sometimes` is not. The exception is
+`STRICT_SOMETIMES`, the shared helpers whose `assert.Sometimes(IsTolerated(err),
+...)` probes are invariants wearing the wrong primitive; locally there is no
+fault injection and transients are retried to a definitive outcome, so those
+must hold on every call. `check-repo-invariants` pins that list against its
+call sites.
 
 #### Restore cycles (`--restore`, single node)
 
@@ -557,7 +603,7 @@ Where to make the matching change:
 | Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `tests/oracle/model.go`. |
 | New or changed response field the test should check | Update the validator in `validate.go` and the predicted effect it compares against. |
 | New rejection reason | Return the matching `domain.ErrReason*` from the right model branch so `validateFailure` can explain it. |
-| New persisted projection or read surface | Add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. |
+| New persisted projection or read surface | Point reads: add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. Filtered/paginated list surfaces: follow the `queries.go` / `queries_logs.go` pattern (generate against committed model state, validate the returned window). Index-backed reads: `indexes.go`. |
 
 To diagnose a finding deterministically, capture the run with
 `MODEL_DUMP_BATCHES=1` and feed the dump back through the model offline:
@@ -635,6 +681,27 @@ go test -tags integration ./...
 
 Tests built with event-sink feature tags such as `kafka` or `clickhouse` start Testcontainers from package `TestMain`, so they require Docker access even when using `-run '^$'` for compile-only checks.
 
+### Optional-feature internal tests
+
+CI's `Tests` job runs `just test-internal-coverage` after light unit coverage.
+It selects `./internal/...` with every optional feature tag from `all_tags` and
+the race detector. This executes Kafka, NATS, ClickHouse and Databricks event
+tests, S3 and Azure backup tests, and the S3 bootstrap lifecycle regression.
+Full-tag E2E runs select different packages and do not execute these assertions.
+The separate `integration` tag is not enabled by this recipe.
+
+Kafka, ClickHouse and S3 tests require Docker for their Testcontainers; NATS
+runs in-process, and the current internal Azure and Databricks tests require
+no cloud credentials. Reproduce the CI step with:
+
+```bash
+nix develop --command just test-internal-coverage
+```
+
+The job uploads `build/coverage/internal.out` alongside `unit.out`. CI coverage
+merging requires the internal profile, and `just coverage-all` also includes
+this suite. A failure blocks the existing `Tests` release and image gates.
+
 ### E2E Tests
 
 ```bash
@@ -661,8 +728,8 @@ plain `-tags e2e` run neither builds nor runs them:
 
 The bootstrap regression `TestRestoreDownloadStopsWithFxApplication` also needs
 the `s3` tag to compile the production S3 backend, but uses an in-process HTTP
-server and requires no MinIO or Docker. CI's `Tests` job runs it separately with
-the race detector:
+server and requires no MinIO or Docker when run alone. CI's `Tests` job includes
+it in the optional-feature internal suite. Run just this regression with:
 
 ```bash
 nix develop --command go test -race -tags s3 ./internal/bootstrap \

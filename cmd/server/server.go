@@ -31,6 +31,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/service"
 
 	"github.com/formancehq/ledger/v3/internal/bootstrap"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/flightrecorder"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/pyroscope"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -213,6 +214,11 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	// Cluster policy (replicated via Raft; see EN-1827)
 	runCmd.Flags().Uint64("cluster-policy-revision", 1, "Desired revision of the replicated cluster policy (must be greater than zero)")
 	runCmd.Flags().Uint64("query-checkpoint-limit", 10, "Maximum number of live query checkpoints, carried in the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("metadata-max-entries", domain.DefaultMetadataMaxEntriesPerEntity, "Maximum metadata entries one command may carry for a single entity, carried in the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("metadata-max-key-bytes", domain.DefaultMetadataMaxKeyBytes, "Maximum metadata key size in bytes, carried in the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("metadata-max-value-bytes", domain.DefaultMetadataMaxValueBytes, "Maximum metadata value size in bytes, carried in the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("metadata-max-entity-bytes", domain.DefaultMetadataMaxEntityBytes, "Maximum total metadata bytes one command may carry for a single entity, carried in the replicated cluster policy (must be greater than zero)")
+	runCmd.Flags().Uint64("metadata-max-command-bytes", domain.DefaultMetadataMaxCommandBytes, "Maximum total metadata bytes one command may carry across every entity, carried in the replicated cluster policy (must be greater than zero)")
 
 	// Snapshot sync configuration
 	runCmd.Flags().Duration("snapshot-session-ttl", 5*time.Minute, "Server-side session TTL for snapshot sync (reaper cleans up expired sessions)")
@@ -619,6 +625,11 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.IdempotencyEvictionInterval = getDuration("idempotency-eviction-interval", 60*time.Second)
 	cfg.ClusterPolicyRevision = getUint64("cluster-policy-revision", 1)
 	cfg.QueryCheckpointLimit = getUint64("query-checkpoint-limit", 10)
+	cfg.MetadataMaxEntriesPerEntity = getUint64("metadata-max-entries", domain.DefaultMetadataMaxEntriesPerEntity)
+	cfg.MetadataMaxKeyBytes = getUint64("metadata-max-key-bytes", domain.DefaultMetadataMaxKeyBytes)
+	cfg.MetadataMaxValueBytes = getUint64("metadata-max-value-bytes", domain.DefaultMetadataMaxValueBytes)
+	cfg.MetadataMaxEntityBytes = getUint64("metadata-max-entity-bytes", domain.DefaultMetadataMaxEntityBytes)
+	cfg.MetadataMaxCommandBytes = getUint64("metadata-max-command-bytes", domain.DefaultMetadataMaxCommandBytes)
 
 	// Snapshot sync configuration
 	cfg.SnapshotSyncConfig = bootstrap.SnapshotSyncConfig{

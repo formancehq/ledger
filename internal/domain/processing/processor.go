@@ -38,6 +38,9 @@ type RequestProcessor struct {
 // apply-child handlers. Per-batch fields (caches) are owned by the
 // *RequestProcessor and live for the lifetime of a ProcessOrders call.
 type Context struct {
+	// Metadata budget is shared by all orders in one atomic proposal.
+	metadataBudget *commandMetadataBudget
+
 	// Per-order — set by the dispatcher before calling the handler.
 	Scope Scope
 	// InputsResolutionHash is the admission-derived Numscript inputs hash for
@@ -61,67 +64,6 @@ type Context struct {
 	NumscriptCache *numscript.NumscriptCache
 	CompiledTypes  map[string][]accounttype.CompiledType
 	AssetCache     map[string]cachedAssetPrecision
-
-	// BornEmptyLedgers tracks ledgers created in THIS proposal that have not
-	// yet emitted any indexable data log. An index declared while its ledger
-	// is in this set is "initial" (EN-1564): the indexbuilder marks it live
-	// immediately instead of scheduling a historical backfill. Transient,
-	// per-ProcessOrders-call bookkeeping — never persisted.
-	BornEmptyLedgers map[string]struct{}
-}
-
-// markBornEmpty records a freshly-created ledger as having no indexable data
-// yet. Lazy-inits the map so callers holding a bare Context (ProcessOrder and
-// unit tests) work without a constructor change.
-func (c *Context) markBornEmpty(ledger string) {
-	if c.BornEmptyLedgers == nil {
-		c.BornEmptyLedgers = make(map[string]struct{})
-	}
-
-	c.BornEmptyLedgers[ledger] = struct{}{}
-}
-
-// isBornEmpty reports whether the ledger was created earlier in this proposal
-// and has emitted no indexable data log since. Nil-safe.
-func (c *Context) isBornEmpty(ledger string) bool {
-	_, ok := c.BornEmptyLedgers[ledger]
-
-	return ok
-}
-
-// updateBornEmpty folds a just-produced log into the born-empty set: a
-// CreatedLedger marks the ledger empty; the first indexable data log clears it.
-// Driven off the emitted top-level log so the apply, mirror-ingest and
-// order-skip paths (all wrapped as LogPayload_Apply) are covered from one call
-// site. delete on a nil map is a no-op.
-func (c *Context) updateBornEmpty(payload *commonpb.LogPayload) {
-	if cl := payload.GetCreateLedger(); cl != nil {
-		c.markBornEmpty(cl.GetName())
-
-		return
-	}
-
-	if apply := payload.GetApply(); apply != nil {
-		if isIndexableDataPayload(apply.GetLog().GetData()) {
-			delete(c.BornEmptyLedgers, apply.GetLedgerName())
-		}
-	}
-}
-
-// isIndexableDataPayload reports whether a ledger log payload carries data the
-// read-side indexbuilder backfills (mirrors indexbuilder.isDataLog). A ledger
-// that has emitted one of these is no longer "born empty" for EN-1564. Nil-safe.
-func isIndexableDataPayload(p *commonpb.LedgerLogPayload) bool {
-	switch p.GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction,
-		*commonpb.LedgerLogPayload_RevertedTransaction,
-		*commonpb.LedgerLogPayload_SavedMetadata,
-		*commonpb.LedgerLogPayload_DeletedMetadata,
-		*commonpb.LedgerLogPayload_OrderSkipped:
-		return true
-	default:
-		return false
-	}
 }
 
 // NewRequestProcessor creates a new RequestProcessor with the given meter.
@@ -223,6 +165,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		AssetCache:     p.assetCache,
 	}
 
+	ctx.metadataBudget = &commandMetadataBudget{}
+	for _, order := range orders {
+		ctx.metadataBudget.bytes += domain.OrderMetadataSize(order)
+	}
+
 	result := &OrdersResult{
 		Logs: make([]*raftcmdpb.CreatedLogOrReference, len(orders)),
 	}
@@ -310,8 +257,6 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 				}
 
 				sink.Absorb(order, skipLog)
-				ctx.updateBornEmpty(skippedPayload)
-
 				result.CreatedLogs = append(result.CreatedLogs, skipLog)
 				if result.MinLogSequence == 0 || nextSequenceID < result.MinLogSequence {
 					result.MinLogSequence = nextSequenceID
@@ -378,8 +323,6 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// log payload and updates whatever cross-order accumulator
 		// the framework needs.
 		sink.Absorb(order, log)
-		ctx.updateBornEmpty(payload)
-
 		// Accumulate the derivations applyProposal previously rebuilt
 		// by walking the log slice again (createdLogs filter +
 		// extractLogSequenceRange).
@@ -490,6 +433,7 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // processor's per-batch caches and forwards to processOrder.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ctx := &Context{
+		metadataBudget: &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,

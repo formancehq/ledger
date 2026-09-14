@@ -58,8 +58,15 @@ type V2SetMetadataData struct {
 
 // V2RevertedTransactionData represents the data for a REVERTED_TRANSACTION log.
 type V2RevertedTransactionData struct {
-	RevertedTransactionID uint64        `json:"revertedTransactionID"`
-	RevertTransaction     V2Transaction `json:"transaction"`
+	RevertedTransaction V2TransactionIdentity `json:"revertedTransaction"`
+	RevertTransaction   V2Transaction         `json:"transaction"`
+}
+
+// V2TransactionIdentity decodes only the original transaction's identity from
+// logs.data. The flattened revertedTransactionID belongs to logs.memento.
+// A pointer distinguishes a missing ID from the valid transaction ID zero.
+type V2TransactionIdentity struct {
+	ID *uint64 `json:"id"`
 }
 
 // V2DeleteMetadataData represents the data for a DELETE_METADATA log.

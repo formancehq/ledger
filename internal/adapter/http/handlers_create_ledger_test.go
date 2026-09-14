@@ -20,8 +20,8 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
@@ -31,7 +31,7 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		})
 	srv := newTestServer(t, backend)
 
@@ -52,10 +52,10 @@ func TestHandleCreateLedger_InitialSchemaAndAccountTypes(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = req.GetUnsigned().GetRequests()[0].GetCreateLedger()
 
-			return []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
@@ -63,7 +63,7 @@ func TestHandleCreateLedger_InitialSchemaAndAccountTypes(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		})
 	srv := newTestServer(t, backend)
 
@@ -202,7 +202,7 @@ func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerAlreadyExists{Name: "test-ledger"}
 		})
 	srv := newTestServer(t, backend)

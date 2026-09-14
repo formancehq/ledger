@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -109,33 +110,23 @@ func TestSlowCacheMaintenanceDoesNotHoldSelectionLock(t *testing.T) {
 			realTool, err := exec.LookPath(stage)
 			require.NoError(t, err)
 			ready := filepath.Join(root, "ready")
-			// Block the expensive operation, not the peer: the second initializer
-			// must finish while the first is still waiting for explicit release.
-			script := "#!/usr/bin/env bash\nset -eu\nprintf ready >\"$MAINTENANCE_READY\"\nIFS= read -r release <&3\nexec \"$MAINTENANCE_TOOL\" \"$@\"\n"
+			require.NoError(t, syscall.Mkfifo(ready, 0o600))
+			// The peer starts only after maintenance reaches the blocking operation.
+			// It reports ready only after its initializer completes, so the shared
+			// supervisor cannot release maintenance while the peer is still blocked.
+			script := "#!/usr/bin/env bash\nset -eu\nprintf 'ready\\n' >\"$MAINTENANCE_READY\"\nprintf 'ready\\n' >&3\nIFS= read -r release <&4\nexec \"$MAINTENANCE_TOOL\" \"$@\"\n"
 			require.NoError(t, os.WriteFile(filepath.Join(bin, stage), []byte(script), 0o755))
-			reader, writer, err := os.Pipe()
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = reader.Close(); _ = writer.Close() })
-			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-			t.Cleanup(cancel)
-			command := exec.CommandContext(ctx, "bash", validationEnvPath(t), filepath.Join(root, "slow"), "true")
+			command := testenv.Command(t, "bash", validationEnvPath(t), filepath.Join(root, "slow"), "true")
 			command.Env = append(cacheBudgetEnvironment(root, cacheRoot), "PATH="+bin+":"+os.Getenv("PATH"), "MAINTENANCE_READY="+ready, "MAINTENANCE_TOOL="+realTool)
-			command.ExtraFiles = []*os.File{reader}
-			require.NoError(t, command.Start())
-			t.Cleanup(func() { _ = command.Process.Kill() })
-			require.NoError(t, reader.Close())
-			require.Eventually(t, func() bool {
-				_, err := os.Stat(ready)
-
-				return err == nil
-			}, 10*time.Second, 10*time.Millisecond)
-			peer := exec.CommandContext(ctx, "bash", validationEnvPath(t), filepath.Join(root, "peer"), "true")
+			peer := testenv.Command(t, "bash", "-c",
+				`set -eu; IFS= read -r ready <"$1"; bash "$2" "$3" true; printf 'ready\n' >&3; IFS= read -r release <&4`,
+				"peer", ready, validationEnvPath(t), filepath.Join(root, "peer"))
 			peer.Env = cacheBudgetEnvironment(root, cacheRoot)
-			output, err := peer.CombinedOutput()
-			require.NoError(t, err, string(output))
-			_, err = writer.WriteString("release\n")
+			_, err = testenv.RunSynchronized(t, 30*time.Second,
+				testenv.SynchronizedCommand{Name: "maintenance-" + stage, Command: command},
+				testenv.SynchronizedCommand{Name: "peer", Command: peer},
+			)
 			require.NoError(t, err)
-			require.NoError(t, command.Wait())
 		})
 	}
 }

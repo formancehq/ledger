@@ -38,7 +38,8 @@ func TestTranslateBatchRejectsExhaustedSourceCounters(t *testing.T) {
 		{
 			name: "revert transaction id",
 			log: V2Log{ID: 1, Type: "REVERTED_TRANSACTION", Data: mustMarshal(t, V2RevertedTransactionData{
-				RevertTransaction: V2Transaction{ID: math.MaxUint64},
+				RevertedTransaction: V2TransactionIdentity{ID: new(uint64(0))},
+				RevertTransaction:   V2Transaction{ID: math.MaxUint64},
 			})},
 			nextLog: 1,
 			nextTx:  1,
@@ -231,7 +232,7 @@ func TestTranslateBatch_RevertedTransaction(t *testing.T) {
 		Type: "REVERTED_TRANSACTION",
 		Date: "2023-11-14T22:14:00Z",
 		Data: mustMarshal(t, V2RevertedTransactionData{
-			RevertedTransactionID: 1,
+			RevertedTransaction: V2TransactionIdentity{ID: new(uint64(1))},
 			RevertTransaction: V2Transaction{
 				ID: 5,
 				Postings: []V2Posting{{

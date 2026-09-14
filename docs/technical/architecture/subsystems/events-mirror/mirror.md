@@ -26,6 +26,35 @@ cannot recreate a mirror worker during Fx teardown.
 
 Reconciliation is in `Manager.reconcileGeneration()`.
 
+### Source initialization and cancellation
+
+Each leader generation owns an initialization context. The Manager captures
+that context together with the generation when reconciliation starts, and
+passes it to source construction, including PostgreSQL's `_system.ledgers`
+bucket lookup. Recording a newer leadership transition cancels the previous
+context synchronously. `Stop` cancels it before waiting for the reconciliation
+loop. A source database lock therefore cannot keep that lookup waiting after
+leadership loss or shutdown until a database timeout or manual lock release.
+
+The leadership mutex protects the generation and its context; it is never
+held during database I/O, worker teardown, or loop draining. Reconciliation
+owns the worker-map mutex and may briefly take the leadership mutex for a
+snapshot or generation check. Leadership callbacks and `Stop` release the
+leadership mutex before notifying, draining, or acquiring the worker-map mutex.
+
+Rewrite rules are compiled before allocating a source. A failed PostgreSQL
+constructor closes its pool; a successful source whose generation has become
+stale is closed before worker startup. Once ownership transfers to a Worker,
+`Worker.Stop` cancels and joins its runtime loop and closes the source.
+Existing workers are torn down by reconciliation after canceled construction
+unwinds, or by `Stop` after the manager loop exits.
+
+Initialization cancellation does not provide atomic authorization for worker
+startup or proposals. The existing post-start generation check still stops a
+worker if leadership changes across startup. Shared Node leadership leases and
+lease-scoped runtime execution are separate work (EN-1963). Cancellation also
+cannot undo an external operation that has already completed.
+
 The Worker (`worker.go:27-175`) is a polling loop:
 
 | Setting | Default | Source |
@@ -35,6 +64,21 @@ The Worker (`worker.go:27-175`) is a polling loop:
 | Prefetch | Next batch fetched async while previous one is applying | `worker.go:464-490` |
 
 On startup the worker reads `LedgerBoundaries` from Pebble once, before its first fetch, and takes both its ingestion position (`last_mirror_v2_log_id`) and `NextTransactionId` from it. The value it keeps in memory afterwards is a cache, not an authority: it advances only after both Raft acceptance and successful FSM application, and it is dropped on any batch error so the next tick re-reads the durable boundary. See [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for why this is the only durable ingestion position.
+
+## Metadata limits
+
+After translation and CEL rewriting, the worker validates each order's metadata
+shape and size and the whole batch's metadata bytes against the destination's
+committed cluster policy before proposing it. FSM apply rechecks those limits
+before mutation, using its committed policy in case the policy changed since
+the worker read it. External source metadata is subject to the same limits as
+public API metadata; the source's own validation is not trusted.
+
+A rejected batch does not advance the applied boundary. The worker records the
+error and retries from the durable position. Reduce `batch_size` when otherwise
+valid entries exceed the aggregate command ceiling; an oversized individual
+entry requires correcting source/rewrite output or raising the destination's
+limits with a newer cluster-policy revision. See the [metadata size contract](../admission/metadata-limits.md).
 
 ## Source adapters
 
@@ -50,10 +94,28 @@ Two concrete implementations:
 
 | Adapter | Mechanism | File |
 |---------|-----------|------|
-| HTTP | `GET /v2/{ledger}/logs?pageSize=X&after=Y` against a v2 server, OAuth2 credentials supported | `source_http.go:14-88` |
+| HTTP | `GET /v2/{ledger}/logs` with `pageSize`, `sort=id:asc`, and a numeric `query` filter `{"$gt":{"id":Y}}`, OAuth2 credentials supported | `source_http.go` |
 | PostgreSQL | Direct `SELECT` on the v2 `{bucket}.logs` table; the v2 schema is discovered via `_system.ledgers` | `source_postgres.go:17-79` |
 
 Both adapters return v2 log entries in their native shape; translation to v3 orders happens upstream of the source interface.
+
+Ingestion must return the oldest available logs strictly after the supplied
+boundary, so replaying history cannot replace available transactions with
+synthetic gaps (EN-2024). The HTTP adapter uses the public sort and numeric
+ID-filter contract supported by Ledger v2.4.7. That API defaults to descending
+order and ignores `after`; reversing a truncated descending page would still
+omit older history. Every fetch builds a new ascending query from `afterID`,
+including after an empty tail, a retry, or worker restart. It does not retain
+the response's opaque continuation token. `LedgerBoundaries` remains the only
+durable ingestion position, and a speculative prefetch cannot advance it.
+The numeric filter preserves uint64 precision and needs no `afterID + 1`
+arithmetic. `GetLatestLogID` separately requests `sort=id:desc&pageSize=1`
+without a boundary filter; an ingestion batch of size one still reads ascending.
+
+The HTTP regression fixture follows upstream's default descending order,
+explicit sort/filter, and lookahead pagination independently of page size.
+Tests cover multiple pages, nonzero-boundary resume, append after an empty
+tail, fail-then-success fetching, large IDs, and absence of fabricated gaps.
 
 ## The translation layer
 
@@ -82,6 +144,23 @@ The resulting transaction, including these dates, is embedded in the persisted
 ledger log. Incremental backup exports that log row and `RebuildDelta` replays
 it into the restored transaction projection, so a post-checkpoint mirror ingest
 keeps the same `insertedAt` and `updatedAt` across a cross-cluster restore.
+
+For v2 `REVERTED_TRANSACTION`, the original identity comes from
+`data.revertedTransaction.id`, and the compensating transaction comes from
+`data.transaction` (its ID, reverse postings, metadata and timestamp). In
+v2.4.7, `logs.data` stores this full nested payload; the separate hash
+`logs.memento` contains `revertedTransactionID`. PostgreSQL ingestion selects
+`data`, so the memento field must never substitute for the nested identity.
+Missing or null original IDs fail translation; an explicit original ID of zero
+is valid. No orders or advanced source cursor are returned for a failed batch.
+
+This mapping preserves the existing apply contract: reverse postings update
+volumes, the original transaction is marked reverted and linked to the
+compensating ID, and the compensating state and ledger log link back to the
+original. Plausible balances alone cannot establish correct ingestion. The
+upstream-encoded fixtures under `internal/adapter/v2/testdata/` exercise both
+translation and its composition with order processing, including an unrelated
+transaction zero. These tests do not exercise PostgreSQL I/O or HTTP pagination.
 
 `FillGap` is the explicit "we know there's a v2 log here but we have no payload for it" marker — it lets the v3 ledger advance its own logical sequence even when the source skipped one.
 

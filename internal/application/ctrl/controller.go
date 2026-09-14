@@ -3,6 +3,7 @@ package ctrl
 import (
 	"context"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -93,7 +94,7 @@ type Controller interface {
 
 	// Write operations - single entry point for all requests. The ApplyRequest
 	// is one atomic batch, signed or unsigned at the batch level.
-	Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error)
+	Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error)
 
 	// Barrier proposes a no-op through Raft consensus. When it returns, all
 	// previously proposed entries are guaranteed to have been applied.

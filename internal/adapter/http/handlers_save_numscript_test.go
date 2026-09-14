@@ -20,8 +20,8 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_SavedNumscript{
@@ -34,7 +34,7 @@ func TestHandleSaveNumscript_Success(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -164,7 +164,7 @@ func TestHandleSaveNumscript_VersionConflict(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrNumscriptVersionAlreadyExists{Name: "my-script", Version: "1.0.0"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

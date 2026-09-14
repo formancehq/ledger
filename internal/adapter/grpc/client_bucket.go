@@ -6,10 +6,12 @@ import (
 	"io"
 	"strconv"
 
+	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -45,15 +47,22 @@ func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 // can populate the audit entry with the original subject even though the
 // inter-node connection authenticates via cluster-secret. The signed/unsigned
 // variant rides through unchanged for leader-side verification.
-func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	req.ForwardedCallerSnapshot = auth.ResolveCallerSnapshot(ctx)
 
-	resp, err := g.client.Apply(ctx, req)
+	var trailers metadata.MD
+	resp, err := g.client.Apply(ctx, req, ggrpc.Trailer(&trailers))
 	if err != nil {
 		return nil, err
 	}
 
-	return resp.GetLogs(), nil
+	// This is response metadata from the leader, never an incoming client hint.
+	values := trailers.Get(metadataKeyApplyReplayed)
+	if len(values) != 1 || (values[0] != "true" && values[0] != "false") {
+		return nil, errors.New("leader Apply response missing valid execution provenance")
+	}
+
+	return &domain.ApplyResult{Logs: resp.GetLogs(), Replayed: values[0] == "true"}, nil
 }
 
 func (g *BucketGrpcClient) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {

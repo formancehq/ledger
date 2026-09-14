@@ -19,8 +19,8 @@ func TestHandlePromoteLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{{
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*commonpb.Log{{
 				Payload: &commonpb.LogPayload{
 					Type: &commonpb.LogPayload_PromoteLedger{
 						PromoteLedger: &commonpb.PromotedLedgerLog{
@@ -28,7 +28,7 @@ func TestHandlePromoteLedger_Success(t *testing.T) {
 						},
 					},
 				},
-			}}, nil
+			}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -62,7 +62,7 @@ func TestHandlePromoteLedger_NotMirrorMode(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerNotInMirrorMode{Name: "normal-ledger"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -128,7 +128,7 @@ func TestHandlePromoteLedger_LedgerNotFound(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

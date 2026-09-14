@@ -147,6 +147,13 @@ const replayConflictOneIn = 6
 // Worker → processor channel cap, well above steady-state inflight.
 const incomingBuffer = 256
 
+// --- Index readiness poller ---------------------------------------------
+
+// Base interval between per-replica index-readiness reconciliations. Short so a
+// freshly created (or restore-rebuilt) index is promoted to active — where the
+// model then requires its queries to return results — soon after it goes live.
+const indexPollInterval = 2 * time.Second
+
 // --- Restore cycle ------------------------------------------------------
 
 // Poll cadence while waiting for the driver to fully drain before a backup.

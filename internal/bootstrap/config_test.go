@@ -1,11 +1,14 @@
 package bootstrap
 
 import (
+	"net"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 )
 
@@ -31,6 +34,39 @@ func TestServiceAdvertiseAddr_WithoutPort(t *testing.T) {
 	require.Equal(t, "myhost:8080", cfg.ServiceAdvertiseAddr())
 }
 
+func TestServiceAdvertiseAddr_RoundTrip(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name      string
+		advertise string
+		host      string
+		want      string
+	}{
+		{"IPv4", "10.0.0.1:7777", "10.0.0.1", "10.0.0.1:8888"},
+		{"hostname with port", "myhost:7777", "myhost", "myhost:8888"},
+		{"hostname without port", "myhost", "myhost", "myhost:8888"},
+		{"IPv6", "[2001:db8::1]:7777", "2001:db8::1", "[2001:db8::1]:8888"},
+		{"IPv6 without port", "2001:db8::1", "2001:db8::1", "[2001:db8::1]:8888"},
+		{"IPv6 with zone", "[fe80::1%en0]:7777", "fe80::1%en0", "[fe80::1%en0]:8888"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := Config{
+				RaftConfig: node.NodeConfig{AdvertiseAddr: tt.advertise},
+				GRPCPort:   8888,
+			}
+			addr := cfg.ServiceAdvertiseAddr()
+			require.Equal(t, tt.want, addr)
+			host, port, err := net.SplitHostPort(addr)
+			require.NoError(t, err)
+			require.Equal(t, tt.host, host)
+			require.Equal(t, strconv.Itoa(cfg.GRPCPort), port)
+		})
+	}
+}
+
 // validBaseConfig returns a Config with required fields set so that
 // Validate() only fails on the aspect under test.
 func validBaseConfig() Config {
@@ -40,6 +76,13 @@ func validBaseConfig() Config {
 		TLSConfig:             TLSConfig{Mode: TLSModeDisabled},
 		ClusterPolicyRevision: 1,
 		QueryCheckpointLimit:  10,
+		// The metadata ceilings are required, so the fixture carries the
+		// defaults; a case exercising them sets its own values.
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 		TransportConfig: node.TransportConfig{
 			Reception: []int{10, 512, 512},
 			Send:      []int{10, 512, 512},

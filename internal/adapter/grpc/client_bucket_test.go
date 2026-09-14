@@ -936,15 +936,19 @@ func TestApply_Success(t *testing.T) {
 	logs := []*commonpb.Log{{Sequence: 1}}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(
-		&servicepb.ApplyResponse{Logs: logs}, nil,
-	)
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+			*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.Pairs(metadataKeyApplyReplayed, "false")
+
+			return &servicepb.ApplyResponse{Logs: logs}, nil
+		})
 
 	client := NewLedgerGrpcClient(mock)
 	result, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
-	require.Len(t, result, 1)
-	require.Equal(t, uint64(1), result[0].GetSequence())
+	require.Len(t, result.Logs, 1)
+	require.False(t, result.Replayed)
+	require.Equal(t, uint64(1), result.Logs[0].GetSequence())
 }
 
 func TestApply_Error(t *testing.T) {
@@ -953,7 +957,7 @@ func TestApply_Error(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	wantErr := errors.New("apply failed")
-	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, wantErr)
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, wantErr)
 
 	client := NewLedgerGrpcClient(mock)
 	_, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
@@ -976,9 +980,10 @@ func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	var capturedApplyReq *servicepb.ApplyRequest
-	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest, _ ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
 			capturedApplyReq = req
+			*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.Pairs(metadataKeyApplyReplayed, "false")
 
 			return &servicepb.ApplyResponse{}, nil
 		})
@@ -1011,9 +1016,10 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	var capturedApplyReq *servicepb.ApplyRequest
-	mock.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest, _ ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
 			capturedApplyReq = req
+			*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.Pairs(metadataKeyApplyReplayed, "false")
 
 			return &servicepb.ApplyResponse{}, nil
 		})
@@ -1037,4 +1043,43 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 	require.Equal(t, "original-user", fc.GetIdentity().GetSubject())
 	require.Equal(t, "ed25519-7", fc.GetIdentity().GetKeyId())
 	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetScopes())
+}
+
+func TestApply_RequiresLeaderExecutionProvenance(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name     string
+		values   []string
+		valid    bool
+		replayed bool
+	}{
+		{name: "missing"},
+		{name: "duplicate", values: []string{"false", "true"}},
+		{name: "invalid", values: []string{"1"}},
+		{name: "new execution", values: []string{"false"}, valid: true},
+		{name: "replay", values: []string{"true"}, valid: true, replayed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			mock := NewMockBucketServiceClient(gomock.NewController(t))
+			mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+					*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.MD{metadataKeyApplyReplayed: test.values}
+
+					return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 42}}}, nil
+				})
+			// Even a forged incoming value cannot substitute for the leader response.
+			ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(metadataKeyApplyReplayed, "true"))
+			result, err := NewLedgerGrpcClient(mock).Apply(ctx, servicepb.UnsignedApplyRequest("key", &servicepb.Request{}))
+			if !test.valid {
+				require.ErrorContains(t, err, "execution provenance")
+				require.Nil(t, result)
+
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, test.replayed, result.Replayed)
+			require.Equal(t, uint64(42), result.Logs[0].GetSequence())
+		})
+	}
 }

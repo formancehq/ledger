@@ -348,6 +348,21 @@ func IsAmbiguousCommit(err error) bool {
 	return IsDeadlineExceeded(err)
 }
 
+// IsWritesBlockedDiskFull returns true for the write gate's disk-pressure
+// rejection (ResourceExhausted / WRITES_BLOCKED_DISK_FULL). The gate refuses
+// the write before consensus, so the bulk definitively did not commit and a
+// retry is sound; under fault injection disk pressure comes and goes, so the
+// workload treats it as transient. The clock-skew twin is Unavailable and
+// already lands in the transient set through IsUnavailable. The documented
+// pre-consensus guarantee is the full code/reason tuple, so both are
+// required: the reason under any other code is an unexpected response, not
+// a transient.
+func IsWritesBlockedDiskFull(err error) bool {
+	st, ok := status.FromError(err)
+
+	return ok && st.Code() == codes.ResourceExhausted && HasErrorReason(err, "WRITES_BLOCKED_DISK_FULL")
+}
+
 // HasErrorReason returns true if the error is a gRPC status with an
 // ErrorInfo detail matching the given reason.
 func HasErrorReason(err error, reason string) bool {
@@ -461,6 +476,8 @@ func IsNoFullCheckpoint(err error) bool {
 //   - Unavailable (cluster unhealthy / no leader / Raft transients)
 //   - DeadlineExceeded (wire-level timeout, also see IsAmbiguousCommit)
 //   - ExternalServiceError (S3 / NATS down, etc.)
+//   - ResourceExhausted + WRITES_BLOCKED_DISK_FULL (write gate under disk
+//     pressure; refused before consensus, see IsWritesBlockedDiskFull)
 //
 // NOT in IsTransient:
 //   - Aborted (see IsAborted comment — surfaced loud, not retried)
@@ -470,7 +487,8 @@ func IsNoFullCheckpoint(err error) bool {
 func IsTransient(err error) bool {
 	return IsUnavailable(err) ||
 		IsDeadlineExceeded(err) ||
-		IsExternalServiceError(err)
+		IsExternalServiceError(err) ||
+		IsWritesBlockedDiskFull(err)
 }
 
 // IsTolerated returns true for any error the workload should NOT surface as a

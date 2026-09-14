@@ -21,6 +21,7 @@ func TestHTTPSource_FetchLogs_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v2/default/logs", r.URL.Path)
 		require.Equal(t, "10", r.URL.Query().Get("pageSize"))
+		require.Equal(t, "id:asc", r.URL.Query().Get("sort"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(V2LogPage{
@@ -49,7 +50,8 @@ func TestHTTPSource_FetchLogs_WithAfterID(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "5", r.URL.Query().Get("after"))
+		require.JSONEq(t, `{"$gt":{"id":5}}`, r.URL.Query().Get("query"))
+		require.Empty(t, r.URL.Query().Get("after"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(V2LogPage{
@@ -151,6 +153,8 @@ func TestHTTPSource_GetLatestLogID_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/v2/default/logs", r.URL.Path)
 		require.Equal(t, "1", r.URL.Query().Get("pageSize"))
+		require.Equal(t, "id:desc", r.URL.Query().Get("sort"))
+		require.Empty(t, r.URL.Query().Get("query"))
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(V2LogPage{

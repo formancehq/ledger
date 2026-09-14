@@ -159,6 +159,18 @@ func TestHandleError(t *testing.T) {
 			expectedCode:   "VALIDATION",
 		},
 		{
+			// 400, not 429: the caller must send less metadata, so the
+			// rejection is permanent and must not invite a retry.
+			name: "metadata limit exceeded",
+			err: &domain.ErrMetadataLimitExceeded{
+				Dimension: domain.MetadataLimitDimensionValue,
+				Limit:     16384,
+				Actual:    20480,
+			},
+			expectedStatus: http.StatusBadRequest,
+			expectedCode:   domain.ErrReasonMetadataLimitExceeded,
+		},
+		{
 			name:           "script required",
 			err:            domain.ErrScriptRequired,
 			expectedStatus: http.StatusBadRequest,

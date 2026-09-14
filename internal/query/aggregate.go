@@ -369,12 +369,12 @@ func AggregateVolumes(
 }
 
 // AggregateAllVolumes performs unfiltered volume aggregation in a single Pebble
-// scan. Instead of enumerating accounts then scanning volumes per account (N+1
-// iterators, N Seek hops), it calls StreamingIter once with the ledger
+// scan. Instead of enumerating accounts then scanning volumes per account (N+2
+// physical iterators, N Seek hops), it calls StreamingIter once with the ledger
 // prefix, yielding all volume entries in a single sequential pass.
 //
 // This is significantly faster for unfiltered aggregation because:
-//   - 1 Pebble iterator instead of N+1
+//   - 1 Pebble iterator instead of N+2 (volume and metadata account scans)
 //   - sequential scan instead of N Seek hops
 //   - no double-read of the same Pebble blocks
 func AggregateAllVolumes(

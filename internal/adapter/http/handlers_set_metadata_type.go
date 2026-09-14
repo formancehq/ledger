@@ -1,7 +1,6 @@
 package http
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -28,10 +27,8 @@ func (s *Server) handleSetMetadataType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key := chi.URLParam(r, "key")
-	if key == "" {
-		writeBadRequest(w, "INVALID_REQUEST", errors.New("metadata key is required"))
-
+	key, ok := requireMetadataKey(w, r)
+	if !ok {
 		return
 	}
 

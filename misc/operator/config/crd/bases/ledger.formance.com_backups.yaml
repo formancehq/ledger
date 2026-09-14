@@ -256,6 +256,12 @@ spec:
                     format: int32
                     type: integer
                 type: object
+              lastFullRunCompletionTime:
+                description: |-
+                  LastFullRunCompletionTime is the latest observed terminal full run completion,
+                  successful or failed. It is preserved independently of run history retention.
+                format: date-time
+                type: string
               lastIncrementalBackup:
                 description: LastIncrementalBackup holds the result of the last incremental
                   backup.
@@ -299,6 +305,12 @@ spec:
                     format: date-time
                     type: string
                 type: object
+              lastIncrementalRunCompletionTime:
+                description: |-
+                  LastIncrementalRunCompletionTime is the latest observed terminal incremental
+                  run completion, successful or failed, independent of run history retention.
+                format: date-time
+                type: string
               message:
                 description: Message contains human-readable status information.
                 type: string

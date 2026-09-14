@@ -57,15 +57,6 @@ service ClusterService {
   // Can run on any node (log/audit sequences are identical across replicas).
   rpc IncrementalBackup(IncrementalBackupRequest) returns (IncrementalBackupResponse);
 
-  // CreateQueryCheckpoint creates a physical Pebble checkpoint via Raft consensus.
-  // The checkpoint captures both the main store and read index, enabling
-  // point-in-time queries on any node. Forwarded to leader.
-  rpc CreateQueryCheckpoint(CreateQueryCheckpointRequest) returns (CreateQueryCheckpointResponse);
-
-  // DeleteQueryCheckpoint removes a previously created query checkpoint via Raft consensus.
-  // Forwarded to leader.
-  rpc DeleteQueryCheckpoint(DeleteQueryCheckpointRequest) returns (DeleteQueryCheckpointResponse);
-
   // ListQueryCheckpoints lists all existing query checkpoints.
   // Reads from replicated Pebble state (available on any node).
   rpc ListQueryCheckpoints(ListQueryCheckpointsRequest) returns (ListQueryCheckpointsResponse);
@@ -298,19 +289,6 @@ message CreateCheckpointResponse {
 // ============================================================================
 // Query Checkpoint Messages
 // ============================================================================
-
-message CreateQueryCheckpointRequest {}
-
-message CreateQueryCheckpointResponse {
-  fixed64 checkpoint_id = 1;  // Sequential checkpoint identifier
-  fixed64 max_sequence = 2;   // Max global log sequence at checkpoint time
-}
-
-message DeleteQueryCheckpointRequest {
-  fixed64 checkpoint_id = 1;  // ID of the query checkpoint to delete
-}
-
-message DeleteQueryCheckpointResponse {}
 
 message ListQueryCheckpointsRequest {}
 

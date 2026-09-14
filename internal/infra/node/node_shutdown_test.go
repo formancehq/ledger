@@ -109,6 +109,38 @@ func TestNodeStopExpiredContextStillTerminatesRun(t *testing.T) {
 	}
 }
 
+func TestNodeIdleTasksRequireExplicitStopAfterCancellation(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		runCtx, cancelRun := context.WithCancel(context.Background())
+		defer cancelRun()
+		n, result, resume := startShutdownNode(t, runCtx, newTestApplierSetup(t))
+		resume()
+		cancelRun()
+		// Let the real decoder observe cancellation and all remaining tasks
+		// settle. Unlike a scheduling delay, Wait establishes that they cannot
+		// make progress until another event (the explicit stop below) arrives.
+		synctest.Wait()
+		select {
+		case err := <-result:
+			t.Fatalf("context cancellation unexpectedly terminated Node.Run: %v", err)
+		default:
+		}
+		select {
+		case <-n.tasks.terminated:
+			t.Fatal("context cancellation unexpectedly terminated the task pool")
+		default:
+		}
+		require.NoError(t, n.Stop(context.Background()))
+		require.NoError(t, <-result)
+		select {
+		case <-n.tasks.terminated:
+		default:
+			t.Fatal("Stop returned without joining the real idle tasks")
+		}
+	})
+}
+
 func TestNodeStopWaitsForCommitDrain(t *testing.T) {
 	t.Parallel()
 	commitEntered := make(chan struct{})

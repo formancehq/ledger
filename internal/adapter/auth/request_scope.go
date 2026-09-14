@@ -90,20 +90,18 @@ func requiredScopeForRequest(req *servicepb.Request) (Scope, bool) {
 	case *servicepb.Request_DeletePreparedQuery:
 		return ScopeQueriesWrite, true
 	// Query checkpoints are cluster-wide state, not per-ledger business data.
-	// The dedicated ClusterService.CreateQueryCheckpoint and
-	// DeleteQueryCheckpoint RPCs require ledger:ClusterWrite
-	// (server_cluster.go:442, 481), which DefaultMapping grants only through
-	// ledger:admin. Accepting ledger:OpsWrite here let a plain ledger:write
-	// token perform an admin-only operation through Apply — a privilege
-	// escalation, not merely a scope mismatch (EN-1506).
+	// ledger:ClusterWrite is what the removed ClusterService.CreateQueryCheckpoint
+	// and DeleteQueryCheckpoint RPCs required (EN-1954 folded them into Apply),
+	// and DefaultMapping grants it only through ledger:admin. Accepting
+	// ledger:OpsWrite here let a plain ledger:write token perform an admin-only
+	// operation through Apply — a privilege escalation, not merely a scope
+	// mismatch (EN-1506).
 	case *servicepb.Request_CreateQueryCheckpoint:
 		return ScopeClusterWrite, true
 	case *servicepb.Request_DeleteQueryCheckpoint:
 		return ScopeClusterWrite, true
-	// The two schedule variants have no dedicated write RPC — they are
-	// reachable only through Apply. ClusterWrite follows their siblings above
-	// and their read counterpart GetQueryCheckpointSchedule, which requires
-	// ledger:ClusterRead (server_cluster.go:555).
+	// ClusterWrite follows the two checkpoint variants above and the read
+	// counterpart GetQueryCheckpointSchedule, which requires ledger:ClusterRead.
 	case *servicepb.Request_SetQueryCheckpointSchedule:
 		return ScopeClusterWrite, true
 	case *servicepb.Request_DeleteQueryCheckpointSchedule:

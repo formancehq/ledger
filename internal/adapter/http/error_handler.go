@@ -123,11 +123,9 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		if httpStatus == http.StatusInternalServerError {
 			recordHTTPInternalError(r, correlationID(r), err)
 		}
-		if d.PublicOverride {
-			err = errors.New(d.Message)
-		}
-
-		writeErrorResponse(w, httpStatus, d.Reason, err)
+		// Render the same public message selected by the originating gRPC
+		// encoder; routing wrappers belong to diagnostics, not the response.
+		writeErrorResponse(w, httpStatus, d.Reason, errors.New(d.Message))
 
 		return
 	}

@@ -19,7 +19,7 @@ func txIDBytes(id uint64) []byte {
 
 // newAddressTxFixture writes account→tx rows in the any-role bucket and
 // returns an AddressTxIterator over the given addresses.
-func newAddressTxFixture(t *testing.T, txsByAccount map[string][]uint64, addrs ...string) *AddressTxIterator {
+func newAddressTxFixture(t *testing.T, txsByAccount map[string][]uint64, addrs ...string) *AddressTxIterator[Asc] {
 	t.Helper()
 
 	return newAddressTxFixtureForPrefix(t, PrefixAccountTx, txsByAccount, addrs...)
@@ -33,7 +33,7 @@ func newAddressTxFixtureForPrefix(
 	prefix byte,
 	txsByAccount map[string][]uint64,
 	addrs ...string,
-) *AddressTxIterator {
+) *AddressTxIterator[Asc] {
 	tb.Helper()
 
 	s := newTestStore(tb)
@@ -49,7 +49,7 @@ func newAddressTxFixtureForPrefix(
 }
 
 // drainIDs consumes the iterator and returns the decoded transaction IDs.
-func drainIDs(tb testing.TB, it *AddressTxIterator) []uint64 {
+func drainIDs(tb testing.TB, it *AddressTxIterator[Asc]) []uint64 {
 	tb.Helper()
 
 	var got []uint64

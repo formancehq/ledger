@@ -34,7 +34,12 @@ func NewServer(logger logging.Logger, backend Backend, authCfg internalauth.Auth
 // backend. The HTTP API never signs requests itself — signing flows through
 // gRPC where the caller controls the envelope construction.
 func (s *Server) applyUnsigned(ctx context.Context, idempotencyKey string, reqs ...*servicepb.Request) ([]*commonpb.Log, error) {
-	return s.backend.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey, reqs...))
+	result, err := s.backend.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey, reqs...))
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Logs, nil
 }
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -destination backend_generated_test.go -typed -package http . Backend

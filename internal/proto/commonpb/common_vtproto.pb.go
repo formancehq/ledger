@@ -1181,6 +1181,11 @@ func (m *ClusterPolicy) CloneVT() *ClusterPolicy {
 	r.Revision = m.Revision
 	r.IdempotencyTtlMicros = m.IdempotencyTtlMicros
 	r.QueryCheckpointLimit = m.QueryCheckpointLimit
+	r.MetadataMaxEntriesPerEntity = m.MetadataMaxEntriesPerEntity
+	r.MetadataMaxKeyBytes = m.MetadataMaxKeyBytes
+	r.MetadataMaxValueBytes = m.MetadataMaxValueBytes
+	r.MetadataMaxEntityBytes = m.MetadataMaxEntityBytes
+	r.MetadataMaxCommandBytes = m.MetadataMaxCommandBytes
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1980,7 +1985,6 @@ func (m *CreatedIndexLog) CloneVT() *CreatedIndexLog {
 	}
 	r := new(CreatedIndexLog)
 	r.Id = m.Id.CloneVT()
-	r.Initial = m.Initial
 	r.BoundType = m.BoundType
 	r.BoundTypeDeclared = m.BoundTypeDeclared
 	if len(m.unknownFields) > 0 {
@@ -6356,6 +6360,21 @@ func (this *ClusterPolicy) EqualVT(that *ClusterPolicy) bool {
 	if this.QueryCheckpointLimit != that.QueryCheckpointLimit {
 		return false
 	}
+	if this.MetadataMaxEntriesPerEntity != that.MetadataMaxEntriesPerEntity {
+		return false
+	}
+	if this.MetadataMaxKeyBytes != that.MetadataMaxKeyBytes {
+		return false
+	}
+	if this.MetadataMaxValueBytes != that.MetadataMaxValueBytes {
+		return false
+	}
+	if this.MetadataMaxEntityBytes != that.MetadataMaxEntityBytes {
+		return false
+	}
+	if this.MetadataMaxCommandBytes != that.MetadataMaxCommandBytes {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -7703,9 +7722,6 @@ func (this *CreatedIndexLog) EqualVT(that *CreatedIndexLog) bool {
 		return false
 	}
 	if !this.Id.EqualVT(that.Id) {
-		return false
-	}
-	if this.Initial != that.Initial {
 		return false
 	}
 	if this.BoundType != that.BoundType {
@@ -14626,6 +14642,36 @@ func (m *ClusterPolicy) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MetadataMaxCommandBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxCommandBytes))
+		i--
+		dAtA[i] = 0x41
+	}
+	if m.MetadataMaxEntityBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxEntityBytes))
+		i--
+		dAtA[i] = 0x39
+	}
+	if m.MetadataMaxValueBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxValueBytes))
+		i--
+		dAtA[i] = 0x31
+	}
+	if m.MetadataMaxKeyBytes != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxKeyBytes))
+		i--
+		dAtA[i] = 0x29
+	}
+	if m.MetadataMaxEntriesPerEntity != 0 {
+		i -= 8
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.MetadataMaxEntriesPerEntity))
+		i--
+		dAtA[i] = 0x21
+	}
 	if m.QueryCheckpointLimit != 0 {
 		i -= 8
 		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.QueryCheckpointLimit))
@@ -16717,20 +16763,10 @@ func (m *CreatedIndexLog) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			dAtA[i] = 0
 		}
 		i--
-		dAtA[i] = 0x20
+		dAtA[i] = 0x18
 	}
 	if m.BoundType != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.BoundType))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.Initial {
-		i--
-		if m.Initial {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
 		i--
 		dAtA[i] = 0x10
 	}
@@ -23677,6 +23713,21 @@ func (m *ClusterPolicy) SizeVT() (n int) {
 	if m.QueryCheckpointLimit != 0 {
 		n += 9
 	}
+	if m.MetadataMaxEntriesPerEntity != 0 {
+		n += 9
+	}
+	if m.MetadataMaxKeyBytes != 0 {
+		n += 9
+	}
+	if m.MetadataMaxValueBytes != 0 {
+		n += 9
+	}
+	if m.MetadataMaxEntityBytes != 0 {
+		n += 9
+	}
+	if m.MetadataMaxCommandBytes != 0 {
+		n += 9
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -24569,9 +24620,6 @@ func (m *CreatedIndexLog) SizeVT() (n int) {
 	if m.Id != nil {
 		l = m.Id.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Initial {
-		n += 2
 	}
 	if m.BoundType != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.BoundType))
@@ -33936,6 +33984,56 @@ func (m *ClusterPolicy) UnmarshalVT(dAtA []byte) error {
 			}
 			m.QueryCheckpointLimit = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
+		case 4:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxEntriesPerEntity", wireType)
+			}
+			m.MetadataMaxEntriesPerEntity = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxEntriesPerEntity = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 5:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxKeyBytes", wireType)
+			}
+			m.MetadataMaxKeyBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxKeyBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 6:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxValueBytes", wireType)
+			}
+			m.MetadataMaxValueBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxValueBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 7:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxEntityBytes", wireType)
+			}
+			m.MetadataMaxEntityBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxEntityBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
+		case 8:
+			if wireType != 1 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MetadataMaxCommandBytes", wireType)
+			}
+			m.MetadataMaxCommandBytes = 0
+			if (iNdEx + 8) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.MetadataMaxCommandBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -39050,26 +39148,6 @@ func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Initial", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.Initial = bool(v != 0)
-		case 3:
-			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BoundType", wireType)
 			}
 			m.BoundType = 0
@@ -39087,7 +39165,7 @@ func (m *CreatedIndexLog) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
+		case 3:
 			if wireType != 0 {
 				return fmt.Errorf("proto: wrong wireType = %d for field BoundTypeDeclared", wireType)
 			}

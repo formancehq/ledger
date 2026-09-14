@@ -20,6 +20,7 @@ func TestProcessCreateTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -57,6 +58,7 @@ func TestProcessApplyRejectsExhaustedLedgerLogBeforeTransactionWrites(t *testing
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -169,6 +171,7 @@ func TestProcessCreateTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -249,6 +252,7 @@ func TestProcessCreateTransaction_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -299,6 +303,7 @@ func TestProcessCreateTransaction_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -361,6 +366,7 @@ func TestProcessApply_LedgerNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -416,6 +422,7 @@ func TestProcessCreateTransaction_Numscript_WorldSource(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -477,6 +484,7 @@ func TestProcessCreateTransaction_Numscript_WithVariables(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -544,6 +552,7 @@ func TestProcessCreateTransaction_Numscript_MultiplePostings(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -611,6 +620,7 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -670,6 +680,7 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -711,6 +722,7 @@ func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -756,6 +768,7 @@ func TestProcessCreateTransaction_Numscript_NoSendStillRejected(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -793,6 +806,7 @@ func TestProcessCreateTransaction_Numscript_SendToMultipleDestinations(t *testin
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -859,6 +873,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -930,6 +945,7 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1007,6 +1023,7 @@ func TestProcessCreateTransaction_Numscript_RejectsEmptyMetadataKey(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1088,6 +1105,7 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 			defer ctrl.Finish()
 
 			mockStore := NewMockScope(ctrl)
+			expectDefaultMetadataLimits(mockStore)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
@@ -1131,6 +1149,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1218,6 +1237,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1280,6 +1300,7 @@ func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1358,6 +1379,7 @@ func TestProcessCreateTransaction_Force_ZeroBalance(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1421,6 +1443,7 @@ func TestProcessCreateTransaction_Numscript_Force_InsufficientFunds(t *testing.T
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1484,6 +1507,7 @@ func TestProcessCreateTransaction_Numscript_OverflowUint256(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1536,6 +1560,7 @@ func TestProcessCreateTransaction_Numscript_NegativeAmount(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
@@ -1588,6 +1613,7 @@ func TestProcessCreateTransaction_StoresAccountMetadataVerbatim(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockStore := NewMockScope(ctrl)
+	expectDefaultMetadataLimits(mockStore)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 

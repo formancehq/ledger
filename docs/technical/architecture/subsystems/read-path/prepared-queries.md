@@ -21,6 +21,14 @@ Three Raft orders mutate the prepared-query registry, each producing a correspon
 | `UpdatePreparedQueryOrder` | `UpdatedPreparedQueryLog` (carries before + after filter) | `processUpdatePreparedQuery` |
 | `DeletePreparedQueryOrder` | `DeletedPreparedQueryLog` | `processDeletePreparedQuery` |
 
+All three are submitted as `ledger.Request` variants through
+`BucketService.Apply` — EN-1954 removed the dedicated `CreatePreparedQuery`,
+`UpdatePreparedQuery` and `DeletePreparedQuery` RPCs, so a mixed batch of
+prepared-query mutations is atomic, idempotent under one batch key, and signable
+as a whole. `ListPreparedQueries` and `ExecutePreparedQuery` are reads and stay
+dedicated RPCs. The HTTP routes are unchanged: they already delegated to the same
+Apply backend.
+
 Source: `internal/domain/processing/processor_prepared_query.go`.
 
 Storage is per-ledger under the attributes zone, keyed by `PreparedQueryKey{LedgerName, Name}` (`internal/domain/keys.go:384`). The canonical key layout is the standard 64-byte padded ledger name followed by the query name string.
@@ -71,14 +79,26 @@ A compile error at FSM time is hash-bound as an `AuditFailure`, so a checker run
 
 1. Opens the fixed main-store snapshot, then reads both the ledger schema and prepared query from that snapshot. This prevents a concurrent query/schema update or deletion from being combined with entities from a newer state. Because the stored definition determines whether an index will be used, the executor briefly reserves the event-history floor before opening the snapshot and releases it immediately when the loaded shape needs no index alignment.
 2. Verifies the requested mode is compatible with the query's `target` (e.g. `AGGREGATE_VOLUMES` only makes sense for accounts).
-3. Enters the standard read route. Default live consistency establishes a
-   `ReadIndexAndWait` horizon; `stale` skips the quorum barrier but keeps a fixed
-   local horizon, while checkpoint reads use their frozen horizon. The executor
-   waits for read-index alignment only when `AlignmentOwed` is true — the
-   filter tree contains a read-index leaf or the target is LOGS — then calls
-   `Compile(indexSnap, kb, pq.GetFilter(), ...)` and executes the iterator.
-4. For `LIST`, streams the matching entities through the standard cursor pipeline (see [query-pipeline.md](query-pipeline.md)).
-5. For `AGGREGATE_VOLUMES`, loops over the candidate account set and sums per-asset volumes from the main store. The aggregation is **computed at request time** — there is no materialised aggregate table.
+3. For `AGGREGATE_VOLUMES` with an **exactly nil filter**, releases the
+   event-history reservation and calls `AggregateAllVolumes` through the same
+   main-store handle. This shares the direct unfiltered aggregation's single
+   ledger-wide volume scan. It opens no read-index snapshot and skips filter
+   compilation and account enumeration. Metadata-only accounts contribute no
+   volume rows; uint256 overflow is propagated as an error.
+4. Otherwise, opens the read-index snapshot and waits for alignment only when
+   `AlignmentOwed` is true: the filter tree contains a read-index leaf or the
+   target is LOGS. It then calls `Compile(indexSnap, kb, pq.GetFilter(), ...)`
+   and executes the iterator. `LIST` streams matching entities through the
+   standard cursor pipeline; `AGGREGATE_VOLUMES` scans volumes per candidate
+   account through `AggregateVolumes`. Empty or parameterized non-nil filters
+   do not qualify for the shortcut.
+
+The standard controller read route establishes a `ReadIndexAndWait` horizon
+before execution. `stale` skips that quorum barrier but retains a fixed local
+horizon; checkpoint reads use their frozen horizon. The fast path keeps this
+main-store snapshot contract and does not depend on read-index progress.
+Both aggregation paths sum per-asset volumes **at request time**, without a
+materialised aggregate table.
 
 Source: `internal/query/executor.go`.
 

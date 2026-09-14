@@ -1,10 +1,12 @@
 package cmdutil
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
@@ -92,7 +94,8 @@ func writeResultFile(path string, payload []byte) error {
 
 // encodeYAMLViaJSON marshals data to JSON first (using protojson for proto
 // types), then converts to YAML. This ensures YAML keys use camelCase from
-// protobuf canonical JSON rather than lowercased Go field names.
+// protobuf canonical JSON rather than lowercased Go field names, and preserves
+// custom JSON projections. Numeric tokens retain their precision and scalar kind.
 func encodeYAMLViaJSON(data any) error {
 	jsonBytes, err := marshalJSON(data)
 	if err != nil {
@@ -100,19 +103,46 @@ func encodeYAMLViaJSON(data any) error {
 	}
 
 	var intermediate any
-	if err := json.Unmarshal(jsonBytes, &intermediate); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(jsonBytes))
+	decoder.UseNumber()
+	if err := decoder.Decode(&intermediate); err != nil {
 		return err
 	}
 
 	encoder := yaml.NewEncoder(os.Stdout)
 	encoder.SetIndent(2)
 
-	err = encoder.Encode(intermediate)
+	err = encoder.Encode(yamlNumbers(intermediate))
 	if closeErr := encoder.Close(); err == nil {
 		err = closeErr
 	}
 
 	return err
+}
+
+// yamlNumbers keeps JSON numbers numeric in YAML without converting through
+// float64 or limiting integers to 64 bits (posting amounts can be uint256).
+// The input is a freshly decoded JSON tree, so containers can be updated in place.
+func yamlNumbers(value any) any {
+	switch value := value.(type) {
+	case json.Number:
+		tag := "!!int"
+		if strings.ContainsAny(value.String(), ".eE") {
+			tag = "!!float"
+		}
+
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: tag, Value: value.String()}
+	case []any:
+		for i, item := range value {
+			value[i] = yamlNumbers(item)
+		}
+	case map[string]any:
+		for key, item := range value {
+			value[key] = yamlNumbers(item)
+		}
+	}
+
+	return value
 }
 
 // marshalJSON dispatches to the appropriate JSON encoder:
@@ -265,6 +295,7 @@ func convertAnyValue(rv reflect.Value) (any, error) {
 // protoToAny marshals a proto.Message to JSON, then unmarshals to any so it
 // can be combined with other values in a json.MarshalIndent call.
 // Prefers custom MarshalJSON when available (handles Uint256, Timestamp, etc.).
+// UseNumber keeps numeric tokens exact when composing proto slices and maps.
 func protoToAny(msg proto.Message) (any, error) {
 	var b []byte
 	var err error
@@ -280,7 +311,9 @@ func protoToAny(msg proto.Message) (any, error) {
 	}
 
 	var v any
-	if err := json.Unmarshal(b, &v); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.UseNumber()
+	if err := decoder.Decode(&v); err != nil {
 		return nil, err
 	}
 

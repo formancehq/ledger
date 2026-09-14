@@ -190,6 +190,12 @@ graph or generated-output dependency engine.
 The focused regression that demonstrates a real bug remains local evidence.
 The selector supplements that evidence; it does not invent or replace it.
 
+The `Tests` CI job owns broad optional-feature internal execution through
+`just test-internal-coverage`, after its light unit coverage step. The recipe
+selects all internal packages with `all_tags` and the race detector, requires
+Docker, and produces the required `internal.out` coverage profile. Full-tag
+E2E coverage and full-tag linting do not execute these internal assertions.
+
 ## Linear workflow DAG
 
 One normalization pass is followed by at most one replay on the resulting

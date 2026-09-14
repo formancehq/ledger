@@ -188,8 +188,8 @@ func TestDescribe_LocalDescribableUsesItsPublicPresentation(t *testing.T) {
 }
 
 // TestDescribe_LocalDescribableWithoutPublicPresentation: the common case is
-// unchanged — Error() and Metadata() are the client-facing values, and the
-// consumer keeps rendering its own outer context.
+// unchanged — the describable Error() and Metadata() are the client-facing
+// values, without an explicit public presentation override.
 func TestDescribe_LocalDescribableWithoutPublicPresentation(t *testing.T) {
 	t.Parallel()
 

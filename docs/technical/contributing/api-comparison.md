@@ -8,6 +8,14 @@ This document compares the POC's API with the original Formance ledger API and d
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
 > by this POC — there is no compatibility shim.
 
+HTTP typed metadata preserves exact integer values, including signed 64-bit
+bounds and values above 2^53, for metadata writes, transaction creation and
+reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
+fractions and out-of-range values are rejected before submission. The OpenAPI
+integer schema spans `-9223372036854775808` through `18446744073709551615`,
+matching signed negative and unsigned nonnegative metadata values. See
+[Metadata number decoding](../architecture/subsystems/api/http-api.md#metadata-number-decoding).
+
 ## Summary
 
 ### Service protocol compatibility (EN-1851)
@@ -228,6 +236,14 @@ See [Numscript Guide](./numscript.md) for complete documentation.
 - ✅ Revert metadata (typed values — string, integer, boolean — preserved losslessly; unsupported values rejected with `400 INVALID_REQUEST`)
 - ✅ Verification that transaction is not already reverted
 
+**Optional HTTP body.** A missing or empty revert body keeps the default options.
+A supplied JSON body is decoded regardless of `Content-Length`, including
+HTTP/1.1 chunked requests; `force`, `atEffectiveDate` and `metadata` reach the
+same Apply payload for known and unknown lengths. Malformed or truncated JSON
+returns `400 INVALID_REQUEST` before Apply, including extra values or non-whitespace
+after the first value. The complete body, including trailing whitespace, counts
+towards the 4 MiB limit (`413 BODY_TOO_LARGE`), independently of framing.
+
 **Navigable revert relationship.** The revert link is a first-class part of the
 transaction representation (`GET`/list), not metadata — the platform never writes
 `com.formance.spec/*` keys. A transaction exposes:
@@ -258,7 +274,59 @@ navigable in the representation but not queryable (v3-only, no parity baseline).
 - `PUT /v3/{ledgerName}/metadata-schema/{targetType}/{key}` - Set/change metadata field type
 - `DELETE /v3/{ledgerName}/metadata-schema/{targetType}/{key}` - Remove metadata field type declaration
 
+All metadata-key path parameters above use one URL-decoding pass, including
+schema PUT/DELETE. A JSON key `formance.com/reviewed` is addressed with
+`formance.com%2Freviewed`; double-encoded `%252F` retains a percent-containing
+key and is rejected by metadata admission with HTTP 400. Canonical index IDs
+use the same single-decoding rule.
+
 Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /v3/{ledgerName}` or `GET /v3/` (list ledgers). It uses the same typed value system as account/transaction metadata.
+
+**Metadata size contract (EN-1829):** Direct HTTP, public gRPC, bulk and mirror
+ingest share the same limits; Numscript-produced metadata is checked during FSM
+apply after merging it with caller metadata. Limits bound metadata carried or
+produced by one command, not an entity's accumulated stored metadata across
+successive writes. A command is one atomic Raft proposal (`ApplyBatch` or mirror batch), including
+all entities and orders it contains.
+
+The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
+
+| Policy field | Default | Bound |
+|---|---|---|
+| `metadata_max_entries_per_entity` | 128 | Entries per entity |
+| `metadata_max_key_bytes` | 256 | Bytes per key, including deletion/schema keys |
+| `metadata_max_value_bytes` | 16384 | Measured bytes per value |
+| `metadata_max_entity_bytes` | 65536 | Key and value bytes per entity |
+| `metadata_max_command_bytes` | 262144 | Key and value bytes across the command |
+
+Mirror workers enforce the same ceilings on translated batches before proposal,
+and mirror FSM apply rechecks the committed policy before mutation. A rejected
+batch retains its applied cursor for retry. Direct account, transaction and ledger
+metadata saves, and reversals, also recheck non-empty input and the proposal-wide
+byte budget at apply, using the current committed policy rather than the policy
+observed during admission. Metadata deletion and field-type set/remove orders
+also recheck bare keys and the aggregate proposal budget before mutation.
+
+OpenAPI documents these configurable ceilings in descriptions rather than fixed
+`maxLength` or `maxProperties` constraints, so clients can use the effective
+replicated policy even when operators raise the defaults.
+
+String and null-original values use their UTF-8 byte length; integer, unsigned
+integer and datetime values count as 8 bytes, and booleans as 1 byte. These are
+accounting weights, not protobuf or JSON wire sizes. Zero does not mean unlimited:
+all ceilings must be positive, key/value ceilings must not exceed the entity
+ceiling, and the entity ceiling must not exceed the command ceiling. Changing
+the startup flags requires an increased `--cluster-policy-revision` to update
+the committed policy.
+
+Exceeding a ceiling returns HTTP 400 / gRPC `InvalidArgument`, reason
+`METADATA_LIMIT_EXCEEDED`, with `dimension`, `limit` and `actual` details.
+`dimension` is `entries`, `key`, `value`, `entity` or `command`; counts apply to
+`entries` and bytes to the other dimensions. Retrying the same oversized payload
+does not repair the rejection. See the [metadata limits contract](../architecture/subsystems/admission/metadata-limits.md)
+for enforcement and configuration details. These incompatible service semantics
+and the required policy fields increment the service protocol from revision 7
+to 8.
 
 ### 4. Bulk Operations
 
@@ -786,9 +854,9 @@ The POC provides a gRPC API for internal service communication (Raft node forwar
 | `GetEventsSinks` | Get per-sink configurations and statuses | ✅ |
 | `GetMetadataSchemaStatus` | Get the declared metadata schema for a ledger | ✅ |
 | `AnalyzeTransactions` | Discover transaction flow patterns | ✅ |
-| `CreatePreparedQuery` | Create a named prepared query | ✅ |
-| `UpdatePreparedQuery` | Update an existing prepared query | ✅ |
-| `DeletePreparedQuery` | Remove a prepared query | ✅ |
+| `Apply(CreatePreparedQuery)` | Create a named prepared query | ✅ |
+| `Apply(UpdatePreparedQuery)` | Update an existing prepared query | ✅ |
+| `Apply(DeletePreparedQuery)` | Remove a prepared query | ✅ |
 | `ListPreparedQueries` | List all prepared queries for a ledger | ✅ |
 | `ExecutePreparedQuery` | Execute a prepared query against the read index | ✅ |
 | `Barrier` | No-op Raft proposal to ensure all prior writes are applied | ✅ |
@@ -851,7 +919,7 @@ The governing rule: **a batched operation requires the same scope as its dedicat
 | `create_ledger`, `delete_ledger`, `promote_ledger`, `create_index`, `drop_index`, `save_numscript` | `ledger:LedgerWrite` | the `requireLedgersWrite` route group |
 | `save_ledger_metadata`, `delete_ledger_metadata`, `add_account_type`, `remove_account_type`, `set_default_enforcement_mode`, `set_metadata_field_type`, `remove_metadata_field_type` | `ledger:MetadataWrite` | the `requireMetadataWrite` route group |
 | `create_prepared_query`, `update_prepared_query`, `delete_prepared_query` | `ledger:QueryWrite` | the `requireQueriesWrite` route group |
-| `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | `ClusterService.CreateQueryCheckpoint` / `DeleteQueryCheckpoint` |
+| `create_query_checkpoint`, `delete_query_checkpoint`, `set_query_checkpoint_schedule`, `delete_query_checkpoint_schedule` | `ledger:ClusterWrite` | none — `BucketService.Apply` only |
 | signing keys, events sinks, maintenance mode | `ledger:OpsWrite` | operator surface, no dedicated business route |
 | unknown / malformed / unset variant | `ledger:OpsWrite` | fail-closed default |
 
@@ -860,7 +928,9 @@ Two properties are enforced by tests rather than convention:
 - **Exhaustiveness.** `request_scope_exhaustiveness_test.go` walks the `Request.type` and `LedgerAction.data` oneof descriptors and fails when a variant has no explicit scope decision. A new proto variant cannot ship on an accidental default — CI blocks it until someone classifies it.
 - **Fail-closed is only for the unknown.** The classifier reports whether a decision was explicit, so "nobody decided" is distinguishable from a deliberate `ledger:OpsWrite`.
 
-> **Breaking change (EN-1506).** The four `*_query_checkpoint*` variants previously resolved to `ledger:OpsWrite`. Because `DefaultMapping` grants `ledger:OpsWrite` to any `ledger:write` token but `ledger:ClusterWrite` only to `ledger:admin`, a non-admin caller could create or delete query checkpoints through `Apply` — an operation the dedicated `ClusterService` RPCs restrict to admins. They now require `ledger:ClusterWrite`. Callers driving query checkpoints through `Apply` with a `ledger:write` token must move to `ledger:admin` or add the granular `ledger:ClusterWrite` scope; callers using the dedicated RPCs are unaffected.
+> **Breaking change (EN-1506).** The four `*_query_checkpoint*` variants previously resolved to `ledger:OpsWrite`. Because `DefaultMapping` grants `ledger:OpsWrite` to any `ledger:write` token but `ledger:ClusterWrite` only to `ledger:admin`, a non-admin caller could create or delete query checkpoints through `Apply` — an operation the dedicated `ClusterService` RPCs restrict to admins. They now require `ledger:ClusterWrite`. Callers driving query checkpoints through `Apply` with a `ledger:write` token must move to `ledger:admin` or add the granular `ledger:ClusterWrite` scope.
+
+> **Breaking change (EN-1954).** `BucketService.CreatePreparedQuery`, `UpdatePreparedQuery`, `DeletePreparedQuery` and `ClusterService.CreateQueryCheckpoint`, `DeleteQueryCheckpoint` are removed. Every one of these operations is a `ledger.Request` variant submitted through `BucketService.Apply`, so it is now batchable, idempotent under a batch key, signable as part of the batch, scope-checked once, and forwarded to the leader through the single Apply path. Required scopes and error semantics are unchanged. A newly executed checkpoint creation waits for local read-index readiness (leader only with `skip_response`), unless concurrent deletion supersedes it. An idempotent replay returns the historical logs immediately, including after deletion or while the original creation still materializes; it does not guarantee current existence or readiness. Server-produced response provenance preserves this distinction across follower forwarding. The HTTP prepared-query routes are unchanged — they already delegated to the same Apply backend.
 
 Note that `POST /v3/{ledgerName}/bulk` shares this classifier but can only express the four `LedgerAction` variants its JSON decoder accepts (`CREATE_TRANSACTION`, `ADD_METADATA`, `REVERT_TRANSACTION`, `DELETE_METADATA`), so the table's top-level rows are unreachable over HTTP bulk.
 
@@ -909,6 +979,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
+| Metadata limit exceeded | `INVALID_ARGUMENT` | `METADATA_LIMIT_EXCEEDED` | `dimension`, `limit`, `actual` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
 | Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |
@@ -976,7 +1047,18 @@ The decoded representation lives at the adapter boundary by design, not in `inte
 
 **Mismatch policy.** A reason ledger knows is a reason whose legitimate wire codes it knows: `CodeForKind(KindForReason(reason))`, today exactly one code, since every enum reason is encoded through `describableToGRPCStatus` and nothing else. Validation stays reason-keyed rather than kind-keyed so a reason that must travel under a second code can be widened alone. A known reason arriving under a code outside that set is a protocol fault, not a business outcome: every consumer branches on `apierr.InvalidWire` and answers its own internal-error representation — `500 INTERNAL_ERROR` + correlation ID on REST (unitary *and* per bulk element), `codes.Unknown` + correlation ID on gRPC, the invalid-pair message on `ledgerctl` — so the received message and metadata are dropped rather than echoed as trusted business information. An unknown reason cannot be validated and is preserved verbatim — reason, message, metadata and exact status.
 
+On internal forwarding hops, `grpcerr.OriginalStatus` preserves decoded statuses
+through outer error wrappers and before cursor cancellation normalization. The
+original code, public message, and every status detail survive the hop; raw
+transport cancellation still follows the caller-context policy. Regression
+tests cover both production cursor types, wrapped repeated hops, exact REST/bulk
+message parity, and complete gRPC status parity between leader and followers.
+Unitary and bulk HTTP responses use the descriptor message for recognized
+public errors, omitting outer routing or Raft prefixes on both local and
+forwarded paths; internal-error sanitization remains in force.
+
 **Client-side usage (Go):**
+
 ```go
 import (
     "google.golang.org/genproto/googleapis/rpc/errdetails"

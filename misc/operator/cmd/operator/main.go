@@ -126,6 +126,7 @@ func main() {
 	}
 
 	if err = (&controller.BackupReconciler{
+		APIReader: mgr.GetAPIReader(),
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Config:    cfg,

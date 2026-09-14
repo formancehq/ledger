@@ -314,6 +314,24 @@ The cursor is advanced only after the entire batch is successfully published to 
 
 New sink types can be added by implementing the `Sink` interface and adding a variant to `SinkConfig.oneof type`.
 
+### HTTP acknowledgement and redirects
+
+The HTTP sink acknowledges an event only after an event-bearing POST receives
+2xx. This is a transport acknowledgement; it does not prove that the receiver
+completed downstream business processing.
+
+Redirects that change POST to a bodyless GET (301, 302, and 303) are rejected
+before following the redirect. Their status is reported as a publication error,
+so a login page returning 200 cannot advance the sink cursor. Redirects that
+preserve POST and its replayable body (307 and 308) remain supported, with a
+maximum of ten requests in a redirect chain.
+
+If any event in a batch fails, publication stops and the batch cursor remains
+unchanged. The emitter reports the error and retries the batch from that cursor,
+including any preceding events already acknowledged. Receivers must deduplicate
+redelivery. Restart resumes from the persisted cursor; successful publication
+of the whole batch advances that cursor and clears the prior error.
+
 ### Topic/Subject Mapping
 
 Events are published to a configurable topic/subject per sink type:

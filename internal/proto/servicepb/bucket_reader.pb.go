@@ -7745,68 +7745,6 @@ func NewCreatePreparedQueryRequestListReader(s []*CreatePreparedQueryRequest) Cr
 	return createPreparedQueryRequestListReadonly(s)
 }
 
-// CreatePreparedQueryResponseReader provides read-only access to CreatePreparedQueryResponse.
-// Call Mutate() to obtain a mutable clone.
-type CreatePreparedQueryResponseReader interface {
-	Mutate() *CreatePreparedQueryResponse
-}
-
-type createPreparedQueryResponseReadonly CreatePreparedQueryResponse
-
-func (r *createPreparedQueryResponseReadonly) Mutate() *CreatePreparedQueryResponse {
-	return (*CreatePreparedQueryResponse)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this CreatePreparedQueryResponse.
-func (m *CreatePreparedQueryResponse) AsReader() CreatePreparedQueryResponseReader {
-	if m == nil {
-		return nil
-	}
-	return (*createPreparedQueryResponseReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this CreatePreparedQueryResponse.
-func (m *CreatePreparedQueryResponse) Mutate() *CreatePreparedQueryResponse {
-	return m.CloneVT()
-}
-
-// CreatePreparedQueryResponseListReader provides read-only iteration over []*CreatePreparedQueryResponse.
-type CreatePreparedQueryResponseListReader interface {
-	Len() int
-	Get(i int) CreatePreparedQueryResponseReader
-	Range(yield func(int, CreatePreparedQueryResponseReader) bool)
-}
-
-type createPreparedQueryResponseListReadonly []*CreatePreparedQueryResponse
-
-func (l createPreparedQueryResponseListReadonly) Len() int { return len(l) }
-
-func (l createPreparedQueryResponseListReadonly) Get(i int) CreatePreparedQueryResponseReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l createPreparedQueryResponseListReadonly) Range(yield func(int, CreatePreparedQueryResponseReader) bool) {
-	for i, v := range l {
-		var r CreatePreparedQueryResponseReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewCreatePreparedQueryResponseListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewCreatePreparedQueryResponseListReader(s []*CreatePreparedQueryResponse) CreatePreparedQueryResponseListReader {
-	return createPreparedQueryResponseListReadonly(s)
-}
-
 // UpdatePreparedQueryRequestReader provides read-only access to UpdatePreparedQueryRequest.
 // Call Mutate() to obtain a mutable clone.
 type UpdatePreparedQueryRequestReader interface {
@@ -7888,68 +7826,6 @@ func NewUpdatePreparedQueryRequestListReader(s []*UpdatePreparedQueryRequest) Up
 	return updatePreparedQueryRequestListReadonly(s)
 }
 
-// UpdatePreparedQueryResponseReader provides read-only access to UpdatePreparedQueryResponse.
-// Call Mutate() to obtain a mutable clone.
-type UpdatePreparedQueryResponseReader interface {
-	Mutate() *UpdatePreparedQueryResponse
-}
-
-type updatePreparedQueryResponseReadonly UpdatePreparedQueryResponse
-
-func (r *updatePreparedQueryResponseReadonly) Mutate() *UpdatePreparedQueryResponse {
-	return (*UpdatePreparedQueryResponse)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this UpdatePreparedQueryResponse.
-func (m *UpdatePreparedQueryResponse) AsReader() UpdatePreparedQueryResponseReader {
-	if m == nil {
-		return nil
-	}
-	return (*updatePreparedQueryResponseReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this UpdatePreparedQueryResponse.
-func (m *UpdatePreparedQueryResponse) Mutate() *UpdatePreparedQueryResponse {
-	return m.CloneVT()
-}
-
-// UpdatePreparedQueryResponseListReader provides read-only iteration over []*UpdatePreparedQueryResponse.
-type UpdatePreparedQueryResponseListReader interface {
-	Len() int
-	Get(i int) UpdatePreparedQueryResponseReader
-	Range(yield func(int, UpdatePreparedQueryResponseReader) bool)
-}
-
-type updatePreparedQueryResponseListReadonly []*UpdatePreparedQueryResponse
-
-func (l updatePreparedQueryResponseListReadonly) Len() int { return len(l) }
-
-func (l updatePreparedQueryResponseListReadonly) Get(i int) UpdatePreparedQueryResponseReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l updatePreparedQueryResponseListReadonly) Range(yield func(int, UpdatePreparedQueryResponseReader) bool) {
-	for i, v := range l {
-		var r UpdatePreparedQueryResponseReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewUpdatePreparedQueryResponseListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewUpdatePreparedQueryResponseListReader(s []*UpdatePreparedQueryResponse) UpdatePreparedQueryResponseListReader {
-	return updatePreparedQueryResponseListReadonly(s)
-}
-
 // DeletePreparedQueryRequestReader provides read-only access to DeletePreparedQueryRequest.
 // Call Mutate() to obtain a mutable clone.
 type DeletePreparedQueryRequestReader interface {
@@ -8020,68 +7896,6 @@ func (l deletePreparedQueryRequestListReadonly) Range(yield func(int, DeletePrep
 // view aliases the underlying slice; do not mutate s afterwards.
 func NewDeletePreparedQueryRequestListReader(s []*DeletePreparedQueryRequest) DeletePreparedQueryRequestListReader {
 	return deletePreparedQueryRequestListReadonly(s)
-}
-
-// DeletePreparedQueryResponseReader provides read-only access to DeletePreparedQueryResponse.
-// Call Mutate() to obtain a mutable clone.
-type DeletePreparedQueryResponseReader interface {
-	Mutate() *DeletePreparedQueryResponse
-}
-
-type deletePreparedQueryResponseReadonly DeletePreparedQueryResponse
-
-func (r *deletePreparedQueryResponseReadonly) Mutate() *DeletePreparedQueryResponse {
-	return (*DeletePreparedQueryResponse)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this DeletePreparedQueryResponse.
-func (m *DeletePreparedQueryResponse) AsReader() DeletePreparedQueryResponseReader {
-	if m == nil {
-		return nil
-	}
-	return (*deletePreparedQueryResponseReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this DeletePreparedQueryResponse.
-func (m *DeletePreparedQueryResponse) Mutate() *DeletePreparedQueryResponse {
-	return m.CloneVT()
-}
-
-// DeletePreparedQueryResponseListReader provides read-only iteration over []*DeletePreparedQueryResponse.
-type DeletePreparedQueryResponseListReader interface {
-	Len() int
-	Get(i int) DeletePreparedQueryResponseReader
-	Range(yield func(int, DeletePreparedQueryResponseReader) bool)
-}
-
-type deletePreparedQueryResponseListReadonly []*DeletePreparedQueryResponse
-
-func (l deletePreparedQueryResponseListReadonly) Len() int { return len(l) }
-
-func (l deletePreparedQueryResponseListReadonly) Get(i int) DeletePreparedQueryResponseReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l deletePreparedQueryResponseListReadonly) Range(yield func(int, DeletePreparedQueryResponseReader) bool) {
-	for i, v := range l {
-		var r DeletePreparedQueryResponseReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewDeletePreparedQueryResponseListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewDeletePreparedQueryResponseListReader(s []*DeletePreparedQueryResponse) DeletePreparedQueryResponseListReader {
-	return deletePreparedQueryResponseListReadonly(s)
 }
 
 // ListPreparedQueriesRequestReader provides read-only access to ListPreparedQueriesRequest.

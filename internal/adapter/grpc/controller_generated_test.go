@@ -12,6 +12,7 @@ import (
 	reflect "reflect"
 
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
+	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -162,10 +163,10 @@ func (c *MockControllerAnalyzeTransactionsCall) DoAndReturn(f func(context.Conte
 }
 
 // Apply mocks base method.
-func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Apply", ctx, req)
-	ret0, _ := ret[0].([]*commonpb.Log)
+	ret0, _ := ret[0].(*domain.ApplyResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -183,19 +184,19 @@ type MockControllerApplyCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerApplyCall) Return(arg0 []*commonpb.Log, arg1 error) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) Return(arg0 *domain.ApplyResult, arg1 error) *MockControllerApplyCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerApplyCall) Do(f func(context.Context, *servicepb.ApplyRequest) ([]*commonpb.Log, error)) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) Do(f func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)) *MockControllerApplyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerApplyCall) DoAndReturn(f func(context.Context, *servicepb.ApplyRequest) ([]*commonpb.Log, error)) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) DoAndReturn(f func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)) *MockControllerApplyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

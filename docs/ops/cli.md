@@ -186,6 +186,16 @@ scripting against the CLI predictable across resources.
 | Aliases | `get` | — | `g`, `show`, `describe` |
 | Aliases | `inspect` | — | `i` |
 
+Structured JSON and YAML output preserve the full precision of integer metadata,
+transaction IDs, and posting amounts, including values greater than `2^53`.
+YAML uses numeric scalars for JSON numbers and retains strings as strings. Both
+formats use the same public JSON projection and camelCase field names, including
+when responses are wrapped in lists or maps. For example, metadata values
+`9007199254740993` and `-9007199254740993` remain exact in either format.
+Use an integer-aware parser when consuming this output. The ledger-log projection
+is an output format, not an audit replay or backup format; it does not restore
+internal type distinctions omitted by the JSON projection.
+
 #### Unpaginated endpoints
 
 A few endpoints intentionally do not expose pagination because the underlying
@@ -1858,7 +1868,7 @@ ledgerctl version
 
 The **server** exposes the same build metadata over two unauthenticated channels:
 
-- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"5"}`.
+- **HTTP** — `GET /_info` returns flat JSON (no `data` envelope): `{"version":"…","commit":"…","buildDate":"…","goVersion":"…","protocolVersion":"8"}`.
 - **gRPC** — the `Discovery` RPC's `DiscoveryResponse` carries a `ServerInfo` message with the same information, including `protocol_version`.
 
 This is useful for monitoring deployed nodes and spotting version skew across a cluster (the per-node `version` is also surfaced on each `NodeInfo` in `GetClusterState`).
@@ -3521,6 +3531,9 @@ ledgerctl queries create <name> --ledger <ledger-name> [flags]
 | `--filter` | | Filter expression (same DSL as account/transaction list) |
 | `--timeout` | `10s` | Request timeout |
 
+**Behavior:**
+- Submits a `create_prepared_query` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
+
 **Examples:**
 
 ```bash
@@ -3850,12 +3863,28 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 |------|------|---------|-------------|
 | `--cluster-policy-revision` | uint64 | `1` | Desired revision of the replicated cluster policy. The leader proposes the policy only when this exceeds the applied revision. Must be greater than zero. |
 | `--query-checkpoint-limit` | uint64 | `10` | Maximum number of live query checkpoints, carried in the cluster policy. Must be greater than zero. |
+| `--metadata-max-entries` | uint64 | `128` | Maximum metadata entries one command may carry for a single entity (transaction, account or ledger). Must be greater than zero. |
+| `--metadata-max-key-bytes` | uint64 | `256` | Maximum metadata key size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
+| `--metadata-max-value-bytes` | uint64 | `16384` | Maximum metadata value size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
+| `--metadata-max-entity-bytes` | uint64 | `65536` | Maximum total metadata bytes one command may carry for a single entity. Must be greater than zero and not exceed `--metadata-max-command-bytes`. |
+| `--metadata-max-command-bytes` | uint64 | `262144` | Maximum total metadata bytes one command may carry across every entity it touches. Must be greater than zero. |
 
 To change a policy value, raise `--cluster-policy-revision` so the new policy supersedes the applied one:
 
 ```bash
 ledger run --cluster-policy-revision 2 --query-checkpoint-limit 20 [other flags...]
 ```
+
+The metadata ceilings follow the same rule: raising one without bumping
+`--cluster-policy-revision` logs a payload-divergence error and changes nothing.
+They are enforced for HTTP, public gRPC and bulk admission, mirror batches before
+proposal and during apply, and metadata a Numscript program merges in. Public
+API violations return HTTP 400 / gRPC
+`InvalidArgument` with reason `METADATA_LIMIT_EXCEEDED`. Zero is rejected at
+boot rather than treated as unlimited, and a node refuses to start against a
+committed policy carrying no ceilings when `--cluster-policy-revision` cannot
+supersede it. See the [metadata size limits
+contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 ---
 
@@ -3961,6 +3990,11 @@ ledger run --response-signing-key ./response-keys/seed.hex [other flags...]
 ledgerctl --response-verify-key ./response-keys/pubkey.hex transactions create --ledger my-ledger --posting "world,bank,1000,USD"
 ```
 
+With `--response-verify-key`, prepared query create/update/delete and query
+checkpoint create/delete verify the returned Apply log signatures before
+reporting success or reading the created checkpoint ID. Missing or invalid
+signatures cause the command to fail.
+
 Clients can also discover the server's public key via the `Discovery` RPC.
 
 ---
@@ -4058,6 +4092,13 @@ ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other fl
 ```
 
 ---
+
+### Server Advertised Addresses
+
+For server startup, `--advertise-addr` supplies the host shared by the Raft
+and service endpoints; `--grpc-port` supplies the service port. For example,
+`--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` advertises
+`[2001:db8::1]:8888` for service RPCs. See [deployment](deployment.md#command-structure).
 
 ### Server Raft Consensus Flags
 
@@ -4932,8 +4973,12 @@ ledgerctl query-checkpoint create [flags]
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
+- Submits a `create_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 - Routes through Raft so the checkpoint is replicated to all nodes
-- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is created asynchronously by the index builder
+- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is materialized by the index builder on each replica
+- A newly executed creation waits for the serving node's read-index marker, unless concurrent deletion supersedes it. If the checkpoint remains live, a point-in-time read there succeeds immediately
+- A retry with the same `--idempotency-key` returns the historical result without waiting or recreating the checkpoint, even if the original call is still materializing or the checkpoint has been deleted
+- Reports the checkpoint id and max sequence; `--json` emits `{"checkpointId":…,"maxSequence":…}` unchanged
 - Checkpoints are stored under `{dataDir}/query-checkpoints/{id}/main/` and `{dataDir}/query-checkpoints/{id}/readindex/`
 - Not cleaned up on restart — use `query-checkpoint delete` to remove
 
@@ -4963,6 +5008,9 @@ ledgerctl query-checkpoint delete <checkpoint-id>
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--timeout` | `10s` | Request timeout |
+
+**Behavior:**
+- Submits a `delete_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 
 **Example:**
 

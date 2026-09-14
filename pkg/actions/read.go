@@ -592,37 +592,53 @@ func ListTransactionsFiltered(ctx context.Context, client servicepb.BucketServic
 	return transactions, nil
 }
 
-// CreatePreparedQuery creates a prepared query via the gRPC API.
+// CreatePreparedQuery creates a prepared query through BucketService.Apply,
+// the single audited write entry point.
 func CreatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
-	_, err := client.CreatePreparedQuery(ctx, &servicepb.CreatePreparedQueryRequest{
-		Ledger: ledger,
-		Query: &commonpb.PreparedQuery{
-			Name:   name,
-			Target: target,
-			Filter: filter,
-		},
-	})
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		CreatePreparedQueryAction(name, ledger, target, filter)))
 
 	return err
 }
 
 // UpdatePreparedQuery updates the filter of an existing prepared query.
 func UpdatePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string, filter *commonpb.QueryFilter) error {
-	_, err := client.UpdatePreparedQuery(ctx, &servicepb.UpdatePreparedQueryRequest{
-		Ledger: ledger,
-		Name:   name,
-		Filter: filter,
-	})
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		UpdatePreparedQueryAction(ledger, name, filter)))
 
 	return err
 }
 
 // DeletePreparedQuery deletes a prepared query.
 func DeletePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string) error {
-	_, err := client.DeletePreparedQuery(ctx, &servicepb.DeletePreparedQueryRequest{
-		Ledger: ledger,
-		Name:   name,
-	})
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		DeletePreparedQueryAction(ledger, name)))
+
+	return err
+}
+
+// CreateQueryCheckpoint takes a query checkpoint through BucketService.Apply,
+// the single audited write entry point. Apply does not return until the read
+// index checkpoint is materialized on the serving node, so a point-in-time read
+// at the returned ID succeeds immediately on that node.
+func CreateQueryCheckpoint(ctx context.Context, client servicepb.BucketServiceClient) (checkpointID, maxSequence uint64, err error) {
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", CreateQueryCheckpointAction()))
+	if err != nil {
+		return 0, 0, err
+	}
+
+	checkpointID, maxSequence, ok := GetCreatedQueryCheckpoint(resp)
+	if !ok {
+		return 0, 0, errors.New("checkpoint creation log not found in response")
+	}
+
+	return checkpointID, maxSequence, nil
+}
+
+// DeleteQueryCheckpoint removes a query checkpoint.
+func DeleteQueryCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, checkpointID uint64) error {
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		DeleteQueryCheckpointAction(checkpointID)))
 
 	return err
 }

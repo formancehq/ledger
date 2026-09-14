@@ -1,9 +1,7 @@
 package readstore
 
 import (
-	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -82,19 +80,13 @@ func NewStampGatedPrefixIterator(
 // malformed value latches an error and exhausts the iterator: refusing per
 // invariant #7 beats silently folding an unreadable row into the page.
 func (it *PrefixIterator) admitStamp() bool {
-	if it.stampPin == 0 {
-		return true
-	}
-
-	v := it.iter.Value()
-	if len(v) != 8 {
-		it.stampErr = fmt.Errorf("stamp-gated scan: row %x carries a %d-byte value (want an 8-byte fold sequence)", it.iter.Key(), len(v))
+	admitted, err := admitFoldStamp(it.iter, it.stampPin)
+	if err != nil {
+		it.stampErr = err
 		it.exhausted = true
-
-		return false
 	}
 
-	return binary.BigEndian.Uint64(v) <= it.stampPin
+	return admitted
 }
 
 func (it *PrefixIterator) Next() bool {
@@ -301,19 +293,13 @@ func NewStampGatedRangeIterator(
 
 // admitStamp — see PrefixIterator.admitStamp.
 func (it *RangeIterator) admitStamp() bool {
-	if it.stampPin == 0 {
-		return true
-	}
-
-	v := it.iter.Value()
-	if len(v) != 8 {
-		it.stampErr = fmt.Errorf("stamp-gated scan: row %x carries a %d-byte value (want an 8-byte fold sequence)", it.iter.Key(), len(v))
+	admitted, err := admitFoldStamp(it.iter, it.stampPin)
+	if err != nil {
+		it.stampErr = err
 		it.exhausted = true
-
-		return false
 	}
 
-	return binary.BigEndian.Uint64(v) <= it.stampPin
+	return admitted
 }
 
 func (it *RangeIterator) Next() bool {

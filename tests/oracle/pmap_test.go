@@ -112,12 +112,34 @@ func TestGlobalStateFingerprint_CommutingBulks(t *testing.T) {
 
 // Apply materializes a ledger entry even when the operation stores nothing;
 // such an entry must not change the state's identity (see Fingerprint).
+// Materializing a ledger entry must not, by itself, change the global
+// identity. Every committed order now appends a log, so a committed order can
+// no longer leave an entry empty: the two reachable cases are a rejection
+// (nothing materializes) and a commit (the log is state, and it counts).
 func TestGlobalStateFingerprint_EmptyLedgerMaterialization(t *testing.T) {
 	t.Parallel()
 
 	base := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{oracletest.TxReq("world", "a:1", "USD", 5)}}).State
 
-	// Removing an undeclared field type is a committed no-op on a fresh ledger.
+	// A rejected order leaves the prior state untouched — the entry it would
+	// have materialized is discarded with the fork, so identity is unchanged
+	// and the ledger does not appear at all.
+	rejected := base.Apply(Bulk{Requests: []*servicepb.Request{{
+		Type: &servicepb.Request_RemoveAccountType{
+			RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+				Ledger: "untouched",
+				Name:   "never-declared",
+			},
+		},
+	}}})
+	require.False(t, rejected.OK)
+	require.NotContains(t, rejected.State.Ledgers(), "untouched")
+	require.Equal(t, base.Fingerprint(), rejected.State.Fingerprint(), "a rejected order must not change the identity")
+
+	// Removing an undeclared field type changes no schema, but the server
+	// emits its log unconditionally (processRemoveMetadataFieldType returns a
+	// payload whether or not the key was declared), so the ledger gains a log
+	// and with it an identity.
 	noop := base.Apply(Bulk{Requests: []*servicepb.Request{{
 		Type: &servicepb.Request_RemoveMetadataFieldType{
 			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
@@ -128,7 +150,6 @@ func TestGlobalStateFingerprint_EmptyLedgerMaterialization(t *testing.T) {
 		},
 	}}})
 	require.True(t, noop.OK)
-	require.Contains(t, noop.State.Ledgers(), "untouched", "the entry is materialized")
-	require.True(t, noop.State.Ledger("untouched").IsEmpty())
-	require.Equal(t, base.Fingerprint(), noop.State.Fingerprint(), "stateless entry must not change the identity")
+	require.False(t, noop.State.Ledger("untouched").IsEmpty(), "the committed log is state")
+	require.NotEqual(t, base.Fingerprint(), noop.State.Fingerprint())
 }

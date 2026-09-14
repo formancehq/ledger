@@ -1,0 +1,73 @@
+{
+  "id": "mirror-ingestion-contracts",
+  "title": "Ledger v2 source ingestion, translation and mirror cutover contracts",
+  "purpose": "Find reachable violations of established Ledger v2 to v3 import fidelity: HTTP/PostgreSQL source selection and pagination, source log identity and progression, supported type conversion, configured CEL rewriting and intentional filtering, and promotion to normal mode. Fidelity means the documented configured projection, not equality with untransformed source balances or hashes. Follow the companion evidence and ownership contract. Exclude credentials, PostgreSQL shutdown EN-1997, generic accounting, persistence/restore, retry, lifecycle, API, startup configuration and operator mechanisms.",
+  "paths": [
+    "internal/adapter/v2/**",
+    "internal/application/mirror/**",
+    "internal/domain/processing/processor_mirror.go",
+    "internal/domain/processing/processor_mirror_test.go",
+    "internal/domain/processing/processor_apply.go",
+    "internal/application/admission/validate_order.go",
+    "internal/infra/state/machine_technical_updates.go",
+    "internal/query/mirror.go",
+    "internal/query/mirror_test.go",
+    "misc/proto/raft_cmd.proto",
+    "misc/proto/common.proto",
+    "tests/e2e/cluster/mirror_test.go"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/contributing/ai-audit.md",
+    "docs/technical/contributing/ai-audit-challenge.md",
+    "docs/technical/contributing/testing.md",
+    "docs/technical/contributing/local-validation.md",
+    "docs/technical/audits/mirror-ingestion-contracts.md",
+    "docs/technical/architecture/subsystems/events-mirror/README.md",
+    "docs/technical/architecture/subsystems/events-mirror/mirror.md",
+    "docs/technical/architecture/subsystems/events-mirror/cel-rewrite.md",
+    "docs/technical/architecture/audit-vs-technical-state.md",
+    "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md",
+    "docs/technical/audits/accounting-invariants.json",
+    "docs/technical/audits/persistence-restore-replay.json",
+    "docs/technical/audits/idempotency-retries-partial-failures.json",
+    "docs/technical/audits/concurrency-lifecycle-shutdown.json",
+    "docs/technical/audits/api-boundary-contracts.json",
+    "docs/technical/audits/configuration-startup-contracts.json",
+    "docs/technical/audits/operator-reconciliation-durability.json"
+  ],
+  "invariants": [
+    "Every fidelity hypothesis must name the supported source/version, configured ledger and rewrite rules, concrete source rows/pages, translated entries and observable destination effect. Establish the expected mapping from current source contracts, implementation and tests. A missing feature, unknown future log variant, deliberate rewrite/drop or missing test is not itself a defect (companion evidence contract).",
+    "FetchLogs must supply the requested source ledger's continuation after the applied source ID in the order required by TranslateBatch. HTTP after/pageSize/hasMore and PostgreSQL bucket discovery, ledger filtering, id > afterID, ascending order and lookahead must not silently skip, reorder or substitute available supported rows. Prove the actual upstream pagination contract, especially the first HTTP page; a mocked response or contradictory comment is not upstream evidence (Source, HTTPSource, PostgresSource and TranslateBatch).",
+    "Translation must preserve supported transaction/revert IDs and links, posting addresses/assets/exact amounts, metadata targets/keys/string values and the fields promised for each variant, subject to the configured rewrite. Unsupported numeric representations must follow established rejection or conversion rules rather than silently changing a supported value. Do not require every source field to round-trip when the v3 variant does not promise it (types.go, translator.go, MirrorLogEntry and processor_mirror.go).",
+    "Source log date and business timestamp are distinct. Created/reverted entries carry the parsed source log date, which supplies the resulting transaction's insertedAt and updatedAt; missing required source dates reject before mutation. PostgreSQL normalizes its typed date independently of DateStyle. Synthetic missing-row FillGap entries have no source date. Establish business-timestamp fallback/validation separately and do not demand source dates on every v3 envelope or metadata mutation (translateV2LogDate, processMirrorIngest and transaction handlers).",
+    "Applied source identity is the contiguous LastMirrorV2LogId prefix, including explicit FillGap entries; source IDs, transaction IDs and v3 log IDs are separate sequences. Replayed source IDs at or below that prefix intentionally produce no effect, zero and a fresh noncontiguous ID reject, and checked sequence advancement must not wrap. Missing source rows and known unsupported variants may produce FillGap; configured transaction drops must preserve the source log ID and advance NextTransactionId past skipped transaction IDs by value (TranslateBatch, processMirrorIngest, processMirrorFillGap).",
+    "CEL rules obey declared scope, order, stop and action semantics. Scope mismatch and match runtime errors skip a rule; value_expr errors and invalid rewritten addresses fail translation. Computed setters see previous actions' mutations. Declared metadata coercion may produce a null preserving the original string. A drop terminates rewriting and emits FillGap. Applying a rewrite must not mutate its input, and replicated orders contain the leader's already-rewritten payload (celrewrite implementation/tests and cel-rewrite.md, with the companion's documentation qualifications).",
+    "The worker resumes from LedgerBoundaries, not an observed source head or fetched position. It may speculate locally, but promotes lastAppliedV2LogID and the next prefetch only after Raft acceptance and successful FSM application; the outer processLogs error path invalidates the boundary snapshot so the next attempt rereads authority. Prefetch is usable only for its matching afterID. Translation failure must not be reinterpreted as an intentional drop or successful consumption (Worker.processBatch/processLogs).",
+    "MirrorSourceHead and MirrorStatus are reporting projections, not ingestion authority. Idle publication must follow the existing observed-head and error-clear contract, including an observed empty source. FOLLOWING/remaining values describe the last observed head versus the applied boundary; they do not certify an atomic source snapshot, exact physical row count, source quiescence or lossless cutover (publishIdleStatus, applyMirrorSyncUpdate, ReadMirrorSyncProgress).",
+    "Promotion changes MIRROR to NORMAL, clears MirrorSource and emits the named promotion log; subsequent MirrorIngest is rejected by the mode gate while normal writes use the retained sequence boundaries. The manager reconciles the committed mode change. Mirror mode's ordinary-write guard retains its explicit maintenance-operation whitelist. No established contract here requires promotion to freeze v2, wait for zero lag or provide atomic cross-system cutover (processPromoteLedger, processMirrorIngest, isMirrorSafeApply and manager.go)."
+  ],
+  "adversarial_questions": [
+    "For the exact supported v2 server/schema, what does the first HTTP page return without after, and what does after change? Can the ingestion request and latest-head request rely on different ordering? Trace two nonempty pages and a tail append before asserting a skip; when upstream evidence is missing, which assumption remains a question?",
+    "Does PostgreSQL discover and filter the intended ledger when several ledgers share a bucket? Do pageSize+1 lookahead, exact-full/partial/empty pages, nullable hashes and row/scan errors preserve the source contract, independently of IAM and pool shutdown?",
+    "Can a supported amount, numeric/string target ID, metadata value or timestamp change through decoding, translation and application? Use exact integer oracles, separate uint64 IDs from UInt256 amounts, and establish actual supported bounds and timestamp precision before testing boundaries.",
+    "For NEW_TRANSACTION, SET_METADATA, DELETE_METADATA and REVERTED_TRANSACTION, which fields are deliberately mapped, transformed, omitted or synthesized? Are reference handling and original/compensating transaction links variant-specific? Can a pooled decode retain a preceding row's optional data?",
+    "What distinguishes a missing source log, a transaction-ID gap, an intentionally unknown variant and a configured drop? Does each produce the required source prefix and transaction boundary? Could an out-of-order or repeated page be mistaken for a source gap? Establish reachability through the actual source adapter.",
+    "Do rule scope, rule order, stop, drop and sequential value_expr evaluation agree for created, reverted and metadata variants? Does match-error skip differ from mutation-expression failure? Does typed-null coercion preserve its original value as specified?",
+    "When address rewriting merges multiple account-metadata keys, what collision policy is established by the implementation/tests? Do posting addresses, metadata targets and account-metadata keys follow that policy? Does a proposed determinism claim concern repeated leader-side translations or replay of one accepted byte sequence? Respect the documented CEL map-iteration restriction.",
+    "After a configured create/revert drop, what happens to later retained transactions, metadata targeting the dropped ID and eventual normal writes after promotion? Show the exact chosen rules and promised behavior; do not invent automatic filtering of all later dependent entries or require equality with the unfiltered source.",
+    "On translation, preload, propose or FSM failure, which speculative fields have already changed? Does the real outer loop invalidate them before retry and reject prefetch tied to another afterID? Distinguish failure to confirm from proof of noncommit and route shared retry-mechanism defects to their owner.",
+    "Can fetched or observed source progress be reported as applied consumption, or a transient source error remain after idle recovery? Account for unknown head versus observed zero and the current empty-source SYNCING behavior; FOLLOWING is not a source-freeze certificate.",
+    "For an ingest serialized before or after promotion, which mode gate and persisted boundaries determine the outcome? Can the first normal transaction reuse a dropped source transaction ID? Separate ordered cutover semantics from worker cancellation/join and leadership-generation correctness.",
+    "Does the alleged discrepancy already belong to EN-1854 source-date preservation, EN-1513 applied-boundary resume, EN-1550 replay guards, EN-1773 idle progress/lifecycle or EN-1776 restore reconstruction? What distinct root cause and correction remain at the audited SHA after checking current work?"
+  ],
+  "dynamic_checks_to_consider": [
+    "Inspect existing exact test names and fixtures first. Use existing tests and only allowed temporary diagnostics in the pinned Nix/managed-cache workflow; no tracked edits, implemented reproducers, live customer sources, credentials or audit/challenge/Jira orchestration from a provider. Record executed checks separately from reproduction plans and list untested source versions and external dependencies.",
+    "Use source_http_test.go and the HTTP fixture in tests/e2e/cluster/mirror_test.go to inspect requests and page sequences. Compare their fixture ordering against independently established v2 behavior. PostgreSQL's TestPostgresFetchLogs_DateIsDateStyleIndependent checks query/date helpers, not a live SQL cursor; if no existing allowed disposable integration fixture exercises bucket isolation and lookahead, provide a concrete later reproduction plan and state the gap.",
+    "Run selected existing translator tests for supported variants, exact large amounts, string/numeric targets, source dates, gaps and exhausted counters. Compare source values with MirrorLogEntry before rewriting and with the configured result afterward; malformed-source-only helper probes do not prove an admitted source path.",
+    "Use existing translator_rewrite_test.go and celrewrite tests for scope/stop, address collisions, input immutability, drop-to-FillGap, sequential value_expr, match-error skip, value-error failure and typed-null coercion. A complete future reproduction should continue with a retained entry and inspect both source and transaction progression; a drop count alone does not prove fidelity.",
+    "Use existing worker tests for applied-boundary resume, prefetch validity, snapshot invalidation and idle error clear; inspect their mock future and builder boundaries before claiming end-to-end confirmation. A failure/recovery diagnostic must exercise the real outer processLogs retry path and inspect the reread boundary, proposed IDs and resulting effects without timing sleeps.",
+    "Use processor_mirror_test.go and the existing Mirror e2e cases to inspect source-date preservation, gaps, replay protection, write restrictions, promotion and a subsequent normal write. E2e HTTP mocks establish destination integration, not compatibility with every real v2 server; PostgreSQL configuration creation is not an ingestion test. Restore tests may be inspected as counterevidence but belong to persistence-restore-replay."
+  ]
+}

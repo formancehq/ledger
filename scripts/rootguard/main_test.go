@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,35 +98,87 @@ func TestRunnerComparesRootAfterCancellation(t *testing.T) {
 	root := newRunnerTestRepository(t)
 	binary := buildRunner(t)
 
-	ready := filepath.Join(t.TempDir(), "ready")
-	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", "trap '' TERM INT; printf ready > "+shellQuote(ready)+"; while :; do sleep 1; done")
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	defer func() {
+		_ = reader.Close() // Best-effort cleanup of test-owned pipes.
+		_ = writer.Close()
+	}()
+	command := exec.Command(binary, "--root", root, "--", "/bin/sh", "-c", "trap '' TERM INT; printf 'child-ready\\n'; read release")
 	command.Dir = root
 	command.Env = testenv.Environment()
-	var combined bytes.Buffer
-	command.Stdout = &combined
-	command.Stderr = &combined
+	command.Stdin = reader
+	outputReader, outputWriter := io.Pipe()
+	defer func() {
+		_ = outputReader.Close() // Also unblock output collection when Start fails.
+		_ = outputWriter.Close()
+	}()
+	command.Stdout = outputWriter
+	command.Stderr = outputWriter
+	ready := make(chan struct{}, 1)
+	type capturedOutput struct {
+		text string
+		err  error
+	}
+	output := make(chan capturedOutput, 1)
+	go func() {
+		var combined strings.Builder
+		scanner := bufio.NewScanner(outputReader)
+		for scanner.Scan() {
+			line := scanner.Text()
+			combined.WriteString(line + "\n")
+			if line == "child-ready" {
+				ready <- struct{}{}
+			}
+		}
+		_ = outputReader.Close()
+		output <- capturedOutput{text: combined.String(), err: scanner.Err()}
+	}()
 	require.NoError(t, command.Start())
-	require.Eventually(t, func() bool {
-		_, err := os.Stat(ready)
-
-		return err == nil
-	}, 5*time.Second, 10*time.Millisecond)
-	require.NoError(t, command.Process.Signal(syscall.SIGTERM))
 	done := make(chan error, 1)
 	go func() {
-		done <- command.Wait()
+		err := command.Wait()
+		_ = outputWriter.Close()
+		done <- err
 	}()
+	exited := false
+	defer func() {
+		_ = writer.Close() // Release the child even when startup or cancellation assertions fail.
+		if !exited {
+			_ = command.Process.Signal(syscall.SIGTERM)
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				_ = command.Process.Kill()
+				<-done
+			}
+		}
+	}()
+	// Readiness is an observed child event, not a filesystem polling deadline.
+	select {
+	case <-ready:
+	case err := <-done:
+		exited = true
+		captured := <-output
+		t.Fatalf("rootguard exited before child readiness: %v (output error: %v)\n%s", err, captured.err, captured.text)
+	case <-time.After(30 * time.Second):
+		t.Fatal("rootguard child did not report readiness")
+	}
+	require.NoError(t, command.Process.Signal(syscall.SIGTERM))
 	var waitErr error
 	select {
 	case waitErr = <-done:
+		exited = true
 	case <-time.After(5 * time.Second):
-		_ = command.Process.Kill() // Best effort cleanup before failing the bounded regression.
 		t.Fatal("rootguard did not finish after cancellation")
 	}
-	require.Error(t, waitErr, combined.String())
-	require.Equal(t, exitError, command.ProcessState.ExitCode(), combined.String())
-	require.Contains(t, combined.String(), "ROOT_UNCHANGED=PASS")
-	require.Contains(t, combined.String(), "ROOT_SNAPSHOT_CAPTURED position=after")
+	captured := <-output
+	require.NoError(t, captured.err)
+	combined := captured.text
+	require.Error(t, waitErr, combined)
+	require.Equal(t, exitError, command.ProcessState.ExitCode(), combined)
+	require.Contains(t, combined, "ROOT_UNCHANGED=PASS")
+	require.Contains(t, combined, "ROOT_SNAPSHOT_CAPTURED position=after")
 }
 
 func TestRunnerReapsSurvivingDescendantBeforeFinalSnapshot(t *testing.T) {

@@ -51,6 +51,19 @@ type Checker struct {
 	// in-flight set onto.
 	modelState oracle.GlobalState
 
+	// retypeObs tracks each open retype window's per-node closure progress —
+	// see retypeObservation. Keyed by retypeObsKey. Guarded by mu.
+	retypeObs map[string]*retypeObservation
+
+	// indexCreateSeq is each tracked index's create frontier: the committed log
+	// sequence of the latest CreateIndex folded for (ledger → canonical). A
+	// drop+recreate reuses the canonical but moves the frontier, so it is the
+	// index's lifecycle generation. The readiness poller snapshots it before
+	// polling, discards any per-node report whose indexer has not folded past
+	// it (the report describes the prior incarnation), and refuses to apply a
+	// verdict once the frontier moved under it. Guarded by mu.
+	indexCreateSeq map[string]map[string]uint64
+
 	// replayable holds committed bulks that carried a tracked idempotency key —
 	// the originals runReplay re-sends to exercise the server's idempotency
 	// replay. Populated at commit (rememberReplayable), capped at
@@ -85,7 +98,8 @@ type pendingObservation struct {
 // (declared at creation, see setupLedgers); caller spawns the processor
 // goroutine. The schema is replayed as SetMetadataFieldType orders — the server
 // records the identical declared types at creation (populateInitialSchema), so
-// the model's schema state matches the server's from the first bulk.
+// the model's schema state matches the server's from the first bulk. They are
+// seeded rather than applied: at creation they produce no ledger log.
 func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
 	modelState := oracle.NewGlobalState()
 	for _, ledger := range ledgerNames {
@@ -108,7 +122,9 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 			})
 		}
 
-		modelState = modelState.Apply(oracle.Bulk{Requests: reqs}).State
+		// Seeded, not applied: the server declares these at creation, so they
+		// emit no ledger log (see SeedInitialSchema).
+		modelState = modelState.SeedInitialSchema(reqs)
 	}
 
 	return &Checker{
@@ -117,5 +133,70 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		reads:       map[uint64]struct{}{},
 		incoming:    make(chan observation, incomingBuffer),
 		modelState:  modelState,
+		retypeObs:   map[string]*retypeObservation{},
+
+		indexCreateSeq: map[string]map[string]uint64{},
 	}
+}
+
+// retypeObservation drives one retype window's closure, two-phase per node so
+// the close can never race the fold: a poll proving the retype's own log
+// folded (last_indexed_sequence >= openSeq) arms the node, and only a LATER
+// poll showing pending_version == 0 confirms its switch — the two fields need
+// not be sampled atomically within one response, but pending cannot return to
+// zero before the switch once the bump is known applied. The window closes
+// when every node confirmed. openSeq extends and phases reset on a chained
+// retype, whose new rewrite must be observed afresh. Guarded by c.mu.
+type retypeObservation struct {
+	ledger    string
+	canonical string
+	openSeq   uint64
+	foldSeen  map[int]bool
+	pendClear map[int]bool
+
+	// confirmedAt is the dispatch-ticket frontier at the moment every node
+	// confirmed its switch; zero until then. The window itself closes only
+	// once every read ticketed at or before it has finished: a read served
+	// from a pre-switch snapshot is validated against the model AFTER its
+	// response arrives, and closing under it would judge a legitimately
+	// old-typed answer by post-switch rules.
+	confirmedAt uint64
+}
+
+// closeAllRetypeWindows ends every open retype window, for the restore cycle:
+// rebuilt read-stores encode under the live schema, so no replica serves an
+// old-typed index after a restore.
+func (c *Checker) closeAllRetypeWindows() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for key, obs := range c.retypeObs {
+		c.modelState.CloseRetypeWindow(obs.ledger, obs.canonical)
+		delete(c.retypeObs, key)
+	}
+}
+
+func retypeObsKey(ledger, canonical string) string {
+	return ledger + "\x00" + canonical
+}
+
+// noteRetypeCommit registers (or re-arms) the closure observation for a
+// committed retype whose window the fold just opened or extended. Caller
+// holds c.mu.
+func (c *Checker) noteRetypeCommit(ledger, canonical string, seq uint64) {
+	key := retypeObsKey(ledger, canonical)
+
+	obs, ok := c.retypeObs[key]
+	if !ok {
+		obs = &retypeObservation{ledger: ledger, canonical: canonical}
+		c.retypeObs[key] = obs
+	}
+
+	if seq > obs.openSeq {
+		obs.openSeq = seq
+	}
+
+	obs.foldSeen = map[int]bool{}
+	obs.pendClear = map[int]bool{}
+	obs.confirmedAt = 0
 }

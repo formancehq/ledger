@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -33,7 +34,7 @@ func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 	return c.mapper(next)
 }
 
-// normalizeStreamEnd maps a Canceled Recv error to io.EOF ONLY when the
+// normalizeStreamEnd maps a raw Canceled Recv error to io.EOF ONLY when the
 // cancellation is the consumer's own — the caller-supplied context is done
 // because the consumer stopped reading and tore the stream down, so the
 // results gathered so far form a complete answer for it. A Canceled status
@@ -49,6 +50,10 @@ func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 // into the retry path (gRPC clients retry it; HTTP serves 503 with
 // Retry-After).
 //
+// A decoded Ledger failure retains its original status, including Canceled
+// carried by an unknown reason. Neither caller teardown nor the raw transport
+// retry policy may discard that failure's message and details.
+//
 // The ours/not-ours verdict MUST come from the caller-supplied context,
 // never from ClientStream.Context(): gRPC derives the stream context with
 // WithCancel and cancels it in finish() on EVERY stream termination, so by
@@ -56,6 +61,9 @@ func (c GRPCStreamCursor[Res, To]) Next() (To, error) {
 // gates nothing.
 func normalizeStreamEnd(ctx context.Context, err error) error {
 	if status.Code(err) != codes.Canceled {
+		return err
+	}
+	if grpcerr.OriginalStatus(err) != nil {
 		return err
 	}
 

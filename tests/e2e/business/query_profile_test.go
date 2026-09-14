@@ -188,15 +188,17 @@ var _ = Describe("QueryProfile", Ordered, func() {
 				actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"})))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.CreatePreparedQuery(sharedCtx, &servicepb.CreatePreparedQueryRequest{
-				Ledger: ledgerName,
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+					Ledger: ledgerName,
 
-				Query: &commonpb.PreparedQuery{
-					Name:   "find-admins",
-					Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-					Filter: actions.StringMetadataFilter("role", "admin"),
-				},
-			})
+					Query: &commonpb.PreparedQuery{
+						Name:   "find-admins",
+						Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+						Filter: actions.StringMetadataFilter("role", "admin"),
+					},
+				}},
+			}))
 			Expect(err).To(Succeed())
 		})
 

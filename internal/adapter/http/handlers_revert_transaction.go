@@ -1,10 +1,13 @@
 package http
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/adapter/json"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -21,10 +24,21 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Decode request body (optional - can be empty or contain metadata, force, atEffectiveDate)
+	// Read the whole body through the router's MaxBytesReader before decoding.
+	// A stream decoder can stop at the first value and miss trailing data or
+	// an oversized suffix. Only a zero-byte body means default revert options.
 	var reqBody map[string]any
-	if r.ContentLength > 0 {
-		err := json.UnmarshalRead(r.Body, &reqBody)
+	if r.Body != nil {
+		body, err := io.ReadAll(r.Body)
+		if err == nil && len(body) != 0 {
+			if !json.Valid(body) {
+				err = errors.New("expected a single valid JSON value")
+			} else {
+				decoder := json.NewDecoder(bytes.NewReader(body))
+				decoder.UseNumber()
+				err = decoder.Decode(&reqBody)
+			}
+		}
 		if err != nil {
 			writeBadRequest(w, "INVALID_REQUEST", fmt.Errorf("invalid request body: %w", err))
 

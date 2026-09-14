@@ -27,20 +27,20 @@ type SliceIterator[D Direction] struct {
 	current   []byte
 }
 
-func newSliceIterator[D Direction](entities [][]byte, step int) *SliceIterator[D] {
-	return &SliceIterator[D]{entities: entities, cmp: comparator[D](), step: step}
+func newSliceIterator[D Direction](entities [][]byte) *SliceIterator[D] {
+	return &SliceIterator[D]{entities: entities, cmp: comparator[D](), step: travelStep[D]()}
 }
 
 // NewSliceIterator borrows entities (ascending, sorted) and walks them low to
 // high. A nil slice yields an empty iterator.
 func NewSliceIterator(entities [][]byte) *SliceIterator[Asc] {
-	return newSliceIterator[Asc](entities, 1)
+	return newSliceIterator[Asc](entities)
 }
 
 // NewReverseSliceIterator borrows entities (ascending, sorted) and walks them
 // high to low.
 func NewReverseSliceIterator(entities [][]byte) *SliceIterator[Desc] {
-	return newSliceIterator[Desc](entities, -1)
+	return newSliceIterator[Desc](entities)
 }
 
 // at maps a travel position onto a slice index. Travel position 0 is the
@@ -109,6 +109,23 @@ func (it *SliceIterator[D]) Seek(target []byte) bool {
 func (it *SliceIterator[D]) Err() error { return nil }
 
 func (it *SliceIterator[D]) Close() {}
+
+// Slice borrows entities (ascending, sorted) and walks them in D's direction.
+// See And for why both a generic and a named spelling exist.
+func Slice[D Direction](entities [][]byte) *SliceIterator[D] {
+	return newSliceIterator[D](entities)
+}
+
+// travelStep is +1 ascending and -1 descending: the increment over slice
+// indices that moves along the direction of travel.
+func travelStep[D Direction]() int {
+	var d D
+	if d.compare([]byte{0}, []byte{1}) < 0 {
+		return 1
+	}
+
+	return -1
+}
 
 // Direction is the compile-time direction witness; see Iterator.Direction.
 func (it *SliceIterator[D]) Direction() (d D) { return }

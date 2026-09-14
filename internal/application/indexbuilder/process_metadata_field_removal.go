@@ -83,26 +83,40 @@ func (b *Builder) handleRemovedMetadataFieldType(
 	// Mirror the change in the in-memory config so subsequent logs in this
 	// same processing pass skip the now-defunct index without an extra
 	// LedgerInfo reload.
-	delete(cfg.byCanonical, indexes.Canonical(dropped))
+	canonical := indexes.Canonical(dropped)
+	priorIndex, hadPriorIndex := cfg.byCanonical[canonical]
+	b.recordFoldRollback(func() {
+		if hadPriorIndex {
+			cfg.byCanonical[canonical] = priorIndex
+
+			return
+		}
+
+		delete(cfg.byCanonical, canonical)
+	})
+	delete(cfg.byCanonical, canonical)
 
 	// Drop any in-flight schema-rewrite task for this (ledger, target, key).
 	// Without this, a rewrite started by a prior SetMetadataFieldType would
 	// outlive the index it was rewriting, and the builder would keep
 	// driving a rewrite for an index that no longer exists.
-	b.removeSchemaRewriteTaskByField(ledgerName, meta.Metadata.GetTarget(), key)
+	if err := b.removeSchemaRewriteTaskByField(ledgerName, meta.Metadata.GetTarget(), key); err != nil {
+		return err
+	}
 
 	// Same hazard on the backfill side: an initial CreateIndex backfill
 	// for this metadata index could still be running. processBackfill
 	// uses a one-index cfg, so it would repopulate the entries we just
 	// purged and then loop forever. removeBackfillTask drops the task
 	// and deletes its persisted progress.
-	b.removeBackfillTask(ledgerName, dropped)
+	if err := b.removeBackfillTask(ledgerName, dropped); err != nil {
+		return err
+	}
 
 	// Tombstone the per-replica IndexVersionState: the rows are purged above,
 	// but the high-water version must survive so a re-declared field's fresh
 	// index cannot reuse a version number — if this purge ever misses a row,
 	// the miss stays isolated in a keyspace no future pass writes into.
-	canonical := indexes.Canonical(dropped)
 	if err := b.tombstoneVersionState(ledgerName, canonical); err != nil {
 		return err
 	}

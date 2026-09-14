@@ -7,6 +7,16 @@ Ledger v3 exposes two types of APIs:
 1. **HTTP REST API**: Public API for clients (documented here)
 2. **gRPC API**: Inter-node communication and programmatic API (see [gRPC API](grpc-api.md))
 
+## HTTP server lifecycle
+
+Normal and restore mode supervise the HTTP endpoint through the bootstrap
+lifecycle. Listener bind errors fail startup synchronously. An unexpected
+`http.Server.Serve` error requests application shutdown and is returned during
+cleanup, causing the service runner to exit unsuccessfully. Normal shutdown
+ignores `http.ErrServerClosed` and drains active requests within the stop context.
+Temporary accept errors remain subject to the standard HTTP server retry policy.
+The endpoint retains its 10-second header read timeout and 120-second idle timeout.
+
 ## HTTP REST API
 
 ### Base URL
@@ -16,6 +26,21 @@ By default: `http://localhost:9000`
 ### API Versioning
 
 All business routes are served under the `/v3/` prefix. Ops routes (`/health`, `/livez`, `/readyz`, `/clusterz`, `/_info`, `/debug/pprof/`) are unversioned and served at the root.
+
+### Encoded metadata keys
+
+Metadata DELETE routes (account, transaction and ledger) and metadata-schema
+PUT/DELETE routes accept a metadata key as one URL path segment. Encode a slash
+inside the key as `%2F`: a key saved through JSON as `formance.com/reviewed` is
+addressed as `formance.com%2Freviewed`. JSON keys are not URL-decoded.
+
+Path parameters are decoded exactly once overall. Chi uses `URL.RawPath` when
+present, so the adapter unescapes that captured segment; otherwise Chi uses
+`URL.Path`, already decoded by Go. The same extraction rule applies to canonical
+index IDs. Double encoding (`formance.com%252Freviewed`) retains a literal
+`%2F` in the key and cannot select `formance.com/reviewed`. Metadata admission
+rejects percent-containing keys, including literal malformed escape sequences,
+with HTTP 400. A raw malformed URL escape is rejected by Go's HTTP parser.
 
 ### Authentication
 
@@ -59,6 +84,18 @@ the request reaches the endpoint — so the test asserts the matched pattern on 
 The gRPC analogue is `internal/adapter/auth/request_scope_exhaustiveness_test.go`, which gives the
 same guarantee for the `Request` oneof.
 
+### Optional transaction revert body
+
+`POST /v3/{ledgerName}/transactions/{transactionId}/revert` accepts an absent
+or empty body. When supplied, the JSON body carries `force`, `atEffectiveDate`
+and `metadata`, independently of HTTP framing: a chunked request is decoded
+even though its content length is unknown. The complete body is read through
+the 4 MiB limit before decoding a single JSON document. Only a zero-byte body
+uses default options. Malformed or truncated JSON, extra JSON values and
+trailing non-whitespace return `400 INVALID_REQUEST` before submitting Apply.
+Trailing JSON whitespace is allowed, but counts towards the limit; exceeding
+it returns `413 BODY_TOO_LARGE`, including when only the suffix is oversized.
+
 ### Response Format
 
 #### Success
@@ -97,7 +134,7 @@ Three paths need correlated server-side diagnostics because the raw value can co
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
 2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
-3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized error presentations are unchanged.
+3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
 
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
 
@@ -146,13 +183,15 @@ of excluded codes: **everything else passes through unchanged**. That covers
 three groups.
 
 - A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
-  detection off it and normalises it to `io.EOF`. The ledger `ErrorInfo` is
+  detection off it: caller cancellation becomes `io.EOF`, while a live caller
+  sees `Unavailable` for a failed transfer. The ledger `ErrorInfo` is
   still decoded first: no `ErrorKind` maps to `codes.Canceled`, so a reason
   this build knows arriving under it is a contradiction, and answering the
   status before the decode would exempt the one code with no legitimate reason
   from the mismatch policy below and hand the peer's message to the client.
-  Pagination is unaffected either way — a reconstructed value keeps answering
-  `GRPCStatus()` with the received `Canceled` status.
+  A decoded unknown reason carried by `Canceled` retains its full status through
+  both cursor implementations, even after caller teardown. `grpcerr.OriginalStatus`
+  identifies that decoded failure before the raw cancellation policy runs.
 - A **bare** status of any code — no ledger `ErrorInfo`, so no reason to
   recover. A bare `codes.Unavailable` already reaches the right outcome
   (`handleError` answers that code with `503` + `Retry-After` on its own);
@@ -175,6 +214,13 @@ The HTTP layer needs no status-code branch of its own: both mappers read the
 failure through `apierr.Describe`, which answers identically for a locally
 raised error and a decoded one, so a follower answers with the same status and
 `errorCode` as the leader and the bulk path is repaired by the same change.
+
+At a subsequent gRPC hop, the server uses `grpcerr.OriginalStatus` before generic
+status conversion. This preserves the sender's message and all status details
+even when routing has wrapped the error with diagnostic context. The helper
+recognizes only this decoder's reconstructed errors; invalid pairs and foreign
+or raw transport statuses retain their existing handling. The originating
+server's `PublicErrorDetails` selection is preserved rather than re-created.
 
 The decorator wraps the connection rather than the generated client's 37
 methods (11 of them server-streaming), because six of the `BucketGrpcClient`
@@ -207,13 +253,15 @@ kind would yield `KindInternal` and answer `500` for what the sender classified
 as a caller error.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
-identity: a locally raised failure is read through `domain.PublicErrorDetails`,
-so a type that owns a separate public presentation (EN-1623) reaches a surface
-redacted, and `Descriptor.PublicOverride` tells the surface to render `Message`
-in place of the wrapped chain that presentation exists to withhold. A decoded
-failure needs no such selection — the sender applied it before serialising — so
-`PublicOverride` is false for an `*apierr.Remote` and the consumer keeps
-rendering its own outer context, exactly as it did before the hop.
+identity. A locally raised failure uses `domain.PublicErrorDetails` when its
+type owns a separate public presentation (EN-1623); otherwise its describable
+message is used. A decoded failure already contains the sender's selection.
+Both unitary and bulk HTTP responses render the descriptor's message rather
+than outer routing or Raft context, so local and forwarded failures have the
+same public text. `Descriptor.PublicOverride` still identifies a separate
+type-owned public presentation. Recognized internal failures retain their
+status and reason; unmapped errors, invalid wire pairs and panics retain the
+generic correlation-ID response.
 
 `apierr` imports `internal/domain` and nothing else, so HTTP reads a decoded
 failure without linking any gRPC detail. The reverse direction is a layering
@@ -358,6 +406,33 @@ Clients should:
 - **Write operations**: Must go through the leader, so will fail during leader elections
 - **Idempotency**: Ensure write operations are idempotent to safely retry after leader election
 - **Monitoring**: Track `503` responses to monitor cluster health and leader election frequency
+
+## Metadata number decoding
+
+HTTP metadata numbers retain their exact decimal value before conversion to
+protobuf metadata. This applies to account, transaction and ledger metadata
+updates, transaction creation (including `accountMetadata`), and unitary and
+bulk reversals. For example, `9007199254740993` and `-9007199254740993` reach
+`Apply` unchanged, including beyond the exact-integer range of IEEE-754 doubles.
+
+Nonnegative values use unsigned 64-bit metadata; negative values use signed
+64-bit metadata. The accepted range is `-9223372036854775808` through
+`18446744073709551615`. OpenAPI declares an integer with these explicit bounds
+and no `int64` format, which would exclude the upper unsigned range. Integral
+decimal and exponent spellings (`1.0`, `1e3`, `10e-1`) are accepted, while
+fractions and out-of-range values return `400 INVALID_REQUEST` before `Apply`. Fractions are
+checked exactly, including values that a floating-point decoder would round to
+an integer or underflow to zero. Numeric strings remain strings; null and other
+metadata types retain their existing handling.
+
+The JSON adapter exposes explicit number-preserving decode helpers for these
+metadata consumers. Unitary reversals validate the complete body with the standard
+JSON decoder and enable `UseNumber`, preserving strict document validation for
+both known-length and chunked bodies. Ordinary shared decoders retain their existing behavior.
+Custom metadata JSON decoders opt in themselves, since an outer decoder's
+configuration does not propagate into a custom `UnmarshalJSON` method. This
+changes input conversion only; protobuf contracts, stored representations,
+FSM behavior and audit replay formats are unchanged.
 
 ## Main Endpoints
 

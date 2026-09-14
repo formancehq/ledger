@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // NewUpdateCommand creates the queries update command.
@@ -81,13 +81,18 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	ctx, cancel := cmdutil.GetContext(cmd)
 	defer cancel()
 
-	_, err = client.UpdatePreparedQuery(ctx, &servicepb.UpdatePreparedQueryRequest{
-		Ledger: ledgerName,
-		Name:   name,
-		Filter: filter,
-	})
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.UpdatePreparedQueryAction(ledgerName, name, filter))
+	if err != nil {
+		return cmdutil.Displayed(err)
+	}
+
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to update prepared query", err)
+	}
+
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+		return fmt.Errorf("response signature verification failed: %w", err)
 	}
 
 	pterm.Success.Printfln("Prepared query %q updated", name)

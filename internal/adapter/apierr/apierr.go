@@ -168,8 +168,8 @@ func InvalidWire(err error) (*InvalidWireError, bool) {
 // reaches a surface through this contract with the diagnostic one. A decoded
 // remote failure needs no such selection: the sender already applied it before
 // serialising (internal/adapter/grpc.describableToGRPCStatus), so what arrived
-// is the public presentation and PublicOverride stays false — a consumer keeps
-// rendering its own outer context for it, exactly as it did before the hop.
+// is the public presentation and PublicOverride stays false. Consumers render
+// Message on public paths so outer routing context cannot change the response.
 func Describe(err error) (Descriptor, bool) {
 	if remote, ok := errors.AsType[*Remote](err); ok {
 		return Descriptor{

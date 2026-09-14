@@ -23,10 +23,8 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
-	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
-	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
@@ -375,24 +373,7 @@ func Module() fx.Option {
 				return nodeProvideResult{Node: n, FreshStart: freshStart}, nil
 			},
 			buildResponseSigner,
-			func(cfg Config) (node.NodeConfig, error) {
-				cfg.RaftConfig.DataDir = cfg.DataDir
-				cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
-				cfg.RaftConfig.SetDefaults()
-
-				// EN-1045: establish this peer's identity UUID before any
-				// membership plumbing runs. First boot generates and
-				// persists it in INSTANCE_ID under WalDir; later boots
-				// return the same value.
-				instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
-				if err != nil {
-					return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
-				}
-
-				cfg.RaftConfig.InstanceID = instanceID
-
-				return cfg.RaftConfig, nil
-			},
+			buildNodeConfig,
 			func(cfg Config) node.TransportConfig {
 				return cfg.TransportConfig
 			},
@@ -480,15 +461,15 @@ func Module() fx.Option {
 			func(builder *plan.Builder, n *node.Node, fsm *state.Machine, orchestrator *backupapp.Orchestrator, logger logging.Logger) *backupapp.Cleanup {
 				return backupapp.NewCleanup(fsm.Registry.BackupJobs, newBackupProposer(builder, n), n, orchestrator.Registry(), logger)
 			},
-			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, adm ctrl.Admission, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig, info version.Info) clusterpb.ClusterServiceServer {
-				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, adm, ms, bo, logger,
+			fx.Annotate(func(n *node.Node, raftTransport *node.DefaultTransport, servicePool *transport.ConnectionPool, collector *diskusage.Collector, store *dal.Store, c *cache.Cache, ss *state.SharedState, ib *indexbuilder.Builder, rs *readstore.Store, ms *membership.Service, bo *backupapp.Orchestrator, logger logging.Logger, cfg Config, authCfg internalauth.AuthConfig, info version.Info) clusterpb.ClusterServiceServer {
+				return grpcadp.NewClusterServiceServer(n, raftTransport, servicePool, collector, store, c, ss, ib, rs, ms, bo, logger,
 					cfg.RaftConfig.AdvertiseAddr,
 					cfg.ServiceAdvertiseAddr(),
 					authCfg,
 					cfg.ClusterID,
 					info,
 				)
-			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, ``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``)),
 			func(n *node.Node, raftTransport *node.DefaultTransport, ms *membership.Service, cfg Config, logger logging.Logger) clusterbootstrappb.ClusterBootstrapServiceServer {
 				return grpcadp.NewClusterBootstrapServiceServer(
 					n, raftTransport, ms, logger,
@@ -652,7 +633,7 @@ func Module() fx.Option {
 					servicePool,
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
-			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store) *clusterhealth.GRPCHealthUpdater {
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store, rs *readstore.Store) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
 
@@ -662,7 +643,7 @@ func Module() fx.Option {
 					return err == nil && policy.GetRevision() > 0
 				}
 
-				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady)
+				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
 			func(admission ctrl.Admission, store *dal.Store, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
 				return NewClusterPolicyReconciler(func(ctx context.Context) {
@@ -933,86 +914,7 @@ func Module() fx.Option {
 				}))
 			},
 			func(lc fx.Lifecycle, node *node.Node, defaultTransport *node.DefaultTransport, logger logging.Logger) (*node.Node, error) {
-				var cancelRun context.CancelFunc
-
-				lc.Append(fx.Hook{
-					OnStart: func(ctx context.Context) error {
-						ready := make(chan struct{})
-
-						// Use a dedicated context for node.Run that survives
-						// the OnStart return (unlike ctx which expires). On
-						// startup failure we cancel context-aware work; this
-						// cancellation alone does not join Run. During shutdown,
-						// node.Stop supplies the task termination signal, not this
-						// cancel — see the OnStop hook below for the rationale.
-						var runCtx context.Context
-						runCtx, cancelRun = context.WithCancel(context.Background())
-
-						otlplogs.Go(func() {
-							err := node.Run(runCtx, ready)
-							if err != nil {
-								panic(err)
-							}
-						}, logger)
-
-						select {
-						case <-ctx.Done():
-							cancelRun()
-
-							return ctx.Err()
-						case <-ready:
-							logger.Infof("Raft cluster started successfully")
-
-							return nil
-						}
-					},
-					OnStop: func(ctx context.Context) error {
-						logger.Infof("Shutting down raft cluster")
-
-						// Do NOT cancel peer connections here. node.Stop's
-						// first move is tryTransferLeadershipBeforeShutdown,
-						// which needs the priority send queue of the elected
-						// transferee to still be wired up so the MsgTimeoutNow
-						// reaches it. Killing peer loops up-front broke the
-						// transfer and forced the cluster through a full
-						// election timeout on every graceful shutdown (#314).
-						//
-						// The transport's own fx OnStop runs AFTER this hook
-						// (fx invokes OnStop in reverse registration order) and
-						// already calls CancelPeerConnections inside t.Stop().
-						//
-						// Do NOT cancel runCtx here either. node.Run's outer
-						// select watches stopChannel and tasks.err() — it does
-						// not watch ctx. The tasks (applier.Run, processReadies)
-						// likewise select only on their stop channel. Cancelling
-						// runCtx would only propagate into the FSM calls those
-						// tasks make (PrepareEntries, CommitPreparedBatch,
-						// InstallSnapshot) and cause them to return
-						// context.Canceled mid-batch — which surfaces as a "task
-						// pool error" from Node.Run, panics the bootstrap
-						// goroutine, and crashes the process mid-shutdown
-						// instead of returning a clean nil (#345).
-						// Cancel only after Stop returns, preserving the run
-						// context through successful task/commit drain. Stop
-						// publishes its shutdown request even if ctx expires
-						// during transfer or before Run reaches its stop select.
-						// On timeout, cancellation can interrupt context-aware
-						// work, but does not join Run or terminate idle tasks;
-						// Run's explicit stop path still owns their termination.
-						// A timeout is not proof that infrastructure is safe to
-						// close. Only successful Stop confirms the drain/join.
-						defer cancelRun()
-
-						err := node.Stop(ctx)
-						if err != nil {
-							return fmt.Errorf("shutting down raft cluster: %w", err)
-						}
-
-						logger.Infof("Raft cluster stopped successfully")
-
-						return nil
-					},
-				})
+				lc.Append(nodeHook(node, logger))
 
 				return node, nil
 			},
@@ -1039,10 +941,8 @@ func Module() fx.Option {
 			// transport/server/node startup hooks) so it runs before any inbound
 			// Raft traffic can be stepped — see the joinPreflightHook closure
 			// above and its doc comment for the EN-1436 ordering rationale.
-			func(lc fx.Lifecycle, cfg Config, handler http.Handler, bindings network.Bindings) {
-				lc.Append(transportfx.FXHook(httpserver.NewHook(handler,
-					httpListenerOption(bindings.HTTP, fmt.Sprintf(":%d", cfg.HTTPPort)),
-				)))
+			func(lc fx.Lifecycle, cfg Config, handler http.Handler, bindings network.Bindings, logger logging.Logger, shutdowner fx.Shutdowner) {
+				lc.Append(httpServerHook(handler, bindings.HTTP, fmt.Sprintf(":%d", cfg.HTTPPort), logger, shutdownRequester(shutdowner)))
 			},
 			func(lc fx.Lifecycle, collector *diskusage.Collector) {
 				lc.Append(worker.FxHook(collector))
@@ -1536,9 +1436,14 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 	}
 
 	desired := &commonpb.ClusterPolicy{
-		Revision:             cfg.ClusterPolicyRevision,
-		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
-		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+		Revision:                    cfg.ClusterPolicyRevision,
+		IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
+		QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
+		MetadataMaxEntriesPerEntity: cfg.MetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         cfg.MetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 	}
 
 	appliedRev := applied.GetRevision()
@@ -1794,4 +1699,23 @@ func handleLeadershipChangeEvent(
 
 	eventsManager.OnLeadershipChange(e.IsLeader)
 	mirrorManager.OnLeadershipChange(e.IsLeader)
+}
+
+func buildNodeConfig(cfg Config) (node.NodeConfig, error) {
+	cfg.RaftConfig.DataDir = cfg.DataDir
+	cfg.RaftConfig.ServiceAdvertiseAddr = cfg.ServiceAdvertiseAddr()
+	cfg.RaftConfig.SetDefaults()
+
+	// EN-1045: establish this peer's identity UUID before any
+	// membership plumbing runs. First boot generates and
+	// persists it in INSTANCE_ID under WalDir; later boots
+	// return the same value.
+	instanceID, err := wal.EnsureInstanceID(cfg.RaftConfig.WalDir)
+	if err != nil {
+		return node.NodeConfig{}, fmt.Errorf("ensuring instance id: %w", err)
+	}
+
+	cfg.RaftConfig.InstanceID = instanceID
+
+	return cfg.RaftConfig, nil
 }

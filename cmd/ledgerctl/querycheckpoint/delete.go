@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 func newDeleteCommand() *cobra.Command {
@@ -32,7 +32,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid checkpoint ID %q: %w", args[0], err)
 	}
 
-	client, conn, err := cmdutil.GetClusterClient(cmd)
+	client, conn, err := cmdutil.GetClient(cmd)
 	if err != nil {
 		return err
 	}
@@ -49,15 +49,30 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		spinner = cmdutil.StartSpinner("Deleting query checkpoint...")
 	}
 
-	_, err = client.DeleteQueryCheckpoint(ctx, &clusterpb.DeleteQueryCheckpointRequest{
-		CheckpointId: checkpointID,
-	})
+	applyReq, err := cmdutil.BuildApplyRequest(cmd, actions.DeleteQueryCheckpointAction(checkpointID))
+	if err != nil {
+		if spinner != nil {
+			spinner.Fail("Failed to sign request")
+		}
+
+		return cmdutil.Displayed(err)
+	}
+
+	resp, err := client.Apply(ctx, applyReq)
 	if err != nil {
 		if spinner != nil {
 			_ = spinner.Stop()
 		}
 
 		return cmdutil.FormatGRPCError("query checkpoint deletion failed", err)
+	}
+
+	if err := cmdutil.VerifyResponseSignatures(cmd, resp.GetLogs()); err != nil {
+		if spinner != nil {
+			_ = spinner.Stop()
+		}
+
+		return fmt.Errorf("response signature verification failed: %w", err)
 	}
 
 	if spinner != nil {

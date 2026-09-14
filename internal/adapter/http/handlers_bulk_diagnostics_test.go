@@ -44,7 +44,7 @@ func TestHandleBulkInternalDiagnostics(t *testing.T) {
 				t.Parallel()
 				for _, continueOnFailure := range []string{"false", "true"} {
 					backend := NewMockBackend(gomock.NewController(t))
-					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(nil, tc.err)
+					backend.EXPECT().Apply(gomock.Any(), gomock.Any()).Return(&domain.ApplyResult{}, tc.err)
 					srv := newTestServer(t, backend)
 					var logs bytes.Buffer
 					recorder := tracetest.NewSpanRecorder()

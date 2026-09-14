@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
-	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // processBackfillPostings is the fast path for backfilling posting-related
@@ -114,7 +113,6 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 				return verr
 			}
-
 			if err := parsePostingsFromLog(value, &parsed); err != nil {
 				_ = batch.Cancel()
 
@@ -129,20 +127,18 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 			// DeleteLedger: only the ledger under construction matters. The
 			// backfill replays the GLOBAL log for a single-ledger task, so a
-			// historical delete for any *other* ledger must NOT be acted on:
-			// DeleteLedgerIndexes is a full wipe of every ledger-scoped prefix
-			// (version state, backfill state, and all index keyspaces), so
-			// firing it for an unrelated ledger would clobber that ledger's
-			// live-maintained READY indexes. For task.ledger itself, wipe the
-			// stale pre-recreate rows exactly as the live processLogs path does
-			// — a delete + same-name recreate would otherwise leave stale
-			// account-by-asset (and address-mapping) rows from the deleted
-			// generation. markLedgerDeletedInBatch invalidates the in-batch
+			// historical delete for any *other* ledger must NOT be acted on.
+			// For task.ledger itself, purge only this task's target generation:
+			// a live-style full wipe here would destroy current-generation
+			// version/cursor/tracker state and unrelated READY indexes. The
+			// narrow purge still prevents a same-name recreate from retaining
+			// stale account-by-asset (or address-mapping) rows. The following
+			// markLedgerDeletedInBatch call invalidates the in-batch
 			// dedup state so the recreate's writes — queued after the range
 			// delete and ordered after it at commit — are not suppressed.
 			if parsed.DeletedLedger != "" {
 				if parsed.DeletedLedger == task.ledger {
-					if err := readstore.DeleteLedgerIndexes(b.wb.Batch(), parsed.DeletedLedger); err != nil {
+					if err := b.purgeBackfillTaskGeneration(task); err != nil {
 						_ = batch.Cancel()
 
 						return err

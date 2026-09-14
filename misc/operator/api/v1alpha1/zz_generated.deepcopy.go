@@ -382,6 +382,14 @@ func (in *BackupStatus) DeepCopyInto(out *BackupStatus) {
 		*out = new(IncrementalBackupStatus)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.LastFullRunCompletionTime != nil {
+		in, out := &in.LastFullRunCompletionTime, &out.LastFullRunCompletionTime
+		*out = (*in).DeepCopy()
+	}
+	if in.LastIncrementalRunCompletionTime != nil {
+		in, out := &in.LastIncrementalRunCompletionTime, &out.LastIncrementalRunCompletionTime
+		*out = (*in).DeepCopy()
+	}
 	if in.NextFullBackupTime != nil {
 		in, out := &in.NextFullBackupTime, &out.NextFullBackupTime
 		*out = (*in).DeepCopy()

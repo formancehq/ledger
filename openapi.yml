@@ -1205,7 +1205,13 @@ paths:
   /v3/{ledgerName}/transactions/{transactionId}/revert:
     post:
       summary: Revert a transaction
-      description: Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
+      description: |
+        Reverts a transaction by creating a reverse transaction that undoes its effects. Requires `ledger:write` scope.
+        The body is optional; an absent or empty body uses default options. Supplied
+        options and metadata are decoded for both known-length and HTTP/1.1 chunked
+        requests. Malformed or truncated JSON, extra values and trailing non-whitespace
+        return 400 before applying the revert. The complete body, including trailing
+        whitespace, counts towards the 4 MiB limit; exceeding it returns 413.
       operationId: revertTransaction
       tags:
         - Transactions
@@ -1239,6 +1245,12 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           description: Conflict (e.g. transaction already reverted)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          description: Request body exceeds the 4 MiB limit
           content:
             application/json:
               schema:
@@ -1464,12 +1476,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TargetType'
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Metadata key name
+        - $ref: '#/components/parameters/MetadataKey'
       requestBody:
         required: true
         content:
@@ -1509,12 +1516,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/LedgerName'
         - $ref: '#/components/parameters/TargetType'
-        - name: key
-          in: path
-          required: true
-          schema:
-            type: string
-          description: Metadata key name
+        - $ref: '#/components/parameters/MetadataKey'
       responses:
         '204':
           description: Metadata field type removed successfully
@@ -2831,7 +2833,11 @@ components:
       required: true
       schema:
         type: string
-      description: Metadata key
+      description: |
+        Metadata key, URL-encoded as one path segment. Encode slashes as %2F
+        (for example, formance.com%2Freviewed). Decoded exactly once; percent
+        characters remaining after decoding, including double-encoded slashes,
+        are invalid metadata keys and are rejected with HTTP 400.
 
     TargetType:
       name: targetType
@@ -3157,14 +3163,23 @@ components:
           description: The account address that caused the violation
 
     MetadataValue:
-      description: A typed metadata value (string, integer, boolean, or null). String values must not contain NUL bytes.
+      description: >-
+        A typed metadata value (string, integer, boolean, or null). Integer
+        numbers are decoded exactly, including int64 bounds and values beyond
+        2^53. Integral decimal and exponent spellings are accepted; fractions
+        and out-of-range values are rejected. String values must not contain
+        NUL bytes. A value is limited to 16384 bytes by default; the effective
+        ceiling comes from the cluster policy (`--metadata-max-value-bytes`).
+        Exceeding it returns 400 with reason `METADATA_LIMIT_EXCEEDED`.
       nullable: true
       oneOf:
         - type: string
           pattern: '^[^\u0000]*$'
           description: Metadata string value without NUL bytes
         - type: integer
-          format: int64
+          minimum: -9223372036854775808
+          maximum: 18446744073709551615
+          description: Negative values fit int64; nonnegative values fit uint64.
         - type: boolean
 
     MetadataFieldTypeCommand:
@@ -3196,7 +3211,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Optional metadata for the ledger (supports typed values)
+          description: >-
+            Optional metadata for the ledger (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         mode:
           type: string
           enum:
@@ -3395,7 +3411,9 @@ components:
             type: object
             additionalProperties:
               $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for accounts involved in the transaction (supports typed values)
+          description: >-
+            Metadata for accounts involved in the transaction (supports typed
+            values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         timestamp:
           type: string
           format: date-time
@@ -3404,7 +3422,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Transaction metadata (supports typed values)
+          description: >-
+            Transaction metadata (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         reference:
           type: string
           description: Transaction reference
@@ -3567,7 +3586,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata to add (supports typed values)
+          description: >-
+            Metadata to add (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     RevertTransactionRequest:
       type: object
@@ -3590,7 +3610,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the revert transaction (supports typed values)
+          description: >-
+            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     RevertTransactionRequestBody:
       type: object
@@ -3607,7 +3628,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the revert transaction (supports typed values)
+          description: >-
+            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     DeleteMetadataRequest:
       type: object

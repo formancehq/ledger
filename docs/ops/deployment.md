@@ -67,6 +67,12 @@ Available flags for `run`:
 - `--health-wal-threshold`: WAL volume usage threshold, 0.0-1.0 (default: `0.8`)
 - `--health-data-threshold`: Data volume usage threshold, 0.0-1.0 (default: `0.8`)
 
+The service address published to peers uses the host from `--advertise-addr`
+and the port from `--grpc-port`. IPv6 hosts retain their brackets: for example,
+`--advertise-addr '[2001:db8::1]:7777' --grpc-port 8888` publishes
+`[2001:db8::1]:8888` for service RPCs while keeping `[2001:db8::1]:7777` for Raft.
+IPv4 addresses and hostnames use the same host with the configured service port.
+
 ### Configuration
 
 Options can be provided via:
@@ -662,6 +668,7 @@ The server persists critical configuration parameters in Pebble under the Global
 | `node-id` | Cluster confusion -- node becomes invisible | **Fatal error** |
 | `cluster-id` | Breaks inter-node communication | **Fatal error** |
 | `storage-schema-version` | Data layout incompatibility | **Fatal error** (never bypassable, even with `--unsafe-skip-config-validation`) |
+| metadata size limits in the committed cluster policy | Metadata protection silently disabled | **Fatal error** (never bypassable) when `--cluster-policy-revision` cannot supersede the applied policy |
 
 The idempotency TTL is **not** a persisted-config parameter: it lives in the Raft-replicated cluster policy and is changed by a policy revision bump, not a restart. See [Idempotency Keys](../technical/architecture/subsystems/admission/idempotency.md).
 
@@ -671,10 +678,11 @@ The idempotency TTL is **not** a persisted-config parameter: it lives in the Raf
 - **Restore flow**: Validation is skipped in restore mode (`--restore`)
 - **Existing deployments upgrading**: Treated as first boot (no persisted config key yet)
 - **Schema version mismatch**: Always fatal regardless of `--unsafe-skip-config-validation`, because data corruption is certain
+- **Cluster policy without metadata limits**: The committed policy carries the metadata size ceilings the server enforces on every write path. A leader's reconciler proposes a new policy only when `--cluster-policy-revision` exceeds the applied revision, so a policy committed without the ceilings cannot be repaired at the same revision. The node refuses to start and names the remedy — raise `--cluster-policy-revision`. Zero is never treated as "unlimited". See the [metadata size limits contract](../technical/architecture/subsystems/admission/metadata-limits.md)
 
 #### Override
 
-Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id` and `cluster-id` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
+Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id` and `cluster-id` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches and a cluster policy missing its metadata size limits are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
 ### Upgrading from pre-#400 clusters
 

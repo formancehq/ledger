@@ -502,7 +502,7 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 3. When not guaranteed, load base value from store at boundary B(nextIndex)
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
-func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (logs []*commonpb.Log, err error) {
+func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (response *domain.ApplyResult, err error) {
 	if err := a.writeGate.CheckWritesAllowed(); err != nil {
 		return nil, err
 	}
@@ -557,7 +557,8 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 	// fresh leader's reconciler commits the policy within a reconcile interval, so
 	// this blocks only during the startup window. SetClusterPolicy is exempt so
 	// the reconciler's own proposal establishes the policy.
-	if !allRequestsAreClusterPolicy(batch.requests) {
+	businessBatch := !allRequestsAreClusterPolicy(batch.requests)
+	if businessBatch {
 		if err := a.waitClusterPolicyReady(ctx); err != nil {
 			return nil, err
 		}
@@ -576,6 +577,25 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 	orders, overlay, err := a.requestsToOrders(ctx, batch.requests, batch.sig)
 	if err != nil {
 		return nil, fmt.Errorf("converting requests to orders: %w", err)
+	}
+
+	// Enforce the metadata size contract over the whole command. It runs here,
+	// after the orders exist, because the per-command ceiling spans every order
+	// in the batch — the atomic, signed unit — not one request at a time.
+	//
+	// The ceilings live in the committed cluster policy, so this reads the same
+	// numbers the FSM will read for Numscript-produced metadata. A
+	// SetClusterPolicy-only batch is exempt: it carries no business metadata and
+	// must be able to commit the very policy these ceilings come from.
+	if businessBatch {
+		policy, policyErr := query.ReadClusterPolicy(a.store)
+		if policyErr != nil {
+			return nil, fmt.Errorf("reading cluster policy for metadata limits: %w", policyErr)
+		}
+
+		if err := validateCommandMetadata(orders, domain.MetadataLimitsFromPolicy(policy)); err != nil {
+			return nil, err
+		}
 	}
 
 	// Tally per-order action counters at whichever exit Admit returns through.
@@ -820,7 +840,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 		a.responseResolutionDurationHistogram.Record(ctx, time.Since(responseResolutionStart).Microseconds())
 	}()
 
-	logs = make([]*commonpb.Log, len(result.Logs))
+	logs := make([]*commonpb.Log, len(result.Logs))
 
 	// A referenced log is resolved from the permanent log history. The read
 	// needs a read handle, which the raw store is not; open one lazily, only
@@ -859,7 +879,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (log
 		logs[i] = log
 	}
 
-	return logs, err
+	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {

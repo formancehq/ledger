@@ -334,10 +334,10 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedRequest = req.GetUnsigned().GetRequests()[0]
 
-			return []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_Apply{
@@ -355,7 +355,7 @@ func TestHandleRevertTransaction_WithMetadataInBody(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -387,7 +387,7 @@ func TestHandleRevertTransaction_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("internal error")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -429,7 +429,7 @@ func TestHandleSaveAccountMetadata_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -489,7 +489,7 @@ func TestHandleSaveTransactionMetadata_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -695,7 +695,7 @@ func TestHandleSetMetadataType_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -739,7 +739,7 @@ func TestHandleRemoveMetadataType_BackendApplyError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("apply failed")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -868,7 +868,7 @@ func TestRunBulk_Atomic(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			reqs := req.GetUnsigned().GetRequests()
 			logs := make([]*commonpb.Log, len(reqs))
 			for i := range reqs {
@@ -883,7 +883,7 @@ func TestRunBulk_Atomic(t *testing.T) {
 				}
 			}
 
-			return logs, nil
+			return &domain.ApplyResult{Logs: logs}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -906,8 +906,8 @@ func TestRunBulk_Sequential(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_Apply{
@@ -917,7 +917,7 @@ func TestRunBulk_Sequential(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -1128,7 +1128,7 @@ func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			reqs := req.GetUnsigned().GetRequests()
 			logs := make([]*commonpb.Log, len(reqs))
 			for i := range reqs {
@@ -1152,7 +1152,7 @@ func TestHandleBulk_WithAtomicFlag(t *testing.T) {
 				}
 			}
 
-			return logs, nil
+			return &domain.ApplyResult{Logs: logs}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -1173,7 +1173,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			callCount++
 			if callCount == 1 {
 				// Domain-level (Describable) business error — the caller
@@ -1183,7 +1183,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 				return nil, domain.ErrEmptyTransaction
 			}
 
-			return []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_Apply{
@@ -1202,7 +1202,7 @@ func TestHandleBulk_WithContinueOnFailure(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -1262,7 +1262,7 @@ func TestHandleBulk_InfraErrorNotSwallowed(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, errors.New("boom: pebble store unavailable")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -1288,7 +1288,7 @@ func TestHandleBulk_LeaderLossReturns503WithRetryAfter(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, commonpb.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -1352,8 +1352,8 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
-			return []*commonpb.Log{
+		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
@@ -1363,7 +1363,7 @@ func TestNewHandler_CreateLedgerRoute(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 
 	handler := NewHandler(logging.Testing(), backend, internalauth.AuthConfig{}, version.Info{})
@@ -1624,10 +1624,10 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_CreateLedger{
@@ -1637,7 +1637,7 @@ func TestHandleCreateLedger_IdempotencyKeyPropagated(t *testing.T) {
 						},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -1665,16 +1665,16 @@ func TestHandleDeleteLedger_IdempotencyKeyPropagated(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) ([]*commonpb.Log, error) {
+		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedBatch = req.GetUnsigned()
 
-			return []*commonpb.Log{
+			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
 						Type: &commonpb.LogPayload_DeleteLedger{},
 					},
 				},
-			}, nil
+			}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

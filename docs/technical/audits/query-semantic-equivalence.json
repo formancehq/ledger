@@ -1,0 +1,57 @@
+{
+  "id": "query-semantic-equivalence",
+  "title": "Query semantic equivalence across supported execution plans",
+  "purpose": "Find reachable query-engine result or acceptance divergences between supported plans for the same logical query at an equivalent fixed snapshot/horizon and served index type/version. Follow the companion evidence and ownership contract. Compare against an independent non-empty oracle; agreement between implementations sharing helpers is insufficient. This is not model-driver coverage implementation, a temporal consistency audit, wire translation review, or accounting arithmetic audit. Unsupported plans and undocumented equivalence remain questions, not presumed bugs.",
+  "paths": [
+    "internal/query/**",
+    "internal/application/ctrl/list_entities.go",
+    "internal/application/ctrl/controller_default.go",
+    "internal/storage/readstore/**",
+    "internal/proto/commonpb/metadata_convert.go",
+    "internal/domain/validation.go",
+    "internal/domain/indexes/**",
+    "tests/oracle/**",
+    "tests/e2e/business/**"
+  ],
+  "related_docs": [
+    "AGENTS.md",
+    "docs/technical/agent-context.md",
+    "docs/technical/contributing/ai-audit.md",
+    "docs/technical/contributing/ai-audit-challenge.md",
+    "docs/technical/audits/query-semantic-equivalence.md",
+    "docs/technical/architecture/subsystems/read-path/query-pipeline.md",
+    "docs/technical/architecture/subsystems/read-path/iterator-seek-contract.md",
+    "docs/technical/architecture/subsystems/read-path/typed-metadata.md",
+    "docs/technical/architecture/subsystems/read-path/prepared-queries.md",
+    "docs/technical/architecture/subsystems/read-path/query-filter.md",
+    "docs/technical/architecture/subsystems/indexer/indexes.md",
+    "docs/technical/contributing/testing.md"
+  ],
+  "invariants": [
+    "Every comparison must establish the same ledger, supported target, logical predicate, bound parameters, result mode/options, entity universe, fixed data horizon and served index version/type. Record the actual entry points and selected plans. Separate documented surface defaults, unsupported combinations and temporal visibility exceptions before asserting equivalence.",
+    "Compile and CompileReverse must preserve accepted predicates and their selected entity set for ACCOUNTS, TRANSACTIONS and LOGS under the per-target validity contract. Direction changes ordering, not membership. Compare each against independently expected identities as well as against the other; a shared compiler helper can make both wrong.",
+    "AND range coalescing, equality shortcuts, OR union and NOT difference must preserve the predicate over the established target universe, including overlapping branches, duplicates, absent metadata, null-derived index entries and empty intersections. NOT is not merely inequality among rows with the field present. Do not invent SQL null semantics.",
+    "Metadata comparisons and existence conditions must use the served index version-bound coercion contract while entity enrichment preserves raw primary values. Distinguish missing keys, explicit NullValue and failed conversion, includeNull, false, zero and empty strings; preserve signed/unsigned and datetime bounds without overflow or silent narrowing.",
+    "Absolute Seek, exhaustion/reseek, materialized and streaming leaves, and ascending/descending pagination must return the independently expected ordered window with exclusive continuation and correct lookahead on a frozen dataset. Repeated pages must neither duplicate nor omit matches in that fixed state; no cross-request snapshot guarantee is inferred under concurrent writes.",
+    "Prepared execution must select the same entities as direct execution of the bound stored predicate where target, effective ordering, horizon and options are equivalent. Parameters must retain their supported type and bound semantics; unsupported target/mode or unavailable indexes must follow established rejection contracts, not be interpreted as empty successful results.",
+    "Where supported, main-store-only and indexed plans, and nil-filter aggregation shortcuts and equivalent account enumeration, must preserve membership and result shape for the same input/options. Compare aggregate bucket keys as well as values, including zero buckets and metadata-only accounts. Accounting arithmetic itself belongs to accounting-invariants. Metadata filters require a declared field and ready index; this contract creates no index-free server fallback.",
+    "Iteration or materialization errors must remain errors rather than successful truncated results where the query-engine contract requires propagation. Follow the concrete consumer; wire encoding and stream framing ownership stays with api-boundary-contracts."
+  ],
+  "adversarial_questions": [
+    "Which production caller selects each compared plan, and can both execute for this target, predicate and served type/version? Is a supposed divergence merely a different direct/prepared sort default or a missing required index?",
+    "Can two directions or direct/prepared execution agree on the wrong result because the oracle reuses Compile, range merging, coercion, encoding or production predicate evaluators?",
+    "Does NOT complement the full supported target universe when some entities lack the key, hold failed conversions, or match multiple OR branches?",
+    "Can merging inclusive/exclusive bounds, equal endpoints, contradictory ranges or integer extrema change an empty set into a singleton/universe, including parameterized bounds that intentionally bypass merging?",
+    "Do Seek after exhaustion, sparse intersections, overlapping address unions and page size one preserve exact identities in both directions?",
+    "Does runtime parameter resolution preserve hardcoded semantics at min/max and type boundaries without assuming identical error precedence when several inputs are invalid?",
+    "Is a mismatch in query selection, temporal projection alignment, wire conversion or accounting arithmetic? Which single neighboring domain owns its correction?",
+    "Is this failure reachable at the audited SHA, already fixed historically, or already owned by an open PR/qualified finding? What evidence would disprove it?"
+  ],
+  "dynamic_checks_to_consider": [
+    "Build a finite independently enumerated non-empty fixture per supported target with known matching and nonmatching identities; compare each actual plan to exact sets and ordered pages, recording selected branches and cardinalities.",
+    "Cross typed metadata with absent/NullValue/conversion failure/zero/false/empty, signed and unsigned extrema, datetime microsecond boundaries, includeNull and boolean compositions. Independently calculate expected coercions for chosen cases rather than calling production conversion helpers.",
+    "Compare hardcoded and equivalently bound prepared predicates, ascending and descending compilation, coalescible and unmerged equivalent ranges, and supported nil-filter/main-store paths. Pin dataset, version and options; explicitly mark unavailable server plans.",
+    "Exercise absolute seek before/at/between/after matches, reseek after exhaustion, one-row and exact-page-size windows, duplicate OR hits and sparse AND/NOT, with an independent sorted expected sequence.",
+    "Use existing compile_reverse_parity, compile_bounds, compile_and_merge, params, executor_aggregate and readstore iterator conformance/error tests as evidence leads. Inspect assertions and production reachability; green tests or historical fixes alone are not proof. Record exact commands actually run and unexecuted proposals separately."
+  ]
+}

@@ -25,6 +25,13 @@ func NewTrackedIterator(inner readstore.EntityIterator, stats *IteratorStats) *T
 	return &TrackedIterator[readstore.Asc]{inner: inner, stats: stats}
 }
 
+// NewTrackedReverseIterator wraps a descending iterator with profiling
+// counters, so a materializing fallback stays visible in query-profile output
+// on the descending path too (EN-1966).
+func NewTrackedReverseIterator(inner readstore.ReverseIterator, stats *IteratorStats) *TrackedIterator[readstore.Desc] {
+	return &TrackedIterator[readstore.Desc]{inner: inner, stats: stats}
+}
+
 func (t *TrackedIterator[D]) Next() bool {
 	start := time.Now()
 	ok := t.inner.Next()
@@ -62,4 +69,7 @@ func (t *TrackedIterator[D]) Close() {
 // Direction is the compile-time direction witness; see readstore.Iterator.
 func (t *TrackedIterator[D]) Direction() (d D) { return }
 
-var _ readstore.EntityIterator = (*TrackedIterator[readstore.Asc])(nil)
+var (
+	_ readstore.EntityIterator  = (*TrackedIterator[readstore.Asc])(nil)
+	_ readstore.ReverseIterator = (*TrackedIterator[readstore.Desc])(nil)
+)

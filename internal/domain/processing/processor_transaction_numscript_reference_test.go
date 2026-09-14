@@ -46,6 +46,7 @@ func TestProcessCreateTransaction_NumscriptReference_ResolvesContent(t *testing.
 
 			ctrl := gomock.NewController(t)
 			mockStore := NewMockScope(ctrl)
+			expectDefaultMetadataLimits(mockStore)
 			processor, err := NewRequestProcessor(nil, 0)
 			require.NoError(t, err)
 
@@ -204,6 +205,7 @@ func TestProcessCreateTransaction_NumscriptReference_RejectsResolutionFailures(t
 
 			ctrl := gomock.NewController(t)
 			mockStore := NewMockScope(ctrl)
+			expectDefaultMetadataLimits(mockStore)
 			tt.setup(mockStore)
 
 			payload, err := processCreateTransaction(ledger, &raftcmdpb.CreateTransactionOrder{

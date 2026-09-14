@@ -177,6 +177,14 @@ func (it *AndIterator[D]) converge() bool {
 	}
 }
 
+// And creates an AND over children travelling in D's direction. It is the
+// entry point the direction-generic query compiler uses; NewAndIterator and
+// NewReverseAndIterator are the non-generic spellings for callers that know
+// their direction statically.
+func And[D Direction](children []Iterator[D]) *AndIterator[D] {
+	return newAndIterator(children)
+}
+
 // Direction is the compile-time direction witness; see Iterator.Direction.
 func (it *AndIterator[D]) Direction() (d D) { return }
 
