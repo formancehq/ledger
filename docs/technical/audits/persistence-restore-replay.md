@@ -59,7 +59,7 @@ table is a discovery map, not a frozen exhaustive schema.
 | --- | --- |
 | Live primary mutations | `internal/domain/processing/`, `internal/infra/state/`, `internal/infra/attributes/`: enumerate every audited apply mutation, including deletion/range-deletion and proposal-local effects. Record persisted class and exact keys. |
 | Durable storage | `internal/storage/dal/`, `wal/`, `spool/`, `pebblecfg/`: establish write-session commit, checkpoint, cursor and recovery semantics. A cache or snapshot read is not proof that the primary write is durable. |
-| Backup publication | `internal/application/backup/`, `internal/infra/backup/manager.go`, `manifest.go`, `incremental.go`, `segment.go`: trace sequence capture, segment contents, object upload, manifest swap and orphan pruning. The current published manifest must always remain fully restorable. |
+| Backup publication | `internal/application/backup/`, `internal/infra/backup/manager.go`, `manifest.go`, `segment.go`, and `cmd/ledgerctl/store/incremental_backup.go`: trace sequence capture, segment contents, object upload, manifest swap and orphan pruning. The current published manifest must always remain fully restorable. |
 | Raw delta application | `internal/infra/backup/restore.go`: verify manifest/type/range/key-shape/stream validation, batch commits, partial-prefix behavior and retry. Permanent history residency must equal the source logically. |
 | Derived-state rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/`: compare every replay branch and fold with its live writer. Essential facts may live in `LedgerLog`, chain-bound serialized `AuditItem`, or `AppliedProposal`; absence must not silently become a default. |
 | Restore preparation and bootstrap | `internal/infra/attributes/prepare.go`, `internal/bootstrap/`, restore gRPC and `ledgerctl` commands: distinguish retained genesis boundary and business provenance from cleared source identity, peers, transient jobs, cache/bloom state, and restored query-checkpoint provenance. |
@@ -113,12 +113,15 @@ files, crashes, snapshots or a corrupt restored store do not justify duplicates.
 | `integrity-verifier-soundness` | Missing/unsound checker passes and lost checker-specific signals. Here `CheckStore` is an oracle; a restore loss remains persistence-owned even if checker detects it. |
 | `read-consistency-projections` and `query-semantic-equivalence` | Peer index/checkpoint publication, temporal convergence and fixed-state query-plan equivalence. This domain owns restoration of the primary facts and complete history from which local projections rebuild. |
 | `idempotency-retries-partial-failures` | General logical/transport retry identity and outcome retention. This domain owns duplicate or missing effects caused specifically by export application, replay or restore retry. |
-| `fsm-determinism-cache-coverage` | Pure apply determinism, declared coverage, gated cache access and accepted-order immutability. Here the live fold supplies one side of parity; a general replica divergence is not a restore finding. |
 | `configuration-startup-contracts`, `filesystem-confinement-contracts`, `operator-reconciliation-durability` | Persisted configuration validation, path confinement and Kubernetes orchestration respectively. Inspect handoffs for reachability, but keep the finding with the missing root protection. |
 
 The challenge pass must actively search these neighboring domains, existing
 qualified results, tickets and PRs for the same mechanism. If external novelty
 evidence is unavailable, leave novelty unresolved rather than inventing an ID.
+Pure apply determinism, declared coverage, gated cache access and accepted-order
+immutability remain outside this restore domain; until a dedicated checked-in
+manifest owns them, treat an ambiguous ownership boundary as an audit question
+rather than routing a finding to a domain that does not exist at the audited SHA.
 
 ## Falsifiable diagnostics and rejection criteria
 
