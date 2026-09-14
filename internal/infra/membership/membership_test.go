@@ -374,15 +374,16 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 // before the Raft node starts.
 //
 // This simulates the scenario: cache and transports loaded at boot from
-// Pebble (peer 7), then "WAL replay" mutates Pebble out-of-band (peer 7's
-// endpoints change and peers 1 and 3 are added), then Rehydrate must catch all
-// three in-memory views up.
+// Pebble (peers 7 and 9), then "WAL replay" mutates Pebble out-of-band (peer
+// 7's endpoints change, peer 9 is removed, and peers 1 and 3 are added), then
+// Rehydrate must catch all three in-memory views up.
 func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
 
 	require.NoError(t, ps.Put(7, "before:1", "before:2", nil))
+	require.NoError(t, ps.Put(9, "removed:1", "removed:2", nil))
 
 	raftTransport := &recordingTransport{peers: map[uint64]string{}}
 	servicePool := &recordingPool{peers: map[uint64]string{}}
@@ -392,10 +393,13 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
 	require.Equal(t, "before:1", raftTransport.peers[7])
 	require.Equal(t, "before:2", servicePool.peers[7])
+	require.Equal(t, "removed:1", raftTransport.peers[9])
+	require.Equal(t, "removed:2", servicePool.peers[9])
 
 	// Simulate WAL replay: WriteConfChange wrote these rows directly to
 	// Pebble without touching the cache.
 	require.NoError(t, ps.Put(7, "after:7", "after:8", nil))
+	require.NoError(t, ps.Delete(9))
 	require.NoError(t, ps.Put(1, "after:1", "after:2", nil))
 	require.NoError(t, ps.Put(3, "after:3", "after:4", nil))
 
@@ -410,6 +414,11 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 		"post-replay Rehydrate must refresh the live Raft dial target")
 	require.Equal(t, "after:8", servicePool.peers[7],
 		"post-replay Rehydrate must refresh the live service dial target")
+	require.NotContains(t, got, uint64(9), "replayed peer removal must leave the cache")
+	require.NotContains(t, raftTransport.peers, uint64(9),
+		"replayed peer removal must unwire the Raft transport")
+	require.NotContains(t, servicePool.peers, uint64(9),
+		"replayed peer removal must unwire the service pool")
 }
 
 // TestMembership_StartGate pins the Start-gated wiring behavior: any
