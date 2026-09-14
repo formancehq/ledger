@@ -184,6 +184,8 @@ func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
 }
 
 func TestConnectionPool_StaleOptionalMonitorDoesNotRestartReplacement(t *testing.T) {
+	t.Parallel()
+
 	oldServer := newPlaintextEchoServer(t)
 	newServer := newPlaintextEchoServer(t)
 	clientCfg := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: x509.NewCertPool()}

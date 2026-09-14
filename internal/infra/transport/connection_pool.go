@@ -379,14 +379,15 @@ func (p *ConnectionPool) monitorPeer(ctx context.Context, id uint64, monitored *
 		}
 
 		p.mu.Lock()
+		// A re-dial error is non-actionable here: the closed entry retains its
+		// desired address for a later peer-loop restart or re-registration.
 		restarted, _ := p.restartConnectionLocked(id, monitored)
 		p.mu.Unlock()
 		if !restarted {
 			return
 		}
 
-		// The replacement has its own monitor. This monitor only owns the
-		// connection it captured when it started.
+		// This monitor only owns the connection it captured when it started.
 		return
 	}
 }
