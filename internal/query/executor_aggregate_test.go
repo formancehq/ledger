@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 type seededVolume struct {
@@ -224,6 +225,60 @@ func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
 			var directOverflow *query.ErrAggregateOverflow
 			require.ErrorAs(t, err, &directOverflow)
 			require.Equal(t, overflow, directOverflow)
+		})
+	}
+}
+
+func TestAggregateRoutes_UseMaxPrecisionFactorOverflow(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		aggregate func(*dal.Store, *attributes.Attributes) (*commonpb.AggregateResult, error)
+	}{
+		{
+			name: "unfiltered",
+			aggregate: func(store *dal.Store, attrs *attributes.Attributes) (*commonpb.AggregateResult, error) {
+				handle, err := store.NewReadHandle()
+				if err != nil {
+					return nil, err
+				}
+				defer func() { _ = handle.Close() }()
+
+				return query.AggregateAllVolumes(handle, attrs.Volume, "l", query.AggregateOptions{UseMaxPrecision: true})
+			},
+		},
+		{
+			name: "filtered",
+			aggregate: func(store *dal.Store, attrs *attributes.Attributes) (*commonpb.AggregateResult, error) {
+				handle, err := store.NewReadHandle()
+				if err != nil {
+					return nil, err
+				}
+				defer func() { _ = handle.Close() }()
+
+				accounts := readstore.NewSliceIterator([][]byte{[]byte("users:alice"), []byte("users:bob")})
+
+				return query.AggregateVolumes(handle, attrs.Volume, "l", accounts, query.AggregateOptions{UseMaxPrecision: true})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newTestStore(t)
+			attrs := attributes.New()
+			seedVolumes(t, store, attrs, "l",
+				seededVolume{account: "users:alice", asset: "USD", input: 1, output: 1},
+				seededVolume{account: "users:bob", asset: "USD/78", input: 1, output: 1},
+			)
+
+			result, err := tc.aggregate(store, attrs)
+			require.Nil(t, result)
+			var overflow *query.ErrAggregateOverflow
+			require.ErrorAs(t, err, &overflow)
+			require.Equal(t, "max-precision-rescale", overflow.Stage)
+			require.Equal(t, "input", overflow.Side)
 		})
 	}
 }
