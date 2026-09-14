@@ -147,6 +147,12 @@ Do not use `ai-audit` for:
 
 `ai-audit` runs a read-only, manifest-scoped provider pass and binds its structured report to an exact clean `HEAD`; `ai-audit-challenge` independently qualifies that report at the same clean `HEAD`. Their contracts prohibit code fixes, commits, pushes, comments, issue creation, and GitHub metadata changes; structured reports are their only intended writes.
 
+### Audit contract maintenance
+
+When authoring or reviewing a change, use the code-area and task-type routing in this document to identify the affected subsystem contracts, then inspect the matching manifests and companion documents under `docs/technical/audits/`. Read `docs/technical/contributing/ai-audit.md` before editing an audit contract.
+
+If the change modifies a covered surface, invariant, input, exclusion, evidence oracle, or adversarial scenario, the same PR must update both the manifest and its companion document. Record no artificial manifest edit when the routed review establishes that the audit contract is unaffected. When a change reveals a new durable, reusable correctness domain, create the manifest and companion for review and merge first; run the audit only in a separate follow-up task against the resulting clean commit.
+
 ### AI final review
 
 Read `docs/technical/contributing/ai-review.md` before reviewing a pull request or fixes to previous findings.

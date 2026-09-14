@@ -9,6 +9,23 @@ Routine diagnosis of a known failure, a single bug fix, and performance or tooli
 
 An audit is read-only. It must never fix code, create commits, push branches, create issues, resolve review threads, or change GitHub metadata.
 
+## Maintaining audit contracts
+
+Manifests and their companion documents under `docs/technical/audits/` are living correctness contracts, not campaign setup that can wait until the next audit run. During authoring and review, use `docs/technical/agent-context.md` to route the changed code or behavior to its owning subsystem documentation and applicable audit domains.
+
+Update an existing manifest and its companion document in the same PR when the change modifies any of the following:
+
+- a covered production, test, documentation, or tooling surface;
+- an invariant or expected property owned by the domain;
+- an authoritative input or related document;
+- an explicit exclusion or ownership boundary with another domain;
+- an evidence oracle or dynamic check used to prove the contract;
+- an adversarial scenario, failure mode, or state transition the audit must examine.
+
+Keep the JSON scope and the companion's evidence and boundary explanation synchronized. A routed review that finds none of these contract elements changed requires no audit-document edit; do not create artificial churn merely because a path happens to match a manifest glob.
+
+If a change exposes a new durable correctness domain that will be reused across future repository states, create its manifest and companion as a reviewable change and merge them before execution. Launch the new domain's first audit in a separate task against that later exact clean `HEAD`; creating or updating the contract never authorizes an audit run.
+
 ## Workflow ownership
 
 The native workflow separates trusted orchestration from read-only analysis:
