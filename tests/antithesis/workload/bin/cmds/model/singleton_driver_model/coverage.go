@@ -73,8 +73,20 @@ func coverageTargetName(target commonpb.QueryTarget) string {
 // exercised rather than merely compiled.
 const coverageRetypeMessage = coveragePrefix + "a query was served while a retype window was open"
 
+const (
+	coverageDeletionMessage    = coveragePrefix + "ledger deletion and reserved-name rejection verified"
+	coveragePromotionMessage   = coveragePrefix + "mirror promotion and write recovery verified"
+	coverageMaintenanceMessage = coveragePrefix + "maintenance rejection reads and recovery verified"
+)
+
 // coverageMessages is every sonde this driver registers, in registration order.
 func coverageMessages() []string {
+	return append(queryCoverageMessages(), coverageDeletionMessage, coveragePromotionMessage, coverageMaintenanceMessage)
+}
+
+// Query sondes are evaluated by served pages; lifecycle sondes are evaluated
+// only after a complete, drained lifecycle episode validates their outcomes.
+func queryCoverageMessages() []string {
 	out := make([]string, 0, len(coverageIndexes)+3)
 	for _, wi := range coverageIndexes {
 		out = append(out, coverageIndexMessage(wi.canonical))

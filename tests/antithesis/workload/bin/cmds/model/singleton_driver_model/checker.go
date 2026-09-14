@@ -20,6 +20,9 @@ import (
 // Expensive validation searches run on a snapshot taken under mu, not under it.
 type Checker struct {
 	mu sync.Mutex
+	// cycleMu gives a restore or lifecycle episode exclusive ownership of the
+	// dispatch pause. Neither may resume workers while the other is active.
+	cycleMu sync.Mutex
 
 	// ledgerNames is the fleet the generator and reads draw from. Immutable.
 	ledgerNames []string

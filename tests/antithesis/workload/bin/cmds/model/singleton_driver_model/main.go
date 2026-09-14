@@ -46,6 +46,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
@@ -67,7 +68,8 @@ func main() {
 		_ = os.Setenv("LEDGER_RETRY_FOREVER", "1")
 	}
 
-	ctx := context.Background()
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
 
 	// Self-terminate after MODEL_MAX_SECONDS so an orphaned driver from
 	// a killed shell can't keep hammering a shared ledger into the next
@@ -115,6 +117,23 @@ func main() {
 	// up as an unsatisfied property rather than as no output at all.
 	registerCoverage()
 
+	probeConn, err := internal.NewGRPCConnWithoutRetries()
+	if err != nil {
+		log.Printf("lifecycle probe connection: %v", err)
+		return
+	}
+	defer probeConn.Close()
+	probe := servicepb.NewBucketServiceClient(probeConn)
+	cluster := clusterpb.NewClusterServiceClient(probeConn)
+	lifecycle := &lifecycleDriver{client: probe, cluster: cluster, checker: checker}
+	if err := lifecycle.runEpisode(ctx, "model-"+runID+"-lifecycle-0"); err != nil {
+		if ctx.Err() == nil {
+			assert.Unreachable("singleton_driver_model: lifecycle outside model", internal.Details{"error": err.Error()})
+		}
+		log.Printf("lifecycle episode: %v", err)
+		return
+	}
+
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
 
@@ -128,6 +147,17 @@ func main() {
 	}()
 
 	var workers sync.WaitGroup
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		if err := lifecycle.runCycles(ctx, "model-"+runID); err != nil {
+			if ctx.Err() == nil {
+				assert.Unreachable("singleton_driver_model: lifecycle cycle outside model", internal.Details{"error": err.Error()})
+			}
+			log.Printf("lifecycle cycle: %v", err)
+			stop()
+		}
+	}()
 	for i := 0; i < numWorkers; i++ {
 		workers.Add(1)
 		go func() {
