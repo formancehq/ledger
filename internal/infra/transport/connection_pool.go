@@ -317,8 +317,9 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 
 	entry, err := p.dialPeer(id, addr)
 	if err != nil {
-		// Keep the closed entry and its desired address. The owning peer loop
-		// will observe the closed connection and retry RestartConnection.
+		// Keep the closed entry and its desired address. A Raft peer loop retries
+		// RestartConnection; service pools retry when lifecycle wiring registers
+		// the same address again.
 
 		return err
 	}
@@ -363,14 +364,15 @@ func (p *ConnectionPool) monitorPeer(ctx context.Context, id uint64) {
 			continue
 		}
 
-		// Re-dial; ignore errors here because the next iteration will pick up
-		// the new conn (or the peer entry will have been removed).
+		// Re-dial. A failed attempt leaves the desired address on a closed entry;
+		// this monitor then exits on Shutdown, while the Raft peer loop remains
+		// responsible for retrying RestartConnection.
 		_ = p.RestartConnection(id)
 	}
 }
 
-// getPeerConn returns the live conn for a peer, or nil if the peer has been
-// removed.
+// getPeerConn returns the current conn for a peer, including a retained closed
+// conn after a failed replacement, or nil if the peer has been removed.
 func (p *ConnectionPool) getPeerConn(id uint64) *grpc.ClientConn {
 	p.mu.Lock()
 	defer p.mu.Unlock()
