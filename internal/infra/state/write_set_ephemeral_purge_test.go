@@ -159,9 +159,14 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			},
 		},
 		{
-			// Non-ephemeral + zero balance → should be kept
+			// A persisted normal zero row must be kept but not classified as
+			// newly created again on a later commit (EN-2051).
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			Old: kv.Some(&raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(0),
+				Output: commonpb.NewUint256FromUint64(0),
+			}),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -185,6 +190,11 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
 
 	require.Len(t, result.kept, 3)
+	newKeptAccounts := make([]string, 0, len(result.newKept))
+	for _, update := range result.newKept {
+		newKeptAccounts = append(newKeptAccounts, update.Key.Account)
+	}
+	require.ElementsMatch(t, []string{"clearing:tx2", "unknown:addr"}, newKeptAccounts)
 	require.Empty(t, result.transient)
 }
 
