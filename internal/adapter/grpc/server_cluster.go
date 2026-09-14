@@ -10,7 +10,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
 	"github.com/formancehq/ledger/v3/internal/application/membership"
@@ -45,7 +44,6 @@ type ClusterServiceServerImpl struct {
 	logger           logging.Logger
 	localRaftAddr    string // This node's own Raft advertise address
 	localServiceAddr string // This node's own gRPC service address
-	authCfg          internalauth.AuthConfig
 	clusterID        string
 	info             version.Info
 	backupOrchestra  *backupapp.Orchestrator
@@ -67,7 +65,6 @@ func NewClusterServiceServer(
 	logger logging.Logger,
 	localRaftAddr string,
 	localServiceAddr string,
-	authCfg internalauth.AuthConfig,
 	clusterID string,
 	info version.Info,
 ) clusterpb.ClusterServiceServer {
@@ -86,7 +83,6 @@ func NewClusterServiceServer(
 		logger:           logger.WithField("component", "cluster-server"),
 		localRaftAddr:    localRaftAddr,
 		localServiceAddr: localServiceAddr,
-		authCfg:          authCfg,
 		clusterID:        clusterID,
 		info:             info,
 		forwarder:        nodeForwarder{node: node, servicePool: servicePool},
@@ -94,10 +90,6 @@ func NewClusterServiceServer(
 }
 
 func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
-		return nil, err
-	}
-
 	if req.GetNodeId() == 0 {
 		// No node ID specified, route to leader
 		if impl.node.IsLeader() {
@@ -239,10 +231,6 @@ func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceCl
 }
 
 func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, req *clusterpb.TransferLeadershipRequest) (*clusterpb.TransferLeadershipResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	if req.GetTransferee() == 0 {
 		return nil, errors.New("transferee node ID must be non-zero")
 	}
@@ -270,10 +258,6 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 }
 
 func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
-		return nil, err
-	}
-
 	return &clusterpb.DiskUsage{
 		WalVolume: &clusterpb.VolumeUsage{
 			UsedBytes:  uint64(impl.collector.WALVolume.UsedBytes()),
@@ -287,20 +271,12 @@ func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clust
 }
 
 func (impl *ClusterServiceServerImpl) GetNodeTime(ctx context.Context, _ *clusterpb.GetNodeTimeRequest) (*clusterpb.NodeTime, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
-		return nil, err
-	}
-
 	return &clusterpb.NodeTime{
 		TimestampUs: uint64(time.Now().UnixMicro()),
 	}, nil
 }
 
 func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clusterpb.AddLearnerRequest) (*clusterpb.AddLearnerResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	impl.logger.WithFields(map[string]any{
 		"requestedNodeID":      req.GetNodeId(),
 		"requestedRaftAddress": req.GetRaftAddress(),
@@ -335,10 +311,6 @@ func (impl *ClusterServiceServerImpl) AddLearner(ctx context.Context, req *clust
 }
 
 func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *clusterpb.PromoteLearnerRequest) (*clusterpb.PromoteLearnerResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	if !impl.node.IsLeader() {
 		client, err := impl.leaderClient()
 		if err != nil {
@@ -356,10 +328,6 @@ func (impl *ClusterServiceServerImpl) PromoteLearner(ctx context.Context, req *c
 }
 
 func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clusterpb.RemoveNodeRequest) (*clusterpb.RemoveNodeResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	// Force-remove bypasses consensus and must run on the leader directly.
 	// Do NOT forward: the operator already exec's into the leader pod.
 	if req.GetForce() && !impl.node.IsLeader() {
@@ -383,10 +351,6 @@ func (impl *ClusterServiceServerImpl) RemoveNode(ctx context.Context, req *clust
 }
 
 func (impl *ClusterServiceServerImpl) CompactPrimary(ctx context.Context, _ *clusterpb.CompactPrimaryRequest) (*clusterpb.CompactPrimaryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	start := time.Now()
 
 	err := impl.store.CompactAll()
@@ -400,10 +364,6 @@ func (impl *ClusterServiceServerImpl) CompactPrimary(ctx context.Context, _ *clu
 }
 
 func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *clusterpb.CompactSecondaryRequest) (*clusterpb.CompactSecondaryResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	start := time.Now()
 
 	sizeBefore, sizeAfter, err := impl.readStore.Compact(ctx)
@@ -419,10 +379,6 @@ func (impl *ClusterServiceServerImpl) CompactSecondary(ctx context.Context, _ *c
 }
 
 func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *clusterpb.CreateCheckpointRequest) (*clusterpb.CreateCheckpointResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	checkpointID, err := impl.store.CreateSnapshot()
 	if err != nil {
 		return nil, fmt.Errorf("checkpoint creation failed: %w", err)
@@ -434,10 +390,6 @@ func (impl *ClusterServiceServerImpl) CreateCheckpoint(ctx context.Context, _ *c
 }
 
 func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, _ *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
-		return nil, err
-	}
-
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -458,10 +410,6 @@ func (impl *ClusterServiceServerImpl) ListQueryCheckpoints(ctx context.Context, 
 }
 
 func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
-		return nil, err
-	}
-
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -488,10 +436,6 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context
 }
 
 func (impl *ClusterServiceServerImpl) GetQueryCheckpointSchedule(ctx context.Context, _ *clusterpb.GetQueryCheckpointScheduleRequest) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterRead); err != nil {
-		return nil, err
-	}
-
 	handle, err := impl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -570,10 +514,6 @@ func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *com
 }
 
 func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb.BackupRequest) (*clusterpb.BackupResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	// Forward to leader if not leader. The orchestrator only runs on the
 	// leader (it is the proposer); a follower would just spin forever
 	// trying to push proposals.
@@ -613,10 +553,6 @@ func (impl *ClusterServiceServerImpl) Backup(ctx context.Context, req *clusterpb
 }
 
 func (impl *ClusterServiceServerImpl) IncrementalBackup(ctx context.Context, req *clusterpb.IncrementalBackupRequest) (*clusterpb.IncrementalBackupResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeClusterWrite); err != nil {
-		return nil, err
-	}
-
 	// Incremental used to skip the leader-routing step because log/audit
 	// sequences are identical across replicas. Now the FSM owns the
 	// destination slot and only the leader can drive a Raft proposal,
