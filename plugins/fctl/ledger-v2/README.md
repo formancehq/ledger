@@ -103,12 +103,23 @@ for the latest-log resume probe. An over-budget artifact is rejected before the
 first import write. This is a bounded compatibility path; old-fctl did not
 impose the portable 64 MiB artifact or 256-request ceilings.
 
-The pinned Speakeasy output has two request-shaping defects: nil optional GET
-bodies are serialized as byte-exact `null`, and `V2ListLedgers` injects
-`includeDeleted=false` beside a continuation cursor. A transport erratum removes
-only byte-exact `null` on GET and, only for a non-empty cursor, canonicalizes the
-query to that cursor alone. Other bodies and queries are preserved. Contract
-tests lock these boundaries.
+The pinned Speakeasy output has two request-shaping defects. Nil optional GET
+bodies are serialized as byte-exact `null`. And the generated client injects its
+own defaults beside a continuation cursor on two of the five paginated
+operations, not one: `V2ListLedgers` adds `includeDeleted=false`, and
+`V2ListSchemas` adds `order=desc`, `pageSize=15` and `sort=created_at`.
+`V2ListAccounts`, `V2ListTransactions` and `V2GetVolumesWithBalances` send the
+cursor alone.
+
+A transport erratum removes only byte-exact `null` on GET, and — for any GET
+with a non-empty `cursor` — canonicalizes the query to that cursor alone. The
+query rule is deliberately broader than the two known defects. It is safe only
+because every parameter it can drop is a client-side default: the adapter sets
+page size, sort and filters on the first page only, so a continuation request
+carries no caller intent beyond the cursor. A contract test pins exactly what
+each paginated operation puts on the wire beside a cursor, so a regenerated
+client that combines a cursor with a real parameter fails a test rather than
+having that parameter silently dropped. Other bodies and queries are preserved.
 
 ### Failure detail at the two boundaries
 

@@ -36,9 +36,27 @@ func newGeneratedV2(host sdk.Host, operation sdk.OperationPolicy) (*generatedV2,
 	)}, nil
 }
 
-// Speakeasy currently marks several optional Ledger-v2 GET filter bodies as
-// required and serializes nil as JSON null. Remove only that artificial value;
-// real filter bodies and all non-GET bodies remain generated-client owned.
+// stripGeneratedNullGETBody repairs two request-shaping defects in the pinned
+// Speakeasy output. It applies two independent rules, and the name reflects only
+// the first; both are stated here because the second is the broader one.
+//
+// Body rule: Speakeasy marks several optional Ledger-v2 GET filter bodies as
+// required and serializes nil as the byte-exact JSON `null`. Only that exact
+// artificial value is removed. Real filter bodies and all non-GET bodies remain
+// generated-client owned.
+//
+// Query rule: any GET carrying a non-empty `cursor` is canonicalized to that
+// cursor alone. This is deliberately broader than the one operation that
+// prompted it, because the generated client injects its own defaults beside a
+// continuation cursor on more than one operation — `V2ListLedgers` adds
+// `includeDeleted=false`, `V2ListSchemas` adds `order`, `pageSize` and `sort`.
+// The rule is safe only while every such parameter is a client-side default the
+// adapter never asked for, which is the case at the pinned client: the adapter
+// sets page size, sort and filters on the first page only, so a continuation
+// request carries no caller intent beyond the cursor.
+// TestGeneratedClientSendsOnlyTheCursorOnEveryPaginatedContinuation pins that
+// precondition, so a regenerated client that combines a cursor with a real
+// parameter fails a test instead of having the parameter silently dropped.
 type stripGeneratedNullGETBody struct{ next ledgerclient.HTTPClient }
 
 func (c stripGeneratedNullGETBody) Do(request *http.Request) (*http.Response, error) {
@@ -473,14 +491,18 @@ func collectGeneratedPages[T any](control sdk.ContinuationControl, initial *stri
 		if err != nil {
 			return nil, nil, err
 		}
+		// The consistency rule is the same in both modes: hasMore is true
+		// exactly when a next cursor is present. Enforcing it only on the
+		// single-page path would make one inconsistent server response a hard
+		// error and the identical response a silent traversal under --all.
+		value := ""
+		if next != nil {
+			value = *next
+		}
+		if hasMore != (value != "") {
+			return nil, nil, fmt.Errorf("ledger-v2: invalid cursor response")
+		}
 		if !all {
-			value := ""
-			if next != nil {
-				value = *next
-			}
-			if hasMore != (value != "") {
-				return nil, nil, fmt.Errorf("ledger-v2: invalid cursor response")
-			}
 			return pageItems, &sdk.PageInfo{NextCursor: value, HasMore: hasMore}, nil
 		}
 		items = append(items, pageItems...)
@@ -491,16 +513,13 @@ func collectGeneratedPages[T any](control sdk.ContinuationControl, initial *stri
 		if uint32(len(items)) > control.MaxItems || uint64(len(encoded)) > control.MaxBytes {
 			return nil, nil, budgetExhausted("collection exceeds host ceilings")
 		}
-		if !hasMore && next == nil {
+		if !hasMore {
 			return items, nil, nil
 		}
-		if next == nil || *next == "" {
-			return nil, nil, fmt.Errorf("ledger-v2: paginated response has no next cursor")
-		}
-		if _, duplicate := seen[*next]; duplicate {
+		if _, duplicate := seen[value]; duplicate {
 			return nil, nil, fmt.Errorf("ledger-v2: paginated response repeats a cursor")
 		}
-		seen[*next] = struct{}{}
+		seen[value] = struct{}{}
 		cursor = next
 	}
 	return nil, nil, budgetExhausted("collection exceeds page ceiling")

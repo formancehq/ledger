@@ -284,6 +284,41 @@ func TestExecuteV2PropagatesTypedProductHTTPFailures(t *testing.T) {
 	}
 }
 
+// Single-page mode rejects a response whose hasMore disagrees with its next
+// cursor. All-pages mode used to follow such a cursor instead, so the identical
+// inconsistent response was a hard error in one mode and silently traversed in
+// the other. The duplicate-cursor guard hid it whenever the server repeated the
+// same cursor, so this test hands out a second, distinct page: without the
+// symmetric check the adapter follows to it and emits both items.
+func TestAllPagesRejectsTheCursorInconsistencySinglePageRejects(t *testing.T) {
+	t.Parallel()
+
+	pages := []string{
+		`{"cursor":{"data":[{"name":"one","addedAt":"2026-09-12T00:00:00Z","bucket":"default"}],"hasMore":false,"next":"opaque-2","pageSize":1}}`,
+		`{"cursor":{"data":[{"name":"two","addedAt":"2026-09-12T00:00:00Z","bucket":"default"}],"hasMore":false,"pageSize":1}}`,
+	}
+	index := 0
+	host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+		body := pages[index]
+		if index+1 < len(pages) {
+			index++
+		}
+		return sdk.NewResponseStream(sdk.Response{Status: 200, ContentType: mediaTypeJSON, Body: []byte(body)}), nil
+	})
+	request := execution("ledger.v2.list", nil)
+	request.Continuation = sdk.AllPagesContinuationControl()
+
+	if err := (Plugin{}).Execute(context.Background(), request, host); err == nil {
+		t.Fatal("all-pages traversal accepted hasMore=false beside a next cursor")
+	}
+	if got := len(host.Events()); got != 0 {
+		t.Fatalf("rejected traversal emitted %d events", got)
+	}
+	if got := len(host.Requests()); got != 1 {
+		t.Fatalf("host requests = %d, want the inconsistency rejected on the first page", got)
+	}
+}
+
 func TestExecuteV2EmitsEmptyAndBinaryResults(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
