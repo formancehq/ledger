@@ -107,8 +107,10 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 		}
 
 		log.Printf("restore cycle: quiescing")
+		c.cycleMu.Lock()
 		if !c.pauseAndDrain(ctx) {
 			c.resume()
+			c.cycleMu.Unlock()
 			return
 		}
 
@@ -122,6 +124,7 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 			defer c.demoteAllIndexes()
 			return trigger.Fire(ctx)
 		}()
+		c.cycleMu.Unlock()
 		if err != nil {
 			log.Printf("restore cycle: %v (continuing)", err)
 		} else {

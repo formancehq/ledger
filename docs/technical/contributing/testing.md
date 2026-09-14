@@ -468,6 +468,38 @@ a later non-skippable failure. Invalid opt-ins must fail admission. Enforcement
 mode, chart, and ledger metadata readback must match the same model snapshot.
 Signing-key lifecycle and signed submissions remain outside this model driver.
 
+#### Ledger lifecycle coverage
+
+The model driver also runs bounded lifecycle episodes before concurrent work and
+between drained workload windows. It creates disposable ledgers, funds and
+reverts transactions, creates an index, and validates deletion through ledger,
+transaction, account, log, schema, index, and ledger-list reads. An unrelated
+ledger must retain its state after a rejected cross-ledger bulk. A mirror ledger
+is promoted to normal mode; the model checks its mode, cleared source, rejected
+repeat promotion, and successful business writes after promotion.
+
+Maintenance mode is a global admission gate. An episode drains in-flight work
+before enabling it, checks the mode round-trip and continued reads, requires the
+specific `MAINTENANCE_MODE` rejection on new writes, disables the mode, and proves
+write recovery. Its connection disables automatic retries so that the rejection
+is observable. Maintenance and backup/restore share exclusive ownership of the
+dispatch pause; cleanup attempts to disable maintenance even on cancellation.
+
+Each of deletion, promotion, and maintenance has a required coverage marker.
+The pool is bounded to four episodes so retained ledger names do not grow without
+limit during long runs. Disposable names and the normal worker fleet are separate.
+
+EN-1627's original successful same-name recreation expectation does not match the
+current service contract: deletion retains a tombstone and recreation returns
+`LEDGER_DELETED`. The model tests that rejection. It does not claim to prove
+projection cleanup by querying a successfully recreated ledger. Reads hide
+retired ledgers even when ledger-scoped rows remain physically present. Repeated
+deletion can still operate on retained tombstones. Administrative metadata
+commands on deleted ledgers are explicitly unmodeled: their outcomes can depend
+on cache generation eviction after the deletion cascade. The generator excludes
+those commands, and the oracle fails loudly if one is submitted. The service-backed
+lifecycle scenario compares the supported outcomes with the real API.
+
 #### How it works
 
 N workers fan out across a fleet of ledgers, dispatching bulks concurrently;

@@ -23,6 +23,9 @@ type Checker struct {
 	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
 	// create transition until that transition has drained into modelState.
 	checkpointCreateMu sync.Mutex
+	// cycleMu gives a restore or lifecycle episode exclusive ownership of the
+	// dispatch pause. Neither may resume workers while the other is active.
+	cycleMu sync.Mutex
 
 	// ledgerNames is the fleet the generator and reads draw from. Immutable.
 	ledgerNames []string

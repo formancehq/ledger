@@ -25,16 +25,25 @@ import (
 // UNAVAILABLE and round-robin load balancing across all provided addresses.
 // LEDGER_GRPC_ADDR accepts a comma-separated list (e.g. "ledger-0:8888,ledger-1:8888,ledger-2:8888").
 func NewGRPCConn() (*grpc.ClientConn, error) {
-	target := os.Getenv("LEDGER_GRPC_ADDR")
-	if target == "" {
-		target = "localhost:15100"
-	}
-
 	// LEDGER_NO_RETRY disables the automatic UNAVAILABLE retry entirely (both the
 	// service-config policy and the interceptors). Useful for isolating whether a
 	// divergence is caused by retried (and thus possibly double-applied, when the
 	// request is non-idempotent) Apply calls.
-	retryDisabled := os.Getenv("LEDGER_NO_RETRY") != ""
+	return newGRPCConn(os.Getenv("LEDGER_NO_RETRY") != "")
+}
+
+// NewGRPCConnWithoutRetries creates a connection that surfaces the first RPC
+// outcome, allowing maintenance probes to observe admission rejections. It keeps
+// the ordinary resolver, protocol metadata and error classification configuration.
+func NewGRPCConnWithoutRetries() (*grpc.ClientConn, error) {
+	return newGRPCConn(true)
+}
+
+func newGRPCConn(retryDisabled bool) (*grpc.ClientConn, error) {
+	target := os.Getenv("LEDGER_GRPC_ADDR")
+	if target == "" {
+		target = "localhost:15100"
+	}
 
 	// LEDGER_RETRY_FOREVER raises the retry budget to ~infinite (off by default —
 	// master keeps MaxAttempts 50, which grpc-go silently caps to 5 because no
@@ -111,7 +120,7 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
 		}
 	} else {
-		// Retry disabled (LEDGER_NO_RETRY) — classify stays on; same Chain*
+		// Retry disabled explicitly or by LEDGER_NO_RETRY — classify stays on; same Chain*
 		// option for consistency, even with a single member.
 		opts = append(opts,
 			grpc.WithChainUnaryInterceptor(classifyUnaryInterceptor()),
