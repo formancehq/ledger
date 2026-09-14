@@ -1,11 +1,14 @@
 package query_test
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // A conjunction over zero operands is vacuously true, so And{} selects the
@@ -50,10 +53,12 @@ func TestCompileEmptyCombinators(t *testing.T) {
 				}
 			})
 
-			// And{} is the identity of conjunction: folding it into a
-			// conjunction leaves the other operand's rows untouched, whereas an
-			// empty-set reading would annihilate them.
-			t.Run("empty and is the identity operand", func(t *testing.T) {
+			// Folding And{} into a conjunction leaves the other operand's rows
+			// untouched for every leaf drawn from the target universe, where an
+			// empty-set reading would annihilate them. The leaves that reach
+			// past that universe are covered by
+			// TestCompileEmptyAnd_UniverseOperandOnAccounts.
+			t.Run("empty and keeps its co-operand's rows", func(t *testing.T) {
 				t.Parallel()
 
 				leaf := targetParityLeaf(t, target)
@@ -101,4 +106,45 @@ func targetParityLeaf(t *testing.T, target commonpb.QueryTarget) *commonpb.Query
 
 		return nil
 	}
+}
+
+// An empty And contributes a universe operand, and on ACCOUNTS the universe —
+// the main store's volume ∪ metadata rows — is narrower than the has-asset
+// leaf: a drained ephemeral account keeps its monotonic abya row after
+// applyEphemeralPurge deletes its volume row, and the stamp gate keeps serving
+// it. So a conjunction over has-asset narrows when it acquires that operand.
+//
+// This is the engine's existing shape, not something the empty And introduces:
+// compileNot builds NotIterator(universe, child), so a NOT arm acquires the
+// same operand and narrows identically. The test asserts the two spellings
+// agree, so the empty And is pinned to the NOT behaviour rather than to a law
+// of its own — if either ever stops intersecting the universe, this fails.
+func TestCompileEmptyAnd_UniverseOperandOnAccounts(t *testing.T) {
+	t.Parallel()
+
+	const drained = "accounts:99"
+
+	store := parityStore(t)
+
+	stamp := make([]byte, 8)
+	binary.BigEndian.PutUint64(stamp, parityPin-1)
+
+	batch := store.NewBatch()
+	require.NoError(t, batch.SetBytes(
+		readstore.AccountByAssetKey(dal.NewKeyBuilder(), parityLedger, parityAsset, parityAssetPrecision, drained),
+		stamp))
+	require.NoError(t, batch.Commit())
+
+	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
+	hasAsset := hasAssetFilter(parityAsset, uint32(parityAssetPrecision))
+
+	require.NotContains(t, ascendingReference(t, store, accounts, nil), drained)
+	require.Contains(t, ascendingReference(t, store, accounts, hasAsset), drained)
+
+	viaEmptyAnd := ascendingReference(t, store, accounts, andFilter(hasAsset, andFilter()))
+	viaNot := ascendingReference(t, store, accounts, andFilter(hasAsset,
+		notFilter(addressExactFilter("definitely-not-an-account", commonpb.AddressRole_ADDRESS_ROLE_ANY))))
+
+	require.NotContains(t, viaEmptyAnd, drained)
+	require.Equal(t, viaNot, viaEmptyAnd)
 }
