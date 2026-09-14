@@ -18,6 +18,7 @@
     "internal/storage/usagestore/**",
     "internal/query/aggregate*.go",
     "internal/query/compact_account*.go",
+    "internal/query/numscript*.go",
     "internal/query/reversions*.go",
     "internal/query/transaction*.go",
     "internal/adapter/json/**",
