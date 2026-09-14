@@ -71,7 +71,9 @@ Every BucketService and ClusterService RPC declares a typed `common.auth_policy`
 
 `protoc-gen-rpcauth` rejects missing, false-public, unspecified, and unknown policy values during `just generate-proto`. It also emits `commonpb.RPCAuthPolicyForMethod`, whose unknown-method result is a typed error. At public-server startup, Ledger walks the registered service descriptors before binding the listener. BucketService and ClusterService methods must exist in that generated registry; only the exact gRPC health and reflection methods bypass it. This makes adding an RPC without an authentication decision a generation or startup failure.
 
-The generated inventory is the structural contract for the interceptor migration. During this first step, request behavior is unchanged: each RPC still calls `auth.Authenticate(ctx, cfg, scopeRequired...)` explicitly, and dynamic methods still derive their required scope in their handler.
+The public service consumes this inventory in unary and streaming interceptors before generated handlers run. Credential evaluation produces immutable authentication state, then fixed policies check their declared scope. Dynamic resolvers inspect the request: `Apply` checks every embedded request, `GetIndex` and `GetIndexEntryStatus` choose ledger-read or ops-read from the ledger field, and `ListIndexes` authorizes the first received request message before handler business logic. An unparsable signed Apply payload still reaches admission so signature verification keeps precedence over payload parsing.
+
+The public service, loopback-by-default restore service, and Raft transport have distinct trust modes. Restore does not install JWT interceptors. Raft uses its own cluster-secret interceptor.
 
 HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:100-126`) wraps each protected route.
 
@@ -99,7 +101,7 @@ This is the right setting to relax for embedded / dev deployments without disabl
 
 ## Dev-mode bypass
 
-`--auth-enabled` (default `false`) is the master switch. When auth is disabled, `Authenticate()` is a no-op and every request is admitted with full scopes. **There is no separate `--unsafe-disable-auth` flag** — the default is "off" because the system is designed for explicit opt-in.
+`--auth-enabled` (default `false`) is the master switch. When auth is disabled, credential evaluation and authorization allow every request. **There is no separate `--unsafe-disable-auth` flag** — the default is "off" because the system is designed for explicit opt-in.
 
 ## Inter-node authentication (Raft)
 
@@ -172,7 +174,7 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 
 | Concern | File |
 |---------|------|
-| JWT validation, scope enforcement | `internal/adapter/auth/grpc_auth.go` |
+| JWT validation, scope enforcement | `internal/adapter/auth/grpc_auth.go`, `internal/adapter/grpc/auth_interceptor.go` |
 | HTTP auth middleware | `internal/adapter/auth/http_middleware.go` |
 | Scope definitions and mapping | `internal/adapter/auth/scopes.go` |
 | gRPC policy declarations | `misc/proto/bucket.proto`, `misc/proto/cluster.proto` |

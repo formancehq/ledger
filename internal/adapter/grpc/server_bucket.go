@@ -60,7 +60,6 @@ type BucketServiceServerImpl struct {
 	attrs                 *attributes.Attributes
 	sharedState           *state.SharedState
 	responseSigner        *signing.ResponseSigner
-	authCfg               internalauth.AuthConfig
 	queryProfileThreshold time.Duration
 	clusterID             string
 	info                  version.Info
@@ -69,11 +68,11 @@ type BucketServiceServerImpl struct {
 	checkpointStores      checkpointStoreCache
 }
 
-func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
 	meter := meterProvider.Meter("grpc")
 	applyDuration, _ := meter.Int64Histogram("grpc.apply.duration",
 		metric.WithUnit("us"),
-		metric.WithDescription("Total duration of the gRPC Apply handler (auth + ctrl.Apply + signing)"),
+		metric.WithDescription("Total duration of the gRPC Apply handler (forwarded identity + ctrl.Apply + signing)"),
 		metric.WithExplicitBucketBoundaries(
 			0, 100, 500, 2000, 10000, 50000, 200000, 1000000,
 		),
@@ -88,7 +87,6 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 		attrs:                 attrs,
 		sharedState:           sharedState,
 		responseSigner:        responseSigner,
-		authCfg:               authCfg,
 		queryProfileThreshold: queryProfileThreshold,
 		clusterID:             clusterID,
 		info:                  info,
@@ -100,65 +98,15 @@ func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl 
 func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	start := time.Now()
 
-	// Authenticate the token and expand scopes, but don't check a specific scope yet.
-	ctx, err := internalauth.Authenticate(ctx, impl.authCfg)
+	ctx, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
 	if err != nil {
 		return nil, err
 	}
 
-	ctx, err = impl.adoptForwardedSnapshotIfTrusted(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Peek the batch (non-authoritative) for the empty check and the per-request
-	// scope checks. Admission re-verifies the signature and unmarshals the same
-	// bytes for processing.
-	//
-	// A signed payload is opaque until admission verifies the signature over its
-	// raw bytes, so a tampered payload that fails to parse here must NOT be
-	// rejected with InvalidArgument before the signature is checked — admission
-	// is authoritative and rejects a bad signature with PermissionDenied. Skip
-	// the peek-based checks when a signed batch won't parse; an unsigned batch
-	// that won't parse is simply malformed.
-	batch, peekErr := servicepb.PeekBatch(req)
-	if peekErr != nil && req.GetSigned() == nil {
-		return nil, status.Errorf(codes.InvalidArgument, "%v", peekErr)
-	}
-
-	if peekErr == nil {
-		if len(batch.GetRequests()) == 0 {
-			return nil, errEnvelopesRequired
-		}
-
-		// Per-request scope check: each request in the batch may require a
-		// different granular scope. Peeking is non-authoritative; admission
-		// re-verifies the batch signature and unmarshals the same bytes for
-		// processing. Cluster-internal forwards (cluster-secret authenticated
-		// peers) get the full scope set so this loop is a no-op by design.
-		if impl.authCfg.Enabled {
-			effective := internalauth.ExpandedScopesFromContext(ctx)
-			authPresented := internalauth.AuthPresentedFromContext(ctx)
-
-			for i, peeked := range batch.GetRequests() {
-				required := internalauth.RequiredScopeForRequest(peeked)
-				if internalauth.HasScope(effective, required) {
-					continue
-				}
-
-				// 401 when no credentials were presented (the anonymous fallback
-				// covers reads only); 403 when a valid token was presented but
-				// lacks the required scope.
-				if !authPresented {
-					return nil, status.Errorf(codes.Unauthenticated,
-						"request %d requires scope %s", i, required)
-				}
-
-				return nil, status.Errorf(codes.PermissionDenied,
-					"request %d requires scope %s", i, required)
-			}
-		}
-	}
+	// Authorization already peeked the batch in the interceptor. Keep a
+	// best-effort view solely for tracing and metrics; admission remains the
+	// authoritative parser and signature verifier.
+	batch, _ := servicepb.PeekBatch(req)
 
 	if impl.logger.Enabled(logging.TraceLevel) {
 		impl.logger.Tracef("Apply request received with %d requests", len(batch.GetRequests()))
@@ -295,10 +243,6 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
-		return nil, err
-	}
-
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -498,16 +442,11 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
-	// Start the profile clock before authentication and validation so those
-	// phases land inside PrepareDuration instead of being invisible. Protobuf
-	// decode is already done: grpc-go unmarshals the request before dispatching,
-	// so no in-handler clock can reach it.
+	// Authentication and protobuf decoding finish in the interceptor/generated
+	// transport path before this handler starts. PrepareDuration begins here and
+	// includes handler validation before the controller enters query execution.
 	ctx, profile := query.WithProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
-		return err
-	}
 
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
@@ -581,10 +520,6 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLedgers")
 	defer span.End()
 
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
-		return err
-	}
-
 	opts := req.GetOptions()
 	read := opts.GetRead()
 
@@ -625,10 +560,6 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	ctx, span := bucketTracer.Start(ctx, "grpc.GetLedger")
 	defer span.End()
 
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
-		return nil, err
-	}
-
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -645,10 +576,6 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
-		return nil, err
-	}
-
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -669,13 +596,10 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
-	// See ListTransactions: the clock must start before auth/validation.
+	// See ListTransactions: the profile begins with handler validation after
+	// transport decoding and authentication have completed.
 	ctx, profile := query.WithProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
-		return err
-	}
 
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
@@ -715,10 +639,6 @@ func accountCursorOf(a *commonpb.Account) string {
 }
 
 func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req *servicepb.GetPrimaryMetricsRequest) (*servicepb.GetPrimaryMetricsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
 	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
 		return nil, err
 	} else if conn != nil {
@@ -740,10 +660,6 @@ func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req 
 }
 
 func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, req *servicepb.GetSecondaryMetricsRequest) (*servicepb.GetSecondaryMetricsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
 	if conn, err := impl.forwarder.resolve(req.GetNodeId()); err != nil {
 		return nil, err
 	} else if conn != nil {
@@ -763,64 +679,28 @@ func (impl *BucketServiceServerImpl) GetSecondaryMetrics(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
 	return impl.ctrl.GetIndexStatus(ctx, req)
 }
 
 // GetIndex returns a single Index registry entry. Scope aligns with
 // ListIndexes SCOPE_LEDGER (a per-ledger read tokens must be accepted).
 func (impl *BucketServiceServerImpl) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
-	requiredScope := internalauth.ScopeOpsRead
-	if req.GetLedger() != "" {
-		requiredScope = internalauth.ScopeLedgersRead
-	}
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
-		return nil, err
-	}
-
 	return impl.ctrl.GetIndex(ctx, req)
 }
 
 // GetIndexEntryStatus returns the per-replica status view for a single
 // index. Same auth model as GetIndex.
 func (impl *BucketServiceServerImpl) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
-	requiredScope := internalauth.ScopeOpsRead
-	if req.GetLedger() != "" {
-		requiredScope = internalauth.ScopeLedgersRead
-	}
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
-		return nil, err
-	}
-
 	return impl.ctrl.GetIndexEntryStatus(ctx, req)
 }
 
 // ListIndexes streams the bucket-scoped index registry, optionally filtered
 // to a ledger (or bucket-scoped entries only) via the request Scope field.
 // The filtering and orphan-entry skipping are implemented by
-// DefaultController.ListIndexes; this handler is the gRPC transport that
-// authenticates and pumps the cursor onto the stream.
+// DefaultController.ListIndexes; the interceptor authorizes the first request
+// message before this handler pumps the cursor onto the stream.
 func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesRequest, stream servicepb.BucketService_ListIndexesServer) error {
 	ctx := stream.Context()
-
-	// Per-ledger callers previously read indexes through GetLedger under
-	// ledger:LedgerRead, so we keep that scope for SCOPE_LEDGER to preserve
-	// granular-auth tokens that don't carry ledger:OpsRead. SCOPE_BUCKET and
-	// SCOPE_ALL surface cross-ledger / operator-grade visibility and stay
-	// under ledger:OpsRead (PR #453 review).
-	requiredScope := internalauth.ScopeOpsRead
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
-		requiredScope = internalauth.ScopeLedgersRead
-	}
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, requiredScope); err != nil {
-		return err
-	}
 
 	c, err := impl.ctrl.ListIndexes(ctx, req)
 	if err != nil {
@@ -850,10 +730,6 @@ func (impl *BucketServiceServerImpl) ListIndexes(req *servicepb.ListIndexesReque
 }
 
 func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, stream servicepb.BucketService_CheckStoreServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return err
-	}
-
 	checker := check.NewChecker(impl.store, impl.attrs, impl.clusterID, impl.readStore, impl.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
@@ -862,20 +738,12 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 }
 
 func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*auditpb.AuditEntry, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
-		return nil, err
-	}
-
 	return impl.ctrl.GetAuditEntry(ctx, req.GetSequence())
 }
 
 func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEntriesRequest, stream servicepb.BucketService_ListAuditEntriesServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListAuditEntries")
 	defer span.End()
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
-		return err
-	}
 
 	opts := req.GetOptions()
 
@@ -923,10 +791,6 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 }
 
 func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.GetLogRequest) (*commonpb.Log, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
 	c, cleanup, err := impl.readController(ctx, req.GetCheckpointId())
 	if err != nil {
 		return nil, err
@@ -939,10 +803,6 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListLogs")
 	defer span.End()
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
-		return err
-	}
 
 	opts := req.GetOptions()
 	read := opts.GetRead()
@@ -999,10 +859,6 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 }
 
 func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
 	// Sink configs + per-sink status enrichment both live on the controller now,
 	// so gRPC and HTTP return identical data from one snapshot (EN-1472).
 	sinks, statuses, err := impl.ctrl.GetEventsSinks(ctx)
@@ -1019,10 +875,6 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListSigningKeys")
 	defer span.End()
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return err
-	}
 
 	opts := req.GetOptions()
 
@@ -1064,18 +916,10 @@ func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningK
 }
 
 func (impl *BucketServiceServerImpl) GetMetadataSchemaStatus(ctx context.Context, req *servicepb.GetMetadataSchemaStatusRequest) (*servicepb.GetMetadataSchemaStatusResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
-		return nil, err
-	}
-
 	return impl.ctrl.GetMetadataSchemaStatus(ctx, req.GetLedger())
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccountsRequest, stream servicepb.BucketService_AnalyzeAccountsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
-		return err
-	}
-
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
 	}
@@ -1103,10 +947,6 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 }
 
 func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeTransactionsRequest, stream servicepb.BucketService_AnalyzeTransactionsServer) error {
-	if _, err := internalauth.Authenticate(stream.Context(), impl.authCfg, internalauth.ScopeTransactionsRead); err != nil {
-		return err
-	}
-
 	if req.GetLedger() == "" {
 		return domain.ErrLedgerNameRequired
 	}
@@ -1133,10 +973,6 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 }
 
 func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *servicepb.ListPreparedQueriesRequest) (*servicepb.ListPreparedQueriesResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
-		return nil, err
-	}
-
 	queries, err := impl.ctrl.ListPreparedQueries(ctx, req.GetLedger())
 	if err != nil {
 		return nil, err
@@ -1149,10 +985,6 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 	ctx, profile := query.WithProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
-		return nil, err
-	}
-
 	profile.EnterExecute()
 	resp, err := impl.ctrl.ExecutePreparedQuery(ctx, req)
 	// No delivery phase on a unary reply: the gRPC codec marshals it after the
@@ -1163,10 +995,6 @@ func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, r
 }
 
 func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
-		return nil, err
-	}
-
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -1183,10 +1011,6 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
 	ctx, profile := query.WithProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAccountsRead); err != nil {
-		return nil, err
-	}
 
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
@@ -1210,10 +1034,6 @@ func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *
 }
 
 func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *servicepb.GetNumscriptRequest) (*commonpb.NumscriptInfo, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
-		return nil, err
-	}
-
 	read := req.GetRead()
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
@@ -1231,10 +1051,6 @@ func (impl *BucketServiceServerImpl) GetNumscript(ctx context.Context, req *serv
 // EN-1946's certified projection horizon, so this endpoint does not wait for a
 // read-index or audit-index certificate.
 func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *servicepb.GetTemplateUsageRequest) (*commonpb.TemplateUsage, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
-		return nil, err
-	}
-
 	c, cleanup, err := impl.readController(ctx, 0)
 	if err != nil {
 		return nil, err
@@ -1247,10 +1063,6 @@ func (impl *BucketServiceServerImpl) GetTemplateUsage(ctx context.Context, req *
 func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscriptsRequest, stream servicepb.BucketService_ListNumscriptsServer) error {
 	ctx, span := bucketTracer.Start(stream.Context(), "grpc.ListNumscripts")
 	defer span.End()
-
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
-		return err
-	}
 
 	opts := req.GetOptions()
 	read := opts.GetRead()
@@ -1291,10 +1103,6 @@ func (impl *BucketServiceServerImpl) ListNumscripts(req *servicepb.ListNumscript
 }
 
 func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, req *servicepb.ListNumscriptVersionsRequest) (*servicepb.ListNumscriptVersionsResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeQueriesRead); err != nil {
-		return nil, err
-	}
-
 	read := req.GetRead()
 
 	c, cleanup, err := impl.readController(ctx, read.GetCheckpointId())
@@ -1312,10 +1120,6 @@ func (impl *BucketServiceServerImpl) ListNumscriptVersions(ctx context.Context, 
 }
 
 func (impl *BucketServiceServerImpl) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeLedgersRead); err != nil {
-		return nil, err
-	}
-
 	if req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
@@ -1339,10 +1143,6 @@ func (impl *BucketServiceServerImpl) Barrier(ctx context.Context, _ *servicepb.B
 	// (ledger:OpsRead) so it can't be used anonymously as a DoS amplifier or a
 	// commit-index timing side channel. Leader-forwarded calls carry the
 	// cluster secret, which grants all scopes.
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeOpsRead); err != nil {
-		return nil, err
-	}
-
 	commitIndex, err := impl.ctrl.Barrier(ctx)
 	if err != nil {
 		return nil, err

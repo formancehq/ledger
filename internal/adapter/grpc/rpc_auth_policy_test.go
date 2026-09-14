@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -32,7 +33,7 @@ func TestPublicRPCPolicyValidationRejectsUnannotatedMethodBeforeListen(t *testin
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
-	srv, err := NewServiceServer(ServiceAuthPolicyPublic, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyPublic, internalauth.AuthConfig{}, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 
 	srv.GetServer().RegisterService(&ggrpc.ServiceDesc{
@@ -58,7 +59,7 @@ func TestPublicRPCPolicyValidationAcceptsGeneratedServiceDescriptors(t *testing.
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	srv, err := NewServiceServer(ServiceAuthPolicyPublic, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyPublic, internalauth.AuthConfig{}, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, srv.Stop()) })
 
@@ -76,7 +77,7 @@ func TestPublicRPCPolicyValidationRejectsUnregisteredPolicyBeforeListen(t *testi
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
-	srv, err := NewServiceServer(ServiceAuthPolicyPublic, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyPublic, internalauth.AuthConfig{}, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 	servicepb.RegisterBucketServiceServer(srv.GetServer(), &servicepb.UnimplementedBucketServiceServer{})
 

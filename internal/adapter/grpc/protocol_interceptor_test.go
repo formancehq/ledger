@@ -17,6 +17,7 @@ import (
 	reflectionpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/grpc/status"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -33,7 +34,7 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
-	srv, err := NewServiceServer(ServiceAuthPolicyRestore, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyRestore, internalauth.AuthConfig{}, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 	servicepb.RegisterBucketServiceServer(srv.GetServer(), &servicepb.UnimplementedBucketServiceServer{})
 	clusterpb.RegisterClusterServiceServer(srv.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
