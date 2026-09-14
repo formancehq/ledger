@@ -166,6 +166,10 @@ type ConnectionPool struct {
 	probeTLS     func(string, *tls.Config, time.Duration) error
 	probeTimeout time.Duration
 	failureGrace time.Duration
+
+	// beforeMonitorRestart is a test barrier invoked after the monitor's final
+	// state check and immediately before it attempts a restart.
+	beforeMonitorRestart func()
 }
 
 // NewConnectionPool creates a new gRPC connection pool driven by the given
@@ -251,7 +255,7 @@ func (p *ConnectionPool) dialPeer(id uint64, addr string) (*peerEntry, error) {
 		ctx, cancel := context.WithCancel(context.Background())
 		entry.stopMonitor = cancel
 
-		go p.monitorPeer(ctx, id)
+		go p.monitorPeer(ctx, id, entry)
 	}
 
 	return entry, nil
@@ -307,9 +311,21 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	_, err := p.restartConnectionLocked(id, nil)
+
+	return err
+}
+
+// restartConnectionLocked restarts id only if expected is nil or still owns
+// the peer slot. The identity check fences monitors whose connection was
+// replaced while they were deciding whether to restart it.
+func (p *ConnectionPool) restartConnectionLocked(id uint64, expected *peerEntry) (bool, error) {
 	existing, ok := p.peers[id]
 	if !ok {
-		return fmt.Errorf("no connection for peer %d", id)
+		return false, fmt.Errorf("no connection for peer %d", id)
+	}
+	if expected != nil && existing != expected {
+		return false, nil
 	}
 
 	addr := existing.addr
@@ -321,24 +337,20 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 		// RestartConnection; service pools retry when lifecycle wiring registers
 		// the same address again.
 
-		return err
+		return true, err
 	}
 
 	p.peers[id] = entry
 
-	return nil
+	return true, nil
 }
 
 // monitorPeer watches a peer's gRPC channel state and triggers a re-probe
 // when the channel stays in TransientFailure past the failure grace window.
 // Only active in optional mode.
-func (p *ConnectionPool) monitorPeer(ctx context.Context, id uint64) {
+func (p *ConnectionPool) monitorPeer(ctx context.Context, id uint64, monitored *peerEntry) {
+	conn := monitored.conn
 	for {
-		conn := p.getPeerConn(id)
-		if conn == nil {
-			return
-		}
-
 		state := conn.GetState()
 		if state == connectivity.Shutdown {
 			return
@@ -359,30 +371,24 @@ func (p *ConnectionPool) monitorPeer(ctx context.Context, id uint64) {
 		case <-time.After(p.failureGrace):
 		}
 
-		conn = p.getPeerConn(id)
-		if conn == nil || conn.GetState() != connectivity.TransientFailure {
+		if conn.GetState() != connectivity.TransientFailure {
 			continue
 		}
+		if p.beforeMonitorRestart != nil {
+			p.beforeMonitorRestart()
+		}
 
-		// Re-dial. A failed attempt leaves the desired address on a closed entry;
-		// this monitor then exits on Shutdown, while the Raft peer loop remains
-		// responsible for retrying RestartConnection.
-		_ = p.RestartConnection(id)
+		p.mu.Lock()
+		restarted, _ := p.restartConnectionLocked(id, monitored)
+		p.mu.Unlock()
+		if !restarted {
+			return
+		}
+
+		// The replacement has its own monitor. This monitor only owns the
+		// connection it captured when it started.
+		return
 	}
-}
-
-// getPeerConn returns the current conn for a peer, including a retained closed
-// conn after a failed replacement, or nil if the peer has been removed.
-func (p *ConnectionPool) getPeerConn(id uint64) *grpc.ClientConn {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	entry, ok := p.peers[id]
-	if !ok {
-		return nil
-	}
-
-	return entry.conn
 }
 
 // GetConnection returns the raw gRPC connection for a specific peer, if it exists.
