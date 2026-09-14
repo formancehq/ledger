@@ -58,7 +58,6 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 }
 
 func TestRunModelTestDriverExitDuringRestart(t *testing.T) {
-	t.Parallel()
 	for _, tc := range []struct {
 		name, scenario, want string
 		pass                 bool
@@ -68,7 +67,6 @@ func TestRunModelTestDriverExitDuringRestart(t *testing.T) {
 		{"late unsuccessful exit", "restart-failed", "DRIVER EXIT FAILED", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
 			output, _, err, fixtureErr := runModelTestFixture(t, tc.scenario)
 			require.NoError(t, fixtureErr, output)
 			require.Contains(t, output, "cycle 1: recovered")
@@ -109,9 +107,15 @@ printf '%s\n' "$now"
 	fakeSeq := filepath.Join(binDir, "seq")
 	fakeSleep := filepath.Join(binDir, "sleep")
 	restartBarrier := filepath.Join(tempDir, "restart-barrier")
+	restartRelease := filepath.Join(tempDir, "restart-release")
 	require.NoError(t, exec.Command("mkfifo", restartBarrier).Run())
+	require.NoError(t, exec.Command("mkfifo", restartRelease).Run())
 	writeExecutable(t, fakeSleep, `#!/bin/sh
-if [ "$1" = "8" ]; then printf 'restarting\n' > "$FAKE_RESTART_BARRIER"; fi
+if [ "$1" = "8" ]; then
+	printf 'restarting\n' > "$FAKE_RESTART_BARRIER"
+	read -r _ < "$FAKE_RESTART_RELEASE"
+	exit 0
+fi
 exec /bin/sleep "$@"
 `)
 	fakeServer := filepath.Join(tempDir, "fake-server")
@@ -145,7 +149,7 @@ trap 'exit 0' TERM INT
 while :; do sleep 1; done
 `)
 	writeExecutable(t, fakeDriver, `#!/bin/sh
-trap 'printf "driver-exit %s\n" "$?" >&3' EXIT
+trap 'status=$?; printf "driver-exit %s\n" "$status" >&3; case "$FAKE_MODEL_SCENARIO" in restart-*) printf "released\n" > "$FAKE_RESTART_RELEASE" ;; esac' EXIT
 write_assertion() {
 	printf '%s\n' "$1" >>"$ANTITHESIS_SDK_LOCAL_OUTPUT"
 }
@@ -206,7 +210,7 @@ esac
 	require.NoError(t, err)
 	runner := filepath.Join(packageDir, "run_model_test.sh")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	args := []string{"2"}
 	if strings.HasPrefix(scenario, "restart-") {
@@ -236,6 +240,7 @@ esac
 		"RESTART_INTERVAL=1",
 		"DEAD_TIME=8",
 		"FAKE_RESTART_BARRIER="+restartBarrier,
+		"FAKE_RESTART_RELEASE="+restartRelease,
 		"FAKE_MODEL_SCENARIO="+scenario,
 	)
 	combined, err, fixtureErr := runModelFixtureCommand(ctx, cmd, scenario)
