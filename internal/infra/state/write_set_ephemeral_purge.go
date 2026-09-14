@@ -94,7 +94,7 @@ func (b *WriteSet) partitionVolumes(
 			// A ledger deleted earlier in this batch does NOT land here:
 			// DeleteLedger soft-deletes by Putting the row back with DeletedAt
 			// set, so the gated read still returns it with its types intact.
-			keep(update, !update.Old.IsDefined())
+			keep(update, isNewVolumeUpdate(update))
 
 			continue
 		}
@@ -102,14 +102,14 @@ func (b *WriteSet) partitionVolumes(
 		compiled := entry.compiled
 
 		if len(compiled) == 0 {
-			keep(update, !update.Old.IsDefined())
+			keep(update, isNewVolumeUpdate(update))
 
 			continue
 		}
 
 		matched := accounttype.FindMatchingType(update.Key.Account, compiled)
 		if matched == nil {
-			keep(update, !update.Old.IsDefined())
+			keep(update, isNewVolumeUpdate(update))
 
 			continue
 		}
@@ -142,7 +142,7 @@ func (b *WriteSet) partitionVolumes(
 			}
 
 		default:
-			keep(update, !update.Old.IsDefined())
+			keep(update, isNewVolumeUpdate(update))
 		}
 	}
 
