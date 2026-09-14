@@ -1,6 +1,7 @@
 package query
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -38,9 +39,9 @@ func TestMergeFieldRanges(t *testing.T) {
 		require.NotNil(t, ic.Min)
 		require.NotNil(t, ic.Max)
 		assert.Equal(t, int64(10), ic.GetMin())
-		assert.Equal(t, int64(19), ic.GetMax())
+		assert.Equal(t, int64(20), ic.GetMax())
 		assert.False(t, ic.GetMinExclusive())
-		assert.False(t, ic.GetMaxExclusive())
+		assert.True(t, ic.GetMaxExclusive())
 	})
 
 	t.Run("inclusive max normalizes the same way", func(t *testing.T) {
@@ -73,8 +74,10 @@ func TestMergeFieldRanges(t *testing.T) {
 		require.Len(t, got, 1)
 		ic := got[0].GetField().GetIntCond()
 		require.NotNil(t, ic)
-		assert.Equal(t, int64(11), ic.GetMin())
-		assert.Equal(t, int64(19), ic.GetMax())
+		assert.Equal(t, int64(10), ic.GetMin())
+		assert.Equal(t, int64(20), ic.GetMax())
+		assert.True(t, ic.GetMinExclusive())
+		assert.True(t, ic.GetMaxExclusive())
 	})
 
 	t.Run("stricter lower bound wins", func(t *testing.T) {
@@ -159,7 +162,8 @@ func TestMergeFieldRanges(t *testing.T) {
 		aIC := got[0].GetField().GetIntCond()
 		require.NotNil(t, aIC)
 		assert.Equal(t, int64(10), aIC.GetMin())
-		assert.Equal(t, int64(19), aIC.GetMax())
+		assert.Equal(t, int64(20), aIC.GetMax())
+		assert.True(t, aIC.GetMaxExclusive())
 
 		// String filter keeps its relative position.
 		assert.Same(t, strFilter, got[1])
@@ -230,7 +234,8 @@ func TestMergeFieldRanges(t *testing.T) {
 		ic := got[0].GetField().GetIntCond()
 		require.NotNil(t, ic)
 		assert.Equal(t, int64(20), ic.GetMin())
-		assert.Equal(t, int64(99), ic.GetMax())
+		assert.Equal(t, int64(100), ic.GetMax())
+		assert.True(t, ic.GetMaxExclusive())
 	})
 }
 
@@ -276,9 +281,9 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		require.NotNil(t, uc.Min)
 		require.NotNil(t, uc.Max)
 		assert.Equal(t, uint64(10), uc.GetMin())
-		assert.Equal(t, uint64(19), uc.GetMax())
+		assert.Equal(t, uint64(20), uc.GetMax())
 		assert.False(t, uc.GetMinExclusive())
-		assert.False(t, uc.GetMaxExclusive())
+		assert.True(t, uc.GetMaxExclusive())
 	})
 
 	t.Run("uint exclusive bounds round inward", func(t *testing.T) {
@@ -294,8 +299,10 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		require.Len(t, got, 1)
 		uc := got[0].GetField().GetUintCond()
 		require.NotNil(t, uc)
-		assert.Equal(t, uint64(11), uc.GetMin())
-		assert.Equal(t, uint64(19), uc.GetMax())
+		assert.Equal(t, uint64(10), uc.GetMin())
+		assert.Equal(t, uint64(20), uc.GetMax())
+		assert.True(t, uc.GetMinExclusive())
+		assert.True(t, uc.GetMaxExclusive())
 	})
 
 	t.Run("stricter uint upper bound wins", func(t *testing.T) {
@@ -440,6 +447,80 @@ func TestMergeFieldRanges_Uint(t *testing.T) {
 		t.Parallel()
 		assert.Nil(t, mergeFieldRanges(nil))
 	})
+}
+
+func TestMergeFieldRanges_ExclusiveExtremaRemainEmpty(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		filters []*commonpb.QueryFilter
+		resolve func(*commonpb.QueryFilter) (bool, error)
+	}{
+		{
+			name: "uint max exclusive minimum",
+			filters: []*commonpb.QueryFilter{
+				uintRange("a", new(uint64(math.MaxUint64)), true, nil, false),
+				uintRange("a", new(uint64(0)), false, nil, false),
+			},
+			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+				bounds, err := resolveUintBounds(filter.GetField().GetUintCond(), nil)
+
+				return bounds.empty, err
+			},
+		},
+		{
+			name: "uint zero exclusive maximum",
+			filters: []*commonpb.QueryFilter{
+				uintRange("a", new(uint64(0)), false, nil, false),
+				uintRange("a", nil, false, new(uint64(0)), true),
+			},
+			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+				bounds, err := resolveUintBounds(filter.GetField().GetUintCond(), nil)
+
+				return bounds.empty, err
+			},
+		},
+		{
+			name: "int max exclusive minimum",
+			filters: []*commonpb.QueryFilter{
+				intRange("a", new(int64(math.MaxInt64)), true, nil, false),
+				intRange("a", new(int64(0)), false, nil, false),
+			},
+			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+				bounds, err := resolveIntBounds(filter.GetField().GetIntCond(), nil)
+
+				return bounds.empty, err
+			},
+		},
+		{
+			name: "int min exclusive maximum",
+			filters: []*commonpb.QueryFilter{
+				intRange("a", new(int64(math.MinInt64)), false, nil, false),
+				intRange("a", nil, false, new(int64(math.MinInt64)), true),
+			},
+			resolve: func(filter *commonpb.QueryFilter) (bool, error) {
+				bounds, err := resolveIntBounds(filter.GetField().GetIntCond(), nil)
+
+				return bounds.empty, err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			for _, filters := range [][]*commonpb.QueryFilter{test.filters, {test.filters[1], test.filters[0]}} {
+				merged := mergeFieldRanges(filters)
+
+				require.Len(t, merged, 1)
+				empty, err := test.resolve(merged[0])
+				require.NoError(t, err)
+				assert.True(t, empty)
+			}
+		})
+	}
 }
 
 // uintRange builds a metadata UintCondition filter on `field`. Mirror of
