@@ -448,7 +448,7 @@ func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBat
 
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.ErrorContains(t, err, "clearing stale read index checkpoint")
-	require.Equal(t, uint64(2), cursor, "the projection batch and cursor committed before materialization failed")
+	require.Equal(t, uint64(1), cursor, "the projection batch committed; the cursor stays before the checkpoint log until its materialization succeeds")
 	require.Equal(t, checkpointID, b.pendingCheckpointMaterialization.id)
 	state, exists := b.historyStateFor(ledger)
 	require.True(t, exists)
