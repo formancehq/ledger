@@ -141,9 +141,9 @@ func isUintPureRange(uc *commonpb.UintCondition) bool {
 
 // mergeTwo intersects two pure-range field conditions on the same metadata
 // field. Returns (combined, true) on success, or (nil, false) when the inputs
-// can't be merged (different proto shapes). Contradictory bounds (min > max
-// post-merge) collapse into a single IntCondition with an empty range — the
-// downstream range scan returns zero rows, which is the right outcome.
+// can't be merged (different proto shapes). Bound values and exclusivity are
+// preserved so the overflow-aware downstream resolver can detect empty ranges
+// at the integer extrema.
 func mergeTwo(a, b *commonpb.QueryFilter, kind fieldKind) (*commonpb.QueryFilter, bool) {
 	field := a.GetField().GetField()
 
@@ -176,117 +176,121 @@ func mergeTwo(a, b *commonpb.QueryFilter, kind fieldKind) (*commonpb.QueryFilter
 func intersectInt(a, b *commonpb.IntCondition) *commonpb.IntCondition {
 	out := &commonpb.IntCondition{}
 
-	lowA, hasLowA := intMinAsClosed(a)
-	lowB, hasLowB := intMinAsClosed(b)
+	lowA, hasLowA := intMin(a)
+	lowB, hasLowB := intMin(b)
 	switch {
 	case hasLowA && hasLowB:
-		low := max(lowB, lowA)
-		out.Min = &low
+		if lowA > lowB || lowA == lowB && a.GetMinExclusive() {
+			out.Min = &lowA
+			out.MinExclusive = a.GetMinExclusive()
+		} else {
+			out.Min = &lowB
+			out.MinExclusive = b.GetMinExclusive()
+		}
 	case hasLowA:
 		out.Min = &lowA
+		out.MinExclusive = a.GetMinExclusive()
 	case hasLowB:
 		out.Min = &lowB
+		out.MinExclusive = b.GetMinExclusive()
 	}
 
-	highA, hasHighA := intMaxAsClosed(a)
-	highB, hasHighB := intMaxAsClosed(b)
+	highA, hasHighA := intMax(a)
+	highB, hasHighB := intMax(b)
 	switch {
 	case hasHighA && hasHighB:
-		high := min(highB, highA)
-		out.Max = &high
+		if highA < highB || highA == highB && a.GetMaxExclusive() {
+			out.Max = &highA
+			out.MaxExclusive = a.GetMaxExclusive()
+		} else {
+			out.Max = &highB
+			out.MaxExclusive = b.GetMaxExclusive()
+		}
 	case hasHighA:
 		out.Max = &highA
+		out.MaxExclusive = a.GetMaxExclusive()
 	case hasHighB:
 		out.Max = &highB
+		out.MaxExclusive = b.GetMaxExclusive()
 	}
 
 	return out
 }
 
-// intMinAsClosed returns the lower bound as an inclusive value, normalizing
-// any MinExclusive flag.
-func intMinAsClosed(ic *commonpb.IntCondition) (int64, bool) {
+func intMin(ic *commonpb.IntCondition) (int64, bool) {
 	if ic.Min == nil {
 		return 0, false
 	}
 
-	v := ic.GetMin()
-	if ic.GetMinExclusive() {
-		v++
-	}
-
-	return v, true
+	return ic.GetMin(), true
 }
 
-// intMaxAsClosed returns the upper bound as an inclusive value, normalizing
-// any MaxExclusive flag.
-func intMaxAsClosed(ic *commonpb.IntCondition) (int64, bool) {
+func intMax(ic *commonpb.IntCondition) (int64, bool) {
 	if ic.Max == nil {
 		return 0, false
 	}
 
-	v := ic.GetMax()
-	if ic.GetMaxExclusive() {
-		v--
-	}
-
-	return v, true
+	return ic.GetMax(), true
 }
 
 func intersectUint(a, b *commonpb.UintCondition) *commonpb.UintCondition {
 	out := &commonpb.UintCondition{}
 
-	lowA, hasLowA := uintMinAsClosed(a)
-	lowB, hasLowB := uintMinAsClosed(b)
+	lowA, hasLowA := uintMin(a)
+	lowB, hasLowB := uintMin(b)
 	switch {
 	case hasLowA && hasLowB:
-		low := max(lowB, lowA)
-		out.Min = &low
+		if lowA > lowB || lowA == lowB && a.GetMinExclusive() {
+			out.Min = &lowA
+			out.MinExclusive = a.GetMinExclusive()
+		} else {
+			out.Min = &lowB
+			out.MinExclusive = b.GetMinExclusive()
+		}
 	case hasLowA:
 		out.Min = &lowA
+		out.MinExclusive = a.GetMinExclusive()
 	case hasLowB:
 		out.Min = &lowB
+		out.MinExclusive = b.GetMinExclusive()
 	}
 
-	highA, hasHighA := uintMaxAsClosed(a)
-	highB, hasHighB := uintMaxAsClosed(b)
+	highA, hasHighA := uintMax(a)
+	highB, hasHighB := uintMax(b)
 	switch {
 	case hasHighA && hasHighB:
-		high := min(highB, highA)
-		out.Max = &high
+		if highA < highB || highA == highB && a.GetMaxExclusive() {
+			out.Max = &highA
+			out.MaxExclusive = a.GetMaxExclusive()
+		} else {
+			out.Max = &highB
+			out.MaxExclusive = b.GetMaxExclusive()
+		}
 	case hasHighA:
 		out.Max = &highA
+		out.MaxExclusive = a.GetMaxExclusive()
 	case hasHighB:
 		out.Max = &highB
+		out.MaxExclusive = b.GetMaxExclusive()
 	}
 
 	return out
 }
 
-func uintMinAsClosed(uc *commonpb.UintCondition) (uint64, bool) {
+func uintMin(uc *commonpb.UintCondition) (uint64, bool) {
 	if uc.Min == nil {
 		return 0, false
 	}
 
-	v := uc.GetMin()
-	if uc.GetMinExclusive() {
-		v++
-	}
-
-	return v, true
+	return uc.GetMin(), true
 }
 
-func uintMaxAsClosed(uc *commonpb.UintCondition) (uint64, bool) {
+func uintMax(uc *commonpb.UintCondition) (uint64, bool) {
 	if uc.Max == nil {
 		return 0, false
 	}
 
-	v := uc.GetMax()
-	if uc.GetMaxExclusive() {
-		v--
-	}
-
-	return v, true
+	return uc.GetMax(), true
 }
 
 func wrapIntFieldCondition(field *commonpb.FieldRef, ic *commonpb.IntCondition) *commonpb.QueryFilter {
