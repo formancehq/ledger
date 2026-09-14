@@ -368,6 +368,19 @@ expiration). Without those preconditions, a retry is a new operation and may
 duplicate the original; the client must determine the original outcome before
 resubmitting. See [Idempotency Keys](../admission/idempotency.md).
 
+Normal membership changes have a stricter local completion boundary. Learner
+addition (including identity/address refresh), learner promotion, and removal
+first wait for the correlated `ConfChangeV2` to commit and for its `ConfState`
+to be persisted in the WAL, then wait until that exact Raft index is durably
+applied by the local FSM before returning success. This guarantees that a
+successful response can immediately observe the corresponding local membership
+row update or deletion in Pebble. The wait uses the FSM's applied-index
+notification and the request context rather than a wall-clock polling timeout,
+so it neither blocks the Raft orchestrator nor changes deterministic apply. If
+the request context is cancelled after commit but before local durable apply,
+the call returns an error even though the committed change may still apply;
+only a nil response establishes the full local durability postcondition.
+
 ### Why a Partition Cannot Commit Two Histories
 
 A voter grants at most one vote per term, a candidate needs a majority to
