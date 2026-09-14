@@ -73,8 +73,8 @@ func coverageTargetName(target commonpb.QueryTarget) string {
 // exercised rather than merely compiled.
 const coverageRetypeMessage = coveragePrefix + "a query was served while a retype window was open"
 
-// coverageMessages is every sonde this driver registers, in registration order.
-func coverageMessages() []string {
+// queryCoverageMessages lists the query sondes, in registration order.
+func queryCoverageMessages() []string {
 	out := make([]string, 0, len(coverageIndexes)+3)
 	for _, wi := range coverageIndexes {
 		out = append(out, coverageIndexMessage(wi.canonical))
@@ -85,6 +85,16 @@ func coverageMessages() []string {
 		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS),
 		coverageRetypeMessage,
 	)
+}
+
+func checkpointCoverageMessages() []string {
+	return []string{checkpointCreateCoverage, checkpointDeleteCoverage, checkpointReadCoverage,
+		checkpointDeletedReadCoverage, checkpointListCoverage, checkpointLimitCoverage,
+		checkpointScheduleSetCoverage, checkpointScheduleDeleteCoverage, checkpointScheduleReadCoverage}
+}
+
+func coverageMessages() []string {
+	return append(queryCoverageMessages(), checkpointCoverageMessages()...)
 }
 
 // registerCoverage declares every sonde before the run loop starts, so one that
@@ -176,4 +186,22 @@ func (c *Checker) retypeWindowOpenFor(ledger string, needed map[string]struct{})
 	}
 
 	return false
+}
+
+const (
+	checkpointCreateCoverage         = coveragePrefix + "checkpoint creation matched the oracle"
+	checkpointDeleteCoverage         = coveragePrefix + "checkpoint deletion matched the oracle"
+	checkpointReadCoverage           = coveragePrefix + "checkpoint served a frozen model-verified read"
+	checkpointDeletedReadCoverage    = coveragePrefix + "deleted checkpoint read returned typed NOT_FOUND"
+	checkpointListCoverage           = coveragePrefix + "checkpoint listing matched the oracle"
+	checkpointLimitCoverage          = coveragePrefix + "checkpoint limit returned typed CHECKPOINT_LIMIT_REACHED"
+	checkpointScheduleSetCoverage    = coveragePrefix + "checkpoint schedule set matched the oracle"
+	checkpointScheduleDeleteCoverage = coveragePrefix + "checkpoint schedule deletion matched the oracle"
+	checkpointScheduleReadCoverage   = coveragePrefix + "checkpoint schedule read matched the oracle"
+)
+
+func noteCheckpointCoverage(message string) {
+	for _, msg := range checkpointCoverageMessages() {
+		emitCoverage(msg == message, msg, nil, coverageHit)
+	}
 }

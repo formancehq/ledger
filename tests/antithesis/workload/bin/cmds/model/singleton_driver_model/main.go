@@ -110,6 +110,25 @@ func main() {
 	}
 
 	checker := NewChecker(names, schemas)
+	checker.modelState = checker.modelState.WithQueryCheckpointLimit(uint64(envInt("MODEL_QUERY_CHECKPOINT_LIMIT", defaultModelCheckpointLimit)))
+	dialCtx, cancelDial := context.WithTimeout(ctx, 5*time.Second)
+	checkpointNodes, err := internal.DialPerNode(dialCtx)
+	cancelDial()
+	if err != nil || len(checkpointNodes) == 0 {
+		assert.Unreachable("singleton_driver_model: checkpoint node connections unavailable", internal.Details{"error": fmt.Sprint(err)})
+		return
+	}
+	defer checkpointNodes.Close()
+	checkpointSetupNode, err := selectCheckpointSetupNode(ctx, checkpointNodes, names[0])
+	if err != nil {
+		if ctx.Err() == nil {
+			assert.Unreachable("singleton_driver_model: no checkpoint setup node available", internal.Details{"error": err.Error()})
+		}
+		return
+	}
+	if !setupQueryCheckpoints(ctx, checkpointSetupNode.Bucket, checkpointSetupNode.Cluster, checker) {
+		return
+	}
 
 	// Declared before the first query so an index the run never exercises shows
 	// up as an unsatisfied property rather than as no output at all.
@@ -132,7 +151,7 @@ func main() {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			runWorker(ctx, client, checker)
+			runWorker(ctx, client, checkpointNodes, checker)
 		}()
 	}
 
@@ -151,16 +170,11 @@ func main() {
 	// index is live everywhere. Per-node conns are lazy, so dialing never fails on
 	// a down node; it is skipped only when no addresses resolve.
 	var pollers sync.WaitGroup
-	if conns, err := internal.DialPerNode(ctx); err != nil {
-		log.Printf("index readiness poller disabled: per-node dial failed: %s", err)
-	} else {
-		pollers.Add(1)
-		go func() {
-			defer pollers.Done()
-			defer conns.Close()
-			runIndexReadinessPoller(ctx, checker, conns, indexPollInterval)
-		}()
-	}
+	pollers.Add(1)
+	go func() {
+		defer pollers.Done()
+		runIndexReadinessPoller(ctx, checker, checkpointNodes, indexPollInterval)
+	}()
 
 	// Workers stop on ctx.Done. Wait for the restore cycle and poller too before
 	// closing the processor's channel, so nothing touches the checker during
@@ -177,6 +191,7 @@ func main() {
 func runWorker(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
+	checkpointNodes internal.PerNodeConns,
 	c *Checker,
 ) {
 	for {
@@ -199,7 +214,7 @@ func runWorker(
 		// in-flight bulk set, exercising cross-node freshness without needing
 		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -214,6 +229,9 @@ func runWorker(
 				runReplay(ctx, client, c)
 			case 6:
 				runLogQuery(ctx, client, c)
+			case 8:
+				node := random.RandomChoice(checkpointNodes)
+				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
 			default:
 				runRead(ctx, client, c)
 			}
@@ -232,6 +250,9 @@ func runWorker(
 		c.mu.Unlock()
 
 		bulk := generateBulk(state, c.ledgerNames)
+		if percentChance(10) {
+			bulk = generateCheckpointBulk(state)
+		}
 		if len(bulk.Requests) == 0 {
 			continue
 		}

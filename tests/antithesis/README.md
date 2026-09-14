@@ -30,6 +30,44 @@ two templates:
 Adding a driver is just adding a directory under `bin/cmds/main/` with a
 `main.go`. No manifest to update; no Dockerfile to touch.
 
+## Model checkpoint coverage
+
+The model template exclusively owns the checkpoint timeline, with no other
+driver or automatic checkpoint creator running alongside it. At startup it
+disables the inherited schedule and seeds the existing checkpoint registry and
+allocation counter from the live registry and historical creation log. This
+supports repeated model invocations without deleting inherited checkpoints.
+An unrelated active schedule is not supported: disabling it cannot cancel an
+already proposed creation. Only
+checkpoints created during the current invocation receive frozen read snapshots. Checkpoint
+creates and deletes use the same concurrent Apply workers and ordered response
+buffer as business writes. A create publishes an immutable oracle snapshot only
+when its response drains in global sequence order; its `max_sequence` must be
+the sequence immediately before the creation log. Frozen reads never validate
+against live candidate states.
+
+The driver exercises account and transaction point reads and index-free first
+pages against retained snapshots, even while live writes continue. Listing and
+schedule reads must match a possible ordering of in-flight lifecycle writes.
+These node-local metadata APIs are preceded by a linearizable ledger read over
+the same pinned node connection, establishing a lower bound for comparison.
+Deleted-checkpoint reads require gRPC `NotFound`; concurrent deletion is accepted
+only when an eligible model state explains it. The existing transient-error
+contract covers replicas whose checkpoint read index is not ready yet.
+
+`MODEL_QUERY_CHECKPOINT_LIMIT` defaults to 10 and must match the server's
+`--query-checkpoint-limit`. Creation deliberately attempts to exceed the cap and
+requires `CHECKPOINT_LIMIT_REACHED`. Live snapshots are bounded by that cap;
+only the ten most recent deleted IDs are retained for negative reads. Schedule
+set/get/delete uses a valid 100-year interval so no scheduler-generated writes
+enter the model timeline. Restore cycles retain the frozen business snapshots
+and continue validating them after the cluster rebuilds its checkpoint stores.
+
+Coverage properties are registered before workers start for lifecycle commits,
+cap rejection, nonempty frozen reads, deleted reads, listing, and schedule
+configuration. Actual cron firings and business-list cursor continuation are not
+part of this coverage.
+
 ## Driver naming convention
 
 The prefix encodes **how Antithesis schedules the binary**:

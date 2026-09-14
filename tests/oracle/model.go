@@ -3,11 +3,13 @@ package oracle
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/holiman/uint256"
+	"github.com/robfig/cron/v3"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -513,7 +515,11 @@ func (s *LedgerState) AccountMetadata(addr string) map[string]*commonpb.Metadata
 // separate from the checker's bookkeeping (in-flight set, re-order buffer,
 // observations) so it can be unit-tested and forked.
 type GlobalState struct {
-	ledgers map[string]LedgerState
+	ledgers            map[string]LedgerState
+	checkpoints        Map[string, uint64]
+	nextCheckpointID   uint64
+	checkpointLimit    uint64
+	checkpointSchedule string
 	// idempotency freezes the committed outcome of every keyed bulk, so a later
 	// bulk carrying the same key replays it (Apply). It spans ledgers because a
 	// bulk's key covers the whole atomic batch, whatever ledgers it touched.
@@ -546,7 +552,7 @@ func frozenOutcomeTerm(key string, fo *frozenOutcome) Digest {
 		if o.Revert != nil {
 			revertedID = o.Revert.revertedID
 		}
-		t.u64(uint64(i), o.TxID, revertedID)
+		t.u64(uint64(i), o.TxID, revertedID, o.CheckpointID)
 	}
 
 	return t.sum()
@@ -554,8 +560,10 @@ func frozenOutcomeTerm(key string, fo *frozenOutcome) Digest {
 
 func NewGlobalState() GlobalState {
 	return GlobalState{
-		ledgers:     map[string]LedgerState{},
-		idempotency: NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
+		ledgers:          map[string]LedgerState{},
+		checkpoints:      NewMap[string, uint64](stringComparer{}, checkpointTerm),
+		nextCheckpointID: 1,
+		idempotency:      NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
 	}
 }
 
@@ -567,7 +575,9 @@ func (g GlobalState) clone() GlobalState {
 	m := make(map[string]LedgerState, len(g.ledgers))
 	maps.Copy(m, g.ledgers)
 
-	return GlobalState{ledgers: m, idempotency: g.idempotency}
+	g.ledgers = m
+
+	return g
 }
 
 // ledger returns the named ledger's state, or an empty one if untouched.
@@ -603,7 +613,12 @@ func (g GlobalState) Fingerprint() Digest {
 	// The frozen idempotency table is part of the identity — see
 	// frozenOutcomeTerm. Its terms are domain-tagged, so the plain sum keeps
 	// them disjoint from the ledger terms.
-	return d.add(g.idempotency.Fingerprint())
+	t := newTerm("query-checkpoint-state")
+	t.digest(g.checkpoints.Fingerprint())
+	t.u64(g.nextCheckpointID, g.checkpointLimit)
+	t.str(g.checkpointSchedule)
+
+	return d.add(g.idempotency.Fingerprint()).add(t.sum())
 }
 
 // OrderResult is the predicted outcome of one request in a bulk. PCV holds the
@@ -619,6 +634,8 @@ type OrderResult struct {
 	// TxID is the id the server assigns to a committed CreateTransaction or the
 	// new revert transaction (0 for any other order), checked against the log.
 	TxID uint64
+	// CheckpointID is the predicted created or deleted query checkpoint ID.
+	CheckpointID uint64
 	// Revert is set for a committed RevertTransaction: the original id and the
 	// predicted reversed postings, checked against the RevertedTransaction log.
 	Revert *revertEffect
@@ -705,8 +722,12 @@ type ApplyResult struct {
 }
 
 // LedgerOf returns the ledger a request targets.
+// LedgerOf returns the request ledger, or empty for cluster-scoped orders.
 func LedgerOf(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
+	case *servicepb.Request_CreateQueryCheckpoint, *servicepb.Request_DeleteQueryCheckpoint,
+		*servicepb.Request_SetQueryCheckpointSchedule, *servicepb.Request_DeleteQueryCheckpointSchedule:
+		return ""
 	case *servicepb.Request_Apply:
 		return r.Apply.GetLedger()
 	case *servicepb.Request_AddAccountType:
@@ -809,6 +830,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	var orderTouches []orderTouch
 
 	for _, req := range bulk.Requests {
+		if oc, handled := next.applyCheckpoint(req); handled {
+			orders = append(orders, oc)
+			if !oc.OK {
+				return ApplyResult{OK: false, Reason: oc.Reason, State: g, Orders: orders}
+			}
+
+			continue
+		}
 		name := LedgerOf(req)
 
 		ls, ok := next.ledgers[name]
@@ -1886,4 +1915,106 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey
 	}
 
 	return purged
+}
+
+func checkpointTerm(key string, id uint64) Digest {
+	t := newTerm("QC")
+	t.str(key)
+	t.u64(id)
+
+	return t.sum()
+}
+
+// WithQueryCheckpointLimit configures the replicated policy used by Apply.
+// Zero means no cap, matching the unconfigured FSM policy.
+func (g GlobalState) WithQueryCheckpointLimit(limit uint64) GlobalState {
+	g.checkpointLimit = limit
+
+	return g
+}
+
+// QueryCheckpointLimit returns the model's configured live checkpoint cap.
+func (g GlobalState) QueryCheckpointLimit() uint64 { return g.checkpointLimit }
+
+// QueryCheckpointIDs returns the live checkpoint IDs in ascending order.
+func (g GlobalState) QueryCheckpointIDs() []uint64 {
+	ids := make([]uint64, 0, g.checkpoints.Len())
+	for _, id := range g.checkpoints.All() {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	return ids
+}
+
+// QueryCheckpointExists reports whether an ID remains live.
+func (g GlobalState) QueryCheckpointExists(id uint64) bool {
+	return g.checkpoints.Has(strconv.FormatUint(id, 10))
+}
+
+// QueryCheckpointSchedule returns the configured cron expression, or empty
+// when automatic creation is disabled. Actual timer firings are not modeled.
+func (g GlobalState) QueryCheckpointSchedule() string { return g.checkpointSchedule }
+
+// applyCheckpoint handles cluster-scoped lifecycle orders without introducing
+// a ledger or ledger-local log. Frozen business state belongs to the checker;
+// the forward model only predicts deterministic registry and schedule effects.
+func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool) {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_CreateQueryCheckpoint:
+		if g.checkpointLimit != 0 && uint64(g.checkpoints.Len()) >= g.checkpointLimit {
+			return OrderResult{Reason: domain.ErrReasonCheckpointLimitReached}, true
+		}
+		id := g.nextCheckpointID
+		g.nextCheckpointID++
+		g.checkpoints = g.checkpoints.Set(strconv.FormatUint(id, 10), id)
+
+		return OrderResult{OK: true, CheckpointID: id}, true
+	case *servicepb.Request_DeleteQueryCheckpoint:
+		id := r.DeleteQueryCheckpoint.GetCheckpointId()
+		if id == 0 {
+			return OrderResult{Reason: domain.ErrReasonCheckpointIDRequired}, true
+		}
+		if !g.QueryCheckpointExists(id) {
+			return OrderResult{Reason: domain.ErrReasonCheckpointNotFound}, true
+		}
+		g.checkpoints = g.checkpoints.Delete(strconv.FormatUint(id, 10))
+
+		return OrderResult{OK: true, CheckpointID: id}, true
+	case *servicepb.Request_SetQueryCheckpointSchedule:
+		parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+		if _, err := parser.Parse(r.SetQueryCheckpointSchedule.GetCron()); err != nil {
+			return OrderResult{Reason: domain.ErrReasonInvalidCronExpression}, true
+		}
+		g.checkpointSchedule = r.SetQueryCheckpointSchedule.GetCron()
+
+		return OrderResult{OK: true}, true
+	case *servicepb.Request_DeleteQueryCheckpointSchedule:
+		g.checkpointSchedule = ""
+
+		return OrderResult{OK: true}, true
+	default:
+		return OrderResult{}, false
+	}
+}
+
+// SeedQueryCheckpoints initializes the cluster lifecycle baseline before model
+// workers start. Inherited IDs count toward the cap but have no business-state
+// snapshots in the checker. nextID includes deleted historical checkpoints.
+// The caller must disable the inherited schedule before seeding.
+func (g GlobalState) SeedQueryCheckpoints(ids []uint64, nextID uint64) GlobalState {
+	if nextID == 0 {
+		panic("model: checkpoint baseline next ID must be positive")
+	}
+	g.checkpoints = NewMap[string, uint64](stringComparer{}, checkpointTerm)
+	for _, id := range ids {
+		if id == 0 || id >= nextID {
+			panic("model: live checkpoint ID outside baseline counter")
+		}
+		g.checkpoints = g.checkpoints.Set(strconv.FormatUint(id, 10), id)
+	}
+	g.nextCheckpointID = nextID
+	g.checkpointSchedule = ""
+
+	return g
 }

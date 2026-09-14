@@ -51,6 +51,10 @@ type Checker struct {
 	// in-flight set onto.
 	modelState oracle.GlobalState
 
+	// Frozen business states are published only as their creation drains.
+	checkpoints        map[uint64]checkpointSnapshot
+	deletedCheckpoints []uint64
+
 	// retypeObs tracks each open retype window's per-node closure progress —
 	// see retypeObservation. Keyed by retypeObsKey. Guarded by mu.
 	retypeObs map[string]*retypeObservation
@@ -133,6 +137,7 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		reads:       map[uint64]struct{}{},
 		incoming:    make(chan observation, incomingBuffer),
 		modelState:  modelState,
+		checkpoints: map[uint64]checkpointSnapshot{},
 		retypeObs:   map[string]*retypeObservation{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
