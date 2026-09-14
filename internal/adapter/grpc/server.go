@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"runtime/debug"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -111,6 +112,8 @@ type baseServer struct {
 	host   string // bind host; empty means "0.0.0.0"
 	port   int
 	name   string
+
+	validatePublicRPCPolicies bool
 }
 
 // multiRegistrar fans out RegisterService calls to every underlying gRPC
@@ -160,6 +163,14 @@ func (s *baseServer) registerReflection() {
 // e2e suites, destroyed the report of the spec that was actually failing
 // (EN-1784).
 func (s *baseServer) Listen() error {
+	if s.validatePublicRPCPolicies {
+		for _, srv := range s.underlying() {
+			if err := validatePublicRPCPolicies(srv.GetServiceInfo()); err != nil {
+				return fmt.Errorf("%s authentication policy validation failed: %w", s.name, err)
+			}
+		}
+	}
+
 	host := s.host
 	if host == "" {
 		host = "0.0.0.0"
@@ -750,6 +761,50 @@ func WithListener(listener net.Listener) Option {
 	}
 }
 
+var infrastructureRPCMethods = map[string]struct{}{
+	"/grpc.health.v1.Health/Check":                                   {},
+	"/grpc.health.v1.Health/List":                                    {},
+	"/grpc.health.v1.Health/Watch":                                   {},
+	"/grpc.reflection.v1.ServerReflection/ServerReflectionInfo":      {},
+	"/grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo": {},
+}
+
+func isInfrastructureRPCMethod(fullMethod string) bool {
+	_, ok := infrastructureRPCMethods[fullMethod]
+
+	return ok
+}
+
+func validatePublicRPCPolicies(services map[string]ggrpc.ServiceInfo) error {
+	unregisteredPolicies := commonpb.AllRPCAuthPolicies()
+	for serviceName, service := range services {
+		for _, method := range service.Methods {
+			fullMethod := "/" + serviceName + "/" + method.Name
+			if isInfrastructureRPCMethod(fullMethod) {
+				continue
+			}
+
+			if _, err := commonpb.RPCAuthPolicyForMethod(fullMethod); err != nil {
+				return err
+			}
+
+			delete(unregisteredPolicies, fullMethod)
+		}
+	}
+
+	if len(unregisteredPolicies) > 0 {
+		methods := make([]string, 0, len(unregisteredPolicies))
+		for method := range unregisteredPolicies {
+			methods = append(methods, method)
+		}
+		slices.Sort(methods)
+
+		return fmt.Errorf("authentication policy has no registered RPC: %s", methods[0])
+	}
+
+	return nil
+}
+
 // buildBaseServer constructs the baseServer fields shared by RaftServer and
 // ServiceServer. It instantiates one or two underlying gRPC servers based on
 // the (tlsCfg, acceptPlaintext) combination.
@@ -846,16 +901,25 @@ func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPl
 // would break restore.
 const serviceMaxMsgSize = 64 << 20
 
-// NewServiceServer creates a new gRPC server for service API (external).
-// This server includes OpenTelemetry instrumentation and error conversion.
-// Authentication is handled explicitly in each service method via auth.Authenticate.
-//
-// host controls the bind address. Empty means "0.0.0.0" (every interface) —
-// the normal mode. Restore mode passes "127.0.0.1" by default so the
-// destructive restore RPCs are not exposed on the public network.
-//
+// ServiceAuthPolicy selects the startup authentication-policy validation for
+// the services registered by the caller.
+type ServiceAuthPolicy uint8
+
+const (
+	ServiceAuthPolicyPublic ServiceAuthPolicy = iota + 1
+	ServiceAuthPolicyRestore
+)
+
+// NewServiceServer builds the shared public/restore transport and interceptor
+// chain. Public mode validates that registered methods and generated auth
+// policies match exactly before Listen binds. Restore mode is deliberately
+// outside the BucketService and ClusterService policy inventory.
 // See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
-func NewServiceServer(host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
+func NewServiceServer(authPolicy ServiceAuthPolicy, host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
+	if authPolicy != ServiceAuthPolicyPublic && authPolicy != ServiceAuthPolicyRestore {
+		return nil, fmt.Errorf("unknown service authentication policy %d", authPolicy)
+	}
+
 	// Recovery interceptor must be first (outermost) to catch panics from all handlers.
 	// Logging is placed before error conversion so that on the response path
 	// (innermost-first), error conversion runs first and logging sees the
@@ -897,6 +961,7 @@ func NewServiceServer(host string, port int, logger logging.Logger, debug bool, 
 	for _, opt := range opts {
 		opt(bs)
 	}
+	bs.validatePublicRPCPolicies = authPolicy == ServiceAuthPolicyPublic
 
 	srv := &ServiceServer{baseServer: bs}
 	srv.registerReflection()

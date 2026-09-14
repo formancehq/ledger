@@ -2165,25 +2165,26 @@ const file_cluster_proto_rawDesc = "" +
 	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\x12!\n" +
 	"\fmax_sequence\x18\x02 \x01(\x06R\vmaxSequence\x120\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xf4\t\n" +
-	"\x0eClusterService\x12I\n" +
-	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\x12@\n" +
-	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\x12=\n" +
-	"\vGetNodeTime\x12\x1b.cluster.GetNodeTimeRequest\x1a\x11.cluster.NodeTime\x12]\n" +
-	"\x12TransferLeadership\x12\".cluster.TransferLeadershipRequest\x1a#.cluster.TransferLeadershipResponse\x12E\n" +
+	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt2\xec\n" +
 	"\n" +
-	"AddLearner\x12\x1a.cluster.AddLearnerRequest\x1a\x1b.cluster.AddLearnerResponse\x12Q\n" +
-	"\x0ePromoteLearner\x12\x1e.cluster.PromoteLearnerRequest\x1a\x1f.cluster.PromoteLearnerResponse\x12E\n" +
+	"\x0eClusterService\x12Q\n" +
+	"\x0fGetClusterState\x12\x1f.cluster.GetClusterStateRequest\x1a\x15.cluster.ClusterState\"\x06\xd2\xd5\"\x02\x10\r\x12H\n" +
+	"\fGetDiskUsage\x12\x1c.cluster.GetDiskUsageRequest\x1a\x12.cluster.DiskUsage\"\x06\xd2\xd5\"\x02\x10\r\x12E\n" +
+	"\vGetNodeTime\x12\x1b.cluster.GetNodeTimeRequest\x1a\x11.cluster.NodeTime\"\x06\xd2\xd5\"\x02\x10\r\x12e\n" +
+	"\x12TransferLeadership\x12\".cluster.TransferLeadershipRequest\x1a#.cluster.TransferLeadershipResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12M\n" +
 	"\n" +
-	"RemoveNode\x12\x1a.cluster.RemoveNodeRequest\x1a\x1b.cluster.RemoveNodeResponse\x12Q\n" +
-	"\x0eCompactPrimary\x12\x1e.cluster.CompactPrimaryRequest\x1a\x1f.cluster.CompactPrimaryResponse\x12W\n" +
-	"\x10CompactSecondary\x12 .cluster.CompactSecondaryRequest\x1a!.cluster.CompactSecondaryResponse\x12W\n" +
-	"\x10CreateCheckpoint\x12 .cluster.CreateCheckpointRequest\x1a!.cluster.CreateCheckpointResponse\x129\n" +
-	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse\x12Z\n" +
-	"\x11IncrementalBackup\x12!.cluster.IncrementalBackupRequest\x1a\".cluster.IncrementalBackupResponse\x12c\n" +
-	"\x14ListQueryCheckpoints\x12$.cluster.ListQueryCheckpointsRequest\x1a%.cluster.ListQueryCheckpointsResponse\x12^\n" +
-	"\x16GetQueryCheckpointInfo\x12&.cluster.GetQueryCheckpointInfoRequest\x1a\x1c.cluster.QueryCheckpointInfo\x12u\n" +
-	"\x1aGetQueryCheckpointSchedule\x12*.cluster.GetQueryCheckpointScheduleRequest\x1a+.cluster.GetQueryCheckpointScheduleResponseB:Z8github.com/formancehq/ledger/v3/internal/proto/clusterpbb\x06proto3"
+	"AddLearner\x12\x1a.cluster.AddLearnerRequest\x1a\x1b.cluster.AddLearnerResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12Y\n" +
+	"\x0ePromoteLearner\x12\x1e.cluster.PromoteLearnerRequest\x1a\x1f.cluster.PromoteLearnerResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12M\n" +
+	"\n" +
+	"RemoveNode\x12\x1a.cluster.RemoveNodeRequest\x1a\x1b.cluster.RemoveNodeResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12Y\n" +
+	"\x0eCompactPrimary\x12\x1e.cluster.CompactPrimaryRequest\x1a\x1f.cluster.CompactPrimaryResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12_\n" +
+	"\x10CompactSecondary\x12 .cluster.CompactSecondaryRequest\x1a!.cluster.CompactSecondaryResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12_\n" +
+	"\x10CreateCheckpoint\x12 .cluster.CreateCheckpointRequest\x1a!.cluster.CreateCheckpointResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12A\n" +
+	"\x06Backup\x12\x16.cluster.BackupRequest\x1a\x17.cluster.BackupResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12b\n" +
+	"\x11IncrementalBackup\x12!.cluster.IncrementalBackupRequest\x1a\".cluster.IncrementalBackupResponse\"\x06\xd2\xd5\"\x02\x10\x0e\x12k\n" +
+	"\x14ListQueryCheckpoints\x12$.cluster.ListQueryCheckpointsRequest\x1a%.cluster.ListQueryCheckpointsResponse\"\x06\xd2\xd5\"\x02\x10\r\x12f\n" +
+	"\x16GetQueryCheckpointInfo\x12&.cluster.GetQueryCheckpointInfoRequest\x1a\x1c.cluster.QueryCheckpointInfo\"\x06\xd2\xd5\"\x02\x10\r\x12}\n" +
+	"\x1aGetQueryCheckpointSchedule\x12*.cluster.GetQueryCheckpointScheduleRequest\x1a+.cluster.GetQueryCheckpointScheduleResponse\"\x06\xd2\xd5\"\x02\x10\rB:Z8github.com/formancehq/ledger/v3/internal/proto/clusterpbb\x06proto3"
 
 var (
 	file_cluster_proto_rawDescOnce sync.Once

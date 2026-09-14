@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto test-rpcauth-generator operator-generate test-dashboards tidy lint
 pc: pre-commit
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
@@ -289,6 +289,7 @@ generate-proto:
     @cd tools/protoc-gen-reader && go build -o ../../build/protoc-gen-reader .
     @cd tools/protoc-gen-skippable && go build -o ../../build/protoc-gen-skippable .
     @cd tools/protoc-gen-queryfilter-validity && go build -o ../../build/protoc-gen-queryfilter-validity .
+    @cd tools/protoc-gen-rpcauth && go build -o ../../build/protoc-gen-rpcauth .
     @protoc --go_out=. --go_opt=module=github.com/formancehq/ledger/v3 \
         --go-grpc_out=. \
         --go-grpc_opt=module=github.com/formancehq/ledger/v3 \
@@ -317,6 +318,9 @@ generate-proto:
         --plugin=protoc-gen-queryfilter-validity=build/protoc-gen-queryfilter-validity \
         --queryfilter-validity_out=. \
         --queryfilter-validity_opt=module=github.com/formancehq/ledger/v3 \
+        --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
+        --rpcauth_out=. \
+        --rpcauth_opt=module=github.com/formancehq/ledger/v3 \
         -I misc/proto \
         misc/proto/raft_transport.proto \
         misc/proto/common.proto \
@@ -330,6 +334,9 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+
+test-rpcauth-generator:
+    go -C tools/protoc-gen-rpcauth test ./...
 
 # --- Operator (Kubernetes) ---
 
