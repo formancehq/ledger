@@ -77,8 +77,8 @@ ignored by Git.
 - Numscript, transaction-script, configuration, and mirror rewrite documents
   arrive through host-owned input artifact handles and are capped at 1 MiB.
   Transaction scripts and mirror rewrite documents are optional sources; their
-  descriptors require the additive optional-artifact SDK contract introduced by
-  fctl commits `ac0d305f` and `5dbc0e93`.
+  descriptors require the additive optional-artifact SDK contract, the
+  `Optional` and `Repeated` fields on `sdk.InputArtifactSpec`.
   Operations embedding those documents admit up to 2 MiB on the generated
   protobuf request so the declared artifact maximum remains executable.
 - The final component must validate, remain byte-for-byte reproducible and stay
@@ -90,10 +90,15 @@ host engine supported by the fctl release process.
 One host/product integration gate remains intentionally fail-closed:
 
 - fctl does not yet connect an accepted Ledger v3 `SignedApplyBatch`
-  sign-and-send executor to `Composer`. Until that boundary is implemented and
-  the SDK is repinned, every command declaring `sign.ledger.apply-batch` returns
-  `signing_failed` before product access; the plugin never falls back to an
-  unsigned Apply.
+  sign-and-send executor to `Composer`. At the pinned SDK commit,
+  `Composer.ExecuteWithContinuation` refuses every command whose descriptor sets
+  `RequestSigning`, so `sign.ledger.apply-batch` returns `signing_failed` before
+  target validation and before product access; the plugin never falls back to an
+  unsigned Apply. The host-side signer broker exists but has no production
+  caller, and the frozen plugin ABI carries product calls only as opaque
+  `(full-method, message)` bytes, so there is no seam for the plugin to hand the
+  host a typed unsigned `ApplyBatch`. Repinning the SDK does not lift this gate;
+  fctl must add the executor first.
 
 Analyze uses exactly one host request and the generated-client's bounded
 4 MiB/message, 16 MiB aggregate, 1,024-message response envelope. Ledger's gRPC

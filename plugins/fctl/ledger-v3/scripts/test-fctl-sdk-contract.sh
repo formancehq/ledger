@@ -7,10 +7,10 @@ unset -f nix 2>/dev/null || true
 
 readonly plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly wrapper="$plugin_root/scripts/with-fctl-sdk.sh"
-readonly expected_nar_hash='sha256-HUMOWv4j015MJaM/RNm2h8W8cIZlkyOrXveQlHUfQfE='
+readonly expected_nar_hash='sha256-DnTiEFya3R9KCYmgv5SO/1StKTCPmndObQrrVHf79Xk='
 readonly expected_wit_hash='38fdf377264eeada82b23fef153e6bf106ed0624e8916ff62cabdf210d6255f5'
-readonly expected_commit='545521bfa222250af6b4419b194c7967cded0379'
-readonly expected_repository='https://github.com/Dav-14/fctl-v2-poc.git'
+readonly expected_commit='e9b1395f46f3100b381dbe00f5213de28e6df0e1'
+readonly expected_repository='https://github.com/formancehq/fctl-v2-poc.git'
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
