@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "modulePath": "github.com/formancehq/fctl-v2-poc/pkg/plugin",
   "repository": "https://github.com/formancehq/fctl-v2-poc.git",
-  "commit": "d7c575656eb1e277425f86a7c7e4fe6a8a5fe8eb",
+  "commit": "03815d12f782d615f0919eb79eb1d738faf3a5ad",
   "sdkPath": "pkg/plugin",
-  "sdkNarHash": "sha256-iCvUNr0I0wO/bofTC4dcuO9hUZwX7P5XP4NKBX8sq8A=",
+  "sdkNarHash": "sha256-zGRNmwfSwoQ9Qjnvqw9OvHYzzFTlbAUODOvWYr49xo8=",
   "witPath": "wit/formance/fctl/plugin/v1/plugin.wit",
   "witSha256": "38fdf377264eeada82b23fef153e6bf106ed0624e8916ff62cabdf210d6255f5"
 }

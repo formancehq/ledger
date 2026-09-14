@@ -9,7 +9,7 @@
   #
   # Keep the authoring toolchain and content-addressed Go SDK on the same
   # immutable fctl revision.
-  inputs.fctl.url = "github:formancehq/fctl-v2-poc/d7c575656eb1e277425f86a7c7e4fe6a8a5fe8eb";
+  inputs.fctl.url = "github:formancehq/fctl-v2-poc/03815d12f782d615f0919eb79eb1d738faf3a5ad";
 
   outputs = { nixpkgs, fctl, ... }:
     let
