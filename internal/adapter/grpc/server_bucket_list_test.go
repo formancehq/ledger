@@ -10,7 +10,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -28,9 +27,8 @@ func newListHandlerHarness(t *testing.T) (*BucketServiceServerImpl, *ctrlmock.Mo
 	mockCtrl := ctrlmock.NewMockController(gomock.NewController(t))
 
 	impl := &BucketServiceServerImpl{
-		logger:  noopLogger{},
-		ctrl:    mockCtrl,
-		authCfg: internalauth.AuthConfig{}, // disabled → Authenticate is a no-op
+		logger: noopLogger{},
+		ctrl:   mockCtrl,
 	}
 
 	return impl, mockCtrl
