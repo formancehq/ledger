@@ -26,6 +26,7 @@ type HTTPSinkConfig struct {
 // HTTPSink publishes events to an HTTP endpoint via POST requests.
 // Events are sent one at a time to allow the receiver to process them individually.
 type HTTPSink struct {
+	errors   sinkErrorSanitizer
 	client   *http.Client
 	endpoint string
 	secret   string
@@ -33,12 +34,15 @@ type HTTPSink struct {
 }
 
 // NewHTTPSink creates a new HTTP webhook sink.
-func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
+func NewHTTPSink(cfg HTTPSinkConfig) (result *HTTPSink, retErr error) {
+	sanitizer := newSinkErrorSanitizer([]string{cfg.Endpoint}, cfg.Secret)
+	defer sanitizer.sanitizeReturned(&retErr)
 	if cfg.Endpoint == "" {
 		return nil, errors.New("HTTP sink endpoint is required")
 	}
 
 	return &HTTPSink{
+		errors: sanitizer,
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -61,7 +65,8 @@ func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
 	}, nil
 }
 
-func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) error {
+func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
@@ -76,7 +81,8 @@ func (s *HTTPSink) Publish(ctx context.Context, events []*eventspb.Event) error 
 	return nil
 }
 
-func (s *HTTPSink) Close() error {
+func (s *HTTPSink) Close() (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
 	s.client.CloseIdleConnections()
 
 	return nil

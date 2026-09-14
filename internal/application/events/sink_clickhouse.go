@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"net/url"
 	"strings"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -101,13 +102,22 @@ type ClickHouseSinkConfig struct {
 // (encoding/json with native Go types) — the Format field from SinkConfig
 // is irrelevant for ClickHouse.
 type ClickHouseSink struct {
-	conn  driver.Conn
-	table string
+	errors sinkErrorSanitizer
+	conn   driver.Conn
+	table  string
 }
 
 // NewClickHouseSink creates a new ClickHouse sink, connects, and auto-creates
 // the target table with a structured JSON column.
-func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHouseSink, error) {
+func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (result *ClickHouseSink, retErr error) {
+	connectionURLs := []string{cfg.DSN}
+	if parsed, err := url.Parse(cfg.DSN); err == nil {
+		// The driver embeds decoded proxy parse errors as text, losing their URL
+		// error type. Register the nested URL even when that URL is malformed.
+		connectionURLs = append(connectionURLs, parsed.Query()["http_proxy"]...)
+	}
+	sanitizer := newSinkErrorSanitizer(connectionURLs)
+	defer sanitizer.sanitizeReturned(&retErr)
 	opts, err := clickhouse.ParseDSN(cfg.DSN)
 	if err != nil {
 		return nil, fmt.Errorf("parsing ClickHouse DSN: %w", err)
@@ -125,7 +135,13 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (*ClickHou
 		return nil, fmt.Errorf("opening ClickHouse connection: %w", err)
 	}
 
-	return initializeClickHouseSink(ctx, conn, cfg.Table)
+	sink, err := initializeClickHouseSink(ctx, conn, cfg.Table)
+	if err != nil {
+		return nil, err
+	}
+	sink.errors = sanitizer
+
+	return sink, nil
 }
 
 // initializeClickHouseSink completes the fallible initialization steps after
@@ -160,7 +176,8 @@ func initializeClickHouseSink(ctx context.Context, conn driver.Conn, configuredT
 	}, nil
 }
 
-func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) error {
+func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
 	batch, err := s.conn.PrepareBatch(ctx, "INSERT INTO "+s.table)
 	if err != nil {
 		return fmt.Errorf("preparing ClickHouse batch: %w", err)
@@ -193,6 +210,8 @@ func (s *ClickHouseSink) Publish(ctx context.Context, events []*eventspb.Event) 
 	return nil
 }
 
-func (s *ClickHouseSink) Close() error {
+func (s *ClickHouseSink) Close() (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
+
 	return s.conn.Close()
 }

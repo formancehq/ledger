@@ -200,6 +200,24 @@ message SinkError {
 }
 ```
 
+The `Sink` adaptor owns the confidentiality of its errors. Constructors,
+`Publish`, and `Close` must remove configured credentials from diagnostics before
+returning them, including credentials echoed by an underlying client library.
+The emitter persists the resulting message unchanged. `SinkError.message` is
+therefore public diagnostic text, not a sensitive field to mask wholesale.
+Errors should retain the operation, destination and actionable cause so operators
+can distinguish authentication, transport and remote-service failures.
+
+The shared adaptor helper masks userinfo and query values when a configured URL or the transport’s actual URL
+is echoed, and removes configured passwords/tokens and recognized credential
+query options when echoed separately (including URL-escaped forms). Redirects and quoted malformed-URL errors are
+covered at the same boundary. Ordinary
+query options are not blindly replaced throughout the diagnostic, since values
+such as `1` would corrupt status codes and useful explanations. This is not an
+arbitrary remote-text classifier: an adaptor that receives another credential
+form must sanitize it at that source. Error unwrapping is retained for internal
+classification; callers publish `Error()`, not an unwrapped raw cause.
+
 ### Notification Mechanism
 
 To minimize latency, the FSM notifies the `EventEmitter` via a Go channel after applying entries. The emitter:
@@ -682,3 +700,9 @@ The HTTP sink sends each event as an individual HTTP POST request with the follo
 ### ClickHouse Sink Details
 
 The ClickHouse sink auto-creates the target table using the experimental JSON type with Variant support (ClickHouse 24.x-25.x compatibility). The `format` setting is ignored — events are always inserted as ClickHouse-native JSON for optimal query performance.
+
+NATS diagnostic credential extraction follows the driver's whitespace and
+implicit-scheme handling. ClickHouse diagnostics also register decoded
+`http_proxy` URLs, including malformed proxies whose parse errors are embedded
+as plain text by the driver. These adaptations happen before constructor errors
+can reach the manager.
