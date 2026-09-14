@@ -47,7 +47,7 @@ A single plugin cannot span both: it would need two module paths at once.
 | Ledger `origin/main` (v2 source) | `8cc679c9440aaf90d4b8646a013e5bd7421443d6` (2026-09-06) | refreshed 2026-09-10 |
 | Ledger `release/v3.0` pin (v3 source) | `bb0297cce39ccd1eb45eba695e9aa10374d5865d` (2026-08-13) | ancestor of `origin/release/v3.0` = `b9d8ccbbb5da4f9158b0f47b81612a518e4fed77`; **not** an ancestor of `origin/main` |
 | Historical fctl baseline | `693c58e27865f83332e6c3199d61fed81b742f41` (2026-06-23) | old-fctl Ledger command tree |
-| fctl-v2 host contract | `545521bfa222250af6b4419b194c7967cded0379` | Ledger v2 `fctl-sdk.lock.json` |
+| fctl-v2 host contract | `e9b1395f46f3100b381dbe00f5213de28e6df0e1` | Ledger v2 `fctl-sdk.lock.json` |
 
 The v3 pin closes the plan's provisional `335bd03c08de` prefix gap: that prefix
 is superseded by the refreshed full `origin/main` commit above.

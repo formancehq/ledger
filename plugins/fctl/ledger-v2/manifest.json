@@ -26,7 +26,7 @@
   ],
   "host_sdk": {
     "module": "github.com/formancehq/fctl-v2-poc/pkg/plugin",
-    "repo_commit": "545521bfa222250af6b4419b194c7967cded0379"
+    "repo_commit": "e9b1395f46f3100b381dbe00f5213de28e6df0e1"
   },
   "invariants": [
     "declares product major 2 and no other major",

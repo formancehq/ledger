@@ -8,7 +8,7 @@ command surface with `../ledger-v3`. See `../README.md` for the boundary rule.
 | Product major | **2**, and no other |
 | Transport | generated Ledger v2 client over host-owned `producthttp` |
 | API contract | `github.com/formancehq/ledger/pkg/client` and `openapi/v2.yaml` at `8cc679c9440aaf90d4b8646a013e5bd7421443d6` |
-| Host SDK contract | `github.com/formancehq/fctl-v2-poc/pkg/plugin` at `545521bfa222250af6b4419b194c7967cded0379` |
+| Host SDK contract | `github.com/formancehq/fctl-v2-poc/pkg/plugin` at `e9b1395f46f3100b381dbe00f5213de28e6df0e1` |
 | Inventory basis | old-fctl `cmd/ledger` at `693c58e27865f83332e6c3199d61fed81b742f41` |
 | Coverage denominator | **22** included of 23 baseline commands |
 | Signing capability | **none** — `sign.ledger.apply-batch` is major-3 only |
@@ -92,7 +92,7 @@ publishing metadata, preserve unrelated replacements, and clean temporary
 files on success, failure and signals.
 
 Build the component with the product shell, which carries the exact component
-authoring pins copied from fctl SDK revision `545521bf`:
+authoring pins copied from fctl SDK revision `e9b1395f`:
 
 ```sh
 export FCTL_SDK_ROOT=/path/to/fctl-v2-poc

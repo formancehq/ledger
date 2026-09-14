@@ -1,8 +1,8 @@
 { rust-bin, makeRustPlatform, fetchFromGitHub, pkg-config, bzip2, openssl }:
 
 let
-  # Frozen by fctl SDK revision 545521bfa222250af6b4419b194c7967cded0379.
-  fctlSDKRevision = "545521bfa222250af6b4419b194c7967cded0379";
+  # Frozen by fctl SDK revision e9b1395f46f3100b381dbe00f5213de28e6df0e1.
+  fctlSDKRevision = "e9b1395f46f3100b381dbe00f5213de28e6df0e1";
   rustToolchain = rust-bin.stable."1.91.1".minimal;
   rustPlatform = makeRustPlatform {
     cargo = rustToolchain;
