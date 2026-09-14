@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,9 +18,7 @@ import (
 // the protocol of the binary encoding the forwarded request.
 func checkProtocolVersion(ctx context.Context, method string) error {
 	if method == servicepb.BucketService_Discovery_FullMethodName ||
-		strings.HasPrefix(method, "/grpc.health.v1.Health/") ||
-		strings.HasPrefix(method, "/grpc.reflection.v1.ServerReflection/") ||
-		strings.HasPrefix(method, "/grpc.reflection.v1alpha.ServerReflection/") {
+		isInfrastructureRPCMethod(method) {
 		return nil
 	}
 

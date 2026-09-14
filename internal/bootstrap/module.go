@@ -431,7 +431,7 @@ func Module() fx.Option {
 
 				RegisterCertReloaderLifecycle(lc, reloader, logger)
 
-				return grpcadp.NewServiceServer("", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
+				return grpcadp.NewServiceServer(grpcadp.ServiceAuthPolicyPublic, "", cfg.GRPCPort, logger, cfg.Debug, cfg.GRPCSlowThreshold, tlsCfg, cfg.TLSConfig.Mode.AllowsPlaintext(),
 					listenerOptions(bindings.Service)...)
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.

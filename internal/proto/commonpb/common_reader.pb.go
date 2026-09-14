@@ -10,6 +10,73 @@ import (
 	slices "slices"
 )
 
+// MethodAuthPolicyReader provides read-only access to MethodAuthPolicy.
+// Call Mutate() to obtain a mutable clone.
+type MethodAuthPolicyReader interface {
+	GetPolicy() isMethodAuthPolicy_Policy
+	Mutate() *MethodAuthPolicy
+}
+
+type methodAuthPolicyReadonly MethodAuthPolicy
+
+func (r *methodAuthPolicyReadonly) GetPolicy() isMethodAuthPolicy_Policy {
+	return (*MethodAuthPolicy)(r).GetPolicy()
+}
+
+func (r *methodAuthPolicyReadonly) Mutate() *MethodAuthPolicy {
+	return (*MethodAuthPolicy)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this MethodAuthPolicy.
+func (m *MethodAuthPolicy) AsReader() MethodAuthPolicyReader {
+	if m == nil {
+		return nil
+	}
+	return (*methodAuthPolicyReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this MethodAuthPolicy.
+func (m *MethodAuthPolicy) Mutate() *MethodAuthPolicy {
+	return m.CloneVT()
+}
+
+// MethodAuthPolicyListReader provides read-only iteration over []*MethodAuthPolicy.
+type MethodAuthPolicyListReader interface {
+	Len() int
+	Get(i int) MethodAuthPolicyReader
+	Range(yield func(int, MethodAuthPolicyReader) bool)
+}
+
+type methodAuthPolicyListReadonly []*MethodAuthPolicy
+
+func (l methodAuthPolicyListReadonly) Len() int { return len(l) }
+
+func (l methodAuthPolicyListReadonly) Get(i int) MethodAuthPolicyReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l methodAuthPolicyListReadonly) Range(yield func(int, MethodAuthPolicyReader) bool) {
+	for i, v := range l {
+		var r MethodAuthPolicyReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewMethodAuthPolicyListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewMethodAuthPolicyListReader(s []*MethodAuthPolicy) MethodAuthPolicyListReader {
+	return methodAuthPolicyListReadonly(s)
+}
+
 // TimestampReader provides read-only access to Timestamp.
 // Call Mutate() to obtain a mutable clone.
 type TimestampReader interface {

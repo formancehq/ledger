@@ -7,6 +7,53 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/commonpb";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
 
+// AuthScope is the exhaustive set of granular scopes that may guard a fixed
+// public-service RPC. The wire values are build-time policy metadata; request
+// authentication continues to use the canonical scope strings in the auth
+// adapter.
+enum AuthScope {
+  AUTH_SCOPE_UNSPECIFIED = 0;
+  AUTH_SCOPE_LEDGER_READ = 1;
+  AUTH_SCOPE_LEDGER_WRITE = 2;
+  AUTH_SCOPE_TRANSACTION_READ = 3;
+  AUTH_SCOPE_TRANSACTION_WRITE = 4;
+  AUTH_SCOPE_ACCOUNT_READ = 5;
+  AUTH_SCOPE_METADATA_WRITE = 6;
+  AUTH_SCOPE_AUDIT_READ = 7;
+  AUTH_SCOPE_AUDIT_WRITE = 8;
+  AUTH_SCOPE_OPS_READ = 9;
+  AUTH_SCOPE_OPS_WRITE = 10;
+  AUTH_SCOPE_QUERY_READ = 11;
+  AUTH_SCOPE_QUERY_WRITE = 12;
+  AUTH_SCOPE_CLUSTER_READ = 13;
+  AUTH_SCOPE_CLUSTER_WRITE = 14;
+}
+
+// DynamicAuthResolver names request-dependent policies that cannot be reduced
+// to one fixed scope before the request message is inspected.
+enum DynamicAuthResolver {
+  DYNAMIC_AUTH_RESOLVER_UNSPECIFIED = 0;
+  DYNAMIC_AUTH_RESOLVER_APPLY = 1;
+  DYNAMIC_AUTH_RESOLVER_GET_INDEX = 2;
+  DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS = 3;
+  DYNAMIC_AUTH_RESOLVER_LIST_INDEXES = 4;
+}
+
+// MethodAuthPolicy requires every public-service RPC to choose exactly one
+// authentication policy. protoc-gen-rpcauth rejects missing and invalid
+// declarations and generates the runtime fail-closed registry.
+message MethodAuthPolicy {
+  oneof policy {
+    bool public = 1;
+    AuthScope fixed_scope = 2;
+    DynamicAuthResolver dynamic_resolver = 3;
+  }
+}
+
+extend google.protobuf.MethodOptions {
+  MethodAuthPolicy auth_policy = 71002;
+}
+
 // ============================================================================
 // Core Data Types
 // ============================================================================
