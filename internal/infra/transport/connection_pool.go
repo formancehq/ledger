@@ -162,7 +162,8 @@ type ConnectionPool struct {
 	config PoolConfig
 	closed bool
 
-	// probeTimeout and failureGrace are overridable in tests.
+	// probeTLS, probeTimeout, and failureGrace are overridable in tests.
+	probeTLS     func(string, *tls.Config, time.Duration) error
 	probeTimeout time.Duration
 	failureGrace time.Duration
 }
@@ -179,6 +180,7 @@ func NewConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
 		peers:        make(map[uint64]*peerEntry),
 		policy:       policy,
 		config:       cfg,
+		probeTLS:     probeTLS,
 		probeTimeout: defaultProbeTimeout,
 		failureGrace: defaultFailureGrace,
 	}
@@ -268,7 +270,7 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 		return true, nil
 	}
 
-	err := probeTLS(addr, p.policy.TLSConfig, p.probeTimeout)
+	err := p.probeTLS(addr, p.policy.TLSConfig, p.probeTimeout)
 	if err == nil {
 		return true, nil
 	}

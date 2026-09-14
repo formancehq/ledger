@@ -128,6 +128,8 @@ func TestConnectionPool_OptionalProbeKeepsTLS(t *testing.T) {
 // must retain the replacement address for both the Raft loop's explicit restart
 // and a repeated same-address registration from service-pool wiring.
 func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
+	t.Parallel()
+
 	retries := map[string]func(*ConnectionPool, string) error{
 		"raft restart": func(pool *ConnectionPool, _ string) error {
 			return pool.RestartConnection(1)
@@ -139,6 +141,8 @@ func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
 
 	for name, retry := range retries {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			oldServer := newPlaintextEchoServer(t)
 			defer oldServer.Close()
 
@@ -153,30 +157,24 @@ func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
 
 			require.NoError(t, pool.AddPeer(1, oldServer.addr()))
 
-			reserved, err := net.Listen("tcp4", "127.0.0.1:0")
-			require.NoError(t, err)
-			newAddr := reserved.Addr().String()
-			require.NoError(t, reserved.Close())
+			newAddr := "replacement.example:9000"
+			probeCalls := 0
+			pool.probeTLS = func(string, *tls.Config, time.Duration) error {
+				probeCalls++
+				if probeCalls == 1 {
+					return errors.New("replacement endpoint unavailable")
+				}
+
+				return nil
+			}
 
 			require.Error(t, pool.AddPeer(1, newAddr), "first probe must observe the endpoint outage")
 			require.Equal(t, newAddr, pool.GetPeerAddress(1),
 				"the replacement target must survive the failed probe")
 
-			recovered, err := net.Listen("tcp4", newAddr)
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = recovered.Close() })
-			go func() {
-				for {
-					conn, acceptErr := recovered.Accept()
-					if acceptErr != nil {
-						return
-					}
-					_ = conn.Close()
-				}
-			}()
-
 			require.NoError(t, retry(pool, newAddr),
 				"retry after endpoint recovery must dial the replacement target")
+			require.Equal(t, 2, probeCalls, "retry must re-probe the replacement target")
 			require.Equal(t, newAddr, pool.GetPeerAddress(1))
 			require.Len(t, pool.PeerIDs(), 1)
 		})

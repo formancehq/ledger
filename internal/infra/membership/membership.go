@@ -415,10 +415,11 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // in). Rehydrate's deferred wireRemove(X) would then unwire the
 // transport while the cache still holds X, and the node would be
 // unable to dial X until the next rehydrate. Holding the lock through
-// wire calls is safe: transport.AddPeer / RemovePeer and pool.AddPeer /
-// RemovePeer are internal bookkeeping (no network round trip on the
-// hot path), and Rehydrate only fires from lifecycle hooks — not the
-// per-tick path.
+// wire calls is safe because Rehydrate only fires from lifecycle hooks — not
+// the per-tick path. In optional TLS mode AddPeer may perform a bounded network
+// probe while the lock is held; keeping cache publication and transport wiring
+// atomic is more important than allowing concurrent membership reads during
+// that lifecycle reconciliation.
 func (m *Membership) Rehydrate() error {
 	fresh, err := m.store.LoadAll()
 	if err != nil {
