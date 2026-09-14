@@ -30,7 +30,7 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	schema       map[string]*commonpb.MetadataFieldSchema
 	info         *commonpb.LedgerInfo
 	profile      *query.QueryProfile
-	pebbleReader dal.PebbleReader
+	pebbleReader *dal.ReadHandle
 	// releaseHold drops the reclaim-floor reservation OpenQueryHandle took
 	// before pebbleReader was opened. Alignment hands it back the moment the
 	// read's own pin exists; an unaligned read never needed it.
@@ -98,7 +98,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	// The snapshot's fold cursor covers everything params.pebbleReader sees,
 	// so index leaves cannot lag the main-store leaves and enrichment
 	// (EN-1748); withinHorizon trims the other direction.
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.pebbleReader, params.releaseHold)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.pebbleReader, params.ledgerName, params.releaseHold)
 	if err != nil {
 		return result, err
 	}

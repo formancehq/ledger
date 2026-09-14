@@ -178,3 +178,24 @@ it that way and returns `ErrIndexNotFound`; a record present at version 0
 still means a build in progress and returns `ErrIndexBuilding`. Telling a
 client to wait for readiness that will never arrive is the failure this
 prevents.
+
+**A deleted ledger rejects the aligned read**: `DeleteLedger` folds
+as a wipe of every ledger-scoped projection row while the mainstore handle
+that admitted the read still holds the ledger live. Index leaves then fail
+readiness as removed, and the unfiltered LOGS universe — served from the
+projection alone — has nothing left to fail on: a deletion folded between the
+two acquisitions would answer a successful empty page for a ledger the pin
+holds logs for. Every aligned read is therefore gated on the ledger still
+being live, re-read through the handle's live view — `dal.ReadHandle.Live`,
+which observes whatever is committed when it runs and so is at or ahead of
+the projection snapshot opened just before. At the gate a deleted ledger is
+`*domain.ErrLedgerNotFound`, the answer every later read gives. A read that
+starts after the deletion never reaches the gate: the ctrl callers' own
+pre-alignment lookup answers it through `commonpb.NewNotFoundError`. The two
+carry different error details and the same gRPC `NotFound`, so a client sees
+one status either way. A ledger whose
+`LedgerInfo` row is absent altogether is unreachable by contract, since
+`DeleteLedger` only stamps `DeletedAt`, and fails as an invariant rather
+than as a deletion. `requireLedgerLive` in
+`internal/query/aligned_snapshot.go` carries the ordering argument that
+makes the re-read sufficient.

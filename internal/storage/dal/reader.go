@@ -11,7 +11,8 @@ import (
 )
 
 // PebbleGetter provides point-lookup access to Pebble.
-// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, and *Store.
+// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, *Store, and the
+// liveGetter behind (*ReadHandle).Live.
 //
 // *WriteSession deliberately does NOT implement this interface: hot-path
 // writers must not read from Pebble.
@@ -30,6 +31,11 @@ import (
 // Callers that need iterators, or a resource that must outlive the call, use
 // NewReadHandle()/NewDirectReadHandle() — those hold the lock for their whole
 // lifetime.
+//
+// liveGetter hands Pebble's own closer back and takes no lock of its own: it
+// borrows the lifetime of the handle that produced it, so it obeys the handle
+// rule rather than the *Store one. Every result must be closed before that
+// handle is.
 type PebbleGetter interface {
 	Get(key []byte) ([]byte, io.Closer, error)
 }
@@ -74,6 +80,7 @@ type PebbleReader interface {
 type ReadHandle struct {
 	reader PebbleReader
 	snap   *pebble.Snapshot // nil in direct mode
+	db     *pebble.DB
 	mu     *sync.RWMutex
 }
 
@@ -93,7 +100,7 @@ func (s *Store) NewReadHandle() (*ReadHandle, error) {
 
 	snap := db.NewSnapshot()
 
-	return &ReadHandle{reader: snap, snap: snap, mu: &s.dbMu}, nil
+	return &ReadHandle{reader: snap, snap: snap, db: db, mu: &s.dbMu}, nil
 }
 
 // NewDirectReadHandle creates a ReadHandle backed by the DB directly (no snapshot).
@@ -113,7 +120,37 @@ func (s *Store) NewDirectReadHandle() (*ReadHandle, error) {
 		return nil, ErrStoreClosed
 	}
 
-	return &ReadHandle{reader: db, mu: &s.dbMu}, nil
+	return &ReadHandle{reader: db, db: db, mu: &s.dbMu}, nil
+}
+
+// Live returns a getter over the store's current committed state rather than
+// this handle's pinned view. Each lookup observes whatever is committed when
+// it runs, so it is always at or ahead of the handle.
+//
+// It reads under the lifecycle lock this handle already holds and takes none
+// of its own. A second NewReadHandle from the handle's owner would take a
+// second RLock, and a queued writer (Close, RestoreCheckpoint) blocks new
+// readers while it waits for this handle: both sides would wedge for good.
+//
+// The getter is scoped to the handle and borrows its lock without extending
+// it. Use it within the handle's lifetime and do not retain it past Close:
+// afterwards the lock is gone and the lookup races a DB that Close or
+// RestoreCheckpoint may already have closed (EN-2072), exactly as a retained
+// iterator would.
+func (h *ReadHandle) Live() PebbleGetter {
+	return liveGetter{db: h.db}
+}
+
+// liveGetter serves point lookups from a store's current committed state. It
+// pins nothing, so there is no resource to release beyond each lookup's own
+// closer, and it holds no lock of its own — it is only safe for as long as
+// the ReadHandle that produced it.
+type liveGetter struct {
+	db *pebble.DB
+}
+
+func (g liveGetter) Get(key []byte) ([]byte, io.Closer, error) {
+	return g.db.Get(key)
 }
 
 func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
