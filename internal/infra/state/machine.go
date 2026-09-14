@@ -808,6 +808,12 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 			}
 		}
 
+		assert.Sometimes(true, "nonempty sentinel verification completed", map[string]any{
+			"raftIndex":     pb.lastAppliedIndex,
+			"volumeUpdates": len(pb.sentinelUpdates),
+			"ledgers":       len(pb.sentinelLedgerNames),
+		})
+
 		return nil
 	}); err != nil {
 		return err
@@ -835,6 +841,21 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	if pb.sinkConfigChanged || pb.mirrorConfigChanged {
 		fsm.notifier.NotifyConfigChanged()
+	}
+
+	// These facts belong to this prepared batch. The next preparation may
+	// already have changed the live FSM, and only a successful commit counts.
+	for _, result := range pb.Result.Results {
+		if result.Error != nil || result.Replayed {
+			continue
+		}
+		details := map[string]any{
+			"proposalId":   result.ProposalID,
+			"raftIndex":    result.AppliedIndex,
+			"transactions": result.createdTransactions,
+		}
+		assert.Sometimes(result.createdTransactions >= 2, "multi-transaction proposal committed", details)
+		assert.Sometimes(result.revertedTransaction, "transaction revert committed", details)
 	}
 
 	return nil
@@ -1297,8 +1318,12 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 		if stored, ok := fsm.Registry.Idempotency.Get(idempotencyKey); ok &&
 			!fsm.Registry.Idempotency.IsExpired(stored, effectiveDate.GetData()) {
+			matchingHash := bytes.Equal(proposalHash, stored.GetHash())
+			details := map[string]any{"proposalId": proposal.GetId(), "raftIndex": raftIndex}
+			assert.Sometimes(!matchingHash, "idempotency body conflict rejected", details)
+			assert.Sometimes(matchingHash && stored.GetFailure() == nil, "successful idempotency outcome replayed", details)
 			switch {
-			case !bytes.Equal(proposalHash, stored.GetHash()):
+			case !matchingHash:
 				err = &domain.ErrIdempotencyKeyConflict{Key: idempotencyKey}
 			case stored.GetFailure() != nil:
 				replayed = true
@@ -1646,6 +1671,18 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	queryCheckpointCreated := buffer.QueryCheckpointCreated()
 	queryCheckpointDeleted := buffer.QueryCheckpointDeleted()
 
+	var createdTransactions int
+	var revertedTransaction bool
+	for _, log := range createdLogs {
+		payload := log.GetPayload().GetApply().GetLog().GetData()
+		if payload.GetCreatedTransaction() != nil {
+			createdTransactions++
+		}
+		if payload.GetRevertedTransaction() != nil {
+			revertedTransaction = true
+		}
+	}
+
 	return &ApplyResult{
 		ProposalID:             proposal.GetId(),
 		Logs:                   logs,
@@ -1658,6 +1695,8 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		purgedVolumeKeys:       buffer.PurgedVolumeKeys(),
 		createdLogs:            createdLogs,
 		ledgerNames:            ledgerNames,
+		createdTransactions:    createdTransactions,
+		revertedTransaction:    revertedTransaction,
 	}, nil
 }
 
@@ -1860,6 +1899,11 @@ type ApplyResult struct {
 	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
 	createdLogs      []*commonpb.Log
 	ledgerNames      []string // ledger names touched by this proposal (for post-commit balance check)
+
+	// Bounded outcome facts captured before the reusable WriteSet is reset.
+	// These are observational only; they never enter the replicated contract.
+	createdTransactions int
+	revertedTransaction bool
 }
 
 type ApplyEntriesResult struct {

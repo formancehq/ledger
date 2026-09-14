@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/zeebo/blake3"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -174,6 +175,7 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		Logs: make([]*raftcmdpb.CreatedLogOrReference, len(orders)),
 	}
 	logs := result.Logs
+	stagedTransactions := 0
 
 	for i, order := range orders {
 		orderScope, scopeErr := scopeFactory.NewScope(order.GetTechnical().GetCoverageBits())
@@ -268,6 +270,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 				continue
 			}
 
+			assert.Sometimes(stagedTransactions > 0, "atomic proposal rejected after staging an earlier transaction", map[string]any{
+				"orderCount": len(orders), "failingOrderIndex": i, "stagedTransactions": stagedTransactions,
+			})
+
 			return nil, err
 		}
 
@@ -323,6 +329,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// log payload and updates whatever cross-order accumulator
 		// the framework needs.
 		sink.Absorb(order, log)
+		if ledgerPayload := payload.GetApply().GetLog().GetData(); ledgerPayload.GetCreatedTransaction() != nil || ledgerPayload.GetRevertedTransaction() != nil {
+			stagedTransactions++
+		}
+
 		// Accumulate the derivations applyProposal previously rebuilt
 		// by walking the log slice again (createdLogs filter +
 		// extractLogSequenceRange).
