@@ -344,8 +344,8 @@ func indexUintLeaf(idx AuditIndexReader, field byte, cond *commonpb.AuditConditi
 
 func compileAuditAnd(idx AuditIndexReader, filters []*commonpb.QueryFilter, depth int) (auditCompiled, error) {
 	if len(filters) == 0 {
-		// An empty AND conventionally matches everything; but for audit we treat
-		// a degenerate empty filter as unconstrained rather than error.
+		// A conjunction over zero operands is vacuously true: unconstrained,
+		// matching compileAnd on the other targets.
 		return unconstrained(), nil
 	}
 

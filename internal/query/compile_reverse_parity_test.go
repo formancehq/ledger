@@ -640,6 +640,7 @@ func parityCases() []parityCase {
 		filter *commonpb.QueryFilter
 	}{
 		{"universe", nil},
+		{"empty and (universe)", andFilter()},
 		// The bounded id range is the leaf this matrix exists for: it is the
 		// only compiled descending path that reaches
 		// NewPebbleReverseTxRangeIterator.
@@ -684,6 +685,7 @@ func parityCases() []parityCase {
 		filter *commonpb.QueryFilter
 	}{
 		{"universe", nil},
+		{"empty and (universe)", andFilter()},
 		{"log id range (materializing fallback)", logIDRangeFilter(logLo+2, logHi-2)},
 		{"log id equality", logIDEqualFilter(logLo + 4)},
 		{"or of two id equalities", orFilter(logIDEqualFilter(logLo+1), logIDEqualFilter(logHi-1))},
@@ -715,6 +717,7 @@ func accountParityFilters() []struct {
 		filter *commonpb.QueryFilter
 	}{
 		{"universe", nil},
+		{"empty and (universe)", andFilter()},
 		{"string equality (streaming leaf)", stringFieldFilter("colour", "red")},
 		{"uint equality (streaming leaf)", uintEqualFieldFilter("size", 2)},
 		{"uint range (materializing fallback)", uintRangeFieldFilter("size", 1, 2)},
