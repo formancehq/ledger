@@ -187,8 +187,9 @@ func commandFromInventory(entry inventoryEntry) sdk.Command {
 	if entry.OperationID == "v2ImportLogs" {
 		maxRequests = sdk.PortableMaxHostRequests
 	}
+	commandID := "ledger.v2." + strings.Join(path[1:], ".")
 	return sdk.Command{
-		ID:                 "ledger.v2." + strings.Join(path[1:], "."),
+		ID:                 commandID,
 		ExecutionKind:      sdk.ExecutionKindService,
 		AuthMode:           sdk.AuthModeCapability,
 		Path:               path,
@@ -209,6 +210,7 @@ func commandFromInventory(entry inventoryEntry) sdk.Command {
 		InputArtifacts:     grammar.artifacts,
 		Pagination:         sdk.PaginationSpec{Supported: entry.Paginated},
 		OutputMediaType:    mediaType,
+		Render:             renderHintFor(commandID),
 		ExecutionPolicy:    &sdk.CommandExecutionPolicy{MaxHostRequests: maxRequests},
 	}
 }

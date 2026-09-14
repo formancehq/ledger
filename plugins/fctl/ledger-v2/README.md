@@ -32,6 +32,50 @@ implemented because the current input-artifact ABI admits files and stdin, not
 URLs. `last`, corrected `last-N`, and the historical `lastN` spelling are
 resolved through a bounded read before the transaction operation.
 
+## Table render hints
+
+12 of the 22 commands publish a `render.table` column list; 10 publish none.
+The split is evidence-driven, not stylistic: a column is declared only where the
+result the adapter actually emits proves the field exists.
+
+| Result | Commands | Columns |
+| --- | --- | --- |
+| `V2Ledger` | `ledger list` | Name, Bucket, Added At |
+| `V2Stats` | `ledger stats` | Accounts, Transactions |
+| `V2Account` | `ledger accounts list`, `ledger accounts show` | Address, Insertion Date, Updated At |
+| `V2Transaction` | `ledger send`, `ledger transactions list`, `show`, `num`, `revert` | ID, Timestamp, Reference, Reverted |
+| `V2VolumesWithBalance` | `ledger volumes list` | Account, Asset, Input, Output, Balance |
+| `V2Schema` | `ledger schemas get`, `ledger schemas list` | Version, Created At |
+
+The 10 without a hint are the nine commands whose operation returns no content,
+so the plugin publishes the empty object — `ledger create`, `set-metadata`,
+`delete-metadata`, `import`, `accounts set-metadata`, `accounts
+delete-metadata`, `transactions set-metadata`, `transactions delete-metadata`
+and `schemas insert` — plus `ledger export`, whose result is an opaque base64
+payload with no fields to name. Declaring a column for any of them would name a
+field the plugin never emits.
+
+Every column projects a scalar leaf of a document the command already emits, so
+a hint cannot widen what the plugin discloses. Dynamic key/value blobs
+(`metadata`, `features`), volume aggregations (`volumes`, `postCommitVolumes`
+and their siblings), posting arrays and schema charts are excluded: they are
+composites a table would have to serialise back into one cell.
+
+`TableColumn.Field` is a dot-separated path, so a nested scalar leaf such as
+`status.phase` is expressible. **No Ledger v2 column uses one.** Every nested
+value in these results is reached through a dynamic key — an asset code, a
+metadata key, an account address — or through an array, and neither can be named
+by a static path. `render_hints_test.go` traverses dotted paths regardless, so
+the contract is enforced rather than merely assumed.
+
+**These hints change no observable output at the pinned SDK revision.** The
+host's `renderTable` derives its columns from the result document itself and
+does not read `Command.Render`; its own comment says columns come "never from a
+product-supplied layout". The hints are carried across the component codec and
+validated for completeness, and they become the layout only if a host chooses to
+honour them. Treat the table above as a published declaration, not as a receipt
+for what `fctl` prints today.
+
 ## Documents
 
 | File | Contents |
