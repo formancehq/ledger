@@ -348,8 +348,7 @@ func (m *Membership) PeerStore() *PeerStore {
 // Called by NewNode at boot once the durable ConfState is known, so
 // that stale Pebble rows left over by an interrupted ForceRemoveNode
 // (or carried in from a restored backup) cannot resurrect into the
-// transport and shadow a future re-Add with a different address —
-// DefaultTransport.AddPeer is no-op on existing entries.
+// transport as peers that the authoritative ConfState no longer contains.
 func (m *Membership) ReconcileAgainstConfState(cs *raftpb.ConfState) error {
 	m.mu.RLock()
 	stale := make([]uint64, 0)
@@ -388,9 +387,10 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 
 // Rehydrate re-reads the peer rows from Pebble, computes the diff
 // against the in-memory cache, publishes the new cache, and reconciles
-// the transport + service pool to match (added peers wired in, removed
-// peers wired out, address changes modeled as remove+add). Pebble is
-// considered authoritative — this method does NOT touch self; callers
+// the transport + service pool to match (added peers wired in, removed peers
+// wired out, address changes explicitly removed then re-added across both
+// wiring abstractions). Pebble is considered authoritative — this method does
+// NOT touch self; callers
 // that need to force the local self row write it through Register or
 // the store directly before invoking Rehydrate.
 //
@@ -431,8 +431,8 @@ func (m *Membership) Rehydrate() error {
 	old := m.addresses
 	m.addresses = fresh
 
-	// AddPeer / pool.AddPeer are no-ops on existing entries, so an
-	// address change is modelled as RemovePeer + AddPeer.
+	// Rehydrate reconciles both wiring abstractions symmetrically, so an
+	// address change is explicitly modelled as RemovePeer + AddPeer.
 	for nodeID, addr := range fresh {
 		oldAddr, existed := old[nodeID]
 		if existed && oldAddr.Equal(addr) {
