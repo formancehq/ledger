@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"slices"
 	"sort"
 	"strconv"
@@ -213,7 +214,29 @@ func hasAssetTarget(f *commonpb.QueryFilter) (base string, precision uint32, ok 
 func genAccountAssetFilter() *commonpb.QueryFilter {
 	a := workloadAssets[int(random.RandomChoice([]uint8{0, 1, 2}))]
 
-	return filterHasAsset(a.base, a.precision)
+	switch {
+	case oneIn(16):
+		// A precision the index's one-byte cell cannot hold: rejected at
+		// compile time once the index is ready.
+		return filterHasAsset(a.base, math.MaxUint8+1+uint32(internal.Rand().Uint64()%1000))
+	case oneIn(8):
+		// A cell nothing ever touched: a workload base under another precision,
+		// or a base the workload never posts.
+		if oneIn(2) {
+			return filterHasAsset(a.base, a.precision+4)
+		}
+
+		return filterHasAsset("ZZZ", 0)
+	default:
+		return filterHasAsset(a.base, a.precision)
+	}
+}
+
+// hasAssetPrecisionOverflow reports whether f is a bare has-asset leaf whose
+// precision exceeds the index cell, which the compiler rejects with
+// FILTER_COMPILATION_ERROR after the index readiness check.
+func hasAssetPrecisionOverflow(f *commonpb.QueryFilter) bool {
+	return f.GetAccountHasAsset() != nil && f.GetAccountHasAsset().GetPrecision() > math.MaxUint8
 }
 
 // --- asset-index query validation ----------------------------------------
