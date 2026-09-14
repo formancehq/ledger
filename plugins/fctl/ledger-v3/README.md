@@ -87,18 +87,30 @@ ignored by Git.
 The portable artifact still requires install and execution validation in every
 host engine supported by the fctl release process.
 
-One host/product integration gate remains intentionally fail-closed:
+## Signed Apply
 
-- fctl does not yet connect an accepted Ledger v3 `SignedApplyBatch`
-  sign-and-send executor to `Composer`. At the pinned SDK commit,
-  `Composer.ExecuteWithContinuation` refuses every command whose descriptor sets
-  `RequestSigning`, so `sign.ledger.apply-batch` returns `signing_failed` before
-  target validation and before product access; the plugin never falls back to an
-  unsigned Apply. The host-side signer broker exists but has no production
-  caller, and the frozen plugin ABI carries product calls only as opaque
-  `(full-method, message)` bytes, so there is no seam for the plugin to hand the
-  host a typed unsigned `ApplyBatch`. Repinning the SDK does not lift this gate;
-  fctl must add the executor first.
+The plugin never holds a signature. RFC 0009 forbids exposing one to a product
+plugin and RFC 0012's payload schema enforces it, so there is no boundary
+across which the host could hand the plugin a signature to wrap.
+
+The plugin therefore does the same thing whether or not signing is active: it
+builds its `ApplyBatch`, serializes it once, and sends an ordinary Apply
+request carrying it in the `unsigned` variant. When the profile has an
+activated `sign.ledger.apply-batch` signer, the fctl host lifts those exact
+serialized bytes off the wire, signs them, and substitutes
+`SignedApplyBatch{key_id, signature, payload}` for the unsigned variant,
+carrying `forwarded_caller_snapshot` and `skip_response` through untouched
+because they sit outside the signed unit. Nothing is re-serialized on the way,
+so the bytes the signature covers are the bytes the server receives.
+
+The plugin's side of that contract — one unsigned variant per Apply, never a
+signed one, and a signing declaration bound to `ledger.ApplyBatch` and
+`/ledger.BucketService/Apply` — is asserted in `signed_apply_test.go`, together
+with the host substitution performed exactly as the host performs it and
+verified through Ledger's own `signing.Verify` and `signing.ExtractBatch`.
+
+With no signer activated the Apply goes unsigned, which is the ordinary path.
+After activation every refusal is terminal: the host never retries unsigned.
 
 Analyze uses exactly one host request and the generated-client's bounded
 4 MiB/message, 16 MiB aggregate, 1,024-message response envelope. Ledger's gRPC
