@@ -77,7 +77,7 @@ func TestAdmitRejectsCheckpointWhenAuditProjectionIsUnavailable(t *testing.T) {
 	a.writeGate = writeGate
 	WithAuditProjectionState(func() (bool, bool) { return false, true })(a)
 
-	_, err := a.Admit(context.Background(), &servicepb.ApplyRequest{
+	_, err := a.Admit(attributedTestContext(context.Background()), &servicepb.ApplyRequest{
 		Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: &servicepb.ApplyBatch{Requests: []*servicepb.Request{{
 			Type: &servicepb.Request_CreateQueryCheckpoint{
 				CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
