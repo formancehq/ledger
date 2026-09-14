@@ -102,6 +102,18 @@ func (wb *WriteBatch) DeleteLedgerHistoryState(kb *dal.KeyBuilder, ledgerName st
 	return wb.del(LedgerHistoryStateKey(kb, ledgerName))
 }
 
+// WriteLedgerLifecycle records the ledger incarnation represented by the
+// projection. Deleted incarnations remain as inactive tombstones.
+func (wb *WriteBatch) WriteLedgerLifecycle(kb *dal.KeyBuilder, ledgerName string, id uint32, active bool) error {
+	value := make([]byte, ledgerLifecycleValueSize)
+	binary.BigEndian.PutUint32(value[:4], id)
+	if active {
+		value[4] = 1
+	}
+
+	return wb.put(LedgerLifecycleKey(kb, ledgerName), value)
+}
+
 // EventZones returns a read-only snapshot of the event keyspaces dirtied by
 // successful puts in the current batch.
 func (wb *WriteBatch) EventZones() EventZoneMask {

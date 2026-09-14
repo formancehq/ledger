@@ -60,6 +60,13 @@ ledger deletion must remove versioned keyspaces without invalidating readers
 holding leases. Findings must locate the defect in row folding, certification,
 activation, or reclamation.
 
+For LOGS, certification and candidate trimming are not sufficient when a
+ledger-wide range deletion erases the candidate universe. Record and compare
+the query-facing ledger lifecycle `(numeric ID, active state)` from the pinned
+projection against the pinned main `LedgerInfo`. Delete must publish an
+inactive tombstone atomically with row removal, recreation must publish its new
+ID, and a mismatch must reject before an empty page can be returned.
+
 An aligned read-index snapshot may legally be ahead of the main handle only
 when target-specific gates project it back to the main pin:
 
