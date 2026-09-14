@@ -118,7 +118,7 @@ func Execute(
 
 	aligned := AlignmentOwed(pq.GetFilter(), pq.GetTarget())
 	if aligned {
-		indexSnap, mainSeq, releaseLease, err = AlignedIndexSnapshot(ctx, rs, handle, releaseHold)
+		indexSnap, mainSeq, releaseLease, err = AlignedIndexSnapshot(ctx, rs, handle, ledgerInfo.GetName(), releaseHold)
 		if err != nil {
 			return nil, err
 		}
