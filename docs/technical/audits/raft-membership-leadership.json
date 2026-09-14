@@ -87,6 +87,7 @@
     "Can a lagging or syncing node accept MsgTimeoutNow, campaign, advertise leadership, complete ReadIndex, or serve a forwarded mutation before spool replay and snapshot synchronization reach the required index?",
     "Can retained-log compaction, snapshot selection, transfer interruption, sender restart, or receiver restart combine an incompatible ConfState with FSM/store contents, regress applied indexes, or discard entries committed after the snapshot?",
     "Can simultaneous transport connections, stale streams, protocol/authentication rejection, reconnect queues, duplicate messages, or unreachable notifications cross terms or peer incarnations and affect the wrong active connection or Raft node?",
+    "When a committed ConfChangeUpdateNode refreshes an existing peer address, do Pebble, the membership cache, and the operational Raft and service connection pools converge before the next Raft tick without recreating the peer identity or send loop?",
     "Can a follower-to-leader forwarded request loop, fall back locally without a valid leader/barrier, lose cancellation or committed-outcome metadata, or be executed twice because transport identity is confused with logical proposal identity?",
     "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown."
   ],
@@ -100,6 +101,7 @@
     "inject failure before and after force-remove snapshot-file replacement, WAL snapshot-record append, and Pebble membership cleanup; restart and compare the authoritative ConfState with whether the process continued serving",
     "block a follower beyond retained-log range, force real MsgSnap catch-up, transfer or restart during install, and prove it cannot campaign or serve until applied and durable indexes pass the installed snapshot and replay horizon",
     "replace and reconnect authenticated Raft streams while delaying and duplicating messages, then verify term/peer-incarnation routing and exactly one logical proposal outcome",
+    "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, then prove Pebble, cache, and the live Raft dial target use that endpoint while ConfState and peer identity remain unchanged",
     "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState"
   ]
 }

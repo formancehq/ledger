@@ -135,6 +135,13 @@ horizon. A forwarded fallback must not become an unbarriered local read merely
 because leadership changed during resolution; explicit stale mode remains the
 only expected bypass.
 
+A committed `ConfChangeUpdateNode` with a peer-registration payload must update
+the durable row during FSM apply and then refresh the membership cache plus the
+operational Raft and service connection pools during post-commit observation.
+Prove that the next Raft dial uses the committed endpoint while the existing
+peer identity, role, send loop, and queues remain intact. The regression must
+also prove that deterministic FSM apply performs no transport side effect.
+
 ### Snapshot installation and catch-up
 
 Prove compatibility and order across Raft snapshot metadata/`ConfState`, WAL
