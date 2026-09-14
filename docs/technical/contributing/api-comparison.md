@@ -282,6 +282,52 @@ use the same single-decoding rule.
 
 Ledger metadata is stored separately from ledger configuration (LedgerInfo) and is populated at read time when calling `GET /v3/{ledgerName}` or `GET /v3/` (list ledgers). It uses the same typed value system as account/transaction metadata.
 
+**Metadata size contract (EN-1829):** Direct HTTP, public gRPC, bulk and mirror
+ingest share the same limits; Numscript-produced metadata is checked during FSM
+apply after merging it with caller metadata. Limits bound metadata carried or
+produced by one command, not an entity's accumulated stored metadata across
+successive writes. A command is one atomic Raft proposal (`ApplyBatch` or mirror batch), including
+all entities and orders it contains.
+
+The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
+
+| Policy field | Default | Bound |
+|---|---|---|
+| `metadata_max_entries_per_entity` | 128 | Entries per entity |
+| `metadata_max_key_bytes` | 256 | Bytes per key, including deletion/schema keys |
+| `metadata_max_value_bytes` | 16384 | Measured bytes per value |
+| `metadata_max_entity_bytes` | 65536 | Key and value bytes per entity |
+| `metadata_max_command_bytes` | 262144 | Key and value bytes across the command |
+
+Mirror workers enforce the same ceilings on translated batches before proposal,
+and mirror FSM apply rechecks the committed policy before mutation. A rejected
+batch retains its applied cursor for retry. Direct account, transaction and ledger
+metadata saves, and reversals, also recheck non-empty input and the proposal-wide
+byte budget at apply, using the current committed policy rather than the policy
+observed during admission. Metadata deletion and field-type set/remove orders
+also recheck bare keys and the aggregate proposal budget before mutation.
+
+OpenAPI documents these configurable ceilings in descriptions rather than fixed
+`maxLength` or `maxProperties` constraints, so clients can use the effective
+replicated policy even when operators raise the defaults.
+
+String and null-original values use their UTF-8 byte length; integer, unsigned
+integer and datetime values count as 8 bytes, and booleans as 1 byte. These are
+accounting weights, not protobuf or JSON wire sizes. Zero does not mean unlimited:
+all ceilings must be positive, key/value ceilings must not exceed the entity
+ceiling, and the entity ceiling must not exceed the command ceiling. Changing
+the startup flags requires an increased `--cluster-policy-revision` to update
+the committed policy.
+
+Exceeding a ceiling returns HTTP 400 / gRPC `InvalidArgument`, reason
+`METADATA_LIMIT_EXCEEDED`, with `dimension`, `limit` and `actual` details.
+`dimension` is `entries`, `key`, `value`, `entity` or `command`; counts apply to
+`entries` and bytes to the other dimensions. Retrying the same oversized payload
+does not repair the rejection. See the [metadata limits contract](../architecture/subsystems/admission/metadata-limits.md)
+for enforcement and configuration details. These incompatible service semantics
+and the required policy fields increment the service protocol from revision 7
+to 8.
+
 ### 4. Bulk Operations
 
 **Endpoint:** `POST /v3/{ledgerName}/bulk`
@@ -933,6 +979,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
 | Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
+| Metadata limit exceeded | `INVALID_ARGUMENT` | `METADATA_LIMIT_EXCEEDED` | `dimension`, `limit`, `actual` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
 | Metadata field not in schema | `FAILED_PRECONDITION` | `METADATA_FIELD_NOT_IN_SCHEMA` | `target`, `key` |
 | Invalid cron expression | `INVALID_ARGUMENT` | `INVALID_CRON_EXPRESSION` | `expression`, `details` |

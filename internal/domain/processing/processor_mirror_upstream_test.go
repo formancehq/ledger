@@ -44,6 +44,7 @@ func TestMirrorIngest_UpstreamRevertPreservesOriginalIdentity(t *testing.T) {
 	require.Equal(t, uint64(3), nextTxID)
 
 	store := NewMockScope(gomock.NewController(t))
+	expectDefaultMetadataLimits(store)
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 	info := &commonpb.LedgerInfo{Name: ledger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR}

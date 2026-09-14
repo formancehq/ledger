@@ -631,6 +631,12 @@ const (
 	ErrorReason_ERROR_REASON_SEQUENCE_EXHAUSTED ErrorReason = 67
 	// A fresh CreateIndex targets an existing ledger/canonical IndexID.
 	ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS ErrorReason = 68
+	// ERROR_REASON_METADATA_LIMIT_EXCEEDED: a command carried — or a Numscript
+	// program produced — metadata beyond a ceiling of the canonical metadata size
+	// contract (entry count, key bytes, value bytes, per-entity bytes, or
+	// per-command bytes). Permanent (Kind=Validation): the caller must send less
+	// metadata, so a retry of the same payload cannot succeed. See EN-1829.
+	ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED ErrorReason = 69
 )
 
 // Enum value maps for ErrorReason.
@@ -705,6 +711,7 @@ var (
 		66: "ERROR_REASON_CHECKPOINT_NOT_FOUND",
 		67: "ERROR_REASON_SEQUENCE_EXHAUSTED",
 		68: "ERROR_REASON_INDEX_ALREADY_EXISTS",
+		69: "ERROR_REASON_METADATA_LIMIT_EXCEEDED",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -776,6 +783,7 @@ var (
 		"ERROR_REASON_CHECKPOINT_NOT_FOUND":             66,
 		"ERROR_REASON_SEQUENCE_EXHAUSTED":               67,
 		"ERROR_REASON_INDEX_ALREADY_EXISTS":             68,
+		"ERROR_REASON_METADATA_LIMIT_EXCEEDED":          69,
 	}
 )
 
@@ -4036,15 +4044,30 @@ func (x *PersistedClusterState) GetCacheEpoch() uint64 {
 
 // ClusterPolicy is the Raft-replicated cluster-wide policy for behavior that
 // must apply identically on every node during FSM apply (idempotency
-// expiration, query-checkpoint admission). revision is monotonic so a stale
-// proposal can never overwrite a newer committed policy.
+// expiration, query-checkpoint admission, metadata size ceilings). revision is
+// monotonic so a stale proposal can never overwrite a newer committed policy.
+//
+// The metadata ceilings are the configurable form of the canonical metadata
+// size contract (domain.MetadataLimits). They ride in the replicated policy
+// rather than in node-local flags because FSM apply validates the metadata a
+// Numscript program produces against them: a node-local limit would make one
+// committed entry apply differently per node.
 type ClusterPolicy struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	Revision             uint64                 `protobuf:"fixed64,1,opt,name=revision,proto3" json:"revision,omitempty"`
 	IdempotencyTtlMicros uint64                 `protobuf:"fixed64,2,opt,name=idempotency_ttl_micros,json=idempotencyTtlMicros,proto3" json:"idempotency_ttl_micros,omitempty"` // 0 means never expires
 	QueryCheckpointLimit uint64                 `protobuf:"fixed64,3,opt,name=query_checkpoint_limit,json=queryCheckpointLimit,proto3" json:"query_checkpoint_limit,omitempty"` // must be >= 1
-	unknownFields        protoimpl.UnknownFields
-	sizeCache            protoimpl.SizeCache
+	// Metadata size ceilings, each scoped to a single command. Every value must
+	// be >= 1; see domain.MetadataLimits for the measurement rule and
+	// docs/technical/architecture/subsystems/admission/metadata-limits.md for the
+	// contract.
+	MetadataMaxEntriesPerEntity uint64 `protobuf:"fixed64,4,opt,name=metadata_max_entries_per_entity,json=metadataMaxEntriesPerEntity,proto3" json:"metadata_max_entries_per_entity,omitempty"`
+	MetadataMaxKeyBytes         uint64 `protobuf:"fixed64,5,opt,name=metadata_max_key_bytes,json=metadataMaxKeyBytes,proto3" json:"metadata_max_key_bytes,omitempty"`
+	MetadataMaxValueBytes       uint64 `protobuf:"fixed64,6,opt,name=metadata_max_value_bytes,json=metadataMaxValueBytes,proto3" json:"metadata_max_value_bytes,omitempty"`
+	MetadataMaxEntityBytes      uint64 `protobuf:"fixed64,7,opt,name=metadata_max_entity_bytes,json=metadataMaxEntityBytes,proto3" json:"metadata_max_entity_bytes,omitempty"`
+	MetadataMaxCommandBytes     uint64 `protobuf:"fixed64,8,opt,name=metadata_max_command_bytes,json=metadataMaxCommandBytes,proto3" json:"metadata_max_command_bytes,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *ClusterPolicy) Reset() {
@@ -4094,6 +4117,41 @@ func (x *ClusterPolicy) GetIdempotencyTtlMicros() uint64 {
 func (x *ClusterPolicy) GetQueryCheckpointLimit() uint64 {
 	if x != nil {
 		return x.QueryCheckpointLimit
+	}
+	return 0
+}
+
+func (x *ClusterPolicy) GetMetadataMaxEntriesPerEntity() uint64 {
+	if x != nil {
+		return x.MetadataMaxEntriesPerEntity
+	}
+	return 0
+}
+
+func (x *ClusterPolicy) GetMetadataMaxKeyBytes() uint64 {
+	if x != nil {
+		return x.MetadataMaxKeyBytes
+	}
+	return 0
+}
+
+func (x *ClusterPolicy) GetMetadataMaxValueBytes() uint64 {
+	if x != nil {
+		return x.MetadataMaxValueBytes
+	}
+	return 0
+}
+
+func (x *ClusterPolicy) GetMetadataMaxEntityBytes() uint64 {
+	if x != nil {
+		return x.MetadataMaxEntityBytes
+	}
+	return 0
+}
+
+func (x *ClusterPolicy) GetMetadataMaxCommandBytes() uint64 {
+	if x != nil {
+		return x.MetadataMaxCommandBytes
 	}
 	return 0
 }
@@ -12608,11 +12666,16 @@ const file_common_proto_rawDesc = "" +
 	"\x15PersistedClusterState\x12-\n" +
 	"\x06config\x18\x01 \x01(\v2\x15.common.ClusterConfigR\x06config\x12\x1f\n" +
 	"\vcache_epoch\x18\x02 \x01(\x06R\n" +
-	"cacheEpoch\"\x97\x01\n" +
+	"cacheEpoch\"\xc3\x03\n" +
 	"\rClusterPolicy\x12\x1a\n" +
 	"\brevision\x18\x01 \x01(\x06R\brevision\x124\n" +
 	"\x16idempotency_ttl_micros\x18\x02 \x01(\x06R\x14idempotencyTtlMicros\x124\n" +
-	"\x16query_checkpoint_limit\x18\x03 \x01(\x06R\x14queryCheckpointLimit\"^\n" +
+	"\x16query_checkpoint_limit\x18\x03 \x01(\x06R\x14queryCheckpointLimit\x12D\n" +
+	"\x1fmetadata_max_entries_per_entity\x18\x04 \x01(\x06R\x1bmetadataMaxEntriesPerEntity\x123\n" +
+	"\x16metadata_max_key_bytes\x18\x05 \x01(\x06R\x13metadataMaxKeyBytes\x127\n" +
+	"\x18metadata_max_value_bytes\x18\x06 \x01(\x06R\x15metadataMaxValueBytes\x129\n" +
+	"\x19metadata_max_entity_bytes\x18\a \x01(\x06R\x16metadataMaxEntityBytes\x12;\n" +
+	"\x1ametadata_max_command_bytes\x18\b \x01(\x06R\x17metadataMaxCommandBytes\"^\n" +
 	"\x17CreatedPreparedQueryLog\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12+\n" +
 	"\x05query\x18\x02 \x01(\v2\x15.common.PreparedQueryR\x05query\"\xb7\x01\n" +
@@ -13237,7 +13300,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xdd\x15\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x87\x16\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13308,7 +13371,8 @@ const file_common_proto_rawDesc = "" +
 	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10A\x12%\n" +
 	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10B\x12#\n" +
 	"\x1fERROR_REASON_SEQUENCE_EXHAUSTED\x10C\x12%\n" +
-	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D*Q\n" +
+	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D\x12(\n" +
+	"$ERROR_REASON_METADATA_LIMIT_EXCEEDED\x10E*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

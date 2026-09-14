@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -375,13 +376,23 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	w.nextTxID = newNextTxID
-
 	w.translateDuration.Record(ctx, time.Since(translateStart).Microseconds(), attrs)
 
 	if len(orders) == 0 {
 		return hasMore, nil
 	}
+
+	// Mirror bypasses public admission: bound the translated payload before
+	// allocating preloads or replicating it. Apply rechecks the committed policy.
+	policy, err := query.ReadClusterPolicy(w.store)
+	if err != nil {
+		return false, fmt.Errorf("reading mirror metadata policy: %w", err)
+	}
+	limits := domain.MetadataLimitsFromPolicy(policy)
+	if err := domain.ValidateCommandMetadata(orders, limits); err != nil {
+		return false, &domain.BusinessError{Err: err}
+	}
+	w.nextTxID = newNextTxID
 
 	// Build proposal with orders and preloads for cache population
 	cmd := commands.NewCommand(orders...)

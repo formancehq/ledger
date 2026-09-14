@@ -669,6 +669,7 @@ The server persists critical configuration parameters in Pebble under the Global
 | `cluster-id` | Breaks inter-node communication | **Fatal error** |
 | `idempotency-ttl` | Idempotency window mismatch | **Fatal error** |
 | `storage-schema-version` | Data layout incompatibility | **Fatal error** (never bypassable, even with `--unsafe-skip-config-validation`) |
+| metadata size limits in the committed cluster policy | Metadata protection silently disabled | **Fatal error** (never bypassable) when `--cluster-policy-revision` cannot supersede the applied policy |
 
 #### Edge Cases
 
@@ -676,10 +677,11 @@ The server persists critical configuration parameters in Pebble under the Global
 - **Restore flow**: Validation is skipped in restore mode (`--restore`)
 - **Existing deployments upgrading**: Treated as first boot (no persisted config key yet)
 - **Schema version mismatch**: Always fatal regardless of `--unsafe-skip-config-validation`, because data corruption is certain
+- **Cluster policy without metadata limits**: The committed policy carries the metadata size ceilings the server enforces on every write path. A leader's reconciler proposes a new policy only when `--cluster-policy-revision` exceeds the applied revision, so a policy committed without the ceilings cannot be repaired at the same revision. The node refuses to start and names the remedy — raise `--cluster-policy-revision`. Zero is never treated as "unlimited". See the [metadata size limits contract](../technical/architecture/subsystems/admission/metadata-limits.md)
 
 #### Override
 
-Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id`, `cluster-id`, and `idempotency-ttl` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
+Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id`, `cluster-id`, and `idempotency-ttl` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches and a cluster policy missing its metadata size limits are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
 ### Upgrading from pre-#400 clusters
 

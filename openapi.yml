@@ -3168,7 +3168,9 @@ components:
         numbers are decoded exactly, including int64 bounds and values beyond
         2^53. Integral decimal and exponent spellings are accepted; fractions
         and out-of-range values are rejected. String values must not contain
-        NUL bytes.
+        NUL bytes. A value is limited to 16384 bytes by default; the effective
+        ceiling comes from the cluster policy (`--metadata-max-value-bytes`).
+        Exceeding it returns 400 with reason `METADATA_LIMIT_EXCEEDED`.
       nullable: true
       oneOf:
         - type: string
@@ -3209,7 +3211,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Optional metadata for the ledger (supports typed values)
+          description: >-
+            Optional metadata for the ledger (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         mode:
           type: string
           enum:
@@ -3408,7 +3411,9 @@ components:
             type: object
             additionalProperties:
               $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for accounts involved in the transaction (supports typed values)
+          description: >-
+            Metadata for accounts involved in the transaction (supports typed
+            values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         timestamp:
           type: string
           format: date-time
@@ -3417,7 +3422,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Transaction metadata (supports typed values)
+          description: >-
+            Transaction metadata (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         reference:
           type: string
           description: Transaction reference
@@ -3580,7 +3586,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata to add (supports typed values)
+          description: >-
+            Metadata to add (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     RevertTransactionRequest:
       type: object
@@ -3603,7 +3610,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the revert transaction (supports typed values)
+          description: >-
+            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     RevertTransactionRequestBody:
       type: object
@@ -3620,7 +3628,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
-          description: Metadata for the revert transaction (supports typed values)
+          description: >-
+            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     DeleteMetadataRequest:
       type: object

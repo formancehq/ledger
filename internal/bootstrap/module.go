@@ -1443,9 +1443,14 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 	}
 
 	desired := &commonpb.ClusterPolicy{
-		Revision:             cfg.ClusterPolicyRevision,
-		IdempotencyTtlMicros: uint64(cfg.IdempotencyTTL.Microseconds()),
-		QueryCheckpointLimit: cfg.QueryCheckpointLimit,
+		Revision:                    cfg.ClusterPolicyRevision,
+		IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
+		QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
+		MetadataMaxEntriesPerEntity: cfg.MetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         cfg.MetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       cfg.MetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      cfg.MetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     cfg.MetadataMaxCommandBytes,
 	}
 
 	appliedRev := applied.GetRevision()

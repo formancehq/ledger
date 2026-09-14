@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/monitoring/metrics"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
@@ -202,7 +203,33 @@ type Config struct {
 	// QueryCheckpointLimit is the desired cap on live query checkpoints, carried
 	// in the replicated cluster policy.
 	QueryCheckpointLimit uint64
-	SnapshotSyncConfig   SnapshotSyncConfig
+	// Metadata size ceilings, carried in the replicated cluster policy. They are
+	// the configurable form of domain.MetadataLimits: admission enforces them on
+	// every public entry path and FSM apply enforces them on the metadata a
+	// Numscript program merges in. Node-local here only to shape the policy the
+	// leader proposes — apply never reads these fields (invariant #2).
+	//
+	// Each is scoped to a single command. Changing one requires bumping
+	// ClusterPolicyRevision, like any other policy field.
+	MetadataMaxEntriesPerEntity uint64
+	MetadataMaxKeyBytes         uint64
+	MetadataMaxValueBytes       uint64
+	MetadataMaxEntityBytes      uint64
+	MetadataMaxCommandBytes     uint64
+	SnapshotSyncConfig          SnapshotSyncConfig
+}
+
+// MetadataLimits is the metadata size contract this node would propose in the
+// cluster policy. It is the desired configuration, not the effective one: the
+// effective ceilings are whatever the committed policy carries.
+func (c Config) MetadataLimits() domain.MetadataLimits {
+	return domain.MetadataLimits{
+		MaxEntriesPerEntity:     c.MetadataMaxEntriesPerEntity,
+		MaxKeyBytes:             c.MetadataMaxKeyBytes,
+		MaxValueBytes:           c.MetadataMaxValueBytes,
+		MaxTotalBytesPerEntity:  c.MetadataMaxEntityBytes,
+		MaxTotalBytesPerCommand: c.MetadataMaxCommandBytes,
+	}
 }
 
 // EffectiveRestoreListen returns the bind host for restore mode, falling
@@ -305,6 +332,10 @@ func (c Config) Validate() error {
 		return errors.New("--query-checkpoint-limit must be greater than zero")
 	}
 
+	if err := c.validateMetadataLimits(); err != nil {
+		return err
+	}
+
 	// A negative TTL wraps to a huge value once converted to the policy's
 	// unsigned micros, so reject it at boot rather than committing a garbage
 	// idempotency window.
@@ -317,6 +348,25 @@ func (c Config) Validate() error {
 	}
 	if err := validateHealthThresholds(c.HealthConfig.DataThreshold, c.HealthConfig.DataResumeThreshold); err != nil {
 		return fmt.Errorf("data: %w", err)
+	}
+
+	return nil
+}
+
+// validateMetadataLimits rejects metadata ceilings that cannot be committed as
+// a cluster policy. Zero is refused rather than treated as "unlimited": a
+// mistyped flag must fail the boot, not silently remove the bound that keeps a
+// single write from replicating an unbounded payload through Raft. The ordering
+// rules are refused too, because the wider of two contradictory ceilings is
+// unreachable — an operator raising it would observe no effect.
+//
+// The FSM re-checks the same rules when the policy is proposed, so a hand-built
+// policy cannot bypass this; validating here turns the mistake into a boot
+// failure with the offending flag named.
+func (c Config) validateMetadataLimits() error {
+	if err := c.MetadataLimits().Validate(); err != nil {
+		return fmt.Errorf("invalid metadata flags (--metadata-max-entries, --metadata-max-key-bytes, "+
+			"--metadata-max-value-bytes, --metadata-max-entity-bytes, --metadata-max-command-bytes): %w", err)
 	}
 
 	return nil

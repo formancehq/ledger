@@ -32,7 +32,7 @@ func TestProcessSetClusterPolicy_HigherRevisionApplies(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	newPolicy := &commonpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5}
+	newPolicy := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, IdempotencyTtlMicros: 1000, QueryCheckpointLimit: 5})
 	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 2, QueryCheckpointLimit: 1})
 	mockStore.EXPECT().SetClusterPolicy(newPolicy)
 
@@ -54,7 +54,7 @@ func TestProcessSetClusterPolicy_SameRevisionSamePayloadNoOp(t *testing.T) {
 	processor, err := NewRequestProcessor(nil, 0)
 	require.NoError(t, err)
 
-	applied := &commonpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 2000, QueryCheckpointLimit: 7}
+	applied := withMetadataLimits(&commonpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 2000, QueryCheckpointLimit: 7})
 	mockStore.EXPECT().GetClusterPolicy().Return(applied)
 
 	result, procErr := processor.ProcessOrder(clusterPolicyOrder(applied.CloneVT()), mockStore)
@@ -73,7 +73,7 @@ func TestProcessSetClusterPolicy_SameRevisionDifferentPayloadConflict(t *testing
 
 	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 1})
 
-	order := clusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 2})
+	order := clusterPolicyOrder(withMetadataLimits(&commonpb.ClusterPolicy{Revision: 4, QueryCheckpointLimit: 2}))
 	_, procErr := processor.ProcessOrder(order, mockStore)
 
 	var conflict *domain.ErrClusterPolicyRevisionConflict
@@ -92,7 +92,7 @@ func TestProcessSetClusterPolicy_LowerRevisionStale(t *testing.T) {
 
 	mockStore.EXPECT().GetClusterPolicy().Return(&commonpb.ClusterPolicy{Revision: 5, QueryCheckpointLimit: 1})
 
-	order := clusterPolicyOrder(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1})
+	order := clusterPolicyOrder(withMetadataLimits(&commonpb.ClusterPolicy{Revision: 3, QueryCheckpointLimit: 1}))
 	_, procErr := processor.ProcessOrder(order, mockStore)
 
 	var stale *domain.ErrStaleClusterPolicy

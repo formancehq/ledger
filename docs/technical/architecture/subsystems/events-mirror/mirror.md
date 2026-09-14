@@ -65,6 +65,21 @@ The Worker (`worker.go:27-175`) is a polling loop:
 
 On startup the worker reads `LedgerBoundaries` from Pebble once, before its first fetch, and takes both its ingestion position (`last_mirror_v2_log_id`) and `NextTransactionId` from it. The value it keeps in memory afterwards is a cache, not an authority: it advances only after both Raft acceptance and successful FSM application, and it is dropped on any batch error so the next tick re-reads the durable boundary. See [Audit-Bound vs Technical State](../../audit-vs-technical-state.md) for why this is the only durable ingestion position.
 
+## Metadata limits
+
+After translation and CEL rewriting, the worker validates each order's metadata
+shape and size and the whole batch's metadata bytes against the destination's
+committed cluster policy before proposing it. FSM apply rechecks those limits
+before mutation, using its committed policy in case the policy changed since
+the worker read it. External source metadata is subject to the same limits as
+public API metadata; the source's own validation is not trusted.
+
+A rejected batch does not advance the applied boundary. The worker records the
+error and retries from the durable position. Reduce `batch_size` when otherwise
+valid entries exceed the aggregate command ceiling; an oversized individual
+entry requires correcting source/rewrite output or raising the destination's
+limits with a newer cluster-policy revision. See the [metadata size contract](../admission/metadata-limits.md).
+
 ## Source adapters
 
 `internal/adapter/v2/source.go:6-10` defines the contract:

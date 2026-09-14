@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 )
 
@@ -75,6 +76,13 @@ func validBaseConfig() Config {
 		TLSConfig:             TLSConfig{Mode: TLSModeDisabled},
 		ClusterPolicyRevision: 1,
 		QueryCheckpointLimit:  10,
+		// The metadata ceilings are required, so the fixture carries the
+		// defaults; a case exercising them sets its own values.
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 		TransportConfig: node.TransportConfig{
 			Reception: []int{10, 512, 512},
 			Send:      []int{10, 512, 512},

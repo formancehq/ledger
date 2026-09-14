@@ -59,6 +59,10 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
+	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
+		return nil, err
+	}
+
 	// Create reversed postings and update volumes
 	// For a revert: original destination becomes source, original source becomes destination.
 	// Color carries over from the original posting — the funds were segregated under

@@ -275,6 +275,28 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"checkpointId": "7"},
 		},
 		{
+			// Reachable from apply: the FSM bounds the metadata a Numscript
+			// program merges into the caller's, so the rejection is recorded in
+			// the audit chain with the dimension that was hit.
+			name:       "MetadataLimitExceeded",
+			err:        &domain.ErrMetadataLimitExceeded{Dimension: domain.MetadataLimitDimensionEntity, Limit: 65536, Actual: 70000},
+			wantReason: domain.ErrReasonMetadataLimitExceeded,
+			wantContext: map[string]string{
+				"dimension": domain.MetadataLimitDimensionEntity,
+				"limit":     "65536",
+				"actual":    "70000",
+			},
+		},
+		{
+			// The last-resort guard when a committed policy carries no
+			// ceilings; it reports the policy as invalid rather than blaming
+			// the caller's request.
+			name:        "MetadataLimitsUnconfigured",
+			err:         domain.ErrMetadataLimitsUnconfigured,
+			wantReason:  domain.ErrReasonClusterPolicyInvalid,
+			wantContext: map[string]string{},
+		},
+		{
 			name:        "InvalidCronExpression",
 			err:         &domain.ErrInvalidCronExpression{Expression: "* * * *", Details: "expected 5 or 6 fields"},
 			wantReason:  domain.ErrReasonInvalidCronExpression,

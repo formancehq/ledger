@@ -10,6 +10,7 @@ The admission pipeline (`internal/application/admission`) is the gateway every w
 | [signing.md](signing.md) | Ed25519 request and response signing — keys, lifecycle, cross-language constraint, audit-chain propagation, replay nuance. |
 | [validation.md](validation.md) | Structural validation (admission, fast UX feedback) vs behavioural validation (FSM, audit-bound). Shared sentinels. |
 | [idempotency.md](idempotency.md) | Idempotency key mechanism, hash-based conflict detection, and TTL eviction. |
+| [metadata-limits.md](metadata-limits.md) | Metadata size contract — the ceilings, how they are measured, where they are enforced (admission and FSM), and the replicated configuration. |
 | [admission-cache-horizon.md](admission-cache-horizon.md) | Rejecting proposals when the predicted apply-time generation is ≥ 2 ahead of the FSM's current generation. |
 
 ## Related

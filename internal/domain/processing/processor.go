@@ -38,6 +38,9 @@ type RequestProcessor struct {
 // apply-child handlers. Per-batch fields (caches) are owned by the
 // *RequestProcessor and live for the lifetime of a ProcessOrders call.
 type Context struct {
+	// Metadata budget is shared by all orders in one atomic proposal.
+	metadataBudget *commandMetadataBudget
+
 	// Per-order — set by the dispatcher before calling the handler.
 	Scope Scope
 	// InputsResolutionHash is the admission-derived Numscript inputs hash for
@@ -221,6 +224,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,
+	}
+
+	ctx.metadataBudget = &commandMetadataBudget{}
+	for _, order := range orders {
+		ctx.metadataBudget.bytes += domain.OrderMetadataSize(order)
 	}
 
 	result := &OrdersResult{
@@ -490,6 +498,7 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // processor's per-batch caches and forwards to processOrder.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ctx := &Context{
+		metadataBudget: &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
 		NumscriptCache: p.numscriptCache,
 		CompiledTypes:  p.compiledTypesCache,
 		AssetCache:     p.assetCache,
