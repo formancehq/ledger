@@ -24,7 +24,10 @@ host-owned.
 This is command coverage, not byte-for-byte CLI parity. Portable execution
 requires an explicit `--ledger`; `ledger send` moves the optional leading source
 to `--source`; schema output formatting is host-owned; and schema insertion
-reads a host-owned file artifact. The old direct-URL schema source is not
+reads a host-owned file artifact. Its single `application/octet-stream` media
+contract is deliberately format-neutral, so both bounded JSON and YAML keep the
+same CLI without requiring a host-owned media selector; the plugin detects and
+validates the document after reading it. The old direct-URL schema source is not
 implemented because the current input-artifact ABI admits files and stdin, not
 URLs. `last`, corrected `last-N`, and the historical `lastN` spelling are
 resolved through a bounded read before the transaction operation.

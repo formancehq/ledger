@@ -52,8 +52,19 @@ func collectFlags(command sdk.Command, occurrences []sdk.FlagOccurrence) (map[st
 		}
 		switch flag.Type {
 		case sdk.FlagInt32:
-			if _, err := strconv.ParseInt(occurrence.Value, 10, 32); err != nil {
+			parsed, err := strconv.ParseInt(occurrence.Value, 10, 32)
+			if err != nil {
 				return nil, invalidArgument("flag %q is not an int32", occurrence.Name)
+			}
+			switch occurrence.Name {
+			case "page-size":
+				if parsed < 1 || parsed > 1000 {
+					return nil, invalidArgument("flag %q must be between 1 and 1000", occurrence.Name)
+				}
+			case "group-by":
+				if parsed < 0 || parsed > 1000 {
+					return nil, invalidArgument("flag %q must be between 0 and 1000", occurrence.Name)
+				}
 			}
 		case sdk.FlagBool:
 			if _, err := strconv.ParseBool(occurrence.Value); err != nil {

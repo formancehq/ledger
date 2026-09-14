@@ -153,6 +153,42 @@ func TestExecuteV2RejectsInvalidFiltersWithACursorBeforeProductTraffic(t *testin
 	}
 }
 
+func TestExecuteV2RejectsOutOfRangePaginationFlagsBeforeProductTraffic(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		commandID string
+		flag      sdk.FlagOccurrence
+	}{
+		{name: "zero page size", commandID: "ledger.v2.accounts.list", flag: sdk.FlagOccurrence{Name: "page-size", Value: "0"}},
+		{name: "negative page size", commandID: "ledger.v2.transactions.list", flag: sdk.FlagOccurrence{Name: "page-size", Value: "-1"}},
+		{name: "oversized page size", commandID: "ledger.v2.schemas.list", flag: sdk.FlagOccurrence{Name: "page-size", Value: "1001"}},
+		{name: "negative group by", commandID: "ledger.v2.volumes.list", flag: sdk.FlagOccurrence{Name: "group-by", Value: "-1"}},
+		{name: "oversized group by", commandID: "ledger.v2.volumes.list", flag: sdk.FlagOccurrence{Name: "group-by", Value: "1001"}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+				t.Fatal("out-of-range pagination flag reached product traffic")
+				return nil, nil
+			})
+			err := (Plugin{}).Execute(context.Background(), execution(
+				test.commandID,
+				nil,
+				sdk.FlagOccurrence{Name: "ledger", Value: "primary"},
+				test.flag,
+			), host)
+			if err == nil {
+				t.Fatal("out-of-range pagination flag accepted")
+			}
+			if got := len(host.Requests()); got != 0 {
+				t.Fatalf("out-of-range pagination flag made %d requests", got)
+			}
+		})
+	}
+}
+
 func TestExecuteV2PropagatesProductFailureWithoutEmittingPartialOutput(t *testing.T) {
 	t.Parallel()
 	host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) { return nil, errors.New("offline") })

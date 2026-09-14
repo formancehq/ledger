@@ -125,6 +125,12 @@ to `v2ListTransactions`.
 body fields, which is what lets `ledger send` and `ledger transactions num`
 remain two distinct commands over one operation.
 
+`ledger schemas insert` consumes one host-owned, 64 KiB
+`application/octet-stream` artifact. That media type is intentionally
+format-neutral: the adapter performs bounded JSON/YAML detection after the host
+has resolved the file, so accepting both formats does not add a required
+`--source-media-type` selector and never turns the plugin into a URL fetcher.
+
 ## Destructive operations (5)
 
 `ledger delete-metadata`, `ledger accounts delete-metadata`,

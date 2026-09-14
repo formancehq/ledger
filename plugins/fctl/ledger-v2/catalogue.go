@@ -266,7 +266,7 @@ var commandGrammars = map[string]commandGrammar{
 	"ledger import":                   {arguments: []sdk.Argument{arg("ledger-name", true), arg("file-path", true)}, flags: []sdk.Flag{boolFlag("resume-from-last-log")}, artifacts: []sdk.InputArtifactSpec{{ArgumentName: "file-path", MediaTypes: contentTypesBinary, MaxBytes: inputArtifactBytes, AllowFile: true}}},
 	"ledger list":                     {},
 	"ledger schemas get":              {arguments: []sdk.Argument{arg("version", true)}, flags: ledgerFlags()},
-	"ledger schemas insert":           {arguments: []sdk.Argument{arg("version", true), arg("source", true)}, flags: ledgerFlags(), artifacts: []sdk.InputArtifactSpec{{ArgumentName: "source", MediaTypes: []string{"application/yaml"}, MaxBytes: requestJSONBytes, AllowFile: true}}},
+	"ledger schemas insert":           {arguments: []sdk.Argument{arg("version", true), arg("source", true)}, flags: ledgerFlags(), artifacts: []sdk.InputArtifactSpec{{ArgumentName: "source", MediaTypes: contentTypesBinary, MaxBytes: requestJSONBytes, AllowFile: true}}},
 	"ledger schemas list":             {flags: ledgerFlags(flag("cursor"), withDefault(pageSizeFlag(), "15"))},
 	// The SDK deliberately rejects an optional positional before required
 	// positionals. Preserve the send semantics with an explicit --source flag.

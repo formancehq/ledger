@@ -324,7 +324,7 @@ func TestCatalogueDeclaresOnlyTheThreeHostOwnedInputArtifacts(t *testing.T) {
 					t.Errorf("import artifact = %#v", artifact)
 				}
 			case "ledger.v2.schemas.insert":
-				if artifact.ArgumentName != "source" || !artifact.AllowFile || artifact.AllowStdin || artifact.MaxBytes != requestJSONBytes || !slices.Equal(artifact.MediaTypes, []string{"application/yaml"}) {
+				if artifact.ArgumentName != "source" || !artifact.AllowFile || artifact.AllowStdin || artifact.MaxBytes != requestJSONBytes || !slices.Equal(artifact.MediaTypes, contentTypesBinary) {
 					t.Errorf("schema artifact = %#v", artifact)
 				}
 			case "ledger.v2.transactions.num":
