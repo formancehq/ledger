@@ -100,3 +100,12 @@ The signed payload format is fixed by vtprotobuf encoding rules — `internal/pk
 | Bootstrap registration rejected | `RequireSignatures()` is true and there is no parent key — solution is the maintenance-mode workaround above. |
 | Client cannot verify a stored log | Server's response key has rotated; client must refresh via the Discovery RPC or the `--response-verify-key` flag. |
 | Audit chain hash mismatch on entries with valid `Log.Signature` | Log entry tampered after the fact — caught by the checker, not by signature verification (the signature still verifies; the hash chain doesn't). |
+
+## Credential-bearing read projections
+
+Public audit/log reads apply the [credential projection contract](../api/secret-redaction.md).
+The original stored bytes remain verifiable. A redacted read payload is a
+display projection: it cannot reproduce the original signature or audit hash,
+and its cryptographic signature bytes are omitted when the payload changes.
+Unchanged read payloads retain their exact bytes and original signatures.
+Request admission and signed write responses keep the contract described above.
