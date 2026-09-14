@@ -123,9 +123,9 @@ func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID 
 // would silently drop the peer from the pool).
 //
 // After Start returns, subsequent Set / Remove / Register / Rehydrate
-// calls wire the transport inline. Start is idempotent — a second call
-// is a plain re-wire of the current cache (all AddPeer calls are no-op
-// when the peer is already registered with the same address).
+// calls wire the transport inline. Start is idempotent — a second call is a
+// plain re-wire of the current cache (AddPeer is a no-op for a healthy peer at
+// the same address and retries a closed pooled connection).
 func (m *Membership) Start() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -123,51 +123,64 @@ func TestConnectionPool_OptionalProbeKeepsTLS(t *testing.T) {
 	require.True(t, entry.usingTLS, "expected TLS for TLS-capable peer")
 }
 
-// TestConnectionPool_AddressReplacementRetriesCommittedTarget covers a
-// fail-then-success refresh in optional TLS mode. A transient probe failure
-// must retain the replacement address so RestartConnection cannot fall back to
-// the superseded endpoint.
+// TestConnectionPool_AddressReplacementRetriesCommittedTarget covers
+// fail-then-success refreshes in optional TLS mode. A transient probe failure
+// must retain the replacement address for both the Raft loop's explicit restart
+// and a repeated same-address registration from service-pool wiring.
 func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
-	oldServer := newPlaintextEchoServer(t)
-	defer oldServer.Close()
-
-	clientCfg := &tls.Config{
-		MinVersion: tls.VersionTLS12,
-		RootCAs:    x509.NewCertPool(),
-		ServerName: "localhost",
+	retries := map[string]func(*ConnectionPool, string) error{
+		"raft restart": func(pool *ConnectionPool, _ string) error {
+			return pool.RestartConnection(1)
+		},
+		"service re-registration": func(pool *ConnectionPool, addr string) error {
+			return pool.AddPeer(1, addr)
+		},
 	}
-	pool := NewConnectionPool(TLSPolicy{TLSConfig: clientCfg}, PoolConfig{})
-	pool.probeTimeout = 500 * time.Millisecond
-	defer func() { require.NoError(t, pool.Close()) }()
 
-	require.NoError(t, pool.AddPeer(1, oldServer.addr()))
+	for name, retry := range retries {
+		t.Run(name, func(t *testing.T) {
+			oldServer := newPlaintextEchoServer(t)
+			defer oldServer.Close()
 
-	reserved, err := net.Listen("tcp4", "127.0.0.1:0")
-	require.NoError(t, err)
-	newAddr := reserved.Addr().String()
-	require.NoError(t, reserved.Close())
-
-	require.Error(t, pool.AddPeer(1, newAddr), "first probe must observe the endpoint outage")
-	require.Equal(t, newAddr, pool.GetPeerAddress(1),
-		"the replacement target must survive the failed probe")
-
-	recovered, err := net.Listen("tcp4", newAddr)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = recovered.Close() })
-	go func() {
-		for {
-			conn, acceptErr := recovered.Accept()
-			if acceptErr != nil {
-				return
+			clientCfg := &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    x509.NewCertPool(),
+				ServerName: "localhost",
 			}
-			_ = conn.Close()
-		}
-	}()
+			pool := NewConnectionPool(TLSPolicy{TLSConfig: clientCfg}, PoolConfig{})
+			pool.probeTimeout = 500 * time.Millisecond
+			defer func() { require.NoError(t, pool.Close()) }()
 
-	require.NoError(t, pool.RestartConnection(1),
-		"retry after endpoint recovery must dial the replacement target")
-	require.Equal(t, newAddr, pool.GetPeerAddress(1))
-	require.Len(t, pool.PeerIDs(), 1)
+			require.NoError(t, pool.AddPeer(1, oldServer.addr()))
+
+			reserved, err := net.Listen("tcp4", "127.0.0.1:0")
+			require.NoError(t, err)
+			newAddr := reserved.Addr().String()
+			require.NoError(t, reserved.Close())
+
+			require.Error(t, pool.AddPeer(1, newAddr), "first probe must observe the endpoint outage")
+			require.Equal(t, newAddr, pool.GetPeerAddress(1),
+				"the replacement target must survive the failed probe")
+
+			recovered, err := net.Listen("tcp4", newAddr)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = recovered.Close() })
+			go func() {
+				for {
+					conn, acceptErr := recovered.Accept()
+					if acceptErr != nil {
+						return
+					}
+					_ = conn.Close()
+				}
+			}()
+
+			require.NoError(t, retry(pool, newAddr),
+				"retry after endpoint recovery must dial the replacement target")
+			require.Equal(t, newAddr, pool.GetPeerAddress(1))
+			require.Len(t, pool.PeerIDs(), 1)
+		})
+	}
 }
 
 // TestConnectionPool_StrictTLSNoProbe verifies that strict mode does NOT
