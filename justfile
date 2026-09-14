@@ -1,7 +1,24 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint
+pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint fctl-ledger-v3-build-component
 pc: pre-commit
+
+# plugins/fctl/ledger-v3 is a separate Go module. Keep its SDK contract,
+# module metadata, tests, and component build reachable from the root recipes.
+fctl-ledger-v3-validate:
+    cd plugins/fctl/ledger-v3 && just validate-sdk
+
+fctl-ledger-v3-tidy:
+    cd plugins/fctl/ledger-v3 && just tidy
+
+fctl-ledger-v3-tidy-check:
+    cd plugins/fctl/ledger-v3 && just tidy-check
+
+fctl-ledger-v3-test:
+    cd plugins/fctl/ledger-v3 && just test
+
+fctl-ledger-v3-build-component:
+    cd plugins/fctl/ledger-v3 && just build-component
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output
@@ -31,7 +48,7 @@ lint:
     echo "==> golangci-lint (operator)"
     cd misc/operator && golangci-lint run --fix --timeout 5m
 
-tidy:
+tidy: && fctl-ledger-v3-tidy
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> go mod tidy (.)"
@@ -83,7 +100,7 @@ install-client:
     ledgerctl completion zsh > ~/.oh-my-zsh/custom/completions/_ledgerctl
 
 # Run unit tests for the root module (light build)
-test:
+test: && fctl-ledger-v3-test
     go test -race ./... -timeout 20m
 
 # Run unit tests with all optional features
@@ -160,7 +177,7 @@ coverage_dir := "build/coverage"
 coverage_pkgs := "github.com/formancehq/ledger/v3/internal/..."
 
 # Run unit tests with coverage
-test-coverage:
+test-coverage: && fctl-ledger-v3-test
     #!/usr/bin/env bash
     set -euo pipefail
     mkdir -p {{coverage_dir}}
@@ -330,6 +347,7 @@ generate-proto:
         misc/proto/events.proto \
         misc/proto/restore.proto \
         misc/proto/proposal.proto
+    @./scripts/mark-fctl-component-guest-proto-helpers.sh apply
 
 # --- Operator (Kubernetes) ---
 

@@ -1,0 +1,39 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+coverage-minimum := "80"
+
+validate-sdk:
+    GOWORK=off go test ./scripts
+    ./scripts/test-fctl-sdk-contract.sh
+    ./scripts/test-coverage-threshold.sh
+    ./scripts/test-root-gates.sh
+    ./scripts/test-tidy-with-fctl-sdk.sh
+    ./scripts/with-fctl-sdk.sh true
+
+tidy:
+    ./scripts/with-fctl-sdk.sh ./scripts/tidy-with-fctl-sdk.sh
+
+tidy-check:
+    ./scripts/with-fctl-sdk.sh ./scripts/tidy-with-fctl-sdk.sh --check
+
+test-coverage: validate-sdk tidy-check
+    #!/usr/bin/env bash
+    default_profile="$(mktemp "${TMPDIR:-/tmp}/ledger-v3-fctl-default-coverage.XXXXXXXX")"
+    guest_profile="$(mktemp "${TMPDIR:-/tmp}/ledger-v3-fctl-guest-coverage.XXXXXXXX")"
+    profile="$(mktemp "${TMPDIR:-/tmp}/ledger-v3-fctl-coverage.XXXXXXXX")"
+    trap 'rm -f -- "$default_profile" "$guest_profile" "$profile"' EXIT
+    ./scripts/with-fctl-sdk.sh bash -euo pipefail -c '
+      go test -race -coverpkg=./... -coverprofile="'$default_profile'" ./... -count=1
+      go test -race -tags=fctl_component_guest -coverprofile="'$guest_profile'" ./entrypoints/... -count=1
+      head -n 1 "'$default_profile'" > "'$profile'"
+      tail -n +2 "'$default_profile'" >> "'$profile'"
+      tail -n +2 "'$guest_profile'" >> "'$profile'"
+      total="$(go tool cover -func="'$profile'" | awk '\''$1 == "total:" {gsub(/%/, "", $3); print $3}'\'')"
+      [[ -n "$total" ]] || { printf "coverage profile has no total\n" >&2; exit 1; }
+      ./scripts/check-coverage-threshold.sh "$total" {{coverage-minimum}}
+    '
+
+test: test-coverage
+
+build-component: test
+    ./scripts/with-fctl-sdk.sh ./scripts/build-component.sh

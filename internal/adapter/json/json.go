@@ -1,3 +1,5 @@
+//go:build !fctl_component_guest
+
 // Package json provides a compatibility layer for JSON encoding/decoding using sonic.
 // It provides the same API surface as encoding/json/v2 but uses sonic for performance.
 package json
@@ -7,6 +9,8 @@ import (
 
 	"github.com/bytedance/sonic"
 )
+
+const backendName = "sonic"
 
 // Marshal returns the JSON encoding of v using sonic.
 func Marshal(v any) ([]byte, error) {
