@@ -459,6 +459,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
+						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
+
 						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
@@ -2275,7 +2277,12 @@ func (c *Checker) verifyAuditHashChain(
 //     exists=false). Verifies presence/absence at seq for
 //     ACCOUNT_TYPE_ALREADY_EXISTS / ACCOUNT_TYPE_NOT_FOUND.
 type chainBoundState struct {
-	references map[string]map[string]uint64
+	// savedMetadata is the exact SavedMetadata payload expected at each log
+	// sequence, reconstructed from the hash-bound serialized order. The log
+	// projection must be checked against this value before replay can use it as
+	// the expected-state oracle for metadata projections.
+	savedMetadata map[uint64]chainBoundSavedMetadata
+	references    map[string]map[string]uint64
 	// referenceTxIDs mirrors references (ledger → reference → owning
 	// transaction id) with the SAME first-claim-wins semantic, so the
 	// verifier can re-derive and pin OrderSkipped.context["existingTransactionId"]
@@ -2320,6 +2327,11 @@ type chainBoundState struct {
 	maxMirrorV2LogID map[string]uint64
 }
 
+type chainBoundSavedMetadata struct {
+	ledger  string
+	payload *commonpb.SavedMetadata
+}
+
 // chainBoundMutation records one presence-flip observed on the audit
 // chain. Order-of-append matches order-of-seq (collectExpectedSkippable
 // iterates items in seq order), so the last entry with seq < X gives the
@@ -2334,6 +2346,7 @@ type chainBoundMutation struct {
 // observes each ledger.
 func newChainBoundState() *chainBoundState {
 	return &chainBoundState{
+		savedMetadata:      make(map[uint64]chainBoundSavedMetadata),
 		references:         make(map[string]map[string]uint64),
 		referenceTxIDs:     make(map[string]map[string]uint64),
 		reverted:           make(map[string]map[uint64]uint64),
@@ -2343,6 +2356,41 @@ func newChainBoundState() *chainBoundState {
 		ledgerCreationSeen: make(map[string]struct{}),
 		maxMirrorV2LogID:   make(map[string]uint64),
 	}
+}
+
+// verifySavedMetadataAgainstAuditedOrder prevents the persisted log from
+// serving as its own projection oracle. SaveMetadata and mirror SET_METADATA
+// carry the complete emitted payload in their hash-bound serialized orders, so
+// compare it before ReplayLedgerLog consumes the untrusted history row.
+func verifySavedMetadataAgainstAuditedOrder(
+	ledger string,
+	seq uint64,
+	payload *commonpb.LedgerLogPayload,
+	chainBound *chainBoundState,
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	expected, ok := chainBound.savedMetadata[seq]
+	if !ok {
+		return
+	}
+
+	// An authorised OrderSkipped is validated by verifySkippedOrder. It is the
+	// only legitimate alternative to the SavedMetadata payload for an audited
+	// metadata order that opted into a skippable failure.
+	if payload.GetOrderSkipped() != nil {
+		return
+	}
+
+	actual := payload.GetSavedMetadata()
+	if ledger == expected.ledger && actual != nil && proto.Equal(actual, expected.payload) {
+		return
+	}
+
+	callback(errorEvent(
+		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		fmt.Sprintf("log %d SavedMetadata payload on ledger %q does not match the chain-bound metadata order for ledger %q", seq, ledger, expected.ledger),
+		seq, ledger, "", "",
+	))
 }
 
 // mutationStateWithWitness returns both the state at seq AND whether the
@@ -2535,6 +2583,26 @@ func collectExpectedSkippable(
 
 		apply := ls.GetApply()
 		ct := apply.GetCreateTransaction()
+
+		if am := apply.GetAddMetadata(); am != nil {
+			chainBound.savedMetadata[logSeq] = chainBoundSavedMetadata{
+				ledger: ledger,
+				payload: &commonpb.SavedMetadata{
+					Target:   am.GetTarget(),
+					Metadata: am.GetMetadata(),
+				},
+			}
+		} else if mi := ls.GetMirrorIngest(); mi != nil {
+			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
+				chainBound.savedMetadata[logSeq] = chainBoundSavedMetadata{
+					ledger: ledger,
+					payload: &commonpb.SavedMetadata{
+						Target:   sm.GetTarget(),
+						Metadata: sm.GetMetadata(),
+					},
+				}
+			}
+		}
 
 		// Track every chain-bound reference claim on this ledger, not just
 		// the ones from orders that opted into skip. Two order shapes can
