@@ -14,6 +14,10 @@ lifecycle. Listener bind errors fail startup synchronously. An unexpected
 `http.Server.Serve` error requests application shutdown and is returned during
 cleanup, causing the service runner to exit unsuccessfully. Normal shutdown
 ignores `http.ErrServerClosed` and drains active requests within the stop context.
+If that context expires, the endpoint cancels every active request, force-closes
+its connections to interrupt network I/O, and joins the request handlers before
+returning the context error. Handlers must honor request cancellation; endpoint
+shutdown does not return while an owned handler is still running.
 Temporary accept errors remain subject to the standard HTTP server retry policy.
 The endpoint retains its 10-second header read timeout and 120-second idle timeout.
 
