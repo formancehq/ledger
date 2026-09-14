@@ -490,3 +490,27 @@ func BenchmarkFindAccountSchemaParsed(b *testing.B) {
 		}
 	}
 }
+
+func TestChartRoundTripEquality(t *testing.T) {
+	t.Parallel()
+
+	original := ChartOfAccounts{
+		"banks": {
+			VariableSegment: &ChartVariableSegment{
+				Label:   "iban",
+				Pattern: pointer.For("^foo$"),
+				ChartSegment: ChartSegment{
+					Account: &ChartAccount{},
+				},
+			},
+		},
+	}
+
+	data, err := json.Marshal(original)
+	require.NoError(t, err)
+
+	var decoded ChartOfAccounts
+	require.NoError(t, json.Unmarshal(data, &decoded))
+
+	require.Equal(t, original, decoded)
+}
