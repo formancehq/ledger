@@ -391,6 +391,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	}
 	keepLease = true
 	cleanup := func() {
+		// Best-effort: read-only close failures are non-actionable at request end.
 		_ = readIdx.Close()
 		_ = mainStore.Close()
 		release()
