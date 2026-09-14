@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -897,4 +899,33 @@ func TestPrepareEntriesTraceLogPipeliningLag(t *testing.T) {
 			}
 		})
 	})
+}
+
+func TestCommitPreparedBatchDefersCheckpointDeletionForAcquiredReader(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachine(t)
+	const checkpointID = uint64(43)
+	checkpointDir := filepath.Dir(store.QueryCheckpointMainDir(checkpointID))
+	requiredFile := filepath.Join(store.QueryCheckpointMainDir(checkpointID), "main.sst")
+	require.NoError(t, os.MkdirAll(filepath.Dir(requiredFile), 0o750))
+	require.NoError(t, os.WriteFile(requiredFile, []byte("still-readable"), 0o640))
+
+	release, acquired := store.AcquireQueryCheckpoint(checkpointID)
+	require.True(t, acquired)
+
+	pb := &PreparedBatch{
+		batch:             store.OpenWriteSession(),
+		Result:            &ApplyEntriesResult{},
+		checkpointDeletes: []uint64{checkpointID},
+	}
+	require.NoError(t, machine.CommitPreparedBatch(context.Background(), pb))
+
+	contents, err := os.ReadFile(requiredFile)
+	require.NoError(t, err, "the FSM post-commit dispatch must retain acquired checkpoint files")
+	require.Equal(t, []byte("still-readable"), contents)
+
+	release()
+	_, err = os.Stat(checkpointDir)
+	require.True(t, os.IsNotExist(err), "the final release must complete FSM-triggered deletion")
 }

@@ -385,6 +385,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 
 	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
 	if err != nil {
+		// Best-effort: this read-only store is only being unwound after open failed.
 		_ = mainStore.Close()
 
 		return nil, nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
