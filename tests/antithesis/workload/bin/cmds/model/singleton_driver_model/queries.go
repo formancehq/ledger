@@ -61,6 +61,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 	_, _, bareAsset := hasAssetTarget(filter)
+	precisionOverflow := hasAssetPrecisionOverflow(filter)
 	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	pageSize := queryPageSize()
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
@@ -110,9 +111,17 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
 			return
 		}
+		if precisionOverflow && status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR") {
+			// Coverage: the one-byte precision cell is enforced at compile time.
+			assert.Reachable("singleton_driver_model: has-asset precision overflow rejected", internal.Details{"ledger": ledger})
+
+			return
+		}
 		if bareAsset {
 			// The account-by-asset index governs this filter's outcome; a not-ready
-			// error is legal while the index is absent or ambiguous.
+			// error is legal while the index is absent or ambiguous. The compiler
+			// checks readiness before the precision, so an overflow probe reaches
+			// here only through a not-ready error.
 			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, err)
 			return
 		}
@@ -134,6 +143,16 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		// The filter carries a condition invalid on this target; the server must
 		// reject it, not stream rows.
 		assert.Unreachable("singleton_driver_model: target-invalid account query returned results", internal.Details{
+			"ledger": ledger,
+			"filter": describeFilter(filter),
+			"rows":   len(accounts),
+		})
+
+		return
+	}
+
+	if precisionOverflow {
+		assert.Unreachable("singleton_driver_model: has-asset precision overflow returned results", internal.Details{
 			"ledger": ledger,
 			"filter": describeFilter(filter),
 			"rows":   len(accounts),
@@ -808,11 +827,19 @@ func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter
 // a repeated And/Or field marshals as an empty condition the compiler rejects).
 func genAccountFilterFree(depth int) *commonpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
+		// The role only selects an index on the transactions target; accounts
+		// resolve the address the same way under any of the three.
+		role := random.RandomChoice([]commonpb.AddressRole{
+			commonpb.AddressRole_ADDRESS_ROLE_ANY,
+			commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+			commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		})
+
 		if random.RandomChoice([]uint8{0, 1}) == 0 {
-			return filterAddrPrefix(poolName() + ":")
+			return filterAddrPrefixRole(poolName()+":", role)
 		}
 
-		return filterAddrExact(poolAddress())
+		return filterAddrExactRole(poolAddress(), role)
 	}
 
 	return genBoolean(depth, genAccountFilterFree)
@@ -1497,7 +1524,7 @@ func describeFilter(f *commonpb.QueryFilter) string {
 			case *commonpb.QueryFilter_Field:
 				return "field:" + x.Field.GetField().GetMetadata() + describeFieldCondition(x.Field)
 			case *commonpb.QueryFilter_AccountHasAsset:
-				return "hasAsset:" + x.AccountHasAsset.GetAssetBase()
+				return "hasAsset:" + x.AccountHasAsset.GetAssetBase() + "/" + strconv.FormatUint(uint64(x.AccountHasAsset.GetPrecision()), 10)
 			case *commonpb.QueryFilter_Ledger:
 				return "ledger=" + x.Ledger.GetCond().GetHardcoded()
 			case *commonpb.QueryFilter_LogId:
@@ -1505,7 +1532,12 @@ func describeFilter(f *commonpb.QueryFilter) string {
 			case *commonpb.QueryFilter_LogBuiltinUint:
 				return "logDate" + describeUintBounds(x.LogBuiltinUint.GetCond())
 			case *commonpb.QueryFilter_Audit:
-				return "audit:" + x.Audit.GetField().String() + "=" + x.Audit.GetStringCond().GetHardcoded()
+				field := "audit:" + strings.TrimPrefix(x.Audit.GetField().String(), "AUDIT_FIELD_")
+				if uc := x.Audit.GetUintCond(); uc != nil {
+					return field + describeUintBounds(uc)
+				}
+
+				return field + "=" + x.Audit.GetStringCond().GetHardcoded()
 			default:
 				return "?"
 			}

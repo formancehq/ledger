@@ -59,6 +59,10 @@ type Checker struct {
 	// mu.
 	ledgerLogSeqs map[uint64]string
 
+	// auditSamples holds indexed fields of served audit entries, for aiming
+	// audit filters at values the trail holds. Guarded by mu.
+	auditSamples []auditSample
+
 	// Worker → processor channel.
 	incoming chan observation
 
