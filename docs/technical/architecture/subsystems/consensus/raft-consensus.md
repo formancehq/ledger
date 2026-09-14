@@ -194,7 +194,8 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - Receive Raft messages
 - Detect unreachable nodes
 - Refresh an existing peer's pooled connection after a committed address update
-  while preserving that peer's send loop and queues
+  while preserving that peer's send loop and queues; a transient optional-TLS
+  probe failure retains the committed target for the loop's next retry
 
 ```mermaid
 graph TB

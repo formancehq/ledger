@@ -18,10 +18,10 @@ import (
 )
 
 // TestCommittedPeerRefreshUpdatesRaftTransport covers the two-stage committed
-// ConfChange contract: FSM apply persists the refreshed peer row, then
-// finishReady publishes the same registration through Membership.Set. The
-// operational Raft transport must replace its dial address without adding a
-// second peer or disturbing the membership row's identity.
+// ConfChange contract: finishReady publishes the registration through
+// Membership.Set before asynchronous FSM apply persists it. The operational
+// Raft transport must replace its dial address without adding a second peer or
+// disturbing the membership row's identity, then Pebble must converge.
 func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 	t.Parallel()
 
@@ -66,7 +66,7 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 	m.Start()
 
 	oldInstanceID := []byte("old-instance-id-")
-	m.Set(2, "old:7000", "old:8000", oldInstanceID)
+	require.NoError(t, m.Register(2, "old:7000", "old:8000", oldInstanceID))
 	require.Equal(t, "old:7000", raftPool.GetPeerAddress(2))
 
 	newInstanceID := []byte("new-instance-id-")
@@ -86,21 +86,8 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 	data, err := proto.Marshal(cc)
 	require.NoError(t, err)
 
-	session := store.OpenWriteSession()
-	require.NoError(t, m.WriteConfChange(&raftpb.Entry{
-		Type: new(raftpb.EntryConfChangeV2),
-		Data: data,
-	}, session))
-	require.NoError(t, session.Commit())
-
-	persisted, err := peerStore.LoadAll()
-	require.NoError(t, err)
-	require.Equal(t, "new:7000", persisted[2].RaftAddress)
-	require.Equal(t, newInstanceID, persisted[2].InstanceID)
-	require.Equal(t, "old:7000", raftPool.GetPeerAddress(2),
-		"FSM apply must remain free of transport side effects")
-
-	// Node.finishReady performs this Set after observing the committed change.
+	// Node.finishReady performs this Set as soon as it observes the commit,
+	// before submitting the entry to the asynchronous FSM applier.
 	m.Set(2, "new:7000", "new:8000", newInstanceID)
 
 	require.Equal(t, "new:7000", m.PeerAddresses()[2].RaftAddress)
@@ -109,6 +96,22 @@ func TestCommittedPeerRefreshUpdatesRaftTransport(t *testing.T) {
 		"the next Raft dial must use the committed address")
 	require.Equal(t, "new:8000", servicePool.GetPeerAddress(2),
 		"the service pool must converge with the same committed registration")
+	persisted, err := peerStore.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "old:7000", persisted[2].RaftAddress,
+		"Pebble changes only when the asynchronous FSM batch applies")
+
+	session := store.OpenWriteSession()
+	require.NoError(t, m.WriteConfChange(&raftpb.Entry{
+		Type: new(raftpb.EntryConfChangeV2),
+		Data: data,
+	}, session))
+	require.NoError(t, session.Commit())
+
+	persisted, err = peerStore.LoadAll()
+	require.NoError(t, err)
+	require.Equal(t, "new:7000", persisted[2].RaftAddress)
+	require.Equal(t, newInstanceID, persisted[2].InstanceID)
 	require.Equal(t, []uint64{2}, raftPool.PeerIDs(),
 		"an address refresh must preserve the single peer identity")
 	require.Equal(t, []uint64{2}, servicePool.PeerIDs())

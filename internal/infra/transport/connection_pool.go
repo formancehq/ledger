@@ -185,7 +185,10 @@ func NewConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
 }
 
 // AddPeer adds a peer to the pool and creates a raw gRPC connection.
-// If the peer already exists with the same address, it is a no-op.
+// If the peer already exists with the same address, it is a no-op. When a
+// replacement dial fails, the committed target address is retained on the
+// closed entry so the owning peer loop retries that target rather than the
+// superseded endpoint.
 func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -201,6 +204,7 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 	// Close any pre-existing connection for this peer.
 	if existing, ok := p.peers[id]; ok {
 		p.teardownLocked(existing)
+		existing.addr = addr
 	}
 
 	entry, err := p.dialPeer(id, addr)
@@ -309,9 +313,8 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 
 	entry, err := p.dialPeer(id, addr)
 	if err != nil {
-		// On failure the peer entry is gone — caller is expected to retry
-		// via AddPeer.
-		delete(p.peers, id)
+		// Keep the closed entry and its desired address. The owning peer loop
+		// will observe the closed connection and retry RestartConnection.
 
 		return err
 	}

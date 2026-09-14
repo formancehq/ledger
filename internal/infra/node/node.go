@@ -1521,13 +1521,12 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 
 		// Mirror the committed ConfChange into the in-memory cache +
 		// transport so the next Raft tick already sees the new address.
-		// The durable Pebble row was written by WriteConfChange inside
-		// the FSM batch — atomic with the surrounding business writes,
-		// idempotent across spool/WAL replay. Updating the cache here
-		// too means the transport doesn't have to wait for the applier
-		// tick to learn the new address. (rawNode.ApplyConfChange above
-		// makes Raft start replicating to the new peer immediately, so
-		// the transport must be wired by then.)
+		// This precedes the asynchronous FSM submission below: Pebble may
+		// still hold the previous row until WriteConfChange commits its batch.
+		// A crash in that interval is repaired by committed-WAL replay and
+		// Rehydrate. (rawNode.ApplyConfChange above makes Raft start
+		// replicating to the new peer immediately, so the transport must be
+		// wired before the next tick.)
 		err := membership.WalkConfChangeContexts(cc, func(t raftpb.ConfChangeType, nodeID uint64, ctx *membership.ConfChangeContext) error {
 			switch t {
 			case raftpb.ConfChangeAddNode, raftpb.ConfChangeAddLearnerNode, raftpb.ConfChangeUpdateNode:

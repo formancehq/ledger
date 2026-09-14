@@ -46,11 +46,12 @@ type Pool interface {
 //     free of network side effects, and Pebble must be the only place
 //     that mutates synchronously with the batch.
 //
-//   - finishReady (cache + transport, post-commit): the Node has just
-//     observed the committed ConfChange and must update the cache +
-//     wire the transport / service pool before the next Raft tick.
-//     Use Set / Remove. Pebble is already up to date thanks to the
-//     FSM batch.
+//   - finishReady (cache + transport, after Raft commit observation): the Node
+//     updates the cache and wires the transport / service pool before the next
+//     Raft tick, then submits the committed entries for asynchronous FSM apply.
+//     Use Set / Remove. Pebble can briefly retain the previous row until that
+//     apply batch commits; committed-WAL replay plus Rehydrate repairs the gap
+//     after a crash.
 //
 //   - Lifecycle paths that bypass the FSM (cache + Pebble, own
 //     session): bootstrap's initial-peer persistence in
@@ -216,9 +217,9 @@ func (m *Membership) GetInstanceID(nodeID uint64) ([]byte, bool) {
 // Set upserts a peer in the cache AND wires it into the transport +
 // service pool so the Raft transport / client RPCs can reach it on the
 // next tick. Used from finishReady once a ConfChange has been observed
-// post-commit; the matching Pebble row was already written by the FSM
-// handler (WriteConfChange) in the same batch as the surrounding
-// business writes.
+// committed, before the matching entry is submitted for asynchronous FSM
+// apply. The Pebble row may therefore lag this cache briefly; WAL replay and
+// Rehydrate restore it if the process exits before local durable apply.
 //
 // Cache mutation and transport wiring both happen inside the lock so
 // they stay in lockstep with a concurrent Rehydrate. See Rehydrate's
@@ -236,10 +237,9 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID
 	m.wireAdd(nodeID, raftAddr, serviceAddr)
 }
 
-// Remove deletes a peer from the cache AND from the transport +
-// service pool. Pebble was already updated by the FSM handler
-// (WriteConfChange) in the same batch as the surrounding business
-// writes.
+// Remove deletes a peer from the cache AND from the transport + service pool
+// after Raft commit observation. Pebble may still contain the row until the
+// asynchronous FSM batch applies its deletion.
 //
 // Cache mutation and transport wiring both happen inside the lock —
 // see Set / Rehydrate.
@@ -507,8 +507,8 @@ func (m *Membership) OnSnapshotInstalled() {
 // mutation, no transport/pool wiring — so the FSM hot path stays
 // deterministic and free of network side effects, and the in-memory
 // state cannot diverge from Pebble if the surrounding batch later
-// fails to commit. Cache + transport wiring happens in
-// Node.finishReady once the ConfChange is observed post-commit, via
+// fails to commit. Cache + transport wiring happens in Node.finishReady as soon
+// as the commit is observed, before asynchronous FSM submission, via
 // Membership.Set / Membership.Remove.
 //
 // PromoteLearner (ConfChangeAddNode with a correlation-only context) carries

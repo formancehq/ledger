@@ -101,7 +101,7 @@
     "inject failure before and after force-remove snapshot-file replacement, WAL snapshot-record append, and Pebble membership cleanup; restart and compare the authoritative ConfState with whether the process continued serving",
     "block a follower beyond retained-log range, force real MsgSnap catch-up, transfer or restart during install, and prove it cannot campaign or serve until applied and durable indexes pass the installed snapshot and replay horizon",
     "replace and reconnect authenticated Raft streams while delaying and duplicating messages, then verify term/peer-incarnation routing and exactly one logical proposal outcome",
-    "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, then prove Pebble, cache, and the live Raft dial target use that endpoint while ConfState and peer identity remain unchanged",
+    "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, inject one optional-TLS probe failure before recovery, then prove Pebble, cache, and the retried live Raft dial target use that endpoint while ConfState and peer identity remain unchanged",
     "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState"
   ]
 }
