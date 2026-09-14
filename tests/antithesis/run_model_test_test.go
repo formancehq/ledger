@@ -57,6 +57,31 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 	}
 }
 
+func TestRunModelTestDriverExitDuringRestart(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, scenario, want string
+		pass                 bool
+	}{
+		{"late successful watchdog", "restart-late", "RESULT: PASS", true},
+		{"early successful exit", "restart-early", "DRIVER EXITED EARLY", false},
+		{"late unsuccessful exit", "restart-failed", "DRIVER EXIT FAILED", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			output, _, err, fixtureErr := runModelTestFixture(t, tc.scenario)
+			require.NoError(t, fixtureErr, output)
+			require.Contains(t, output, "cycle 1: recovered")
+			if tc.pass {
+				require.NoError(t, err, output)
+			} else {
+				require.Error(t, err, output)
+			}
+			require.Contains(t, output, tc.want)
+		})
+	}
+}
+
 func runModelTestFixture(t *testing.T, scenario string) (string, string, error, error) {
 	t.Helper()
 
@@ -71,6 +96,7 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error, 
 	// Only the fixture clock is substituted: liveness checks and reporting run
 	// unchanged. File descriptors 3/4 carry events/clock replies, respectively.
 	writeExecutable(t, filepath.Join(binDir, "date"), `#!/bin/sh
+case "$FAKE_MODEL_SCENARIO" in restart-*) exec /bin/date "$@" ;; esac
 if [ "$#" -ne 1 ] || [ "$1" != '+%s' ]; then
 	printf 'invalid-date\n' >&3
 	exit 1
@@ -81,8 +107,19 @@ printf '%s\n' "$now"
 `)
 	fakeGo := filepath.Join(binDir, "go")
 	fakeSeq := filepath.Join(binDir, "seq")
+	fakeSleep := filepath.Join(binDir, "sleep")
+	restartBarrier := filepath.Join(tempDir, "restart-barrier")
+	require.NoError(t, exec.Command("mkfifo", restartBarrier).Run())
+	writeExecutable(t, fakeSleep, `#!/bin/sh
+if [ "$1" = "8" ]; then printf 'restarting\n' > "$FAKE_RESTART_BARRIER"; fi
+exec /bin/sleep "$@"
+`)
 	fakeServer := filepath.Join(tempDir, "fake-server")
 	fakeDriver := filepath.Join(tempDir, "fake-driver")
+	fakeLedgerctl := filepath.Join(tempDir, "fake-ledgerctl")
+	writeExecutable(t, fakeLedgerctl, `#!/bin/sh
+echo '{"leader":1,"nodes":[{"suffrage":"Voter"},{"suffrage":"Voter"},{"suffrage":"Voter"}]}'
+`)
 	writeExecutable(t, fakeGo, `#!/bin/sh
 out=
 previous=
@@ -93,6 +130,7 @@ done
 case "$out" in
 	*/ledger-server) cp "$FAKE_SERVER_BIN" "$out" ;;
 	*/model-driver) cp "$FAKE_DRIVER_BIN" "$out" ;;
+ */ledgerctl) cp "$FAKE_LEDGERCTL_BIN" "$out" ;;
 	*) echo "unexpected fake go invocation: $*" >&2; exit 1 ;;
 esac
 chmod +x "$out"
@@ -144,6 +182,15 @@ case "$FAKE_MODEL_SCENARIO" in
 		write_assertion '{"antithesis_assert":{"display_type":"Reachable","message":"singleton_driver_model: model outcome verified","condition":true,"hit":false}}'
 		stay_alive
 		;;
+	restart-early|restart-late|restart-failed)
+		write_assertion '{"antithesis_assert":{"display_type":"Reachable","message":"singleton_driver_model: model outcome verified","condition":true,"hit":true}}'
+		printf 'ready\n' >&3
+		# Synchronize with the outage, rather than racing the monitor's first poll.
+		read -r _ < "$FAKE_RESTART_BARRIER"
+		if [ "$FAKE_MODEL_SCENARIO" != restart-early ]; then sleep 6; fi
+		if [ "$FAKE_MODEL_SCENARIO" = restart-failed ]; then exit 7; fi
+		exit 0
+		;;
 	verified)
 		write_assertion '{"antithesis_assert":{"display_type":"Reachable","message":"singleton_driver_model: model outcome verified","condition":true,"hit":true}}'
 		stay_alive
@@ -159,9 +206,21 @@ esac
 	require.NoError(t, err)
 	runner := filepath.Join(packageDir, "run_model_test.sh")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, runner, "2")
+	args := []string{"2"}
+	if strings.HasPrefix(scenario, "restart-") {
+		args = []string{"--nodes", "3", "6"}
+	}
+	cmd := exec.CommandContext(ctx, runner, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 5 * time.Second
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+	}) // Kill any fixture descendants after the main shell exits.
 	cmd.Env = append(os.Environ(),
 		"NODES=1",
 		"RESTORE=0",
@@ -173,6 +232,10 @@ esac
 		"MODEL_HARNESS_REPO="+harnessDir,
 		"FAKE_SERVER_BIN="+fakeServer,
 		"FAKE_DRIVER_BIN="+fakeDriver,
+		"FAKE_LEDGERCTL_BIN="+fakeLedgerctl,
+		"RESTART_INTERVAL=1",
+		"DEAD_TIME=8",
+		"FAKE_RESTART_BARRIER="+restartBarrier,
 		"FAKE_MODEL_SCENARIO="+scenario,
 	)
 	combined, err, fixtureErr := runModelFixtureCommand(ctx, cmd, scenario)
@@ -245,12 +308,25 @@ func (clock *modelFixtureClock) event(event string) (string, error) {
 
 		return "", nil
 	case "driver-exit 0":
+		if strings.HasPrefix(clock.scenario, "restart-") {
+			clock.exiting = true
+
+			return "", nil
+		}
 		if clock.exiting || (clock.scenario != "early-exit" && !clock.expired) {
 			return "", errors.New("driver exited before the fixture deadline")
 		}
 		clock.exiting = true
 
 		return "", nil
+	case "driver-exit 7":
+		if strings.HasPrefix(clock.scenario, "restart-") {
+			clock.exiting = true
+
+			return "", nil
+		}
+
+		return "", fmt.Errorf("unexpected fixture event %q", event)
 	default:
 		return "", fmt.Errorf("unexpected fixture event %q", event)
 	}
@@ -338,7 +414,7 @@ func runModelFixtureCommand(ctx context.Context, cmd *exec.Cmd, scenario string)
 		if err := cmd.Cancel(); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			fixtureErr = errors.Join(fixtureErr, err)
 		}
-	} else if scenario != "early-exit" && !clock.expired {
+	} else if scenario != "early-exit" && !strings.HasPrefix(scenario, "restart-") && !clock.expired {
 		fixtureErr = errors.New("runner exited before driver readiness and the fixture deadline")
 	}
 	if !runnerDone {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -25,8 +26,8 @@ func TestCoverageMessages_OneSondePerWorkloadIndex(t *testing.T) {
 			"index %s is churned but has no coverage sonde", wi.canonical)
 	}
 
-	require.Len(t, msgs, len(workloadIndexes())+3,
-		"the two metadata sondes and the retype sonde, and nothing else")
+	require.Len(t, msgs, len(workloadIndexes())+3+len(applyCoverageMessages()),
+		"index, metadata, retype, and Apply sondes")
 }
 
 // Antithesis keys properties by message, so two sondes sharing a name collapse
@@ -152,7 +153,7 @@ func TestCoverageHits_NeedsAcceptedNonEmptyAndNeeded(t *testing.T) {
 		"no metadata leaf, no metadata-index claim")
 }
 
-// Every registered sonde must be decided on every call, or one could never be
+// Every registered query sonde must be decided on every query, or one could never be
 // evaluated false and Antithesis would get no gradient for it.
 func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
 	t.Parallel()
@@ -161,6 +162,9 @@ func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
 
 	hits := coverageHits(accounts, filterMetaExists("k1"), nil, true, 1, false)
 	for _, msg := range coverageMessages() {
+		if slices.Contains(applyCoverageMessages(), msg) {
+			continue // Apply sondes are evaluated by validated Apply outcomes.
+		}
 		if msg == coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS) {
 			continue // the other target's sonde is decided by its own queries
 		}

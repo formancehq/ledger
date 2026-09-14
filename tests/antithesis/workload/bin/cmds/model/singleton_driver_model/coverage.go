@@ -80,6 +80,7 @@ func coverageMessages() []string {
 		out = append(out, coverageIndexMessage(wi.canonical))
 	}
 
+	out = append(out, applyCoverageMessages()...)
 	return append(out,
 		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS),
 		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS),

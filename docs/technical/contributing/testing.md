@@ -449,13 +449,22 @@ restart. It catches:
   serialization, or a linearizable read returning state outside the candidate
   set.
 
-It exercises the chart of accounts, transactions and reverts (with post-commit
-volumes), account/transaction/ledger metadata, the typed-metadata schema and
+It exercises the chart of accounts, STRICT/AUDIT enforcement switches through
+both setter forms, transactions and reverts (with post-commit volumes),
+account/transaction/ledger metadata, the typed-metadata schema and
 its index lifecycle (create, retype with serving-window closure, remove), and
 the transient/ephemeral persistence classes — and reads them back: account,
 whole-ledger, transaction-by-id, and declared-schema reads, plus the filtered,
 paginated list surface (ListAccounts, ListTransactions, ListLogs, indexed
 metadata-range queries) are all validated against the model.
+
+The Apply workload also opts into each supported skippable reason: reference
+conflicts, already-reverted transactions, missing metadata, and account types
+that already exist or are absent. The oracle predicts per-order rollback,
+skipped-log reason/context and IDs, continuation, and whole-batch rollback after
+a later non-skippable failure. Invalid opt-ins must fail admission. Enforcement
+mode, chart, and ledger metadata readback must match the same model snapshot.
+Signing-key lifecycle and signed submissions remain outside this model driver.
 
 #### How it works
 
@@ -554,7 +563,10 @@ its condition to true and so never produces a failing evaluation for
 Antithesis to steer on. On the platform this gate is redundant: the run
 branches and biases toward unsatisfied sondes, so a reachable path is reached.
 Locally there is one linear trajectory and no guidance, which is what the gate
-covers. A full 300s three-node run satisfies all twelve.
+covers. Apply sondes additionally require each skipped reason followed by a successful
+order, both mode setters in both modes, and a rejected invalid skip opt-in. A
+selected request does not satisfy a sonde: the observed outcome must pass oracle
+validation. Coverage remains a required gate for local model runs.
 
 Sonde names are data-driven, so the instrumentor cannot catalogue them; they
 are registered through `assert.AssertRaw`, as `internal/block/block.go` does.
@@ -622,6 +634,12 @@ panic; don't downgrade it to a soft skip.
 The runtime mechanisms the model cross-checks against (audit hash chain,
 double-entry balance, the offline `store check`) are documented in
 [Log Integrity and Correctness](../../ops/correctness.md).
+
+The local model runner supervises the driver's exit independently of rolling
+restart recovery. An exit before the requested duration or a spontaneous nonzero
+exit fails the run. A clean watchdog exit after the requested duration is valid
+when an already-started restart is still recovering; recovery and model assertion
+checks must still pass.
 
 ## Best Practices
 

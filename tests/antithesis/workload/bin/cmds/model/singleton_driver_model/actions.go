@@ -109,6 +109,11 @@ func sourceAddress() string {
 // snapshot (a published GlobalState is never mutated — Apply forks first).
 func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 	picks := pickLedgers(ledgers)
+	if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) == 0 {
+		if bulk := generateSkippableBulk(picks[0], g.Ledger(picks[0])); len(bulk.Requests) > 0 {
+			return bulk
+		}
+	}
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
 	// make sense single-ledger. Gate them by the same back-pressure as
@@ -147,6 +152,10 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 		ledger := random.RandomChoice(picks)
 		ls := g.Ledger(ledger)
 
+		if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
+			requests = append(requests, generateEnforcementMode(ledger))
+			continue
+		}
 		if rollChartOp() {
 			if req := generateChartOp(ledger); req != nil {
 				requests = append(requests, req)

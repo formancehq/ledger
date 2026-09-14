@@ -172,13 +172,38 @@ func sequencesEqual(a, b []uint64) bool {
 // stay separate because crossCheckCommit needs a distinct assert callsite per
 // field (Antithesis catalogues by callsite) while a replay diverges as a whole.
 func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*commonpb.Log) bool {
+	if len(logs) != len(orders) || len(bulk.Requests) != len(orders) {
+		return false
+	}
 	for i, order := range orders {
 		if i >= len(logs) {
 			return false
 		}
 
 		req := bulk.Requests[i]
-		data := logs[i].GetPayload().GetApply().GetLog().GetData()
+		entry := logs[i].GetPayload().GetApply()
+		data := entry.GetLog().GetData()
+		if order.LogID != 0 && (entry.GetLedgerName() != oracle.LedgerOf(req) || entry.GetLog().GetId() != order.LogID) {
+			return false
+		}
+		if (order.Skipped != nil) != (data.GetOrderSkipped() != nil) {
+			return false
+		}
+		if order.Skipped != nil {
+			if !order.Skipped.EqualVT(data.GetOrderSkipped()) {
+				return false
+			}
+			continue
+		}
+		if mode := requestedEnforcementMode(req); mode != nil {
+			if data.GetUpdatedDefaultEnforcementMode() == nil || data.GetUpdatedDefaultEnforcementMode().GetEnforcementMode() != *mode {
+				return false
+			}
+		}
+
+		if !chartResponseMatches(req, data) {
+			return false
+		}
 
 		switch {
 		case order.Revert != nil:
@@ -243,4 +268,34 @@ func serverPCV(data *commonpb.LedgerLogPayload) *commonpb.PostCommitVolumes {
 	default:
 		return nil
 	}
+}
+
+// chartResponseMatches validates both chart request forms against their echoed
+// payloads, including normal outcomes of requests that opted into skipping.
+// Non-chart requests match by definition so callers can use it uniformly.
+func chartResponseMatches(req *servicepb.Request, data *commonpb.LedgerLogPayload) bool {
+	var added *commonpb.AccountType
+	var removed *string
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_AddAccountType:
+		added = r.AddAccountType.GetAccountType()
+	case *servicepb.Request_RemoveAccountType:
+		name := r.RemoveAccountType.GetName()
+		removed = &name
+	case *servicepb.Request_Apply:
+		switch action := r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_AddAccountType:
+			added = action.AddAccountType.GetAccountType()
+		case *servicepb.LedgerAction_RemoveAccountType:
+			name := action.RemoveAccountType.GetName()
+			removed = &name
+		}
+	}
+	if added != nil {
+		return data.GetAddedAccountType() != nil && added.EqualVT(data.GetAddedAccountType().GetAccountType())
+	}
+	if removed != nil {
+		return data.GetRemovedAccountType() != nil && data.GetRemovedAccountType().GetName() == *removed
+	}
+	return true
 }
