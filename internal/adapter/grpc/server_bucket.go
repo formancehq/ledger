@@ -309,16 +309,12 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 	checkpoint := req.GetCheckpointId() > 0
 	if checkpoint {
-		mainStore, readIdx, release, closeErr := impl.openCheckpointStores(ctx, req.GetCheckpointId())
+		mainStore, _, cleanup, closeErr := impl.openCheckpointStores(ctx, req.GetCheckpointId())
 		if closeErr != nil {
 			return nil, closeErr
 		}
 
-		defer func() {
-			_ = readIdx.Close()
-			_ = mainStore.Close()
-			release()
-		}()
+		defer cleanup()
 
 		tx, err = impl.localCtrl.GetTransactionFrom(ctx, mainStore, req.GetLedger(), req.GetTransactionId())
 		if err != nil {
@@ -334,8 +330,9 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 	return &servicepb.GetTransactionResponse{Transaction: tx}, nil
 }
 
-// openCheckpointStores opens the checkpoint's main store and read index in read-only mode.
-// The caller must close both stores when done.
+// openCheckpointStores opens the checkpoint's main store and read index in
+// read-only mode. The caller must invoke cleanup after its last access; cleanup
+// closes both stores before releasing their shared filesystem lease.
 func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, checkpointID uint64) (*dal.Store, *readstore.Store, func(), error) {
 	release, acquired := impl.store.AcquireQueryCheckpoint(checkpointID)
 	if !acquired {
@@ -393,8 +390,13 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 		return nil, nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
 	}
 	keepLease = true
+	cleanup := func() {
+		_ = readIdx.Close()
+		_ = mainStore.Close()
+		release()
+	}
 
-	return mainStore, readIdx, release, nil
+	return mainStore, readIdx, cleanup, nil
 }
 
 // resolveMissingMarker classifies a checkpoint read whose local .ready marker is
@@ -480,15 +482,9 @@ func (impl *BucketServiceServerImpl) readController(ctx context.Context, checkpo
 		return impl.ctrl, func() {}, nil
 	}
 
-	mainStore, readIdx, release, err := impl.openCheckpointStores(ctx, checkpointID)
+	mainStore, readIdx, cleanup, err := impl.openCheckpointStores(ctx, checkpointID)
 	if err != nil {
 		return nil, nil, err
-	}
-
-	cleanup := func() {
-		_ = readIdx.Close()
-		_ = mainStore.Close()
-		release()
 	}
 
 	return impl.localCtrl.WithStores(mainStore, readIdx), cleanup, nil
@@ -534,16 +530,12 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 	var c cursor.Cursor[*commonpb.Transaction]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
-		mainStore, readIdx, release, openErr := impl.openCheckpointStores(ctx, cpID)
+		mainStore, readIdx, cleanup, openErr := impl.openCheckpointStores(ctx, cpID)
 		if openErr != nil {
 			return openErr
 		}
 
-		defer func() {
-			_ = readIdx.Close()
-			_ = mainStore.Close()
-			release()
-		}()
+		defer cleanup()
 
 		profile.EnterExecute()
 		c, err = impl.localCtrl.ListTransactionsFrom(ctx, mainStore, readIdx, req.GetLedger(), fetchSize, afterTxID, opts.GetFilter(), opts.GetReverse())
@@ -901,16 +893,12 @@ func (impl *BucketServiceServerImpl) ListAuditEntries(req *servicepb.ListAuditEn
 	var c cursor.Cursor[*auditpb.AuditEntry]
 
 	if cpID := opts.GetRead().GetCheckpointId(); cpID > 0 {
-		mainStore, readIdx, release, openErr := impl.openCheckpointStores(ctx, cpID)
+		mainStore, readIdx, cleanup, openErr := impl.openCheckpointStores(ctx, cpID)
 		if openErr != nil {
 			return openErr
 		}
 
-		defer func() {
-			_ = readIdx.Close()
-			_ = mainStore.Close()
-			release()
-		}()
+		defer cleanup()
 
 		// Checkpoint publication certifies both the normal and audit projections
 		// at the checkpoint's fixed Raft horizon before writing .ready. The audit

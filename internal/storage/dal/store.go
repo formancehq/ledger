@@ -1030,12 +1030,12 @@ func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
 
 // QueryCheckpointReadIndexDir returns the path for the read index within a query checkpoint.
 func (s *Store) QueryCheckpointReadIndexDir(id uint64) string {
-	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "readindex")
+	return filepath.Join(s.queryCheckpointDir(id), "readindex")
 }
 
 // QueryCheckpointMainDir returns the path for the main store within a query checkpoint.
 func (s *Store) QueryCheckpointMainDir(id uint64) string {
-	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10), "main")
+	return filepath.Join(s.queryCheckpointDir(id), "main")
 }
 
 // cleanupTemporaryCheckpoints removes the entire tmp/ directory on startup.

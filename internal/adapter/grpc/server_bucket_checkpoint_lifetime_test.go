@@ -50,7 +50,7 @@ func TestOpenCheckpointStoresPinsFilesUntilRelease(t *testing.T) {
 	require.NoError(t, readstore.MarkCheckpointReady(readIndexDir))
 
 	server := &BucketServiceServerImpl{logger: logger, store: store}
-	mainCheckpoint, readCheckpoint, release, err := server.openCheckpointStores(t.Context(), checkpointID)
+	mainCheckpoint, readCheckpoint, cleanup, err := server.openCheckpointStores(t.Context(), checkpointID)
 	require.NoError(t, err)
 	require.NoError(t, store.DeleteQueryCheckpointFiles(checkpointID))
 
@@ -63,9 +63,7 @@ func TestOpenCheckpointStoresPinsFilesUntilRelease(t *testing.T) {
 	require.Equal(t, []byte("read-value"), readValue)
 	require.NoError(t, readCloser.Close())
 
-	require.NoError(t, readCheckpoint.Close())
-	require.NoError(t, mainCheckpoint.Close())
-	release()
+	cleanup()
 	_, err = os.Stat(filepath.Dir(store.QueryCheckpointMainDir(checkpointID)))
 	require.True(t, os.IsNotExist(err))
 }
