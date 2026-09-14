@@ -607,7 +607,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
 
 	// Already materialized on this replica (redundant call). Nothing to do.
-	if readstore.CheckpointDirReady(finalDir) {
+	if dal.CheckpointDirReady(finalDir) {
 		return nil
 	}
 
@@ -669,7 +669,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 
 	// fsync the fully-built temp directory before the rename so its content is
 	// durable independent of the rename.
-	if err = readstore.FsyncDir(tmpDir); err != nil {
+	if err = dal.FsyncDir(tmpDir); err != nil {
 		return fmt.Errorf("fsync temp checkpoint %d: %w", checkpointID, err)
 	}
 
@@ -679,7 +679,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 	}
 
 	// fsync the parent so the rename is durable before we vouch for it.
-	if err = readstore.FsyncDir(filepath.Dir(finalDir)); err != nil {
+	if err = dal.FsyncDir(filepath.Dir(finalDir)); err != nil {
 		return fmt.Errorf("fsync checkpoint %d parent: %w", checkpointID, err)
 	}
 

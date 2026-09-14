@@ -203,7 +203,7 @@ func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T
 	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), cursor, "the continuation must stop at its fixed native target")
-	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
 		"a checkpoint beyond the fixed target must remain untouched")
 
 	// The next call captures the newer target and can now materialize the
@@ -212,7 +212,7 @@ func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), cursor)
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
-	require.True(t, readstore.CheckpointDirReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 	frozen, err := readstore.OpenReadOnly(dir, noopLogger{})
 	require.NoError(t, err)
 	defer func() { _ = frozen.Close() }()
@@ -264,7 +264,7 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 		return err == nil && progress == horizon
 	}, 5*time.Second, 10*time.Millisecond,
 		"the normal projection must reach the checkpoint log before waiting for audit")
-	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
 		"the checkpoint must not be exposed while audit is behind")
 
 	auditBatch := b.readStore.NewBatch()
@@ -281,7 +281,7 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 	}
 
 	dir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
-	require.True(t, readstore.CheckpointDirReady(dir))
+	require.True(t, dal.CheckpointDirReady(dir))
 	frozen, err := readstore.OpenReadOnly(dir, noopLogger{})
 	require.NoError(t, err)
 	defer func() { _ = frozen.Close() }()
@@ -349,7 +349,7 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 		}
 	}, 100*time.Millisecond, 10*time.Millisecond,
 		"processLogs must not abandon a checkpoint while the audit projection rebuilds")
-	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
 		"a rebuilding audit projection must keep the checkpoint unmaterialized")
 
 	b.readStore.SetAuditProjectionState(false, false)
@@ -360,7 +360,7 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("processLogs did not resume after the audit projection became ready")
 	}
-	require.True(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 
 func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T) {
@@ -393,7 +393,7 @@ func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T)
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cursor)
-	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 
 func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBatch(t *testing.T) {
@@ -462,7 +462,7 @@ func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBat
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), cursor)
 	require.Zero(t, b.pendingCheckpointMaterialization.id)
-	require.True(t, readstore.CheckpointDirReady(finalDir))
+	require.True(t, dal.CheckpointDirReady(finalDir))
 	_, exists = b.historyStateFor(laterLedger)
 	require.True(t, exists)
 
@@ -514,7 +514,7 @@ func TestProcessLogsContinuesPastCheckpointWhenAuditFails(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), cursor,
 		"a failed audit projection must not park all subsequent normal projection progress")
-	require.False(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 
 func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
@@ -558,7 +558,7 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, checkpointHorizon, progress,
 		"the checkpoint log may certify its own horizon without certifying the later fixed target")
-	require.True(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 
 	cursor, err = b.processLogs(context.Background(), cursor, time.Unix(1, 0))
 	require.NoError(t, err)
@@ -611,7 +611,7 @@ func TestProcessLogsUsesRestoreProvenanceAfterNewRaftOvertakesSourceCheckpoint(t
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cursor,
 		"the restored checkpoint must not wait for new-cluster writes")
-	require.True(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
 
 	progress, err := b.readStore.ReadRaftProgress()
 	require.NoError(t, err)

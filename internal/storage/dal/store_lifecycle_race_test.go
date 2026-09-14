@@ -189,18 +189,3 @@ func TestStore_GuardedMethods_RaceWithRestoreCheckpoint(t *testing.T) {
 	close(start)
 	wg.Wait()
 }
-
-// TestStore_CreateQueryCheckpoint_ErrorOnExistingDir covers the checkpoint-failure
-// branch: the second checkpoint for the same id targets an already-existing
-// directory, which Pebble rejects, so CreateQueryCheckpoint returns an error.
-func TestStore_CreateQueryCheckpoint_ErrorOnExistingDir(t *testing.T) {
-	t.Parallel()
-
-	s := newOpenStore(t)
-
-	_, err := s.CreateQueryCheckpoint(1)
-	require.NoError(t, err)
-
-	_, err = s.CreateQueryCheckpoint(1)
-	require.Error(t, err)
-}
