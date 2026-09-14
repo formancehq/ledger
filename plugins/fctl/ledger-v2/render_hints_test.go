@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"math/big"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -94,6 +95,42 @@ func TestRenderHintsPartitionTheWholeCatalogue(t *testing.T) {
 	}
 	if got := len(renderOracle) + len(renderAbsent); got != 22 {
 		t.Fatalf("render classification covers %d commands, want 22", got)
+	}
+}
+
+// The manifest carries the split as a machine-checked invariant, so a
+// descriptor that grows or loses a hint fails here rather than leaving the
+// manifest quietly stale.
+func TestManifestRecordsTheRenderHintCount(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile("manifest.json")
+	if err != nil {
+		t.Fatalf("read manifest.json: %v", err)
+	}
+	var manifest struct {
+		CoverageDenominator  int      `json:"coverage_denominator"`
+		RenderHintedCommands int      `json:"render_hinted_commands"`
+		Invariants           []string `json:"invariants"`
+	}
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		t.Fatalf("decode manifest.json: %v", err)
+	}
+
+	hinted := 0
+	for _, command := range Commands() {
+		if command.Render.Table != nil {
+			hinted++
+		}
+	}
+	if hinted != manifest.RenderHintedCommands {
+		t.Errorf("catalogue declares %d render hints, manifest records %d", hinted, manifest.RenderHintedCommands)
+	}
+	if manifest.CoverageDenominator != len(Commands()) {
+		t.Errorf("manifest denominator = %d, catalogue = %d", manifest.CoverageDenominator, len(Commands()))
+	}
+	if !slices.Contains(manifest.Invariants, "publishes a table render hint only where the emitted result proves the field exists") {
+		t.Error("manifest does not record the render-hint invariant")
 	}
 }
 

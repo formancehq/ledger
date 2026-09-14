@@ -36,7 +36,8 @@
     "publishes no command that binds a Ledger.V1 operation",
     "excludes ledger server-infos as a host-owned info probe, not as a missing equivalent",
     "shares no catalogue entry or manifest field with ledger-v3",
-    "does not resolve endpoint, auth, or target"
+    "does not resolve endpoint, auth, or target",
+    "publishes a table render hint only where the emitted result proves the field exists"
   ],
   "kind": "logical-plugin-manifest",
   "module": "ledger",
@@ -45,6 +46,7 @@
   "product_majors": [
     2
   ],
+  "render_hinted_commands": 12,
   "runtime_artifact": null,
   "runtime_artifact_note": "The source defines one deterministic portable component at dist/ledger-v2/ledger-v2.wasm and regular-file browser inputs under dist/ledger-v2/browser-input; build outputs remain untracked and require release-time dual-host acceptance.",
   "schema_version": 1,
