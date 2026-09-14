@@ -157,6 +157,14 @@ when the projection certificate is ahead of the main horizon: candidate-level
 trimming cannot detect a ledger whose entire projected universe was erased
 between the two snapshot acquisitions.
 
+Ledger v3 is unreleased and deployments rebuild the read-index store when the
+`release/v3.0` state is wiped. A read-index store or query checkpoint produced
+by an earlier v3 development revision is not a supported input to this
+lifecycle contract; it must not be migrated, backfilled, or accepted through a
+missing-record fallback. Replaying the current revision from sequence zero
+publishes the lifecycle record with every `CreateLedger` before the projection
+is served.
+
 Audit follows the same rule independently. Unfiltered audit reads and filters
 made only of audit `sequence` bounds scan the authoritative main snapshot and
 do not wait for the audit projection. Other supported audit filters wait for
