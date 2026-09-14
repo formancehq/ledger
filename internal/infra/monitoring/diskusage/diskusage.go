@@ -21,20 +21,27 @@ func toInt64[T ~int32 | ~uint32 | ~int64 | ~uint64](v T) int64 {
 
 // VolumeUsage holds the used and total bytes of a filesystem volume.
 type VolumeUsage struct {
-	usedBytes  atomic.Int64
-	totalBytes atomic.Int64
+	sample atomic.Pointer[volumeSample]
+}
+
+type volumeSample struct {
+	usedBytes  int64
+	totalBytes int64
 }
 
 func (v *VolumeUsage) store(used, total int64) {
-	v.usedBytes.Store(used)
-	v.totalBytes.Store(total)
+	v.sample.Store(&volumeSample{usedBytes: used, totalBytes: total})
 }
 
-// UsedBytes returns the last computed used bytes on the filesystem.
-func (v *VolumeUsage) UsedBytes() int64 { return v.usedBytes.Load() }
+// Load returns the last computed filesystem usage as one coherent sample.
+func (v *VolumeUsage) Load() (used, total int64) {
+	sample := v.sample.Load()
+	if sample == nil {
+		return 0, 0
+	}
 
-// TotalBytes returns the total capacity of the filesystem in bytes.
-func (v *VolumeUsage) TotalBytes() int64 { return v.totalBytes.Load() }
+	return sample.usedBytes, sample.totalBytes
+}
 
 var volumeKey = attribute.Key("volume")
 
@@ -133,9 +140,11 @@ func (c *Collector) registerMetrics() (metric.Registration, error) {
 
 	return c.meter.RegisterCallback(
 		func(_ context.Context, o metric.Observer) error {
-			o.ObserveInt64(volumeGauge, c.WALVolume.UsedBytes(),
+			walUsed, _ := c.WALVolume.Load()
+			dataUsed, _ := c.DataVolume.Load()
+			o.ObserveInt64(volumeGauge, walUsed,
 				metric.WithAttributes(volumeKey.String("wal")))
-			o.ObserveInt64(volumeGauge, c.DataVolume.UsedBytes(),
+			o.ObserveInt64(volumeGauge, dataUsed,
 				metric.WithAttributes(volumeKey.String("data")))
 
 			return nil

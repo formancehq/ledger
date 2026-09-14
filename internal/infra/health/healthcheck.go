@@ -175,10 +175,12 @@ func (hc *HealthChecker) check(stop <-chan struct{}) {
 	var samples []VolumeSample
 	skewExceeded := false
 
-	localWalUsed := uint64(hc.collector.WALVolume.UsedBytes())
-	localWalTotal := uint64(hc.collector.WALVolume.TotalBytes())
-	localDataUsed := uint64(hc.collector.DataVolume.UsedBytes())
-	localDataTotal := uint64(hc.collector.DataVolume.TotalBytes())
+	localWalUsedBytes, localWalTotalBytes := hc.collector.WALVolume.Load()
+	localDataUsedBytes, localDataTotalBytes := hc.collector.DataVolume.Load()
+	localWalUsed := uint64(localWalUsedBytes)
+	localWalTotal := uint64(localWalTotalBytes)
+	localDataUsed := uint64(localDataUsedBytes)
+	localDataTotal := uint64(localDataTotalBytes)
 
 	hc.logIfAtBlock(hc.node.GetNodeID(), localWalUsed, localWalTotal, localDataUsed, localDataTotal)
 

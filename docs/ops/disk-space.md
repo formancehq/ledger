@@ -51,7 +51,9 @@ Each node runs a `diskusage.Collector` that periodically samples the disk usage 
 - **WAL volume**: The Raft write-ahead log directory
 - **Data volume**: The application data directory (Pebble storage)
 
-The collector exposes both used bytes and total bytes for each volume, enabling percentage-based threshold checks.
+The collector publishes used bytes and total capacity together as one coherent
+sample for each volume. Health checks and peer RPCs therefore cannot combine
+values from different collection cycles while a filesystem capacity changes.
 
 ### Admission Gate (`internal/application/admission/`)
 
