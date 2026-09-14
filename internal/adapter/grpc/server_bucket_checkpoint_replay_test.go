@@ -55,6 +55,8 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 			)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
+			ctx, err := internalauth.EvaluateGRPCCredentials(ctx, internalauth.AuthConfig{})
+			require.NoError(t, err)
 			observed := &checkpointWaitObservedContext{Context: ctx, observed: make(chan struct{})}
 			originalDone := make(chan error, 1)
 			request := func() *servicepb.ApplyRequest {
@@ -69,7 +71,7 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 			serving := leader
 			if forwarded {
 				follower, _ := newCheckpointWaitHarness(t)
-				follower.ctrl = NewLedgerGrpcClient(dialBucketServer(t, checkpointAuthenticatedPeer{leader}))
+				follower.ctrl = NewLedgerGrpcClient(dialBucketServer(t, checkpointAuthenticatedPeer{leader}), true)
 				serving = follower
 			}
 			response, err := serving.Apply(ctx, request())

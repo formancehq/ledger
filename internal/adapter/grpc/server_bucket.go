@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -225,6 +226,10 @@ func (impl *BucketServiceServerImpl) queryCheckpointDeleted(id uint64) (deleted 
 func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) (context.Context, error) {
 	fc := req.GetForwardedCallerSnapshot()
 	if fc == nil {
+		if internalauth.IsClusterInternal(ctx) {
+			return ctx, status.Error(codes.Internal, "trusted follower omitted caller attribution")
+		}
+
 		return ctx, nil
 	}
 
@@ -236,7 +241,12 @@ func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context
 			"forwarded caller snapshot on a non-cluster-internal connection")
 	}
 
-	return internalauth.WithForwardedSnapshot(ctx, fc), nil
+	capability, err := attribution.New(fc)
+	if err != nil {
+		return ctx, status.Error(codes.Internal, err.Error())
+	}
+
+	return internalauth.WithForwardedAttribution(ctx, capability), nil
 }
 
 func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {

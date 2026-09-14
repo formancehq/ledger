@@ -137,7 +137,7 @@ func TestExecutableReferenceVersionSelector_SkippedOrder(t *testing.T) {
 			admission, _ := createTestAdmissionWithReader(t, store, nil)
 			writeReference(t, admission, testLedgerName, "dup-ref", 1)
 
-			_, err := admission.Admit(context.Background(), servicepb.UnsignedApplyRequest("",
+			_, err := admission.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("",
 				skippableRefRequest(testLedgerName, "dup-ref", "pay", version)))
 
 			var invalid *domain.ErrNumscriptInvalidVersion
@@ -153,7 +153,7 @@ func TestExecutableReferenceVersionSelector_SkippedOrder(t *testing.T) {
 
 			// The first entry claims the reference, so the second is predicted
 			// to skip on the intra-batch conflict with nothing persisted.
-			_, err := admission.Admit(context.Background(), servicepb.UnsignedApplyRequest("",
+			_, err := admission.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("",
 				postingsRequest(testLedgerName, "r1"),
 				skippableRefRequest(testLedgerName, "r1", "pay", version)))
 

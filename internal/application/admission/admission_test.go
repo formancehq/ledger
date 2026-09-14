@@ -13,6 +13,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -22,6 +23,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -124,6 +126,10 @@ func createTestAdmission(t *testing.T, store *dal.Store) (*Admission, *attribute
 		numscript.NewNumscriptCache(0),
 		func(context.Context) error { return nil },
 	), attrs
+}
+
+func attributedTestContext(ctx context.Context) context.Context {
+	return internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy)
 }
 
 func TestExtractNeededVolumes(t *testing.T) {

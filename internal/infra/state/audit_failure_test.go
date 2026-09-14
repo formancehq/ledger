@@ -646,6 +646,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"reason": "coverage bit 9 past the attribute slice"},
 		},
 		{
+			name:        "InvalidCallerAttribution",
+			err:         &domain.ErrInvalidCallerAttribution{Detail: "missing principal"},
+			wantReason:  domain.ErrReasonInvalidCallerAttribution,
+			wantContext: map[string]string{"detail": "missing principal"},
+		},
+		{
 			name:        "ExecutionPlanTooLarge",
 			err:         &domain.ErrExecutionPlanTooLarge{Size: 4096, Limit: 1024},
 			wantReason:  domain.ErrReasonExecutionPlanTooLarge,
