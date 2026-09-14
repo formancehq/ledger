@@ -605,12 +605,12 @@ var _ = Describe("UserConfigurableIndexes", Ordered, func() {
 	})
 
 	// ========================================================================
-	// Initial index declared atomically with CreateLedger (EN-1564):
-	// an index created in the same batch as the ledger, before any data log,
-	// is stamped CreatedIndexLog.initial and promoted straight to live by the
-	// indexbuilder (current_version > 0, no backfill cursor). Contrast with the
-	// "Reference index lifecycle" context above, where an index added after the
-	// ledger already holds transactions goes through a backfill pass.
+	// Index created while the durable ledger history is EMPTY (EN-1771):
+	// this same-Apply example is promoted straight to live by the indexbuilder
+	// (current_version > 0, no backfill cursor). The same result holds across
+	// proposal boundaries until a HISTORY payload appears. Contrast with the
+	// "Reference index lifecycle" context above, where the ledger already holds
+	// transactions and therefore goes through a backfill pass.
 	// ========================================================================
 	Context("Initial index on an empty ledger", Ordered, func() {
 		const ledgerName = "idx-initial"

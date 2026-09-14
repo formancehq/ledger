@@ -41,12 +41,13 @@ metadata-only event does not rescan entity existence.
 
 On `Start()`, the builder runs a boot prologue (`bootInit`) that rebuilds the in-memory index-config cache and seeds the progress cursors as a single **retryable unit**:
 
-1. Rebuilds the index-config cache (`initIndexConfig`): reads all `IndexVersionState` rows under `SubInternalIndexVersion`, seeds a per-ledger config from the active ledgers, and loads the `SubAttrIndex` registry. A registry entry with `CurrentVersion == 0` resumes only its historical-log backfill, even when a retype already bumped its pending version; a served entry with both current and pending versions resumes its reverse-map schema rewrite. `initIndexConfig` resets its own builder-local state at entry, so re-running it on retry is idempotent (no double-scheduled tasks).
-2. Reads the persisted progress cursors (main + AppliedProposal) and the last-known Pebble sequence — see [Progress Cursors](#progress-cursors).
+1. Pins one read-store snapshot and reads the main progress cursor together with every durable per-ledger `EMPTY`/`NON_EMPTY` history byte (`SubInternalLedgerHistory`).
+2. Rebuilds the index-config cache (`initIndexConfig`): reads `IndexVersionState`, seeds active ledgers, and loads the `SubAttrIndex` registry. Current versions are live; pending versions resume historical backfills; a registry row with neither stays unresolved until replay reaches its `CreatedIndexLog` and can consult the tracker. A served entry with both current and pending resumes its reverse-map schema rewrite. Init resets its builder-local state, so retry cannot duplicate tasks.
+3. Reads AppliedProposal progress and the last-known Pebble sequence — see [Progress Cursors](#progress-cursors).
 
-`bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. The config rebuild, `LastIndexedSequence`, and the Pebble read-handle open are fatal (retried); the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init. A boot *read* failure is thus treated as transient and retried, rather than the non-recoverable panic path noted above — which remains reserved for invariant violations during processing.
+`bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. Durable tracker corruption and history/config invariant violations are terminal instead: the retry loop stops, the read projection is marked failed, gRPC health becomes `NOT_SERVING`, and projection waiters return `ErrReadProjectionFailed`. The config rebuild, `LastIndexedSequence`, and the Pebble read-handle open otherwise remain retryable; the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init.
 
-Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping locally unbuilt indexes from the dispatch set so partially built keyspaces do not receive ordinary live writes before backfill resumes.
+Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping locally unbuilt indexes from the dispatch set so partially built keyspaces do not receive ordinary live writes before backfill resumes. At the first clean EOF it validates that every registry row was resolved and every active ledger has a coherent history byte.
 
 ## `processLogs` — Two-Pass Commit
 
@@ -88,14 +89,19 @@ flowchart TB
   no-op, progress-only, range-delete-only and switch-only batches therefore do
   not publish event work that was not committed.
 
-A retype mutates its pending-version cache and task cursor optimistically so
-later logs in the same fold batch see the new version and reset. Those specific
-in-memory mutations are added lazily to a rollback journal; a successful
-Pebble commit discards the journal, while any handler, progress-write, or
-commit failure restores the pre-retype state before the builder loop can run
-background work. The durable batch is cancelled in that case, so the residual
-state remains the old pending version paired with its old cursor and the next
-fold retries the retype from the same coherent state.
+The tracker, index config, version cache, and task lists mutate optimistically so
+later logs in the same fold see one coherent state. Their durable tracker,
+`IndexVersionState`, task cursor, and main-progress writes share that fold's
+Pebble batch. An undo journal is discarded only after commit; any handler,
+progress-write, or commit failure restores all builder-local mutations and the
+cancelled batch leaves durable state at the prior cursor. The next fold retries
+the exact log range.
+
+### Ledger-history classification and late indexes
+
+The generated `LedgerLogCategoryOf` table classifies every ledger-local payload. `CreateLedger` writes `EMPTY`; the first `HISTORY` payload writes `NON_EMPTY`; CONTROL payloads do not change it; and `DeleteLedger` removes the incarnation's tracker and local config/version/tasks. Unknown payload classes, duplicate creates without a delete, missing tracker state, and unknown persisted state bytes fail loudly.
+
+At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pending = 0`) with no task or cursor. `NON_EMPTY` follows the normal backfill path. The decision therefore survives arbitrary proposal boundaries and restart. For `log_date`, which indexes CONTROL too, the live fold pre-populates date rows while `EMPTY`; the first HISTORY deletes those speculative rows if the date index is not active. If the incarnation stays `EMPTY` and never declares `log_date`, the speculative rows remain by design so a later direct promotion can include every earlier CONTROL log; they are bounded by that incarnation's CONTROL-log count and disappear on first HISTORY or deletion.
 
 ## Handlers
 
@@ -178,6 +184,7 @@ Internal sub-prefixes (`0xFE` + 1 B):
 | `0x02` | Last-indexed AppliedProposal sequence | `AppliedProposalProgressKey` |
 | `0x03` | Backfill cursors (per index) | `BackfillCursorKey` |
 | `0x04` | Per-replica `IndexVersionState` (per index) | `IndexVersionStateKey` |
+| `0x09` | Per-ledger `EMPTY`/`NON_EMPTY` history tracker | `LedgerHistoryStateKey` |
 
 ### The versioned metadata-index key
 
@@ -263,7 +270,9 @@ Two distinct backfill paths share the same atomic-switch primitive:
 | Index backfill | `CreateIndex` for a new index, or a fresh replica catching up | A log-sequence cursor (replay history from 0 to head). |
 | Schema rewrite | `SetMetadataFieldType` for an existing index | A reverse-map cursor (iterate live entities, re-encode under the new type tag). |
 
-**Index backfill** (a non-initial `CreateIndex`, or any `CreateIndex` for the log-date builtin — it covers every log of the ledger, so even a born-empty ledger has configuration logs to replay): the builder allocates `pending = HighWater + 1`, keeps `Current = 0`, and queries return `ErrIndexBuilding` until the switch — there is no served `v_current` yet. `effectiveCurrentVersion` maps `0 → pending` for live writes, so the dual-write call site degenerates to a single write in the pending version, which is also where the backfill replays history. No real dual-write occurs.
+**Index backfill** (a `CreateIndex` on a `NON_EMPTY` ledger): the builder allocates `pending = HighWater + 1`, keeps `Current = 0`, and queries return `ErrIndexBuilding` until the switch — there is no served `v_current` yet. `effectiveCurrentVersion` maps `0 → pending` for live writes, so the dual-write call site degenerates to a single write in the pending version, which is also where the backfill replays history. No real dual-write occurs.
+
+Both generic and posting/address backfills still scan the global log from their persisted cursor and filter foreign ledgers after reading each entry. EN-1771 removes that cost entirely for `EMPTY` ledgers; genuine late indexes on `NON_EMPTY` ledgers retain `O(global log entries traversed)` decompression/read cost per index, per replica. Redesigning log locality is outside this mechanism.
 
 **Schema rewrite** (`SetMetadataFieldType` on an already-built index): the builder preserves `Current = N` and allocates `Pending = max(Current, Pending, HighWater) + 1`. In steady state that is `N+1`; repeated retypes keep climbing rather than reusing an abandoned version. Queries continue to serve `v_current = N` while live writes are dual-written to both keyspaces (see [Dual-write while a rewrite is in flight](#dual-write-while-a-rewrite-is-in-flight)), and the rewrite scan re-encodes pre-existing rows into `v_pending`.
 

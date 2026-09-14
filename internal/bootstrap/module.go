@@ -637,7 +637,7 @@ func Module() fx.Option {
 					servicePool,
 				), defaultCtrl
 			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
-			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store) *clusterhealth.GRPCHealthUpdater {
+			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store, rs *readstore.Store) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)
 
@@ -647,7 +647,7 @@ func Module() fx.Option {
 					return err == nil && policy.GetRevision() > 0
 				}
 
-				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady)
+				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
 			func(admission ctrl.Admission, store *dal.Store, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
 				return NewClusterPolicyReconciler(func(ctx context.Context) {

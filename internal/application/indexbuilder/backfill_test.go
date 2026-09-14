@@ -1506,7 +1506,7 @@ func assertReadStoreMissing(t *testing.T, b *Builder, key []byte) {
 	require.True(t, errors.Is(err, pebble.ErrNotFound), "expected key %x to be missing, got %v", key, err)
 }
 
-func TestIsDataLog(t *testing.T) {
+func TestIsHistoryLog(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -1660,7 +1660,7 @@ func TestIsDataLog(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tc.expected, isDataLog(tc.log))
+			assert.Equal(t, tc.expected, isHistoryLog(tc.log))
 		})
 	}
 }
@@ -2108,6 +2108,7 @@ func TestAccountAssetBackfillLifecycle(t *testing.T) {
 	require.Equal(t, uint64(3), globalCursor)
 
 	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	// CreateIndex: registers the index, seeds {current:0, pending:1}, schedules
 	// the backfill task. Wrap in an active batch so the IndexVersionState
@@ -2197,6 +2198,7 @@ func TestAccountAssetBackfillWipesDeletedLedgerGeneration(t *testing.T) {
 	require.Equal(t, uint64(3), globalCursor)
 
 	canonical := indexes.Canonical(indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET))
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	// CreateIndex schedules the backfill (current=0, pending=1).
 	batch := b.readStore.NewBatch()
@@ -2338,6 +2340,7 @@ func TestAccountAssetBackfillDoesNotWipeUnrelatedLedger(t *testing.T) {
 // its backfill to catch up to globalCursor, leaving the index READY.
 func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCursor uint64) {
 	t.Helper()
+	seedCachedLedgerHistory(b, ledger, ledgerHistoryNonEmpty)
 
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
@@ -2454,6 +2457,7 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	require.Equal(t, uint64(2), globalCursor)
 
 	// CreateIndex on (ACCOUNT, metaKey) in taskLedger only.
+	seedCachedLedgerHistory(b, taskLedger, ledgerHistoryNonEmpty)
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(1)
@@ -2484,4 +2488,61 @@ func TestMetadataBackfillSkipsForeignLedgerLogs(t *testing.T) {
 	// anything, so any row here is an orphan.
 	foreignRmap := testReverseMapNamespacePrefix(dal.NewKeyBuilder(), foreignLedger, readstore.NamespaceAccount)
 	assert.Zero(t, countKeysWithPrefix(t, b.readStore, foreignRmap), "foreign ledger must have no rmap rows")
+}
+
+func TestPurgeBackfillTaskGenerationRejectsInvalidTasks(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		task *backfillTask
+		want string
+	}{
+		{name: "nil task", want: "without an active task batch"},
+		{
+			name: "unsupported transaction builtin",
+			task: &backfillTask{ledger: "ledger", index: indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex(99))},
+			want: "unsupported transaction backfill index",
+		},
+		{
+			name: "unsupported account builtin",
+			task: &backfillTask{ledger: "ledger", index: indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex(99))},
+			want: "unsupported account backfill index",
+		},
+		{
+			name: "unsupported log builtin",
+			task: &backfillTask{ledger: "ledger", index: indexes.LogBuiltinID(commonpb.LogBuiltinIndex(99))},
+			want: "unsupported log backfill index",
+		},
+		{
+			name: "nil metadata index",
+			task: &backfillTask{ledger: "ledger", index: &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{}}},
+			want: "nil metadata backfill index",
+		},
+		{
+			name: "unsupported metadata target",
+			task: &backfillTask{ledger: "ledger", index: indexes.MetadataID(commonpb.TargetType(99), "key")},
+			want: "unsupported metadata backfill target",
+		},
+		{
+			name: "unsupported kind",
+			task: &backfillTask{ledger: "ledger", index: &commonpb.IndexID{}},
+			want: "unsupported backfill index kind",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			b := newTestBuilderWithStore(t)
+			batch := b.readStore.NewBatch()
+			b.initFoldBatch(batch)
+			err := b.purgeBackfillTaskGeneration(test.task)
+			require.ErrorContains(t, err, test.want)
+			require.NoError(t, batch.Cancel())
+			b.wb.Reset()
+			b.rollbackFoldBatch()
+		})
+	}
 }

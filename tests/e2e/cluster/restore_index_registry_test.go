@@ -47,9 +47,10 @@ import (
 // and by a clean CheckStore pass.
 var _ = Describe("Restore index registry", Ordered, func() {
 	const (
-		ledgerName = "idxreg-ledger"
-		s3Bucket   = "restore-index-registry"
-		clusterID  = "idxreg-cluster"
+		ledgerName  = "idxreg-ledger"
+		emptyLedger = "idxreg-empty-ledger"
+		s3Bucket    = "restore-index-registry"
+		clusterID   = "idxreg-cluster"
 
 		// retypedKey's index is seeded before the checkpoint and version-bumped
 		// by the delta; removedKey's index is seeded before the checkpoint and
@@ -58,6 +59,13 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		retypedKey = "k0"
 		removedKey = "k1"
 		deltaKey   = "k2"
+
+		// historyKey is populated before the checkpoint and indexed in the
+		// delta, so its index must take the NON_EMPTY backfill path. emptyKey
+		// is indexed while emptyLedger still has only CONTROL logs, so it must
+		// take the EMPTY fast path and then receive later writes live.
+		historyKey = "history"
+		emptyKey   = "live"
 	)
 
 	// One logical node stops and returns across the three phases, so every
@@ -73,7 +81,8 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 		// sourceRows carries the source node's complete registry rows (keyed
 		// by metadata field key) from Phase 1 into the Phase 3 comparison.
-		sourceRows map[string]*commonpb.Index
+		sourceRows     map[string]*commonpb.Index
+		sourceVersions map[string]uint32
 	)
 
 	metaIndexID := func(key string) *commonpb.IndexID {
@@ -89,13 +98,13 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 	// registryRow returns the (ACCOUNT, key) metadata index row from the
 	// ledger's registry, or nil when absent.
-	registryRow := func(client servicepb.BucketServiceClient, key string) *commonpb.Index {
-		st, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledgerName})
+	registryRow := func(client servicepb.BucketServiceClient, ledger, key string) *commonpb.Index {
+		st, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
 		Expect(err).To(Succeed(), "GetIndexStatus")
 
 		for _, e := range st.GetIndexes() {
 			meta := e.GetIndex().GetId().GetMetadata()
-			if meta.GetTarget() == commonpb.TargetType_TARGET_TYPE_ACCOUNT && meta.GetKey() == key {
+			if e.GetLedger() == ledger && meta.GetTarget() == commonpb.TargetType_TARGET_TYPE_ACCOUNT && meta.GetKey() == key {
 				return e.GetIndex()
 			}
 		}
@@ -199,8 +208,12 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		It("seeds registry rows and checkpoints them", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
+				actions.CreateLedgerAction(emptyLedger, nil),
 				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_INT64),
 				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey, commonpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey, commonpb.MetadataType_METADATA_TYPE_STRING),
+				actions.SetMetadataFieldTypeAction(emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey, commonpb.MetadataType_METADATA_TYPE_STRING),
+				actions.SaveAccountMetadataAction(ledgerName, "historical", map[string]string{historyKey: "before-checkpoint"}),
 				&servicepb.Request{
 					Type: &servicepb.Request_CreateIndex{
 						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(retypedKey)},
@@ -239,6 +252,23 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			))
 			Expect(err).To(Succeed())
 
+			// Both indexes are created in the exported delta. ledgerName already
+			// contains the pre-checkpoint metadata write, so historyKey must
+			// backfill it. emptyLedger has no HISTORY log yet, so emptyKey becomes
+			// live without a backfill and must index the following write normally.
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.CreateAccountMetadataIndexAction(ledgerName, historyKey),
+				actions.CreateAccountMetadataIndexAction(emptyLedger, emptyKey),
+			))
+			Expect(err).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
+
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+				actions.SaveAccountMetadataAction(emptyLedger, "first-live", map[string]string{emptyKey: "after-index"}),
+			))
+			Expect(err).To(Succeed())
+
 			// Cascade-delete a checkpoint row; the live side must report the
 			// drop (the model finding's premise).
 			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
@@ -258,14 +288,14 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 		It("audits rejected duplicate creations in the delta without resetting registry rows", func() {
 			for _, key := range []string{retypedKey, deltaKey} {
-				before := registryRow(client, key)
+				before := registryRow(client, ledgerName, key)
 				Expect(before).NotTo(BeNil())
 				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-duplicate-"+key,
 					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
 				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
 				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_ALREADY_EXISTS"))
-				Expect(proto.Equal(registryRow(client, key), before)).To(BeTrue())
+				Expect(proto.Equal(registryRow(client, ledgerName, key), before)).To(BeTrue())
 			}
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
@@ -279,9 +309,17 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(incResp.GetAuditEntriesExported()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
 
 			sourceRows = map[string]*commonpb.Index{
-				retypedKey: registryRow(client, retypedKey),
-				removedKey: registryRow(client, removedKey),
-				deltaKey:   registryRow(client, deltaKey),
+				retypedKey: registryRow(client, ledgerName, retypedKey),
+				removedKey: registryRow(client, ledgerName, removedKey),
+				deltaKey:   registryRow(client, ledgerName, deltaKey),
+			}
+			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
+			Expect(err).To(Succeed())
+			emptyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)
+			Expect(err).To(Succeed())
+			sourceVersions = map[string]uint32{
+				historyKey: historyVersion,
+				emptyKey:   emptyVersion,
 			}
 
 			// Source premises: the comparison below is only meaningful if the
@@ -394,7 +432,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			// creation date must all survive the checkpoint+delta composition.
 			expectSameRow := func(key string) {
 				source := sourceRows[key]
-				restored := registryRow(client, key)
+				restored := registryRow(client, ledgerName, key)
 				Expect(restored).ToNot(BeNil(), "row for %q missing after restore", key)
 				Expect(restored.GetId().GetMetadata().GetKey()).To(Equal(source.GetId().GetMetadata().GetKey()))
 				Expect(restored.GetId().GetMetadata().GetTarget()).To(Equal(source.GetId().GetMetadata().GetTarget()))
@@ -406,7 +444,33 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			expectSameRow(retypedKey)
 			expectSameRow(deltaKey)
 
-			Expect(registryRow(client, removedKey)).To(BeNil(), "the cascade-deleted checkpoint row must not resurrect")
+			Expect(registryRow(client, ledgerName, removedKey)).To(BeNil(), "the cascade-deleted checkpoint row must not resurrect")
+		})
+
+		It("reconstructs EMPTY and NON_EMPTY index readiness from checkpoint plus delta", func() {
+			// The restored node owns a fresh readstore. Replaying the checkpoint
+			// prefix plus exported delta must reproduce the source's history fold:
+			// historyKey backfills a pre-checkpoint row, while emptyKey is promoted
+			// on an empty ledger and indexes the later delta write live.
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
+
+			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
+			Expect(err).To(Succeed())
+			Expect(historyVersion).To(Equal(sourceVersions[historyKey]))
+			emptyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)
+			Expect(err).To(Succeed())
+			Expect(emptyVersion).To(Equal(sourceVersions[emptyKey]))
+
+			historical, err := actions.ListAccountsFiltered(ctx, client, ledgerName, 0, "", actions.StringMetadataFilter(historyKey, "before-checkpoint"))
+			Expect(err).To(Succeed())
+			Expect(historical).To(HaveLen(1))
+			Expect(historical[0].GetAddress()).To(Equal("historical"), "the restored NON_EMPTY index must contain its pre-index row")
+
+			live, err := actions.ListAccountsFiltered(ctx, client, emptyLedger, 0, "", actions.StringMetadataFilter(emptyKey, "after-index"))
+			Expect(err).To(Succeed())
+			Expect(live).To(HaveLen(1))
+			Expect(live[0].GetAddress()).To(Equal("first-live"), "the restored EMPTY fast-path index must contain later live writes")
 		})
 
 		It("passes CheckStore on the restored store", func() {
@@ -436,7 +500,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
 				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
 				Expect(actions.ExtractGRPCErrorInfo(err).Reason).To(Equal("INDEX_ALREADY_EXISTS"))
-				Expect(proto.Equal(registryRow(client, key), sourceRows[key])).To(BeTrue())
+				Expect(proto.Equal(registryRow(client, ledgerName, key), sourceRows[key])).To(BeTrue())
 			}
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())

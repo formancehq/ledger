@@ -24,6 +24,10 @@ import (
 // It uses the same tunables as the primary store (pebblecfg.Config).
 type Config = pebblecfg.Config
 
+// ErrReadProjectionFailed reports that the normal read projection stopped on
+// a terminal local invariant failure and can no longer certify new horizons.
+var ErrReadProjectionFailed = errors.New("read projection failed")
+
 // DefaultConfig returns the default Pebble configuration for the read index.
 // These defaults are intentionally smaller than the primary DAL store because
 // the read index is a derived view that can be rebuilt from the Raft log.
@@ -55,6 +59,7 @@ type Store struct {
 	// NotifyProgress after each WriteProgress to wake up waiters.
 	progressMu      sync.Mutex
 	progressCond    *sync.Cond
+	readFailed      bool
 	auditDisabled   bool
 	auditRebuilding bool
 	auditFailed     bool
@@ -285,6 +290,25 @@ func (s *Store) NotifyProgress() {
 	s.progressMu.Lock()
 	s.progressCond.Broadcast()
 	s.progressMu.Unlock()
+}
+
+// SetReadProjectionFailed marks the normal read projection terminally failed
+// and wakes every waiter so requests do not remain parked behind a worker that
+// has stopped. The state is process-local and never participates in Raft apply.
+func (s *Store) SetReadProjectionFailed() {
+	s.progressMu.Lock()
+	s.readFailed = true
+	s.progressCond.Broadcast()
+	s.progressMu.Unlock()
+}
+
+// ReadProjectionHealthy reports whether the normal read projection can still
+// make progress. It remains true while the builder is merely catching up.
+func (s *Store) ReadProjectionHealthy() bool {
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+
+	return !s.readFailed
 }
 
 // SetAuditProjectionState records node-local operational readiness. It never
@@ -1016,6 +1040,9 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string, isDeleted
 		if CheckpointDirReady(dirPath) {
 			return nil
 		}
+		if s.readFailed {
+			return ErrReadProjectionFailed
+		}
 
 		s.progressCond.Wait()
 	}
@@ -1023,7 +1050,44 @@ func (s *Store) WaitForCheckpoint(ctx context.Context, dirPath string, isDeleted
 
 // WaitForRaftProgress blocks until the normal read projection has certified H.
 func (s *Store) WaitForRaftProgress(ctx context.Context, horizon uint64) error {
-	return s.waitForProgress(ctx, horizon, s.ReadRaftProgress, "read projection Raft progress")
+	cur, err := s.ReadRaftProgress()
+	if err != nil {
+		return fmt.Errorf("reading read projection Raft progress: %w", err)
+	}
+	if cur >= horizon {
+		return nil
+	}
+
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			s.progressMu.Lock()
+			s.progressCond.Broadcast()
+			s.progressMu.Unlock()
+		case <-done:
+		}
+	}()
+
+	s.progressMu.Lock()
+	defer s.progressMu.Unlock()
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		cur, err = s.ReadRaftProgress()
+		if err != nil {
+			return fmt.Errorf("reading read projection Raft progress: %w", err)
+		}
+		if cur >= horizon {
+			return nil
+		}
+		if s.readFailed {
+			return ErrReadProjectionFailed
+		}
+		s.progressCond.Wait()
+	}
 }
 
 func (s *Store) waitForProgress(ctx context.Context, target uint64, read func() (uint64, error), label string) error {

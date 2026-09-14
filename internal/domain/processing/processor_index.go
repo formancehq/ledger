@@ -43,7 +43,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 		ForwardEncodingVersion: 1,
 	})
 
-	return buildCreatedIndexLogPayload(id, ctx.isBornEmpty(ledger), boundType, boundTypeDeclared), nil
+	return buildCreatedIndexLogPayload(id, boundType, boundTypeDeclared), nil
 }
 
 func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
@@ -139,12 +139,11 @@ func indexBoundType(info commonpb.LedgerInfoReader, id *commonpb.IndexID) (commo
 	return field.GetType(), true
 }
 
-func buildCreatedIndexLogPayload(id *commonpb.IndexID, initial bool, boundType commonpb.MetadataType, boundTypeDeclared bool) *commonpb.LedgerLogPayload {
+func buildCreatedIndexLogPayload(id *commonpb.IndexID, boundType commonpb.MetadataType, boundTypeDeclared bool) *commonpb.LedgerLogPayload {
 	return &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreateIndex{
 			CreateIndex: &commonpb.CreatedIndexLog{
 				Id:                id,
-				Initial:           initial,
 				BoundType:         boundType,
 				BoundTypeDeclared: boundTypeDeclared,
 			},
