@@ -656,6 +656,27 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	}, have)
 }
 
+// A persisted {0, 0} row remains an existing cell in later bulks. Numeric zero
+// is not an absence marker, so only the first write belongs to NewKeptVolumes.
+func TestGlobalState_Apply_PersistedZeroVolumeIsNotNewAgain(t *testing.T) {
+	t.Parallel()
+
+	first := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "a:zero", "USD", 0),
+	))
+	require.True(t, first.OK)
+
+	second := first.State.Apply(bulkOf(
+		oracletest.TxReq("world", "a:zero", "USD", 1),
+	))
+	require.True(t, second.OK)
+
+	logs := second.State.Ledger("L").LogRows()
+	require.Len(t, logs, 2)
+	require.Equal(t, "a:zero:USD,world:USD", logs[0].NewKeptVolumes)
+	require.Empty(t, logs[1].NewKeptVolumes)
+}
+
 // The volume annotations are part of a state's identity: the same transactions
 // grouped into different bulks leave identical volumes and identical logs, yet
 // the FSM annotates them differently. A fingerprint that collapsed the two
