@@ -17,6 +17,39 @@ configuration dry-run, index-inspection defaults, and prepared-query
 all-pages continuation. The adapter remains the executable contract; a matching
 path count alone is not treated as full behavioral parity.
 
+## Human table rendering
+
+Twenty-six commands publish compact, ordered `RenderHints.Table` columns for
+the stable scalar identity or summary fields present in their actual success
+result. Dot-separated fields such as `transaction.id`,
+`revertTransaction.timestamp`, and `indexes.reference` address nested objects.
+The hints do not project or remove output: `RawOutputSchema` and
+`PublicOutputSchema` remain byte-identical, permissive product contracts, while
+explicit schema properties make every rendered scalar path machine-checkable.
+JSON and YAML therefore remain the exhaustive views.
+
+The other 22 commands intentionally have no table hint:
+
+- successful empty mutations: `account-types add`, `account-types remove`,
+  `account-types set-default-enforcement`, `accounts delete-metadata`,
+  `accounts set-metadata`, `indexes create`, `indexes drop`,
+  `ledgers delete-metadata`, `ledgers remove-metadata-type`,
+  `ledgers set-metadata`, `ledgers set-metadata-type`, `queries create`,
+  `queries delete`, `queries update`, `transactions delete-metadata`, and
+  `transactions set-metadata`;
+- collection-only or variant results without one truthful stable scalar row:
+  `accounts aggregate-volumes`, `indexes inspect`, `ledgers get-schema`, and
+  `queries execute`;
+- success shapes that vary or contain no stable scalar result:
+  `ledgers configuration apply` and `numscripts save`.
+
+`render_hints_test.go` freezes that 26/22 partition command by command,
+constructs the real typed success output behind every hinted command, traverses
+every dotted field to a scalar leaf, and verifies the same path is explicitly
+declared in the command's public schema. A new command must deliberately join
+one side of the partition with either exact columns or an evidence-based
+omission reason.
+
 The six former `chapters` commands are intentionally absent: current
 `release/v3.0` removed `ListChapters`, `GetChapterSchedule`, `CloseChapter`,
 `ArchiveChapter`, `SetChapterSchedule`, and `DeleteChapterSchedule` from the

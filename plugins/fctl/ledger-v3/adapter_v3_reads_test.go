@@ -184,8 +184,9 @@ func TestCollectV3PagesMeasuresTheProductJSONThatWillBeEmitted(t *testing.T) {
 func TestExecuteV3ReadsEmitsOnlyTheFinalAccountAnalysisResult(t *testing.T) {
 	t.Parallel()
 	command, decoded, request := decodedRead(t, "ledger.v3.accounts.analyze", []string{"main"}, []sdk.FlagOccurrence{{Name: flagVariableThreshold, Value: "8"}}, sdk.SinglePageContinuationControl())
-	if !reflect.DeepEqual(command.RawOutputSchema, objectSchema) {
-		t.Fatalf("accounts analyze output schema = %s, want object", command.RawOutputSchema)
+	wantSchema := outputSchemaFor(false, []sdk.TableColumn{{Header: "TOTAL ACCOUNTS", Field: "totalAccounts"}})
+	if !reflect.DeepEqual(command.RawOutputSchema, wantSchema) || !reflect.DeepEqual(command.PublicOutputSchema, wantSchema) {
+		t.Fatalf("accounts analyze output schema = %s, want render-aware object %s", command.RawOutputSchema, wantSchema)
 	}
 	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
 		actual := &servicepb.AnalyzeAccountsRequest{}

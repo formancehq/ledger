@@ -59,10 +59,12 @@ func (s spec) command() sdk.Command {
 		policies = append(policies, policy)
 	}
 
-	outputSchema := objectSchema
-	if s.collection {
-		outputSchema = collectionSchema
+	render := renderHintFor(s.id())
+	var columns []sdk.TableColumn
+	if render.Table != nil {
+		columns = render.Table.Columns
 	}
+	outputSchema := outputSchemaFor(s.collection, columns)
 
 	// A paginated command must be able to serve the host's all-pages
 	// continuation, which walks up to sdk.DefaultAllPagesMaxPages pages and so
@@ -98,6 +100,7 @@ func (s spec) command() sdk.Command {
 		InputArtifacts:     s.artifacts,
 		Pagination:         sdk.PaginationSpec{Supported: s.paginated},
 		OutputMediaType:    "application/json",
+		Render:             render,
 		ExecutionPolicy:    &sdk.CommandExecutionPolicy{MaxHostRequests: maxRequests},
 	}
 
