@@ -74,7 +74,8 @@ func indexesSpecs() []spec {
 			arguments: []sdk.Argument{ledgerArgument()},
 			flags: func() []sdk.Flag {
 				target := stringFlag(flagTargetType, "Metadata target: account, transaction or ledger")
-				target.Required = true
+				target.HasDefault = true
+				target.DefaultValue = "account"
 				target.Completion = staticCompletion("account", "transaction", "ledger")
 				key := stringFlag(flagMetadataKey, "Metadata key")
 				key.Required = true

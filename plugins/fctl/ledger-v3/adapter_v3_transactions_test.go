@@ -124,7 +124,14 @@ func TestExecuteV3TransactionsAnalyzeConsumesProgressAndEmitsTheFinalResult(t *t
 		}
 		return sdk.NewResponseStream(
 			transactionProtoResponse(t, &servicepb.AnalyzeTransactionsEvent{Type: &servicepb.AnalyzeTransactionsEvent_Progress{Progress: &servicepb.AnalyzeProgress{Processed: 3, Total: 10}}}),
-			transactionProtoResponse(t, &servicepb.AnalyzeTransactionsEvent{Type: &servicepb.AnalyzeTransactionsEvent_Result{Result: &servicepb.AnalyzeTransactionsResponse{TotalTransactions: 9, TotalReverted: 2}}}),
+			transactionProtoResponse(t, &servicepb.AnalyzeTransactionsEvent{Type: &servicepb.AnalyzeTransactionsEvent_Result{Result: &servicepb.AnalyzeTransactionsResponse{
+				TotalTransactions: 9, TotalReverted: 2,
+				FlowPatterns: []*servicepb.FlowPattern{{
+					Signature: "world->users:{id}[USD]", Structure: servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE, TransactionCount: 7,
+					Postings: []*servicepb.NormalizedPosting{{SourcePattern: "world", DestinationPattern: "users:{id}", Asset: "USD"}},
+					Temporal: &servicepb.TemporalStats{FirstSeen: &commonpb.Timestamp{Data: 1_000_000}, LastSeen: &commonpb.Timestamp{Data: 2_000_000}, TransactionsPerDay: 3.5},
+				}},
+			}}}),
 		), nil
 	})
 
@@ -136,9 +143,11 @@ func TestExecuteV3TransactionsAnalyzeConsumesProgressAndEmitsTheFinalResult(t *t
 	if len(events) != 2 || events[0].Kind != sdk.EventProgress || events[1].Result == nil || events[1].Result.OperationID != opAnalyzeTransactions.id {
 		t.Fatalf("events = %#v", events)
 	}
-	var result map[string]any
-	if err := json.Unmarshal(events[1].Result.Data, &result); err != nil || result["totalTransactions"] != "9" || result["totalReverted"] != "2" {
-		t.Fatalf("result = %s, error = %v", events[1].Result.Data, err)
+	if !equalJSON(events[0].Payload, `{"processed":3,"total":10,"phase":""}`) {
+		t.Fatalf("progress = %s", events[0].Payload)
+	}
+	if !equalJSON(events[1].Result.Data, `{"flowPatterns":[{"signature":"world->users:{id}[USD]","structure":"simple","transactionCount":7,"postings":[{"sourcePattern":"world","destinationPattern":"users:{id}","asset":"USD","color":""}],"temporal":{"firstSeen":"1970-01-01T00:00:01Z","lastSeen":"1970-01-01T00:00:02Z","transactionsPerDay":3.5},"volumeStats":[],"metadataKeys":[]}],"totalTransactions":9,"totalReverted":2}`) {
+		t.Fatalf("result = %s", events[1].Result.Data)
 	}
 }
 

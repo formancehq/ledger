@@ -145,7 +145,7 @@ func ledgersSpecs() []spec {
 			}, writeFlags()...),
 			operations: []operation{opApplyCreateLedger},
 			artifacts: []sdk.InputArtifactSpec{{
-				FlagName: flagMirrorRewriteFile, MediaTypes: []string{"application/json", "application/yaml"}, MaxBytes: maxConfigurationBytes, AllowFile: true, AllowStdin: true,
+				FlagName: flagMirrorRewriteFile, MediaTypes: []string{"application/json", "application/yaml"}, MaxBytes: maxConfigurationBytes, AllowFile: true, AllowStdin: true, Optional: true,
 			}},
 		},
 		{

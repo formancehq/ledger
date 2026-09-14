@@ -192,6 +192,34 @@ func TestExecuteV3LedgersCreateReadsMirrorRewriteFile(t *testing.T) {
 	}
 }
 
+func TestExecuteV3LedgersCreateRejectsExplicitEmptyAWSIAMFlags(t *testing.T) {
+	t.Parallel()
+
+	for _, flagName := range []string{flagMirrorAWSRegion, flagMirrorAWSRoleARN} {
+		flagName := flagName
+		t.Run(flagName, func(t *testing.T) {
+			t.Parallel()
+			command, decoded, request := decodedLedgerCommand(t, "ledger.v3.ledgers.create", []string{"mirror"}, []sdk.FlagOccurrence{
+				{Name: flagMode, Value: "mirror"},
+				{Name: flagMirrorSourceType, Value: "postgres"},
+				{Name: flagMirrorDSN, Value: "postgres://ledger.example/db"},
+				{Name: flagName, Value: ""},
+			})
+			host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+				t.Fatal("explicit empty IAM input must fail before a host request")
+				return nil, nil
+			})
+			handled, err := executeV3Ledgers(context.Background(), request, decoded, command, host)
+			if !handled || err == nil {
+				t.Fatalf("executeV3Ledgers() = (%v, %v), want handled invalid argument", handled, err)
+			}
+			if failureCode(t, err) != sdk.FailureInvalidArgument || !strings.Contains(err.Error(), flagName) {
+				t.Fatalf("error = %v, want invalid_argument naming %q", err, flagName)
+			}
+		})
+	}
+}
+
 func TestExecuteV3LedgerMetadataAndSchemaMutationsMapTypedApplyRequests(t *testing.T) {
 	t.Parallel()
 

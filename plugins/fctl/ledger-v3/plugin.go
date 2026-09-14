@@ -20,8 +20,9 @@ import (
 // Name and Version identify this plugin to the host. They are shared with no
 // other plugin; ledger-v2 is a separate catalogue with a separate identity.
 const (
-	Name    = "ledger-v3"
-	Version = "0.1.0"
+	Name                   = "ledger-v3"
+	Version                = "0.1.0"
+	ledgerV3CLIReferenceID = "ledger-v3-cli-reference"
 )
 
 // Plugin is the command-provider facet for Ledger v3. It holds no state: one
@@ -32,7 +33,7 @@ var _ sdk.Plugin = Plugin{}
 
 // Metadata declares the single command-provider facet and the exact host
 // capabilities derived from the command descriptors. Ledger v3 uses the
-// generated-client surface and three commands also consume host-owned input
+// generated-client surface and four commands also consume host-owned input
 // artifacts.
 func (Plugin) Metadata() sdk.Metadata {
 	commands := (Plugin{}).Commands()
@@ -52,15 +53,27 @@ func (Plugin) Commands() []sdk.Command {
 	specs := catalogue()
 	commands := make([]sdk.Command, 0, len(specs))
 	for _, item := range specs {
-		commands = append(commands, item.command())
+		command := item.command()
+		command.DocumentationIDs = []string{ledgerV3CLIReferenceID}
+		commands = append(commands, command)
 	}
 	return commands
 }
 
-// DocumentationResources contributes no bundled or linked documentation yet.
-// Returning an explicit empty set keeps the catalogue's documentation
-// references trivially consistent.
-func (Plugin) DocumentationResources() []sdk.DocumentationResource { return nil }
+// DocumentationResources links the CLI reference from the exact Ledger source
+// revision that defines this plugin's command and protobuf contract.
+func (Plugin) DocumentationResources() []sdk.DocumentationResource {
+	return []sdk.DocumentationResource{{
+		ID:              ledgerV3CLIReferenceID,
+		Kind:            sdk.DocumentationAPIReference,
+		Title:           "Ledger v3 CLI reference",
+		Description:     "Command and flag reference for the pinned Ledger v3 product surface.",
+		URL:             "https://raw.githubusercontent.com/formancehq/ledger/9a6fa7d0308e2d33d57fed63c5d1b7f0411194e0/docs/ops/cli.md",
+		MediaType:       "text/markdown",
+		Locale:          "en",
+		SupportedMajors: []uint32{productMajor},
+	}}
+}
 
 // Execute runs one command through the explicitly versioned Ledger v3 adapter.
 func (p Plugin) Execute(ctx context.Context, request sdk.ExecuteRequest, host sdk.Host) error {

@@ -57,7 +57,7 @@ func executeV3AnalyzeTransactions(ctx context.Context, decoded input, command sd
 			return v3Failure("receive transaction analysis: %v", recvErr)
 		}
 		if progress := event.GetProgress(); progress != nil {
-			if emitErr := emitProtoProgress(host, opAnalyzeTransactions.id, progress); emitErr != nil {
+			if emitErr := emitAnalyzeProgress(host, progress); emitErr != nil {
 				return emitErr
 			}
 		}
@@ -71,7 +71,7 @@ func executeV3AnalyzeTransactions(ctx context.Context, decoded input, command sd
 	if result == nil {
 		return v3Failure("transaction analysis stream ended without a result")
 	}
-	return emitProto(host, opAnalyzeTransactions.id, result)
+	return emitAnalyzeTransactionsResult(host, opAnalyzeTransactions.id, result)
 }
 
 func executeV3GetTransaction(ctx context.Context, decoded input, command sdk.Command, host sdk.Host) error {

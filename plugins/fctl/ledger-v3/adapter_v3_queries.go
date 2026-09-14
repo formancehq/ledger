@@ -22,7 +22,10 @@ func executeV3Queries(ctx context.Context, request sdk.ExecuteRequest, decoded i
 			}
 		}
 		filter, err := parseQueryFilter(decoded.text(flagFilter), target)
-		if err != nil || filter == nil {
+		if err != nil {
+			return true, err
+		}
+		if command.ID == "ledger.v3.queries.update" && filter == nil {
 			return true, invalidArgument("filter must contain at least one condition")
 		}
 		if command.ID == "ledger.v3.queries.create" {

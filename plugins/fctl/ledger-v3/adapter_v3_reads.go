@@ -227,7 +227,7 @@ func executeV3AnalyzeAccounts(ctx context.Context, decoded input, command sdk.Co
 			return v3Failure("receive account analysis: %v", recvErr)
 		}
 		if progress := event.GetProgress(); progress != nil {
-			if emitErr := emitProtoProgress(host, opAnalyzeAccounts.id, progress); emitErr != nil {
+			if emitErr := emitAnalyzeProgress(host, progress); emitErr != nil {
 				return emitErr
 			}
 		}
@@ -241,7 +241,7 @@ func executeV3AnalyzeAccounts(ctx context.Context, decoded input, command sdk.Co
 	if result == nil {
 		return v3Failure("account analysis stream ended without a result")
 	}
-	return emitProto(host, opAnalyzeAccounts.id, result)
+	return emitAnalyzeAccountsResult(host, opAnalyzeAccounts.id, result)
 }
 
 func v3ReadOptions(decoded input) (*commonpb.ReadOptions, error) {

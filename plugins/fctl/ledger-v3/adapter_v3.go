@@ -172,14 +172,6 @@ func marshalProductProto(message proto.Message) ([]byte, error) {
 	return protojson.MarshalOptions{UseProtoNames: false}.Marshal(message)
 }
 
-func emitProtoProgress(host sdk.Host, operationID string, message proto.Message) error {
-	encoded, err := marshalProductProto(message)
-	if err != nil {
-		return v3Failure("encode %q progress: %v", operationID, err)
-	}
-	return host.Emit(sdk.Event{Kind: sdk.EventProgress, Payload: encoded})
-}
-
 func emitJSON(host sdk.Host, operationID string, shape sdk.ResultShape, value any, page *sdk.PageInfo) error {
 	encoded, err := json.Marshal(value)
 	if err != nil {

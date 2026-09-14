@@ -47,6 +47,9 @@ const (
 	streamMessageBytes        int64  = 256 << 10
 	streamAggregateBytes      int64  = 8 << 20
 	streamMessages            uint32 = 1024
+	analyzeMessageBytes              = sdk.GeneratedClientMaxMessageBytes
+	analyzeAggregateBytes            = sdk.GeneratedClientMaxAggregateResponseBytes
+	analyzeMessages                  = sdk.GeneratedClientMaxResponseMessages
 )
 
 // operation is one product RPC binding: the gRPC method, its shape, and the
@@ -55,6 +58,7 @@ type operation struct {
 	id        string
 	method    string
 	streaming bool
+	analyze   bool
 	scope     string
 	// requestBytes overrides readRequestBytes for operations that carry a
 	// materially larger request body.
@@ -76,6 +80,17 @@ func (o operation) policy() sdk.OperationPolicy {
 			MaxMessageBytes:   streamMessageBytes,
 			MaxMessages:       streamMessages,
 			MaxAggregateBytes: streamAggregateBytes,
+		}
+	}
+	if o.analyze {
+		// Analyze has no request-side cardinality limit and emits progress every
+		// 500 scanned records before one potentially large final result. Give
+		// these two streams the full bounded generated-client envelope; the host
+		// still admits one request and fails closed at its hard ceilings.
+		limits = sdk.ResponseLimits{
+			MaxMessageBytes:   analyzeMessageBytes,
+			MaxMessages:       analyzeMessages,
+			MaxAggregateBytes: analyzeAggregateBytes,
 		}
 	}
 	return sdk.OperationPolicy{
@@ -103,10 +118,10 @@ var (
 	opGetAccount            = operation{id: "ledger.v3.GetAccount", method: bucketFullMethod("GetAccount"), scope: scopeAccountRead}
 	opListAccounts          = operation{id: "ledger.v3.ListAccounts", method: bucketFullMethod("ListAccounts"), streaming: true, scope: scopeAccountRead}
 	opAggregateVolumes      = operation{id: "ledger.v3.AggregateVolumes", method: bucketFullMethod("AggregateVolumes"), scope: scopeAccountRead}
-	opAnalyzeAccounts       = operation{id: "ledger.v3.AnalyzeAccounts", method: bucketFullMethod("AnalyzeAccounts"), streaming: true, scope: scopeAccountRead}
+	opAnalyzeAccounts       = operation{id: "ledger.v3.AnalyzeAccounts", method: bucketFullMethod("AnalyzeAccounts"), streaming: true, analyze: true, scope: scopeAccountRead}
 	opGetTransaction        = operation{id: "ledger.v3.GetTransaction", method: bucketFullMethod("GetTransaction"), scope: scopeTransactionRead}
 	opListTransactions      = operation{id: "ledger.v3.ListTransactions", method: bucketFullMethod("ListTransactions"), streaming: true, scope: scopeTransactionRead}
-	opAnalyzeTransactions   = operation{id: "ledger.v3.AnalyzeTransactions", method: bucketFullMethod("AnalyzeTransactions"), streaming: true, scope: scopeTransactionRead}
+	opAnalyzeTransactions   = operation{id: "ledger.v3.AnalyzeTransactions", method: bucketFullMethod("AnalyzeTransactions"), streaming: true, analyze: true, scope: scopeTransactionRead}
 	opGetAuditEntry         = operation{id: "ledger.v3.GetAuditEntry", method: bucketFullMethod("GetAuditEntry"), scope: scopeAuditRead}
 	opListAuditEntries      = operation{id: "ledger.v3.ListAuditEntries", method: bucketFullMethod("ListAuditEntries"), streaming: true, scope: scopeAuditRead}
 	opListLogs              = operation{id: "ledger.v3.ListLogs", method: bucketFullMethod("ListLogs"), streaming: true, scope: scopeLedgerRead}

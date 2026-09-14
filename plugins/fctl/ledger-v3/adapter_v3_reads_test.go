@@ -197,14 +197,23 @@ func TestExecuteV3ReadsEmitsOnlyTheFinalAccountAnalysisResult(t *testing.T) {
 		}
 		return sdk.NewResponseStream(
 			protoResponse(t, &servicepb.AnalyzeAccountsEvent{Type: &servicepb.AnalyzeAccountsEvent_Progress{Progress: &servicepb.AnalyzeProgress{Processed: 4, Total: 10}}}),
-			protoResponse(t, &servicepb.AnalyzeAccountsEvent{Type: &servicepb.AnalyzeAccountsEvent_Result{Result: &servicepb.AnalyzeAccountsResponse{TotalAccounts: 10}}}),
+			protoResponse(t, &servicepb.AnalyzeAccountsEvent{Type: &servicepb.AnalyzeAccountsEvent_Result{Result: &servicepb.AnalyzeAccountsResponse{
+				TotalAccounts: 10,
+				Patterns: []*servicepb.AccountPattern{{
+					Pattern: "users:{id}", AccountCount: 9,
+					Segments: []*servicepb.PatternSegment{{Position: 1, Type: servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE, VariableName: "id", UniqueValues: 9}},
+				}},
+			}}}),
 		), nil
 	})
 	handled, err := executeV3Reads(context.Background(), request, decoded, command, host)
 	if err != nil || !handled || len(host.Events()) != 2 || host.Events()[0].Kind != sdk.EventProgress || host.Events()[1].Result == nil || host.Events()[1].Result.Shape != sdk.ResultObject {
 		t.Fatalf("execute = (%v, %v)", handled, err)
 	}
-	if got := string(host.Events()[1].Result.Data); got != `{"totalAccounts":"10"}` {
+	if got := host.Events()[0].Payload; !equalJSON(got, `{"processed":4,"total":10,"phase":""}`) {
+		t.Fatalf("progress = %s", got)
+	}
+	if got := host.Events()[1].Result.Data; !equalJSON(got, `{"patterns":[{"pattern":"users:{id}","accountCount":9,"assets":[],"metadataKeys":[],"segments":[{"position":1,"type":"variable","variableName":"id","uniqueValues":9,"examples":[]}]}],"totalAccounts":10}`) {
 		t.Fatalf("result = %s", got)
 	}
 

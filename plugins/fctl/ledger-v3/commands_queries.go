@@ -11,6 +11,10 @@ const (
 func queryTargetFlag(required bool) sdk.Flag {
 	flag := stringFlag(flagQueryTarget, "Query target: accounts, transactions or logs")
 	flag.Required = required
+	if !required {
+		flag.HasDefault = true
+		flag.DefaultValue = "accounts"
+	}
 	flag.Completion = staticCompletion("accounts", "transactions", "logs")
 	return flag
 }
@@ -32,8 +36,8 @@ func queriesSpecs() []spec {
 				requiredStringArgument(argName, "Prepared query name"),
 			},
 			flags: append([]sdk.Flag{
-				queryTargetFlag(true),
-				{Name: flagFilter, Usage: "Filter expression parsed against the query target", Type: sdk.FlagString, Required: true},
+				queryTargetFlag(false),
+				{Name: flagFilter, Usage: "Optional filter expression parsed against the query target", Type: sdk.FlagString},
 			}, writeFlags()...),
 			operations: []operation{opApplyCreatePreparedQuery},
 		},

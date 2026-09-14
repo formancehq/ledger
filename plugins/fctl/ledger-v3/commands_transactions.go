@@ -50,6 +50,7 @@ func transactionsSpecs() []spec {
 				MaxBytes:   maxNumscriptBytes,
 				AllowFile:  true,
 				AllowStdin: true,
+				Optional:   true,
 			}},
 		},
 		{

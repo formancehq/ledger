@@ -116,6 +116,26 @@ func TestExecuteV3QueriesMapsCRUDRequestsAndResults(t *testing.T) {
 	}
 }
 
+func TestExecuteV3QueriesCreateDefaultsToAccountsAndAcceptsNoFilter(t *testing.T) {
+	t.Parallel()
+
+	command, decoded, request := decodedQueryNumscript(t, "ledger.v3.queries.create", []string{"main", "all-accounts"}, []sdk.FlagOccurrence{{Name: flagIdempotencyKey, Value: "query-write-1"}}, sdk.SinglePageContinuationControl())
+	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
+		var actual servicepb.ApplyRequest
+		if got.Operation != opApplyCreatePreparedQuery.id || got.GRPC == nil || proto.Unmarshal(got.GRPC.Message, &actual) != nil {
+			t.Fatalf("host request = %#v", got)
+		}
+		query := actual.GetUnsigned().GetRequests()[0].GetCreatePreparedQuery().GetQuery()
+		if query.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS || query.GetFilter() != nil {
+			t.Fatalf("prepared query = %#v, want accounts target and nil filter", query)
+		}
+		return sdk.NewResponseStream(protoResponse(t, &servicepb.ApplyResponse{})), nil
+	})
+	if handled, err := executeV3Queries(context.Background(), request, decoded, command, host); err != nil || !handled {
+		t.Fatalf("executeV3Queries() = (%v, %v)", handled, err)
+	}
+}
+
 func TestExecuteV3QueriesExecuteMapsListParametersAndCursor(t *testing.T) {
 	flags := []sdk.FlagOccurrence{
 		{Name: flagParameter, Value: "threshold=1000"}, {Name: flagParameter, Value: "label="},
@@ -259,7 +279,7 @@ func TestExecuteV3QueriesRejectsInvalidInputsAndPropagatesHostFailure(t *testing
 		flags     []sdk.FlagOccurrence
 		host      sdk.Host
 	}{
-		{name: "empty filter", commandID: "ledger.v3.queries.create", arguments: []string{"main", "q"}, flags: []sdk.FlagOccurrence{{Name: flagQueryTarget, Value: "accounts"}, {Name: flagFilter, Value: ""}}, host: sdk.NewMemoryHost(nil)},
+		{name: "empty update filter", commandID: "ledger.v3.queries.update", arguments: []string{"main", "q"}, flags: []sdk.FlagOccurrence{{Name: flagFilter, Value: ""}}, host: sdk.NewMemoryHost(nil)},
 		{name: "invalid filter", commandID: "ledger.v3.queries.update", arguments: []string{"main", "q"}, flags: []sdk.FlagOccurrence{{Name: flagFilter, Value: "("}}, host: sdk.NewMemoryHost(nil)},
 		{name: "invalid parameter", commandID: "ledger.v3.queries.execute", arguments: []string{"main", "q"}, flags: []sdk.FlagOccurrence{{Name: flagParameter, Value: "invalid"}}, host: sdk.NewMemoryHost(nil)},
 		{name: "host failure", commandID: "ledger.v3.queries.delete", arguments: []string{"main", "q"}, host: sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) { return nil, errors.New("host unavailable") })},

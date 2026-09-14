@@ -215,6 +215,12 @@ func parseMirrorSource(ctx context.Context, host sdk.Host, decoded input, ledger
 		}
 		postgres := &commonpb.PostgresMirrorSourceConfig{Dsn: dsn}
 		region, role := decoded.text(flagMirrorAWSRegion), decoded.text(flagMirrorAWSRoleARN)
+		if decoded.has(flagMirrorAWSRegion) && region == "" {
+			return 0, nil, invalidArgument("flag %q cannot be empty", flagMirrorAWSRegion)
+		}
+		if decoded.has(flagMirrorAWSRoleARN) && role == "" {
+			return 0, nil, invalidArgument("flag %q cannot be empty", flagMirrorAWSRoleARN)
+		}
 		if role != "" && region == "" {
 			return 0, nil, invalidArgument("flag %q requires flag %q", flagMirrorAWSRoleARN, flagMirrorAWSRegion)
 		}

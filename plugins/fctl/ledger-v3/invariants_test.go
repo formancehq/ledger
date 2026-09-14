@@ -230,6 +230,29 @@ func TestPaginatedCommandsDeclareExactlyOneCursorOperation(t *testing.T) {
 	}
 }
 
+func TestAnalyzeCommandsUseTheFullBoundedStreamingEnvelope(t *testing.T) {
+	t.Parallel()
+
+	for _, commandID := range []string{"ledger.v3.accounts.analyze", "ledger.v3.transactions.analyze"} {
+		command, ok := commandByID(commandID)
+		if !ok {
+			t.Fatalf("command %q not found", commandID)
+		}
+		if command.ExecutionPolicy == nil || command.ExecutionPolicy.MaxHostRequests != 1 {
+			t.Fatalf("%s host request budget = %#v, want exactly one", commandID, command.ExecutionPolicy)
+		}
+		if len(command.Operations) != 1 || command.Operations[0].GRPC == nil || command.Operations[0].GRPC.GeneratedClient == nil {
+			t.Fatalf("%s operation = %#v, want one generated-client operation", commandID, command.Operations)
+		}
+		limits := command.Operations[0].GRPC.GeneratedClient.ResponseLimits
+		if limits.MaxMessageBytes != sdk.GeneratedClientMaxMessageBytes ||
+			limits.MaxMessages != sdk.GeneratedClientMaxResponseMessages ||
+			limits.MaxAggregateBytes != sdk.GeneratedClientMaxAggregateResponseBytes {
+			t.Fatalf("%s response limits = %#v, want full bounded generated-client envelope", commandID, limits)
+		}
+	}
+}
+
 func TestCommandAndOperationIdentifiersAreUnique(t *testing.T) {
 	t.Parallel()
 
