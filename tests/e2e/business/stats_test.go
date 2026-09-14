@@ -98,6 +98,7 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(resp.TransactionCount).To(Equal(uint64(2)))
+				g.Expect(resp.PostingCount).To(Equal(uint64(2)))
 				g.Expect(resp.VolumeCount).To(Equal(uint64(2)))
 			}).Should(Succeed())
 
@@ -105,7 +106,75 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 			Expect(err).To(Succeed())
 			logs := collectLogs(stream)
 			Expect(logs).To(HaveLen(2))
-			Expect(logs[1].GetPayload().GetApply().GetLog().GetNewKeptVolumes()).To(BeEmpty())
+			latest := logs[0]
+			for _, log := range logs[1:] {
+				if log.GetPayload().GetApply().GetLog().GetId() > latest.GetPayload().GetApply().GetLog().GetId() {
+					latest = log
+				}
+			}
+			Expect(latest.GetPayload().GetApply().GetLog().GetNewKeptVolumes()).To(BeEmpty())
+		})
+	})
+
+	Context("When a purged account becomes normal before cache rotation", Ordered, func() {
+		const ledgerName = "stats-purged-then-normal"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerAction(ledgerName, nil),
+				actions.AddEphemeralAccountTypeAction(ledgerName, "temporary", "temporary:{id}"),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "temporary:one", big.NewInt(1), "USD"),
+				}, nil),
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("temporary:one", "world", big.NewInt(1), "USD"),
+				}, nil),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.RemoveAccountTypeAction(ledgerName, "temporary"),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.AddAccountTypeAction(ledgerName, "temporary", "temporary:{id}"),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "temporary:one", big.NewInt(1), "USD"),
+				}, nil, nil),
+			))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should count the recreated persistent row as new", func() {
+			Eventually(func(g Gomega) {
+				resp, err := sharedClient.GetLedgerStats(sharedCtx, &servicepb.GetLedgerStatsRequest{Ledger: ledgerName})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.PostingCount).To(Equal(uint64(3)))
+				g.Expect(resp.VolumeCount).To(Equal(uint64(2)))
+			}).Should(Succeed())
+
+			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			logs := collectLogs(stream)
+			Expect(logs).To(HaveLen(6))
+			latest := logs[0]
+			for _, log := range logs[1:] {
+				if log.GetPayload().GetApply().GetLog().GetId() > latest.GetPayload().GetApply().GetLog().GetId() {
+					latest = log
+				}
+			}
+			Expect(latest.GetPayload().GetApply().GetLog().GetNewKeptVolumes()).To(ContainElement(
+				HaveField("Account", Equal("temporary:one")),
+			))
 		})
 	})
 
