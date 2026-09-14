@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -72,7 +73,7 @@ func TestRedactSinkConfig_Databricks_OAuthM2M(t *testing.T) {
 	assert.Equal(t, secretSet, redacted.GetDatabricks().GetOauthM2M().GetClientSecret())
 }
 
-func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
+func TestRedactSinkConfig_Databricks_EmptySecretsRemainEmpty(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
@@ -83,7 +84,7 @@ func TestRedactSinkConfig_Databricks_EmptySecretsReportedNone(t *testing.T) {
 		},
 	}
 
-	assert.Equal(t, secretNone, redactSinkConfig(cfg).GetDatabricks().GetToken())
+	assert.Empty(t, redactSinkConfig(cfg).GetDatabricks().GetToken())
 }
 
 func TestRedactSinkConfig_Http(t *testing.T) {
@@ -92,7 +93,7 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: "https://example.com/hook",
+				Endpoint: &commonpb.ConnectionURL{Scheme: "https", Address: &commonpb.ConnectionAddress{Host: "example.com"}, EscapedPath: "/hook"},
 				Secret:   "hmac-key",
 			},
 		},
@@ -100,7 +101,8 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t, "https://example.com/hook", redacted.GetHttp().GetEndpoint())
+	assert.Equal(t, "example.com", redacted.GetHttp().GetEndpoint().GetAddress().GetHost())
+	assert.Equal(t, "/hook", redacted.GetHttp().GetEndpoint().GetEscapedPath())
 	assert.Equal(t, secretSet, redacted.GetHttp().GetSecret())
 }
 
@@ -126,24 +128,25 @@ func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
 	assert.Equal(t, secretSet, redacted.GetKafka().GetSaslPassword())
 }
 
-func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
+func TestRedactSinkConfig_ClickHouse_StructuredPasswordRedacted(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Clickhouse{
 			Clickhouse: &commonpb.ClickHouseSinkConfig{
-				Dsn:   "clickhouse://user:secretpw@host:9000/db",
-				Table: "events",
+				Connection: &commonpb.DatabaseConnection{Scheme: "clickhouse", Username: new("user"), Password: new("secretpw"), Database: new("db"), Addresses: []*commonpb.ConnectionAddress{{Host: "host", Port: proto.Uint32(9000)}}},
+				Table:      "events",
 			},
 		},
 	}
 
 	redacted := redactSinkConfig(cfg)
 
-	dsn := redacted.GetClickhouse().GetDsn()
-	assert.NotContains(t, dsn, "secretpw")
-	assert.Contains(t, dsn, "user")
-	assert.Contains(t, dsn, "host:9000")
+	connection := redacted.GetClickhouse().GetConnection()
+	assert.Equal(t, secretSet, connection.GetPassword())
+	assert.Equal(t, "user", connection.GetUsername())
+	assert.Equal(t, "host", connection.GetAddresses()[0].GetHost())
+	assert.Equal(t, uint32(9000), connection.GetAddresses()[0].GetPort())
 }
 
 func TestRedactSinkConfig_NatsHasNoSecret(t *testing.T) {
@@ -151,13 +154,13 @@ func TestRedactSinkConfig_NatsHasNoSecret(t *testing.T) {
 
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{Url: "nats://localhost:4222", Topic: "evt"},
+			Nats: &commonpb.NatsSinkConfig{Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "localhost", Port: proto.Uint32(4222)}}}, Topic: "evt"},
 		},
 	}
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t, "nats://localhost:4222", redacted.GetNats().GetUrl())
+	assert.Equal(t, "localhost", redacted.GetNats().GetServers()[0].GetAddress().GetHost())
 	assert.Equal(t, "evt", redacted.GetNats().GetTopic())
 }
 
@@ -171,7 +174,7 @@ func TestRedactSinkConfig_NilSafe(t *testing.T) {
 // check: it serializes the whole response through protojson (what
 // EncodeStructured uses for --json and --yaml) and asserts that no plaintext
 // secret survives. Any future field added to a SinkConfig that carries a
-// secret must be added to redactSinkConfigInPlace, or this test will catch the
+// secret must carry a sensitive protobuf annotation, or this test will catch the
 // regression.
 func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	t.Parallel()
@@ -211,7 +214,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 			{
 				Name: "hook",
 				Type: &commonpb.SinkConfig_Http{
-					Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.com", Secret: secrets[2]},
+					Http: &commonpb.HttpSinkConfig{Endpoint: &commonpb.ConnectionURL{Scheme: "https", Address: &commonpb.ConnectionAddress{Host: "example.com"}}, Secret: secrets[2]},
 				},
 			},
 			{
@@ -229,7 +232,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 				Name: "ch",
 				Type: &commonpb.SinkConfig_Clickhouse{
 					Clickhouse: &commonpb.ClickHouseSinkConfig{
-						Dsn: "clickhouse://user:" + secrets[4] + "@host:9000/db",
+						Connection: &commonpb.DatabaseConnection{Scheme: "clickhouse", Username: new("user"), Password: new(secrets[4]), Database: new("db"), Addresses: []*commonpb.ConnectionAddress{{Host: "host", Port: proto.Uint32(9000)}}},
 					},
 				},
 			},
@@ -252,12 +255,27 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	for _, want := range []string{
 		"adb-1.azuredatabricks.net",
 		"adb-2.azuredatabricks.net",
-		"https://example.com",
+		"example.com",
 		"b:9092",
-		"host:9000",
+		"host",
 	} {
 		assert.Contains(t, string(b), want)
 	}
+}
+
+// Driver-owned sanitization preserves an actionable diagnostic in structured output.
+func TestRedactGetEventsSinksResponse_PreservesSanitizedDiagnostic(t *testing.T) {
+	t.Parallel()
+	const diagnostic = "posting event seq=1: sending request to https://localhost/events?key=[redacted]: EOF"
+	response := &servicepb.GetEventsSinksResponse{SinkStatuses: []*commonpb.SinkStatus{{SinkName: "http", Error: &commonpb.SinkError{Message: diagnostic}}}}
+	projected := redactGetEventsSinksResponse(response)
+	require.Equal(t, diagnostic, projected.GetSinkStatuses()[0].GetError().GetMessage())
+	encoded, err := protojson.Marshal(projected)
+	require.NoError(t, err)
+	decoded := &servicepb.GetEventsSinksResponse{}
+	require.NoError(t, protojson.Unmarshal(encoded, decoded))
+	require.Equal(t, diagnostic, decoded.GetSinkStatuses()[0].GetError().GetMessage())
+	require.Equal(t, diagnostic, response.GetSinkStatuses()[0].GetError().GetMessage())
 }
 
 func TestRedactGetEventsSinksResponse_NilSafe(t *testing.T) {

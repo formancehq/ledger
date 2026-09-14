@@ -31,6 +31,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -598,7 +599,7 @@ func (impl *BucketServiceServerImpl) ListLedgers(req *servicepb.ListLedgersReque
 		return fmt.Errorf("paginating ledgers: %w", err)
 	}
 
-	return sendPagedToStream(ctx, c, stream, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
+	return sendPagedToStream(ctx, c, publicReadStream[commonpb.LedgerInfo]{stream, sensitive.Clone[*commonpb.LedgerInfo]}, "ledger", pageSize, func(l *commonpb.LedgerInfo) string {
 		return l.GetName()
 	})
 }
@@ -623,7 +624,12 @@ func (impl *BucketServiceServerImpl) GetLedger(ctx context.Context, req *service
 	}
 	defer cleanup()
 
-	return c.GetLedgerByName(ctx, req.GetLedger())
+	ledger, err := c.GetLedgerByName(ctx, req.GetLedger())
+	if err != nil {
+		return nil, err
+	}
+
+	return sensitive.Clone(ledger), nil
 }
 
 func (impl *BucketServiceServerImpl) GetAccount(ctx context.Context, req *servicepb.GetAccountRequest) (*commonpb.Account, error) {
@@ -918,7 +924,12 @@ func (impl *BucketServiceServerImpl) GetLog(ctx context.Context, req *servicepb.
 	}
 	defer cleanup()
 
-	return c.GetLog(ctx, req.GetSequence())
+	log, err := c.GetLog(ctx, req.GetSequence())
+	if err != nil {
+		return nil, err
+	}
+
+	return sensitive.Clone(log), nil
 }
 
 func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
@@ -973,7 +984,7 @@ func (impl *BucketServiceServerImpl) ListLogs(req *servicepb.ListLogsRequest, st
 	// which would publish a bogus `x-next-cursor: "0"` and trap the client
 	// in an infinite resume loop. Return an empty cursor in that case so the
 	// stream signals "no more pages" instead.
-	return sendPagedToStream(ctx, cur, stream, "log", pageSize, func(l *commonpb.Log) string {
+	return sendPagedToStream(ctx, cur, publicReadStream[commonpb.Log]{stream, sensitive.Clone[*commonpb.Log]}, "log", pageSize, func(l *commonpb.Log) string {
 		apply := l.GetPayload().GetApply()
 		if apply == nil {
 			return ""
@@ -995,10 +1006,10 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 		return nil, fmt.Errorf("loading events sinks: %w", err)
 	}
 
-	return &servicepb.GetEventsSinksResponse{
+	return sensitive.Clone(&servicepb.GetEventsSinksResponse{
 		Sinks:        sinks,
 		SinkStatuses: statuses,
-	}, nil
+	}), nil
 }
 
 func (impl *BucketServiceServerImpl) ListSigningKeys(req *servicepb.ListSigningKeysRequest, stream servicepb.BucketService_ListSigningKeysServer) error {

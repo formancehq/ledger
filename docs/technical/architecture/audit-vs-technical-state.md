@@ -399,3 +399,20 @@ each item:
   proposals?
 - If a future feature reuses this state, what would make the classification
   change?
+
+
+## Connection intent and operational configurations
+
+Raw sink and mirror connection inputs are captured unchanged in accepted orders
+and the protected audit evidence. Live apply derives structured operational
+configurations through `internal/domain/connectionconfig`, placing credentials
+in explicit sensitive fields while retaining the information workers need to
+connect. These values remain persisted projections, not a second source of
+business truth. Public redacted views cannot replace protected audit evidence or
+be used to verify its original signature.
+
+The current checker has no complete sink/mirror configuration comparison. The
+shared normalizer provides the replay contract for the separate checker PR 1912;
+see [the checker coverage note](subsystems/checker/README.md#sink-and-mirror-configuration-verification-contract).
+Restore parity is independently tested over a real checkpoint and non-empty
+delta; it is not an exemption from eventual checker verification.

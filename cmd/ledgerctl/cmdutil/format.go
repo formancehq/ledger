@@ -64,32 +64,3 @@ func WrapText(text string, maxWidth int, separator string) []string {
 
 	return lines
 }
-
-// ObfuscateDSN replaces the password in a DSN URL with "****".
-// Works with postgres://, postgresql://, clickhouse:// and similar URL-format DSNs.
-// If the DSN is not URL-formatted or has no password, it is returned unchanged.
-func ObfuscateDSN(dsn string) string {
-	schemeEnd := strings.Index(dsn, "://")
-	if schemeEnd == -1 {
-		return dsn
-	}
-
-	rest := dsn[schemeEnd+3:]
-
-	lastAt := strings.LastIndex(rest, "@")
-	if lastAt == -1 {
-		return dsn
-	}
-
-	creds := rest[:lastAt]
-
-	before, _, ok := strings.Cut(creds, ":")
-	if !ok {
-		return dsn
-	}
-
-	user := before
-	hostPart := rest[lastAt:]
-
-	return dsn[:schemeEnd+3] + user + ":****" + hostPart
-}

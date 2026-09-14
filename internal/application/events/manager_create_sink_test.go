@@ -17,7 +17,7 @@ func TestCreateSink_HTTP(t *testing.T) {
 		Name: "http-sink",
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: "https://example.com/webhook",
+				Endpoint: connectionTestURL(t, "https://example.com/webhook"),
 				Secret:   "my-secret",
 			},
 		},
@@ -43,7 +43,7 @@ func TestCreateSink_HTTP_EmptyEndpoint(t *testing.T) {
 		Name: "http-sink",
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: "",
+				Endpoint: connectionTestURL(t, ""),
 			},
 		},
 		Format: "json",
@@ -63,7 +63,7 @@ func TestCreateSink_HTTP_DefaultFormat(t *testing.T) {
 		Name: "http-sink",
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: "https://example.com/webhook",
+				Endpoint: connectionTestURL(t, "https://example.com/webhook"),
 			},
 		},
 		Format: "", // Should default to JSON

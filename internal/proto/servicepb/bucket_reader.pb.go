@@ -397,7 +397,7 @@ type CreateLedgerRequestReader interface {
 	GetName() string
 	GetInitialSchema() commonpb.SetMetadataFieldTypeCommandListReader
 	GetMode() commonpb.LedgerMode
-	GetMirrorSource() commonpb.MirrorSourceConfigReader
+	GetMirrorSource() commonpb.MirrorSourceConfigInputReader
 	GetAccountTypes() CreateLedgerRequest_AccountTypesMapReader
 	GetDefaultEnforcementMode() commonpb.ChartEnforcementMode
 	Mutate() *CreateLedgerRequest
@@ -417,7 +417,7 @@ func (r *createLedgerRequestReadonly) GetMode() commonpb.LedgerMode {
 	return (*CreateLedgerRequest)(r).GetMode()
 }
 
-func (r *createLedgerRequestReadonly) GetMirrorSource() commonpb.MirrorSourceConfigReader {
+func (r *createLedgerRequestReadonly) GetMirrorSource() commonpb.MirrorSourceConfigInputReader {
 	v := (*CreateLedgerRequest)(r).GetMirrorSource()
 	if v == nil {
 		return nil
@@ -1522,13 +1522,13 @@ func NewDeleteLedgerMetadataRequestListReader(s []*DeleteLedgerMetadataRequest) 
 // AddEventsSinkRequestReader provides read-only access to AddEventsSinkRequest.
 // Call Mutate() to obtain a mutable clone.
 type AddEventsSinkRequestReader interface {
-	GetConfig() commonpb.SinkConfigReader
+	GetConfig() commonpb.SinkConfigInputReader
 	Mutate() *AddEventsSinkRequest
 }
 
 type addEventsSinkRequestReadonly AddEventsSinkRequest
 
-func (r *addEventsSinkRequestReadonly) GetConfig() commonpb.SinkConfigReader {
+func (r *addEventsSinkRequestReadonly) GetConfig() commonpb.SinkConfigInputReader {
 	v := (*AddEventsSinkRequest)(r).GetConfig()
 	if v == nil {
 		return nil

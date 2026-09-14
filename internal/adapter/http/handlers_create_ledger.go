@@ -8,6 +8,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -165,12 +166,12 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		panic(unexpectedLogPayload("create-ledger", logEntry, details))
 	}
 
-	writeCreated(w, createLedgerLog.ToLedgerInfo())
+	writeCreated(w, sensitive.Clone(createLedgerLog.ToLedgerInfo()))
 }
 
 // mirrorSourceToProto converts the HTTP body to the proto MirrorSourceConfig.
-func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, error) {
-	cfg := &commonpb.MirrorSourceConfig{
+func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfigInput, error) {
+	cfg := &commonpb.MirrorSourceConfigInput{
 		LedgerName: body.LedgerName,
 		BatchSize:  body.BatchSize,
 	}
@@ -190,11 +191,11 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 
 	switch body.Type {
 	case "http", "":
-		httpCfg := &commonpb.HttpMirrorSourceConfig{
+		httpCfg := &commonpb.HttpMirrorSourceConfigInput{
 			BaseUrl: body.BaseURL,
 		}
 		if body.OAuth2ClientID != "" || body.OAuth2TokenEndpoint != "" {
-			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{
+			httpCfg.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentialsInput{
 				ClientId:      body.OAuth2ClientID,
 				ClientSecret:  body.OAuth2ClientSecret,
 				TokenEndpoint: body.OAuth2TokenEndpoint,
@@ -202,12 +203,12 @@ func mirrorSourceToProto(body *mirrorSourceBody) (*commonpb.MirrorSourceConfig, 
 			}
 		}
 
-		cfg.Type = &commonpb.MirrorSourceConfig_Http{
+		cfg.Type = &commonpb.MirrorSourceConfigInput_Http{
 			Http: httpCfg,
 		}
 	case "postgres":
-		cfg.Type = &commonpb.MirrorSourceConfig_Postgres{
-			Postgres: &commonpb.PostgresMirrorSourceConfig{
+		cfg.Type = &commonpb.MirrorSourceConfigInput_Postgres{
+			Postgres: &commonpb.PostgresMirrorSourceConfigInput{
 				Dsn: body.DSN,
 			},
 		}

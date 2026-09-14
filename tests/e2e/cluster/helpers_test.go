@@ -11,7 +11,7 @@ import (
 )
 
 // addEventsSinkAction creates a request to add a named sink configuration.
-func addEventsSinkAction(config *commonpb.SinkConfig) *servicepb.Request {
+func addEventsSinkAction(config *commonpb.SinkConfigInput) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{
 			AddEventsSink: &servicepb.AddEventsSinkRequest{

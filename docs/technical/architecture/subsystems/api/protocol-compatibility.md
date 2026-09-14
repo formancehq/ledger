@@ -132,7 +132,9 @@ A change without a schema break warrants a revision only when its author can
 identify a concrete interoperability failure with the existing client/server
 contract. Ordinary secret masking, diagnostic wording, internal behavior and
 compatible additions do not automatically require a bump. Record the assessment
-in the PR; do not infer incompatibility merely because output differs.
+in the PR; do not infer incompatibility merely because output differs. Revision
+8 changes operational connection fields from strings to structured messages.
+The audit response contract is unchanged.
 
 This obligation applies to AI agents throughout pre-release development, even
 though older Ledger versions and storage formats are not supported. Before
@@ -162,3 +164,6 @@ cannot enter unary or streaming business handlers, while the matching revision
 does. Keep diagnostic exemptions usable without a revision. Exercise the real
 client/server paths, restoration without Discovery, and internal service
 forwarding so the gate cannot make the repository's own clients incompatible.
+
+Structured connection input/output messages require revision 8 on top of the
+revision 7 Apply contract: existing configuration fields change message types.

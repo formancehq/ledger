@@ -255,10 +255,10 @@ var _ = Describe("Restore mirror resume position", Ordered, func() {
 					CreateLedger: &servicepb.CreateLedgerRequest{
 						Name: ledgerName,
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-						MirrorSource: &commonpb.MirrorSourceConfig{
+						MirrorSource: &commonpb.MirrorSourceConfigInput{
 							LedgerName: "default",
-							Type: &commonpb.MirrorSourceConfig_Http{
-								Http: &commonpb.HttpMirrorSourceConfig{
+							Type: &commonpb.MirrorSourceConfigInput_Http{
+								Http: &commonpb.HttpMirrorSourceConfigInput{
 									BaseUrl: mockV2.URL(),
 								},
 							},
