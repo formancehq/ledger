@@ -50,10 +50,10 @@ type volumePartitionResult struct {
 //   - NORMAL accounts: always kept
 //   - EPHEMERAL accounts with zero balance: purged (deleted from Pebble)
 //   - EPHEMERAL accounts with non-zero balance: kept
-//   - TRANSIENT accounts with a persisted row (non-zero Old, from before the
+//   - TRANSIENT accounts with a persisted row (defined Old, from before the
 //     transient pattern started matching them): mirror EPHEMERAL — kept while
 //     the running cumulative is still unbalanced, purged once it is at zero
-//     balance. Steady-state TRANSIENT (all-zero Old: never persisted, or
+//     balance. Steady-state TRANSIENT (undefined Old: never persisted, or
 //     already purged): never written to Pebble.
 func (b *WriteSet) partitionVolumes(
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
@@ -116,16 +116,15 @@ func (b *WriteSet) partitionVolumes(
 
 		switch matched.GetPersistence() {
 		case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
-			// A defined Old with non-zero limbs means a persisted row exists
+			// A defined Old means a persisted row exists
 			// from before the transient pattern started matching the account
 			// (funded under a default-normal policy — its balance may already
 			// sit at zero, e.g. after a revert). Mirror the ephemeral
 			// lifecycle: keep the running cumulative in 0xF1 while it's still
 			// unbalanced; purge once it is at zero balance, deleting the row.
-			// An all-zero Old (post-purge zeroed cache entry, or the
-			// preloader's zero seed for a fresh key) is steady-state
-			// transient: nothing persisted, nothing to delete.
-			if update.Old.IsDefined() && !isVolumePreloadZero(update.Old.Value()) {
+			// Absent and previously purged cells are tombstoned, so Old is
+			// undefined even before cache rotation.
+			if update.Old.IsDefined() {
 				if isVolumeZeroBalance(update.New) {
 					result.purged = append(result.purged, update)
 				} else {
@@ -150,10 +149,9 @@ func (b *WriteSet) partitionVolumes(
 	return result, nil
 }
 
-// applyEphemeralPurge deletes purged volumes from 0xF1 then zeroes the cache.
-// Deleting saves storage; the cache is zeroed (rather than deleted) so any
-// co-batched proposal admitted with CacheHit still sees a populated
-// entry.
+// applyEphemeralPurge deletes purged volumes from 0xF1 then tombstones the
+// cache. The tombstone remains a cache hit for co-batched proposals while
+// preserving absence for later new-row classification.
 func (b *WriteSet) applyEphemeralPurge(
 	batch *dal.WriteSession,
 	genByte byte,
@@ -169,23 +167,21 @@ func (b *WriteSet) applyEphemeralPurge(
 		}
 	}
 
-	return b.zeroVolumeCache(batch, genByte, purged)
+	return b.tombstoneVolumeCache(batch, genByte, purged)
 }
 
-// zeroVolumeCache overwrites the in-memory KeyStore and the 0xFF cache zone
-// with a zero VolumePair for each update. It does NOT touch 0xF1 — callers
-// that need a Pebble delete must do it themselves before invoking this.
+// tombstoneVolumeCache marks each update absent in the in-memory KeyStore and
+// 0xFF cache zone. It does NOT touch 0xF1 — callers that need a Pebble delete
+// must do it themselves before invoking this.
 //
 // Used by:
 //   - applyEphemeralPurge after deleting the persistent entry.
 //   - the transient flow, which never writes the persistent entry but still
-//     needs the cache populated with zero so that the next batch's GetVolume
-//     reads {0, 0} rather than the prior cumulative value, and so cache
-//     restore after restart honours the documented "never persisted, must be
-//     zero at end of batch" semantic.
+//     needs a populated absence marker so that the next batch's GetVolume
+//     synthesizes {0, 0} rather than reading the prior cumulative value.
 //
-// The zero entry ages out via cache generation rotation.
-func (b *WriteSet) zeroVolumeCache(
+// The tombstone ages out via cache generation rotation.
+func (b *WriteSet) tombstoneVolumeCache(
 	batch *dal.WriteSession,
 	genByte byte,
 	updates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
@@ -194,22 +190,8 @@ func (b *WriteSet) zeroVolumeCache(
 		return nil
 	}
 
-	zeroBytes, err := (&raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
-	}).MarshalVT()
-	if err != nil {
-		return err
-	}
-
 	for _, update := range updates {
-		// Allocate a fresh zero VolumePair per entry to avoid shared-pointer
-		// mutations leaking across keys.
-		zeroVol := &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256FromUint64(0),
-			Output: commonpb.NewUint256FromUint64(0),
-		}
-		if err := b.fsm.Registry.Volumes.PutCacheOnly(batch, genByte, update.CanonicalKey, zeroVol, zeroBytes); err != nil {
+		if err := b.fsm.Registry.Volumes.TombstoneCacheOnly(batch, genByte, update.CanonicalKey); err != nil {
 			return err
 		}
 	}

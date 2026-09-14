@@ -9,25 +9,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// isVolumePreloadZero returns true if the volume pair is the zero placeholder
-// injected by the preloader for keys that don't exist in Pebble. Unlike
-// isVolumeZeroBalance (input == output), this checks input == 0 AND output == 0
-// — the exact seed the preloader emits so admission's `Needs` can be planned
-// deterministically.
-func isVolumePreloadZero(v *raftcmdpb.VolumePair) bool {
-	return v.GetInput().IsZero() && v.GetOutput().IsZero()
-}
-
-// isNewVolumeUpdate reports whether a volume update represents an absent or
-// deliberately purged cache cell. Persistent normal volumes need a stricter
-// check because a legitimate persisted row may itself contain {0, 0}; those
-// are classified while partitioning and passed to makeNewKeptKeySet directly.
+// isNewVolumeUpdate reports whether a volume update represents a first-time
+// persistent write. Absent and deliberately purged cache cells are tombstones,
+// so a defined Old always represents a persisted row, even when it is {0, 0}.
 func isNewVolumeUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) bool {
-	if !u.Old.IsDefined() {
-		return true
-	}
-
-	return isVolumePreloadZero(u.Old.Value())
+	return !u.Old.IsDefined()
 }
 
 // volumeSetKey is the (ledger, account, asset, color) tuple used by the per-log
@@ -47,7 +33,7 @@ type volumeSetKey struct {
 // (ledger, account, asset) tuples that survived past commit. Classification is
 // performed by partitionVolumes because it alone knows the account persistence
 // policy and can distinguish a persisted normal {0, 0} row from an
-// absent/purged zero cache cell.
+// absent/purged cache cell.
 func makeNewKeptKeySet(newKept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
 	set := make(map[volumeSetKey]struct{})
 
