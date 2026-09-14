@@ -146,39 +146,52 @@ func TestExecute_ReadsDefinitionAndLedgerFromMainSnapshot(t *testing.T) {
 	}
 }
 
-func TestExecuteLogsRejectsLedgerDeletedAfterMainSnapshot(t *testing.T) {
+func TestExecuteLogsRejectsStaleLedgerIncarnationAfterMainSnapshot(t *testing.T) {
 	t.Parallel()
 
-	const ledger = "l"
-	store := newTestStore(t)
-	registerLedger(t, store, ledger)
-	rs := newTestReadStore(t)
-	attrs := attributes.New()
-	seedPreparedQuery(t, store, attrs, ledger, "logs", commonpb.QueryTarget_QUERY_TARGET_LOGS, nil)
+	for _, tc := range []struct {
+		name      string
+		projected uint32
+		active    bool
+	}{
+		{name: "deleted", projected: 0, active: false},
+		{name: "recreated", projected: 1, active: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	seed := rs.NewBatch()
-	wb := readstore.NewWriteBatch()
-	wb.Init(seed)
-	require.NoError(t, wb.WriteLedgerLifecycle(dal.NewKeyBuilder(), ledger, 0, true))
-	require.NoError(t, seed.Commit())
+			const ledger = "l"
+			store := newTestStore(t)
+			registerLedger(t, store, ledger)
+			rs := newTestReadStore(t)
+			attrs := attributes.New()
+			seedPreparedQuery(t, store, attrs, ledger, "logs", commonpb.QueryTarget_QUERY_TARGET_LOGS, nil)
 
-	opener := &mutatingQueryHandleStore{
-		Store: store,
-		afterOpen: func() {
-			batch := rs.NewBatch()
-			wb.Init(batch)
-			require.NoError(t, readstore.DeleteLedgerIndexes(batch, ledger))
-			require.NoError(t, wb.WriteLedgerLifecycle(dal.NewKeyBuilder(), ledger, 0, false))
-			require.NoError(t, batch.Commit())
-		},
+			seed := rs.NewBatch()
+			wb := readstore.NewWriteBatch()
+			wb.Init(seed)
+			require.NoError(t, wb.WriteLedgerLifecycle(dal.NewKeyBuilder(), ledger, 0, true))
+			require.NoError(t, seed.Commit())
+
+			opener := &mutatingQueryHandleStore{
+				Store: store,
+				afterOpen: func() {
+					batch := rs.NewBatch()
+					wb.Init(batch)
+					require.NoError(t, readstore.DeleteLedgerIndexes(batch, ledger))
+					require.NoError(t, wb.WriteLedgerLifecycle(dal.NewKeyBuilder(), ledger, tc.projected, tc.active))
+					require.NoError(t, batch.Commit())
+				},
+			}
+
+			_, err := query.Execute(
+				t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
+				&servicepb.ExecutePreparedQueryRequest{Ledger: ledger, QueryName: "logs"}, nil, nil,
+			)
+			var notFound *domain.ErrLedgerNotFound
+			require.True(t, errors.As(err, &notFound), "got %v", err)
+		})
 	}
-
-	_, err := query.Execute(
-		t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-		&servicepb.ExecutePreparedQueryRequest{Ledger: ledger, QueryName: "logs"}, nil, nil,
-	)
-	var notFound *domain.ErrLedgerNotFound
-	require.True(t, errors.As(err, &notFound), "got %v", err)
 }
 
 // A prepared query that reads no index leaf must not be gated on the fold.
