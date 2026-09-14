@@ -104,6 +104,15 @@ Report it only after tracing a production-reachable call and showing an
 undeclared value can influence `T`. Test-only helpers and recovery/admission
 readers are not violations merely because they use the same lower-level types.
 
+The write side is capability-restricted as well. Inventory every
+`OpenWriteSession` call site and establish its lifecycle owner, batch boundary,
+close/error paths, and repository allowlist status. Apply handlers may use the
+existing scoped write path, but must not open or retain their own main-store
+session. A new call site is in scope when it expands apply-reachable capability
+without both a concrete lifecycle justification and the repository's static
+enforcement; a separately owned recovery or synchronization writer is not an
+apply violation merely because it uses the same DAL API.
+
 ## Accepted-order immutability and failure prefixes
 
 Capture `processing.MarshalOrderBusinessIntent` before and after conversion,
