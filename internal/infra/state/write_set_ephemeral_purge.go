@@ -177,6 +177,7 @@ func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
 // volumePartitionResult holds the result of partitioning volume updates by persistence mode.
 type volumePartitionResult struct {
 	kept           []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral + draining-transient
+	newKept        []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // kept rows whose persistent key did not exist before this commit
 	purged         []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL or draining-TRANSIENT once back to zero balance
 	transient      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // steady-state TRANSIENT — never written to Pebble
 	transientPurge []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // grandfathered TRANSIENT rows deleted on drain
@@ -205,6 +206,12 @@ func (b *WriteSet) partitionVolumes(
 	result := volumePartitionResult{
 		kept: make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(updates)),
 	}
+	keep := func(update attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], newVolume bool) {
+		result.kept = append(result.kept, update)
+		if newVolume {
+			result.newKept = append(result.newKept, update)
+		}
+	}
 
 	for _, update := range updates {
 		// Account types come from ValidateTransientVolumes' gated resolution,
@@ -232,7 +239,7 @@ func (b *WriteSet) partitionVolumes(
 			// A ledger deleted earlier in this batch does NOT land here:
 			// DeleteLedger soft-deletes by Putting the row back with DeletedAt
 			// set, so the gated read still returns it with its types intact.
-			result.kept = append(result.kept, update)
+			keep(update, !update.Old.IsDefined())
 
 			continue
 		}
@@ -240,14 +247,14 @@ func (b *WriteSet) partitionVolumes(
 		compiled := entry.compiled
 
 		if len(compiled) == 0 {
-			result.kept = append(result.kept, update)
+			keep(update, !update.Old.IsDefined())
 
 			continue
 		}
 
 		matched := accounttype.FindMatchingType(update.Key.Account, compiled)
 		if matched == nil {
-			result.kept = append(result.kept, update)
+			keep(update, !update.Old.IsDefined())
 
 			continue
 		}
@@ -268,7 +275,7 @@ func (b *WriteSet) partitionVolumes(
 					result.purged = append(result.purged, update)
 					result.transientPurge = append(result.transientPurge, update)
 				} else {
-					result.kept = append(result.kept, update)
+					keep(update, false)
 				}
 			} else {
 				result.transient = append(result.transient, update)
@@ -278,11 +285,11 @@ func (b *WriteSet) partitionVolumes(
 			if isVolumeZeroBalance(update.New) {
 				result.purged = append(result.purged, update)
 			} else {
-				result.kept = append(result.kept, update)
+				keep(update, isNewVolumeUpdate(update))
 			}
 
 		default:
-			result.kept = append(result.kept, update)
+			keep(update, !update.Old.IsDefined())
 		}
 	}
 

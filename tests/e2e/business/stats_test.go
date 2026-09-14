@@ -73,6 +73,42 @@ var _ = Describe("GetLedgerStats", Ordered, func() {
 		})
 	})
 
+	Context("When a persisted volume starts at zero", Ordered, func() {
+		const ledgerName = "stats-persisted-zero-volume"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(0), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				actions.NewPosting("world", "alice", big.NewInt(1), "USD"),
+			}, nil, nil)))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should count each persisted volume only once", func() {
+			Eventually(func(g Gomega) {
+				resp, err := sharedClient.GetLedgerStats(sharedCtx, &servicepb.GetLedgerStatsRequest{
+					Ledger: ledgerName,
+				})
+				g.Expect(err).To(Succeed())
+				g.Expect(resp.TransactionCount).To(Equal(uint64(2)))
+				g.Expect(resp.VolumeCount).To(Equal(uint64(2)))
+			}).Should(Succeed())
+
+			stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{Ledger: ledgerName})
+			Expect(err).To(Succeed())
+			logs := collectLogs(stream)
+			Expect(logs).To(HaveLen(2))
+			Expect(logs[1].GetPayload().GetApply().GetLog().GetNewKeptVolumes()).To(BeEmpty())
+		})
+	})
+
 	Context("When getting stats for a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
 			_, err := sharedClient.GetLedgerStats(sharedCtx, &servicepb.GetLedgerStatsRequest{
