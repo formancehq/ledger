@@ -13,7 +13,7 @@ An audit is read-only. It must never fix code, create commits, push branches, cr
 
 Manifests and their companion documents under `docs/technical/audits/` are living correctness contracts, not campaign setup that can wait until the next audit run. During authoring and review, use `docs/technical/agent-context.md` to route the changed code or behavior to its owning subsystem documentation and applicable audit domains.
 
-Update an existing manifest and its companion document in the same PR when the change modifies any of the following:
+Update an existing manifest and its companion document in the same PR when the change modifies any of the following; if the domain has no companion yet, create it as part of that update:
 
 - a covered production, test, documentation, or tooling surface;
 - an invariant or expected property owned by the domain;
