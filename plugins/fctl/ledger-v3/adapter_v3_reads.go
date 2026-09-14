@@ -10,7 +10,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	ledgerconfig "github.com/formancehq/ledger/v3/plugins/fctl/ledger-v3/internal/ledgerconfig"
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -217,11 +216,32 @@ func executeV3AnalyzeAccounts(ctx context.Context, decoded input, command sdk.Co
 	if err != nil {
 		return v3Failure("analyze accounts: %v", err)
 	}
-	items, _, err := drainV3Stream(stream)
-	if err != nil {
-		return err
+	var result *servicepb.AnalyzeAccountsResponse
+	for {
+		event := stream.newItem()
+		recvErr := stream.stream.RecvInto(event)
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return v3Failure("receive account analysis: %v", recvErr)
+		}
+		if progress := event.GetProgress(); progress != nil {
+			if emitErr := emitProtoProgress(host, opAnalyzeAccounts.id, progress); emitErr != nil {
+				return emitErr
+			}
+		}
+		if candidate := event.GetResult(); candidate != nil {
+			if result != nil {
+				return v3Failure("account analysis returned more than one result")
+			}
+			result = candidate
+		}
 	}
-	return emitProtoList(host, opAnalyzeAccounts.id, items, nil)
+	if result == nil {
+		return v3Failure("account analysis stream ended without a result")
+	}
+	return emitProto(host, opAnalyzeAccounts.id, result)
 }
 
 func v3ReadOptions(decoded input) (*commonpb.ReadOptions, error) {
@@ -324,7 +344,7 @@ func enforceV3CollectionBudget(items []proto.Message, control sdk.ContinuationCo
 	}
 	size := uint64(2)
 	for index, item := range items {
-		encoded, err := protojson.MarshalOptions{UseProtoNames: false}.Marshal(item)
+		encoded, err := marshalProductProto(item)
 		if err != nil {
 			return v3Failure("encode collection budget: %v", err)
 		}

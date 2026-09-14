@@ -107,7 +107,7 @@ func TestExecuteV3ReadsAllPagesFollowsCursorAndAggregates(t *testing.T) {
 		t.Fatalf("cursors = %q", cursors)
 	}
 	result := host.Events()[0].Result
-	if result.Page != nil || string(result.Data) != `[{"sequence":"1"},{"sequence":"2"}]` {
+	if result.Page != nil || string(result.Data) != `[{"sequence":1,"responseSignature":{}},{"sequence":2,"responseSignature":{}}]` {
 		t.Fatalf("result = %#v data=%s", result, result.Data)
 	}
 }
@@ -169,9 +169,24 @@ func TestCollectV3PagesEnforcesEveryHostCeiling(t *testing.T) {
 	}
 }
 
-func TestExecuteV3ReadsStreamsAccountAnalysisAndDeclinesOtherFamilies(t *testing.T) {
+func TestCollectV3PagesMeasuresTheProductJSONThatWillBeEmitted(t *testing.T) {
+	t.Parallel()
+
+	_, _, err := collectV3Pages(sdk.ContinuationControl{Mode: sdk.ContinuationAllPages, MaxPages: 1, MaxItems: 1, MaxBytes: 20}, "", func(string) ([]proto.Message, string, error) {
+		return []proto.Message{&commonpb.Log{Sequence: 1}}, "", nil
+	})
+	var failure sdk.Failure
+	if !errors.As(err, &failure) || failure.Code != string(sdk.FailureBudgetExhausted) {
+		t.Fatalf("error = %#v, want custom JSON budget failure", err)
+	}
+}
+
+func TestExecuteV3ReadsEmitsOnlyTheFinalAccountAnalysisResult(t *testing.T) {
 	t.Parallel()
 	command, decoded, request := decodedRead(t, "ledger.v3.accounts.analyze", []string{"main"}, []sdk.FlagOccurrence{{Name: flagVariableThreshold, Value: "8"}}, sdk.SinglePageContinuationControl())
+	if !reflect.DeepEqual(command.RawOutputSchema, objectSchema) {
+		t.Fatalf("accounts analyze output schema = %s, want object", command.RawOutputSchema)
+	}
 	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
 		actual := &servicepb.AnalyzeAccountsRequest{}
 		if err := proto.Unmarshal(got.GRPC.Message, actual); err != nil {
@@ -180,12 +195,29 @@ func TestExecuteV3ReadsStreamsAccountAnalysisAndDeclinesOtherFamilies(t *testing
 		if want := (&servicepb.AnalyzeAccountsRequest{Ledger: "main", VariableThreshold: 8}); !proto.Equal(actual, want) {
 			t.Fatalf("request = %v", actual)
 		}
-		return sdk.NewResponseStream(protoResponse(t, &servicepb.AnalyzeAccountsEvent{})), nil
+		return sdk.NewResponseStream(
+			protoResponse(t, &servicepb.AnalyzeAccountsEvent{Type: &servicepb.AnalyzeAccountsEvent_Progress{Progress: &servicepb.AnalyzeProgress{Processed: 4, Total: 10}}}),
+			protoResponse(t, &servicepb.AnalyzeAccountsEvent{Type: &servicepb.AnalyzeAccountsEvent_Result{Result: &servicepb.AnalyzeAccountsResponse{TotalAccounts: 10}}}),
+		), nil
 	})
 	handled, err := executeV3Reads(context.Background(), request, decoded, command, host)
-	if err != nil || !handled || host.Events()[0].Result.Shape != sdk.ResultCollection {
+	if err != nil || !handled || len(host.Events()) != 2 || host.Events()[0].Kind != sdk.EventProgress || host.Events()[1].Result == nil || host.Events()[1].Result.Shape != sdk.ResultObject {
 		t.Fatalf("execute = (%v, %v)", handled, err)
 	}
+	if got := string(host.Events()[1].Result.Data); got != `{"totalAccounts":"10"}` {
+		t.Fatalf("result = %s", got)
+	}
+
+	command, decoded, request = decodedRead(t, "ledger.v3.accounts.analyze", []string{"main"}, nil, sdk.SinglePageContinuationControl())
+	host = sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+		return sdk.NewResponseStream(protoResponse(t, &servicepb.AnalyzeAccountsEvent{Type: &servicepb.AnalyzeAccountsEvent_Progress{Progress: &servicepb.AnalyzeProgress{Processed: 1}}})), nil
+	})
+	handled, err = executeV3Reads(context.Background(), request, decoded, command, host)
+	if !handled || err == nil {
+		t.Fatalf("missing result = (%v, %v), want failure", handled, err)
+	}
+
+	// A different command family is still declined.
 	command, decoded, request = decodedRead(t, "ledger.v3.transactions.get", []string{"main", "1"}, nil, sdk.SinglePageContinuationControl())
 	handled, err = executeV3Reads(context.Background(), request, decoded, command, sdk.NewMemoryHost(nil))
 	if err != nil || handled {

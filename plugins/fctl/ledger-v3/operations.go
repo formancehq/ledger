@@ -41,7 +41,8 @@ const (
 const (
 	readRequestBytes          int64  = 64 << 10
 	applyRequestBytes         int64  = 256 << 10
-	configurationRequestBytes int64  = 512 << 10
+	artifactApplyRequestBytes int64  = 2 << 20
+	configurationRequestBytes int64  = 2 << 20
 	unaryResponseBytes        int64  = 512 << 10
 	streamMessageBytes        int64  = 256 << 10
 	streamAggregateBytes      int64  = 8 << 20
@@ -134,15 +135,15 @@ func applyOperation(id, scope string, requestBytes int64) operation {
 }
 
 var (
-	opApplyCreateTransaction    = applyOperation("CreateTransaction", scopeTransactionWrite, applyRequestBytes)
+	opApplyCreateTransaction    = applyOperation("CreateTransaction", scopeTransactionWrite, artifactApplyRequestBytes)
 	opApplyRevertTransaction    = applyOperation("RevertTransaction", scopeTransactionWrite, applyRequestBytes)
 	opApplyAddMetadata          = applyOperation("AddMetadata", scopeMetadataWrite, applyRequestBytes)
 	opApplyDeleteMetadata       = applyOperation("DeleteMetadata", scopeMetadataWrite, applyRequestBytes)
-	opApplyCreateLedger         = applyOperation("CreateLedger", scopeLedgerWrite, applyRequestBytes)
+	opApplyCreateLedger         = applyOperation("CreateLedger", scopeLedgerWrite, artifactApplyRequestBytes)
 	opApplyDeleteLedger         = applyOperation("DeleteLedger", scopeLedgerWrite, applyRequestBytes)
 	opApplyCreateIndex          = applyOperation("CreateIndex", scopeLedgerWrite, applyRequestBytes)
 	opApplyDropIndex            = applyOperation("DropIndex", scopeLedgerWrite, applyRequestBytes)
-	opApplySaveNumscript        = applyOperation("SaveNumscript", scopeLedgerWrite, applyRequestBytes)
+	opApplySaveNumscript        = applyOperation("SaveNumscript", scopeLedgerWrite, artifactApplyRequestBytes)
 	opApplySetMetadataFieldType = applyOperation("SetMetadataFieldType", scopeMetadataWrite, applyRequestBytes)
 	opApplyRemoveMetadataType   = applyOperation("RemoveMetadataFieldType", scopeMetadataWrite, applyRequestBytes)
 	opApplySaveLedgerMetadata   = applyOperation("SaveLedgerMetadata", scopeMetadataWrite, applyRequestBytes)

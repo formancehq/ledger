@@ -3,8 +3,22 @@ package ledgerv3
 import "github.com/formancehq/fctl-v2-poc/pkg/plugin/sdk"
 
 const (
-	flagConfiguration = "configuration"
-	flagMetadataType  = "metadata-type"
+	flagConfiguration             = "configuration"
+	flagMetadataType              = "metadata-type"
+	flagMode                      = "mode"
+	flagMirrorSourceType          = "mirror-source-type"
+	flagMirrorLedgerName          = "mirror-ledger-name"
+	flagMirrorBaseURL             = "mirror-base-url"
+	flagMirrorOAuth2ClientID      = "mirror-oauth2-client-id"
+	flagMirrorOAuth2ClientSecret  = "mirror-oauth2-client-secret"
+	flagMirrorOAuth2TokenEndpoint = "mirror-oauth2-token-endpoint"
+	flagMirrorOAuth2Scopes        = "mirror-oauth2-scopes"
+	flagMirrorDSN                 = "mirror-dsn"
+	flagMirrorAWSRegion           = "mirror-aws-iam-region"
+	flagMirrorAWSRoleARN          = "mirror-aws-iam-assume-role-arn"
+	flagMirrorBatchSize           = "mirror-batch-size"
+	flagMirrorRewriteFile         = "mirror-rewrite-file"
+	flagMirrorRewriteRule         = "mirror-rewrite-rule"
 )
 
 // maxConfigurationBytes bounds a submitted declarative configuration document.
@@ -63,6 +77,7 @@ func ledgersSpecs() []spec {
 			arguments: []sdk.Argument{ledgerArgument()},
 			flags: append([]sdk.Flag{
 				{Name: flagConfiguration, Usage: "Configuration document, read from a file or from stdin", Type: sdk.FlagString, Required: true},
+				boolFlag(flagDryRun, "Return the planned changes without applying them"),
 			}, writeFlags()...),
 			operations:    append(append([]operation(nil), configurationReads...), opApplyConfiguration),
 			scopeOverride: configurationScopes,
@@ -90,12 +105,38 @@ func ledgersSpecs() []spec {
 			path:      []string{"ledgers", "create"},
 			aliases:   [][]string{nil, {"new", "add"}},
 			summary:   "Create a ledger",
-			long:      "Create a ledger, optionally seeding its metadata schema and chart enforcement mode.",
+			long:      "Create a normal or mirror ledger, optionally seeding its metadata schema and chart enforcement mode.",
 			example:   "ledgers create main",
 			risk:      sdk.RiskMutation,
 			arguments: []sdk.Argument{requiredStringArgument(argName, "Ledger name")},
 			flags: append([]sdk.Flag{
 				stringArrayFlag(flagMetadataType, "Initial schema entry as target:key:type; repeat for several entries"),
+				func() sdk.Flag {
+					flag := stringFlag(flagMode, "Ledger mode: normal or mirror")
+					flag.HasDefault = true
+					flag.DefaultValue = "normal"
+					flag.Completion = staticCompletion("normal", "mirror")
+					return flag
+				}(),
+				func() sdk.Flag {
+					flag := stringFlag(flagMirrorSourceType, "Mirror source type: http or postgres")
+					flag.HasDefault = true
+					flag.DefaultValue = "http"
+					flag.Completion = staticCompletion("http", "postgres")
+					return flag
+				}(),
+				stringFlag(flagMirrorLedgerName, "Source Ledger v2 ledger name; defaults to the new ledger name"),
+				stringFlag(flagMirrorBaseURL, "Base URL for an HTTP mirror source"),
+				stringFlag(flagMirrorOAuth2ClientID, "OAuth2 client id for an HTTP mirror source"),
+				stringFlag(flagMirrorOAuth2ClientSecret, "OAuth2 client secret for an HTTP mirror source"),
+				stringFlag(flagMirrorOAuth2TokenEndpoint, "OAuth2 token endpoint for an HTTP mirror source"),
+				stringArrayFlag(flagMirrorOAuth2Scopes, "OAuth2 scope for an HTTP mirror source; repeat for several scopes"),
+				stringFlag(flagMirrorDSN, "PostgreSQL DSN for a postgres mirror source"),
+				stringFlag(flagMirrorAWSRegion, "AWS region for RDS IAM authentication"),
+				stringFlag(flagMirrorAWSRoleARN, "STS role ARN to assume for RDS IAM authentication"),
+				stringFlag(flagMirrorBatchSize, "Maximum source logs per mirror batch (unsigned 32-bit decimal)"),
+				stringFlag(flagMirrorRewriteFile, "Mirror rewrite rules document, read from a file or stdin"),
+				stringArrayFlag(flagMirrorRewriteRule, "One mirror rewrite rule as JSON; repeat for several rules"),
 				func() sdk.Flag {
 					flag := stringFlag(flagEnforcementMode, "Chart enforcement for unmatched accounts: strict or audit")
 					flag.Completion = staticCompletion("strict", "audit")
@@ -103,6 +144,9 @@ func ledgersSpecs() []spec {
 				}(),
 			}, writeFlags()...),
 			operations: []operation{opApplyCreateLedger},
+			artifacts: []sdk.InputArtifactSpec{{
+				FlagName: flagMirrorRewriteFile, MediaTypes: []string{"application/json", "application/yaml"}, MaxBytes: maxConfigurationBytes, AllowFile: true, AllowStdin: true,
+			}},
 		},
 		{
 			path:       []string{"ledgers", "delete"},

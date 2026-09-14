@@ -71,7 +71,11 @@ func TestExecuteV3TransactionsGetMapsTheGeneratedRequestAndResponse(t *testing.T
 		if wire.GetLedger() != "main" || wire.GetTransactionId() != ^uint64(0) || wire.GetCheckpointId() != 17 {
 			t.Fatalf("generated request = %#v", &wire)
 		}
-		body, err := proto.Marshal(&servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{Id: 42}})
+		body, err := proto.Marshal(&servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{
+			Id:        42,
+			Timestamp: &commonpb.Timestamp{Data: 1_776_864_120_966_130},
+			Postings:  []*commonpb.Posting{{Source: "world", Destination: "users:001", Asset: "USD", Amount: commonpb.NewUint256FromUint64(5_000_000_000)}},
+		}})
 		if err != nil {
 			t.Fatalf("encode response: %v", err)
 		}
@@ -94,8 +98,12 @@ func TestExecuteV3TransactionsGetMapsTheGeneratedRequestAndResponse(t *testing.T
 		t.Fatalf("result JSON = %s, error = %v", events[0].Result.Data, err)
 	}
 	transaction, ok := result["transaction"].(map[string]any)
-	if !ok || transaction["id"] != "42" {
+	if !ok || transaction["id"] != float64(42) || transaction["timestamp"] != "2026-04-22T13:22:00.96613Z" {
 		t.Fatalf("result = %#v", result)
+	}
+	posting := transaction["postings"].([]any)[0].(map[string]any)
+	if posting["amount"] != float64(5_000_000_000) {
+		t.Fatalf("posting = %#v", posting)
 	}
 }
 
@@ -125,12 +133,12 @@ func TestExecuteV3TransactionsAnalyzeConsumesProgressAndEmitsTheFinalResult(t *t
 		t.Fatalf("executeV3Transactions() = %v, %v", handled, err)
 	}
 	events := host.Events()
-	if len(events) != 1 || events[0].Result == nil || events[0].Result.OperationID != opAnalyzeTransactions.id {
+	if len(events) != 2 || events[0].Kind != sdk.EventProgress || events[1].Result == nil || events[1].Result.OperationID != opAnalyzeTransactions.id {
 		t.Fatalf("events = %#v", events)
 	}
 	var result map[string]any
-	if err := json.Unmarshal(events[0].Result.Data, &result); err != nil || result["totalTransactions"] != "9" || result["totalReverted"] != "2" {
-		t.Fatalf("result = %s, error = %v", events[0].Result.Data, err)
+	if err := json.Unmarshal(events[1].Result.Data, &result); err != nil || result["totalTransactions"] != "9" || result["totalReverted"] != "2" {
+		t.Fatalf("result = %s, error = %v", events[1].Result.Data, err)
 	}
 }
 
@@ -185,7 +193,7 @@ func TestExecuteV3TransactionsListTraversesOpaqueCursorsWithinHostBounds(t *test
 		t.Fatalf("host calls = %d, want 2", calls)
 	}
 	events := host.Events()
-	if len(events) != 1 || events[0].Result == nil || events[0].Result.Page != nil || !equalJSON(events[0].Result.Data, `[{"id":"1"},{"id":"2"}]`) {
+	if len(events) != 1 || events[0].Result == nil || events[0].Result.Page != nil || !equalJSON(events[0].Result.Data, `[{"postings":[],"metadata":{},"id":1,"reverted":false},{"postings":[],"metadata":{},"id":2,"reverted":false}]`) {
 		t.Fatalf("events = %#v", events)
 	}
 }
@@ -238,7 +246,7 @@ func TestExecuteV3TransactionsCreateReadsTheDeclaredArtifactAndMapsTheApplyBatch
 		t.Fatalf("artifact reads = %d, want 2", host.reads)
 	}
 	events := host.Events()
-	if len(events) != 1 || events[0].Result == nil || events[0].Result.OperationID != opApplyCreateTransaction.id || !equalJSON(events[0].Result.Data, `{"transaction":{"id":"27"}}`) {
+	if len(events) != 1 || events[0].Result == nil || events[0].Result.OperationID != opApplyCreateTransaction.id || !equalJSON(events[0].Result.Data, `{"transaction":{"postings":[],"metadata":{},"id":27,"reverted":false}}`) {
 		t.Fatalf("events = %#v, data = %s", events, events[0].Result.Data)
 	}
 }
@@ -305,7 +313,7 @@ func TestExecuteV3TransactionMetadataAndRevertCommandsMapTypedApplyActions(t *te
 				}
 			},
 			response:  transactionRevertedResponse(&commonpb.RevertedTransaction{RevertedTransactionId: 44, RevertTransaction: &commonpb.Transaction{Id: 45}}),
-			wantShape: sdk.ResultObject, wantData: `{"revertedTransactionId":"44","revertTransaction":{"id":"45"}}`,
+			wantShape: sdk.ResultObject, wantData: `{"revertedTransactionId":44,"revertTransaction":{"postings":[],"metadata":{},"id":45,"reverted":false}}`,
 		},
 	}
 

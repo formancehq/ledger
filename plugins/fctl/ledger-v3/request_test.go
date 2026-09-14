@@ -125,6 +125,23 @@ func TestDecodeRejectsAValueOutsideADeclaredCompletionSet(t *testing.T) {
 	}
 }
 
+func TestDecodeRejectsPageSizesOutsideTheProductBound(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"-1", "0", "1001"} {
+		_, err := decode(commandByPath(t, "accounts", "list"), sdk.ExecuteRequest{
+			Arguments: []string{"main"},
+			Flags:     []sdk.FlagOccurrence{{Name: flagPageSize, Value: value}},
+		})
+		if err == nil {
+			t.Fatalf("decode accepted page-size %s", value)
+		}
+		if code := failureCode(t, err); code != sdk.FailureInvalidArgument {
+			t.Fatalf("page-size %s failure code = %q", value, code)
+		}
+	}
+}
+
 func TestUint64RejectsAValueThatWouldTruncate(t *testing.T) {
 	t.Parallel()
 

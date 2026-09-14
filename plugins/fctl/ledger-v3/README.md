@@ -1,6 +1,6 @@
 # Ledger v3 command plugin
 
-This module exposes the 48 Ledger v3 product commands present in the current
+This module exposes the 48 runnable Ledger v3 product command paths present in the current
 `release/v3.0` command surface to `fctl`. It is a
 command-provider plugin: target selection, credentials, request signing,
 transport and rendering remain owned by the host.
@@ -10,6 +10,12 @@ of truth. The catalogue contract test constructs those commands and compares
 their paths with the plugin catalogue, excluding only the operator-owned
 `ledgers promote` action. This makes additions and removals in the product CLI
 fail the plugin test instead of relying on a duplicated command list.
+
+The audit also compares the Ledger CLI semantics that are easy to lose while
+transposing a path: mirror-ledger creation flags and source modes,
+configuration dry-run, index-inspection defaults, and prepared-query
+all-pages continuation. The adapter remains the executable contract; a matching
+path count alone is not treated as full behavioral parity.
 
 The six former `chapters` commands are intentionally absent: current
 `release/v3.0` removed `ListChapters`, `GetChapterSchedule`, `CloseChapter`,
@@ -68,8 +74,10 @@ ignored by Git.
   selected command descriptor.
 - Paginated commands preserve opaque cursors. Host-request, page, item and byte
   ceilings bound complete collection traversal.
-- Numscript and configuration file contents arrive through host-owned input
-  artifact handles and are capped at 1 MiB.
+- Numscript, transaction-script, configuration, and mirror rewrite documents
+  arrive through host-owned input artifact handles and are capped at 1 MiB.
+  Operations embedding those documents admit up to 2 MiB on the generated
+  protobuf request so the declared artifact maximum remains executable.
 - The final component must validate, remain byte-for-byte reproducible and stay
   at or below 16 MiB.
 

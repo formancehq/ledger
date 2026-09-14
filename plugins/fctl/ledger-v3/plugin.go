@@ -1,6 +1,6 @@
 // Package ledgerv3 is the fctl command-provider plugin for Ledger v3.
 //
-// It serves the 48 product commands of `ledgerctl` at ledger release/v3.0
+// It serves the 48 runnable product command paths of `ledgerctl` at ledger release/v3.0
 // 9a6fa7d0 over the gRPC service ledger.BucketService, and nothing else. Host
 // and local concerns, operator and storage commands, and the signing and
 // event-sink control plane are all owned elsewhere; see README.md for the

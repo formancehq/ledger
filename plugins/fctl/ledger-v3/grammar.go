@@ -25,6 +25,8 @@ const (
 // still owns the continuation decision; this only sizes one page.
 const defaultPageSize = "50"
 
+const maxPageSize int64 = 1000
+
 func ledgerArgument() sdk.Argument {
 	return sdk.Argument{
 		Name:     argLedger,

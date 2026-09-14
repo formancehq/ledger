@@ -74,7 +74,7 @@ func TestExecuteV3QueriesMapsCRUDRequestsAndResults(t *testing.T) {
 			name: "list", commandID: "ledger.v3.queries.list", arguments: []string{"main"},
 			operation: opListPreparedQueries.id,
 			response:  &servicepb.ListPreparedQueriesResponse{Queries: []*commonpb.PreparedQuery{{Name: "active-users", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}}},
-			wantShape: sdk.ResultCollection, wantData: `[{"name":"active-users"}]`,
+			wantShape: sdk.ResultCollection, wantData: `[{"name":"active-users","target":"ACCOUNTS"}]`,
 			newRequest: func() proto.Message { return &servicepb.ListPreparedQueriesRequest{} },
 			want:       &servicepb.ListPreparedQueriesRequest{Ledger: "main"},
 		},
@@ -149,8 +149,42 @@ func TestExecuteV3QueriesExecuteMapsListParametersAndCursor(t *testing.T) {
 		t.Fatalf("executeV3Queries() = %v, %v", handled, err)
 	}
 	result := host.Events()[0].Result
-	if result.Shape != sdk.ResultCollection || result.Page == nil || result.Page.NextCursor != "opaque-next" || !result.Page.HasMore || !equalJSON(result.Data, `[{"address":"users:42"},{"id":"7"},{"sequence":"9"}]`) {
+	if result.Shape != sdk.ResultCollection || result.Page == nil || result.Page.NextCursor != "opaque-next" || !result.Page.HasMore || !equalJSON(result.Data, `[{"address":"users:42","volumes":[]},{"postings":[],"metadata":{},"id":7,"reverted":false},{"sequence":9,"responseSignature":{}}]`) {
 		t.Fatalf("result = %#v, data = %s", result, result.Data)
+	}
+}
+
+func TestExecuteV3QueriesExecuteHonoursAllPagesContinuation(t *testing.T) {
+	command, decoded, request := decodedQueryNumscript(t, "ledger.v3.queries.execute", []string{"main", "activity"}, nil, sdk.ContinuationControl{
+		Mode: sdk.ContinuationAllPages, MaxPages: 2, MaxItems: 2, MaxBytes: 1024,
+	})
+	if !command.Pagination.Supported {
+		t.Fatal("queries execute does not advertise cursor continuation")
+	}
+	calls := 0
+	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
+		calls++
+		wire := &servicepb.ExecutePreparedQueryRequest{}
+		if got.GRPC == nil || proto.Unmarshal(got.GRPC.Message, wire) != nil {
+			t.Fatalf("request = %#v", got)
+		}
+		if calls == 1 {
+			if wire.GetCursor() != "" {
+				t.Fatalf("first cursor = %q", wire.GetCursor())
+			}
+			return sdk.NewResponseStream(protoResponse(t, &servicepb.ExecutePreparedQueryResponse{Result: &servicepb.ExecutePreparedQueryResponse_Cursor{Cursor: &commonpb.PreparedQueryCursor{HasMore: true, Next: "next", AccountData: []*commonpb.Account{{Address: "users:1"}}}}})), nil
+		}
+		if wire.GetCursor() != "next" {
+			t.Fatalf("second cursor = %q", wire.GetCursor())
+		}
+		return sdk.NewResponseStream(protoResponse(t, &servicepb.ExecutePreparedQueryResponse{Result: &servicepb.ExecutePreparedQueryResponse_Cursor{Cursor: &commonpb.PreparedQueryCursor{AccountData: []*commonpb.Account{{Address: "users:2"}}}}})), nil
+	})
+	if handled, err := executeV3Queries(context.Background(), request, decoded, command, host); err != nil || !handled {
+		t.Fatalf("executeV3Queries() = (%v, %v)", handled, err)
+	}
+	result := host.Events()[0].Result
+	if calls != 2 || result.Page != nil || !equalJSON(result.Data, `[{"address":"users:1","volumes":[]},{"address":"users:2","volumes":[]}]`) {
+		t.Fatalf("calls = %d, result = %#v, data = %s", calls, result, result.Data)
 	}
 }
 

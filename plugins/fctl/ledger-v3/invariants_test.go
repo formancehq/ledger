@@ -9,7 +9,29 @@ import (
 
 	"github.com/formancehq/fctl-v2-poc/pkg/plugin/sdk"
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"google.golang.org/protobuf/proto"
 )
+
+func TestArtifactApplyPoliciesAdmitTheirDeclaredMaximumPayload(t *testing.T) {
+	t.Parallel()
+
+	content := strings.Repeat("x", int(maxNumscriptBytes))
+	tests := []struct {
+		operation operation
+		request   *servicepb.ApplyRequest
+	}{
+		{operation: opApplySaveNumscript, request: servicepb.UnsignedApplyRequest("key", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{SaveNumscript: &servicepb.SaveNumscriptRequest{Ledger: "main", Name: "script", Version: "1.0.0", Content: content}}})},
+		{operation: opApplyCreateTransaction, request: servicepb.UnsignedApplyRequest("key", &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "main", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{Script: &commonpb.Script{Plain: content}}}}}}})},
+		{operation: opApplyCreateLedger, request: servicepb.UnsignedApplyRequest("key", &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "legacy", Type: &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "https://example"}}, RewriteRules: []*commonpb.MirrorRewriteRule{{Scope: &commonpb.MirrorRewriteRule_AnyVariant{AnyVariant: &commonpb.AnyVariantRule{Match: content}}}}}}}})},
+	}
+	for _, test := range tests {
+		if got := int64(proto.Size(test.request)); got > test.operation.requestBytes {
+			t.Fatalf("%s maximum artifact request is %d bytes, policy admits %d", test.operation.id, got, test.operation.requestBytes)
+		}
+	}
+}
 
 func TestComponentGuestDependencyClosureExcludesGRPCGo(t *testing.T) {
 	t.Parallel()
@@ -188,7 +210,7 @@ func TestEveryOperationScopeIsAGranularLedgerScope(t *testing.T) {
 	}
 }
 
-func TestPaginatedCommandsDeclareExactlyOneServerStreamingOperation(t *testing.T) {
+func TestPaginatedCommandsDeclareExactlyOneCursorOperation(t *testing.T) {
 	t.Parallel()
 
 	for _, command := range (Plugin{}).Commands() {
@@ -199,8 +221,8 @@ func TestPaginatedCommandsDeclareExactlyOneServerStreamingOperation(t *testing.T
 			t.Fatalf("%s is paginated with %d operations", command.ID, len(command.Operations))
 		}
 		grpc := command.Operations[0].GRPC
-		if grpc == nil || !grpc.ServerStreaming {
-			t.Fatalf("%s is paginated but its operation is not server-streaming", command.ID)
+		if grpc == nil {
+			t.Fatalf("%s is paginated but has no gRPC operation", command.ID)
 		}
 		if command.ExecutionPolicy == nil || command.ExecutionPolicy.MaxHostRequests < sdk.DefaultAllPagesMaxPages {
 			t.Fatalf("%s cannot honour the host's all-pages page ceiling", command.ID)

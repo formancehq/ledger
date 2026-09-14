@@ -10,7 +10,7 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func executeV3Queries(ctx context.Context, _ sdk.ExecuteRequest, decoded input, command sdk.Command, host sdk.Host) (bool, error) {
+func executeV3Queries(ctx context.Context, request sdk.ExecuteRequest, decoded input, command sdk.Command, host sdk.Host) (bool, error) {
 	switch command.ID {
 	case "ledger.v3.queries.create", "ledger.v3.queries.update":
 		target := commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS
@@ -64,28 +64,40 @@ func executeV3Queries(ctx context.Context, _ sdk.ExecuteRequest, decoded input, 
 		if decoded.text(flagQueryMode) == "aggregate-volumes" {
 			mode = commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES
 		}
-		response, err := unaryV3(ctx, host, command, opExecutePreparedQuery.id, &servicepb.ExecutePreparedQueryRequest{Ledger: decoded.text(argLedger), QueryName: decoded.text(argName), Parameters: parameters, PageSize: uint32(decoded.int32(flagPageSize)), Cursor: decoded.text(flagCursor), Mode: mode}, &servicepb.ExecutePreparedQueryResponse{})
+		items, page, err := collectV3Pages(request.Continuation, decoded.text(flagCursor), func(cursorValue string) ([]proto.Message, string, error) {
+			response, err := unaryV3(ctx, host, command, opExecutePreparedQuery.id, &servicepb.ExecutePreparedQueryRequest{Ledger: decoded.text(argLedger), QueryName: decoded.text(argName), Parameters: parameters, PageSize: uint32(decoded.int32(flagPageSize)), Cursor: cursorValue, Mode: mode}, &servicepb.ExecutePreparedQueryResponse{})
+			if err != nil {
+				return nil, "", v3Failure("execute prepared query: %v", err)
+			}
+			if aggregate := response.GetAggregate(); aggregate != nil {
+				return []proto.Message{aggregate}, "", nil
+			}
+			resultCursor := response.GetCursor()
+			if resultCursor == nil {
+				return nil, "", nil
+			}
+			pageItems := make([]proto.Message, 0, len(resultCursor.GetAccountData())+len(resultCursor.GetTransactionData())+len(resultCursor.GetLogData()))
+			for _, item := range resultCursor.GetAccountData() {
+				pageItems = append(pageItems, item)
+			}
+			for _, item := range resultCursor.GetTransactionData() {
+				pageItems = append(pageItems, item)
+			}
+			for _, item := range resultCursor.GetLogData() {
+				pageItems = append(pageItems, item)
+			}
+			if !resultCursor.GetHasMore() {
+				return pageItems, "", nil
+			}
+			return pageItems, resultCursor.GetNext(), nil
+		})
 		if err != nil {
-			return true, v3Failure("execute prepared query: %v", err)
+			return true, err
 		}
-		if aggregate := response.GetAggregate(); aggregate != nil {
-			return true, emitProtoList(host, opExecutePreparedQuery.id, []proto.Message{aggregate}, nil)
+		if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
+			page = nil
 		}
-		cursor := response.GetCursor()
-		if cursor == nil {
-			return true, emitProtoList(host, opExecutePreparedQuery.id, nil, nil)
-		}
-		items := make([]proto.Message, 0, len(cursor.GetAccountData())+len(cursor.GetTransactionData())+len(cursor.GetLogData()))
-		for _, item := range cursor.GetAccountData() {
-			items = append(items, item)
-		}
-		for _, item := range cursor.GetTransactionData() {
-			items = append(items, item)
-		}
-		for _, item := range cursor.GetLogData() {
-			items = append(items, item)
-		}
-		return true, emitProtoList(host, opExecutePreparedQuery.id, items, &sdk.PageInfo{NextCursor: cursor.GetNext(), HasMore: cursor.GetHasMore()})
+		return true, emitProtoList(host, opExecutePreparedQuery.id, items, page)
 	default:
 		return false, nil
 	}

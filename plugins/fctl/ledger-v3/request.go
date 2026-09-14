@@ -111,8 +111,12 @@ func decode(command sdk.Command, request sdk.ExecuteRequest) (input, error) {
 			}
 		}
 		if flag.Type == sdk.FlagInt32 {
-			if _, err := strconv.ParseInt(decoded.scalars[flag.Name], 10, 32); err != nil {
+			value, err := strconv.ParseInt(decoded.scalars[flag.Name], 10, 32)
+			if err != nil {
 				return input{}, invalidArgument("flag %q expects a 32-bit integer", flag.Name)
+			}
+			if flag.Name == flagPageSize && (value <= 0 || value > maxPageSize) {
+				return input{}, invalidArgument("flag %q expects an integer between 1 and %d", flag.Name, maxPageSize)
 			}
 		}
 	}

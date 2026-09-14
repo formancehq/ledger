@@ -80,13 +80,13 @@ func indexesSpecs() []spec {
 				key.Required = true
 				mode := stringFlag(flagInspectMode, "Inspection mode: distinct-values, facets or summary")
 				mode.HasDefault = true
-				mode.DefaultValue = "distinct-values"
+				mode.DefaultValue = "summary"
 				mode.Completion = staticCompletion("distinct-values", "facets", "summary")
 				return []sdk.Flag{
 					target,
 					key,
 					mode,
-					{Name: flagPageSize, Usage: "Maximum values per page", Type: sdk.FlagInt32, HasDefault: true, DefaultValue: defaultPageSize},
+					{Name: flagPageSize, Usage: "Maximum values per page", Type: sdk.FlagInt32, HasDefault: true, DefaultValue: "20"},
 					stringFlag(flagCursor, "Opaque cursor returned by a previous page"),
 					stringFlag(flagCheckpointID, "Read from this query checkpoint id (unsigned 64-bit decimal)"),
 				}

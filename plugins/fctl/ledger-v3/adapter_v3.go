@@ -142,7 +142,7 @@ func applyV3(ctx context.Context, host sdk.Host, command sdk.Command, operationI
 }
 
 func emitProto(host sdk.Host, operationID string, message proto.Message) error {
-	encoded, err := protojson.MarshalOptions{UseProtoNames: false}.Marshal(message)
+	encoded, err := marshalProductProto(message)
 	if err != nil {
 		return v3Failure("encode %q response: %v", operationID, err)
 	}
@@ -152,7 +152,7 @@ func emitProto(host sdk.Host, operationID string, message proto.Message) error {
 func emitProtoList(host sdk.Host, operationID string, messages []proto.Message, page *sdk.PageInfo) error {
 	items := make([]json.RawMessage, 0, len(messages))
 	for _, message := range messages {
-		encoded, err := protojson.MarshalOptions{UseProtoNames: false}.Marshal(message)
+		encoded, err := marshalProductProto(message)
 		if err != nil {
 			return v3Failure("encode %q response: %v", operationID, err)
 		}
@@ -163,6 +163,21 @@ func emitProtoList(host sdk.Host, operationID string, messages []proto.Message, 
 		return v3Failure("encode %q collection: %v", operationID, err)
 	}
 	return emitJSONBytes(host, operationID, sdk.ResultCollection, encoded, page)
+}
+
+func marshalProductProto(message proto.Message) ([]byte, error) {
+	if _, ok := message.(json.Marshaler); ok {
+		return json.Marshal(message)
+	}
+	return protojson.MarshalOptions{UseProtoNames: false}.Marshal(message)
+}
+
+func emitProtoProgress(host sdk.Host, operationID string, message proto.Message) error {
+	encoded, err := marshalProductProto(message)
+	if err != nil {
+		return v3Failure("encode %q progress: %v", operationID, err)
+	}
+	return host.Emit(sdk.Event{Kind: sdk.EventProgress, Payload: encoded})
 }
 
 func emitJSON(host sdk.Host, operationID string, shape sdk.ResultShape, value any, page *sdk.PageInfo) error {

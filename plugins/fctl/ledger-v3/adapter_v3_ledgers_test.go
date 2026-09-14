@@ -22,6 +22,20 @@ type ledgerInputHost struct {
 	reads   int
 }
 
+type mirrorInputHost struct {
+	*sdk.MemoryHost
+	content []byte
+	reads   int
+}
+
+func (h *mirrorInputHost) ReadInput(_ context.Context, handle string) (sdk.InputArtifactChunk, error) {
+	if handle != "rules-handle" || h.reads != 0 {
+		return sdk.InputArtifactChunk{}, errors.New("unexpected mirror rewrite input read")
+	}
+	h.reads++
+	return sdk.InputArtifactChunk{Bytes: append([]byte(nil), h.content...), Final: true}, nil
+}
+
 func (h *ledgerInputHost) ReadInput(_ context.Context, handle string) (sdk.InputArtifactChunk, error) {
 	if handle != "configuration-handle" || h.reads != 0 {
 		return sdk.InputArtifactChunk{}, errors.New("unexpected test input read")
@@ -71,7 +85,7 @@ func TestExecuteV3LedgersCreateAndDeleteEmitTheAppliedLedger(t *testing.T) {
 					t.Fatalf("create request = %#v", create)
 				}
 			},
-			want: `{"name":"main","defaultEnforcementMode":"CHART_ENFORCEMENT_AUDIT","id":7}`,
+			want: `{"name":"main","metadataSchema":{},"mirrorSource":{},"mirrorSyncProgress":{},"defaultEnforcementMode":"CHART_ENFORCEMENT_AUDIT"}`,
 		},
 		{
 			name:        "delete",
@@ -115,6 +129,66 @@ func TestExecuteV3LedgersCreateAndDeleteEmitTheAppliedLedger(t *testing.T) {
 			}
 			assertLedgerResult(t, host, test.operationID, sdk.ResultObject, test.want)
 		})
+	}
+}
+
+func TestExecuteV3LedgersCreateMapsHTTPMirrorSource(t *testing.T) {
+	command, decoded, request := decodedLedgerCommand(t, "ledger.v3.ledgers.create", []string{"mirror"}, []sdk.FlagOccurrence{
+		{Name: flagMode, Value: "mirror"},
+		{Name: flagMirrorSourceType, Value: "http"},
+		{Name: flagMirrorLedgerName, Value: "legacy"},
+		{Name: flagMirrorBaseURL, Value: "https://ledger-v2.example"},
+		{Name: flagMirrorOAuth2ClientID, Value: "client"},
+		{Name: flagMirrorOAuth2ClientSecret, Value: "secret"},
+		{Name: flagMirrorOAuth2TokenEndpoint, Value: "https://issuer.example/token"},
+		{Name: flagMirrorOAuth2Scopes, Value: "ledger:read"},
+		{Name: flagMirrorBatchSize, Value: "4294967295"},
+		{Name: flagMirrorRewriteRule, Value: `{"anyVariant":{"actions":[{"drop":{}}]}}`},
+	})
+	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
+		var wire servicepb.ApplyRequest
+		if got.GRPC == nil || proto.Unmarshal(got.GRPC.Message, &wire) != nil {
+			t.Fatalf("host request = %#v", got)
+		}
+		create := wire.GetUnsigned().GetRequests()[0].GetCreateLedger()
+		wantSource := &commonpb.MirrorSourceConfig{
+			LedgerName: "legacy", BatchSize: ^uint32(0),
+			Type:         &commonpb.MirrorSourceConfig_Http{Http: &commonpb.HttpMirrorSourceConfig{BaseUrl: "https://ledger-v2.example", Oauth2ClientCredentials: &commonpb.OAuth2ClientCredentials{ClientId: "client", ClientSecret: "secret", TokenEndpoint: "https://issuer.example/token", Scopes: []string{"ledger:read"}}}},
+			RewriteRules: []*commonpb.MirrorRewriteRule{{Scope: &commonpb.MirrorRewriteRule_AnyVariant{AnyVariant: &commonpb.AnyVariantRule{Actions: []*commonpb.AnyVariantAction{{Action: &commonpb.AnyVariantAction_Drop{Drop: &commonpb.DropAction{}}}}}}}},
+		}
+		if create.GetMode() != commonpb.LedgerMode_LEDGER_MODE_MIRROR || !proto.Equal(create.GetMirrorSource(), wantSource) {
+			t.Fatalf("create mirror request = %#v", create)
+		}
+		return sdk.NewResponseStream(protoResponse(t, ledgerApplyResponse(&commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "mirror"}}}))), nil
+	})
+	if handled, err := executeV3Ledgers(context.Background(), request, decoded, command, host); err != nil || !handled {
+		t.Fatalf("executeV3Ledgers() = (%v, %v)", handled, err)
+	}
+}
+
+func TestExecuteV3LedgersCreateReadsMirrorRewriteFile(t *testing.T) {
+	command, decoded, request := decodedLedgerCommand(t, "ledger.v3.ledgers.create", []string{"mirror"}, []sdk.FlagOccurrence{
+		{Name: flagMode, Value: "mirror"},
+		{Name: flagMirrorBaseURL, Value: "https://ledger-v2.example"},
+		{Name: flagMirrorRewriteFile, Value: "rules-handle"},
+	})
+	memory := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
+		var wire servicepb.ApplyRequest
+		if got.GRPC == nil || proto.Unmarshal(got.GRPC.Message, &wire) != nil {
+			t.Fatalf("host request = %#v", got)
+		}
+		rules := wire.GetUnsigned().GetRequests()[0].GetCreateLedger().GetMirrorSource().GetRewriteRules()
+		if len(rules) != 1 || rules[0].GetAnyVariant() == nil || len(rules[0].GetAnyVariant().GetActions()) != 1 || rules[0].GetAnyVariant().GetActions()[0].GetDrop() == nil {
+			t.Fatalf("rewrite rules = %#v", rules)
+		}
+		return sdk.NewResponseStream(protoResponse(t, ledgerApplyResponse(&commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: "mirror"}}}))), nil
+	})
+	host := &mirrorInputHost{MemoryHost: memory, content: []byte(`[{"anyVariant":{"actions":[{"drop":{}}]}}]`)}
+	if handled, err := executeV3Ledgers(context.Background(), request, decoded, command, host); err != nil || !handled {
+		t.Fatalf("executeV3Ledgers() = (%v, %v)", handled, err)
+	}
+	if host.reads != 1 {
+		t.Fatalf("rewrite artifact reads = %d", host.reads)
 	}
 }
 
@@ -464,6 +538,38 @@ func TestExecuteV3LedgerConfigurationApplyDistinguishesNoOpFromChanges(t *testin
 			assertLedgerResult(t, memory, opApplyConfiguration.id, test.wantShape, test.wantResult)
 		})
 	}
+}
+
+func TestExecuteV3LedgerConfigurationDryRunEmitsPlanWithoutMutation(t *testing.T) {
+	command, decoded, request := decodedLedgerCommand(t, "ledger.v3.ledgers.configuration.apply", []string{"main"}, []sdk.FlagOccurrence{
+		{Name: flagConfiguration, Value: "configuration-handle"},
+		{Name: flagDryRun, Value: "true"},
+	})
+	applyCalls := 0
+	memory := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
+		switch got.Operation {
+		case opGetLedger.id:
+			return sdk.NewResponseStream(protoResponse(t, &commonpb.LedgerInfo{Name: "main", DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT})), nil
+		case opListIndexes.id, opListNumscripts.id:
+			return sdk.NewResponseStream(), nil
+		case opListPreparedQueries.id:
+			return sdk.NewResponseStream(protoResponse(t, &servicepb.ListPreparedQueriesResponse{})), nil
+		case opApplyConfiguration.id:
+			applyCalls++
+			return sdk.NewResponseStream(protoResponse(t, &servicepb.ApplyResponse{})), nil
+		default:
+			t.Fatalf("unexpected operation %q", got.Operation)
+			return nil, nil
+		}
+	})
+	host := &ledgerInputHost{MemoryHost: memory, content: []byte("defaultEnforcementMode: audit\nindexes: {}\n")}
+	if handled, err := executeV3Ledgers(context.Background(), request, decoded, command, host); err != nil || !handled {
+		t.Fatalf("executeV3Ledgers() = (%v, %v)", handled, err)
+	}
+	if applyCalls != 0 {
+		t.Fatalf("dry-run made %d Apply calls", applyCalls)
+	}
+	assertLedgerResult(t, memory, opApplyConfiguration.id, sdk.ResultObject, `{"actions":[{"section":"defaultEnforcementMode","operation":"update"}]}`)
 }
 
 func TestExecuteV3LedgersDeclinesAnotherCommandFamily(t *testing.T) {

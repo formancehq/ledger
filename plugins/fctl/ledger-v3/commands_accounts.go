@@ -38,7 +38,6 @@ func accountsSpecs() []spec {
 			arguments:  []sdk.Argument{ledgerArgument()},
 			flags:      []sdk.Flag{{Name: flagVariableThreshold, Usage: "Distinct values above which a segment is treated as variable", Type: sdk.FlagInt32}},
 			operations: []operation{opAnalyzeAccounts},
-			collection: true,
 		},
 		{
 			path:    []string{"accounts", "delete-metadata"},

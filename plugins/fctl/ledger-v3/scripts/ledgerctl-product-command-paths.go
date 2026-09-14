@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounts"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
@@ -26,6 +27,10 @@ import (
 )
 
 func main() {
+	if len(os.Args) == 2 && os.Args[1] == "--semantics" {
+		writeCriticalSemantics()
+		return
+	}
 	constructors := []func() *cobra.Command{
 		accounttypes.NewCommand,
 		accounts.NewCommand,
@@ -52,6 +57,35 @@ func main() {
 	sort.Strings(paths)
 
 	if err := json.NewEncoder(os.Stdout).Encode(paths); err != nil {
+		panic(err)
+	}
+}
+
+func writeCriticalSemantics() {
+	create := ledgers.NewCreateCommand()
+	var mirrorFlags []string
+	create.Flags().VisitAll(func(flag *pflag.Flag) {
+		if flag.Name == "mode" || strings.HasPrefix(flag.Name, "mirror-") {
+			mirrorFlags = append(mirrorFlags, flag.Name)
+		}
+	})
+	sort.Strings(mirrorFlags)
+	inspect := indexes.NewInspectCommand()
+	semantics := struct {
+		CreateMirrorFlags   []string          `json:"createMirrorFlags"`
+		ConfigurationDryRun bool              `json:"configurationDryRun"`
+		InspectDefaults     map[string]string `json:"inspectDefaults"`
+		QueriesAllPages     bool              `json:"queriesAllPages"`
+	}{
+		CreateMirrorFlags:   mirrorFlags,
+		ConfigurationDryRun: ledgers.NewConfigurationApplyCommand().Flags().Lookup("dry-run") != nil,
+		InspectDefaults: map[string]string{
+			"mode":      inspect.Flags().Lookup("mode").DefValue,
+			"page-size": inspect.Flags().Lookup("page-size").DefValue,
+		},
+		QueriesAllPages: queries.NewExecuteCommand().Flags().Lookup("all") != nil,
+	}
+	if err := json.NewEncoder(os.Stdout).Encode(semantics); err != nil {
 		panic(err)
 	}
 }

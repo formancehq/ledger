@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/formancehq/fctl-v2-poc/pkg/plugin/sdk"
@@ -12,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	ledgerconfig "github.com/formancehq/ledger/v3/plugins/fctl/ledger-v3/internal/ledgerconfig"
 	"go.yaml.in/yaml/v3"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 func executeV3Ledgers(ctx context.Context, _ sdk.ExecuteRequest, decoded input, command sdk.Command, host sdk.Host) (bool, error) {
@@ -51,6 +53,20 @@ func executeV3Ledgers(ctx context.Context, _ sdk.ExecuteRequest, decoded input, 
 		if len(requests) == 0 {
 			return true, emitEmpty(host, opApplyConfiguration.id)
 		}
+		if decoded.boolean(flagDryRun) {
+			type plannedAction struct {
+				Section     string `json:"section"`
+				Operation   string `json:"operation"`
+				Description string `json:"description,omitempty"`
+			}
+			plan := struct {
+				Actions []plannedAction `json:"actions"`
+			}{Actions: make([]plannedAction, 0, len(actions))}
+			for _, action := range actions {
+				plan.Actions = append(plan.Actions, plannedAction{Section: action.Section, Operation: action.Operation, Description: action.Description})
+			}
+			return true, emitJSON(host, opApplyConfiguration.id, sdk.ResultObject, plan, nil)
+		}
 		response, err := applyV3(ctx, host, command, opApplyConfiguration.id, decoded.text(flagIdempotencyKey), requests...)
 		if err != nil {
 			return true, err
@@ -61,11 +77,15 @@ func executeV3Ledgers(ctx context.Context, _ sdk.ExecuteRequest, decoded input, 
 		if err != nil {
 			return true, err
 		}
+		ledgerMode, mirrorSource, err := parseMirrorSource(ctx, host, decoded, decoded.text(argName))
+		if err != nil {
+			return true, err
+		}
 		mode := commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
 		if decoded.text(flagEnforcementMode) == "audit" {
 			mode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
 		}
-		response, err := applyV3(ctx, host, command, opApplyCreateLedger.id, decoded.text(flagIdempotencyKey), &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: decoded.text(argName), InitialSchema: schema, DefaultEnforcementMode: mode}}})
+		response, err := applyV3(ctx, host, command, opApplyCreateLedger.id, decoded.text(flagIdempotencyKey), &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: decoded.text(argName), InitialSchema: schema, DefaultEnforcementMode: mode, Mode: ledgerMode, MirrorSource: mirrorSource}}})
 		if err != nil {
 			return true, err
 		}
@@ -106,6 +126,106 @@ func executeV3Ledgers(ctx context.Context, _ sdk.ExecuteRequest, decoded input, 
 	default:
 		return false, nil
 	}
+}
+
+func parseMirrorSource(ctx context.Context, host sdk.Host, decoded input, ledgerName string) (commonpb.LedgerMode, *commonpb.MirrorSourceConfig, error) {
+	mirrorFlags := []string{flagMirrorSourceType, flagMirrorLedgerName, flagMirrorBaseURL, flagMirrorOAuth2ClientID, flagMirrorOAuth2ClientSecret, flagMirrorOAuth2TokenEndpoint, flagMirrorOAuth2Scopes, flagMirrorDSN, flagMirrorAWSRegion, flagMirrorAWSRoleARN, flagMirrorBatchSize, flagMirrorRewriteFile, flagMirrorRewriteRule}
+	hasMirrorFlags := false
+	for _, name := range mirrorFlags {
+		if decoded.present[name] {
+			hasMirrorFlags = true
+			break
+		}
+	}
+	mode := decoded.text(flagMode)
+	if hasMirrorFlags && !decoded.present[flagMode] {
+		mode = "mirror"
+	}
+	if mode == "normal" {
+		if hasMirrorFlags {
+			return 0, nil, invalidArgument("mirror flags require mode mirror")
+		}
+		return commonpb.LedgerMode_LEDGER_MODE_NORMAL, nil, nil
+	}
+	if mode != "mirror" {
+		return 0, nil, invalidArgument("flag %q expects normal or mirror", flagMode)
+	}
+	var batchSize uint64
+	if raw := decoded.text(flagMirrorBatchSize); raw != "" {
+		parsed, err := strconv.ParseUint(raw, 10, 32)
+		if err != nil {
+			return 0, nil, invalidArgument("flag %q expects an unsigned 32-bit integer", flagMirrorBatchSize)
+		}
+		batchSize = parsed
+	}
+	sourceLedger := decoded.text(flagMirrorLedgerName)
+	if sourceLedger == "" {
+		sourceLedger = ledgerName
+	}
+	config := &commonpb.MirrorSourceConfig{LedgerName: sourceLedger, BatchSize: uint32(batchSize)}
+	if handle := decoded.text(flagMirrorRewriteFile); handle != "" {
+		content, err := readArtifact(ctx, host, handle, maxConfigurationBytes)
+		if err != nil {
+			return 0, nil, err
+		}
+		if !json.Valid(content) {
+			var value any
+			if err := yaml.Unmarshal(content, &value); err != nil {
+				return 0, nil, invalidArgument("flag %q contains an invalid mirror rewrite document", flagMirrorRewriteFile)
+			}
+			content, err = json.Marshal(value)
+			if err != nil {
+				return 0, nil, invalidArgument("flag %q contains an invalid mirror rewrite document", flagMirrorRewriteFile)
+			}
+		}
+		var encodedRules []json.RawMessage
+		if err := json.Unmarshal(content, &encodedRules); err != nil {
+			return 0, nil, invalidArgument("flag %q expects a list of mirror rewrite rules", flagMirrorRewriteFile)
+		}
+		for _, encodedRule := range encodedRules {
+			rule := &commonpb.MirrorRewriteRule{}
+			if err := protojson.Unmarshal(encodedRule, rule); err != nil || rule.GetScope() == nil {
+				return 0, nil, invalidArgument("flag %q contains an invalid mirror rewrite rule", flagMirrorRewriteFile)
+			}
+			config.RewriteRules = append(config.RewriteRules, rule)
+		}
+	}
+	for _, encodedRule := range decoded.list(flagMirrorRewriteRule) {
+		rule := &commonpb.MirrorRewriteRule{}
+		if err := protojson.Unmarshal([]byte(encodedRule), rule); err != nil || rule.GetScope() == nil {
+			return 0, nil, invalidArgument("flag %q contains an invalid mirror rewrite rule", flagMirrorRewriteRule)
+		}
+		config.RewriteRules = append(config.RewriteRules, rule)
+	}
+	switch decoded.text(flagMirrorSourceType) {
+	case "http":
+		baseURL := decoded.text(flagMirrorBaseURL)
+		if baseURL == "" {
+			return 0, nil, invalidArgument("flag %q is required for an HTTP mirror source", flagMirrorBaseURL)
+		}
+		httpSource := &commonpb.HttpMirrorSourceConfig{BaseUrl: baseURL}
+		if decoded.text(flagMirrorOAuth2ClientID) != "" || decoded.text(flagMirrorOAuth2ClientSecret) != "" || decoded.text(flagMirrorOAuth2TokenEndpoint) != "" || len(decoded.list(flagMirrorOAuth2Scopes)) != 0 {
+			httpSource.Oauth2ClientCredentials = &commonpb.OAuth2ClientCredentials{ClientId: decoded.text(flagMirrorOAuth2ClientID), ClientSecret: decoded.text(flagMirrorOAuth2ClientSecret), TokenEndpoint: decoded.text(flagMirrorOAuth2TokenEndpoint), Scopes: decoded.list(flagMirrorOAuth2Scopes)}
+		}
+		config.Type = &commonpb.MirrorSourceConfig_Http{Http: httpSource}
+	case "postgres":
+		dsn := decoded.text(flagMirrorDSN)
+		if dsn == "" {
+			return 0, nil, invalidArgument("flag %q is required for a postgres mirror source", flagMirrorDSN)
+		}
+		postgres := &commonpb.PostgresMirrorSourceConfig{Dsn: dsn}
+		region, role := decoded.text(flagMirrorAWSRegion), decoded.text(flagMirrorAWSRoleARN)
+		if role != "" && region == "" {
+			return 0, nil, invalidArgument("flag %q requires flag %q", flagMirrorAWSRoleARN, flagMirrorAWSRegion)
+		}
+		if region != "" {
+			postgres.AwsIamAuth = &commonpb.PostgresAwsIamAuth{Region: region, AssumeRoleArn: role}
+		}
+		config.Type = &commonpb.MirrorSourceConfig_Postgres{Postgres: postgres}
+	default:
+		return 0, nil, invalidArgument("flag %q expects http or postgres", flagMirrorSourceType)
+	}
+	return commonpb.LedgerMode_LEDGER_MODE_MIRROR, config, nil
 }
 
 func applyLedgerMutation(ctx context.Context, host sdk.Host, command sdk.Command, decoded input, operation string, request *servicepb.Request) error {

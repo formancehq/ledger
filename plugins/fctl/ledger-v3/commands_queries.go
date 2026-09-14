@@ -55,7 +55,7 @@ func queriesSpecs() []spec {
 			path:    []string{"queries", "execute"},
 			aliases: [][]string{nil, {"exec", "run"}},
 			summary: "Execute a prepared query",
-			long:    "Run a stored prepared query and return one page of results.",
+			long:    "Run a stored prepared query and return one page or the host-bounded all-pages collection.",
 			example: "queries execute main big-transfers --parameter threshold=1000",
 			risk:    sdk.RiskRead,
 			arguments: []sdk.Argument{
@@ -75,6 +75,7 @@ func queriesSpecs() []spec {
 				}(),
 			},
 			operations: []operation{opExecutePreparedQuery},
+			paginated:  true,
 			collection: true,
 		},
 		{

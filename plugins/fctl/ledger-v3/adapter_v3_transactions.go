@@ -56,6 +56,11 @@ func executeV3AnalyzeTransactions(ctx context.Context, decoded input, command sd
 		if recvErr != nil {
 			return v3Failure("receive transaction analysis: %v", recvErr)
 		}
+		if progress := event.GetProgress(); progress != nil {
+			if emitErr := emitProtoProgress(host, opAnalyzeTransactions.id, progress); emitErr != nil {
+				return emitErr
+			}
+		}
 		if candidate := event.GetResult(); candidate != nil {
 			if result != nil {
 				return v3Failure("transaction analysis returned more than one result")

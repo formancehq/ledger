@@ -115,6 +115,26 @@ func TestExecuteV3IndexesInspectMapsEveryMode(t *testing.T) {
 	}
 }
 
+func TestExecuteV3IndexesInspectPreservesLedgerctlDefaults(t *testing.T) {
+	command, decoded, request := decodedRead(t, "ledger.v3.indexes.inspect", []string{"main"}, []sdk.FlagOccurrence{
+		{Name: flagTargetType, Value: "account"},
+		{Name: flagMetadataKey, Value: "category"},
+	}, sdk.ContinuationControl{})
+	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
+		wire := &servicepb.InspectIndexRequest{}
+		if got.GRPC == nil || proto.Unmarshal(got.GRPC.Message, wire) != nil {
+			t.Fatalf("host request = %#v", got)
+		}
+		if wire.GetMode() != servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY || wire.GetPageSize() != 20 {
+			t.Fatalf("request defaults = mode %s, page-size %d", wire.GetMode(), wire.GetPageSize())
+		}
+		return sdk.NewResponseStream(protoResponse(t, &servicepb.InspectIndexResponse{})), nil
+	})
+	if handled, err := executeV3Indexes(context.Background(), request, decoded, command, host); err != nil || !handled {
+		t.Fatalf("executeV3Indexes() = (%v, %v)", handled, err)
+	}
+}
+
 func TestExecuteV3IndexesListMapsLedgerScopeAndCollectionResult(t *testing.T) {
 	command, decoded, request := decodedRead(t, "ledger.v3.indexes.list", []string{"main"}, nil, sdk.ContinuationControl{})
 	host := sdk.NewMemoryHost(func(_ context.Context, got sdk.Request) (sdk.Responses, error) {
