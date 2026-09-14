@@ -145,6 +145,18 @@ handoff protects the event history needed by that trimming. Operational status
 endpoints (`GetIndexStatus`, `GetIndexEntryStatus`) report the projection's
 current local state and do not make that data-read freshness promise.
 
+**Ledger deletion is a lifecycle rejection, not an empty LOGS page**: the
+projection stores the active ledger's numeric ID under
+`SubInternalLedgerLifecycle`. `DeleteLedger` replaces it with an inactive
+tombstone in the same batch that removes ledger-scoped index rows; a same-name
+`CreateLedger` replaces it with the new ID. Direct and prepared LOGS reads
+compare that record from their pinned projection snapshot with the
+`LedgerInfo.id` from their pinned main snapshot before compilation. A mismatch,
+missing record, or tombstone returns `ErrLedgerNotFound`. This is required even
+when the projection certificate is ahead of the main horizon: candidate-level
+trimming cannot detect a ledger whose entire projected universe was erased
+between the two snapshot acquisitions.
+
 Audit follows the same rule independently. Unfiltered audit reads and filters
 made only of audit `sequence` bounds scan the authoritative main snapshot and
 do not wait for the audit projection. Other supported audit filters wait for

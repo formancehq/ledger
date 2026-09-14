@@ -236,6 +236,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 					return cursor, err
 				}
+				if err := b.wb.WriteLedgerLifecycle(b.kb, cl.CreateLedger.GetName(), cl.CreateLedger.GetId(), true); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, fmt.Errorf("projecting created ledger lifecycle: %w", err)
+				}
 
 				continue
 			}
@@ -252,6 +257,11 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 					_ = batch.Cancel()
 
 					return cursor, err
+				}
+				if err := b.wb.WriteLedgerLifecycle(b.kb, name, 0, false); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, fmt.Errorf("projecting deleted ledger lifecycle: %w", err)
 				}
 				if err := b.observeDeletedLedger(name); err != nil {
 					_ = batch.Cancel()
