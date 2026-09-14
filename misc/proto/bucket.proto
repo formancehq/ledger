@@ -855,6 +855,11 @@ enum CheckStoreErrorType {
   // back point-in-time query reads and the FSM's live-count cap, so a tampered
   // row changes which checkpoints exist. See EN-1501.
   CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH = 26;
+  // Emitted when LedgerInfo.default_enforcement_mode differs from the policy
+  // re-derived from CreateLedger and UpdateDefaultEnforcementMode logs. This
+  // persisted field controls whether unmatched accounts are accepted, so a
+  // divergence can change write admission semantics.
+  CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH = 27;
 }
 
 message CheckStoreError {

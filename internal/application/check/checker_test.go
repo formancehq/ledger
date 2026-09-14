@@ -822,12 +822,31 @@ func newPosting(source, destination, asset string, amount int64) *commonpb.Posti
 }
 
 func createLedgerOrder(name string) *raftcmdpb.Order {
+	return createLedgerOrderWithEnforcementMode(name, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+}
+
+func createLedgerOrderWithEnforcementMode(name string, mode commonpb.ChartEnforcementMode) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: name,
 				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
-					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{DefaultEnforcementMode: mode},
+				},
+			},
+		},
+	}
+}
+
+func updateDefaultEnforcementModeOrder(ledger string, mode commonpb.ChartEnforcementMode) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_UpdateDefaultEnforcementMode{
+						UpdateDefaultEnforcementMode: &raftcmdpb.UpdateDefaultEnforcementModeOrder{EnforcementMode: mode},
+					}},
 				},
 			},
 		},
@@ -2487,6 +2506,56 @@ func TestCompareAccountTypes_PatternTampered(t *testing.T) {
 	require.Equal(t,
 		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 		events[0].GetError().GetErrorType())
+}
+
+// TestCheckerDetectsTamperedDefaultEnforcementMode pins both sources of the
+// LedgerInfo projection: CreateLedger and a later audited mode update.
+func TestCheckerDetectsTamperedDefaultEnforcementMode(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		setup func(*testEngine)
+	}{
+		{
+			name: "creation mode",
+			setup: func(engine *testEngine) {
+				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
+			},
+		},
+		{
+			name: "updated mode",
+			setup: func(engine *testEngine) {
+				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT))
+				engine.processAndCommit(updateDefaultEnforcementModeOrder("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			engine := newTestEngine(t)
+			tt.setup(engine)
+			require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs), "healthy projection must pass")
+
+			info := engine.ledgers["ledger"].CloneVT()
+			info.DefaultEnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
+
+			batch := engine.store.OpenWriteSession()
+			require.NoError(t, state.SaveLedger(batch, "ledger", info))
+			require.NoError(t, batch.Commit())
+
+			var found bool
+			for _, checkErr := range collectCheckErrors(t, engine.store, engine.attrs) {
+				if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH && checkErr.GetLedger() == "ledger" {
+					found = true
+				}
+			}
+			require.True(t, found, "tampered default enforcement mode must be reported")
+		})
+	}
 }
 
 // TestCompareBoundaries_DetectsTamperedRow: a stored boundary field diverging
