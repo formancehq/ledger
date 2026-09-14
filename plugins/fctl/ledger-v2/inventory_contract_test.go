@@ -274,7 +274,7 @@ func TestFilterListOperationsDeclareTheirJSONRequestBodies(t *testing.T) {
 	}
 }
 
-func TestImportDeclaresItsOptionalResumeProbe(t *testing.T) {
+func TestImportDeclaresItsBoundedChunkingAndOptionalResumeProbe(t *testing.T) {
 	t.Parallel()
 
 	command, ok := commandByID("ledger.v2.import")
@@ -284,12 +284,34 @@ func TestImportDeclaresItsOptionalResumeProbe(t *testing.T) {
 	if len(command.Operations) != 2 || command.Operations[0].ID != "v2ImportLogs" || command.Operations[1].ID != "v2ListLogs" {
 		t.Fatalf("import operations = %#v, want import followed by list-logs", command.Operations)
 	}
-	if command.ExecutionPolicy == nil || command.ExecutionPolicy.MaxHostRequests != 2 {
-		t.Fatalf("import execution policy = %#v, want two host requests", command.ExecutionPolicy)
+	if command.ExecutionPolicy == nil || command.ExecutionPolicy.MaxHostRequests != sdk.PortableMaxHostRequests {
+		t.Fatalf("import execution policy = %#v, want bounded chunking budget", command.ExecutionPolicy)
 	}
 }
 
-func TestCatalogueDeclaresOnlyTheTwoHostOwnedInputArtifacts(t *testing.T) {
+func TestRelativeTransactionCommandsDeclareTheReadLookup(t *testing.T) {
+	t.Parallel()
+
+	for _, id := range []string{
+		"ledger.v2.transactions.show",
+		"ledger.v2.transactions.set-metadata",
+		"ledger.v2.transactions.delete-metadata",
+		"ledger.v2.transactions.revert",
+	} {
+		command, ok := commandByID(id)
+		if !ok {
+			t.Fatalf("command %q missing", id)
+		}
+		if len(command.Operations) != 2 || command.Operations[1].ID != "v2ListTransactions" || !slices.Equal(command.Operations[1].Scopes, []string{"ledger:read"}) {
+			t.Errorf("%s operations = %#v", id, command.Operations)
+		}
+		if command.ExecutionPolicy == nil || command.ExecutionPolicy.MaxHostRequests != 2 {
+			t.Errorf("%s execution policy = %#v", id, command.ExecutionPolicy)
+		}
+	}
+}
+
+func TestCatalogueDeclaresOnlyTheThreeHostOwnedInputArtifacts(t *testing.T) {
 	t.Parallel()
 
 	var declared []string
@@ -298,8 +320,12 @@ func TestCatalogueDeclaresOnlyTheTwoHostOwnedInputArtifacts(t *testing.T) {
 			declared = append(declared, command.ID+":"+artifact.ArgumentName)
 			switch command.ID {
 			case "ledger.v2.import":
-				if artifact.ArgumentName != "file-path" || !artifact.AllowFile || artifact.AllowStdin || artifact.MaxBytes != requestBulkBytes || !slices.Equal(artifact.MediaTypes, contentTypesBinary) {
+				if artifact.ArgumentName != "file-path" || !artifact.AllowFile || artifact.AllowStdin || artifact.MaxBytes != inputArtifactBytes || !slices.Equal(artifact.MediaTypes, contentTypesBinary) {
 					t.Errorf("import artifact = %#v", artifact)
+				}
+			case "ledger.v2.schemas.insert":
+				if artifact.ArgumentName != "source" || !artifact.AllowFile || artifact.AllowStdin || artifact.MaxBytes != requestJSONBytes || !slices.Equal(artifact.MediaTypes, []string{"application/yaml"}) {
+					t.Errorf("schema artifact = %#v", artifact)
 				}
 			case "ledger.v2.transactions.num":
 				if artifact.ArgumentName != "file" || !artifact.AllowFile || !artifact.AllowStdin || artifact.MaxBytes != requestJSONBytes || !slices.Equal(artifact.MediaTypes, []string{"text/plain"}) {
@@ -311,7 +337,7 @@ func TestCatalogueDeclaresOnlyTheTwoHostOwnedInputArtifacts(t *testing.T) {
 		}
 	}
 	slices.Sort(declared)
-	if !slices.Equal(declared, []string{"ledger.v2.import:file-path", "ledger.v2.transactions.num:file"}) {
+	if !slices.Equal(declared, []string{"ledger.v2.import:file-path", "ledger.v2.schemas.insert:source", "ledger.v2.transactions.num:file"}) {
 		t.Fatalf("declared artifacts = %v", declared)
 	}
 }

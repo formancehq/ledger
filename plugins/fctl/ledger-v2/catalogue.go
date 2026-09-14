@@ -145,6 +145,27 @@ func commandFromInventory(entry inventoryEntry) sdk.Command {
 			},
 		})
 	}
+	if relativeTransactionIDCommand(entry.Path) {
+		operations = append(operations, sdk.OperationPolicy{
+			ID:      "v2ListTransactions",
+			Service: sdk.ServiceLedger,
+			Scopes:  []string{"ledger:read"},
+			HTTP: &sdk.HTTPOperationPolicy{
+				Method: http.MethodGet,
+				GeneratedClient: &sdk.HTTPGeneratedClientPolicy{
+					PathTemplate:        "/v2/{ledger}/transactions",
+					MaxRequestBytes:     requestJSONBytes,
+					RequestContentTypes: append([]string(nil), contentTypesJSON...),
+					RequestHeaders:      append([]string(nil), headersRead...),
+					ResponseLimits: sdk.ResponseLimits{
+						MaxMessageBytes:   responseSmallBytes,
+						MaxMessages:       1,
+						MaxAggregateBytes: responseSmallBytes,
+					},
+				},
+			},
+		})
+	}
 	if generated.PathTemplate == "" {
 		policy.HTTP.Path = entry.HTTPPath
 	}
@@ -162,6 +183,9 @@ func commandFromInventory(entry inventoryEntry) sdk.Command {
 	maxRequests := uint32(len(operations))
 	if entry.Paginated {
 		maxRequests = sdk.DefaultAllPagesMaxPages
+	}
+	if entry.OperationID == "v2ImportLogs" {
+		maxRequests = sdk.PortableMaxHostRequests
 	}
 	return sdk.Command{
 		ID:                 "ledger.v2." + strings.Join(path[1:], "."),
@@ -186,6 +210,15 @@ func commandFromInventory(entry inventoryEntry) sdk.Command {
 		Pagination:         sdk.PaginationSpec{Supported: entry.Paginated},
 		OutputMediaType:    mediaType,
 		ExecutionPolicy:    &sdk.CommandExecutionPolicy{MaxHostRequests: maxRequests},
+	}
+}
+
+func relativeTransactionIDCommand(path string) bool {
+	switch path {
+	case "ledger transactions show", "ledger transactions set-metadata", "ledger transactions delete-metadata", "ledger transactions revert":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -230,10 +263,10 @@ var commandGrammars = map[string]commandGrammar{
 	"ledger create":                   {arguments: []sdk.Argument{arg("name", true)}, flags: []sdk.Flag{flag("bucket"), repeatedFlag("features"), repeatedFlag("metadata")}},
 	"ledger delete-metadata":          {arguments: []sdk.Argument{arg("ledger-name", true), arg("key", true)}},
 	"ledger export":                   {flags: ledgerFlags()},
-	"ledger import":                   {arguments: []sdk.Argument{arg("ledger-name", true), arg("file-path", true)}, flags: []sdk.Flag{boolFlag("resume-from-last-log")}, artifacts: []sdk.InputArtifactSpec{{ArgumentName: "file-path", MediaTypes: contentTypesBinary, MaxBytes: requestBulkBytes, AllowFile: true}}},
+	"ledger import":                   {arguments: []sdk.Argument{arg("ledger-name", true), arg("file-path", true)}, flags: []sdk.Flag{boolFlag("resume-from-last-log")}, artifacts: []sdk.InputArtifactSpec{{ArgumentName: "file-path", MediaTypes: contentTypesBinary, MaxBytes: inputArtifactBytes, AllowFile: true}}},
 	"ledger list":                     {},
-	"ledger schemas get":              {arguments: []sdk.Argument{arg("version", true)}, flags: ledgerFlags(withDefault(flag("format"), "json"))},
-	"ledger schemas insert":           {arguments: []sdk.Argument{arg("version", true), arg("source", true)}, flags: ledgerFlags()},
+	"ledger schemas get":              {arguments: []sdk.Argument{arg("version", true)}, flags: ledgerFlags()},
+	"ledger schemas insert":           {arguments: []sdk.Argument{arg("version", true), arg("source", true)}, flags: ledgerFlags(), artifacts: []sdk.InputArtifactSpec{{ArgumentName: "source", MediaTypes: []string{"application/yaml"}, MaxBytes: requestJSONBytes, AllowFile: true}}},
 	"ledger schemas list":             {flags: ledgerFlags(flag("cursor"), withDefault(pageSizeFlag(), "15"))},
 	// The SDK deliberately rejects an optional positional before required
 	// positionals. Preserve the send semantics with an explicit --source flag.

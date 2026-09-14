@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/formancehq/fctl-v2-poc/pkg/plugin/sdk"
@@ -16,6 +17,7 @@ import (
 	ledgerclient "github.com/formancehq/ledger/pkg/client"
 	"github.com/formancehq/ledger/pkg/client/models/components"
 	"github.com/formancehq/ledger/pkg/client/models/operations"
+	"gopkg.in/yaml.v3"
 )
 
 type generatedV2 struct{ client *ledgerclient.Formance }
@@ -137,11 +139,12 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 		}
 		return emitBytes(host, command.ID, sdk.ResultObject, mediaTypeOctetStream, data, nil)
 	case "ledger.v2.import":
-		body, err := readInputArtifact(ctx, host, request.Arguments[1], requestBulkBytes)
+		body, err := readInputArtifact(ctx, host, request.Arguments[1], inputArtifactBytes)
 		if err != nil {
 			return err
 		}
-		if first(flags["resume-from-last-log"]) == "true" {
+		resume := first(flags["resume-from-last-log"]) == "true"
+		if resume {
 			body, err = resumeGeneratedImport(ctx, command, request.Arguments[0], body, host)
 			if err != nil {
 				return err
@@ -150,8 +153,26 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 				return emitBytes(host, command.ID, sdk.ResultObject, mediaTypeJSON, []byte(`{}`), nil)
 			}
 		}
-		_, err = v2.ImportLogs(ctx, operations.V2ImportLogsRequest{Ledger: request.Arguments[0], V2ImportLogsRequest: body})
-		return emitGeneratedEmpty(host, command, err)
+		batches, err := splitImportBatches(body)
+		if err != nil {
+			return err
+		}
+		if command.ExecutionPolicy == nil {
+			return descriptorInvalid("command %q does not declare its request budget", command.ID)
+		}
+		availableRequests := int(command.ExecutionPolicy.MaxHostRequests)
+		if resume {
+			availableRequests--
+		}
+		if len(batches) > availableRequests {
+			return budgetExhausted("import exceeds the host-request ceiling")
+		}
+		for _, batch := range batches {
+			if _, err := v2.ImportLogs(ctx, operations.V2ImportLogsRequest{Ledger: request.Arguments[0], V2ImportLogsRequest: batch}); err != nil {
+				return generatedError(command, err)
+			}
+		}
+		return emitBytes(host, command.ID, sdk.ResultObject, mediaTypeJSON, []byte(`{}`), nil)
 	case "ledger.v2.stats":
 		response, err := v2.ReadStats(ctx, operations.V2ReadStatsRequest{Ledger: ledger})
 		if err != nil {
@@ -200,7 +221,7 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 	case "ledger.v2.transactions.list":
 		return executeListTransactions(ctx, v2, command, flags, request.Continuation, host)
 	case "ledger.v2.transactions.show":
-		id, err := parseBigInt(request.Arguments[0])
+		id, err := resolveTransactionID(ctx, command, ledger, request.Arguments[0], host)
 		if err != nil {
 			return err
 		}
@@ -219,7 +240,7 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 		}
 		return executeCreateTransaction(ctx, v2, command, operations.V2CreateTransactionRequest{Ledger: ledger, IdempotencyKey: idempotency, V2PostTransaction: body}, host)
 	case "ledger.v2.transactions.set-metadata":
-		id, err := parseBigInt(request.Arguments[0])
+		id, err := resolveTransactionID(ctx, command, ledger, request.Arguments[0], host)
 		if err != nil {
 			return err
 		}
@@ -230,14 +251,14 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 		_, err = v2.AddMetadataOnTransaction(ctx, operations.V2AddMetadataOnTransactionRequest{Ledger: ledger, ID: id, IdempotencyKey: idempotency, RequestBody: metadata})
 		return emitGeneratedEmpty(host, command, err)
 	case "ledger.v2.transactions.delete-metadata":
-		id, err := parseBigInt(request.Arguments[0])
+		id, err := resolveTransactionID(ctx, command, ledger, request.Arguments[0], host)
 		if err != nil {
 			return err
 		}
 		_, err = v2.DeleteTransactionMetadata(ctx, operations.V2DeleteTransactionMetadataRequest{Ledger: ledger, ID: id, Key: request.Arguments[1], IdempotencyKey: idempotency})
 		return emitGeneratedEmpty(host, command, err)
 	case "ledger.v2.transactions.revert":
-		id, err := parseBigInt(request.Arguments[0])
+		id, err := resolveTransactionID(ctx, command, ledger, request.Arguments[0], host)
 		if err != nil {
 			return err
 		}
@@ -262,9 +283,6 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 	case "ledger.v2.schemas.list":
 		return executeListSchemas(ctx, v2, command, flags, request.Continuation, host)
 	case "ledger.v2.schemas.get":
-		if format := first(flags["format"]); format != "" && format != "json" {
-			return invalidArgument("generated v2 schema API supports JSON format only")
-		}
 		response, err := v2.GetSchema(ctx, operations.V2GetSchemaRequest{Ledger: ledger, Version: request.Arguments[0]})
 		if err != nil {
 			return generatedError(command, err)
@@ -274,9 +292,13 @@ func executeGeneratedV2(ctx context.Context, request sdk.ExecuteRequest, host sd
 		}
 		return emitGeneratedJSON(host, command, sdk.ResultObject, response.V2SchemaResponse.Data, nil)
 	case "ledger.v2.schemas.insert":
-		var schema components.V2SchemaData
-		if err := json.Unmarshal([]byte(request.Arguments[1]), &schema); err != nil {
-			return invalidArgument("source is not valid Ledger v2 schema JSON")
+		source, err := readInputArtifact(ctx, host, request.Arguments[1], requestJSONBytes)
+		if err != nil {
+			return err
+		}
+		schema, err := parseSchemaData(source)
+		if err != nil {
+			return err
 		}
 		_, err = v2.InsertSchema(ctx, operations.V2InsertSchemaRequest{Ledger: ledger, Version: request.Arguments[0], IdempotencyKey: idempotency, V2SchemaData: schema})
 		return emitGeneratedEmpty(host, command, err)
@@ -533,6 +555,39 @@ func trimImportAfterLog(body []byte, lastID string) ([]byte, error) {
 	return nil, invalidArgument("resume log id %s is absent from the import artifact", lastID)
 }
 
+func splitImportBatches(body []byte) ([][]byte, error) {
+	const maxLogsPerBatch = 100
+	var batches [][]byte
+	batch := make([]byte, 0, min(len(body), int(requestBulkBytes)))
+	logs := 0
+	flush := func() {
+		if len(batch) == 0 {
+			return
+		}
+		batches = append(batches, batch)
+		batch = make([]byte, 0, min(len(body), int(requestBulkBytes)))
+		logs = 0
+	}
+	for offset := 0; offset < len(body); {
+		end := len(body)
+		if newline := bytes.IndexByte(body[offset:], '\n'); newline >= 0 {
+			end = offset + newline + 1
+		}
+		line := body[offset:end]
+		if int64(len(line)) > requestBulkBytes {
+			return nil, sdk.Failure{Code: string(sdk.FailureInputTooLarge), Message: "ledger-v2: one import log exceeds the request ceiling"}
+		}
+		if logs == maxLogsPerBatch || int64(len(batch)+len(line)) > requestBulkBytes {
+			flush()
+		}
+		batch = append(batch, line...)
+		logs++
+		offset = end
+	}
+	flush()
+	return batches, nil
+}
+
 func numscriptTransaction(ctx context.Context, request sdk.ExecuteRequest, flags map[string][]string, host sdk.Host) (components.V2PostTransaction, error) {
 	source, err := readInputArtifact(ctx, host, request.Arguments[0], requestJSONBytes)
 	if err != nil {
@@ -543,7 +598,7 @@ func numscriptTransaction(ctx context.Context, request sdk.ExecuteRequest, flags
 		return components.V2PostTransaction{}, err
 	}
 	vars := make(map[string]string)
-	for _, name := range []string{"account-var", "amount-var", "portion-var"} {
+	for _, name := range []string{"account-var", "portion-var"} {
 		values, err := parseMetadata(flags[name])
 		if err != nil {
 			return components.V2PostTransaction{}, err
@@ -551,6 +606,21 @@ func numscriptTransaction(ctx context.Context, request sdk.ExecuteRequest, flags
 		for key, value := range values {
 			vars[key] = value
 		}
+	}
+	amounts, err := parseMetadata(flags["amount-var"])
+	if err != nil {
+		return components.V2PostTransaction{}, err
+	}
+	for key, value := range amounts {
+		amount, asset, ok := strings.Cut(value, "/")
+		if !ok || asset == "" {
+			return components.V2PostTransaction{}, invalidArgument("amount variable %q must use amount/asset", key)
+		}
+		parsed, err := parseBigInt(amount)
+		if err != nil {
+			return components.V2PostTransaction{}, err
+		}
+		vars[key] = asset + " " + parsed.String()
 	}
 	timestamp, err := optionalTime(first(flags["timestamp"]))
 	if err != nil {
@@ -572,17 +642,97 @@ func filterBody(flags map[string][]string) (map[string]any, error) {
 	}
 	sortStrings(keys)
 	for _, key := range keys {
-		matches = append(matches, map[string]any{"$match": map[string]any{"metadata." + key: metadata[key]}})
+		matches = append(matches, map[string]any{"$match": map[string]any{"metadata[" + key + "]": metadata[key]}})
 	}
-	for _, filter := range []struct{ flag, field string }{{"account", "account"}, {"dst", "destination"}, {"end", "endTime"}, {"reference", "reference"}, {"src", "source"}, {"start", "startTime"}, {"address", "address"}} {
+	for _, filter := range []struct{ flag, field string }{{"account", "account"}, {"dst", "destination"}, {"reference", "reference"}, {"src", "source"}, {"address", "address"}} {
 		if value := first(flags[filter.flag]); value != "" {
 			matches = append(matches, map[string]any{"$match": map[string]any{filter.field: value}})
 		}
 	}
-	if len(matches) == 0 {
-		return nil, nil
+	if value := first(flags["start"]); value != "" {
+		if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+			return nil, invalidArgument("%q is not an RFC3339 timestamp", value)
+		}
+		matches = append(matches, map[string]any{"$gte": map[string]any{"timestamp": value}})
+	}
+	if value := first(flags["end"]); value != "" {
+		if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+			return nil, invalidArgument("%q is not an RFC3339 timestamp", value)
+		}
+		matches = append(matches, map[string]any{"$lte": map[string]any{"timestamp": value}})
 	}
 	return map[string]any{"$and": matches}, nil
+}
+
+func parseSchemaData(source []byte) (components.V2SchemaData, error) {
+	var document any
+	if err := yaml.Unmarshal(source, &document); err != nil {
+		return components.V2SchemaData{}, invalidArgument("source is not valid Ledger v2 schema JSON or YAML")
+	}
+	normalized, err := json.Marshal(document)
+	if err != nil {
+		return components.V2SchemaData{}, invalidArgument("source is not valid Ledger v2 schema JSON or YAML")
+	}
+	var schema components.V2SchemaData
+	if err := json.Unmarshal(normalized, &schema); err != nil {
+		return components.V2SchemaData{}, invalidArgument("source is not valid Ledger v2 schema JSON or YAML")
+	}
+	return schema, nil
+}
+
+func resolveTransactionID(ctx context.Context, command sdk.Command, ledger, value string, host sdk.Host) (*big.Int, error) {
+	if !strings.HasPrefix(value, "last") {
+		return parseBigInt(value)
+	}
+
+	offsetText := strings.TrimPrefix(value, "last")
+	if offsetText == "-" {
+		return nil, invalidArgument("%q is not last, last-N, or a non-negative integer", value)
+	}
+	if strings.HasPrefix(offsetText, "-") {
+		offsetText = strings.TrimPrefix(offsetText, "-")
+	}
+	offset := new(big.Int)
+	if offsetText != "" {
+		parsed, ok := offset.SetString(offsetText, 10)
+		if !ok || parsed.Sign() < 0 {
+			return nil, invalidArgument("%q is not last, last-N, or a non-negative integer", value)
+		}
+	}
+
+	var lookup *sdk.OperationPolicy
+	for index := range command.Operations {
+		if command.Operations[index].ID == "v2ListTransactions" {
+			lookup = &command.Operations[index]
+			break
+		}
+	}
+	if lookup == nil {
+		return nil, descriptorInvalid("command %q does not declare the relative transaction lookup", command.ID)
+	}
+	generated, err := newGeneratedV2(host, *lookup)
+	if err != nil {
+		return nil, fmt.Errorf("ledger-v2: configure transaction lookup: %w", err)
+	}
+	pageSize := int64(1)
+	sort := "id:desc"
+	response, err := generated.client.Ledger.V2.ListTransactions(ctx, operations.V2ListTransactionsRequest{
+		Ledger:      ledger,
+		PageSize:    &pageSize,
+		Sort:        &sort,
+		RequestBody: map[string]any{"$and": []any{}},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ledger-v2: v2ListTransactions: %w", err)
+	}
+	if response == nil || response.V2TransactionsCursorResponse == nil || len(response.V2TransactionsCursorResponse.Cursor.Data) == 0 || response.V2TransactionsCursorResponse.Cursor.Data[0].ID == nil {
+		return nil, invalidArgument("no transaction found for %q", value)
+	}
+	resolved := new(big.Int).Sub(response.V2TransactionsCursorResponse.Cursor.Data[0].ID, offset)
+	if resolved.Sign() < 0 {
+		return nil, invalidArgument("%q resolves before transaction zero", value)
+	}
+	return resolved, nil
 }
 
 func sortStrings(values []string) {

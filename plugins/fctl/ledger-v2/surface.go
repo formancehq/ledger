@@ -11,6 +11,7 @@ const (
 	requestNoBodyBytes int64 = 4 << 10
 	requestJSONBytes   int64 = 64 << 10
 	requestBulkBytes         = sdk.GeneratedClientHTTPMaxRequestBytes
+	inputArtifactBytes int64 = 64 << 20
 
 	responseSmallBytes int64 = 64 << 10
 	responseLargeBytes       = sdk.GeneratedClientHTTPMaxResponseBytes

@@ -32,7 +32,7 @@
     "declares product major 2 and no other major",
     "declares no signing capability",
     "cannot name or invoke sign.ledger.apply-batch",
-    "publishes every baseline command that has a faithful v2 API equivalent",
+    "publishes a bounded v2-backed counterpart for every included baseline command",
     "publishes no command that binds a Ledger.V1 operation",
     "excludes ledger server-infos as a host-owned info probe, not as a missing equivalent",
     "shares no catalogue entry or manifest field with ledger-v3",
@@ -46,7 +46,7 @@
     2
   ],
   "runtime_artifact": null,
-  "runtime_artifact_note": "The source defines one deterministic portable component at dist/ledger-v2/ledger-v2.wasm; build outputs remain untracked and require release-time dual-host acceptance.",
+  "runtime_artifact_note": "The source defines one deterministic portable component at dist/ledger-v2/ledger-v2.wasm and regular-file browser inputs under dist/ledger-v2/browser-input; build outputs remain untracked and require release-time dual-host acceptance.",
   "schema_version": 1,
   "signing_capability": null,
   "status": "implemented",

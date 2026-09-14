@@ -85,4 +85,15 @@ rm -rf "$destination"
 mkdir "$destination"
 install -m 0444 "$staging/result-one/ledger-v2.wasm" "$staging/result-one/ledger-v2.wit" \
   "$staging/result-one/imports.txt" "$staging/result-one/artifact.sha256" "$destination/"
+browser_input="$destination/browser-input"
+mkdir "$browser_input"
+install -m 0444 "$staging/result-one/ledger-v2.wasm" "$browser_input/component.wasm"
+install -m 0444 "$staging/result-one/imports.txt" "$browser_input/imports.txt"
+(
+  cd "$browser_input"
+  shasum -a 256 component.wasm imports.txt > artifact.sha256
+  chmod 0444 artifact.sha256
+)
+cmp "$destination/ledger-v2.wasm" "$browser_input/component.wasm"
+cmp "$destination/imports.txt" "$browser_input/imports.txt"
 printf '%s\n' "$destination/ledger-v2.wasm"

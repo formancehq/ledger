@@ -34,16 +34,20 @@ func TestGeneratedAdapterExecutesEveryPrimaryCommandFamily(t *testing.T) {
 		{id: "ledger.v2.volumes.list", flags: append(ledgerFlagOccurrence(), sdk.FlagOccurrence{Name: "address", Value: "users:001"}, sdk.FlagOccurrence{Name: "insertion-date", Value: "true"}, sdk.FlagOccurrence{Name: "start-time", Value: "2026-09-12T00:00:00Z"}, sdk.FlagOccurrence{Name: "end-time", Value: "2026-09-13T00:00:00Z"})},
 		{id: "ledger.v2.schemas.list", flags: ledgerFlagOccurrence()},
 		{id: "ledger.v2.schemas.get", args: []string{"v1"}, flags: ledgerFlagOccurrence()},
-		{id: "ledger.v2.schemas.insert", args: []string{"v1", `{"chart":{}}`}, flags: ledgerFlagOccurrence()},
+		{id: "ledger.v2.schemas.insert", args: []string{"v1", "schema-artifact"}, flags: ledgerFlagOccurrence()},
 	}
 	for _, test := range tests {
 		test := test
 		t.Run(test.id, func(t *testing.T) {
-			host := sdk.NewMemoryHost(generatedSuccessResponse)
+			memory := sdk.NewMemoryHost(generatedSuccessResponse)
+			var host sdk.Host = memory
+			if test.id == "ledger.v2.schemas.insert" {
+				host = &artifactHost{MemoryHost: memory, chunks: []sdk.InputArtifactChunk{{Bytes: []byte(`{"chart":{}}`), Final: true}}}
+			}
 			if err := (Plugin{}).Execute(context.Background(), execution(test.id, test.args, test.flags...), host); err != nil {
 				t.Fatalf("Execute() error = %v", err)
 			}
-			if events := host.Events(); len(events) != 1 || events[0].Result == nil || events[0].Result.OperationID != test.id {
+			if events := memory.Events(); len(events) != 1 || events[0].Result == nil || events[0].Result.OperationID != test.id {
 				t.Fatalf("events = %#v", events)
 			}
 		})
@@ -57,7 +61,7 @@ func TestGeneratedAdapterForwardsEveryDeclaredIdempotencyKey(t *testing.T) {
 	}{
 		{id: "ledger.v2.accounts.delete-metadata", args: []string{"users:001", "tier"}},
 		{id: "ledger.v2.accounts.set-metadata", args: []string{"users:001", "tier=gold"}},
-		{id: "ledger.v2.schemas.insert", args: []string{"v1", `{"chart":{}}`}},
+		{id: "ledger.v2.schemas.insert", args: []string{"v1", "schema-artifact"}},
 		{id: "ledger.v2.send", args: []string{"merchant", "1250", "USD/2"}},
 		{id: "ledger.v2.transactions.delete-metadata", args: []string{"42", "region"}},
 		{id: "ledger.v2.transactions.num", args: []string{"artifact"}},
@@ -70,6 +74,8 @@ func TestGeneratedAdapterForwardsEveryDeclaredIdempotencyKey(t *testing.T) {
 			var host sdk.Host = memory
 			if test.id == "ledger.v2.transactions.num" {
 				host = &artifactHost{MemoryHost: memory, chunks: []sdk.InputArtifactChunk{{Bytes: []byte("send [USD 1]"), Final: true}}}
+			} else if test.id == "ledger.v2.schemas.insert" {
+				host = &artifactHost{MemoryHost: memory, chunks: []sdk.InputArtifactChunk{{Bytes: []byte(`{"chart":{}}`), Final: true}}}
 			}
 			flags := []sdk.FlagOccurrence{{Name: "ledger", Value: "primary"}, {Name: "idempotency-key", Value: "idem-42"}}
 			if err := (Plugin{}).Execute(context.Background(), execution(test.id, test.args, flags...), host); err != nil {

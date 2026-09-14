@@ -161,9 +161,9 @@ before the two converted show commands are considered output-faithful.
 | B3 | D1 must be resolved before RFC 0014 can claim exact per-operation scopes are machine-derived for Ledger v2. Until then the scope table here is source-of-truth by manual extraction. | RFC 0014 closure |
 | B4 | D5 and D6 leave the converted filter and `expand` contracts unvalidatable against the spec. A live-server check is required before the 8 conversions may be claimed output-faithful to the historical CLI. | parity claim for the 8 converted commands |
 
-B4 blocks a *claim*, not execution: the operations, scopes and request
-shapes are all verified from source. What is unverified is whether the converted
-output matches byte-for-byte what old-fctl printed.
+B4 blocks an exact-parity claim. Local source and contract tests cover the
+declared operations, scopes and bounded request shaping; they do not prove live
+server acceptance or byte-for-byte historical presentation.
 
 ## Resolved prerequisites
 

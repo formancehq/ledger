@@ -47,14 +47,16 @@ security source so ambient generated-client credentials cannot be used, and
 does not configure generated retries. DTO construction and response decoding
 remain generated-client owned.
 
-Generator erratum: the pinned Speakeasy output serializes nil optional GET
-request bodies as byte-exact JSON `null`; `V2ListLedgers` also injects its
+Generator erratum: the pinned Speakeasy output serializes nil GET request
+bodies as byte-exact JSON `null`; `V2ListLedgers` also injects its
 `includeDeleted=false` default when a continuation cursor is present, although
 the API requires cursor-only continuation. The adapter's bounded transport shim
-removes only byte-exact `null` on GET. When and only when a non-empty cursor is
-present, it replaces the query with the canonically encoded cursor alone. Empty
-cursors, non-`null` bodies and non-continuation queries are unchanged. Exact
-contract tests guard every exception.
+removes only byte-exact `null` on GET continuation. Required first-page filter
+operations always send an explicit JSON body, including `{"$and":[]}` when no
+filter is selected. When and only when a non-empty cursor is present, the shim
+replaces the query with the canonically encoded cursor alone. Empty cursors,
+non-`null` bodies and non-continuation queries are unchanged. Exact contract
+tests guard every exception.
 
 ## Included commands (22)
 

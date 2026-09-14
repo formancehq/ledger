@@ -15,18 +15,19 @@ command surface with `../ledger-v3`. See `../README.md` for the boundary rule.
 
 ## Surface rule
 
-`ledger-v2` keeps the **historical user surface**. Where a baseline command was
-implemented on `Ledger.V1`, it is converted to its V2 API equivalent rather
-than dropped: 14 commands already spoke V2, 8 are converted, and only
+`ledger-v2` publishes the 22 historical command phrases that belong to the
+product API. Where a baseline command used `Ledger.V1`, it is converted to its
+V2 API equivalent: 14 commands already spoke V2, 8 are converted, and
 `ledger server-infos` leaves the plugin because the `/_/info` probe is
 host-owned.
 
-Conversion keeps the command phrase, aliases and user intent while changing the
-wire call. The one grammar adaptation is `ledger send`: the historical optional
-leading source is `--source` because the portable catalogue forbids an optional
-positional before required positionals. Each conversion's request-shaping
-obligation is recorded per command, so "converted" never stands in for
-"assumed equivalent".
+This is command coverage, not byte-for-byte CLI parity. Portable execution
+requires an explicit `--ledger`; `ledger send` moves the optional leading source
+to `--source`; schema output formatting is host-owned; and schema insertion
+reads a host-owned file artifact. The old direct-URL schema source is not
+implemented because the current input-artifact ABI admits files and stdin, not
+URLs. `last`, corrected `last-N`, and the historical `lastN` spelling are
+resolved through a bounded read before the transaction operation.
 
 ## Documents
 
@@ -48,7 +49,12 @@ by default; host-selected `--all` follows opaque cursors within the canonical
 100-page, 10,000-item and 4 MiB ceilings. Every request after the first carries
 only the opaque cursor. Raw log export accepts at most 4 MiB per response; the
 boundary is tested with actual binary payloads at exactly 4 MiB and 4 MiB plus
-one byte.
+one byte. Import accepts a host-owned artifact up to 64 MiB and sends sequential
+batches of at most 100 logs and 4 MiB within the 256-request portable ceiling.
+That permits at most 25,600 input lines, or 25,500 when one request is reserved
+for the latest-log resume probe. An over-budget artifact is rejected before the
+first import write. This is a bounded compatibility path; old-fctl did not
+impose the portable 64 MiB artifact or 256-request ceilings.
 
 The pinned Speakeasy output has two request-shaping defects: nil optional GET
 bodies are serialized as byte-exact `null`, and `V2ListLedgers` injects
@@ -101,12 +107,16 @@ extracted WIT, import list and checksums byte-for-byte, validates the component,
 enforces the exact five-import WASI allowlist, and enforces the 16 MiB admission
 limit. Only the explicit entrypoint, generated bindings and `main.go` enter
 staging; a fail-closed guard rejects any `.claude-flow` path without deleting
-the source data. `build/` and `dist/` are intentionally untracked. The fctl
+the source data. It also publishes regular, read-only
+`browser-input/component.wasm` and `browser-input/imports.txt` copies for the
+external browser harness. Their presence is not a Firefox acceptance receipt.
+`build/` and `dist/` are intentionally untracked. The fctl
 SDK is supplied only through the content-verified wrapper; no workstation path
 is committed. The relative generated-client replacement in `go.mod` must be
 replaced by a published module version before release.
 
-One compatibility claim remains open: whether the 8 converted commands
-reproduce the historical output exactly depends on the undocumented `expand`
-and filter-body contracts (`auth-scopes-risks.md` D5, D6, B4). The operations,
-scopes and request shapes themselves are verified from source.
+Exact historical presentation remains open for the 8 converted commands and
+requires the external dual-host/live-server evidence tracked in
+`auth-scopes-risks.md`. The local gates prove the bounded adapter contracts; they
+do not prove Firefox acceptance, release packaging, or byte-for-byte old-fctl
+output.
