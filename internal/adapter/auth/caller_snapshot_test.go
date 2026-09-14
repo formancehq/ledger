@@ -9,6 +9,7 @@ import (
 
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -122,7 +123,9 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 	}
 
 	ctx := WithClaims(context.Background(), claims)
-	ctx = WithForwardedSnapshot(ctx, forwarded)
+	capability, err := attribution.New(forwarded)
+	require.NoError(t, err)
+	ctx = WithForwardedAttribution(ctx, capability)
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
@@ -139,7 +142,7 @@ func TestResolveCallerSnapshot_SystemActor(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, commands.ComponentQueryCheckpoint, got.GetSystem().GetComponent())
+	require.Equal(t, string(commands.ComponentQueryCheckpoint), got.GetSystem().GetComponent())
 }
 
 func TestResolveCallerSnapshot_SystemActorWinsOverForwardedAndClaims(t *testing.T) {
@@ -150,25 +153,30 @@ func TestResolveCallerSnapshot_SystemActorWinsOverForwardedAndClaims(t *testing.
 	ctx := WithClaims(context.Background(), &oidc.AccessTokenClaims{
 		TokenClaims: oidc.TokenClaims{Subject: "user-1"},
 	})
-	ctx = WithForwardedSnapshot(ctx, &commonpb.CallerSnapshot{
+	capability, err := attribution.New(&commonpb.CallerSnapshot{
 		Principal: &commonpb.CallerSnapshot_Authenticated{
 			Authenticated: &commonpb.AuthenticatedCaller{
-				Identity: &commonpb.CallerIdentity{Subject: "forwarded-user"},
+				Identity: &commonpb.CallerIdentity{
+					Subject: "forwarded-user",
+					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+				},
 			},
 		},
 	})
+	require.NoError(t, err)
+	ctx = WithForwardedAttribution(ctx, capability)
 	ctx = WithSystemActor(ctx, commands.ComponentMirror)
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, commands.ComponentMirror, got.GetSystem().GetComponent())
+	require.Equal(t, string(commands.ComponentMirror), got.GetSystem().GetComponent())
 }
 
 func TestResolveCallerSnapshot_EmptySystemComponentFallsThrough(t *testing.T) {
 	t.Parallel()
 
 	// An empty component falls through to the missing-state result.
-	ctx := WithSystemActor(context.Background(), "")
+	ctx := WithSystemActor(context.Background(), attribution.SystemActor(""))
 
 	require.Nil(t, ResolveCallerSnapshot(ctx))
 }
@@ -210,20 +218,26 @@ func TestForwardedSnapshotFromContext_DefaultsNil(t *testing.T) {
 	require.Nil(t, ForwardedSnapshotFromContext(context.Background()))
 }
 
-func TestWithForwardedSnapshot_RoundTrip(t *testing.T) {
+func TestWithForwardedAttribution_RoundTripIsIsolated(t *testing.T) {
 	t.Parallel()
 
 	snapshot := &commonpb.CallerSnapshot{
 		Principal: &commonpb.CallerSnapshot_Authenticated{
 			Authenticated: &commonpb.AuthenticatedCaller{
-				Identity: &commonpb.CallerIdentity{Subject: "abc"},
+				Identity: &commonpb.CallerIdentity{
+					Subject: "abc",
+					Source:  &commonpb.CallerIdentity_KeyId{KeyId: "key-1"},
+				},
 			},
 		},
 	}
-	ctx := WithForwardedSnapshot(context.Background(), snapshot)
+	capability, err := attribution.New(snapshot)
+	require.NoError(t, err)
+	ctx := WithForwardedAttribution(context.Background(), capability)
 
 	got := ForwardedSnapshotFromContext(ctx)
-	require.Same(t, snapshot, got)
+	require.Equal(t, snapshot, got)
+	require.NotSame(t, snapshot, got)
 }
 
 // CallerIdentity must be free of authorization data. This test fails if

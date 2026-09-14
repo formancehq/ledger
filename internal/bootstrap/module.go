@@ -624,6 +624,7 @@ func Module() fx.Option {
 				rs *readstore.Store,
 				us *usagestore.Store,
 				meterProvider metric.MeterProvider,
+				cfg Config,
 			) (ctrl.Controller, *ctrl.DefaultController) {
 				defaultCtrl := ctrl.NewDefaultController(admission, store, logger, attrs, rs, us, meterProvider.Meter("ctrl"))
 
@@ -631,8 +632,9 @@ func Module() fx.Option {
 					defaultCtrl,
 					raftNode,
 					servicePool,
+					cfg.ClusterSecret != "",
 				), defaultCtrl
-			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``)),
+			}, fx.ParamTags(``, `name:"service"`, ``, ``, ``, ``, ``, ``, ``, ``)),
 			func(serviceServer *grpcadp.ServiceServer, n *node.Node, store *dal.Store) *clusterhealth.GRPCHealthUpdater {
 				hs := health.NewServer()
 				healthpb.RegisterHealthServer(serviceServer.GetServer(), hs)

@@ -48,6 +48,14 @@ The `CallerSnapshot` bytes begin with a one-byte principal tag:
 
 Within an authenticated principal, credential source `0x00` means absent, `0x01` means OIDC issuer, and `0x02` means Ed25519 key ID. Both principal and source tags switch on oneof wrapper types, so empty inner values remain distinct from absent variants. The independent golden encoder covers every principal kind and both credential sources.
 
+Hash validity alone does not make attribution valid. During chain verification,
+the checker also applies the deterministic attribution validator: the principal
+must be present, authenticated identities need a stable non-empty credential
+source, scopes must be sorted and unique, and system components must be in the
+compiled allowlist. A semantically invalid snapshot is reported as a hash-chain
+mismatch even when an attacker recomputed a matching hash. Restore validation
+uses this same checker path before accepting the staged store.
+
 ### Per-item payloads
 
 Each `AuditItem` (one per order in the proposal) is encoded by `state.BuildPerItemPayload(item)` (`audit_envelope.go:246-254`):

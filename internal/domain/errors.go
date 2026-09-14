@@ -253,6 +253,7 @@ const (
 	ErrReasonCheckpointNotFound            = "CHECKPOINT_NOT_FOUND"
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
+	ErrReasonInvalidCallerAttribution      = "INVALID_CALLER_ATTRIBUTION"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -1606,6 +1607,21 @@ func (e *ErrAccountValidation) Metadata() map[string]string {
 // the plan has the bug.
 type ErrInvalidExecutionPlan struct {
 	Reason_ string
+}
+
+// ErrInvalidCallerAttribution means a write reached admission or the FSM
+// without a complete, canonical caller principal. This is a server-side trust
+// boundary violation rather than a client-correctable payload error.
+type ErrInvalidCallerAttribution struct {
+	Detail string
+}
+
+func (e *ErrInvalidCallerAttribution) Error() string {
+	return "invalid caller attribution: " + e.Detail
+}
+func (*ErrInvalidCallerAttribution) Reason() string { return ErrReasonInvalidCallerAttribution }
+func (e *ErrInvalidCallerAttribution) Metadata() map[string]string {
+	return map[string]string{"detail": e.Detail}
 }
 
 func (e *ErrInvalidExecutionPlan) Error() string { return "invalid execution plan: " + e.Reason_ }

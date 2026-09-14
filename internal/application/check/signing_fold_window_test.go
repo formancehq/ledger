@@ -46,10 +46,11 @@ func writeSigningAuditEntry(
 	t.Helper()
 
 	entry := &auditpb.AuditEntry{
-		Sequence:    seq,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000 + seq},
-		OrderCount:  uint32(len(items)),
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Sequence:       seq,
+		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + seq},
+		OrderCount:     uint32(len(items)),
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
 		},

@@ -399,9 +399,8 @@ func NewAdmission(
 	return a
 }
 
-// observeCallerSnapshot flags attribution gaps while admission remains
-// tolerant of malformed snapshots. EN-2035 makes these conditions hard
-// admission failures.
+// observeCallerSnapshot retains post-commit diagnostics as a defense-in-depth
+// check. Admission and the FSM reject malformed snapshots before this point.
 func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.CallerSnapshot) {
 	if snap == nil || snap.GetPrincipal() == nil {
 		a.logger.Errorf("committed write has a missing caller snapshot or unset principal: audit entry will be unattributed")
@@ -486,6 +485,16 @@ func (a *Admission) recordPhaseOnExit(ctx context.Context, hist metric.Int64Hist
 // 4. For volumes not guaranteed in cache, load base values from store at B(nextIndex)
 // 5. Propose command with Preload containing base values.
 func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (response *domain.ApplyResult, err error) {
+	caller, err := auth.ResolveCallerAttribution(ctx)
+	if err != nil {
+		invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](err)
+		if !ok {
+			return nil, fmt.Errorf("resolving caller attribution: %w", err)
+		}
+
+		return nil, &domain.BusinessError{Err: invalid}
+	}
+
 	if err := a.writeGate.CheckWritesAllowed(); err != nil {
 		return nil, err
 	}
@@ -623,6 +632,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
 	cmd := commands.NewCommand(orders...)
+	cmd.CallerSnapshot = caller.Snapshot()
 	if batch.key != "" {
 		cmd.Idempotency = &commonpb.Idempotency{Key: batch.key}
 	}
@@ -683,7 +693,6 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	a.preloadCacheHitsCounter.Add(ctx, cacheHits)
 
 	cmd.ExecutionPlan = build.ExecutionPlan
-	cmd.CallerSnapshot = auth.ResolveCallerSnapshot(ctx)
 
 	preloadSpan.End()
 

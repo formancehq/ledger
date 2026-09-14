@@ -175,7 +175,7 @@ func TestAdmitActionCounters(t *testing.T) {
 
 		// A CreateTransaction referencing a missing numscript fails in the scripts
 		// phase — after orders are built and the recorder defer is registered.
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
@@ -211,7 +211,7 @@ func TestAdmitActionCounters(t *testing.T) {
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
 
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},
@@ -240,7 +240,7 @@ func TestAdmitActionCounters(t *testing.T) {
 
 		// Two CreateLedger orders in one atomic batch: both are built, the batch
 		// fails at propose, so each is counted once under create_ledger.
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("",
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("",
 			&servicepb.Request{Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-a"},
 			}},
@@ -264,7 +264,7 @@ func TestAdmitActionCounters(t *testing.T) {
 		// A revert with transaction id 0 is rejected inside requestsToOrders, before
 		// orders exist and before the recorder defer is registered — so no action
 		// counter is touched.
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
