@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/fx"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -206,4 +208,36 @@ func TestJoinPreflightRunsBeforeRaftTraffic(t *testing.T) {
 
 	// App never fully started; Stop should be a no-op error path we can ignore.
 	_ = app.Stop(context.Background())
+}
+
+func TestJoinPreflightFailureDoesNotAcquireLaterLifecycleResources(t *testing.T) {
+	t.Parallel()
+
+	var registrations atomic.Int32
+	register := func() (metric.Registration, error) {
+		registrations.Add(1)
+
+		return nil, nil
+	}
+
+	app := fx.New(
+		fx.NopLogger,
+		fx.Invoke(func(lc fx.Lifecycle) {
+			lc.Append(fx.Hook{OnStart: func(context.Context) error {
+				return errors.New("join preflight rejected stale progress")
+			}})
+		}),
+		fx.Invoke(func(lc fx.Lifecycle) {
+			registerMetricsLifecycle(lc, "readindex", register)
+		}),
+		fx.Invoke(func(lc fx.Lifecycle) {
+			registerMetricsLifecycle(lc, "usagestore", register)
+		}),
+	)
+	require.NoError(t, app.Err())
+
+	err := app.Start(context.Background())
+	require.ErrorContains(t, err, "join preflight rejected stale progress")
+	require.Zero(t, registrations.Load(),
+		"resources owned by later hooks must not be acquired during construction")
 }

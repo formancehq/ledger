@@ -48,6 +48,14 @@ func NewSnapshotServiceServer(logger logging.Logger, s *dal.Store, sessionTTL ti
 	}
 }
 
+// StartSnapshotService starts the session reaper. Keeping this acquisition in
+// Fx OnStart ensures a failed earlier startup hook cannot leak the goroutine.
+func StartSnapshotService(server snapshotpb.SnapshotServiceServer) {
+	if impl, ok := server.(*SnapshotServiceServerImpl); ok {
+		impl.sessions.start()
+	}
+}
+
 // StopSnapshotService stops the session reaper and retires all sessions.
 // Checkpoints still in use are removed when their last FetchFile completes.
 func StopSnapshotService(server snapshotpb.SnapshotServiceServer) {

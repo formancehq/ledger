@@ -217,3 +217,22 @@ func TestSnapshotSessionStore_StopDefersCleanupUntilActiveFetchReleases(t *testi
 	_, exists = store.TemporaryCheckpointPath(syncName)
 	require.False(t, exists)
 }
+
+func TestSnapshotSessionStore_ReaperStartsWithLifecycle(t *testing.T) {
+	t.Parallel()
+
+	sessions := newSnapshotSessionStore(nil, noopLogger{}, defaultSessionTTL)
+	t.Cleanup(sessions.stop)
+
+	sessions.mu.Lock()
+	reaperStartedDuringConstruction := sessions.started
+	sessions.mu.Unlock()
+	require.False(t, reaperStartedDuringConstruction)
+
+	sessions.start()
+
+	sessions.mu.Lock()
+	reaperStarted := sessions.started
+	sessions.mu.Unlock()
+	require.True(t, reaperStarted)
+}

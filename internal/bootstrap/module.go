@@ -794,13 +794,7 @@ func Module() fx.Option {
 			},
 			func(lc fx.Lifecycle, raftServer *grpcadp.RaftServer, snapshotServiceServer snapshotpb.SnapshotServiceServer) error {
 				grpcadp.RegisterSnapshotService(raftServer.GetServer(), snapshotServiceServer)
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						grpcadp.StopSnapshotService(snapshotServiceServer)
-
-						return nil
-					},
-				})
+				registerSnapshotServiceLifecycle(lc, snapshotServiceServer)
 
 				return nil
 			},
@@ -1036,31 +1030,13 @@ func Module() fx.Option {
 			},
 			// Register Pebble read index metrics and unregister on stop.
 			func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
-				reg, err := rs.RegisterMetrics(meterProvider.Meter("readindex"))
-				if err != nil {
-					return fmt.Errorf("registering readindex metrics: %w", err)
-				}
-
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						return reg.Unregister()
-					},
-				})
+				registerReadStoreMetricsLifecycle(lc, rs, meterProvider)
 
 				return nil
 			},
 			// Register Pebble usage store metrics and unregister on stop.
 			func(lc fx.Lifecycle, us *usagestore.Store, meterProvider metric.MeterProvider) error {
-				reg, err := us.RegisterMetrics(meterProvider.Meter("usagestore"))
-				if err != nil {
-					return fmt.Errorf("registering usagestore metrics: %w", err)
-				}
-
-				lc.Append(fx.Hook{
-					OnStop: func(_ context.Context) error {
-						return reg.Unregister()
-					},
-				})
+				registerUsageStoreMetricsLifecycle(lc, us, meterProvider)
 
 				return nil
 			},
@@ -1153,6 +1129,51 @@ func shouldRunJoinPreflight(cfg Config, logger logging.Logger) bool {
 	}
 
 	return true
+}
+
+func registerSnapshotServiceLifecycle(lc fx.Lifecycle, server snapshotpb.SnapshotServiceServer) {
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			grpcadp.StartSnapshotService(server)
+
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			grpcadp.StopSnapshotService(server)
+
+			return nil
+		},
+	})
+}
+
+func registerReadStoreMetricsLifecycle(lc fx.Lifecycle, store *readstore.Store, provider metric.MeterProvider) {
+	registerMetricsLifecycle(lc, "readindex", func() (metric.Registration, error) {
+		return store.RegisterMetrics(provider.Meter("readindex"))
+	})
+}
+
+func registerUsageStoreMetricsLifecycle(lc fx.Lifecycle, store *usagestore.Store, provider metric.MeterProvider) {
+	registerMetricsLifecycle(lc, "usagestore", func() (metric.Registration, error) {
+		return store.RegisterMetrics(provider.Meter("usagestore"))
+	})
+}
+
+func registerMetricsLifecycle(lc fx.Lifecycle, name string, register func() (metric.Registration, error)) {
+	var registration metric.Registration
+	lc.Append(fx.Hook{
+		OnStart: func(_ context.Context) error {
+			var err error
+			registration, err = register()
+			if err != nil {
+				return fmt.Errorf("registering %s metrics: %w", name, err)
+			}
+
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			return registration.Unregister()
+		},
+	})
 }
 
 // joinPreflightHook builds the OnStart hook that registers this node as a
