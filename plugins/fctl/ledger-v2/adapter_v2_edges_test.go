@@ -204,6 +204,65 @@ func TestExecuteV2PropagatesProductFailureWithoutEmittingPartialOutput(t *testin
 	}
 }
 
+// The pinned SDK classifies an in-range non-2xx product response as a typed
+// HTTP failure and keeps only an out-of-range status opaque. Both codes must
+// survive the generated client and the adapter's operation wrapping unchanged,
+// so the host still sees the retryable flag and the originating status.
+func TestExecuteV2PropagatesTypedProductHTTPFailures(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name       string
+		status     int32
+		code       sdk.FailureCode
+		retryable  bool
+		httpStatus int32
+	}{
+		{name: "client error", status: 404, code: sdk.FailureProductHTTPError, httpStatus: 404},
+		{name: "server error", status: 503, code: sdk.FailureProductHTTPError, retryable: true, httpStatus: 503},
+		{name: "out of range", status: 600, code: sdk.FailureProductResponseFailed},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+				return sdk.NewResponseStream(sdk.Response{
+					Status:      test.status,
+					ContentType: mediaTypeJSON,
+					Body:        []byte(`{"errorCode":"NOT_FOUND"}`),
+				}), nil
+			})
+
+			err := (Plugin{}).Execute(context.Background(), execution("ledger.v2.stats", nil, sdk.FlagOccurrence{Name: "ledger", Value: "primary"}), host)
+			var failure sdk.Failure
+			if !errors.As(err, &failure) {
+				t.Fatalf("error = %v, want an sdk.Failure", err)
+			}
+			if failure.Code != string(test.code) || failure.Retryable != test.retryable {
+				t.Fatalf("failure = %q retryable %v, want %q retryable %v", failure.Code, failure.Retryable, test.code, test.retryable)
+			}
+			if test.httpStatus != 0 {
+				var details struct {
+					HTTPStatus int32 `json:"httpStatus"`
+				}
+				if err := json.Unmarshal(failure.Details, &details); err != nil {
+					t.Fatalf("failure details = %q: %v", failure.Details, err)
+				}
+				if details.HTTPStatus != test.httpStatus {
+					t.Fatalf("failure httpStatus = %d, want %d", details.HTTPStatus, test.httpStatus)
+				}
+			}
+			if len(host.Events()) != 0 {
+				t.Fatal("product failure emitted partial output")
+			}
+			if got := len(host.Requests()); got != 1 {
+				t.Fatalf("generated client retried host-owned traffic: %d requests", got)
+			}
+		})
+	}
+}
+
 func TestExecuteV2EmitsEmptyAndBinaryResults(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
