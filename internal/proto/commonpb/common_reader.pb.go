@@ -11991,31 +11991,294 @@ func NewCallerIdentityListReader(s []*CallerIdentity) CallerIdentityListReader {
 	return callerIdentityListReadonly(s)
 }
 
-// CallerSnapshotReader provides read-only access to CallerSnapshot.
+// AuthenticatedCallerReader provides read-only access to AuthenticatedCaller.
 // Call Mutate() to obtain a mutable clone.
-type CallerSnapshotReader interface {
+type AuthenticatedCallerReader interface {
 	GetIdentity() CallerIdentityReader
 	GetScopes() []string
 	GetGod() bool
-	Mutate() *CallerSnapshot
+	Mutate() *AuthenticatedCaller
 }
 
-type callerSnapshotReadonly CallerSnapshot
+type authenticatedCallerReadonly AuthenticatedCaller
 
-func (r *callerSnapshotReadonly) GetIdentity() CallerIdentityReader {
-	v := (*CallerSnapshot)(r).GetIdentity()
+func (r *authenticatedCallerReadonly) GetIdentity() CallerIdentityReader {
+	v := (*AuthenticatedCaller)(r).GetIdentity()
 	if v == nil {
 		return nil
 	}
 	return v.AsReader()
 }
 
-func (r *callerSnapshotReadonly) GetScopes() []string {
-	return slices.Clone((*CallerSnapshot)(r).GetScopes())
+func (r *authenticatedCallerReadonly) GetScopes() []string {
+	return slices.Clone((*AuthenticatedCaller)(r).GetScopes())
 }
 
-func (r *callerSnapshotReadonly) GetGod() bool {
-	return (*CallerSnapshot)(r).GetGod()
+func (r *authenticatedCallerReadonly) GetGod() bool {
+	return (*AuthenticatedCaller)(r).GetGod()
+}
+
+func (r *authenticatedCallerReadonly) Mutate() *AuthenticatedCaller {
+	return (*AuthenticatedCaller)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AuthenticatedCaller.
+func (m *AuthenticatedCaller) AsReader() AuthenticatedCallerReader {
+	if m == nil {
+		return nil
+	}
+	return (*authenticatedCallerReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AuthenticatedCaller.
+func (m *AuthenticatedCaller) Mutate() *AuthenticatedCaller {
+	return m.CloneVT()
+}
+
+// AuthenticatedCallerListReader provides read-only iteration over []*AuthenticatedCaller.
+type AuthenticatedCallerListReader interface {
+	Len() int
+	Get(i int) AuthenticatedCallerReader
+	Range(yield func(int, AuthenticatedCallerReader) bool)
+}
+
+type authenticatedCallerListReadonly []*AuthenticatedCaller
+
+func (l authenticatedCallerListReadonly) Len() int { return len(l) }
+
+func (l authenticatedCallerListReadonly) Get(i int) AuthenticatedCallerReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l authenticatedCallerListReadonly) Range(yield func(int, AuthenticatedCallerReader) bool) {
+	for i, v := range l {
+		var r AuthenticatedCallerReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuthenticatedCallerListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuthenticatedCallerListReader(s []*AuthenticatedCaller) AuthenticatedCallerListReader {
+	return authenticatedCallerListReadonly(s)
+}
+
+// AnonymousCallerReader provides read-only access to AnonymousCaller.
+// Call Mutate() to obtain a mutable clone.
+type AnonymousCallerReader interface {
+	GetScopes() []string
+	Mutate() *AnonymousCaller
+}
+
+type anonymousCallerReadonly AnonymousCaller
+
+func (r *anonymousCallerReadonly) GetScopes() []string {
+	return slices.Clone((*AnonymousCaller)(r).GetScopes())
+}
+
+func (r *anonymousCallerReadonly) Mutate() *AnonymousCaller {
+	return (*AnonymousCaller)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AnonymousCaller.
+func (m *AnonymousCaller) AsReader() AnonymousCallerReader {
+	if m == nil {
+		return nil
+	}
+	return (*anonymousCallerReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AnonymousCaller.
+func (m *AnonymousCaller) Mutate() *AnonymousCaller {
+	return m.CloneVT()
+}
+
+// AnonymousCallerListReader provides read-only iteration over []*AnonymousCaller.
+type AnonymousCallerListReader interface {
+	Len() int
+	Get(i int) AnonymousCallerReader
+	Range(yield func(int, AnonymousCallerReader) bool)
+}
+
+type anonymousCallerListReadonly []*AnonymousCaller
+
+func (l anonymousCallerListReadonly) Len() int { return len(l) }
+
+func (l anonymousCallerListReadonly) Get(i int) AnonymousCallerReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l anonymousCallerListReadonly) Range(yield func(int, AnonymousCallerReader) bool) {
+	for i, v := range l {
+		var r AnonymousCallerReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAnonymousCallerListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAnonymousCallerListReader(s []*AnonymousCaller) AnonymousCallerListReader {
+	return anonymousCallerListReadonly(s)
+}
+
+// SystemCallerReader provides read-only access to SystemCaller.
+// Call Mutate() to obtain a mutable clone.
+type SystemCallerReader interface {
+	GetComponent() string
+	Mutate() *SystemCaller
+}
+
+type systemCallerReadonly SystemCaller
+
+func (r *systemCallerReadonly) GetComponent() string {
+	return (*SystemCaller)(r).GetComponent()
+}
+
+func (r *systemCallerReadonly) Mutate() *SystemCaller {
+	return (*SystemCaller)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SystemCaller.
+func (m *SystemCaller) AsReader() SystemCallerReader {
+	if m == nil {
+		return nil
+	}
+	return (*systemCallerReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SystemCaller.
+func (m *SystemCaller) Mutate() *SystemCaller {
+	return m.CloneVT()
+}
+
+// SystemCallerListReader provides read-only iteration over []*SystemCaller.
+type SystemCallerListReader interface {
+	Len() int
+	Get(i int) SystemCallerReader
+	Range(yield func(int, SystemCallerReader) bool)
+}
+
+type systemCallerListReadonly []*SystemCaller
+
+func (l systemCallerListReadonly) Len() int { return len(l) }
+
+func (l systemCallerListReadonly) Get(i int) SystemCallerReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l systemCallerListReadonly) Range(yield func(int, SystemCallerReader) bool) {
+	for i, v := range l {
+		var r SystemCallerReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSystemCallerListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSystemCallerListReader(s []*SystemCaller) SystemCallerListReader {
+	return systemCallerListReadonly(s)
+}
+
+// AuthDisabledCallerReader provides read-only access to AuthDisabledCaller.
+// Call Mutate() to obtain a mutable clone.
+type AuthDisabledCallerReader interface {
+	Mutate() *AuthDisabledCaller
+}
+
+type authDisabledCallerReadonly AuthDisabledCaller
+
+func (r *authDisabledCallerReadonly) Mutate() *AuthDisabledCaller {
+	return (*AuthDisabledCaller)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this AuthDisabledCaller.
+func (m *AuthDisabledCaller) AsReader() AuthDisabledCallerReader {
+	if m == nil {
+		return nil
+	}
+	return (*authDisabledCallerReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this AuthDisabledCaller.
+func (m *AuthDisabledCaller) Mutate() *AuthDisabledCaller {
+	return m.CloneVT()
+}
+
+// AuthDisabledCallerListReader provides read-only iteration over []*AuthDisabledCaller.
+type AuthDisabledCallerListReader interface {
+	Len() int
+	Get(i int) AuthDisabledCallerReader
+	Range(yield func(int, AuthDisabledCallerReader) bool)
+}
+
+type authDisabledCallerListReadonly []*AuthDisabledCaller
+
+func (l authDisabledCallerListReadonly) Len() int { return len(l) }
+
+func (l authDisabledCallerListReadonly) Get(i int) AuthDisabledCallerReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l authDisabledCallerListReadonly) Range(yield func(int, AuthDisabledCallerReader) bool) {
+	for i, v := range l {
+		var r AuthDisabledCallerReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewAuthDisabledCallerListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewAuthDisabledCallerListReader(s []*AuthDisabledCaller) AuthDisabledCallerListReader {
+	return authDisabledCallerListReadonly(s)
+}
+
+// CallerSnapshotReader provides read-only access to CallerSnapshot.
+// Call Mutate() to obtain a mutable clone.
+type CallerSnapshotReader interface {
+	GetPrincipal() isCallerSnapshot_Principal
+	Mutate() *CallerSnapshot
+}
+
+type callerSnapshotReadonly CallerSnapshot
+
+func (r *callerSnapshotReadonly) GetPrincipal() isCallerSnapshot_Principal {
+	return (*CallerSnapshot)(r).GetPrincipal()
 }
 
 func (r *callerSnapshotReadonly) Mutate() *CallerSnapshot {

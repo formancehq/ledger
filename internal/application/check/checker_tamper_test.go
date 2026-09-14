@@ -78,24 +78,33 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 		}},
 
 		// CallerSnapshot sub-fields.
-		{"caller_subject", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) { e.CallerSnapshot.Identity.Subject = "attacker" }},
+		{"caller_subject", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+			e.CallerSnapshot.GetAuthenticated().Identity.Subject = "attacker"
+		}},
 		{"caller_source_swap_to_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: "https://evil.example.com"}
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: "https://evil.example.com"}
 		}},
 		// Empty-string oneof variants must be distinguishable from
 		// absent. These two cases pin that the source TAG (not just
 		// the inner value) is bound in the envelope.
 		{"caller_source_drop_to_nil", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.Identity.Source = nil
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = nil
 		}},
 		{"caller_source_swap_to_empty_issuer", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: ""}
+			e.CallerSnapshot.GetAuthenticated().Identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: ""}
 		}},
 		{"caller_god", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.God = !e.GetCallerSnapshot().GetGod()
+			caller := e.GetCallerSnapshot().GetAuthenticated()
+			caller.God = !caller.GetGod()
 		}},
 		{"caller_scopes_add", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
-			e.CallerSnapshot.Scopes = append(e.CallerSnapshot.GetScopes(), "admin")
+			caller := e.GetCallerSnapshot().GetAuthenticated()
+			caller.Scopes = append(caller.GetScopes(), "admin")
+		}},
+		{"caller_principal_swap", "success", func(e *auditpb.AuditEntry, _ []*auditpb.AuditItem) {
+			e.CallerSnapshot.Principal = &commonpb.CallerSnapshot_Anonymous{
+				Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"read", "write"}},
+			}
 		}},
 
 		// Batch identity — bound into header_payload.
@@ -173,12 +182,16 @@ func newRichAuditEntry(outcomeKind string) (*auditpb.AuditEntry, []*auditpb.Audi
 		Ledgers:     []string{"ledger-a", "ledger-b"},
 		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: &commonpb.CallerSnapshot{
-			Identity: &commonpb.CallerIdentity{
-				Subject: "alice",
-				Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+			Principal: &commonpb.CallerSnapshot_Authenticated{
+				Authenticated: &commonpb.AuthenticatedCaller{
+					Identity: &commonpb.CallerIdentity{
+						Subject: "alice",
+						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+					},
+					Scopes: []string{"read", "write"},
+					God:    false,
+				},
 			},
-			Scopes: []string{"read", "write"},
-			God:    false,
 		},
 		Idempotency: &commonpb.Idempotency{Key: "batch-key-1"},
 		Signature: &signaturepb.SignedApplyBatch{
