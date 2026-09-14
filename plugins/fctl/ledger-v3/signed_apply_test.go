@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"reflect"
 	"testing"
 
 	"github.com/formancehq/fctl-v2-poc/pkg/plugin/sdk"
@@ -33,11 +34,20 @@ import (
 const (
 	applyRequestUnsignedField     = protowire.Number(1)
 	applyRequestSignedField       = protowire.Number(2)
+	applyRequestCallerField       = protowire.Number(3)
 	applyRequestSkipResponseField = protowire.Number(4)
 
 	signedApplyBatchKeyIDField     = protowire.Number(1)
 	signedApplyBatchSignatureField = protowire.Number(2)
 	signedApplyBatchPayloadField   = protowire.Number(3)
+)
+
+const (
+	ordinaryApplyPayloadBytes  uint64 = 262140
+	ordinarySignedMessageBytes uint64 = 263241
+	artifactApplyPayloadBytes  uint64 = 2097148
+	artifactSignedMessageBytes uint64 = 2098250
+	maxSigningKeyIDBytes       uint32 = 1024
 )
 
 // The logical fctl payload identifier RFC 0009 binds to one exact protobuf
@@ -93,37 +103,200 @@ func TestSigningDeclarationIsBoundToThePinnedApplyBatchAndMethod(t *testing.T) {
 	}
 }
 
+// Removing the operation identity from the signing declaration lets a signer
+// bind the historical synthetic ledger.batches.apply token rather than the
+// operation the plugin actually sends. This table independently pins every
+// command-to-operation mapping and the opaque rewrite envelope admitted for it.
+func TestEverySignedCommandDeclaresItsExactOpaqueApplyOperation(t *testing.T) {
+	t.Parallel()
+
+	wantOperations := map[string]string{
+		"ledger.v3.account-types.add":                     "ledger.v3.Apply.AddAccountType",
+		"ledger.v3.account-types.remove":                  "ledger.v3.Apply.RemoveAccountType",
+		"ledger.v3.account-types.set-default-enforcement": "ledger.v3.Apply.SetDefaultEnforcementMode",
+		"ledger.v3.accounts.delete-metadata":              "ledger.v3.Apply.DeleteMetadata",
+		"ledger.v3.accounts.set-metadata":                 "ledger.v3.Apply.AddMetadata",
+		"ledger.v3.indexes.create":                        "ledger.v3.Apply.CreateIndex",
+		"ledger.v3.indexes.drop":                          "ledger.v3.Apply.DropIndex",
+		"ledger.v3.ledgers.configuration.apply":           "ledger.v3.Apply.Configuration",
+		"ledger.v3.ledgers.create":                        "ledger.v3.Apply.CreateLedger",
+		"ledger.v3.ledgers.delete":                        "ledger.v3.Apply.DeleteLedger",
+		"ledger.v3.ledgers.delete-metadata":               "ledger.v3.Apply.DeleteLedgerMetadata",
+		"ledger.v3.ledgers.remove-metadata-type":          "ledger.v3.Apply.RemoveMetadataFieldType",
+		"ledger.v3.ledgers.set-metadata":                  "ledger.v3.Apply.SaveLedgerMetadata",
+		"ledger.v3.ledgers.set-metadata-type":             "ledger.v3.Apply.SetMetadataFieldType",
+		"ledger.v3.numscripts.save":                       "ledger.v3.Apply.SaveNumscript",
+		"ledger.v3.queries.create":                        "ledger.v3.Apply.CreatePreparedQuery",
+		"ledger.v3.queries.delete":                        "ledger.v3.Apply.DeletePreparedQuery",
+		"ledger.v3.queries.update":                        "ledger.v3.Apply.UpdatePreparedQuery",
+		"ledger.v3.transactions.create":                   "ledger.v3.Apply.CreateTransaction",
+		"ledger.v3.transactions.delete-metadata":          "ledger.v3.Apply.DeleteMetadata",
+		"ledger.v3.transactions.revert":                   "ledger.v3.Apply.RevertTransaction",
+		"ledger.v3.transactions.set-metadata":             "ledger.v3.Apply.AddMetadata",
+	}
+	largeOperations := map[string]bool{
+		"ledger.v3.Apply.Configuration":     true,
+		"ledger.v3.Apply.CreateLedger":      true,
+		"ledger.v3.Apply.CreateTransaction": true,
+		"ledger.v3.Apply.SaveNumscript":     true,
+	}
+	wantPassthrough := []sdk.ProtobufField{
+		{Number: uint32(applyRequestCallerField), WireType: uint32(protowire.BytesType)},
+		{Number: uint32(applyRequestSkipResponseField), WireType: uint32(protowire.VarintType)},
+	}
+
+	seen := 0
+	seenOperations := make(map[string]struct{})
+	for _, command := range (Plugin{}).Commands() {
+		wantOperation, signed := wantOperations[command.ID]
+		if !signed {
+			if command.RequestSigning != nil {
+				t.Fatalf("unsigned command %q declares signing", command.ID)
+			}
+			continue
+		}
+		seen++
+		seenOperations[wantOperation] = struct{}{}
+		signing := command.RequestSigning
+		if signing == nil {
+			t.Fatalf("signed command %q has no signing declaration", command.ID)
+		}
+		if signing.OperationID != wantOperation || signing.Capability != sdk.CapabilitySignLedgerApplyBatch ||
+			signing.ProductMajor != productMajor || signing.PayloadType != signingPayloadType || signing.Algorithm != "Ed25519" {
+			t.Fatalf("command %q signing = %#v, want operation %q", command.ID, signing, wantOperation)
+		}
+
+		payloadBytes, signedBytes := ordinaryApplyPayloadBytes, ordinarySignedMessageBytes
+		if largeOperations[wantOperation] {
+			payloadBytes, signedBytes = artifactApplyPayloadBytes, artifactSignedMessageBytes
+		}
+		if signing.Protobuf == nil {
+			t.Fatalf("command %q has no opaque protobuf recipe", command.ID)
+		}
+		recipe := signing.Protobuf
+		if recipe.UnsignedField != uint32(applyRequestUnsignedField) || recipe.SignedField != uint32(applyRequestSignedField) ||
+			recipe.EnvelopeKeyIDField != uint32(signedApplyBatchKeyIDField) ||
+			recipe.EnvelopeSignatureField != uint32(signedApplyBatchSignatureField) ||
+			recipe.EnvelopePayloadField != uint32(signedApplyBatchPayloadField) ||
+			!reflect.DeepEqual(recipe.PassthroughFields, wantPassthrough) ||
+			recipe.MaxPayloadBytes != payloadBytes || recipe.MaxSignedMessageBytes != signedBytes ||
+			recipe.MaxKeyIDBytes != maxSigningKeyIDBytes || recipe.SignatureLength != ed25519.SignatureSize {
+			t.Fatalf("command %q opaque recipe = %#v", command.ID, recipe)
+		}
+
+		operation, ok := operationByID(command, wantOperation)
+		if !ok || operation.Service != sdk.ServiceLedger || operation.GRPC == nil ||
+			operation.GRPC.FullMethod != signedApplyFullMethod || operation.GRPC.ServerStreaming ||
+			operation.GRPC.GeneratedClient == nil || uint64(operation.GRPC.GeneratedClient.MaxRequestMessageBytes) != signedBytes {
+			t.Fatalf("command %q signed operation = %#v", command.ID, operation)
+		}
+	}
+	if seen != len(wantOperations) {
+		t.Fatalf("signed commands = %d, want %d", seen, len(wantOperations))
+	}
+	if len(seenOperations) != 20 {
+		t.Fatalf("distinct signed operations = %d, want 20", len(seenOperations))
+	}
+}
+
+// The two declared signed-message ceilings are not estimates. This test uses
+// Ledger's generated protobuf messages to prove the exact boundary with a
+// maximum-sized key ID and Ed25519 signature, including the extra outer
+// length-prefix byte in the 2 MiB profile.
+func TestOpaqueSigningCeilingsFitTheRealLedgerWireMessages(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		payloadBytes  uint64
+		unsignedBytes int
+		signedBytes   uint64
+	}{
+		{name: "ordinary", payloadBytes: ordinaryApplyPayloadBytes, unsignedBytes: int(applyRequestBytes), signedBytes: ordinarySignedMessageBytes},
+		{name: "artifact", payloadBytes: artifactApplyPayloadBytes, unsignedBytes: int(artifactApplyRequestBytes), signedBytes: artifactSignedMessageBytes},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			// ApplyBatch.idempotency_key is field 2. Choosing this value length
+			// produces the exact desired serialized batch size without unknown
+			// fields or a test reimplementation of protobuf encoding.
+			batch := &servicepb.ApplyBatch{IdempotencyKey: string(make([]byte, test.payloadBytes-4))}
+			payload, err := proto.Marshal(batch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uint64(len(payload)) != test.payloadBytes {
+				t.Fatalf("payload bytes = %d, want %d", len(payload), test.payloadBytes)
+			}
+			unsigned, err := proto.Marshal(&servicepb.ApplyRequest{Variant: &servicepb.ApplyRequest_Unsigned{Unsigned: batch}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(unsigned) != test.unsignedBytes {
+				t.Fatalf("unsigned message bytes = %d, want %d", len(unsigned), test.unsignedBytes)
+			}
+			signed, err := proto.Marshal(&servicepb.ApplyRequest{Variant: &servicepb.ApplyRequest_Signed{Signed: &signaturepb.SignedApplyBatch{
+				KeyId: string(make([]byte, maxSigningKeyIDBytes)), Signature: make([]byte, ed25519.SignatureSize), Payload: payload,
+			}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if uint64(len(signed)) != test.signedBytes {
+				t.Fatalf("signed message bytes = %d, want %d", len(signed), test.signedBytes)
+			}
+		})
+	}
+}
+
 // The field numbers the host substitution depends on are the ones the pinned
 // Ledger descriptors actually declare.
 func TestSignedApplyWireContractMatchesThePinnedDescriptors(t *testing.T) {
 	t.Parallel()
 
 	request := servicepb.File_bucket_proto.Messages().ByName("ApplyRequest")
-	if request == nil {
+	if request == nil || request.FullName() != "ledger.ApplyRequest" {
 		t.Fatal("pinned ApplyRequest descriptor is unavailable")
 	}
-	for name, want := range map[protoreflect.Name]protowire.Number{
-		"unsigned":      applyRequestUnsignedField,
-		"signed":        applyRequestSignedField,
-		"skip_response": applyRequestSkipResponseField,
+	for name, want := range map[protoreflect.Name]struct {
+		number protowire.Number
+		kind   protoreflect.Kind
+	}{
+		"unsigned":                  {applyRequestUnsignedField, protoreflect.MessageKind},
+		"signed":                    {applyRequestSignedField, protoreflect.MessageKind},
+		"forwarded_caller_snapshot": {applyRequestCallerField, protoreflect.MessageKind},
+		"skip_response":             {applyRequestSkipResponseField, protoreflect.BoolKind},
 	} {
 		field := request.Fields().ByName(name)
-		if field == nil || protowire.Number(field.Number()) != want {
-			t.Fatalf("ApplyRequest.%s = %v, want field %d", name, field, want)
+		if field == nil || protowire.Number(field.Number()) != want.number || field.Kind() != want.kind {
+			t.Fatalf("ApplyRequest.%s = %v, want field %d kind %s", name, field, want.number, want.kind)
 		}
 	}
+	unsigned := request.Fields().ByName("unsigned")
+	signed := request.Fields().ByName("signed")
+	if unsigned.ContainingOneof() == nil || unsigned.ContainingOneof() != signed.ContainingOneof() {
+		t.Fatal("ApplyRequest unsigned and signed are not members of the same oneof")
+	}
+	if unsigned.Message().FullName() != signedApplyBatchFullName || signed.Message().FullName() != "signature.SignedApplyBatch" {
+		t.Fatalf("ApplyRequest variant messages = %s / %s", unsigned.Message().FullName(), signed.Message().FullName())
+	}
 	envelope := signaturepb.File_signature_proto.Messages().ByName("SignedApplyBatch")
-	if envelope == nil {
+	if envelope == nil || envelope.FullName() != "signature.SignedApplyBatch" {
 		t.Fatal("pinned SignedApplyBatch descriptor is unavailable")
 	}
-	for name, want := range map[protoreflect.Name]protowire.Number{
-		"key_id":    signedApplyBatchKeyIDField,
-		"signature": signedApplyBatchSignatureField,
-		"payload":   signedApplyBatchPayloadField,
+	for name, want := range map[protoreflect.Name]struct {
+		number protowire.Number
+		kind   protoreflect.Kind
+	}{
+		"key_id":    {signedApplyBatchKeyIDField, protoreflect.StringKind},
+		"signature": {signedApplyBatchSignatureField, protoreflect.BytesKind},
+		"payload":   {signedApplyBatchPayloadField, protoreflect.BytesKind},
 	} {
 		field := envelope.Fields().ByName(name)
-		if field == nil || protowire.Number(field.Number()) != want {
-			t.Fatalf("SignedApplyBatch.%s = %v, want field %d", name, field, want)
+		if field == nil || protowire.Number(field.Number()) != want.number || field.Kind() != want.kind {
+			t.Fatalf("SignedApplyBatch.%s = %v, want field %d kind %s", name, field, want.number, want.kind)
 		}
 	}
 }

@@ -7,9 +7,9 @@ unset -f nix 2>/dev/null || true
 
 readonly plugin_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 readonly wrapper="$plugin_root/scripts/with-fctl-sdk.sh"
-readonly expected_nar_hash='sha256-DnTiEFya3R9KCYmgv5SO/1StKTCPmndObQrrVHf79Xk='
+readonly expected_nar_hash='sha256-iCvUNr0I0wO/bofTC4dcuO9hUZwX7P5XP4NKBX8sq8A='
 readonly expected_wit_hash='38fdf377264eeada82b23fef153e6bf106ed0624e8916ff62cabdf210d6255f5'
-readonly expected_commit='e9b1395f46f3100b381dbe00f5213de28e6df0e1'
+readonly expected_commit='d7c575656eb1e277425f86a7c7e4fe6a8a5fe8eb'
 readonly expected_repository='https://github.com/formancehq/fctl-v2-poc.git'
 
 fail() {

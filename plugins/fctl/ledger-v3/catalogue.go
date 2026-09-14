@@ -14,6 +14,14 @@ const productMajor uint32 = 3
 // protobuf message ledger.ApplyBatch.
 const signingPayloadType = "formance.ledger.v3.ApplyBatch"
 
+const (
+	signingAlgorithm          = "Ed25519"
+	signingMaxKeyIDBytes      = uint32(1024)
+	signingSignatureBytes     = uint32(64)
+	protobufWireTypeVarint    = uint32(0)
+	protobufWireTypeDelimited = uint32(2)
+)
+
 // spec is the single source for one command. Descriptor fields the host
 // validates against each other — input schema versus grammar, pagination versus
 // operation count, signing versus compatibility — are all derived from it, so
@@ -106,10 +114,28 @@ func (s spec) command() sdk.Command {
 
 	for _, operation := range s.operations {
 		if operation.method == bucketFullMethod("Apply") {
+			maxPayloadBytes, maxSignedMessageBytes := operation.signingCeilings()
 			command.RequestSigning = &sdk.RequestSigningSpec{
 				Capability:   sdk.CapabilitySignLedgerApplyBatch,
 				ProductMajor: productMajor,
 				PayloadType:  signingPayloadType,
+				OperationID:  operation.id,
+				Algorithm:    signingAlgorithm,
+				Protobuf: &sdk.OpaqueProtobufSigningRecipe{
+					UnsignedField:          1,
+					SignedField:            2,
+					EnvelopeKeyIDField:     1,
+					EnvelopeSignatureField: 2,
+					EnvelopePayloadField:   3,
+					PassthroughFields: []sdk.ProtobufField{
+						{Number: 3, WireType: protobufWireTypeDelimited},
+						{Number: 4, WireType: protobufWireTypeVarint},
+					},
+					MaxPayloadBytes:       maxPayloadBytes,
+					MaxSignedMessageBytes: maxSignedMessageBytes,
+					MaxKeyIDBytes:         signingMaxKeyIDBytes,
+					SignatureLength:       signingSignatureBytes,
+				},
 			}
 			break
 		}

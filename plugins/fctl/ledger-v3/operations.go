@@ -39,17 +39,23 @@ const (
 // profile (sdk.GeneratedClientMaxMessageBytes and friends) and is chosen for
 // the shape of the traffic rather than set to the maximum.
 const (
-	readRequestBytes          int64  = 64 << 10
-	applyRequestBytes         int64  = 256 << 10
-	artifactApplyRequestBytes int64  = 2 << 20
-	configurationRequestBytes int64  = 2 << 20
-	unaryResponseBytes        int64  = 512 << 10
-	streamMessageBytes        int64  = 256 << 10
-	streamAggregateBytes      int64  = 8 << 20
-	streamMessages            uint32 = 1024
-	analyzeMessageBytes              = sdk.GeneratedClientMaxMessageBytes
-	analyzeAggregateBytes            = sdk.GeneratedClientMaxAggregateResponseBytes
-	analyzeMessages                  = sdk.GeneratedClientMaxResponseMessages
+	readRequestBytes          int64 = 64 << 10
+	applyRequestBytes         int64 = 256 << 10
+	artifactApplyRequestBytes int64 = 2 << 20
+	configurationRequestBytes int64 = 2 << 20
+	// Signing replaces the outer unsigned field with an envelope containing a
+	// bounded key ID, a 64-byte Ed25519 signature, and the exact payload. These
+	// ceilings reserve that protobuf framing without reducing the plugin's
+	// existing unsigned request budget.
+	ordinarySignedApplyRequestBytes int64  = 263241
+	largeSignedApplyRequestBytes    int64  = 2098250
+	unaryResponseBytes              int64  = 512 << 10
+	streamMessageBytes              int64  = 256 << 10
+	streamAggregateBytes            int64  = 8 << 20
+	streamMessages                  uint32 = 1024
+	analyzeMessageBytes                    = sdk.GeneratedClientMaxMessageBytes
+	analyzeAggregateBytes                  = sdk.GeneratedClientMaxAggregateResponseBytes
+	analyzeMessages                        = sdk.GeneratedClientMaxResponseMessages
 )
 
 // operation is one product RPC binding: the gRPC method, its shape, and the
@@ -69,6 +75,10 @@ func (o operation) policy() sdk.OperationPolicy {
 	request := o.requestBytes
 	if request == 0 {
 		request = readRequestBytes
+	}
+	if o.method == bucketFullMethod("Apply") {
+		_, signed := o.signingCeilings()
+		request = int64(signed)
 	}
 	limits := sdk.ResponseLimits{
 		MaxMessageBytes:   unaryResponseBytes,
@@ -105,6 +115,22 @@ func (o operation) policy() sdk.OperationPolicy {
 				ResponseLimits:         limits,
 			},
 		},
+	}
+}
+
+// signingCeilings returns the maximum inner ApplyBatch and final signed
+// ApplyRequest sizes. The inner ceiling subtracts the minimal field-1 tag and
+// three-byte protobuf length from the previous full unsigned request budget.
+// The signed ceiling accounts for a 1024-byte key ID and an Ed25519 signature;
+// the 2 MiB profile needs one extra byte when the outer length varint grows.
+func (o operation) signingCeilings() (payload uint64, signed uint64) {
+	switch o.requestBytes {
+	case applyRequestBytes:
+		return uint64(applyRequestBytes - 4), uint64(ordinarySignedApplyRequestBytes)
+	case artifactApplyRequestBytes:
+		return uint64(artifactApplyRequestBytes - 4), uint64(largeSignedApplyRequestBytes)
+	default:
+		return 0, 0
 	}
 }
 

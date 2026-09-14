@@ -7,14 +7,9 @@
   # Go SDK resolution is separately content-addressed by fctl-sdk.lock.json and
   # the ephemeral workspace created by scripts/with-fctl-sdk.sh.
   #
-  # This pin supplies only devShells.default — the Go toolchain plus
-  # componentize-go, wasi-virt and wasm-tools. It is the newest commit reachable
-  # on the canonical repository; the SDK commit named by fctl-sdk.lock.json is
-  # not published there yet. Both commits define byte-identical
-  # devShells.default and identical componentize-go/wasi-virt/wasm-tools
-  # derivations, so the authoring toolchain is the same either way. Move this
-  # pin onto the locked SDK commit once that commit is published.
-  inputs.fctl.url = "github:formancehq/fctl-v2-poc/01fccf28233fe51edfa71f21a8cde3dabfca3bcb";
+  # Keep the authoring toolchain and content-addressed Go SDK on the same
+  # immutable fctl revision.
+  inputs.fctl.url = "github:formancehq/fctl-v2-poc/d7c575656eb1e277425f86a7c7e4fe6a8a5fe8eb";
 
   outputs = { nixpkgs, fctl, ... }:
     let

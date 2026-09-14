@@ -136,11 +136,22 @@ carrying `forwarded_caller_snapshot` and `skip_response` through untouched
 because they sit outside the signed unit. Nothing is re-serialized on the way,
 so the bytes the signature covers are the bytes the server receives.
 
+Each of the 22 mutation commands binds signing to its exact declared
+`ledger.v3.Apply.*` operation ID rather than a synthetic shared operation.
+The declaration also pins the closed opaque-protobuf recipe: outer fields 1
+(`unsigned`) and 2 (`signed`), preserved transport fields 3
+(`forwarded_caller_snapshot`) and 4 (`skip_response`), and envelope fields 1
+(`key_id`), 2 (`signature`), and 3 (`payload`). The ordinary profile admits a
+262,140-byte inner payload and a 263,241-byte final signed message; the artifact
+and configuration profile admits 2,097,148 and 2,098,250 bytes respectively.
+Those bounds include a 1,024-byte key ID and the fixed 64-byte Ed25519
+signature.
+
 The plugin's side of that contract — one unsigned variant per Apply, never a
-signed one, and a signing declaration bound to `ledger.ApplyBatch` and
-`/ledger.BucketService/Apply` — is asserted in `signed_apply_test.go`, together
-with the host substitution performed exactly as the host performs it and
-verified through Ledger's own `signing.Verify` and `signing.ExtractBatch`.
+signed one, exact operation identity, the pinned wire recipe, and its byte
+ceilings — is asserted in `signed_apply_test.go`. The same test verifies the
+result through Ledger's own generated protobuf descriptors,
+`signing.Verify`, and `signing.ExtractBatch`.
 
 With no signer activated the Apply goes unsigned, which is the ordinary path.
 After activation every refusal is terminal: the host never retries unsigned.
