@@ -1,4 +1,4 @@
-// Command fctl-plugin-audit verifies the fctl Ledger plugin preparation.
+// Command fctl-plugin-audit verifies the fctl Ledger plugin inventories and manifests.
 //
 // Output discipline: the audit report is the only thing on stdout, as one JSON
 // document, so it composes with jq and shell redirection. Progress and failure

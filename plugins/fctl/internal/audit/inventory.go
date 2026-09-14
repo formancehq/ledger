@@ -1,7 +1,7 @@
-// Package audit verifies the fctl Ledger plugin preparation artifacts.
+// Package audit verifies the fctl Ledger plugin inventory and manifest artifacts.
 //
-// It is internal audit tooling shared by the ledger-v2 and ledger-v3
-// preparation directories. It deliberately carries no plugin contract and is
+// It is internal audit tooling shared by ledger-v2 and ledger-v3. It
+// deliberately carries no plugin contract and is
 // not packaged into either plugin: sharing it must not couple the two
 // plugins' catalogues, manifests or command surfaces.
 package audit

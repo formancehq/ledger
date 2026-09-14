@@ -41,9 +41,9 @@ func load(t *testing.T) audit.Inputs {
 	return in
 }
 
-// TestCommittedPreparationPassesAudit is the gate: the committed documents
+// TestCheckedInDocumentsPassAudit is the gate: the checked-in documents
 // must satisfy every recorded invariant.
-func TestCommittedPreparationPassesAudit(t *testing.T) {
+func TestCheckedInDocumentsPassAudit(t *testing.T) {
 	report := audit.Run(load(t))
 
 	for _, f := range report.Findings {
@@ -377,8 +377,8 @@ func TestOnlyV3DeclaresSigningCapability(t *testing.T) {
 	}
 }
 
-// TestNoRuntimeArtifactIsDeclared keeps the closed 4B/4C/4D gates honest: this
-// preparation must not claim a component, install record or dual-host artifact.
+// TestNoRuntimeArtifactIsDeclared keeps release evidence distinct from source
+// implementation: neither plugin may claim an unverified runtime artifact.
 func TestNoRuntimeArtifactIsDeclared(t *testing.T) {
 	in := load(t)
 
@@ -389,9 +389,16 @@ func TestNoRuntimeArtifactIsDeclared(t *testing.T) {
 	if in.V3Manifest.RuntimeArtifact != nil {
 		t.Errorf("ledger-v3 declares a runtime artifact %q", *in.V3Manifest.RuntimeArtifact)
 	}
+}
 
-	if in.V2Manifest.Status != "preparation" || in.V3Manifest.Status != "preparation" {
-		t.Error("both manifests must be marked status=preparation")
+func TestManifestLifecycleStatusMatchesCurrentDelivery(t *testing.T) {
+	in := load(t)
+
+	if in.V2Manifest.Status != "implemented" {
+		t.Errorf("ledger-v2 status = %q, want implemented", in.V2Manifest.Status)
+	}
+	if in.V3Manifest.Status != "preparation" {
+		t.Errorf("ledger-v3 status = %q, want preparation", in.V3Manifest.Status)
 	}
 }
 

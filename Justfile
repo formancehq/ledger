@@ -19,6 +19,14 @@ fctl-plugin-audit-write:
 fctl-plugin-test:
     go test -race -covermode=atomic ./plugins/...
 
+# The Ledger-v2 fctl plugin is a separate module, so the root tidy recipe does
+# not reach it. These recipes cover it through the pinned SDK projection.
+fctl-ledger-v2-tidy:
+    cd plugins/fctl/ledger-v2 && ./scripts/with-fctl-sdk.sh ./scripts/tidy-with-fctl-sdk.sh
+
+fctl-ledger-v2-tidy-check:
+    cd plugins/fctl/ledger-v2 && ./scripts/with-fctl-sdk.sh ./scripts/tidy-with-fctl-sdk.sh --check
+
 lint:
     golangci-lint --version
     golangci-lint run --fix --build-tags it,local --timeout 5m
@@ -29,7 +37,7 @@ lint:
     done
     cd {{justfile_directory()}}/deployments/pulumi && golangci-lint run --fix --build-tags it --timeout 5m
 
-tidy:
+tidy: && fctl-ledger-v2-tidy
     for d in $(ls tools); do \
         pushd tools/$d; \
         go mod tidy; \

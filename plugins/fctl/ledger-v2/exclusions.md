@@ -20,7 +20,7 @@ is not a `V2.*` method.
 ## The 9 historical V1-only commands are converted, not dropped
 
 At the baseline pin, nine commands were implemented exclusively on `Ledger.V1`.
-The programme decision is to **keep the historical user surface** by binding
+The compatibility decision is to **keep the historical user surface** by binding
 each to its V2 API equivalent. Eight are converted and published; the ninth is
 `ledger server-infos` above.
 
@@ -81,7 +81,7 @@ resolved.
 | `sign.ledger.apply-batch` | RFC 0009 binds it to product major 3 only. Ledger v2 cannot declare or consume it. The v2 catalogue and runtime must not be able to name it. |
 | Response-signature verification | Not in RFC 0009 scope for either plugin. |
 | Endpoint / auth / target resolution | Host-owned. |
-| Direct server, TLS, raw-token, active-ledger fallback, self-update, product-consistency flags | Explicitly barred from generic fctl behaviour by the programme plan. |
+| Direct server, TLS, raw-token, active-ledger fallback, self-update, product-consistency flags | Explicitly barred from generic fctl behaviour by the current host contract. |
 
 ## D. Not shared with `ledger-v3`
 

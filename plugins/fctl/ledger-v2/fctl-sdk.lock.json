@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "modulePath": "github.com/formancehq/fctl-v2-poc/pkg/plugin",
+  "repository": "https://github.com/Dav-14/fctl-v2-poc.git",
+  "commit": "545521bfa222250af6b4419b194c7967cded0379",
+  "sdkPath": "pkg/plugin",
+  "sdkNarHash": "sha256-HUMOWv4j015MJaM/RNm2h8W8cIZlkyOrXveQlHUfQfE=",
+  "witPath": "wit/formance/fctl/plugin/v1/plugin.wit",
+  "witSha256": "38fdf377264eeada82b23fef153e6bf106ed0624e8916ff62cabdf210d6255f5"
+}

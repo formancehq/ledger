@@ -1,16 +1,16 @@
-# fctl plugin preparation — Ledger
+# fctl plugins — Ledger
 
-Source-first preparation for the fctl-v2 programme, Task 7 ("Deliver separate
-Ledger v2 and Ledger v3 plugins"). This directory contains **no runtime
-component, no WASM artifact, no install record and no Proto binding**. It is an
-audited inventory and mapping that a later, gate-released task turns into code.
+Ledger v2 and Ledger v3 are separate plugins behind one public `fctl ledger`
+surface. Ledger v2 has an implemented portable catalogue and generated-client
+adapter. Ledger v3 remains a source-audited catalogue until its component is
+implemented. Neither manifest claims a release artifact or install record.
 
 ## Governing decision (2026-09-10)
 
 Ledger ships **two separate plugins**: `ledger-v2` and `ledger-v3`.
 
-This is a decision, not an optimisation. The preparation below keeps them
-apart at every level:
+This is a decision, not an optimisation. The implementation keeps them apart
+at every level:
 
 | Boundary | Rule |
 | --- | --- |
@@ -47,7 +47,7 @@ A single plugin cannot span both: it would need two module paths at once.
 | Ledger `origin/main` (v2 source) | `8cc679c9440aaf90d4b8646a013e5bd7421443d6` (2026-09-06) | refreshed 2026-09-10 |
 | Ledger `release/v3.0` pin (v3 source) | `bb0297cce39ccd1eb45eba695e9aa10374d5865d` (2026-08-13) | ancestor of `origin/release/v3.0` = `b9d8ccbbb5da4f9158b0f47b81612a518e4fed77`; **not** an ancestor of `origin/main` |
 | Historical fctl baseline | `693c58e27865f83332e6c3199d61fed81b742f41` (2026-06-23) | old-fctl Ledger command tree |
-| fctl-v2 host contract | `8de8c45` | `docs/superpowers/plans/2026-08-26-fctl-complete-program.md` |
+| fctl-v2 host contract | `545521bfa222250af6b4419b194c7967cded0379` | Ledger v2 `fctl-sdk.lock.json` |
 
 The v3 pin closes the plan's provisional `335bd03c08de` prefix gap: that prefix
 is superseded by the refreshed full `origin/main` commit above.
@@ -66,7 +66,7 @@ implemented on `Ledger.V1` are **converted** to their V2 API equivalents, except
 
 ### What the audit does and does not derive
 
-`internal/audit` recomputes the tallies **from the committed inventories** and
+`internal/audit` recomputes the tallies **from the checked-in inventories** and
 fails if a document disagrees with them or with itself: the v2
 included/excluded/converted counts and distinct-operation count, the v3
 four-bucket classification tally and its totality, and every recorded `counts`
@@ -85,8 +85,8 @@ See each plugin's `mapping.md` and `exclusions.md` for the per-command evidence.
 
 ```
 plugins/fctl/
-├── ledger-v2/          inventory, mapping, exclusions, auth/scopes/risks, manifest
-├── ledger-v3/          inventory, mapping, exclusions, auth/scopes/risks, manifest
+├── ledger-v2/          implemented catalogue, adapter, component source and audit documents
+├── ledger-v3/          inventory, mapping, exclusions, auth/scopes/risks and manifest
 └── internal/audit/     deterministic audit tool + tests (shared, contract-free)
 ```
 
@@ -99,8 +99,10 @@ nix develop -c just fctl-plugin-audit
 Exit code 0 means every recorded invariant holds. Findings go to stdout as one
 JSON document; diagnostics go to stderr.
 
-## Gates still closed
+## Runtime evidence
 
-This preparation deliberately stops short of implementation. See
-`ledger-v2/auth-scopes-risks.md` and `ledger-v3/auth-scopes-risks.md` for the
-exact blockers, and the programme plan for runtime gates 4B/4C/4D.
+Implementation status and release evidence are distinct. Ledger v2 source is
+implemented, but its manifest deliberately leaves `runtime_artifact` unset
+until a built component, installation and host acceptance are verified. Ledger
+v3 remains at preparation status. See each plugin's `auth-scopes-risks.md` for
+the remaining product-specific evidence gaps.

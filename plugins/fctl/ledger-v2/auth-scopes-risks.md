@@ -1,4 +1,4 @@
-# Ledger v2 plugin — auth, scopes, risks, blockers
+# Ledger v2 plugin — auth, scopes, risks and evidence gaps
 
 ## Authentication model (fact)
 
@@ -149,29 +149,35 @@ before the two converted show commands are considered output-faithful.
 | R1 | `ledger import` replays logs into an existing ledger, is destructive, and has no idempotency key. | high |
 | R2 | Retry-on-timeout for `ledger create` can create a duplicate ledger. | medium |
 | R3 | Baseline pin `693c58e2` is a historical CLI. Any behaviour reconstructed from it must be re-read from source, never from memory of the old CLI. | medium |
-| R4 | The generated client ships its own auth and retry options. Both must be left disabled while injecting `producthttp.Client` through `WithClient`; enabling either would move auth ownership out of the host. | medium |
-| R5 | 5 of 22 commands are cursor-paginated (6 bound operations with the secondary `v2ListLogs`). Reusing Ledger's own drain-all helper would import unbounded page draining, which the programme plan bars. | medium |
+| R4 | The generated client ships its own auth and retry options. The adapter explicitly supplies an empty security source and configures no retries while injecting `producthttp.Client` through `WithClient`; enabling either would move auth ownership out of the host. | medium |
+| R5 | 5 of 22 commands are cursor-paginated (6 bound operations with the secondary `v2ListLogs`). Reusing Ledger's own drain-all helper would import unbounded page draining, which the host contract bars. | medium |
 | R6 | The 8 conversions change the wire call under an unchanged command phrase. A response-shape difference (D5, D6) is a silent output regression for users of the historical CLI, not a visible error. | high |
 | R7 | `ledger send` and `ledger transactions num` bind the same `v2CreateTransaction`. Sharing one adapter path risks letting a `postings` body reach the script command or the reverse; the spec makes the two fields mutually exclusive. | medium |
 
-## Blockers
+## Open evidence gaps
 
 | # | Blocker | Blocks |
 | --- | --- | --- |
-| B1 | Runtime gates 4B/4C/4D are not released. No portable component, install record, or dual-host artifact may be produced. | all v2 implementation |
-| B2 | The `producthttp` bridge and frozen SDK catalogue are Lane A/Core deliverables consumed by this plugin; they are not re-specified here. | v2 adapter implementation |
 | B3 | D1 must be resolved before RFC 0014 can claim exact per-operation scopes are machine-derived for Ledger v2. Until then the scope table here is source-of-truth by manual extraction. | RFC 0014 closure |
 | B4 | D5 and D6 leave the converted filter and `expand` contracts unvalidatable against the spec. A live-server check is required before the 8 conversions may be claimed output-faithful to the historical CLI. | parity claim for the 8 converted commands |
 
-B4 blocks a *claim*, not the implementation: the operations, scopes and request
+B4 blocks a *claim*, not execution: the operations, scopes and request
 shapes are all verified from source. What is unverified is whether the converted
 output matches byte-for-byte what old-fctl printed.
 
+## Resolved prerequisites
+
+- The public `producthttp` bridge and frozen SDK catalogue are available and
+  consumed directly by the generated-client adapter.
+- The portable descriptor and reconstructible lifecycle are implemented. A
+  release still requires a deterministic component build and dual-host
+  acceptance receipt.
+
 ## Explicitly not a blocker
 
-The Task 7 client-behaviour gate is **closed**: `WithClient`, `HTTPClient`, the
-module path, and all 22 `V2.*` methods required by the 22 included commands and
-the secondary `v2ListLogs` call are verified present at `8cc679c9`
+The generated-client behaviour gate is **closed**: `WithClient`, `HTTPClient`, the
+module path, the 21 distinct primary `V2.*` methods required by the 22 included
+commands, and the secondary `v2ListLogs` call are verified present at `8cc679c9`
 (`mapping.md`). Implementation is not paused on source or contract revision for
 the v2 side.
 

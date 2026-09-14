@@ -1,0 +1,388 @@
+package ledgerv2
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"reflect"
+	"slices"
+	"testing"
+
+	"github.com/formancehq/fctl-v2-poc/pkg/plugin/sdk"
+)
+
+func TestExecuteV2RejectsUnknownAndIncompatibleCommandsBeforeProductTraffic(t *testing.T) {
+	t.Parallel()
+	host := sdk.NewMemoryHost(nil)
+	if err := (Plugin{}).Execute(context.Background(), sdk.ExecuteRequest{CommandID: "ledger.v2.unknown"}, host); err == nil {
+		t.Fatal("unknown command accepted")
+	}
+	request := execution("ledger.v2.stats", nil, sdk.FlagOccurrence{Name: "ledger", Value: "primary"})
+	request.ServiceVersions[0].Major = 3
+	if err := (Plugin{}).Execute(context.Background(), request, host); err == nil {
+		t.Fatal("incompatible service accepted")
+	}
+	if len(host.Requests()) != 0 {
+		t.Fatal("rejected execution reached product traffic")
+	}
+}
+
+func TestExecuteV2RejectsInvalidFilterMetadataBeforeProductTraffic(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		commandID string
+		metadata  []string
+	}{
+		{name: "accounts malformed", commandID: "ledger.v2.accounts.list", metadata: []string{"missing-separator"}},
+		{name: "accounts duplicate", commandID: "ledger.v2.accounts.list", metadata: []string{"region=eu", "region=us"}},
+		{name: "transactions malformed", commandID: "ledger.v2.transactions.list", metadata: []string{"missing-separator"}},
+		{name: "transactions duplicate", commandID: "ledger.v2.transactions.list", metadata: []string{"region=eu", "region=us"}},
+		{name: "volumes malformed", commandID: "ledger.v2.volumes.list", metadata: []string{"missing-separator"}},
+		{name: "volumes duplicate", commandID: "ledger.v2.volumes.list", metadata: []string{"region=eu", "region=us"}},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			host := sdk.NewMemoryHost(nil)
+			flags := []sdk.FlagOccurrence{{Name: "ledger", Value: "primary"}}
+			for _, metadata := range test.metadata {
+				flags = append(flags, sdk.FlagOccurrence{Name: "metadata", Value: metadata})
+			}
+
+			err := (Plugin{}).Execute(context.Background(), execution(test.commandID, nil, flags...), host)
+			if err == nil {
+				t.Fatal("invalid filter metadata accepted")
+			}
+			if got := len(host.Requests()); got != 0 {
+				t.Fatalf("invalid filter metadata reached product traffic: %d requests", got)
+			}
+			if got := len(host.Events()); got != 0 {
+				t.Fatalf("invalid filter metadata emitted output: %d events", got)
+			}
+		})
+	}
+}
+
+func TestExecuteV2RejectsInvalidFiltersWithACursorBeforeProductTraffic(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name      string
+		commandID string
+		flags     []sdk.FlagOccurrence
+	}{
+		{
+			name:      "accounts malformed metadata",
+			commandID: "ledger.v2.accounts.list",
+			flags:     []sdk.FlagOccurrence{{Name: "metadata", Value: "missing-separator"}},
+		},
+		{
+			name:      "accounts duplicate metadata",
+			commandID: "ledger.v2.accounts.list",
+			flags:     []sdk.FlagOccurrence{{Name: "metadata", Value: "region=eu"}, {Name: "metadata", Value: "region=us"}},
+		},
+		{
+			name:      "transactions malformed metadata",
+			commandID: "ledger.v2.transactions.list",
+			flags:     []sdk.FlagOccurrence{{Name: "metadata", Value: "missing-separator"}},
+		},
+		{
+			name:      "transactions duplicate metadata",
+			commandID: "ledger.v2.transactions.list",
+			flags:     []sdk.FlagOccurrence{{Name: "metadata", Value: "region=eu"}, {Name: "metadata", Value: "region=us"}},
+		},
+		{
+			name:      "volumes malformed metadata",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "metadata", Value: "missing-separator"}},
+		},
+		{
+			name:      "volumes duplicate metadata",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "metadata", Value: "region=eu"}, {Name: "metadata", Value: "region=us"}},
+		},
+		{
+			name:      "volumes malformed start time",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "start-time", Value: "not-a-time"}},
+		},
+		{
+			name:      "volumes malformed end time",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "end-time", Value: "not-a-time"}},
+		},
+		{
+			name:      "volumes malformed insertion date",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "insertion-date", Value: "not-a-boolean"}},
+		},
+		{
+			name:      "volumes malformed group by",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "group-by", Value: "not-an-integer"}},
+		},
+		{
+			name:      "volumes malformed page size",
+			commandID: "ledger.v2.volumes.list",
+			flags:     []sdk.FlagOccurrence{{Name: "page-size", Value: "not-an-integer"}},
+		},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			host := sdk.NewMemoryHost(nil)
+			flags := append([]sdk.FlagOccurrence{
+				{Name: "ledger", Value: "primary"},
+				{Name: "cursor", Value: "opaque-page"},
+			}, test.flags...)
+
+			err := (Plugin{}).Execute(context.Background(), execution(test.commandID, nil, flags...), host)
+			if err == nil {
+				t.Fatal("invalid cursor filter accepted")
+			}
+			if got := len(host.Requests()); got != 0 {
+				t.Fatalf("invalid cursor filter reached product traffic: %d requests", got)
+			}
+			if got := len(host.Events()); got != 0 {
+				t.Fatalf("invalid cursor filter emitted output: %d events", got)
+			}
+		})
+	}
+}
+
+func TestExecuteV2PropagatesProductFailureWithoutEmittingPartialOutput(t *testing.T) {
+	t.Parallel()
+	host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) { return nil, errors.New("offline") })
+	err := (Plugin{}).Execute(context.Background(), execution("ledger.v2.stats", nil, sdk.FlagOccurrence{Name: "ledger", Value: "primary"}), host)
+	if err == nil {
+		t.Fatal("product failure hidden")
+	}
+	if len(host.Events()) != 0 {
+		t.Fatal("product failure emitted partial output")
+	}
+	if got := len(host.Requests()); got != 1 {
+		t.Fatalf("generated client retried host-owned traffic: %d requests", got)
+	}
+}
+
+func TestExecuteV2EmitsEmptyAndBinaryResults(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name, commandID string
+		body            []byte
+		media           string
+		wantShape       sdk.ResultShape
+		wantData        string
+	}{
+		{name: "empty mutation", commandID: "ledger.v2.delete-metadata", media: "application/json", wantShape: sdk.ResultObject, wantData: "{}"},
+		{name: "binary export", commandID: "ledger.v2.export", body: []byte{0, 1, 2}, media: "application/octet-stream", wantShape: sdk.ResultObject, wantData: string([]byte{0, 1, 2})},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+				status := int32(200)
+				if test.commandID == "ledger.v2.delete-metadata" {
+					status = 204
+				}
+				return sdk.NewResponseStream(sdk.Response{Status: status, ContentType: test.media, Body: test.body}), nil
+			})
+			args := []string(nil)
+			flags := []sdk.FlagOccurrence{{Name: "ledger", Value: "primary"}}
+			if test.commandID == "ledger.v2.delete-metadata" {
+				args = []string{"primary", "key"}
+				flags = nil
+			}
+			if err := (Plugin{}).Execute(context.Background(), execution(test.commandID, args, flags...), host); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+			result := host.Events()[0].Result
+			if result.OperationID != test.commandID || result.Shape != test.wantShape || string(result.Data) != test.wantData {
+				t.Fatalf("result = %#v", result)
+			}
+		})
+	}
+}
+
+func TestExecuteV2ExportEnforcesTheExactBinaryResponseCeiling(t *testing.T) {
+	command, ok := commandByID("ledger.v2.export")
+	if !ok {
+		t.Fatal("export command missing")
+	}
+	limits := command.Operations[0].HTTP.GeneratedClient.ResponseLimits
+	if limits.MaxMessageBytes != responseLargeBytes || limits.MaxAggregateBytes != responseLargeBytes {
+		t.Fatalf("export response limits = %#v, want %d bytes", limits, responseLargeBytes)
+	}
+
+	for _, test := range []struct {
+		name    string
+		size    int
+		wantErr bool
+	}{
+		{name: "exactly 4 MiB", size: int(responseLargeBytes)},
+		{name: "4 MiB plus one", size: int(responseLargeBytes) + 1, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			payload := make([]byte, test.size)
+			for index := range payload {
+				payload[index] = byte(index % 251)
+			}
+			host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+				return sdk.NewResponseStream(sdk.Response{Status: 200, ContentType: mediaTypeOctetStream, Body: payload}), nil
+			})
+			err := (Plugin{}).Execute(context.Background(), execution("ledger.v2.export", nil, sdk.FlagOccurrence{Name: "ledger", Value: "primary"}), host)
+			if test.wantErr {
+				if err == nil {
+					t.Fatal("oversized binary export accepted")
+				}
+				if len(host.Events()) != 0 {
+					t.Fatal("oversized binary export emitted partial output")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("exact-limit export failed: %v", err)
+			}
+			if got := host.Events()[0].Result.Data; !slices.Equal(got, payload) {
+				t.Fatalf("export payload changed: got %d bytes", len(got))
+			}
+		})
+	}
+}
+
+func TestExecuteV2RejectsBrokenPaginationContracts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		pages []string
+	}{
+		{name: "missing next", pages: []string{`{"cursor":{"data":[],"hasMore":true}}`}},
+		{name: "repeated next", pages: []string{`{"cursor":{"data":[],"hasMore":true,"next":"same"}}`, `{"cursor":{"data":[],"hasMore":true,"next":"same"}}`}},
+		{name: "malformed", pages: []string{`{`}},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			index := 0
+			host := sdk.NewMemoryHost(func(context.Context, sdk.Request) (sdk.Responses, error) {
+				body := test.pages[index]
+				if index+1 < len(test.pages) {
+					index++
+				}
+				return sdk.NewResponseStream(sdk.Response{Status: 200, ContentType: "application/json", Body: []byte(body)}), nil
+			})
+			request := execution("ledger.v2.list", nil)
+			request.Continuation = sdk.AllPagesContinuationControl()
+			if err := (Plugin{}).Execute(context.Background(), request, host); err == nil {
+				t.Fatal("broken pagination accepted")
+			}
+			if len(host.Events()) != 0 {
+				t.Fatal("broken pagination emitted partial output")
+			}
+		})
+	}
+}
+
+type artifactHost struct {
+	*sdk.MemoryHost
+	chunks []sdk.InputArtifactChunk
+	index  int
+}
+
+func (h *artifactHost) ReadInput(context.Context, string) (sdk.InputArtifactChunk, error) {
+	if h.index >= len(h.chunks) {
+		return sdk.InputArtifactChunk{}, errors.New("exhausted")
+	}
+	chunk := h.chunks[h.index]
+	h.index++
+	return chunk, nil
+}
+
+func TestExecuteV2ReadsImportAndNumscriptArtifacts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		commandID string
+		args      []string
+		flags     []sdk.FlagOccurrence
+		chunks    []sdk.InputArtifactChunk
+		wantPath  string
+	}{
+		{commandID: "ledger.v2.import", args: []string{"primary", "opaque"}, chunks: []sdk.InputArtifactChunk{{Bytes: []byte("log-"), Final: false}, {Bytes: []byte("data"), Final: true}}, wantPath: "/v2/primary/logs/import"},
+		{commandID: "ledger.v2.transactions.num", args: []string{"opaque"}, flags: []sdk.FlagOccurrence{{Name: "ledger", Value: "primary"}, {Name: "metadata", Value: "region=eu"}, {Name: "account-var", Value: "origin=users:001"}}, chunks: []sdk.InputArtifactChunk{{Bytes: []byte("send [USD 1]"), Final: true}}, wantPath: "/v2/primary/transactions"},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.commandID, func(t *testing.T) {
+			host := &artifactHost{chunks: test.chunks}
+			host.MemoryHost = sdk.NewMemoryHost(func(_ context.Context, request sdk.Request) (sdk.Responses, error) {
+				if request.HTTP == nil || request.HTTP.Path != test.wantPath {
+					t.Fatalf("request = %#v", request.HTTP)
+				}
+				if test.commandID == "ledger.v2.import" {
+					if got := string(request.HTTP.Body); got != "log-data" {
+						t.Fatalf("import body = %q", got)
+					}
+					return sdk.NewResponseStream(sdk.Response{Status: 204, ContentType: mediaTypeJSON}), nil
+				}
+				if !reflect.DeepEqual(jsonKeys(t, request.HTTP.Body), []string{"metadata", "script"}) {
+					t.Fatalf("numscript body = %s", request.HTTP.Body)
+				}
+				body := `{"data":{"timestamp":"2026-09-12T00:00:00Z","postings":[],"metadata":{},"id":1,"reverted":false}}`
+				return sdk.NewResponseStream(sdk.Response{Status: 200, ContentType: mediaTypeJSON, Body: []byte(body)}), nil
+			})
+			if err := (Plugin{}).Execute(context.Background(), execution(test.commandID, test.args, test.flags...), host); err != nil {
+				t.Fatalf("Execute() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestExecuteV2ResumesImportAfterTheLatestProductLog(t *testing.T) {
+	t.Parallel()
+
+	host := &artifactHost{
+		MemoryHost: sdk.NewMemoryHost(func(_ context.Context, request sdk.Request) (sdk.Responses, error) {
+			switch request.Operation {
+			case "v2ListLogs":
+				if request.HTTP == nil || request.HTTP.Method != "GET" || request.HTTP.Path != "/v2/primary/logs" || !reflect.DeepEqual(request.HTTP.Query, map[string][]string{"pageSize": {"1"}}) {
+					t.Fatalf("resume probe = %#v", request.HTTP)
+				}
+				return sdk.NewResponseStream(sdk.Response{Status: 200, ContentType: mediaTypeJSON, Body: []byte(`{"cursor":{"data":[{"id":2,"type":"SET_METADATA","data":{"targetType":"ACCOUNT","targetId":"users:001","metadata":{}},"hash":"sha256","date":"2026-09-12T00:00:00Z"}],"pageSize":1,"hasMore":false}}`)}), nil
+			case "v2ImportLogs":
+				if got, want := string(request.HTTP.Body), "{\"id\":3}\n"; got != want {
+					t.Fatalf("resumed import body = %q, want %q", got, want)
+				}
+				return sdk.NewResponseStream(sdk.Response{Status: 204, ContentType: mediaTypeJSON}), nil
+			default:
+				t.Fatalf("unexpected operation %q", request.Operation)
+				return nil, nil
+			}
+		}),
+		chunks: []sdk.InputArtifactChunk{{Bytes: []byte("{\"id\":1}\n{\"id\":2}\n{\"id\":3}\n"), Final: true}},
+	}
+	request := execution("ledger.v2.import", []string{"primary", "artifact"}, sdk.FlagOccurrence{Name: "resume-from-last-log", Value: "true"})
+	if err := (Plugin{}).Execute(context.Background(), request, host); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := len(host.Requests()); got != 2 {
+		t.Fatalf("host requests = %d, want 2", got)
+	}
+	result := host.Events()[0].Result
+	if result.OperationID != request.CommandID || result.Shape != sdk.ResultObject || string(result.Data) != `{}` {
+		t.Fatalf("result = %#v", result)
+	}
+}
+
+func jsonKeys(t *testing.T, body []byte) []string {
+	t.Helper()
+	var value map[string]any
+	if err := json.Unmarshal(body, &value); err != nil {
+		t.Fatal(err)
+	}
+	keys := make([]string, 0, len(value))
+	for key := range value {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}

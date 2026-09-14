@@ -29,18 +29,32 @@ distinguished only by their request body. With the secondary `v2ListLogs` call
 that is **22 of the 45** operations `openapi/v2.yaml` declares at the pin; the
 remaining **23** are enumerated in `exclusions.md` §B.
 
-## Client-behaviour gate — closed
+## Client behaviour
 
-Task 7 requires the refreshed `origin/main` generated client to still expose an
-injectable HTTP client. Verified at the pinned commit:
+The pinned generated client exposes the injectable HTTP client required by the
+host-owned transport:
 
 - `pkg/client/formance.go:25` — `type HTTPClient interface { Do(*http.Request) (*http.Response, error) }`
 - `pkg/client/formance.go:90` — `func WithClient(client HTTPClient) SDKOption`
 - `pkg/client/go.mod` — `module github.com/formancehq/ledger/pkg/client`
 
-All 22 `V2.*` methods required by the 22 included commands and the secondary
-`v2ListLogs` call are present in `pkg/client/v2.go`. No mismatch: implementation
-is not paused on this gate.
+All required `V2.*` methods are present in `pkg/client/v2.go`: 21 distinct
+primary methods for the 22 included commands, plus the secondary `v2ListLogs`
+resume probe. No client-surface mismatch remains.
+
+The adapter passes `producthttp.Client` through `WithClient`, supplies an empty
+security source so ambient generated-client credentials cannot be used, and
+does not configure generated retries. DTO construction and response decoding
+remain generated-client owned.
+
+Generator erratum: the pinned Speakeasy output serializes nil optional GET
+request bodies as byte-exact JSON `null`; `V2ListLedgers` also injects its
+`includeDeleted=false` default when a continuation cursor is present, although
+the API requires cursor-only continuation. The adapter's bounded transport shim
+removes only byte-exact `null` on GET. When and only when a non-empty cursor is
+present, it replaces the query with the canonically encoded cursor alone. Empty
+cursors, non-`null` bodies and non-continuation queries are unchanged. Exact
+contract tests guard every exception.
 
 ## Included commands (22)
 
@@ -94,7 +108,7 @@ file at `693c58e2`; each V2 operation is the one `openapi/v2.yaml` declares at
 | `ledger transactions list` | `V1.ListTransactions` | `v2ListTransactions` | The V1 flat filters (`account`, `source`, `destination`, `reference`, `start-time`, `end-time`, `metadata`) have **no** v2 query-parameter equivalent. `v2ListTransactions` takes a **required** JSON filter body, so they must be translated into its `$and`/`$match` form. |
 | `ledger transactions show` | `V1.GetTransaction` | `v2GetTransaction` | `txid` becomes the `id` path parameter. The historical renderer prints pre- and post-commit volumes, which `V2Transaction` returns only when `expand` names them. |
 | `ledger accounts show` | `V1.GetAccountLedger` | `v2GetAccount` | `V1.GetAccountLedger` returned volumes unconditionally. `V2Account.volumes` is optional, so the conversion must send `expand=volumes` to keep the historical volumes table. |
-| `ledger send` | `V1.CreateTransaction` | `v2CreateTransaction` | `PostTransaction.postings` maps to `V2PostTransaction.postings`; `reference` and `metadata` carry over. |
+| `ledger send` | `V1.CreateTransaction` | `v2CreateTransaction` | `PostTransaction.postings` maps to `V2PostTransaction.postings`; `reference` and `metadata` carry over. The historical optional leading source is exposed as `--source` because portable command grammar cannot place an optional positional before required ones. |
 | `ledger transactions num` | `V1.CreateTransaction` | `v2CreateTransaction` | `PostTransaction.script{plain,vars}` maps to `V2PostTransaction.script{plain,vars}`; `timestamp` carries over. |
 | `ledger accounts set-metadata` | `V1.AddMetadataToAccount` | `v2AddMetadataToAccount` | Same address parameter and metadata map body; the v2 operation adds `dryRun` and an `Idempotency-Key` header. |
 | `ledger transactions set-metadata` | `V1.AddMetadataOnTransaction` | `v2AddMetadataOnTransaction` | Same metadata map body, with `txid` becoming `id`; the v2 operation adds `dryRun` and an `Idempotency-Key` header. |
@@ -135,9 +149,10 @@ Six bound reads are cursor-paginated (`cursor` + `pageSize` query parameters):
 `ledger volumes list`, `ledger schemas list`, and the secondary `V2.ListLogs`
 call.
 
-The plugin must surface pages through the host's opaque cursor envelope. It must
-not drain pages itself — the programme plan forbids copying Ledger's unbounded
-page draining into generic behaviour.
+The plugin surfaces one page by default. When the host selects bounded `--all`,
+it follows the opaque cursor under the host-provided page, item and byte
+ceilings; every request after the first contains only `cursor`. It does not use
+Ledger's unbounded page-draining helper.
 
 ## Streaming
 
@@ -147,7 +162,6 @@ None. Every included v2 operation is a single request/response JSON exchange.
 ## CLI grammar
 
 Included commands keep their historical `fctl ledger …` phrases and aliases as
-recorded in `inventory.json`. No renaming is proposed: the existing wording
-already reads as intent rather than as an API-shaped CRUD tree. Conversion
-changes the transport, not the grammar — which is the point of converting rather
-than dropping.
+recorded in `inventory.json`. No command is renamed. `ledger send` alone adapts
+its optional leading source positional to `--source`, because the portable
+catalogue forbids an optional positional before required positionals.

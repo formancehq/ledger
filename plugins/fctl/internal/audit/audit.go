@@ -45,7 +45,7 @@ const (
 )
 
 // Finding is one audit result. Severity is "error" when an invariant the
-// preparation claims is violated.
+// inventory or manifest claim is violated.
 type Finding struct {
 	Severity string `json:"severity"`
 	Scope    string `json:"scope"`
@@ -84,7 +84,7 @@ func (c *collector) check(name string, ok bool, format string, args ...any) {
 	})
 }
 
-// Inputs are the four preparation documents plus their raw bytes, so the audit
+// Inputs are the four inventory/manifest documents plus their raw bytes, so the audit
 // can check both semantics and canonical form.
 type Inputs struct {
 	V2Inventory Inventory

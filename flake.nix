@@ -9,9 +9,13 @@
       url = "github:nix-community/NUR";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, nur, rust-overlay }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -25,7 +29,7 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ nur.overlays.default ];
+              overlays = [ nur.overlays.default rust-overlay.overlays.default ];
               config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
                 "goreleaser-pro"
               ];
@@ -86,7 +90,10 @@
 
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
+          componentTools = pkgs.callPackage ./nix/fctl-component-tools.nix { };
           stablePackages = with pkgs; [
+            binaryen
+            componentTools.componentize-go
             ginkgo
             go_1_26
             go-tools
@@ -102,6 +109,8 @@
             protoc-gen-go
             protoc-gen-go-grpc
             yq-go
+            componentTools.wasi-virt
+            componentTools.wasm-tools
           ];
           unstablePackages = with pkgs-unstable; [
             golangci-lint

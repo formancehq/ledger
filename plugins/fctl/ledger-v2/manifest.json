@@ -24,6 +24,10 @@
   "facets": [
     "command_provider"
   ],
+  "host_sdk": {
+    "module": "github.com/formancehq/fctl-v2-poc/pkg/plugin",
+    "repo_commit": "545521bfa222250af6b4419b194c7967cded0379"
+  },
   "invariants": [
     "declares product major 2 and no other major",
     "declares no signing capability",
@@ -42,9 +46,9 @@
     2
   ],
   "runtime_artifact": null,
-  "runtime_artifact_note": "No component is declared. Runtime gates 4B/4C/4D are not released.",
+  "runtime_artifact_note": "The source defines one deterministic portable component at dist/ledger-v2/ledger-v2.wasm; build outputs remain untracked and require release-time dual-host acceptance.",
   "schema_version": 1,
   "signing_capability": null,
-  "status": "preparation",
+  "status": "implemented",
   "transport": "http"
 }
