@@ -8,8 +8,10 @@ guarantee.
 
 ## Ownership model
 
-Do not use "generation" as a generic synonym for freshness. Establish the
-specific token that authorizes each operation:
+The manifest's first invariant is the canonical authority-token inventory. Do
+not extend that inventory only in this explanatory table. Do not use
+"generation" as a generic synonym for freshness; establish the specific token
+that authorizes each operation:
 
 | Token | Current examples | Required rejection or join boundary |
 | --- | --- | --- |

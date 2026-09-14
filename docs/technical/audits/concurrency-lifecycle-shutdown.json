@@ -101,7 +101,7 @@
     "Concurrent start, stop, retry, leadership, configuration-reconcile, and error paths must not deadlock, double-close, leak, or allow use-after-close of channels, queues, futures, stores, transports, listeners, or metrics registrations."
   ],
   "adversarial_questions": [
-    "For each goroutine in scope, which exact token owns it: Fx process lifetime, node run/maintenance gate, leadership, sink or mirror configuration identity, index pending version, durable tail cursor, bloom rebuild invocation, or RPC/session context? If repository evidence does not define the token, report an audit question instead of assuming a generic generation invariant.",
+    "For each goroutine, callback, registration, and mutable snapshot in scope, which exact authority token from the invariants owns it? If repository evidence does not define the token, report an audit question instead of assuming a generic generation invariant.",
     "Can Start race Stop, Stop race itself, or an Fx OnStart failure/OnStop timeout leave a goroutine or registered callback using a listener, transport, main store, readstore, usagestore, metrics provider, observer, or notification channel after the owning hook has returned? Which documented call cardinality makes close-once behavior valid?",
     "Can Node or Applier shutdown, checkpoint, snapshot install, or restore cross an undrained decoder/committer task, or resolve a future before the associated durable outcome is known?",
     "Can node observer events be reordered by callback dispatch? Can a delayed leadership-loss callback, retry timer, sink flush, source constructor, mirror fetch, cleanup tick, cluster-config proposal, or backup terminal proposal run after a newer leadership gain and affect the successor generation?",
