@@ -1002,19 +1002,25 @@ func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
 	}
 
 	f := filterDateRange(field, a, b)
-	cond := f.GetBuiltinUint().GetCond()
+	rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+
+	return f
+}
+
+// rollOpenOrExclusive opens each side of a two-sided range one time in four
+// and otherwise makes it exclusive one time in four.
+func rollOpenOrExclusive(cond *commonpb.UintCondition) {
 	if oneIn(4) {
 		cond.Min = nil
 	} else {
 		cond.MinExclusive = oneIn(4)
 	}
+
 	if oneIn(4) {
 		cond.Max = nil
 	} else {
 		cond.MaxExclusive = oneIn(4)
 	}
-
-	return f
 }
 
 // genTransactionFilterFree rolls a non-nil index-free transactions filter: a
@@ -1029,25 +1035,42 @@ func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
 			return filterReverted(false)
 		default:
 			lo := internal.Rand().Uint64() % 256
-			return filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
+			f := filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
+			rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+
+			return f
 		}
 	}
 
 	return genBoolean(depth, genTransactionFilterFree)
 }
 
-// genBoolean wraps two (And/Or) or one (Not) recursively-generated children in a
-// boolean combinator. gen never returns nil, so no combinator carries a nil
-// child (which would marshal as an empty condition the compiler rejects).
+// genBoolean wraps one to three (And/Or) or one (Not) recursively-generated
+// children in a boolean combinator. gen never returns nil, so no combinator
+// carries a nil child (which would marshal as an empty condition the compiler
+// rejects).
 func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
-		return filterAnd(gen(depth+1), gen(depth+1))
+		return filterAnd(genChildren(depth, gen)...)
 	case 1:
-		return filterOr(gen(depth+1), gen(depth+1))
+		return filterOr(genChildren(depth, gen)...)
 	default:
 		return filterNot(gen(depth + 1))
 	}
+}
+
+// genChildren rolls the operands of an And/Or: usually two, sometimes one or
+// three, so the compiler's single-child pass-through and its n-ary merge both
+// run.
+func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
+	n := int(random.RandomChoice([]uint8{1, 2, 2, 3}))
+	children := make([]*commonpb.QueryFilter, 0, n)
+	for range n {
+		children = append(children, gen(depth+1))
+	}
+
+	return children
 }
 
 // --- Filter constructors ------------------------------------------------
