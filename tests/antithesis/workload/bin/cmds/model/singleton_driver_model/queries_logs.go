@@ -36,14 +36,7 @@ func genLogFilter(ledger string, dates []uint64, depth int) *commonpb.QueryFilte
 		return genLogLeaf(ledger, dates)
 	}
 
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
-	case 0:
-		return filterAnd(genLogFilter(ledger, dates, depth+1), genLogFilter(ledger, dates, depth+1))
-	case 1:
-		return filterOr(genLogFilter(ledger, dates, depth+1), genLogFilter(ledger, dates, depth+1))
-	default:
-		return filterNot(genLogFilter(ledger, dates, depth+1))
-	}
+	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genLogFilter(ledger, dates, d) })
 }
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
