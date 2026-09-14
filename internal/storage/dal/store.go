@@ -150,6 +150,10 @@ type Store struct {
 	maxCheckpoints    int
 	stallState        *WriteStallState
 	iopsCounters      *IOPSCounters
+
+	queryCheckpointMu       sync.Mutex
+	queryCheckpointReaders  map[uint64]uint64
+	deletedQueryCheckpoints map[uint64]struct{}
 }
 
 // getDB returns the current pebble.DB.
@@ -526,14 +530,16 @@ func NewStore(
 	}
 
 	store := &Store{
-		opts:              opts,
-		logger:            logger.WithField("cmp", "pebble"),
-		dataDir:           dataDir,
-		currentCheckPoint: latestCheckpointID,
-		oldestCheckpoint:  oldestCheckpoint,
-		maxCheckpoints:    cfg.MaxCheckpoints,
-		stallState:        stallState,
-		iopsCounters:      iopsCounters,
+		opts:                    opts,
+		logger:                  logger.WithField("cmp", "pebble"),
+		dataDir:                 dataDir,
+		currentCheckPoint:       latestCheckpointID,
+		oldestCheckpoint:        oldestCheckpoint,
+		maxCheckpoints:          cfg.MaxCheckpoints,
+		stallState:              stallState,
+		iopsCounters:            iopsCounters,
+		queryCheckpointReaders:  make(map[uint64]uint64),
+		deletedQueryCheckpoints: make(map[uint64]struct{}),
 	}
 
 	if _, err = iopsCounters.RegisterMetrics(meter); err != nil {
@@ -943,11 +949,83 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 	return dir, nil
 }
 
-// DeleteQueryCheckpointFiles removes the physical checkpoint files for a query checkpoint.
-func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
-	dir := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
+// AcquireQueryCheckpoint pins a query checkpoint's physical files until the
+// returned release closure is called. It returns false once deletion has begun,
+// even while an older reader keeps the directory physically present.
+func (s *Store) AcquireQueryCheckpoint(id uint64) (release func(), ok bool) {
+	s.queryCheckpointMu.Lock()
+	defer s.queryCheckpointMu.Unlock()
 
-	return os.RemoveAll(dir)
+	if _, deleted := s.deletedQueryCheckpoints[id]; deleted {
+		return nil, false
+	}
+
+	if s.queryCheckpointReaders == nil {
+		s.queryCheckpointReaders = make(map[uint64]uint64)
+	}
+	s.queryCheckpointReaders[id]++
+	var once sync.Once
+
+	return func() {
+		once.Do(func() {
+			s.releaseQueryCheckpoint(id)
+		})
+	}, true
+}
+
+func (s *Store) releaseQueryCheckpoint(id uint64) {
+	s.queryCheckpointMu.Lock()
+	readers := s.queryCheckpointReaders[id]
+	if readers <= 1 {
+		delete(s.queryCheckpointReaders, id)
+	} else {
+		s.queryCheckpointReaders[id] = readers - 1
+	}
+	_, deleted := s.deletedQueryCheckpoints[id]
+	s.queryCheckpointMu.Unlock()
+
+	if readers <= 1 && deleted {
+		if err := s.removeQueryCheckpointFiles(id); err != nil {
+			s.logger.WithFields(map[string]any{
+				"error":        err,
+				"checkpointID": id,
+			}).Errorf("Failed to remove released query checkpoint files")
+		}
+	}
+}
+
+func (s *Store) queryCheckpointDir(id uint64) string {
+	return filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
+}
+
+func (s *Store) removeQueryCheckpointFiles(id uint64) error {
+	if err := os.RemoveAll(s.queryCheckpointDir(id)); err != nil {
+		return err
+	}
+
+	s.queryCheckpointMu.Lock()
+	delete(s.deletedQueryCheckpoints, id)
+	s.queryCheckpointMu.Unlock()
+
+	return nil
+}
+
+// DeleteQueryCheckpointFiles prevents new acquisitions immediately and removes
+// the physical checkpoint once every already-acquired reader has released it.
+func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
+	s.queryCheckpointMu.Lock()
+	if s.deletedQueryCheckpoints == nil {
+		s.deletedQueryCheckpoints = make(map[uint64]struct{})
+	}
+	s.deletedQueryCheckpoints[id] = struct{}{}
+	readers := s.queryCheckpointReaders[id]
+	s.queryCheckpointMu.Unlock()
+
+	if readers > 0 {
+		return nil
+	}
+
+	return s.removeQueryCheckpointFiles(id)
 }
 
 // QueryCheckpointReadIndexDir returns the path for the read index within a query checkpoint.

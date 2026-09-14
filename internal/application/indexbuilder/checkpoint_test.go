@@ -170,3 +170,21 @@ func TestDeleteReadIndexCheckpoint(t *testing.T) {
 	// Deleting an already-absent checkpoint is a tolerated no-op.
 	b.deleteReadIndexCheckpoint(cpID)
 }
+
+func TestDeleteReadIndexCheckpointDefersRemovalForAcquiredReader(t *testing.T) {
+	t.Parallel()
+
+	b := newCheckpointTestBuilder(t)
+
+	const cpID = uint64(29)
+	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
+	release, acquired := b.pebbleStore.AcquireQueryCheckpoint(cpID)
+	require.True(t, acquired)
+
+	b.deleteReadIndexCheckpoint(cpID)
+	require.True(t, readstore.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(cpID)))
+
+	release()
+	_, err := os.Stat(b.pebbleStore.QueryCheckpointReadIndexDir(cpID))
+	require.True(t, os.IsNotExist(err))
+}
