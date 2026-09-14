@@ -26,8 +26,8 @@ func TestCoverageMessages_OneSondePerWorkloadIndex(t *testing.T) {
 			"index %s is churned but has no coverage sonde", wi.canonical)
 	}
 
-	require.Len(t, msgs, len(workloadIndexes())+3+len(applyCoverageMessages()),
-		"index, metadata, retype, and Apply sondes")
+	require.Len(t, msgs, len(workloadIndexes())+12+len(applyCoverageMessages()),
+		"index, metadata, retype, Apply, and checkpoint sondes")
 }
 
 // Antithesis keys properties by message, so two sondes sharing a name collapse
@@ -161,7 +161,7 @@ func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
 	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
 
 	hits := coverageHits(accounts, filterMetaExists("k1"), nil, true, 1, false)
-	for _, msg := range coverageMessages() {
+	for _, msg := range queryCoverageMessages() {
 		if slices.Contains(applyCoverageMessages(), msg) {
 			continue // Apply sondes are decided below from Apply outcomes.
 		}
