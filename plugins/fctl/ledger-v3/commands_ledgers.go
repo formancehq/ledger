@@ -144,6 +144,7 @@ func ledgersSpecs() []spec {
 				}(),
 			}, writeFlags()...),
 			operations: []operation{opApplyCreateLedger},
+			ledgerInfo: true,
 			artifacts: []sdk.InputArtifactSpec{{
 				FlagName: flagMirrorRewriteFile, MediaTypes: []string{"application/json", "application/yaml"}, MaxBytes: maxConfigurationBytes, AllowFile: true, AllowStdin: true, Optional: true,
 			}},
@@ -183,6 +184,7 @@ func ledgersSpecs() []spec {
 			arguments:  []sdk.Argument{ledgerArgument()},
 			flags:      readFlags(),
 			operations: []operation{opGetLedger},
+			ledgerInfo: true,
 		},
 		{
 			path:       []string{"ledgers", "get-schema"},
@@ -205,6 +207,7 @@ func ledgersSpecs() []spec {
 			operations: []operation{opListLedgers},
 			paginated:  true,
 			collection: true,
+			ledgerInfo: true,
 		},
 		{
 			path:    []string{"ledgers", "remove-metadata-type"},

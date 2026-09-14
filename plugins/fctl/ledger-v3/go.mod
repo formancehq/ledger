@@ -14,6 +14,7 @@ require (
 	github.com/alecthomas/participle/v2 v2.1.4
 	github.com/formancehq/fctl-v2-poc/pkg/plugin v0.0.0
 	github.com/formancehq/ledger/v3 v3.0.0-alpha.13.0.20260813135150-bb0297cce39c
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	go.bytecodealliance.org/pkg v0.2.2
 	go.yaml.in/yaml/v3 v3.0.4
 	google.golang.org/protobuf v1.36.12

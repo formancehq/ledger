@@ -90,7 +90,7 @@ func executeV3Ledgers(ctx context.Context, _ sdk.ExecuteRequest, decoded input, 
 			return true, err
 		}
 		if len(response.GetLogs()) != 0 && response.GetLogs()[0].GetPayload().GetCreateLedger() != nil {
-			return true, emitProto(host, opApplyCreateLedger.id, response.GetLogs()[0].GetPayload().GetCreateLedger().ToLedgerInfo())
+			return true, emitLedgerInfo(host, opApplyCreateLedger.id, response.GetLogs()[0].GetPayload().GetCreateLedger().ToLedgerInfo())
 		}
 		return true, v3Failure("create ledger returned no ledger")
 	case "ledger.v3.ledgers.delete":

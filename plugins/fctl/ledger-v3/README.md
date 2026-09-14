@@ -23,10 +23,14 @@ Twenty-six commands publish compact, ordered `RenderHints.Table` columns for
 the stable scalar identity or summary fields present in their actual success
 result. Dot-separated fields such as `transaction.id`,
 `revertTransaction.timestamp`, and `indexes.reference` address nested objects.
-The hints do not project or remove output: `RawOutputSchema` and
-`PublicOutputSchema` remain byte-identical, permissive product contracts, while
-explicit schema properties make every rendered scalar path machine-checkable.
-JSON and YAML therefore remain the exhaustive views.
+The hints do not project or remove output. `RawOutputSchema` and
+`PublicOutputSchema` remain byte-identical, and explicit schema properties make
+every rendered scalar path machine-checkable. Most are permissive product
+contracts. The `ledgers create`, `ledgers get`, and `ledgers list` contracts are
+closed around `LedgerInfo`: the adapter clones the product response and removes
+the OAuth2 client secret or the entire PostgreSQL DSN before emission. JSON and
+YAML therefore remain exhaustive public views without exposing stored mirror
+credentials.
 
 The other 22 commands intentionally have no table hint:
 

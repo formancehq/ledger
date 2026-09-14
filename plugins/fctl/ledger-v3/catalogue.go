@@ -46,6 +46,7 @@ type spec struct {
 	artifacts   []sdk.InputArtifactSpec
 	paginated   bool
 	collection  bool
+	ledgerInfo  bool
 	maxRequests uint32
 }
 
@@ -73,6 +74,9 @@ func (s spec) command() sdk.Command {
 		columns = render.Table.Columns
 	}
 	outputSchema := outputSchemaFor(s.collection, columns)
+	if s.ledgerInfo {
+		outputSchema = ledgerInfoOutputSchema(s.collection)
+	}
 
 	// A paginated command must be able to serve the host's all-pages
 	// continuation, which walks up to sdk.DefaultAllPagesMaxPages pages and so

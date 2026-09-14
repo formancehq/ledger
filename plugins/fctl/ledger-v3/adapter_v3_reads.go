@@ -27,7 +27,7 @@ func executeV3Reads(ctx context.Context, request sdk.ExecuteRequest, decoded inp
 		if err != nil {
 			return true, v3Failure("get ledger: %v", err)
 		}
-		return true, emitProto(host, opGetLedger.id, response)
+		return true, emitLedgerInfo(host, opGetLedger.id, response)
 	case "ledger.v3.ledgers.get-schema":
 		response, err := unaryV3(ctx, host, command, opGetMetadataSchema.id, &servicepb.GetMetadataSchemaStatusRequest{Ledger: decoded.text(argLedger)}, &servicepb.GetMetadataSchemaStatusResponse{})
 		if err != nil {
@@ -132,7 +132,7 @@ func executeV3ListLedgers(ctx context.Context, request sdk.ExecuteRequest, decod
 	if err != nil {
 		return err
 	}
-	return emitProtoList(host, opListLedgers.id, items, page)
+	return emitLedgerInfoList(host, opListLedgers.id, items, page)
 }
 
 func v3ListOptionsWithoutFilter(decoded input) (*commonpb.ListOptions, error) {

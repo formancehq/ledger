@@ -88,3 +88,78 @@ func outputSchemaFor(collection bool, columns []sdk.TableColumn) []byte {
 	}
 	return encoded
 }
+
+// ledgerInfoOutputSchema closes the public product shape at its root and along
+// every mirror credential-bearing branch. Other rich Ledger subdocuments keep
+// their product-defined contents, while clientSecret and dsn are deliberately
+// absent from the only locations where LedgerInfo can carry them.
+func ledgerInfoOutputSchema(collection bool) []byte {
+	credentials := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"clientId":      map[string]any{"type": "string"},
+			"tokenEndpoint": map[string]any{"type": "string"},
+			"scopes":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		},
+		"additionalProperties": false,
+	}
+	http := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"baseUrl":                 map[string]any{"type": "string"},
+			"oauth2ClientCredentials": credentials,
+		},
+		"additionalProperties": false,
+	}
+	awsIAM := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"region":        map[string]any{"type": "string"},
+			"assumeRoleArn": map[string]any{"type": "string"},
+		},
+		"additionalProperties": false,
+	}
+	postgres := map[string]any{
+		"type":                 "object",
+		"properties":           map[string]any{"awsIamAuth": awsIAM},
+		"additionalProperties": false,
+	}
+	mirrorSource := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"ledgerName":   map[string]any{"type": "string"},
+			"http":         http,
+			"postgres":     postgres,
+			"batchSize":    map[string]any{"type": "integer"},
+			"rewriteRules": map[string]any{"type": "array", "items": map[string]any{"type": "object"}},
+		},
+		"additionalProperties": false,
+	}
+	item := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"name":                   map[string]any{"type": []string{"string", "number", "boolean", "null"}},
+			"createdAt":              map[string]any{"type": []string{"string", "number", "boolean", "null"}},
+			"deletedAt":              map[string]any{},
+			"metadataSchema":         map[string]any{"type": "object"},
+			"mode":                   map[string]any{"type": "string"},
+			"mirrorSource":           mirrorSource,
+			"mirrorSyncProgress":     map[string]any{"type": "object"},
+			"accountTypes":           map[string]any{"type": "object"},
+			"defaultEnforcementMode": map[string]any{"type": "string"},
+			"metadata":               map[string]any{"type": "object"},
+			"id":                     map[string]any{"type": "integer"},
+		},
+		"additionalProperties": false,
+	}
+	root := item
+	if collection {
+		root = map[string]any{"type": "array", "items": item}
+	}
+	root["$schema"] = schemaDialect
+	encoded, err := json.Marshal(root)
+	if err != nil {
+		panic("ledger v3: encode LedgerInfo output schema: " + err.Error())
+	}
+	return encoded
+}
