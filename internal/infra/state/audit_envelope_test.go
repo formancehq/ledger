@@ -59,12 +59,16 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 			},
 		},
 		CallerSnapshot: &commonpb.CallerSnapshot{
-			Identity: &commonpb.CallerIdentity{
-				Subject: "alice",
-				Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+			Principal: &commonpb.CallerSnapshot_Authenticated{
+				Authenticated: &commonpb.AuthenticatedCaller{
+					Identity: &commonpb.CallerIdentity{
+						Subject: "alice",
+						Source:  &commonpb.CallerIdentity_KeyId{KeyId: "kid-1"},
+					},
+					Scopes: []string{"write", "read"}, // builder must sort
+					God:    false,
+				},
 			},
-			Scopes: []string{"write", "read"}, // builder must sort
-			God:    false,
 		},
 		Idempotency: &commonpb.Idempotency{Key: "batch-key-42"},
 		Signature: &signaturepb.SignedApplyBatch{
@@ -125,10 +129,8 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new envelope version.")
 }
 
-// TestHashChain_Envelope_SystemCaller pins the system_component source tag in
-// the hash pre-image and proves a system-attributed entry is NOT byte-equal to
-// a caller-less one — the whole point of tagging system actions is that they
-// are distinguishable in the audit trail, hash included.
+// TestHashChain_Envelope_SystemCaller pins the system principal tag in the hash
+// pre-image and proves a system-attributed entry differs from a caller-less one.
 func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 	t.Parallel()
 
@@ -154,13 +156,48 @@ func TestHashChain_Envelope_SystemCaller(t *testing.T) {
 
 	// Production builder agrees with the hand-rolled spec for the new tag.
 	require.Equal(t, goldenBuildHeader(systemEntry), systemHeader,
-		"buildCallerSnapshotPayload drifted from the golden spec for system_component")
+		"buildCallerSnapshotPayload drifted from the golden spec for system principal")
 
 	// System-attributed vs caller-less must produce different pre-images.
 	nilCallerHeader, err := BuildHashedHeaderPayload(base())
 	require.NoError(t, err)
 	require.NotEqual(t, nilCallerHeader, systemHeader,
 		"a system-tagged audit entry must not hash identically to a caller-less one")
+}
+
+func TestCallerSnapshotPayload_PrincipalVariantsGoldenAndDistinct(t *testing.T) {
+	t.Parallel()
+
+	snapshots := map[string]*commonpb.CallerSnapshot{
+		"oidc": {Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: &commonpb.AuthenticatedCaller{
+			Identity: &commonpb.CallerIdentity{Subject: "alice", Source: &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"}},
+			Scopes:   []string{"write", "read"},
+		}}},
+		"ed25519": {Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: &commonpb.AuthenticatedCaller{
+			Identity: &commonpb.CallerIdentity{Subject: "service", Source: &commonpb.CallerIdentity_KeyId{KeyId: "key-7"}},
+			God:      true,
+		}}},
+		"anonymous": {Principal: &commonpb.CallerSnapshot_Anonymous{Anonymous: &commonpb.AnonymousCaller{
+			Scopes: []string{"ledger:read"},
+		}}},
+		"system":        commands.SystemCallerSnapshot(commands.ComponentMirror),
+		"auth-disabled": {Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}}},
+	}
+
+	encoded := make(map[string]string, len(snapshots))
+	for name, snapshot := range snapshots {
+		got := buildCallerSnapshotPayload(snapshot)
+		require.Equal(t, goldenBuildSnapshot(snapshot), got, "%s principal", name)
+		encoded[name] = string(got)
+	}
+
+	for left, leftBytes := range encoded {
+		for right, rightBytes := range encoded {
+			if left < right {
+				require.NotEqual(t, leftBytes, rightBytes, "%s and %s must hash differently", left, right)
+			}
+		}
+	}
 }
 
 // TestHashChain_Envelope_Failure exercises the failure outcome path. The
@@ -378,36 +415,50 @@ func goldenBuildFailure(f *auditpb.AuditFailure) []byte {
 
 func goldenBuildSnapshot(s *commonpb.CallerSnapshot) []byte {
 	var buf []byte
-	id := s.GetIdentity()
-	buf = goldenLenString(buf, id.GetSubject())
-
-	switch src := id.GetSource().(type) {
-	case *commonpb.CallerIdentity_Issuer:
-		buf = append(buf, 0x01) // callerSourceIssuer
-		buf = goldenLenString(buf, src.Issuer)
-	case *commonpb.CallerIdentity_KeyId:
-		buf = append(buf, 0x02) // callerSourceKeyID
-		buf = goldenLenString(buf, src.KeyId)
-	case *commonpb.CallerIdentity_SystemComponent:
-		buf = append(buf, 0x03) // callerSourceSystem
-		buf = goldenLenString(buf, src.SystemComponent)
-	default:
-		buf = append(buf, 0x00) // callerSourceNone
-		buf = goldenLenBytes(buf, nil)
-	}
-
-	if s.GetGod() {
+	switch principal := s.GetPrincipal().(type) {
+	case *commonpb.CallerSnapshot_Authenticated:
 		buf = append(buf, 0x01)
-	} else {
+		caller := principal.Authenticated
+		id := caller.GetIdentity()
+		buf = goldenLenString(buf, id.GetSubject())
+		switch src := id.GetSource().(type) {
+		case *commonpb.CallerIdentity_Issuer:
+			buf = append(buf, 0x01)
+			buf = goldenLenString(buf, src.Issuer)
+		case *commonpb.CallerIdentity_KeyId:
+			buf = append(buf, 0x02)
+			buf = goldenLenString(buf, src.KeyId)
+		default:
+			buf = append(buf, 0x00)
+			buf = goldenLenBytes(buf, nil)
+		}
+		if caller.GetGod() {
+			buf = append(buf, 0x01)
+		} else {
+			buf = append(buf, 0x00)
+		}
+		buf = goldenAppendScopes(buf, caller.GetScopes())
+	case *commonpb.CallerSnapshot_Anonymous:
+		buf = append(buf, 0x02)
+		buf = goldenAppendScopes(buf, principal.Anonymous.GetScopes())
+	case *commonpb.CallerSnapshot_System:
+		buf = append(buf, 0x03)
+		buf = goldenLenString(buf, principal.System.GetComponent())
+	case *commonpb.CallerSnapshot_AuthDisabled:
+		buf = append(buf, 0x04)
+	default:
 		buf = append(buf, 0x00)
 	}
 
-	scopes := append([]string(nil), s.GetScopes()...)
+	return buf
+}
+
+func goldenAppendScopes(buf []byte, values []string) []byte {
+	scopes := append([]string(nil), values...)
 	goldenSortStrings(scopes)
 	buf = goldenU32(buf, uint32(len(scopes)))
-
-	for _, sc := range scopes {
-		buf = goldenLenString(buf, sc)
+	for _, scope := range scopes {
+		buf = goldenLenString(buf, scope)
 	}
 
 	return buf

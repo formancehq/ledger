@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"8"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"9"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -73,10 +73,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 8:
+leader. For example, with a schema implementing revision 9:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 8' \
+grpcurl -plaintext -H 'ledger-protocol-version: 9' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -120,6 +120,15 @@ all communicating service clients and nodes must use the matching revision.
 Revision 8 adds the replicated metadata ceilings and `METADATA_LIMIT_EXCEEDED`
 service error contract. It follows revision 7's Apply execution provenance
 changes; clients and servers must use the matching current revision.
+
+## Total caller attribution (revision 9)
+
+Revision 9 replaces the nullable caller identity fields exposed by audit and
+forwarding messages with a principal union. Authenticated, anonymous, system,
+and authentication-disabled actions now have distinct wire representations,
+and authenticated authorization state moved under its principal variant.
+Revision 8 clients and servers would decode these field numbers with different
+types and must not communicate with revision 9 peers.
 
 ## Maintaining the revision
 

@@ -3266,7 +3266,7 @@ type Proposal struct {
 	// receives Unavailable so it can retry with fresh preloads.
 	// A value of 0 means no prediction (e.g. barrier, mirror sync).
 	PredictedIndex uint64                   `protobuf:"fixed64,5,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
-	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,6,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"` // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
+	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,6,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"` // Required admission-time principal; persisted into AuditEntry by the FSM.
 	// idempotency is the batch's single idempotency identity (from
 	// ApplyBatch.idempotency_key). The whole proposal dedups/freezes under it —
 	// matching the atomic unit. Empty for system/technical proposals.

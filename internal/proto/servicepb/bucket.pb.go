@@ -1025,11 +1025,11 @@ type ApplyRequest struct {
 	//	*ApplyRequest_Signed
 	Variant isApplyRequest_Variant `protobuf_oneof:"variant"`
 	// forwarded_caller_snapshot carries the admission-time caller snapshot
-	// (identity + scopes + god) captured by the forwarding follower. The
+	// principal and effective authorization captured by the forwarding follower. The
 	// leader honors this field ONLY when the incoming connection authenticates
 	// via cluster-secret (trusted peer); direct client requests have it
 	// derived from validated JWT/Ed25519 claims on the leader and any value
-	// sent here is ignored.
+	// sent here is rejected.
 	ForwardedCallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,3,opt,name=forwarded_caller_snapshot,json=forwardedCallerSnapshot,proto3" json:"forwarded_caller_snapshot,omitempty"`
 	// skip_response, when true, strips log payloads from the response.
 	// Only the sequence number is returned for each log. Useful for

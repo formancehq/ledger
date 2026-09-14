@@ -575,9 +575,6 @@ func Module() fx.Option {
 					opts = append(opts, admission.WithMetrics())
 				}
 
-				if authCfg.Enabled {
-					opts = append(opts, admission.WithAuthEnabled())
-				}
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
 
 				return admission.NewAdmission(

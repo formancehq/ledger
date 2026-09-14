@@ -47,10 +47,9 @@ func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *auditpb.AuditEntry,
 		}
 	}
 
-	// Caller subject — skipped when empty (unauthenticated user, nil snapshot,
-	// system action, or a source-only identity such as an Ed25519 key with no
-	// sub claim; those are still attributed on the entry via CallerSnapshot.Source).
-	if subject := entry.GetCallerSnapshot().GetIdentity().GetSubject(); subject != "" {
+	// Caller subject — only authenticated principals carry one. Source-only
+	// Ed25519 identities remain attributable through the snapshot itself.
+	if subject := entry.GetCallerSnapshot().GetAuthenticated().GetIdentity().GetSubject(); subject != "" {
 		if err := emit(readstore.AuditIndexStringKey(kb, readstore.AuditFieldCallerSubject, subject, seq)); err != nil {
 			return err
 		}
