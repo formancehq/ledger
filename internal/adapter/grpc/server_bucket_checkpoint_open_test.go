@@ -131,3 +131,26 @@ type checkpointDirectoryDeletingLogger struct {
 
 func (*checkpointDirectoryDeletingLogger) Enabled(logging.Level) bool { return true }
 func (l *checkpointDirectoryDeletingLogger) Tracef(string, ...any)    { l.once.Do(l.remove) }
+
+// A later deletion cannot turn an unrelated opening failure into NotFound.
+func TestCheckpointReadIndexOpenErrorPreservesFailureBeforeDeletion(t *testing.T) {
+	t.Parallel()
+	impl, _ := newCheckpointWaitHarness(t)
+	const id = uint64(1)
+	batch := impl.store.OpenWriteSession()
+	require.NoError(t, state.StoreNextQueryCheckpointID(batch, id+1))
+	require.NoError(t, batch.Commit())
+	path := impl.store.QueryCheckpointReadIndexDir(id)
+	require.NoError(t, os.MkdirAll(path, 0700))
+	// Opening a regular file as a database produces an actual non-absence error.
+	databaseFile := filepath.Join(path, "not-a-directory")
+	require.NoError(t, os.WriteFile(databaseFile, []byte("data"), 0600))
+	_, openErr := readstore.OpenReadOnly(databaseFile, impl.logger)
+	require.Error(t, openErr)
+	require.NotErrorIs(t, openErr, os.ErrNotExist)
+	require.NoError(t, os.RemoveAll(path))
+	err := impl.checkpointReadIndexOpenError(id, openErr)
+	require.ErrorIs(t, err, openErr)
+	var notFound *commonpb.NotFoundError
+	require.False(t, errors.As(err, &notFound))
+}

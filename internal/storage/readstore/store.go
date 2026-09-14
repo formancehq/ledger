@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/vfs"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -166,13 +167,19 @@ func New(dir string, logger logging.Logger, cfg Config) (*Store, error) {
 // OpenReadOnly opens a Pebble read index at dirPath in read-only mode.
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
+	return openReadOnlyWithFS(dirPath, logger, vfs.Default)
+}
+
+func openReadOnlyWithFS(dirPath string, logger logging.Logger, filesystem vfs.FS) (*Store, error) {
+	openingFS := &readOnlyOpeningFS{FS: filesystem}
 	db, err := pebble.Open(dirPath, &pebble.Options{
+		FS:       openingFS,
 		Logger:   dal.NewPebbleLogger(logger),
 		Comparer: ReadStoreComparer,
 		ReadOnly: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("opening read-only Pebble read index at %s: %w", dirPath, err)
+		return nil, fmt.Errorf("opening read-only Pebble read index at %s: %w", dirPath, errors.Join(err, openingFS.openDirError()))
 	}
 
 	s := &Store{
