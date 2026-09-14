@@ -643,6 +643,33 @@ cache/pebble divergence reported by the sentinel is a genuine FSM bug.
 See issue [#424 / EN-1235](https://github.com/formancehq/ledger/issues/424)
 for the race this design eliminated.
 
+### Accounting sentinels
+
+`--sentinel-mode` checks gross input/output deltas against create and revert
+postings using the full `(ledger, account, asset, color)` identity, including
+`world`. Every expected delta must match, and every nonzero actual delta must
+have a posting; a balanced but unexplained debit/credit pair fails. Unchanged
+touches and undefined `Old` values (zero baseline) remain valid. These checks
+impose no nonnegative balance requirement on forced transfers or world funding.
+
+`WriteSet.Merge` drains the overlay into the cache before its conservation
+checks. It retains the logical updates before transient cache resets and
+ephemeral purges, so those lifecycle effects cannot masquerade as negative
+posting deltas. The ordinary conservation check covers all updates; the
+sentinel also checks the persisted partition, excluding transient updates.
+Merge failures remain fatal to the applier: the cache may already be mutated,
+while the uncommitted Pebble batch is discarded.
+
+After commit, the sentinel compares retained values against its pinned snapshot
+and checks aggregate conservation. Across entries in one apply batch, it keeps
+the last update per key and excludes keys purged by later entries. Missing
+values, mismatched deltas and conservation failures emit distinct Antithesis
+safety properties without changing the existing error behavior. Pebble read
+errors remain I/O failures and do not assert missing data. The `nonempty sentinel
+verification completed` coverage property is emitted only inside an executed,
+nonempty sentinel callback after all checks succeed; disabled sentinels cannot
+satisfy it.
+
 ## 16. Summary
 
 - Deterministic cache uses `gen0/gen1`, derived only from Raft index.

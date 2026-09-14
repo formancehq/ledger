@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -339,6 +340,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
 	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
+		assert.Unreachable("all volume updates conserve double entry", map[string]any{
+			"updates": len(volumeUpdates), "error": err.Error(),
+		})
+
 		return err
 	}
 
@@ -352,6 +357,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		persistedUpdates = append(persistedUpdates, partResult.kept...)
 		persistedUpdates = append(persistedUpdates, partResult.purged...)
 		if err := checkDoubleEntryInvariant(persistedUpdates); err != nil {
+			assert.Unreachable("persisted volume updates conserve double entry", map[string]any{
+				"updates": len(persistedUpdates), "error": err.Error(),
+			})
+
 			for _, u := range persistedUpdates {
 				var oldIn, oldOut string
 				if u.Old.IsDefined() && u.Old.Value() != nil {
@@ -1349,7 +1358,7 @@ func (b *WriteSet) SinkConfigChanged() bool {
 	return b.sinkConfigChanged
 }
 
-// AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.
+// AllVolumeUpdates returns pre-purge logical updates (kept + purged + transient) captured during Merge.
 // Used for delta/posting cross-check which needs purged ephemeral entries too.
 func (b *WriteSet) AllVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	return b.allVolumeUpdates
