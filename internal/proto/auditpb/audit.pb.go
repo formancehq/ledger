@@ -69,9 +69,8 @@ type AuditEntry struct {
 	Hash []byte `protobuf:"bytes,9,opt,name=hash,proto3" json:"hash,omitempty"`
 	// Hash algorithm version (matches common.HashAlgorithm enum).
 	HashVersion uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
-	// Admission-time auth snapshot: caller identification + the
-	// authorization granted at admission. Nil when auth is disabled or
-	// for system-initiated proposals.
+	// Admission-time caller snapshot. Its principal union distinguishes
+	// authenticated, anonymous, system, and authentication-disabled actions.
 	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,11,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`
 	// Batch identity, bound into the hash chain (header_payload) so it is
 	// tamper-evident. idempotency is the batch dedup key; signature is the

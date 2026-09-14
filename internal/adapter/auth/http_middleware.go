@@ -30,7 +30,8 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if !cfg.Enabled {
-				next.ServeHTTP(w, r)
+				ctx := withAuthenticationState(r.Context(), false, false, nil)
+				next.ServeHTTP(w, r.WithContext(ctx))
 
 				return
 			}
@@ -49,8 +50,10 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 				// No bearer token: fall back to anonymous scopes. The actual
 				// authorization decision happens in RequireScope (or in the
 				// per-Request loop of Apply / bulk handlers).
-				ctx := WithExpandedScopes(r.Context(), cfg.ScopeMapping.AnonymousScopes())
+				effective := cfg.ScopeMapping.AnonymousScopes()
+				ctx := WithExpandedScopes(r.Context(), effective)
 				ctx = WithAuthPresented(ctx, false)
+				ctx = withAuthenticationState(ctx, true, false, effective)
 				next.ServeHTTP(w, r.WithContext(ctx))
 
 				return
@@ -84,6 +87,7 @@ func HTTPAuthMiddleware(cfg AuthConfig) func(http.Handler) http.Handler {
 
 			ctx = WithExpandedScopes(ctx, effective)
 			ctx = WithAuthPresented(ctx, true)
+			ctx = withAuthenticationState(ctx, true, true, effective)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

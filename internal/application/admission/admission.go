@@ -60,7 +60,6 @@ type Admission struct {
 	builder         *plan.Builder
 	attrs           *attributes.Attributes
 	numscriptCache  *numscript.NumscriptCache
-	authEnabled     bool
 	waitLeaderReady func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
@@ -123,15 +122,6 @@ var phaseBucketBoundaries = []float64{
 func WithMetrics() func(*Admission) {
 	return func(a *Admission) {
 		a.metricsEnabled = true
-	}
-}
-
-// WithAuthEnabled marks authentication as enabled, so the admission path can
-// flag user writes committed without an attributable caller (see
-// observeCallerSnapshot).
-func WithAuthEnabled() func(*Admission) {
-	return func(a *Admission) {
-		a.authEnabled = true
 	}
 }
 
@@ -329,7 +319,7 @@ func NewAdmission(
 
 	missingCallerCounter, err := meter.Int64Counter(
 		"admission.audit.missing_caller",
-		metric.WithDescription("Committed user writes with no caller snapshot while auth is enabled"),
+		metric.WithDescription("Committed writes with a missing caller snapshot or unset principal"),
 		metric.WithUnit("1"),
 	)
 	if err != nil {
@@ -409,25 +399,18 @@ func NewAdmission(
 	return a
 }
 
-// observeCallerSnapshot flags audit-attribution gaps on the write path. With
-// auth enabled, a committed user write should always carry a caller: a nil
-// snapshot means an authenticated identity was lost or an anonymous write
-// slipped through, and a user source (issuer/key_id) with an empty subject is
-// the Ed25519-token-without-`sub` case where only the key id identifies the
-// caller. System actions carry a system_component source and are exempt.
+// observeCallerSnapshot flags attribution gaps while admission remains
+// tolerant of malformed snapshots. EN-2035 makes these conditions hard
+// admission failures.
 func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.CallerSnapshot) {
-	if !a.authEnabled {
-		return
-	}
-
-	if snap == nil {
-		a.logger.Errorf("committed write has no caller snapshot while auth is enabled: audit entry will be unattributed")
+	if snap == nil || snap.GetPrincipal() == nil {
+		a.logger.Errorf("committed write has a missing caller snapshot or unset principal: audit entry will be unattributed")
 		a.missingCallerCounter.Add(ctx, 1)
 
 		return
 	}
 
-	id := snap.GetIdentity()
+	id := snap.GetAuthenticated().GetIdentity()
 	switch id.GetSource().(type) {
 	case *commonpb.CallerIdentity_KeyId, *commonpb.CallerIdentity_Issuer:
 		if id.GetSubject() == "" {

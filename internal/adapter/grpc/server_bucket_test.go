@@ -22,11 +22,15 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 	t.Parallel()
 
 	snapshot := &commonpb.CallerSnapshot{
-		Identity: &commonpb.CallerIdentity{
-			Subject: "alice",
-			Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{
+					Subject: "alice",
+					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+				},
+				Scopes: []string{"ledger:TransactionWrite"},
+			},
 		},
-		Scopes: []string{"ledger:TransactionWrite"},
 	}
 	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
@@ -48,7 +52,11 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) 
 
 	req := &servicepb.ApplyRequest{
 		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
-			Identity: &commonpb.CallerIdentity{Subject: "attacker"},
+			Principal: &commonpb.CallerSnapshot_Authenticated{
+				Authenticated: &commonpb.AuthenticatedCaller{
+					Identity: &commonpb.CallerIdentity{Subject: "attacker"},
+				},
+			},
 		},
 	}
 	impl := &BucketServiceServerImpl{logger: testLogger()}

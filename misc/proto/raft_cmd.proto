@@ -416,7 +416,7 @@ message Proposal {
   // receives Unavailable so it can retry with fresh preloads.
   // A value of 0 means no prediction (e.g. barrier, mirror sync).
   fixed64 predicted_index = 5;
-  common.CallerSnapshot caller_snapshot = 6;  // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
+  common.CallerSnapshot caller_snapshot = 6;  // Required admission-time principal; persisted into AuditEntry by the FSM.
   // idempotency is the batch's single idempotency identity (from
   // ApplyBatch.idempotency_key). The whole proposal dedups/freezes under it —
   // matching the atomic unit. Empty for system/technical proposals.

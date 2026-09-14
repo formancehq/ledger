@@ -119,39 +119,51 @@ Every proposal carries a `CallerSnapshot` (proto `common.proto`):
 
 ```proto
 message CallerSnapshot {
-  CallerIdentity identity = 1;        // subject + source
-  repeated string scopes = 2;         // granular scopes at admission time
-  bool god = 3;                       // god-mode flag
+  oneof principal {
+    AuthenticatedCaller authenticated = 1;
+    AnonymousCaller anonymous = 2;
+    SystemCaller system = 3;
+    AuthDisabledCaller auth_disabled = 4;
+  }
 }
 
 message CallerIdentity {
   string subject = 1;
   oneof source {
-    string issuer = 4;                // OIDC token issuer URL
-    string key_id = 5;                // Ed25519 signing key ID
-    string system_component = 6;      // system/internal actor; subject empty
+    string issuer = 2;                // OIDC token issuer URL
+    string key_id = 3;                // Ed25519 signing key ID
   }
 }
+
+message AuthenticatedCaller {
+  CallerIdentity identity = 1;
+  repeated string scopes = 2;         // effective scopes at admission
+  bool god = 3;
+}
+
+message AnonymousCaller { repeated string scopes = 1; }
+message SystemCaller { string component = 1; }
+message AuthDisabledCaller {}
 ```
 
 It is built by `ResolveCallerSnapshot()` (`internal/adapter/auth/caller_snapshot.go`), in precedence order:
 
-1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a snapshot whose source is `system_component` (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`). This is what keeps system-generated entries attributable instead of blank.
-2. **Forwarded snapshot** — a request forwarded by a follower uses the snapshot the follower captured, verbatim.
-3. **Local claims** — otherwise `buildCallerSnapshot()` reads the context (subject, source, scopes, god). Returns `nil` only for an unauthenticated user request.
+1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a `system` principal (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`).
+2. **Forwarded snapshot** — a request forwarded by a follower uses the snapshot the follower captured, verbatim. Auth-disabled callers are the exception: every node derives that same explicit principal from its immutable local auth state, so followers omit it from the wire. This keeps plaintext clusters without a cluster secret working without making a client-supplied attribution field trustworthy.
+3. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
 
-So an audit entry attributes a write by, in order: the user subject when present, otherwise the source (Ed25519 key id / OIDC issuer) — an Ed25519 token minted without a `sub` claim is still attributable by its key id — otherwise the system component. `nil` means an unauthenticated user write.
+Every admitted proposal therefore records exactly one explicit principal. Authenticated identities retain their subject and stable credential source; an Ed25519 token without `sub` remains attributable by key ID. Anonymous and authentication-disabled writes are different values, and system work names its component.
 
 The snapshot enters the audit-chain hash via `BuildHashedHeaderPayload` (see [audit-chain.md](../checker/audit-chain.md)). **It is not re-evaluated downstream** — the FSM, the checker, and any later observer see exactly what admission resolved. A token expiring between admission and FSM apply does not retroactively invalidate the proposal.
 
 ### Attribution observability
 
-Admission emits signals when a user write is committed with weak attribution while auth is enabled (`admission.observeCallerSnapshot`):
+Admission emits signals when a committed write has weak attribution (`admission.observeCallerSnapshot`):
 
-- `admission.audit.missing_caller` (+ error log) — a user write resolved to a `nil` caller. Since writes without a valid token are already rejected at the scope check, this is anomalous (e.g. anonymous scopes misconfigured to allow writes).
+- `admission.audit.missing_caller` (+ error log) — a proposal reached the observation seam with a missing snapshot or unset principal. This is anomalous because normal resolution is total.
 - `admission.audit.caller_subject_empty` (+ info log) — the caller has a user source (key id / issuer) but an empty subject; the entry is still attributable by source.
 
-System actions carry a `system_component` source and are exempt from both.
+Only authenticated principals are eligible for the empty-subject signal; system, anonymous, and auth-disabled principals remain explicit without a subject.
 
 ## OIDC discovery
 

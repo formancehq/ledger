@@ -257,11 +257,11 @@ message ApplyRequest {
   }
 
   // forwarded_caller_snapshot carries the admission-time caller snapshot
-  // (identity + scopes + god) captured by the forwarding follower. The
+  // principal and effective authorization captured by the forwarding follower. The
   // leader honors this field ONLY when the incoming connection authenticates
   // via cluster-secret (trusted peer); direct client requests have it
   // derived from validated JWT/Ed25519 claims on the leader and any value
-  // sent here is ignored.
+  // sent here is rejected.
   common.CallerSnapshot forwarded_caller_snapshot = 3;
 
   // skip_response, when true, strips log payloads from the response.

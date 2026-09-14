@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"12"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"13"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 12:
+leader. For example, with a schema implementing revision 13:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 12' \
+grpcurl -plaintext -H 'ledger-protocol-version: 13' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -183,6 +183,15 @@ aggregate requests for non-account targets and requests with an unsupported
 query mode no longer surface as sanitized `Unknown` failures. A revision-11
 client can interpret those status codes differently for retry and operation
 handling, so clients and servers must use the matching revision.
+
+## Total caller attribution (revision 13)
+
+Revision 13 replaces the nullable caller identity fields exposed by audit and
+forwarding messages with a principal union. Authenticated, anonymous, system,
+and authentication-disabled actions now have distinct wire representations,
+and authenticated authorization state moved under its principal variant.
+Revision 12 clients and servers would decode these field numbers with different
+types and must not communicate with revision 13 peers.
 
 ## Maintaining the revision
 

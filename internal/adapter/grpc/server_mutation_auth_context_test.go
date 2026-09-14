@@ -151,12 +151,12 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 
 			require.ErrorIs(t, err, errCaptured)
 			require.NotNil(t, captured, "the downstream write path must receive the authenticated context")
-			require.Equal(t, mutationAuthContextSubject, captured.GetIdentity().GetSubject())
-			require.Equal(t, mutationAuthContextKeyID, captured.GetIdentity().GetKeyId())
+			require.Equal(t, mutationAuthContextSubject, captured.GetAuthenticated().GetIdentity().GetSubject())
+			require.Equal(t, mutationAuthContextKeyID, captured.GetAuthenticated().GetIdentity().GetKeyId())
 			require.Equal(t, []string{
 				string(internalauth.ScopeClusterWrite),
 				string(internalauth.ScopeQueriesWrite),
-			}, captured.GetScopes())
+			}, captured.GetAuthenticated().GetScopes())
 		})
 	}
 }

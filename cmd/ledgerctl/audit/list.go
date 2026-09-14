@@ -179,28 +179,43 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	// Verbose caller details
 	if verbose {
 		if snap := entry.GetCallerSnapshot(); snap != nil {
-			id := snap.GetIdentity()
-			source := callerSourceString(id)
-
-			subject := id.GetSubject()
-			if subject == "" {
-				subject = "(none)"
-			}
-
-			if snap.GetGod() {
+			switch principal := snap.GetPrincipal().(type) {
+			case *commonpb.CallerSnapshot_Authenticated:
+				caller := principal.Authenticated
+				id := caller.GetIdentity()
+				subject := id.GetSubject()
+				if subject == "" {
+					subject = "(none)"
+				}
+				if caller.GetGod() {
+					pterm.Printf("    %s authenticated subject=%s %s %s\n",
+						pterm.Gray("caller:"),
+						pterm.Yellow(subject),
+						pterm.Gray(callerSourceString(id)),
+						pterm.Red("god=true"),
+					)
+				} else {
+					pterm.Printf("    %s authenticated subject=%s %s scopes=[%s]\n",
+						pterm.Gray("caller:"),
+						pterm.Yellow(subject),
+						pterm.Gray(callerSourceString(id)),
+						pterm.Gray(strings.Join(caller.GetScopes(), ",")),
+					)
+				}
+			case *commonpb.CallerSnapshot_Anonymous:
+				pterm.Printf("    %s anonymous scopes=[%s]\n",
+					pterm.Gray("caller:"),
+					pterm.Gray(strings.Join(principal.Anonymous.GetScopes(), ",")),
+				)
+			case *commonpb.CallerSnapshot_System:
 				pterm.Printf("    %s subject=%s %s %s\n",
 					pterm.Gray("caller:"),
-					pterm.Yellow(subject),
-					pterm.Gray(source),
-					pterm.Red("god=true"),
+					pterm.Yellow("(none)"),
+					pterm.Gray("system="+principal.System.GetComponent()),
+					pterm.Gray("scopes=[]"),
 				)
-			} else {
-				pterm.Printf("    %s subject=%s %s scopes=[%s]\n",
-					pterm.Gray("caller:"),
-					pterm.Yellow(subject),
-					pterm.Gray(source),
-					pterm.Gray(strings.Join(snap.GetScopes(), ",")),
-				)
+			case *commonpb.CallerSnapshot_AuthDisabled:
+				pterm.Printf("    %s authentication-disabled\n", pterm.Gray("caller:"))
 			}
 		}
 	}
@@ -234,40 +249,45 @@ func printAuditEntry(entry *auditpb.AuditEntry, verbose bool) {
 	}
 }
 
-// callerSourceString renders the CallerIdentity source for display.
+// callerSourceString renders an authenticated identity source for display.
 func callerSourceString(id *commonpb.CallerIdentity) string {
 	switch s := id.GetSource().(type) {
 	case *commonpb.CallerIdentity_Issuer:
 		return "issuer=" + s.Issuer
 	case *commonpb.CallerIdentity_KeyId:
 		return "key_id=" + s.KeyId
-	case *commonpb.CallerIdentity_SystemComponent:
-		return "system=" + s.SystemComponent
 	default:
 		return ""
 	}
 }
 
 // callerLabel renders a compact one-token caller label, falling back to the
-// source (system component, key id, or issuer) when the subject is empty.
-// Empty when there is no caller snapshot at all.
+// credential source when an authenticated subject is empty.
 func callerLabel(snap *commonpb.CallerSnapshot) string {
 	if snap == nil {
 		return ""
 	}
 
-	id := snap.GetIdentity()
-	if id.GetSubject() != "" {
-		return id.GetSubject()
-	}
-
-	switch s := id.GetSource().(type) {
-	case *commonpb.CallerIdentity_SystemComponent:
-		return "system:" + s.SystemComponent
-	case *commonpb.CallerIdentity_KeyId:
-		return "key:" + s.KeyId
-	case *commonpb.CallerIdentity_Issuer:
-		return "issuer:" + s.Issuer
+	switch principal := snap.GetPrincipal().(type) {
+	case *commonpb.CallerSnapshot_Authenticated:
+		id := principal.Authenticated.GetIdentity()
+		if id.GetSubject() != "" {
+			return id.GetSubject()
+		}
+		switch source := id.GetSource().(type) {
+		case *commonpb.CallerIdentity_KeyId:
+			return "key:" + source.KeyId
+		case *commonpb.CallerIdentity_Issuer:
+			return "issuer:" + source.Issuer
+		default:
+			return "authenticated"
+		}
+	case *commonpb.CallerSnapshot_Anonymous:
+		return "anonymous"
+	case *commonpb.CallerSnapshot_System:
+		return "system:" + principal.System.GetComponent()
+	case *commonpb.CallerSnapshot_AuthDisabled:
+		return "auth-disabled"
 	default:
 		return ""
 	}
