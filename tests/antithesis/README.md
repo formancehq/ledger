@@ -51,22 +51,29 @@ pages against retained snapshots, even while live writes continue. Listing and
 schedule reads must match a possible ordering of in-flight lifecycle writes.
 These node-local metadata APIs are preceded by a linearizable ledger read over
 the same pinned node connection, establishing a lower bound for comparison.
-Deleted-checkpoint reads require gRPC `NotFound`; concurrent deletion is accepted
-only when an eligible model state explains it. The existing transient-error
-contract covers replicas whose checkpoint read index is not ready yet.
+Deleted-checkpoint reads accept gRPC `NotFound` or a success matching the original
+frozen snapshot: a replica may lag deletion, and committed deletion precedes
+filesystem cleanup. Successful reads never count as deleted-read coverage;
+that property requires observing `NotFound` that cannot be explained by an
+entity already absent from the frozen snapshot. Concurrent deletion of a live
+checkpoint is accepted only when an eligible model state explains it. The existing
+transient-error contract covers replicas whose checkpoint read index is not ready yet.
 
 `MODEL_QUERY_CHECKPOINT_LIMIT` defaults to 10 and must match the server's
 `--query-checkpoint-limit`. Creation deliberately attempts to exceed the cap and
 requires `CHECKPOINT_LIMIT_REACHED`. Live snapshots are bounded by that cap;
-only the ten most recent deleted IDs are retained for negative reads. Schedule
-set/get/delete uses a valid 100-year interval so no scheduler-generated writes
+only the ten most recent deleted checkpoints with known frozen snapshots are
+retained for deletion probes. Schedule set/get/delete uses a valid 100-year interval so no scheduler-generated writes
 enter the model timeline. Restore cycles retain the frozen business snapshots
 and continue validating them after the cluster rebuilds its checkpoint stores.
 
 Coverage properties are registered before workers start for lifecycle commits,
 cap rejection, nonempty frozen reads, deleted reads, listing, and schedule
 configuration. Actual cron firings and business-list cursor continuation are not
-part of this coverage.
+part of this coverage. Checkpoint creation uses singleton bulks; mixed business
+and checkpoint-creation batches are covered by oracle unit tests only. Exercising
+that admitted wire shape requires capturing the model state immediately before
+the creation order within the batch, rather than after the whole response drains.
 
 ## Driver naming convention
 

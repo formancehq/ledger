@@ -721,7 +721,6 @@ type ApplyResult struct {
 	Orders []OrderResult
 }
 
-// LedgerOf returns the ledger a request targets.
 // LedgerOf returns the request ledger, or empty for cluster-scoped orders.
 func LedgerOf(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {

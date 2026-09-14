@@ -81,7 +81,9 @@ func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs [
 
 // recordCheckpoints runs only after a validated commit advances modelState.
 // Creates are singleton bulks, so the post-state has precisely the business
-// contents at max_sequence. Readers hold a value copy even after deletion.
+// contents at max_sequence. Readers hold a value copy even after deletion. A
+// bounded history also retains known snapshots for later reads on replicas
+// that have not removed the files.
 func (c *Checker) recordCheckpoints(logs []*commonpb.Log) {
 	for _, log := range logs {
 		payload := log.GetPayload()
@@ -92,9 +94,18 @@ func (c *Checker) recordCheckpoints(logs []*commonpb.Log) {
 			noteCheckpointCoverage(checkpointCreateCoverage)
 		case payload.GetDeletedQueryCheckpoint() != nil:
 			id := payload.GetDeletedQueryCheckpoint().GetCheckpointId()
+			snapshot, known := c.checkpoints[id]
 			delete(c.checkpoints, id)
+			// Inherited checkpoints have no captured business state. Do not
+			// invent one for validating successful reads after deletion.
+			if !known {
+				noteCheckpointCoverage(checkpointDeleteCoverage)
+				continue
+			}
+			c.deletedCheckpointSnapshots[id] = snapshot
 			c.deletedCheckpoints = append(c.deletedCheckpoints, id)
 			if len(c.deletedCheckpoints) > defaultModelCheckpointLimit {
+				delete(c.deletedCheckpointSnapshots, c.deletedCheckpoints[0])
 				c.deletedCheckpoints = c.deletedCheckpoints[1:]
 			}
 			noteCheckpointCoverage(checkpointDeleteCoverage)
