@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
+
+	"github.com/bluele/gcache"
 
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 )
@@ -44,7 +45,9 @@ type ChartOfAccounts map[string]ChartSegment
 
 var ChartSegmentRegexp = regexp.MustCompile(`^(\$|\.)?[a-zA-Z0-9_-]+$`)
 
-var patternCache sync.Map
+const patternCacheMaxSize = 4096
+
+var patternCache = gcache.New(patternCacheMaxSize).LFU().Build()
 
 func ValidateSegment(addr string) bool {
 	return ChartSegmentRegexp.Match([]byte(addr))
@@ -255,15 +258,15 @@ func (s *ChartVariableSegment) matchPattern(v string) (bool, error) {
 	if s.Pattern == nil {
 		return true, nil
 	}
-	if cached, ok := patternCache.Load(*s.Pattern); ok {
+	if cached, err := patternCache.Get(*s.Pattern); err == nil {
 		return cached.(*regexp.Regexp).MatchString(v), nil
 	}
 	re, err := regexp.Compile(*s.Pattern)
 	if err != nil {
 		return false, err
 	}
-	actual, _ := patternCache.LoadOrStore(*s.Pattern, re)
-	return actual.(*regexp.Regexp).MatchString(v), nil
+	_ = patternCache.Set(*s.Pattern, re)
+	return re.MatchString(v), nil
 }
 
 func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, variableSegment *ChartVariableSegment, account []string) (*ChartAccount, error) {
