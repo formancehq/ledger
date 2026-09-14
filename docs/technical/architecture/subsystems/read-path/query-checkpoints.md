@@ -21,7 +21,7 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
 2. The request is proposed through Raft consensus.
 3. The FSM commits pending state and records `QueryCheckpointState` metadata in
    Pebble, including the entry's Raft applied index `H`.
-4. The Applier creates a physical Pebble checkpoint of the main store at `{dataDir}/query-checkpoints/{id}/main/`.
+4. The Applier materializes the main store at `{dataDir}/query-checkpoints/{id}/main/`, **per-replica** and **atomic**: build into `main.tmp/`, fsync, write `.ready` into the temp directory, rename, fsync the parent. `pebble.DB.Checkpoint` writes the MANIFEST that makes a directory openable *before* it copies the WAL files, so a directory caught mid-copy opens cleanly while missing every write still resident in the memtable; the marker is what vouches for completeness, and because it is written before the rename the final path never exists without it. Residual state after a crash is nothing, a temp directory (marked or not), or the finished result. The Applier is gated for the whole materialization — later entries wait in the spool, the live store stays at `H` — and the spool is reset on restart, so `RecoverAndReplay` reopens with the live store still at `H`: before replaying the WAL it rebuilds the main store of every registered checkpoint whose `applied_index` equals the live index and whose marker is missing, discarding any temp residue. A call against a marked directory is a no-op, which keeps the materialization idempotent; the applier does not re-cross the trigger entry (its cursor commits in the same batch as that entry, and apply skips entries at or below the cursor), so the no-op is a guard rather than a path the applier depends on.
 5. The index builder detects the `CreatedQueryCheckpointLog`, publishes the
    normal read projection certificate `H` with the batch that crosses a live
    checkpoint log, and waits for the audit projection certificate to cover the
@@ -45,16 +45,26 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    than `H`; checkpoint audit reads trim every compiled candidate to the audit
    sequence visible in the frozen main store. A crash before the marker never
    exposes a partial checkpoint. Link/compaction races are retried from a clean
-   temp directory.
-7. Both stores are opened read-only when a query specifies `checkpoint_id`.
-   Reads verify the frozen projection certificate against the main checkpoint's
-   durable applied index rather than trusting `.ready` alone.
+   temp directory. A checkpoint
+   log is always the only log of its builder batch, and the indexed cursor (and
+   the AppliedProposal cursor with it) is committed **after** the
+   materialization, in a batch of its own; the batch that crosses the log
+   commits only the certificate. A builder that dies anywhere between resumes at
+   the checkpoint log, re-indexes nothing (the log writes no rows) and
+   materializes again — a marked directory makes that a no-op. Residual state
+   after a crash is therefore a cursor one log behind plus nothing, an unmarked
+   directory (temp or final, discarded on the re-cross) or a marked one.
+7. Both stores are opened read-only when a query specifies `checkpoint_id`, and
+   only once **both** directories carry their `.ready` marker — openability is
+   not a completeness signal (see step 4). Reads additionally verify the frozen
+   read projection certificate against the main checkpoint's durable applied
+   index rather than trusting `.ready` alone.
 
 ## Readiness and Error Contract
 
-The read index materializes asynchronously and **per-replica** (step 5). Readiness on a node is signalled solely by the local `.ready` marker; there is **no** cross-node readiness map and **no** background reconciler.
+Both halves materialize asynchronously and **per-replica** (steps 4 and 6), by different components that can reach the checkpoint log at different moments. Readiness on a node is signalled solely by the two local `.ready` markers — one per directory, each vouching only for its own — and a read requires both. Openability is **not** a readiness signal: an unmarked directory can open cleanly while incomplete, so the markers are checked before the read-only open rather than inferred from it. There is **no** cross-node readiness map and **no** background reconciler: each half finishes an interrupted materialization itself on restart, because neither store's durable progress passes the checkpoint point before its half is marked (steps 4 and 6).
 
-- **For a newly executed creation with response payloads enabled, `Apply` waits for the serving node's marker unless deletion supersedes it.** The `Apply` handler executes in this order: `ctrl.Apply` returns the committed logs and execution provenance → for a new execution, the handler scans those logs for a `CreatedQueryCheckpointLog` and, for each one, waits (`readStore.WaitForCheckpoint`) for that checkpoint's local `.ready` marker → response signing → `skip_response` payload stripping → return. The wait therefore precedes stripping, which nils out the payload carrying the id, and it locates the log by payload type rather than by position, because the checkpoint trigger is the batch's *last* action. If the checkpoint remains live, an immediate read at the returned `checkpoint_id` **routed back to that node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
+- **For a newly executed creation with response payloads enabled, `Apply` waits for the serving node's marker unless deletion supersedes it.** The `Apply` handler executes in this order: `ctrl.Apply` returns the committed logs and execution provenance → for a new execution, the handler scans those logs for a `CreatedQueryCheckpointLog` and, for each one, waits (`readStore.WaitForCheckpoint`) for that checkpoint's local `.ready` marker → response signing → `skip_response` payload stripping → return. The wait therefore precedes stripping, which nils out the payload carrying the id, and it locates the log by payload type rather than by position, because the checkpoint trigger is the batch's *last* action. The Applier marks the main store before it resolves the creation, so when the call returns both markers exist on that node and, if the checkpoint remains live, an immediate read at the returned `checkpoint_id` **routed back to that node succeeds**. It waits on the marker, not on the index-builder progress cursor — the cursor fast path was the EN-1460 root cause: the cursor is persisted in the batch that *precedes* the physical checkpoint creation, so it reaches the target sequence ~100-150 ms before the directory exists.
 - **For a newly executed creation with response payloads enabled, a follower waits for its own marker after the leader waited for the leader's.** A follower's `Apply` forwards the batch to the leader through `BucketGrpcClient.Apply`; the leader's handler waits for the leader's marker, and the forwarding node then waits for its own. The node the client is actually talking to is therefore ready when the call returns, at the cost of a second wait on the follower path.
 - **For a new creation that remains live, with `skip_response=true`, only the leader is guaranteed ready.** The follower forwards `skip_response` unchanged. The leader waits for its local marker and strips the payload carrying the checkpoint ID before returning to the follower. The follower therefore has no checkpoint payload to wait on and can return before its own marker is ready. The client receives no checkpoint ID in this response; a subsequent checkpoint read on a replica that is not ready returns the retryable error described below.
 - **An idempotent replay returns the historical outcome immediately.** A keyed
@@ -107,12 +117,13 @@ The read index materializes asynchronously and **per-replica** (step 5). Readine
   worker keeps retrying and restores readiness after a successful fold; because
   there is no checkpoint reconciler, the failed checkpoint is deleted and
   recreated through the normal client/operator recovery path.
-- **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node whose builder has not yet crossed the checkpoint log, `openCheckpointStores` finds no `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
+- **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node where either half is still unmaterialized — the applier has not finished the main store, or the builder has not yet crossed the checkpoint log — `openCheckpointStores` finds a missing `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
 - **A read for a checkpoint id that does not exist returns `NotFound`.** If there is no `.ready` marker *and* no `QueryCheckpointState` entry for the id, `openCheckpointStores` returns `NotFound` (permanent) so clients stop retrying — distinct from the retryable `Unavailable` above.
-- **Transient live materialization failures are retried before later mutations.** The projection batch and native cursor commit before filesystem materialization. If materialization then fails, the builder retains the checkpoint id and audit horizon in memory and retries that side effect at the start of the next `processLogs` call. It does not replay the committed batch, which could duplicate lifecycle mutations. Later logs, backfills, and event GC remain behind this retry boundary so the frozen readstore still represents the original checkpoint horizon.
-- **Unrecoverable checkpoints degrade to `NotFound`, not wrong data.** There is no historical reconstruction: inline materialization is already exactly point-in-time. If a node crashes between the projection commit and the `.ready` marker, the in-memory retry state is lost and that node will never have a `.ready` marker for the checkpoint. Since the checkpoint is still registered, reads there return the retryable `Unavailable` and never self-heal — the operator/client recreates the checkpoint (aligned with the existing `AcquireCheckpoint` client workaround, which deletes-and-recreates on timeout). Deleting the checkpoint then makes reads return `NotFound`.
+- **Transient live materialization failures are retried before later mutations.** The projection batch commits before filesystem materialization; the native cursor commits only after it. If materialization fails, the builder retains the checkpoint id and audit horizon in memory and retries that side effect at the start of the next `processLogs` call, before re-reading from the cursor still parked at the checkpoint log. It does not replay the committed batch, which could duplicate lifecycle mutations. Later logs, backfills, and event GC remain behind this retry boundary so the frozen readstore still represents the original checkpoint horizon.
+- **A damaged directory fails permanently instead of retrying forever.** Both markers present means each half was complete when it was published, so a read-only open that then fails is damage, not lag: the error surfaces as-is and reaches the client as a sanitized permanent `Unknown` carrying a correlation ID (the node log holds the cause), never the retryable `Unavailable` that `actions.GRPCRetryPolicy` would retry 50 times. Recovery is the same delete-and-recreate as the cases below.
+- **A crash inside a materialization is finished on restart; nothing else degrades to wrong data.** There is no historical reconstruction — each half instead keeps its recovery source intact until it is marked: the live main store stays at `H` while the Applier is gated, and the read index's cursor stays before the checkpoint log (steps 4 and 6). A replica that dies at any point of either materialization reopens, rebuilds the missing half from that source, and serves the checkpoint. Reads meanwhile return the retryable `Unavailable`. Two cases stay `Unavailable` on a replica for good, because that replica never had the source: one that never applied the creation entry (it joined through a later snapshot, or had to resync from the leader after the crash), and one whose audit projection is disabled or failed (the builder moves past the log without materializing). For those the operator/client deletes and recreates the checkpoint (the `AcquireCheckpoint` client helper does so on timeout); deleting it makes reads return `NotFound`.
 
-The `.ready` marker and the checkpoint directories are rebuildable filesystem lifecycle state (a projection of the audit log), not a persisted Pebble projection, so they are outside the checker's scope.
+The `.ready` markers and the checkpoint directories are rebuildable filesystem lifecycle state (a projection of the audit log), not a persisted Pebble projection, so they are outside the checker's scope.
 
 ## Retention cap (query-checkpoint limit)
 
@@ -234,10 +245,14 @@ data/
   query-checkpoints/
     1/
       main/              # Pebble checkpoint of main store
+        .ready           # readiness marker, published with the directory
+      main.tmp/          # only while materializing, or left by a crash
       readindex/         # Pebble checkpoint of read index
         .ready           # readiness marker, written last by the index builder
+      readindex.tmp/     # only while materializing, or left by a crash
     2/
       main/
+        .ready
       readindex/
         .ready
 ```

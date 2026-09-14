@@ -8,9 +8,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
-	"github.com/formancehq/go-libs/v5/pkg/fx/transportfx"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/go-libs/v5/pkg/transport/httpserver"
 
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
@@ -111,16 +109,14 @@ func RestoreModule() fx.Option {
 			},
 			// Start minimal HTTP server with /health only, bound to the same
 			// host as the gRPC restore server (see comment on RestoreModule).
-			func(lc fx.Lifecycle, cfg Config, bindings network.Bindings) {
+			func(lc fx.Lifecycle, cfg Config, bindings network.Bindings, logger logging.Logger, shutdowner fx.Shutdowner) {
 				mux := http.NewServeMux()
 				mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusOK)
 					_, _ = w.Write([]byte(`{"status":"restore_mode"}`))
 				})
 
-				lc.Append(transportfx.FXHook(httpserver.NewHook(mux,
-					httpListenerOption(bindings.HTTP, fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort)),
-				)))
+				lc.Append(httpServerHook(mux, bindings.HTTP, fmt.Sprintf("%s:%d", cfg.EffectiveRestoreListen(), cfg.HTTPPort), logger, shutdownRequester(shutdowner)))
 			},
 			// Registered last so it is this module's first OnStop hook: close restore
 			// admission and cancel its application-owned job at the Fx shutdown
