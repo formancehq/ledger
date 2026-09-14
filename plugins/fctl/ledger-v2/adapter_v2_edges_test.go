@@ -206,8 +206,14 @@ func TestExecuteV2PropagatesProductFailureWithoutEmittingPartialOutput(t *testin
 
 // The pinned SDK classifies an in-range non-2xx product response as a typed
 // HTTP failure and keeps only an out-of-range status opaque. Both codes must
-// survive the generated client and the adapter's operation wrapping unchanged,
-// so the host still sees the retryable flag and the originating status.
+// survive the generated client and the adapter's operation wrapping unchanged.
+//
+// Scope: this is the in-process boundary. sdk.NewMemoryHost embeds the plugin
+// directly, so the whole sdk.Failure — code, message, retryable flag and
+// httpStatus detail — reaches the caller. The delivered artifact is a portable
+// component, whose boundary carries the code and nothing else; see
+// component/portable_failure_test.go. Do not read the assertions below as a
+// statement about what a component host observes.
 func TestExecuteV2PropagatesTypedProductHTTPFailures(t *testing.T) {
 	t.Parallel()
 
@@ -230,7 +236,7 @@ func TestExecuteV2PropagatesTypedProductHTTPFailures(t *testing.T) {
 				return sdk.NewResponseStream(sdk.Response{
 					Status:      test.status,
 					ContentType: mediaTypeJSON,
-					Body:        []byte(`{"errorCode":"NOT_FOUND"}`),
+					Body:        []byte(`{"errorCode":"INSUFFICIENT_FUND","errorMessage":"account users:001 lacks 250 USD"}`),
 				}), nil
 			})
 
@@ -251,6 +257,21 @@ func TestExecuteV2PropagatesTypedProductHTTPFailures(t *testing.T) {
 				}
 				if details.HTTPStatus != test.httpStatus {
 					t.Fatalf("failure httpStatus = %d, want %d", details.HTTPStatus, test.httpStatus)
+				}
+			}
+			// producthttp short-circuits an in-range non-2xx before the
+			// body reaches the generated client, so the product's own
+			// ErrorResponse.errorCode is unreachable by design. The
+			// response body fed above is discarded; assert that nothing
+			// from it survives into the diagnostic surface.
+			for _, leaked := range []string{"INSUFFICIENT_FUND", "account users:001", "users:001"} {
+				if strings.Contains(failure.Message, leaked) || bytes.Contains(failure.Details, []byte(leaked)) {
+					t.Errorf("failure leaks the product error body fragment %q", leaked)
+				}
+			}
+			if test.httpStatus != 0 {
+				if got, want := string(failure.Details), fmt.Sprintf(`{"httpStatus":%d,"details":null}`, test.httpStatus); got != want {
+					t.Errorf("failure details = %s, want exactly %s", got, want)
 				}
 			}
 			if len(host.Events()) != 0 {

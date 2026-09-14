@@ -110,6 +110,37 @@ only byte-exact `null` on GET and, only for a non-empty cursor, canonicalizes th
 query to that cursor alone. Other bodies and queries are preserved. Contract
 tests lock these boundaries.
 
+### Failure detail at the two boundaries
+
+A product failure carries different detail depending on how the plugin is
+embedded, and the difference is not cosmetic.
+
+| | In process (`sdk.Host`) | Portable component (delivered) |
+| --- | --- | --- |
+| Failure code | `product_http_error` (in-range non-2xx), `product_response_failed` (out of range) | same |
+| `Retryable` | set from the status: true at 5xx | **dropped** |
+| `Details.httpStatus` | the originating status | **dropped** |
+| `Message` | `product request returned HTTP N` | **dropped** |
+
+`portable.Frame` carries only `FailureCode`, so the guest rebuilds the wire
+failure as `Failure{Code: frame.FailureCode}` before it reaches a component
+host — even though the wire codec itself can carry message, details and the
+retryable flag. `adapter_v2_edges_test.go` pins the in-process column;
+`component/portable_failure_test.go` drives the real lifecycle and pins the
+portable one. Read either test only for the boundary it names.
+
+Neither boundary carries the product's own error body. `producthttp`
+short-circuits an in-range non-2xx before the body reaches the generated client,
+so Ledger's `ErrorResponse.errorCode` — the 20-value `V2ErrorsEnum` — is
+unreachable by this plugin, and `productHTTPFailure` builds details containing
+the status and nothing else. That is the generic bridge behaving as designed: a
+dynamic product body must not become plugin-authored diagnostic text. Both tests
+assert that no fragment of the body leaks. The consequence is recorded as
+divergence D7 in `auth-scopes-risks.md`: only the status survives, and because
+all 22 bound operations declare exactly one `default` error response in
+`openapi/v2.yaml`, the status does not identify the code. Recovering the code is a host-SDK contract decision,
+not something the plugin can do on its own.
+
 Set the explicit fctl source root, then run the SDK contract, unit and
 lifecycle tests from the plugin module:
 

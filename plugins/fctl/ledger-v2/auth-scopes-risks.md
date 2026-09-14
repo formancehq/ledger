@@ -142,6 +142,61 @@ contract.
 **Status:** recorded. The expand values must be confirmed against the server
 before the two converted show commands are considered output-faithful.
 
+### D7 — the product error body never reaches the plugin
+
+`producthttp.Client.readResponse` short-circuits every in-range non-2xx status
+before it constructs the `*http.Response` handed to the generated client, and
+`productHTTPFailure` builds details carrying `httpStatus` and a permanently nil
+`details` member. Ledger's own `ErrorResponse.errorCode` — the 20-value
+`V2ErrorsEnum`, from `INSUFFICIENT_FUND` and `VALIDATION` through
+`OUTDATED_SCHEMA` — is therefore unreachable by this plugin, as is
+`errorMessage`.
+
+This is the generic host bridge behaving as designed, not a plugin defect: a
+dynamic product body must not become plugin-authored diagnostic text, and the
+bridge is shared by every product. It is recorded here because it is a genuine
+capability difference from old-fctl, which surfaced the error code.
+
+**User-visible consequence:** only the HTTP status survives, and the status is
+not a substitute for the code. In `openapi/v2.yaml` at `8cc679c9`, **all 22
+bound operations declare exactly one `default` error response** and no explicit
+4xx or 5xx, so the specification never says which status carries which
+`V2ErrorsEnum` value. A caller cannot recover the code from the status even in
+principle. A `ledger send` rejected for insufficient
+funds is indistinguishable from one rejected for a malformed posting without
+reading the server's own logs. The same holds for every bound command.
+
+**Status:** recorded as an accepted divergence, and pinned by test —
+`TestExecuteV2PropagatesTypedProductHTTPFailures` and
+`TestPortableBoundaryLeaksNoProductErrorBody` both assert that no fragment of the
+product error body reaches the failure surface, so the non-propagation is
+deliberate and cannot regress into a leak. Restoring the error code is a
+host-SDK contract decision — whether `Failure.Details` should carry a bounded,
+schema-validated product error code — and is out of scope for the plugin.
+
+### D8 — the portable failure boundary carries only the failure code
+
+`portable.Frame` has a single `FailureCode` field, so
+`sdk/portable/component/command.go` rebuilds the terminal wire failure as
+`FailureFromSDK(Failure{Code: frame.FailureCode})`. `Message`, `Details` and
+`Retryable` are dropped before a component host sees anything, even though the
+`componentbridgev1alpha1` codec can carry all three.
+
+The in-process embedding path (`sdk.NewMemoryHost`) keeps the whole
+`sdk.Failure`, so a test written against it proves nothing about the delivered
+artifact. The two boundaries are pinned separately:
+`adapter_v2_edges_test.go` for in process,
+`component/portable_failure_test.go` for the portable component.
+
+**Consequence:** a component host cannot see that a 503 was retryable, nor which
+status produced a `product_http_error`. Retry policy above this plugin must be
+driven by the failure code alone.
+
+**Status:** recorded. Widening `portable.Frame` is an SDK change, not a plugin
+change. The portable test asserts the current loss rather than asserting SDK
+source, so a future SDK that carries the detail fails the test and forces this
+entry to be revisited.
+
 ## Risks
 
 | # | Risk | Severity |
@@ -167,6 +222,12 @@ server acceptance or byte-for-byte historical presentation.
 
 ## Resolved prerequisites
 
+- The pinned fctl SDK revision `e9b1395f46f3100b381dbe00f5213de28e6df0e1` is
+  published on the repository the lock records: `git ls-remote --heads` against
+  `https://github.com/formancehq/fctl-v2-poc.git` resolves
+  `refs/heads/codex/mvp5-integration` to exactly that commit. A clean clone can
+  now check the pin out, so `with-fctl-sdk.sh` no longer passes only on the
+  authoring workstation. Verified 2026-09-14; no code change was required.
 - The public `producthttp` bridge and frozen SDK catalogue are available and
   consumed directly by the generated-client adapter.
 - The portable descriptor and reconstructible lifecycle are implemented. A
