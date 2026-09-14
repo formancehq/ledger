@@ -16,6 +16,22 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// idempotencyTestPolicy builds a committed cluster policy for the apply tests:
+// the given revision and idempotency TTL, plus the default metadata ceilings the
+// apply path requires (an unconfigured policy is rejected before orders run).
+func idempotencyTestPolicy(revision, ttlMicros uint64) *commonpb.ClusterPolicy {
+	return &commonpb.ClusterPolicy{
+		Revision:                    revision,
+		IdempotencyTtlMicros:        ttlMicros,
+		QueryCheckpointLimit:        10,
+		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
+		MetadataMaxKeyBytes:         domain.DefaultMetadataMaxKeyBytes,
+		MetadataMaxValueBytes:       domain.DefaultMetadataMaxValueBytes,
+		MetadataMaxEntityBytes:      domain.DefaultMetadataMaxEntityBytes,
+		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
+	}
+}
+
 // TestApplyProposal_PerProposalIdempotency exercises the per-proposal
 // idempotency the FSM applies in applyProposal: a duplicate proposal (same key,
 // same ordered orders) replays the first outcome instead of re-executing, a
@@ -165,7 +181,7 @@ func TestApplyProposal_FreezesExpiryFromClusterPolicy(t *testing.T) {
 		return v
 	}
 
-	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 1, IdempotencyTtlMicros: ttlMicros}
+	machine.State.ClusterPolicy = idempotencyTestPolicy(1, ttlMicros)
 
 	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))))
 	require.NoError(t, err)
@@ -215,7 +231,7 @@ func TestApplyProposal_FreezesExpiryFromClusterPolicy(t *testing.T) {
 
 	// Raising the TTL does not retroactively change an already-frozen outcome: a
 	// duplicate replays the stored value, keeping its original expiry.
-	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 2, IdempotencyTtlMicros: 5 * ttlMicros}
+	machine.State.ClusterPolicy = idempotencyTestPolicy(2, 5*ttlMicros)
 
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, withKey(4, "k1", fundAlice())))
 	require.NoError(t, err)
@@ -245,7 +261,7 @@ func TestApplyProposal_ZeroTTLNeverExpires(t *testing.T) {
 
 	const ledgerName = "idem-ttl0"
 
-	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 1, IdempotencyTtlMicros: 0}
+	machine.State.ClusterPolicy = idempotencyTestPolicy(1, 0)
 
 	r, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledgerName))))
 	require.NoError(t, err)
@@ -589,7 +605,7 @@ func TestApplyProposal_StalePreloadCannotResurrectSupersededOutcome(t *testing.T
 		ttlMicros  = uint64(5) // tiny TTL so V0 expires between A0 and A
 	)
 
-	machine.State.ClusterPolicy = &commonpb.ClusterPolicy{Revision: 1, IdempotencyTtlMicros: ttlMicros}
+	machine.State.ClusterPolicy = idempotencyTestPolicy(1, ttlMicros)
 
 	keyed := func(date uint64, stale *commonpb.IdempotencyKeyValue, orders ...*raftcmdpb.Order) *raftcmdpb.Proposal {
 		p := makeProposal(1, orders...)
