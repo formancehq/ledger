@@ -737,7 +737,14 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 
 	defer func() { _ = it.Close() }()
 
-	return analysis.AnalyzeFromIterator(it.Next, variableThreshold, onProgress)
+	next := func() (analysis.CompactAccount, error) {
+		if err := ctx.Err(); err != nil {
+			return analysis.CompactAccount{}, err
+		}
+		return it.Next()
+	}
+
+	return analysis.AnalyzeFromIterator(next, variableThreshold, onProgress)
 }
 
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
@@ -776,6 +783,9 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 			if done {
 				return analysis.CompactTransaction{}, io.EOF
 			}
+			if err := ctx.Err(); err != nil {
+				return analysis.CompactTransaction{}, err
+			}
 			// Lazy cursor creation on first call
 			if cursor == nil {
 				var err error
@@ -787,6 +797,9 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 			}
 
 			for {
+				if err := ctx.Err(); err != nil {
+					return analysis.CompactTransaction{}, err
+				}
 				log, err := cursor.Next()
 				if errors.Is(err, io.EOF) {
 					done = true

@@ -87,17 +87,16 @@ ignored by Git.
 The portable artifact still requires install and execution validation in every
 host engine supported by the fctl release process.
 
-Two host/product integration gates remain intentionally fail-closed:
+One host/product integration gate remains intentionally fail-closed:
 
 - fctl does not yet connect an accepted Ledger v3 `SignedApplyBatch`
   sign-and-send executor to `Composer`. Until that boundary is implemented and
   the SDK is repinned, every command declaring `sign.ledger.apply-batch` returns
   `signing_failed` before product access; the plugin never falls back to an
   unsigned Apply.
-- Analyze uses exactly one host request and the generated-client's bounded
-  4 MiB/message, 16 MiB aggregate, 1,024-message response envelope. Ledger emits
-  one Analyze progress event per 500 scanned items (twice per transaction), so
-  an analysis can currently carry at most 1,023 progress events plus its final
-  result: 511,999 accounts or 255,999 transactions. Supporting larger ledgers
-  requires a product-side progress coalescing contract or an additive host ABI;
-  the plugin cannot safely invent an input cardinality bound.
+
+Analyze uses exactly one host request and the generated-client's bounded
+4 MiB/message, 16 MiB aggregate, 1,024-message response envelope. Ledger's gRPC
+transport deterministically samples the domain's per-500-item callbacks at
+power-of-two callback ordinals. It therefore emits at most 64 progress messages
+plus the final result for any scan cardinality, without an ABI change.
