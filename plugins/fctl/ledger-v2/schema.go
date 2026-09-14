@@ -122,6 +122,57 @@ func collectionOutputSchema() []byte {
 	return []byte(`{"$schema":"` + schemaDialect + `","type":"array","items":{"type":"object"}}`)
 }
 
+// renderedOutputSchema refines the otherwise open JSON result schema with the
+// scalar fields a table is allowed to project. Other result members remain
+// admitted: the adapter still emits complete generated-client DTOs, including
+// composite metadata, postings, volumes and schema charts.
+func renderedOutputSchema(commandID string) []byte {
+	type resultShape struct {
+		collection bool
+		properties string
+		required   string
+	}
+	ledger := resultShape{collection: true, properties: `"name":{"type":"string"},"bucket":{"type":"string"},"addedAt":{"type":"string","format":"date-time"}`, required: `"name","bucket","addedAt"`}
+	stats := resultShape{properties: `"accounts":{"type":"integer"},"transactions":{"type":["integer","null"]}`, required: `"accounts","transactions"`}
+	account := resultShape{properties: `"address":{"type":"string"},"insertionDate":{"type":"string","format":"date-time"},"updatedAt":{"type":"string","format":"date-time"}`, required: `"address"`}
+	transaction := resultShape{properties: `"id":{"type":["integer","null"]},"timestamp":{"type":"string","format":"date-time"},"reference":{"type":"string"},"reverted":{"type":"boolean"}`, required: `"id","timestamp","reverted"`}
+	volumes := resultShape{collection: true, properties: `"account":{"type":"string"},"asset":{"type":"string"},"input":{"type":["integer","null"]},"output":{"type":["integer","null"]},"balance":{"type":["integer","null"]}`, required: `"account","asset","input","output","balance"`}
+	schema := resultShape{properties: `"version":{"type":"string"},"createdAt":{"type":"string","format":"date-time"}`, required: `"version","createdAt"`}
+
+	var shape resultShape
+	switch commandID {
+	case "ledger.v2.list":
+		shape = ledger
+	case "ledger.v2.stats":
+		shape = stats
+	case "ledger.v2.accounts.list":
+		shape = account
+		shape.collection = true
+	case "ledger.v2.accounts.show":
+		shape = account
+	case "ledger.v2.transactions.list":
+		shape = transaction
+		shape.collection = true
+	case "ledger.v2.transactions.show", "ledger.v2.transactions.num", "ledger.v2.transactions.revert", "ledger.v2.send":
+		shape = transaction
+	case "ledger.v2.volumes.list":
+		shape = volumes
+	case "ledger.v2.schemas.list":
+		shape = schema
+		shape.collection = true
+	case "ledger.v2.schemas.get":
+		shape = schema
+	default:
+		return nil
+	}
+
+	element := `{"type":"object","properties":{` + shape.properties + `},"required":[` + shape.required + `]}`
+	if shape.collection {
+		return []byte(`{"$schema":"` + schemaDialect + `","type":"array","items":` + element + `}`)
+	}
+	return []byte(`{"$schema":"` + schemaDialect + `","type":"object","properties":{` + shape.properties + `},"required":[` + shape.required + `]}`)
+}
+
 // binaryOutputSchema describes an opaque payload in the padded base64 view the
 // host uses for non-JSON results.
 func binaryOutputSchema(mediaType string) []byte {

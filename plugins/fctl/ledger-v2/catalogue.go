@@ -188,6 +188,9 @@ func commandFromInventory(entry inventoryEntry) sdk.Command {
 		maxRequests = sdk.PortableMaxHostRequests
 	}
 	commandID := "ledger.v2." + strings.Join(path[1:], ".")
+	if renderedSchema := renderedOutputSchema(commandID); renderedSchema != nil {
+		rawSchema = renderedSchema
+	}
 	return sdk.Command{
 		ID:                 commandID,
 		ExecutionKind:      sdk.ExecutionKindService,

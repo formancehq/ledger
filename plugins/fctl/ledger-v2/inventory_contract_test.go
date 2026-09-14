@@ -14,26 +14,35 @@ import (
 // to. The committed inventory is the oracle: a descriptor that disagrees with
 // it is a preparation violation, not a style difference.
 type inventoryCommand struct {
-	Aliases     []string `json:"aliases"`
-	APIMajor    string   `json:"api_major"`
-	Destructive bool     `json:"destructive"`
-	HTTPMethod  string   `json:"http_method"`
-	HTTPPath    string   `json:"http_path"`
-	Idempotency bool     `json:"idempotency_key"`
-	Included    bool     `json:"included"`
-	Mutation    bool     `json:"mutation"`
-	OperationID string   `json:"operation_id"`
-	Paginated   bool     `json:"paginated"`
-	Path        string   `json:"path"`
-	Scopes      []string `json:"scopes"`
-	SDKMethod   string   `json:"sdk_method"`
-	Use         string   `json:"use"`
+	Aliases          []string `json:"aliases"`
+	APIMajor         string   `json:"api_major"`
+	BaselineAPIMajor string   `json:"baseline_api_major"`
+	Destructive      bool     `json:"destructive"`
+	ExclusionReason  *string  `json:"exclusion_reason"`
+	HTTPMethod       string   `json:"http_method"`
+	HTTPPath         string   `json:"http_path"`
+	Idempotency      bool     `json:"idempotency_key"`
+	Included         bool     `json:"included"`
+	Mutation         bool     `json:"mutation"`
+	OperationID      string   `json:"operation_id"`
+	Paginated        bool     `json:"paginated"`
+	Path             string   `json:"path"`
+	Scopes           []string `json:"scopes"`
+	SDKMethod        string   `json:"sdk_method"`
+	Use              string   `json:"use"`
 }
 
 type inventoryDocument struct {
-	Commands     []inventoryCommand `json:"commands"`
-	Plugin       string             `json:"plugin"`
-	ProductMajor uint32             `json:"product_major"`
+	Commands []inventoryCommand `json:"commands"`
+	Counts   struct {
+		BaselineExecutable int `json:"baseline_executable"`
+		BaselineV1Only     int `json:"baseline_v1_only"`
+		ConvertedV1ToV2    int `json:"converted_v1_to_v2"`
+		ExcludedHostOwned  int `json:"excluded_host_owned"`
+		Included           int `json:"included"`
+	} `json:"counts"`
+	Plugin       string `json:"plugin"`
+	ProductMajor uint32 `json:"product_major"`
 }
 
 func loadInventory(t *testing.T) inventoryDocument {
@@ -89,6 +98,67 @@ func TestCommandsCoverExactlyTheIncludedInventory(t *testing.T) {
 		if _, ok := want[path]; !ok {
 			t.Errorf("Commands() publishes %q, which the inventory does not include", path)
 		}
+	}
+}
+
+func TestInventoryLocksTheBaselineConversionsAndHostOwnedExclusion(t *testing.T) {
+	t.Parallel()
+
+	document := loadInventory(t)
+	if got := document.Counts; got.BaselineExecutable != 23 || got.BaselineV1Only != 9 || got.Included != 22 || got.ConvertedV1ToV2 != 8 || got.ExcludedHostOwned != 1 {
+		t.Fatalf("inventory counts = %#v, want baseline=23 baseline-v1=9 included=22 converted=8 excluded=1", got)
+	}
+	if len(document.Commands) != document.Counts.BaselineExecutable {
+		t.Fatalf("inventory commands = %d, counts.baseline_executable = %d", len(document.Commands), document.Counts.BaselineExecutable)
+	}
+
+	var converted []string
+	var excluded []string
+	baselineV1 := 0
+	for _, command := range document.Commands {
+		if command.APIMajor != "V2" {
+			t.Errorf("%s: api_major = %q, want V2", command.Path, command.APIMajor)
+		}
+		if command.BaselineAPIMajor != "V1" && command.BaselineAPIMajor != "V2" {
+			t.Errorf("%s: baseline_api_major = %q, want V1 or V2", command.Path, command.BaselineAPIMajor)
+		}
+		if command.BaselineAPIMajor == "V1" {
+			baselineV1++
+		}
+		if command.Included && command.BaselineAPIMajor == "V1" && command.APIMajor == "V2" {
+			converted = append(converted, command.Path)
+		}
+		if !command.Included {
+			reason := ""
+			if command.ExclusionReason != nil {
+				reason = *command.ExclusionReason
+			}
+			excluded = append(excluded, command.Path+"="+reason)
+		}
+	}
+	slices.Sort(converted)
+	slices.Sort(excluded)
+	wantConverted := []string{
+		"ledger accounts set-metadata",
+		"ledger accounts show",
+		"ledger send",
+		"ledger stats",
+		"ledger transactions list",
+		"ledger transactions num",
+		"ledger transactions set-metadata",
+		"ledger transactions show",
+	}
+	if !slices.Equal(converted, wantConverted) {
+		t.Errorf("converted V1-to-V2 commands = %v, want %v", converted, wantConverted)
+	}
+	if want := []string{"ledger server-infos=host_owned_info_probe"}; !slices.Equal(excluded, want) {
+		t.Errorf("excluded commands = %v, want %v", excluded, want)
+	}
+	if len(converted) != document.Counts.ConvertedV1ToV2 || len(excluded) != document.Counts.ExcludedHostOwned {
+		t.Errorf("classified converted/excluded = %d/%d, recorded = %d/%d", len(converted), len(excluded), document.Counts.ConvertedV1ToV2, document.Counts.ExcludedHostOwned)
+	}
+	if baselineV1 != document.Counts.BaselineV1Only {
+		t.Errorf("classified baseline V1 commands = %d, recorded = %d", baselineV1, document.Counts.BaselineV1Only)
 	}
 }
 

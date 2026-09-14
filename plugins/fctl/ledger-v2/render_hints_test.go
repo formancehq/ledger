@@ -109,6 +109,12 @@ func TestManifestRecordsTheRenderHintCount(t *testing.T) {
 		t.Fatalf("read manifest.json: %v", err)
 	}
 	var manifest struct {
+		Baseline struct {
+			ExecutableCommands int `json:"executable_commands"`
+			V1OnlyAtBaseline   int `json:"v1_only_at_baseline"`
+			ConvertedV1ToV2    int `json:"converted_v1_to_v2"`
+			ExcludedHostOwned  int `json:"excluded_host_owned"`
+		} `json:"baseline"`
 		CoverageDenominator  int      `json:"coverage_denominator"`
 		RenderHintedCommands int      `json:"render_hinted_commands"`
 		Invariants           []string `json:"invariants"`
@@ -128,6 +134,14 @@ func TestManifestRecordsTheRenderHintCount(t *testing.T) {
 	}
 	if manifest.CoverageDenominator != len(Commands()) {
 		t.Errorf("manifest denominator = %d, catalogue = %d", manifest.CoverageDenominator, len(Commands()))
+	}
+	inventory := loadInventory(t)
+	if manifest.Baseline.ExecutableCommands != inventory.Counts.BaselineExecutable ||
+		manifest.Baseline.V1OnlyAtBaseline != inventory.Counts.BaselineV1Only ||
+		manifest.Baseline.ConvertedV1ToV2 != inventory.Counts.ConvertedV1ToV2 ||
+		manifest.Baseline.ExcludedHostOwned != inventory.Counts.ExcludedHostOwned ||
+		manifest.CoverageDenominator != inventory.Counts.Included {
+		t.Errorf("manifest baseline/denominator = %#v/%d, inventory counts = %#v", manifest.Baseline, manifest.CoverageDenominator, inventory.Counts)
 	}
 	if !slices.Contains(manifest.Invariants, "publishes a table render hint only where the emitted result proves the field exists") {
 		t.Error("manifest does not record the render-hint invariant")
@@ -202,7 +216,53 @@ func TestRenderHintFieldsNameNoDynamicOrCompositeProjection(t *testing.T) {
 	}
 }
 
-func TestRenderHintsCohereWithThePublishedOutputSchemaRoot(t *testing.T) {
+func resolveRenderSchemaField(schema map[string]any, field string) (map[string]any, bool) {
+	current := schema
+	if root, _ := current["type"].(string); root == "array" {
+		items, ok := current["items"].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = items
+	}
+	for _, segment := range strings.Split(field, ".") {
+		properties, ok := current["properties"].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		next, ok := properties[segment].(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+func isRenderScalarSchema(schema map[string]any) bool {
+	isScalarType := func(value string) bool {
+		return value == "string" || value == "integer" || value == "number" || value == "boolean" || value == "null"
+	}
+	switch value := schema["type"].(type) {
+	case string:
+		return isScalarType(value)
+	case []any:
+		if len(value) == 0 {
+			return false
+		}
+		for _, member := range value {
+			name, ok := member.(string)
+			if !ok || !isScalarType(name) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func TestRenderHintsCohereWithThePublishedOutputSchema(t *testing.T) {
 	t.Parallel()
 
 	for _, command := range Commands() {
@@ -225,6 +285,16 @@ func TestRenderHintsCohereWithThePublishedOutputSchemaRoot(t *testing.T) {
 		}
 		if command.Pagination.Supported && root != "array" {
 			t.Errorf("%s: paginated command has a %q-rooted output schema", command.ID, root)
+		}
+		for _, column := range command.Render.Table.Columns {
+			leaf, found := resolveRenderSchemaField(schema, column.Field)
+			if !found {
+				t.Errorf("%s: column %q (%q) is absent from the public output schema", command.ID, column.Header, column.Field)
+				continue
+			}
+			if !isRenderScalarSchema(leaf) {
+				t.Errorf("%s: column %q (%q) resolves to non-scalar schema %#v", command.ID, column.Header, column.Field, leaf)
+			}
 		}
 	}
 }
@@ -255,6 +325,44 @@ func isRenderScalar(value any) bool {
 	default:
 		return true
 	}
+}
+
+func renderSchemaAllowsScalar(schema map[string]any, value any) bool {
+	allows := func(name string) bool {
+		switch name {
+		case "null":
+			return value == nil
+		case "string":
+			_, ok := value.(string)
+			return ok
+		case "boolean":
+			_, ok := value.(bool)
+			return ok
+		case "number":
+			_, ok := value.(json.Number)
+			return ok
+		case "integer":
+			number, ok := value.(json.Number)
+			if !ok {
+				return false
+			}
+			_, ok = new(big.Int).SetString(number.String(), 10)
+			return ok
+		default:
+			return false
+		}
+	}
+	switch declared := schema["type"].(type) {
+	case string:
+		return allows(declared)
+	case []any:
+		for _, member := range declared {
+			if name, ok := member.(string); ok && allows(name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestResolveRenderFieldTraversesDottedPathsToScalarLeaves(t *testing.T) {
@@ -414,6 +522,10 @@ func TestRenderHintFieldsResolveToScalarLeavesInEmittedResults(t *testing.T) {
 			if command.Render.Table == nil {
 				t.Fatalf("%s declares no table render hint", fixture.commandID)
 			}
+			var publicSchema map[string]any
+			if err := json.Unmarshal(command.PublicOutputSchema, &publicSchema); err != nil {
+				t.Fatalf("decode public output schema: %v", err)
+			}
 
 			status := fixture.status
 			if status == 0 {
@@ -461,6 +573,14 @@ func TestRenderHintFieldsResolveToScalarLeavesInEmittedResults(t *testing.T) {
 				}
 				if !isRenderScalar(value) {
 					t.Errorf("column %q (%q) resolves to the composite %#v", column.Header, column.Field, value)
+				}
+				leafSchema, found := resolveRenderSchemaField(publicSchema, column.Field)
+				if !found {
+					t.Errorf("column %q (%q) is absent from the public output schema", column.Header, column.Field)
+					continue
+				}
+				if !renderSchemaAllowsScalar(leafSchema, value) {
+					t.Errorf("column %q (%q) emits %#v, rejected by schema %#v", column.Header, column.Field, value, leafSchema)
 				}
 			}
 		})

@@ -60,6 +60,10 @@ a hint cannot widen what the plugin discloses. Dynamic key/value blobs
 (`metadata`, `features`), volume aggregations (`volumes`, `postCommitVolumes`
 and their siblings), posting arrays and schema charts are excluded: they are
 composites a table would have to serialise back into one cell.
+For every hinted result, the raw and public output schemas name these scalar
+properties explicitly while continuing to admit the complete generated-client
+DTO. Contract tests resolve each field through both that schema and an adapter
+result, and require the declared scalar type to accept the emitted value.
 
 `TableColumn.Field` is a dot-separated path, so a nested scalar leaf such as
 `status.phase` is expressible. **No Ledger v2 column uses one.** Every nested
