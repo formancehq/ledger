@@ -921,7 +921,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	)
 
 	if query.AlignmentOwed(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS) {
-		snap, alignedMainSeq, releaseLease, alignErr := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
+		snap, alignedMainSeq, releaseLease, alignErr := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, ledgerInfo.GetName(), releaseHold)
 		if alignErr != nil {
 			return nil, alignErr
 		}
@@ -1046,7 +1046,7 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	// native sequence while resolving version and membership history from the
 	// certified index snapshot. The projection may be ahead of the main view;
 	// the sequence returned here is the trimming horizon below.
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handleForIndex, releaseHold)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handleForIndex, ledgerInfo.GetName(), releaseHold)
 	if err != nil {
 		return nil, err
 	}
@@ -1658,7 +1658,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		}
 	}
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, releaseHold)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, ledgerInfo.GetName(), releaseHold)
 	if err != nil {
 		releaseHold()
 		_ = handle.Close()

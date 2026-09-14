@@ -57,8 +57,10 @@ Index creation and retyping add a second state machine. Queries serve
 `CurrentVersion` until the pending version is complete and its switch commits.
 Certification alone does not promote a rewrite. Drops, field removal, and
 ledger deletion must remove versioned keyspaces without invalidating readers
-holding leases. Findings must locate the defect in row folding, certification,
-activation, or reclamation.
+holding leases; a reader whose pin predates a folded ledger deletion is
+rejected (`ErrLedgerNotFound`), never served the wiped keyspace as empty.
+Findings must locate the defect in row folding, certification, activation,
+or reclamation.
 
 An aligned read-index snapshot may legally be ahead of the main handle only
 when target-specific gates project it back to the main pin:
@@ -69,7 +71,9 @@ when target-specific gates project it back to the main pin:
 - folded account membership applies an account-wide ephemeral purge to current
   has-asset membership in the same batch as aligned progress, while metadata
   history and account-to-transaction mappings remain queryable at older pins;
-- schema and `IndexVersionState` come from their owning pinned views.
+- schema and `IndexVersionState` come from their owning pinned views;
+- ledger liveness is re-read from a main snapshot taken after the projection
+  snapshot (`requireLedgerLive`), so a folded deletion rejects the read.
 
 Account-wide ephemeral purge is an explicit exception to projection-ahead
 reads. If the main handle is pinned before a purge while the aligned index

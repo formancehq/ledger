@@ -3,11 +3,13 @@ package query
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -163,7 +165,10 @@ func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarg
 //
 // The lease is released before waiting, so a long wait pins no history and
 // creates no reclamation pressure.
-func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader dal.PebbleReader, releaseHold func()) (*pebble.Snapshot, uint64, func(), error) {
+//
+// The accepted snapshot is gated on the ledger still being live, re-read
+// through the handle after the projection snapshot is open (requireLedgerLive).
+func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *dal.ReadHandle, ledgerName string, releaseHold func()) (*pebble.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("reading main-store sequence: %w", err)
@@ -219,6 +224,13 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 		}
 
 		if lastIndexed >= mainAppliedIndex {
+			if err := requireLedgerLive(ctx, mainReader, ledgerName); err != nil {
+				_ = snap.Close()
+				releaseLease()
+
+				return nil, 0, nil, err
+			}
+
 			releaseHold()
 			// assert.Enabled is a constant, so an unarmed build discards this
 			// block and its details map rather than evaluating them on a path
@@ -256,6 +268,38 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 			return nil, 0, nil, fmt.Errorf("waiting for read projection alignment at Raft index %d: %w", mainAppliedIndex, waitErr)
 		}
 	}
+}
+
+// requireLedgerLive rejects an aligned read whose ledger was deleted after
+// its pin (EN-1991). A folded deletion wipes every ledger-scoped projection
+// row while the pinned main snapshot still holds the ledger live, and an
+// empty universe is indistinguishable from a wiped one. The projection
+// snapshot is already open when this runs, and the main snapshot taken here
+// is strictly later. The builder folds a deletion only after the main store
+// applied it, so a projection snapshot holding the wipe is always followed
+// by a main snapshot showing the ledger deleted; a ledger live here proves
+// the projection snapshot still holds every row of the pinned ledger. The
+// FSM rejects creating a ledger under a soft-deleted name, so a live ledger
+// is the pinned one. A deletion applied after the projection snapshot is
+// rejected too, although that snapshot could have been served: NotFound is
+// the answer every later read gives, so the read stays linearizable.
+//
+// The snapshot comes from the handle, which already holds the store's
+// lifecycle lock: see dal.ReadHandle.Latest.
+func requireLedgerLive(ctx context.Context, mainReader *dal.ReadHandle, ledgerName string) error {
+	live := mainReader.Latest()
+	// Snapshot.Close only unlinks the snapshot; it cannot fail.
+	defer func() { _ = live.Close() }()
+
+	if _, err := GetLedgerByName(ctx, live, ledgerName); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return &domain.ErrLedgerNotFound{Name: ledgerName}
+		}
+
+		return fmt.Errorf("re-reading ledger %q after alignment: %w", ledgerName, err)
+	}
+
+	return nil
 }
 
 // MainHorizonKeep returns the FilterIterator predicate that trims an
