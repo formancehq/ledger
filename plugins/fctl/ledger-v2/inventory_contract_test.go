@@ -358,3 +358,16 @@ func TestEveryCommandRequiresTheStackAuthCapability(t *testing.T) {
 		}
 	}
 }
+
+func TestMappingNamesTheHistoricalTransactionTimeFlags(t *testing.T) {
+	t.Parallel()
+
+	raw, err := os.ReadFile("mapping.md")
+	if err != nil {
+		t.Fatalf("read mapping.md: %v", err)
+	}
+	text := string(raw)
+	if !strings.Contains(text, "`account`, `source`, `destination`, `reference`, `start`, `end`, `metadata`") {
+		t.Fatal("mapping does not name the historical transaction filters as start and end")
+	}
+}

@@ -516,7 +516,7 @@ func resumeGeneratedImport(ctx context.Context, command sdk.Command, ledger stri
 	}
 	response, err := generated.client.Ledger.V2.ListLogs(ctx, operations.V2ListLogsRequest{Ledger: ledger, PageSize: ledgerclient.Int64(1)})
 	if err != nil {
-		return nil, generatedError(command, err)
+		return nil, generatedOperationError(command.Operations[1].ID, err)
 	}
 	if response == nil || response.V2LogsCursorResponse == nil {
 		return nil, generatedMissing(command)
@@ -800,7 +800,10 @@ func emitGeneratedEmpty(host sdk.Host, command sdk.Command, err error) error {
 	return emitBytes(host, command.ID, sdk.ResultObject, mediaTypeJSON, []byte(`{}`), nil)
 }
 func generatedError(command sdk.Command, err error) error {
-	return fmt.Errorf("ledger-v2: %s: %w", command.Operations[0].ID, err)
+	return generatedOperationError(command.Operations[0].ID, err)
+}
+func generatedOperationError(operationID string, err error) error {
+	return fmt.Errorf("ledger-v2: %s: %w", operationID, err)
 }
 func generatedMissing(command sdk.Command) error {
 	return fmt.Errorf("ledger-v2: %s returned no result", command.Operations[0].ID)

@@ -603,6 +603,31 @@ func TestExecuteV2ResumesImportAfterTheLatestProductLog(t *testing.T) {
 	}
 }
 
+func TestExecuteV2NamesTheResumeProbeOnProductFailure(t *testing.T) {
+	t.Parallel()
+
+	host := &artifactHost{
+		MemoryHost: sdk.NewMemoryHost(func(_ context.Context, request sdk.Request) (sdk.Responses, error) {
+			if request.Operation != "v2ListLogs" {
+				t.Fatalf("operation = %q, want v2ListLogs", request.Operation)
+			}
+			return nil, errors.New("offline")
+		}),
+		chunks: []sdk.InputArtifactChunk{{Bytes: []byte("{\"id\":1}\n"), Final: true}},
+	}
+	err := (Plugin{}).Execute(context.Background(), execution(
+		"ledger.v2.import",
+		[]string{"primary", "artifact"},
+		sdk.FlagOccurrence{Name: "resume-from-last-log", Value: "true"},
+	), host)
+	if err == nil {
+		t.Fatal("resume probe failure was hidden")
+	}
+	if got := err.Error(); !strings.Contains(got, "v2ListLogs") || strings.Contains(got, "v2ImportLogs") {
+		t.Fatalf("resume probe error = %q, want only the executed v2ListLogs operation", got)
+	}
+}
+
 func TestExecuteV2ChunksImportAtOneHundredLogsAcrossArtifactChunks(t *testing.T) {
 	t.Parallel()
 

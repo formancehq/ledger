@@ -107,7 +107,7 @@ file at `693c58e2`; each V2 operation is the one `openapi/v2.yaml` declares at
 
 | fctl command | Baseline call | V2 operation | Request-shaping obligation |
 | --- | --- | --- | --- |
-| `ledger transactions list` | `V1.ListTransactions` | `v2ListTransactions` | The V1 flat filters (`account`, `source`, `destination`, `reference`, `start-time`, `end-time`, `metadata`) have **no** v2 query-parameter equivalent. `v2ListTransactions` takes a **required** JSON filter body, so they must be translated into its `$and`/`$match` form. |
+| `ledger transactions list` | `V1.ListTransactions` | `v2ListTransactions` | The V1 flat filters (`account`, `source`, `destination`, `reference`, `start`, `end`, `metadata`) have **no** v2 query-parameter equivalent. `v2ListTransactions` takes a **required** JSON filter body, so they must be translated into its `$and`/`$match` form. |
 | `ledger transactions show` | `V1.GetTransaction` | `v2GetTransaction` | `txid` becomes the `id` path parameter. The historical renderer prints pre- and post-commit volumes, which `V2Transaction` returns only when `expand` names them. |
 | `ledger accounts show` | `V1.GetAccountLedger` | `v2GetAccount` | `V1.GetAccountLedger` returned volumes unconditionally. `V2Account.volumes` is optional, so the conversion must send `expand=volumes` to keep the historical volumes table. |
 | `ledger send` | `V1.CreateTransaction` | `v2CreateTransaction` | `PostTransaction.postings` maps to `V2PostTransaction.postings`; `reference` and `metadata` carry over. The historical optional leading source is exposed as `--source` because portable command grammar cannot place an optional positional before required ones. |
