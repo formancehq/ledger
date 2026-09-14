@@ -18,10 +18,10 @@ func isVolumePreloadZero(v *raftcmdpb.VolumePair) bool {
 	return v.GetInput().IsZero() && v.GetOutput().IsZero()
 }
 
-// isNewVolumeUpdate reports whether a volume update represents a
-// first-time write to that (account, asset) key. "New" is defined by the
-// preloaded prior value: absent or the zero placeholder → new; a defined
-// non-zero prior value → pre-existing.
+// isNewVolumeUpdate reports whether a volume update represents an absent or
+// deliberately purged cache cell. Persistent normal volumes need a stricter
+// check because a legitimate persisted row may itself contain {0, 0}; those
+// are classified while partitioning and passed to makeNewKeptKeySet directly.
 func isNewVolumeUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) bool {
 	if !u.Old.IsDefined() {
 		return true
@@ -43,22 +43,20 @@ type volumeSetKey struct {
 	Color   string
 }
 
-// makeNewKeptKeySet builds the set of (ledger, account, asset) tuples that
-// were newly created AND survived past commit — i.e. persistent-new volumes
-// that are NOT ephemeral. Consumed by buildNewKeptByLog.
-func makeNewKeptKeySet(kept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
+// makeNewKeptKeySet builds the set of already-classified persistent-new
+// (ledger, account, asset) tuples that survived past commit. Classification is
+// performed by partitionVolumes because it alone knows the account persistence
+// policy and can distinguish a persisted normal {0, 0} row from an
+// absent/purged zero cache cell.
+func makeNewKeptKeySet(newKept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
 	set := make(map[volumeSetKey]struct{})
 
-	for i := range kept {
-		if !isNewVolumeUpdate(kept[i]) {
-			continue
-		}
-
+	for i := range newKept {
 		set[volumeSetKey{
-			Ledger:  kept[i].Key.LedgerName,
-			Account: kept[i].Key.Account,
-			Asset:   kept[i].Key.Asset,
-			Color:   kept[i].Key.Color,
+			Ledger:  newKept[i].Key.LedgerName,
+			Account: newKept[i].Key.Account,
+			Asset:   newKept[i].Key.Asset,
+			Color:   newKept[i].Key.Color,
 		}] = struct{}{}
 	}
 
