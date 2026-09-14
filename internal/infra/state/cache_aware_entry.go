@@ -18,7 +18,7 @@ import (
 // Methods:
 //   - Get / GetKey: read from the in-memory cache (delegates to KeyStore)
 //   - PutWithCache: atomically writes to KeyStore + 0xF1 (Attribute) + 0xFF (cache zone)
-//   - PutCacheOnly: writes to KeyStore + 0xFF only (no 0xF1), for ephemeral purge pattern
+//   - TombstoneCacheOnly: records absence in KeyStore + 0xFF only (no 0xF1)
 //   - KeyStore: returns the inner KeyStore for DerivedKeyStore overlay construction
 //   - Attr / CacheType: expose internals for the WriteSet.Merge() pipeline
 type CacheAwareEntry[K attributes.Key, V proto.Message] struct {
@@ -76,24 +76,22 @@ func (c *CacheAwareEntry[K, V]) PutWithCache(
 	return old, idWithTag, nil
 }
 
-// PutCacheOnly writes a value to the in-memory KeyStore and the 0xFF cache zone
-// WITHOUT writing to the 0xF1 attribute zone. Used for the ephemeral purge
-// pattern where the 0xF1 entry is deleted separately but the cache must stay
-// populated for co-batched CacheHit proposals.
-func (c *CacheAwareEntry[K, V]) PutCacheOnly(
+// TombstoneCacheOnly records an absent value in the in-memory KeyStore and the
+// 0xFF cache zone without touching the 0xF1 attribute zone. The tombstone keeps
+// the cache populated for co-batched CacheHit proposals while preserving the
+// distinction between a persisted zero-value row and an absent/purged cell.
+func (c *CacheAwareEntry[K, V]) TombstoneCacheOnly(
 	batch *dal.WriteSession,
 	genByte byte,
 	canonical []byte,
-	value V,
-	valueBytes []byte,
 ) error {
-	_, idWithTag, err := c.store.Put(canonical, value)
+	id, tag, err := c.store.Delete(canonical)
 	if err != nil {
-		return fmt.Errorf("keystore put: %w", err)
+		return fmt.Errorf("keystore delete: %w", err)
 	}
 
-	if err := writeCacheRaw(batch, genByte, c.cacheType, idWithTag.ID, idWithTag.Tag, false, valueBytes); err != nil {
-		return fmt.Errorf("cache write (0xFF): %w", err)
+	if err := writeCacheTombstone(batch, genByte, c.cacheType, id, tag); err != nil {
+		return fmt.Errorf("cache tombstone (0xFF): %w", err)
 	}
 
 	return nil
@@ -104,7 +102,7 @@ func (c *CacheAwareEntry[K, V]) PutCacheOnly(
 //   - Test setup that populates the store without needing 0xFF consistency
 //
 // Production code outside the DerivedKeyStore→Merge pipeline must NOT call
-// KeyStore().Put() — use PutWithCache or PutCacheOnly instead.
+// KeyStore().Put() — use PutWithCache or TombstoneCacheOnly instead.
 func (c *CacheAwareEntry[K, V]) KeyStore() *attributes.KeyStore[K, V] {
 	return c.store
 }
