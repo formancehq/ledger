@@ -59,6 +59,7 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 	deleted := len(c.deletedCheckpoints) > 0 && percentChance(25)
 	if deleted {
 		id = c.deletedCheckpoints[internal.Rand().Uint64()%uint64(len(c.deletedCheckpoints))]
+		frozen = c.deletedCheckpointSnapshots[id].state
 	} else if len(c.checkpoints) > 0 {
 		ids := make([]uint64, 0, len(c.checkpoints))
 		for candidate := range c.checkpoints {
@@ -78,18 +79,6 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 	}
 	if choice == 1 {
 		runCheckpointScheduleRead(readCtx, bucket, cluster, c)
-		return
-	}
-	if deleted {
-		_, err := bucket.GetAccount(readCtx, &servicepb.GetAccountRequest{Ledger: c.ledgerNames[0], Address: "world", CheckpointId: id})
-		if err != nil && (internal.IsTransient(err) || isShutdownError(err)) {
-			return
-		}
-		if checkpointNotFound(err) {
-			noteCheckpointCoverage(checkpointDeletedReadCoverage)
-			return
-		}
-		assert.Unreachable("singleton_driver_model: deleted checkpoint read did not return NotFound", internal.Details{"checkpoint": id, "error": fmt.Sprint(err)})
 		return
 	}
 	var err error
@@ -160,28 +149,20 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 			concrete = err == nil && len(rows) > 0
 		}
 	}
-	if err != nil {
-		if internal.IsTransient(err) || isShutdownError(err) {
-			return
-		}
-		if !checkpointNotFound(err) {
-			matches = false
-		} else {
-			c.mu.Lock()
-			c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
-				if !base.QueryCheckpointExists(id) {
-					matches = true
-					return true
-				}
-				return false
-			})
-			c.mu.Unlock()
-		}
+	if err != nil && (internal.IsTransient(err) || isShutdownError(err)) {
+		return
 	}
+	frozenMatches := matches
+	matches = c.checkpointReadOutcomeMatches(id, maxTicket, frozenMatches, err)
 	if !matches {
 		details["error"] = fmt.Sprint(err)
 		assert.Unreachable("singleton_driver_model: checkpoint read outside frozen model", details)
 		return
+	}
+	// An absent entity can return NotFound even from a live checkpoint.
+	// Count deletion coverage only when the frozen result cannot explain it.
+	if deleted && !frozenMatches && checkpointNotFound(err) {
+		noteCheckpointCoverage(checkpointDeletedReadCoverage)
 	}
 	if concrete {
 		noteCheckpointCoverage(checkpointReadCoverage)
@@ -235,4 +216,27 @@ func runCheckpointScheduleRead(ctx context.Context, bucket servicepb.BucketServi
 		return
 	}
 	noteCheckpointCoverage(checkpointScheduleReadCoverage)
+}
+
+// checkpointReadOutcomeMatches never substitutes current business data for the
+// frozen result, including expected entity absence. Candidate states can
+// explain only a missing checkpoint.
+func (c *Checker) checkpointReadOutcomeMatches(id, maxTicket uint64, frozenMatches bool, err error) bool {
+	if err == nil {
+		return frozenMatches
+	}
+	if !checkpointNotFound(err) {
+		return false
+	}
+	if frozenMatches {
+		return true
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	matches := false
+	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
+		matches = !base.QueryCheckpointExists(id)
+		return matches
+	})
+	return matches
 }

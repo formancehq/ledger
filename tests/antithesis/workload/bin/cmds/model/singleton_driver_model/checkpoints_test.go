@@ -38,7 +38,7 @@ func checkpointMetadataWrite(value string, sequence uint64) (oracleBulk oracle.B
 	return bulkOf(&servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: md}}}), &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_SavedLedgerMetadata{SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{Ledger: "L", Metadata: md}}}}}}
 }
 
-func TestCheckpointDeletionReleasesSnapshotWithoutChangingReaders(t *testing.T) {
+func TestCheckpointDeletionRetainsFrozenSnapshotWithoutChangingReaders(t *testing.T) {
 	t.Parallel()
 	c := NewChecker([]string{"L"}, nil)
 	write, response := checkpointMetadataWrite("frozen", 10)
@@ -50,6 +50,7 @@ func TestCheckpointDeletionReleasesSnapshotWithoutChangingReaders(t *testing.T) 
 	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 12, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
 	require.Empty(t, c.checkpoints)
 	require.Equal(t, []uint64{1}, c.deletedCheckpoints)
+	require.True(t, ledgerMetaMatches(c.deletedCheckpointSnapshots[1].state.Ledger("L"), checkpointMetadata("frozen")))
 	require.True(t, ledgerMetaMatches(frozen.state.Ledger("L"), checkpointMetadata("frozen")), "a read already in flight retains its frozen value")
 }
 
@@ -71,4 +72,20 @@ func TestCheckpointReplayMustPreserveIdentityAndFrontier(t *testing.T) {
 
 func checkpointCreateResponse(sequence, id uint64) *servicepb.ApplyResponse {
 	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: sequence, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: id, MaxSequence: sequence - 1}}}}}}
+}
+
+func TestDeletedCheckpointSnapshotsHaveBoundedRetention(t *testing.T) {
+	t.Parallel()
+	c := NewChecker([]string{"L"}, nil)
+	create := bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
+	for id := uint64(1); id <= defaultModelCheckpointLimit+1; id++ {
+		c.validateBulkSuccess(create, checkpointCreateResponse(id*2, id))
+		del := bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: id}}})
+		c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: id*2 + 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: id}}}}}})
+	}
+	require.Len(t, c.deletedCheckpointSnapshots, defaultModelCheckpointLimit)
+	require.Len(t, c.deletedCheckpoints, defaultModelCheckpointLimit)
+	require.NotContains(t, c.deletedCheckpointSnapshots, uint64(1))
+	require.NotContains(t, c.deletedCheckpoints, uint64(1))
+	require.Contains(t, c.deletedCheckpointSnapshots, uint64(defaultModelCheckpointLimit+1))
 }
