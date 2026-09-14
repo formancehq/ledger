@@ -282,9 +282,13 @@ func rollChartOp() bool {
 	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) < 3
 }
 
-// ~1-in-6: a metadata-schema op (declare/remove a field type) fills this slot.
+// ~1-in-48: a metadata-schema op (declare/remove a field type) fills this slot.
+// Rare enough that a retyped index usually sees several readiness polls
+// (indexPollInterval apart) before its next retype, so its window can close;
+// the exponential gap tail still chains retypes within a poll often enough to
+// exercise window extension.
 func rollSchemaOp() bool {
-	return random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) == 0
+	return internal.Rand().Uint64()%48 == 0
 }
 
 // ~25%: a metadata op fills this bulk slot, when a chart/schema op didn't.
