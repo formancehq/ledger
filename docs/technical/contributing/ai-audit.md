@@ -17,12 +17,12 @@ Update an existing manifest and its companion document in the same PR when the c
 
 - a covered production, test, documentation, or tooling surface;
 - an invariant or expected property owned by the domain;
-- an authoritative input or related document;
+- a contract in an authoritative input or related document on which the domain's evidence or ownership boundary depends;
 - an explicit exclusion or ownership boundary with another domain;
 - an evidence oracle or dynamic check used to prove the contract;
 - an adversarial scenario, failure mode, or state transition the audit must examine.
 
-Keep the JSON scope and the companion's evidence and boundary explanation synchronized. A routed review that finds none of these contract elements changed requires no audit-document edit; do not create artificial churn merely because a path happens to match a manifest glob.
+These triggers map to the manifest's `paths`, `related_docs`, `invariants`, `adversarial_questions`, and `dynamic_checks_to_consider` fields plus the companion's evidence and ownership-boundary contract; keep those representations synchronized. A routed review that finds none of these contract elements changed requires no audit-document edit. In particular, do not create artificial churn merely because a path matches a manifest glob or a guidance document appears in `related_docs`.
 
 If a change exposes a new durable correctness domain that will be reused across future repository states, create its manifest and companion as a reviewable change and merge them before execution. Launch the new domain's first audit in a separate task against that later exact clean `HEAD`; creating or updating the contract never authorizes an audit run.
 
