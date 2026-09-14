@@ -484,6 +484,9 @@ func collectGeneratedPages[T any](control sdk.ContinuationControl, initial *stri
 		maxPages = control.MaxPages
 	}
 	items := make([]T, 0)
+	// encodedBytes is the accumulation's marshalled length without its two
+	// enclosing brackets; see the incremental update below.
+	var encodedBytes uint64
 	cursor := initial
 	seen := map[string]struct{}{}
 	for pageNumber := uint32(0); pageNumber < maxPages; pageNumber++ {
@@ -505,12 +508,25 @@ func collectGeneratedPages[T any](control sdk.ContinuationControl, initial *stri
 		if !all {
 			return pageItems, &sdk.PageInfo{NextCursor: value, HasMore: hasMore}, nil
 		}
-		items = append(items, pageItems...)
-		encoded, err := json.Marshal(items)
-		if err != nil {
-			return nil, nil, err
+		// Track the accumulation's encoded size incrementally. Re-marshalling
+		// the whole accumulation once per page was O(n^2) transient allocation
+		// inside a Wasm guest at the 100-page, 10,000-item ceiling. Marshalling
+		// one page yields "[" + elements joined by "," + "]", so its length
+		// minus the two brackets is exactly this page's contribution, plus one
+		// byte for the comma that joins it to the pages already accumulated.
+		// The total is therefore byte-identical to json.Marshal(items).
+		if len(pageItems) > 0 {
+			encoded, err := json.Marshal(pageItems)
+			if err != nil {
+				return nil, nil, err
+			}
+			if len(items) > 0 {
+				encodedBytes++
+			}
+			encodedBytes += uint64(len(encoded)) - 2
 		}
-		if uint32(len(items)) > control.MaxItems || uint64(len(encoded)) > control.MaxBytes {
+		items = append(items, pageItems...)
+		if uint32(len(items)) > control.MaxItems || encodedBytes+2 > control.MaxBytes {
 			return nil, nil, budgetExhausted("collection exceeds host ceilings")
 		}
 		if !hasMore {
