@@ -43,22 +43,33 @@ func TestListLogsRejectsProjectionThatDeletedPinnedLedger(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = rs.Close() })
 
-	projectionBatch := rs.NewBatch()
-	wb := readstore.NewWriteBatch()
-	wb.Init(projectionBatch)
-	require.NoError(t, wb.WriteLedgerLogIndex(dal.NewKeyBuilder(), ledger, 1, mainSeq))
-	require.NoError(t, readstore.DeleteLedgerIndexes(projectionBatch, ledger))
-	require.NoError(t, wb.WriteLedgerLifecycle(dal.NewKeyBuilder(), ledger, 0, false))
-	require.NoError(t, rs.WriteProgress(projectionBatch, mainSeq+1))
-	require.NoError(t, rs.WriteRaftProgress(projectionBatch, mainSeq+1))
-	require.NoError(t, projectionBatch.Commit())
-	rs.NotifyProgress()
+	for _, lifecycle := range []readstore.LedgerLifecycle{
+		{Active: false},
+		{ID: ledgerID + 1, Active: true},
+	} {
+		name := "deleted"
+		if lifecycle.Active {
+			name = "same-name recreation"
+		}
+		t.Run(name, func(t *testing.T) {
+			projectionBatch := rs.NewBatch()
+			wb := readstore.NewWriteBatch()
+			wb.Init(projectionBatch)
+			require.NoError(t, wb.WriteLedgerLogIndex(dal.NewKeyBuilder(), ledger, 1, mainSeq))
+			require.NoError(t, readstore.DeleteLedgerIndexes(projectionBatch, ledger))
+			require.NoError(t, wb.WriteLedgerLifecycle(dal.NewKeyBuilder(), ledger, lifecycle.ID, lifecycle.Active))
+			require.NoError(t, rs.WriteProgress(projectionBatch, mainSeq+1))
+			require.NoError(t, rs.WriteRaftProgress(projectionBatch, mainSeq+1))
+			require.NoError(t, projectionBatch.Commit())
+			rs.NotifyProgress()
 
-	ctrl := NewDefaultController(nil, store, logger, attrs, rs, nil, noop.NewMeterProvider().Meter("test"))
-	c, err := ctrl.ListLogs(t.Context(), ledger, 0, 100, nil)
-	if c != nil {
-		require.NoError(t, c.Close())
+			ctrl := NewDefaultController(nil, store, logger, attrs, rs, nil, noop.NewMeterProvider().Meter("test"))
+			c, err := ctrl.ListLogs(t.Context(), ledger, 0, 100, nil)
+			if c != nil {
+				require.NoError(t, c.Close())
+			}
+			var notFound *domain.ErrLedgerNotFound
+			require.True(t, errors.As(err, &notFound), "got %v", err)
+		})
 	}
-	var notFound *domain.ErrLedgerNotFound
-	require.True(t, errors.As(err, &notFound), "got %v", err)
 }
