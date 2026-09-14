@@ -1,0 +1,1775 @@
+{
+  "commands": [
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "account-types",
+      "mutation": true,
+      "paginated": false,
+      "path": "account-types add",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/accounttypes/add.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "account-types",
+      "mutation": false,
+      "paginated": true,
+      "path": "account-types get",
+      "rpc_note": "indirect via cmdutil.GetAllLedgersInfo -> cmdutil.DrainAllPages -> ListLedgers (server stream)",
+      "rpcs": [
+        "ListLedgers"
+      ],
+      "source_file": "cmd/ledgerctl/accounttypes/get.go",
+      "streaming_rpcs": [
+        "ListLedgers"
+      ]
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "account-types",
+      "mutation": false,
+      "paginated": true,
+      "path": "account-types list",
+      "rpc_note": "indirect via cmdutil.GetAllLedgersInfo -> cmdutil.DrainAllPages -> ListLedgers (server stream)",
+      "rpcs": [
+        "ListLedgers"
+      ],
+      "source_file": "cmd/ledgerctl/accounttypes/list.go",
+      "streaming_rpcs": [
+        "ListLedgers"
+      ]
+    },
+    {
+      "aliases": [
+        "remove",
+        "rm",
+        "delete"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "account-types",
+      "mutation": true,
+      "paginated": false,
+      "path": "account-types remove",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/accounttypes/remove.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "account-types",
+      "mutation": true,
+      "paginated": false,
+      "path": "account-types set-default-enforcement",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/accounttypes/set_default_enforcement.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "aggregate-volumes",
+        "agg"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "accounts",
+      "mutation": false,
+      "paginated": false,
+      "path": "accounts aggregate-volumes",
+      "rpcs": [
+        "AggregateVolumes"
+      ],
+      "source_file": "cmd/ledgerctl/accounts/aggregate.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "analyze",
+        "analyse"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "accounts",
+      "mutation": false,
+      "paginated": true,
+      "path": "accounts analyze",
+      "rpcs": [
+        "AnalyzeAccounts"
+      ],
+      "source_file": "cmd/ledgerctl/accounts/analyze.go",
+      "streaming_rpcs": [
+        "AnalyzeAccounts"
+      ]
+    },
+    {
+      "aliases": [
+        "delete-metadata",
+        "del-meta",
+        "dm",
+        "rm-meta"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "accounts",
+      "mutation": true,
+      "paginated": false,
+      "path": "accounts delete-metadata",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/accounts/delete_metadata.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "get",
+        "g",
+        "show",
+        "describe"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "accounts",
+      "mutation": false,
+      "paginated": false,
+      "path": "accounts get",
+      "rpcs": [
+        "GetAccount"
+      ],
+      "source_file": "cmd/ledgerctl/accounts/get.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "accounts",
+      "mutation": false,
+      "paginated": true,
+      "path": "accounts list",
+      "rpcs": [
+        "ListAccounts"
+      ],
+      "source_file": "cmd/ledgerctl/accounts/list.go",
+      "streaming_rpcs": [
+        "ListAccounts"
+      ]
+    },
+    {
+      "aliases": [
+        "set-metadata",
+        "set-meta",
+        "sm"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "accounts",
+      "mutation": true,
+      "paginated": false,
+      "path": "accounts set-metadata",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/accounts/set_metadata.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "audit",
+      "mutation": false,
+      "paginated": false,
+      "path": "audit get",
+      "rpcs": [
+        "GetAuditEntry"
+      ],
+      "source_file": "cmd/ledgerctl/audit/get.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "audit",
+      "mutation": false,
+      "paginated": true,
+      "path": "audit list",
+      "rpcs": [
+        "GetAuditEntry",
+        "ListAuditEntries"
+      ],
+      "source_file": "cmd/ledgerctl/audit/list.go",
+      "streaming_rpcs": [
+        "ListAuditEntries"
+      ]
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "auth",
+      "mutation": false,
+      "paginated": false,
+      "path": "auth generate-key",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/auth/generate_key.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "auth",
+      "mutation": false,
+      "paginated": false,
+      "path": "auth generate-token",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/auth/generate_token.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "auth",
+      "mutation": false,
+      "paginated": false,
+      "path": "auth login",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/auth/login.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": true,
+      "group": "auth",
+      "mutation": true,
+      "paginated": false,
+      "path": "auth logout",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/auth/logout.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "status",
+        "whoami"
+      ],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "auth",
+      "mutation": false,
+      "paginated": false,
+      "path": "auth status",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/auth/status.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": true,
+      "group": "chapters",
+      "mutation": true,
+      "paginated": false,
+      "path": "chapters archive",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/chapters/archive.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": true,
+      "group": "chapters",
+      "mutation": true,
+      "paginated": false,
+      "path": "chapters close",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/chapters/close.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": true,
+      "group": "chapters",
+      "mutation": true,
+      "paginated": false,
+      "path": "chapters delete-schedule",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/chapters/delete_schedule.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "chapters",
+      "mutation": false,
+      "paginated": false,
+      "path": "chapters get-schedule",
+      "rpcs": [
+        "GetChapterSchedule"
+      ],
+      "source_file": "cmd/ledgerctl/chapters/get_schedule.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "chapters",
+      "mutation": false,
+      "paginated": true,
+      "path": "chapters list",
+      "rpcs": [
+        "ListChapters"
+      ],
+      "source_file": "cmd/ledgerctl/chapters/list.go",
+      "streaming_rpcs": [
+        "ListChapters"
+      ]
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "chapters",
+      "mutation": true,
+      "paginated": false,
+      "path": "chapters set-schedule",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/chapters/set_schedule.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "cluster",
+      "mutation": false,
+      "paginated": false,
+      "path": "cluster add-learner",
+      "rpcs": [
+        "AddLearner"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/add_learner.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "disk-usage",
+        "du"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "cluster",
+      "mutation": false,
+      "paginated": false,
+      "path": "cluster disk-usage",
+      "rpcs": [
+        "GetDiskUsage"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/disk_usage.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "cluster",
+      "mutation": true,
+      "paginated": false,
+      "path": "cluster maintenance",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/maintenance.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "cluster",
+      "mutation": true,
+      "paginated": false,
+      "path": "cluster promote-learner",
+      "rpcs": [
+        "PromoteLearner"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/promote_learner.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "cluster",
+      "mutation": true,
+      "paginated": false,
+      "path": "cluster remove-node",
+      "rpcs": [
+        "RemoveNode"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/remove_node.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "status",
+        "st"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "cluster",
+      "mutation": false,
+      "paginated": false,
+      "path": "cluster status",
+      "rpcs": [
+        "GetClusterState"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/status.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "transfer-leader",
+        "tl"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "cluster",
+      "mutation": false,
+      "paginated": false,
+      "path": "cluster transfer-leader",
+      "rpcs": [
+        "TransferLeadership"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/transfer_leader.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "cluster",
+      "mutation": false,
+      "paginated": false,
+      "path": "cluster watch",
+      "rpcs": [
+        "GetClusterState"
+      ],
+      "source_file": "cmd/ledgerctl/cluster/watch.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "add-sink",
+        "add",
+        "upsert"
+      ],
+      "classification": "signing_event_sink",
+      "destructive": false,
+      "group": "events",
+      "mutation": true,
+      "paginated": false,
+      "path": "events add-sink",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/events/add_sink.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "sinks",
+        "ls",
+        "l"
+      ],
+      "classification": "signing_event_sink",
+      "destructive": false,
+      "group": "events",
+      "mutation": false,
+      "paginated": false,
+      "path": "events list",
+      "rpcs": [
+        "GetEventsSinks"
+      ],
+      "source_file": "cmd/ledgerctl/events/list.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "remove-sink",
+        "rm",
+        "delete-sink"
+      ],
+      "classification": "signing_event_sink",
+      "destructive": true,
+      "group": "events",
+      "mutation": true,
+      "paginated": false,
+      "path": "events remove-sink",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/events/remove_sink.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "create",
+        "c"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "indexes",
+      "mutation": true,
+      "paginated": false,
+      "path": "indexes create",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/indexes/create.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "drop",
+        "d"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "indexes",
+      "mutation": true,
+      "paginated": false,
+      "path": "indexes drop",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/indexes/drop.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "inspect",
+        "i"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "indexes",
+      "mutation": false,
+      "paginated": false,
+      "path": "indexes inspect",
+      "rpcs": [
+        "GetLedger",
+        "InspectIndex"
+      ],
+      "source_file": "cmd/ledgerctl/indexes/inspect.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "indexes",
+      "mutation": false,
+      "paginated": true,
+      "path": "indexes list",
+      "rpcs": [
+        "GetIndexStatus",
+        "ListIndexes"
+      ],
+      "source_file": "cmd/ledgerctl/indexes/list.go",
+      "streaming_rpcs": [
+        "ListIndexes"
+      ]
+    },
+    {
+      "aliases": [
+        "configuration",
+        "config",
+        "conf"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": false,
+      "paginated": true,
+      "path": "ledgers configuration",
+      "rpcs": [
+        "GetLedger",
+        "ListIndexes",
+        "ListPreparedQueries"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/configuration.go",
+      "streaming_rpcs": [
+        "ListIndexes"
+      ]
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers configuration apply",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/configuration_apply.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": false,
+      "paginated": true,
+      "path": "ledgers configuration export",
+      "rpcs": [
+        "GetLedger",
+        "ListIndexes",
+        "ListPreparedQueries"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/configuration_export.go",
+      "streaming_rpcs": [
+        "ListIndexes"
+      ]
+    },
+    {
+      "aliases": [
+        "create",
+        "new",
+        "add"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers create",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/create.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "delete",
+        "rm",
+        "del",
+        "remove"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers delete",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/delete.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "delete-metadata",
+        "del-meta",
+        "dm",
+        "rm-meta"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers delete-metadata",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/delete_metadata.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "get",
+        "g",
+        "show",
+        "describe"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": false,
+      "paginated": false,
+      "path": "ledgers get",
+      "rpcs": [
+        "GetLedger"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/get.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "get-schema",
+        "schema",
+        "gs"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": false,
+      "paginated": false,
+      "path": "ledgers get-schema",
+      "rpcs": [
+        "GetMetadataSchemaStatus"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/get_schema.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": false,
+      "paginated": true,
+      "path": "ledgers list",
+      "rpcs": [
+        "ListLedgers"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/list.go",
+      "streaming_rpcs": [
+        "ListLedgers"
+      ]
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers promote",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/promote.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "remove-metadata-type",
+        "rm-type",
+        "rmt"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers remove-metadata-type",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/remove_metadata_type.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "set-metadata",
+        "set-meta",
+        "sm"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers set-metadata",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/set_metadata.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "set-metadata-type",
+        "set-type",
+        "smt"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": true,
+      "paginated": false,
+      "path": "ledgers set-metadata-type",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/set_metadata_type.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "stats",
+        "st"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "ledgers",
+      "mutation": false,
+      "paginated": false,
+      "path": "ledgers stats",
+      "rpcs": [
+        "GetLedgerStats"
+      ],
+      "source_file": "cmd/ledgerctl/ledgers/stats.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "logs",
+      "mutation": false,
+      "paginated": false,
+      "path": "logs get",
+      "rpcs": [
+        "GetLog"
+      ],
+      "source_file": "cmd/ledgerctl/logs/get.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "logs",
+      "mutation": false,
+      "paginated": true,
+      "path": "logs list",
+      "rpcs": [
+        "ListLogs"
+      ],
+      "source_file": "cmd/ledgerctl/logs/list.go",
+      "streaming_rpcs": [
+        "ListLogs"
+      ]
+    },
+    {
+      "aliases": [
+        "get",
+        "g",
+        "show",
+        "describe"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "numscripts",
+      "mutation": false,
+      "paginated": false,
+      "path": "numscripts get",
+      "rpcs": [
+        "GetNumscript"
+      ],
+      "source_file": "cmd/ledgerctl/numscripts/get.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "numscripts",
+      "mutation": false,
+      "paginated": true,
+      "path": "numscripts list",
+      "rpcs": [
+        "ListNumscripts"
+      ],
+      "source_file": "cmd/ledgerctl/numscripts/list.go",
+      "streaming_rpcs": [
+        "ListNumscripts"
+      ]
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "numscripts",
+      "mutation": true,
+      "paginated": false,
+      "path": "numscripts save",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/numscripts/save.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "numscripts",
+      "mutation": false,
+      "paginated": false,
+      "path": "numscripts versions",
+      "rpcs": [
+        "ListNumscriptVersions"
+      ],
+      "source_file": "cmd/ledgerctl/numscripts/versions.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "profile",
+      "mutation": false,
+      "paginated": false,
+      "path": "profile create",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/profile/create.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "delete",
+        "rm",
+        "remove"
+      ],
+      "classification": "host_local",
+      "destructive": true,
+      "group": "profile",
+      "mutation": true,
+      "paginated": false,
+      "path": "profile delete",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/profile/delete.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "profile",
+      "mutation": false,
+      "paginated": false,
+      "path": "profile list",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/profile/list.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "show",
+        "get",
+        "describe"
+      ],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "profile",
+      "mutation": false,
+      "paginated": false,
+      "path": "profile show",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/profile/show.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "profile",
+      "mutation": false,
+      "paginated": false,
+      "path": "profile use",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/profile/use.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "provision",
+      "mutation": false,
+      "paginated": false,
+      "path": "provision list",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/provision/list.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "provision",
+      "mutation": false,
+      "paginated": false,
+      "path": "provision run",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/provision/run.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "queries",
+      "mutation": false,
+      "paginated": false,
+      "path": "queries create",
+      "rpcs": [
+        "CreatePreparedQuery"
+      ],
+      "source_file": "cmd/ledgerctl/queries/create.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "delete",
+        "rm"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "queries",
+      "mutation": true,
+      "paginated": false,
+      "path": "queries delete",
+      "rpcs": [
+        "DeletePreparedQuery"
+      ],
+      "source_file": "cmd/ledgerctl/queries/delete.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "execute",
+        "exec",
+        "run"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "queries",
+      "mutation": false,
+      "paginated": false,
+      "path": "queries execute",
+      "rpcs": [
+        "ExecutePreparedQuery"
+      ],
+      "source_file": "cmd/ledgerctl/queries/execute.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "queries",
+      "mutation": false,
+      "paginated": false,
+      "path": "queries list",
+      "rpcs": [
+        "ListPreparedQueries"
+      ],
+      "source_file": "cmd/ledgerctl/queries/list.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "product",
+      "destructive": false,
+      "group": "queries",
+      "mutation": false,
+      "paginated": false,
+      "path": "queries update",
+      "rpcs": [
+        "UpdatePreparedQuery"
+      ],
+      "source_file": "cmd/ledgerctl/queries/update.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "query-checkpoint",
+      "mutation": false,
+      "paginated": false,
+      "path": "query-checkpoint create",
+      "rpcs": [
+        "CreateQueryCheckpoint"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/create.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "query-checkpoint",
+      "mutation": true,
+      "paginated": false,
+      "path": "query-checkpoint delete",
+      "rpcs": [
+        "DeleteQueryCheckpoint"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/delete.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "query-checkpoint",
+      "mutation": true,
+      "paginated": false,
+      "path": "query-checkpoint delete-schedule",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/delete_schedule.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "query-checkpoint",
+      "mutation": false,
+      "paginated": false,
+      "path": "query-checkpoint get-schedule",
+      "rpcs": [
+        "GetQueryCheckpointSchedule"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/get_schedule.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "query-checkpoint",
+      "mutation": false,
+      "paginated": false,
+      "path": "query-checkpoint info",
+      "rpcs": [
+        "GetQueryCheckpointInfo"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/info.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "query-checkpoint",
+      "mutation": false,
+      "paginated": false,
+      "path": "query-checkpoint list",
+      "rpcs": [
+        "ListQueryCheckpoints"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/list.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "query-checkpoint",
+      "mutation": true,
+      "paginated": false,
+      "path": "query-checkpoint set-schedule",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/querycheckpoint/set_schedule.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "restore",
+      "mutation": false,
+      "paginated": false,
+      "path": "restore download",
+      "rpcs": [
+        "CancelDownload",
+        "GetDownloadStatus",
+        "StartDownloadBackup"
+      ],
+      "source_file": "cmd/ledgerctl/restore/upload.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "restore",
+      "mutation": true,
+      "paginated": false,
+      "path": "restore finalize",
+      "rpcs": [
+        "FinalizeRestore",
+        "PreviewRestore"
+      ],
+      "source_file": "cmd/ledgerctl/restore/finalize.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "restore",
+      "mutation": false,
+      "paginated": false,
+      "path": "restore preview",
+      "rpcs": [
+        "PreviewRestore"
+      ],
+      "source_file": "cmd/ledgerctl/restore/preview.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "restore",
+      "mutation": false,
+      "paginated": false,
+      "path": "restore validate",
+      "rpcs": [
+        "ValidateRestore"
+      ],
+      "source_file": "cmd/ledgerctl/restore/validate.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "generate-key",
+        "gen-key",
+        "keygen"
+      ],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "signing",
+      "mutation": false,
+      "paginated": false,
+      "path": "signing generate-key",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/signing/generate_key.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list-keys",
+        "ls",
+        "l"
+      ],
+      "classification": "signing_event_sink",
+      "destructive": false,
+      "group": "signing",
+      "mutation": false,
+      "paginated": true,
+      "path": "signing list-keys",
+      "rpcs": [
+        "ListSigningKeys"
+      ],
+      "source_file": "cmd/ledgerctl/signing/list.go",
+      "streaming_rpcs": [
+        "ListSigningKeys"
+      ]
+    },
+    {
+      "aliases": [
+        "register-key",
+        "add-key",
+        "register"
+      ],
+      "classification": "signing_event_sink",
+      "destructive": false,
+      "group": "signing",
+      "mutation": true,
+      "paginated": false,
+      "path": "signing register-key",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/signing/register_key.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "signing_event_sink",
+      "destructive": false,
+      "group": "signing",
+      "mutation": true,
+      "paginated": false,
+      "path": "signing require",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/signing/require.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "revoke-key",
+        "remove-key",
+        "revoke"
+      ],
+      "classification": "signing_event_sink",
+      "destructive": true,
+      "group": "signing",
+      "mutation": true,
+      "paginated": false,
+      "path": "signing revoke-key",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/signing/revoke_key.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "backup",
+        "bk"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store backup",
+      "rpcs": [
+        "Backup"
+      ],
+      "source_file": "cmd/ledgerctl/store/backup.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "store",
+      "mutation": true,
+      "paginated": false,
+      "path": "store bootstrap",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/store/bootstrap.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store cache-stats",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/store/cache_stats.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "check",
+        "c",
+        "verify"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": true,
+      "path": "store check",
+      "rpcs": [
+        "CheckStore"
+      ],
+      "source_file": "cmd/ledgerctl/store/check.go",
+      "streaming_rpcs": [
+        "CheckStore"
+      ]
+    },
+    {
+      "aliases": [
+        "checkpoint",
+        "cp"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store checkpoint",
+      "rpcs": [
+        "CreateCheckpoint"
+      ],
+      "source_file": "cmd/ledgerctl/store/checkpoint.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store dump",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/store/dump.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "incremental-backup",
+        "ibk"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store incremental-backup",
+      "rpcs": [
+        "IncrementalBackup"
+      ],
+      "source_file": "cmd/ledgerctl/store/incremental_backup.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "compact",
+        "gc"
+      ],
+      "classification": "operator",
+      "destructive": true,
+      "group": "store",
+      "mutation": true,
+      "paginated": false,
+      "path": "store primary compact",
+      "rpcs": [
+        "CompactPrimary"
+      ],
+      "source_file": "cmd/ledgerctl/store/primary_compact.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "metrics",
+        "m"
+      ],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store primary metrics",
+      "rpcs": [
+        "GetPrimaryMetrics"
+      ],
+      "source_file": "cmd/ledgerctl/store/primary_metrics.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store rebuild-audit-index",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/store/rebuild_audit_index.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": true,
+      "group": "store",
+      "mutation": true,
+      "paginated": false,
+      "path": "store secondary compact",
+      "rpcs": [
+        "CompactSecondary"
+      ],
+      "source_file": "cmd/ledgerctl/store/secondary_compact.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "operator",
+      "destructive": false,
+      "group": "store",
+      "mutation": false,
+      "paginated": false,
+      "path": "store secondary metrics",
+      "rpcs": [
+        "GetSecondaryMetrics"
+      ],
+      "source_file": "cmd/ledgerctl/store/secondary_metrics.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "analyze",
+        "analyse"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "transactions",
+      "mutation": false,
+      "paginated": true,
+      "path": "transactions analyze",
+      "rpcs": [
+        "AnalyzeTransactions"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/analyze.go",
+      "streaming_rpcs": [
+        "AnalyzeTransactions"
+      ]
+    },
+    {
+      "aliases": [
+        "create",
+        "new",
+        "add"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "transactions",
+      "mutation": true,
+      "paginated": false,
+      "path": "transactions create",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/create.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "delete-metadata",
+        "del-meta",
+        "dm",
+        "rm-meta"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "transactions",
+      "mutation": true,
+      "paginated": false,
+      "path": "transactions delete-metadata",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/delete_metadata.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "get",
+        "g",
+        "show",
+        "describe"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "transactions",
+      "mutation": false,
+      "paginated": false,
+      "path": "transactions get",
+      "rpcs": [
+        "GetTransaction"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/get.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "list",
+        "ls",
+        "l"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "transactions",
+      "mutation": false,
+      "paginated": true,
+      "path": "transactions list",
+      "rpcs": [
+        "ListTransactions"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/list.go",
+      "streaming_rpcs": [
+        "ListTransactions"
+      ]
+    },
+    {
+      "aliases": [
+        "revert",
+        "undo",
+        "reverse"
+      ],
+      "classification": "product",
+      "destructive": true,
+      "group": "transactions",
+      "mutation": true,
+      "paginated": false,
+      "path": "transactions revert",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/revert.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [
+        "set-metadata",
+        "set-meta",
+        "sm"
+      ],
+      "classification": "product",
+      "destructive": false,
+      "group": "transactions",
+      "mutation": true,
+      "paginated": false,
+      "path": "transactions set-metadata",
+      "rpcs": [
+        "Apply"
+      ],
+      "source_file": "cmd/ledgerctl/transactions/set_metadata.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "upgrade",
+      "mutation": false,
+      "paginated": false,
+      "path": "upgrade",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/upgrade/command.go",
+      "streaming_rpcs": []
+    },
+    {
+      "aliases": [],
+      "classification": "host_local",
+      "destructive": false,
+      "group": "version",
+      "mutation": false,
+      "paginated": false,
+      "path": "version",
+      "rpcs": [],
+      "source_file": "cmd/ledgerctl/main.go",
+      "streaming_rpcs": []
+    }
+  ],
+  "counts": {
+    "executable_total": 108,
+    "host_local": 13,
+    "operator": 34,
+    "product": 54,
+    "signing_event_sink": 7
+  },
+  "plugin": "ledger-v3",
+  "product_major": 3,
+  "schema_version": 1,
+  "signing_capability": "sign.ledger.apply-batch",
+  "source": {
+    "commit": "bb0297cce39ccd1eb45eba695e9aa10374d5865d",
+    "enumeration_method": "cobra help traversal of the binary built from the pinned commit; cobra built-ins 'help' and 'completion {bash,zsh,fish,powershell}' excluded",
+    "generated_stub_package": "github.com/formancehq/ledger/v3/internal/proto/servicepb",
+    "grpc_service": "ledger.BucketService",
+    "inventory_basis": "cmd/ledgerctl executable command tree",
+    "module": "github.com/formancehq/ledger/v3",
+    "proto_path": "misc/proto/bucket.proto",
+    "ref": "release/v3.0",
+    "repo": "ledger"
+  }
+}
