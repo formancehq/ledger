@@ -87,16 +87,38 @@ spec:
                         description: Region is the AWS region.
                         type: string
                     type: object
-                  s3AccessKeyId:
+                  s3AccessKeyIdFrom:
                     description: |-
-                      S3AccessKeyID is a static AWS access key ID for S3 authentication.
-                      If not set, the default AWS credential chain is used (env vars, IRSA, etc.).
-                    type: string
-                  s3SecretAccessKey:
+                      S3AccessKeyIDFrom references a static AWS access key ID in a Secret in
+                      the Backup namespace. Kubernetes injects it into the backup Job at runtime.
+                      If not set, the default AWS credential chain is used on the Ledger server.
+                    properties:
+                      key:
+                        description: Key is the key within the Secret.
+                        type: string
+                      name:
+                        description: Name is the Secret name.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
+                  s3SecretAccessKeyFrom:
                     description: |-
-                      S3SecretAccessKey is a static AWS secret access key for S3 authentication.
-                      If not set, the default AWS credential chain is used.
-                    type: string
+                      S3SecretAccessKeyFrom references a static AWS secret access key in a Secret
+                      in the Backup namespace. The value never appears in the Backup or Job spec.
+                      If not set, the default AWS credential chain is used on the Ledger server.
+                    properties:
+                      key:
+                        description: Key is the key within the Secret.
+                        type: string
+                      name:
+                        description: Name is the Secret name.
+                        type: string
+                    required:
+                    - key
+                    - name
+                    type: object
                 required:
                 - driver
                 type: object

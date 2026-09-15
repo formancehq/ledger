@@ -46,6 +46,48 @@ spec:
   failedRunsHistoryLimit: 1
 ```
 
+#### S3 credentials for operator backups
+
+EN-2060 requires reusable S3 credentials to stay out of ordinary `Backup`,
+`BackupRun`, Job and Pod resources. For static authentication, provision an
+Opaque Secret in the same namespace as the Backup and reference its keys:
+
+```yaml
+spec:
+  destination:
+    driver: s3
+    s3:
+      bucket: customer-ledger-backups
+      region: eu-west-1
+    s3AccessKeyIdFrom:
+      name: backup-s3-credentials
+      key: access-key-id
+    s3SecretAccessKeyFrom:
+      name: backup-s3-credentials
+      key: secret-access-key
+```
+
+The operator copies only the references into non-optional `secretKeyRef`
+environment entries named `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`. It
+never reads the credential values. The kubelet resolves them when starting the
+Job container; `ledgerctl` binds these existing environment inputs to the backup
+storage flags and sends them in the full or incremental backup RPC. The S3
+values are absent from shell text and process arguments. Use the normal TLS
+configuration to protect the RPC transport.
+
+If a referenced Secret or key is missing, Kubernetes cannot start the container;
+credential delivery does not silently fall back to ambient authentication. The
+operator may report the run as Running while the Pod awaits its required inputs;
+this is not proof of a successful backup. Updating a Secret affects newly
+started containers; it does not update an already running container's environment.
+
+Omit both references to retain the default AWS credential chain on the **Ledger
+server**, which performs the upload (including its IAM/IRSA configuration).
+The Job's ServiceAccount is still inherited from the Cluster, but ambient AWS
+credentials in the Job are not forwarded by the backup RPC. This unreleased CRD
+replaces the former literal `s3AccessKeyId` and `s3SecretAccessKey` fields; update
+Backup manifests to use the references when upgrading the operator and CRDs.
+
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.
 Setting either limit to zero removes all terminal runs of that outcome without

@@ -61,6 +61,13 @@ pruning run history. Zero retention therefore preserves scheduling across
 operator restarts. See the [scheduling contract](../../docs/technical/architecture/subsystems/backup/operator-scheduling.md)
 and [backup operations guide](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator).
 
+Static S3 credentials use `spec.destination.s3AccessKeyIdFrom` and
+`spec.destination.s3SecretAccessKeyFrom`, each referencing a Secret name/key in
+the Backup namespace. The kubelet injects them into the Job environment; the
+operator stores no credential values in Backup or workload specs. See
+[S3 credentials for operator backups](../../docs/ops/backup-restore.md#s3-credentials-for-operator-backups)
+for runtime delivery, missing-key behavior and ambient authentication.
+
 ## Custom Resources
 
 | Resource | Scope | Description |

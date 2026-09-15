@@ -2119,6 +2119,13 @@ ledgerctl s cp
 
 Perform a full checkpoint backup of the Pebble store to S3 or Azure Blob Storage. The request is forwarded to the cluster leader because SST file numbering is node-local.
 
+Both `store backup` and `store incremental-backup` accept static S3 credentials
+through `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, the existing environment
+aliases of their storage flags. Explicit flags take precedence. Kubernetes
+backup Jobs populate these variables from Secret references so S3 credential
+values do not enter their command text or process arguments. With neither input,
+the Ledger server uses its default AWS credential chain.
+
 **Aliases:** `bk`
 
 ```bash

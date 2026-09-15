@@ -69,14 +69,6 @@ func backupFlags(dest *ledgerv1alpha1.BackupDestination) []string {
 		}
 	}
 
-	if dest.S3AccessKeyID != "" {
-		args = append(args, "--s3-access-key-id", dest.S3AccessKeyID)
-	}
-
-	if dest.S3SecretAccessKey != "" {
-		args = append(args, "--s3-secret-access-key", dest.S3SecretAccessKey)
-	}
-
 	return args
 }
 
@@ -105,7 +97,8 @@ func backupJobName(run *ledgerv1alpha1.BackupRun) string {
 // tlsMode mirrors the running pod's TLS_MODE so the Job's ledgerctl negotiates
 // the same transport. Pre-existing volumes/secrets from the ledger StatefulSet
 // are reused (TLS secret, cluster-secret); the Job uses the same
-// ServiceAccount so IRSA / IAM bindings transfer transparently.
+// ServiceAccount. Ambient S3 authentication is resolved on the Ledger server,
+// which performs the upload.
 //
 // The caller is expected to set the owner reference on the returned Job
 // (BackupRun → Job) for cascade deletion.
@@ -141,6 +134,16 @@ func buildBackupJob(
 		{Name: "POD_NAMESPACE", ValueFrom: &corev1.EnvVarSource{
 			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"},
 		}},
+	}
+
+	// ledgerctl binds these environment variables to its storage flags before
+	// building the backup RPC. Keep credentials out of shell text and argv;
+	// kubelet resolves the references without the operator reading Secret data.
+	if ref := backup.Spec.Destination.S3AccessKeyIDFrom; ref != nil {
+		env = append(env, secretKeyEnv("S3_ACCESS_KEY_ID", ref.Name, ref.Key))
+	}
+	if ref := backup.Spec.Destination.S3SecretAccessKeyFrom; ref != nil {
+		env = append(env, secretKeyEnv("S3_SECRET_ACCESS_KEY", ref.Name, ref.Key))
 	}
 
 	var (

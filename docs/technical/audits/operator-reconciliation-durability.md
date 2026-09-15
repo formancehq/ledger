@@ -42,6 +42,16 @@ Ledger process restart and cluster-level availability from recovery of the
 intended PVC/node. Record inspected areas and untested boundaries in residual
 risk rather than claiming exhaustive coverage.
 
+## Backup Secret delivery boundary
+
+Backup S3 static authentication uses same-namespace Secret key references.
+Reconciliation persists the Job before setting the BackupRun to Running; kubelet
+credential resolution happens later. A missing required Secret/key prevents
+container startup, so Running does not establish delivery or backup success.
+Subsequent container starts resolve current Secret values; existing process
+environments do not change on Secret updates. Check these transitions separately
+from confidentiality, which is owned by `sensitive-data-exposure-boundaries`.
+
 ## Severity
 
 Use the native P0–P3 scale with demonstrated impact and explicit preconditions:

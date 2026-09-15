@@ -405,3 +405,37 @@ func TestBindEnvSkipsOwnedProfile(t *testing.T) {
 	require.Equal(t, "bound-value", probe)
 	require.True(t, set.Changed("probe-only"))
 }
+
+// Kubernetes resolves backup Secret references into these environment variables.
+// Exercise the production command tree, env binder and storage protobuf builder
+// for both RPC commands, including ambient auth and explicit CLI precedence.
+// This test changes process environment and therefore cannot run in parallel.
+func TestBackupCredentialsFromEnvironment(t *testing.T) {
+	for _, subcommand := range []string{"backup", "incremental-backup"} {
+		for _, mode := range []string{"secret-env", "ambient", "explicit-flags"} {
+			t.Run(subcommand+"/"+mode, func(t *testing.T) {
+				access, secret := "AUDIT_S3_ACCESS_69da", "AUDIT_S3_SECRET_71ca+/='\"$(false)"
+				if mode == "ambient" {
+					access, secret = "", ""
+				}
+				t.Setenv("S3_ACCESS_KEY_ID", access)
+				t.Setenv("S3_SECRET_ACCESS_KEY", secret)
+				root := newRootCommand()
+				bindSubcommandEnv(root)
+				command, _, err := root.Find([]string{"store", subcommand})
+				require.NoError(t, err)
+				args := []string{"--s3-bucket", "audit-control"}
+				if mode == "explicit-flags" {
+					access, secret = "explicit-access", "explicit-secret"
+					args = append(args, "--s3-access-key-id", access, "--s3-secret-access-key", secret)
+				}
+				require.NoError(t, command.ParseFlags(args))
+				storage, err := cmdutil.BackupStorageFromFlags(command)
+				require.NoError(t, err)
+				require.Equal(t, "audit-control", storage.GetS3().GetBucket())
+				require.Equal(t, access, storage.GetS3().GetAccessKeyId())
+				require.Equal(t, secret, storage.GetS3().GetSecretAccessKey())
+			})
+		}
+	}
+}
