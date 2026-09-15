@@ -26,6 +26,7 @@ func TestAnalyzeProgressEmitterSamplesDeterministicallyAndStopsAfterSendFailure(
 		if processed == 8 {
 			return wantErr
 		}
+
 		return nil
 	}, func() { canceled = true })
 	for processed := uint64(1); processed <= 32; processed++ {
@@ -43,6 +44,7 @@ func TestAnalyzeProgressEmitterHasABoundedLifetimeCardinality(t *testing.T) {
 	count := 0
 	emitter := newAnalyzeProgressEmitter(func(_, _ uint64) error {
 		count++
+
 		return nil
 	}, nil)
 	for event := uint64(1); event <= 2048; event++ {
@@ -68,6 +70,7 @@ func TestAnalyzeAccountsBoundsProgressAndKeepsTheFinalResult(t *testing.T) {
 			for event := uint64(1); event <= 2048; event++ {
 				report(event*500, 0)
 			}
+
 			return &servicepb.AnalyzeAccountsResponse{TotalAccounts: 1_024_000}, nil
 		},
 	)
@@ -88,6 +91,7 @@ func TestAnalyzeAccountsSendFailureCancelsTheControllerAndSendsNoResult(t *testi
 		func(ctx context.Context, _ string, _ uint32, report func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
 			report(500, 0)
 			<-ctx.Done()
+
 			return nil, ctx.Err()
 		},
 	)
@@ -113,6 +117,7 @@ func TestAnalyzeTransactionsSamplesAcrossBothPasses(t *testing.T) {
 				}
 				report(event*500, total)
 			}
+
 			return &servicepb.AnalyzeTransactionsResponse{TotalTransactions: 512_000}, nil
 		},
 	)

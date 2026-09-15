@@ -69,17 +69,18 @@ their command descriptors.
 
 ## Develop
 
-The SDK is not published as a versioned Go module yet. Set `FCTL_SDK_ROOT` to
-an fctl source checkout before testing or building. `fctl-sdk.lock.json` pins
-the repository, commit, SDK content hash, and WIT hash; the wrapper validates
-them and creates a temporary Go workspace replacement without recording the
-checkout path in tracked files. Replace this development contract with a
-released SDK version before publishing the plugin.
+The SDK is not published as a versioned Go module yet. The Ledger development
+shell exposes the exact SDK and WIT snapshot committed under `sdk/fctl-v2-poc`.
+`fctl-sdk.lock.json` pins its source repository, commit, SDK content hash, and
+WIT hash; the wrapper validates them and creates a temporary Go workspace
+replacement without recording an absolute path in tracked module metadata.
+Replace this development contract with a released SDK version before
+publishing the plugin.
 
 Run the unit and guest-lifecycle tests in the declared development shell:
 
 ```sh
-FCTL_SDK_ROOT=/path/to/fctl nix develop --command just test
+nix develop --command just fctl-ledger-v3-test
 ```
 
 `just test` enforces at least 80% aggregate statement coverage across every Go
@@ -92,7 +93,7 @@ component build.
 Build the portable component:
 
 ```sh
-FCTL_SDK_ROOT=/path/to/fctl nix develop --command just build-component
+nix develop --command just fctl-ledger-v3-build-component
 ```
 
 The build performs two independent component builds and compares their bytes,

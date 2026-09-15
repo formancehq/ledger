@@ -741,6 +741,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 		if err := ctx.Err(); err != nil {
 			return analysis.CompactAccount{}, err
 		}
+
 		return it.Next()
 	}
 

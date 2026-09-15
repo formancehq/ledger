@@ -4,7 +4,6 @@
   inputs = {
     nixpkgs.url = "https://flakehub.com/f/NixOS/nixpkgs/0.2605";
     nixpkgs-unstable.url = "https://flakehub.com/f/NixOS/nixpkgs/0.1";
-
     nur = {
       url = "github:nix-community/NUR";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -83,6 +82,11 @@
         {
           default = pkgs.mkShell {
             packages = stablePackages ++ unstablePackages ++ otherPackages;
+            # The fctl repository is private and the Ledger CI token is scoped
+            # to this repository. Use the exact, lock-verified SDK snapshot
+            # committed with the plugin so clean CI needs no cross-repository
+            # credential or mutable network lookup.
+            FCTL_SDK_ROOT = ./plugins/fctl/ledger-v3/sdk/fctl-v2-poc;
 
             shellHook = ''
               # Auto-configure envtest assets for operator integration tests.

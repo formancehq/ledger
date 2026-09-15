@@ -3,8 +3,9 @@ package servicepb
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 )
 
 func TestPeekBatchDecodesSignedPayload(t *testing.T) {
