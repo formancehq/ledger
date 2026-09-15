@@ -140,10 +140,14 @@ filter, so replay seeds the target and name from the checkpoint definition (or
 an earlier create in the same delta), replaces the filter, and keeps that
 pending value for later mutations. Deletes write a point tombstone and clear
 the pending value, which also covers create-update-delete within one delta.
-These mutations accumulate in the same rebuild write session as the other
-projections and become durable only when the whole batch commits. A missing
-update target or any storage error cancels the batch, leaving the checkpoint's
-prepared-query projection unchanged for a clean retry.
+These mutations accumulate in the same rebuild write sessions as the other
+projections. `RebuildDelta` commits every 5,000 logs to bound memory, then
+commits its audit-derived boundaries in a later batch. An error cancels only the
+current batch: earlier batches may already contain durable prepared-query (and
+other projection) mutations, while the current batch and every later effect are
+absent. Callers must therefore discard and recreate the entire staging store
+from the checkpoint before retrying; the restore service does this by wiping
+the staging directory on failure or cancellation.
 
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
