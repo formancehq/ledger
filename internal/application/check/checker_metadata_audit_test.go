@@ -32,7 +32,7 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 		t.Parallel()
 
 		engine, log := metadataAuditFixture(t)
-		tamperSavedMetadata(t, engine, log, true)
+		tamperSavedMetadata(t, engine, log, "main", "users:001", "status", true)
 		require.Equal(t, "approved", auditedMetadataValue(t, engine, 2, "status").GetStringValue())
 
 		errors, terminalErr := runMetadataAuditCheck(engine)
@@ -46,12 +46,38 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 		t.Parallel()
 
 		engine, log := metadataAuditFixture(t)
-		tamperSavedMetadata(t, engine, log, false)
+		tamperSavedMetadata(t, engine, log, "main", "users:001", "status", false)
 
 		errors, terminalErr := runMetadataAuditCheck(engine)
 		require.NoError(t, terminalErr)
 		require.Len(t, errors, 1)
 		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
+	})
+
+	t.Run("mirror metadata", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("healthy", func(t *testing.T) {
+			t.Parallel()
+
+			engine, _ := mirrorMetadataAuditFixture(t)
+			errors, terminalErr := runMetadataAuditCheck(engine)
+			require.NoError(t, terminalErr)
+			require.Empty(t, errors)
+		})
+
+		t.Run("coordinated log and projection corruption", func(t *testing.T) {
+			t.Parallel()
+
+			engine, log := mirrorMetadataAuditFixture(t)
+			tamperSavedMetadata(t, engine, log, "mirror", "users:001", "status", true)
+
+			errors, terminalErr := runMetadataAuditCheck(engine)
+			require.NoError(t, terminalErr)
+			require.Len(t, errors, 1)
+			require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
+			require.Equal(t, log.GetSequence(), errors[0].GetLogSequence())
+		})
 	})
 }
 
@@ -90,23 +116,68 @@ func metadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
 	return engine, logs[0]
 }
 
-func tamperSavedMetadata(t *testing.T, engine *testEngine, log *commonpb.Log, rewriteLog bool) {
+func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
+	t.Helper()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createMirrorLedgerOrder("mirror"))
+	logs := engine.processAndCommit(mirrorSaveAccountMetadataOrder("mirror", "users:001", map[string]string{"status": "approved"}))
+	require.Len(t, logs, 1)
+
+	return engine, logs[0]
+}
+
+func createMirrorLedgerOrder(name string) *raftcmdpb.Order {
+	order := createLedgerOrder(name)
+	order.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+
+	return order
+}
+
+func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{
+					MirrorIngest: &raftcmdpb.MirrorIngestOrder{
+						Entry: &raftcmdpb.MirrorLogEntry{
+							V2LogId: 1,
+							Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
+								SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+									Target: &commonpb.Target{
+										Target: &commonpb.Target_Account{
+											Account: &commonpb.TargetAccount{Addr: account},
+										},
+									},
+									Metadata: commonpb.MetadataFromGoMap(metadata),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func tamperSavedMetadata(t *testing.T, engine *testEngine, log *commonpb.Log, ledger, account, key string, rewriteLog bool) {
 	t.Helper()
 
 	tampered := commonpb.NewStringValue("rejected")
 	batch := engine.store.OpenWriteSession()
-	defer func() { _ = batch.Cancel() }()
+	defer func() { _ = batch.Cancel() }() // Best-effort cleanup after commit or assertion failure.
 
 	if rewriteLog {
 		forgedLog := log.CloneVT()
-		forgedLog.GetPayload().GetApply().GetLog().GetData().GetSavedMetadata().Metadata["status"] = tampered
+		forgedLog.GetPayload().GetApply().GetLog().GetData().GetSavedMetadata().Metadata[key] = tampered
 		key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(log.GetSequence()).Build()
 		require.NoError(t, batch.SetProto(key, forgedLog))
 	}
 
 	metadataKey := domain.MetadataKey{
-		AccountKey: domain.AccountKey{LedgerName: "main", Account: "users:001"},
-		Key:        "status",
+		AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
+		Key:        key,
 	}
 	_, err := engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), tampered)
 	require.NoError(t, err)
