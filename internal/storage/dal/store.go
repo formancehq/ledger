@@ -956,9 +956,9 @@ const queryCheckpointsDir = "query-checkpoints"
 // idempotent: the FSM cursor commits in the same batch as the trigger entry and
 // apply skips entries at or below it, so the applier does not re-cross the
 // trigger, and recovery skips a marked directory before calling.
-func (s *Store) CreateQueryCheckpoint(id uint64) (dir string, err error) {
+func (s *Store) CreateQueryCheckpoint(id uint64) (_ string, err error) {
 	base := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
-	dir = filepath.Join(base, "main")
+	dir := filepath.Join(base, "main")
 	tmpDir := dir + ".tmp"
 
 	// pebble.Checkpoint refuses an existing destination.
