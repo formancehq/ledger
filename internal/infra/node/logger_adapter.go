@@ -79,7 +79,7 @@ func (l *loggerAdapter) Fatal(v ...any) {
 // Fatalf logs a formatted fatal message and exits.
 func (l *loggerAdapter) Fatalf(format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
-	l.logger.Errorf(msg)
+	l.logger.Errorf("%s", msg)
 	panic(msg)
 }
 
@@ -93,6 +93,6 @@ func (l *loggerAdapter) Panic(v ...any) {
 // Panicf logs a formatted panic message and panics.
 func (l *loggerAdapter) Panicf(format string, v ...any) {
 	msg := fmt.Sprintf(format, v...)
-	l.logger.Errorf(msg)
+	l.logger.Errorf("%s", msg)
 	panic(msg)
 }

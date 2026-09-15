@@ -405,12 +405,14 @@ so the operator can retry.
 
 The join includes failed/canceled-job staging cleanup. Storage-client
 initialization and local filesystem operations do not accept the download
-context, so shutdown waits for them to return. The current service runner
-calls Fx `Stop` with a context without a deadline; `--total-stop-timeout` does
-not bound this path. A slow cleanup or backend can therefore delay process
-exit. Forced termination can interrupt cleanup and leave staging files or an
-uncleanly closed staging store; size the process termination grace period
-accordingly. Staging-store close errors are logged under the existing close
+context, so their stop hook may still be waiting when the service runner
+enforces `--total-stop-timeout`. That budget includes `--grace-period` and all
+Fx stop hooks. Deadline expiry returns a shutdown error and an unsuccessful
+command exit without guaranteeing that every hook completed. Process exit can
+therefore interrupt cleanup and leave staging files or an uncleanly closed
+staging store. Deferred log-export cleanup runs after the Fx lifecycle and is
+outside this timeout; size the process termination grace period to allow that
+additional work. Staging-store close errors are logged under the existing close
 policy and are not returned by the restore stop hook.
 
 ### Step 2: Validate (Recommended)
