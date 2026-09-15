@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -279,17 +280,29 @@ func buildLedgerScopedPrefixSuccessor(zone, sub byte, ledgerName string) []byte 
 	return out
 }
 
-// SavePreparedQuery stores a prepared query in the batch under the given
-// ledger. The ledger no longer lives on the PreparedQuery value itself —
-// it is part of the key prefix and provided by the caller.
+// SavePreparedQuery stores a prepared query in the canonical attributes zone.
+// The ledger no longer lives on the PreparedQuery value itself, so it is
+// encoded in the canonical attribute key provided by the caller.
 func SavePreparedQuery(b *dal.WriteSession, ledger string, pq *commonpb.PreparedQuery) error {
-	b.KeyBuilder.PutZonePrefix(dal.ZonePerLedger, dal.SubPLPreparedQuery).
-		PutLedgerNameFixed(ledger).
-		PutString(pq.GetName())
+	b.KeyBuilder.PutZonePrefix(dal.ZoneAttributes, dal.SubAttrPreparedQuery).
+		PutBytes(domain.PreparedQueryKey{LedgerName: ledger, Name: pq.GetName()}.Bytes())
 
 	err := b.SetProto(b.KeyBuilder.Consume(), pq)
 	if err != nil {
 		return fmt.Errorf("saving prepared query: %w", err)
+	}
+
+	return nil
+}
+
+// DeletePreparedQuery removes a prepared query from the canonical attributes
+// zone. Restore replay uses the same durable key layout as the live writer.
+func DeletePreparedQuery(b *dal.WriteSession, ledger, name string) error {
+	b.KeyBuilder.PutZonePrefix(dal.ZoneAttributes, dal.SubAttrPreparedQuery).
+		PutBytes(domain.PreparedQueryKey{LedgerName: ledger, Name: name}.Bytes())
+
+	if err := b.DeleteKey(b.KeyBuilder.Consume()); err != nil {
+		return fmt.Errorf("deleting prepared query: %w", err)
 	}
 
 	return nil
