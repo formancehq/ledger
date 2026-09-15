@@ -1,6 +1,7 @@
 package ledgerv3
 
 import (
+	"bytes"
 	"encoding/json"
 	"os/exec"
 	"path/filepath"
@@ -83,9 +84,13 @@ func currentLedgerctlCriticalSemantics(t *testing.T) ledgerctlCriticalSemantics 
 	helper := filepath.Join(pluginRoot, "scripts", "ledgerctl-product-command-paths.go")
 	command := exec.Command("go", "run", helper, "--semantics")
 	command.Dir = repositoryRoot
-	output, err := command.CombinedOutput()
+	// Read stdout alone: on a cold module cache the toolchain reports
+	// "go: downloading …" on stderr, which would corrupt the JSON payload.
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if err != nil {
-		t.Fatalf("derive ledgerctl semantics: %v\n%s", err, output)
+		t.Fatalf("derive ledgerctl semantics: %v\n%s", err, stderr.String())
 	}
 	var semantics ledgerctlCriticalSemantics
 	if err := json.Unmarshal(output, &semantics); err != nil {
@@ -116,9 +121,13 @@ func currentLedgerctlProductCommands(t *testing.T) []string {
 
 	command := exec.Command("go", "run", helper)
 	command.Dir = repositoryRoot
-	output, err := command.CombinedOutput()
+	// Read stdout alone: on a cold module cache the toolchain reports
+	// "go: downloading …" on stderr, which would corrupt the JSON payload.
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	output, err := command.Output()
 	if err != nil {
-		t.Fatalf("derive product commands from ledgerctl: %v\n%s", err, output)
+		t.Fatalf("derive product commands from ledgerctl: %v\n%s", err, stderr.String())
 	}
 
 	var paths []string
