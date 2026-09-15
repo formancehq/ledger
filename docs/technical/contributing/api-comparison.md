@@ -709,10 +709,19 @@ implicitly.
 `first_usage` across. Copying the v2 value into the typed `datetime` metadata
 key at cut-over is the only lossless option. Reconstruction after the fact is
 possible because history is permanent, but it has to reproduce what v2 actually
-means: `upsertTransactionAccounts` lowers `first_usage` to the **effective
-date** of every transaction the account takes part in (`release/v2.4`), so the
-equivalent is the minimum transaction timestamp over every transaction touching
-that address, scanned across the whole log — O(history), fine as a one-off.
+means, and v2 lowers `first_usage` from **two** paths (`release/v2.4`):
+
+- `upsertTransactionAccounts` → the **effective date** of every transaction the
+  account takes part in;
+- `UpdateAccountsMetadata` → the **log date** of every account-metadata save,
+  with the same `LEAST`-style conflict clause. An account that only ever
+  received metadata has a `first_usage` and no transaction at all.
+
+So the equivalent is the minimum over both arms — every transaction touching
+the address and every `SavedMetadata` log targeting it — scanned across the
+whole log. O(history), fine as a one-off. A transaction-only scan silently
+returns a later date for any account given metadata before its first posting,
+and misses metadata-only accounts entirely.
 
 Do **not** shortcut that through the `new_kept_volumes` log annotation. It
 records the cells a log *first materialized*, which is a different set: a
