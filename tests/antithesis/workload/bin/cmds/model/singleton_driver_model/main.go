@@ -120,7 +120,7 @@ func main() {
 		return
 	}
 	defer checkpointNodes.Close()
-	checkpointSetupNode, err := selectCheckpointSetupNode(ctx, checkpointNodes, names[0])
+	checkpointSetupNode, err := waitForCheckpointSetupNode(ctx, checkpointNodes, names[0])
 	if err != nil {
 		if ctx.Err() == nil {
 			assert.Unreachable("singleton_driver_model: no checkpoint setup node available", internal.Details{"error": err.Error()})

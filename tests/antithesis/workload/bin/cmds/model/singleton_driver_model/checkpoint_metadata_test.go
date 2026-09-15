@@ -73,12 +73,18 @@ func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, service
 type checkpointMetadataServer struct {
 	servicepb.UnimplementedBucketServiceServer
 	clusterpb.UnimplementedClusterServiceServer
-	fenced        atomic.Bool
-	failFence     atomic.Bool
-	metadataReads atomic.Int32
+	fenced                 atomic.Bool
+	failFence              atomic.Bool
+	remainingFenceFailures atomic.Int32
+	metadataReads          atomic.Int32
 }
 
 func (s *checkpointMetadataServer) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+	for remaining := s.remainingFenceFailures.Load(); remaining > 0; remaining = s.remainingFenceFailures.Load() {
+		if s.remainingFenceFailures.CompareAndSwap(remaining, remaining-1) {
+			return nil, status.Error(codes.Unavailable, "fence temporarily unavailable")
+		}
+	}
 	if s.failFence.Load() {
 		return nil, status.Error(codes.Unavailable, "fence unavailable")
 	}
@@ -123,5 +129,52 @@ func TestCheckpointSetupSelectsReachablePinnedNode(t *testing.T) {
 	_, err = selectCheckpointSetupNode(ctx, internal.PerNodeConns{first}, "L")
 	require.ErrorContains(t, err, "first")
 	require.ErrorContains(t, err, "fence unavailable")
+	failures, ok := err.(checkpointSetupProbeFailures)
+	require.True(t, ok)
+	require.True(t, failures.allTransient())
 	require.Zero(t, firstServer.metadataReads.Load(), "selection must not issue metadata calls or setup mutations")
+}
+
+func TestCheckpointSetupProbeFailuresPreserveClassification(t *testing.T) {
+	t.Parallel()
+	transientFailures := checkpointSetupProbeFailures{
+		{addr: "unavailable", err: status.Error(codes.Unavailable, "fence unavailable")},
+		{addr: "timed-out", err: context.DeadlineExceeded},
+	}
+	require.True(t, transientFailures.allTransient())
+
+	failures := checkpointSetupProbeFailures{
+		{addr: "transient", err: status.Error(codes.Unavailable, "fence unavailable")},
+		{addr: "definitive", err: status.Error(codes.PermissionDenied, "fence denied")},
+	}
+	require.False(t, failures.allTransient())
+	require.Equal(t, codes.Unavailable, status.Code(failures[0].err))
+	require.Equal(t, codes.PermissionDenied, status.Code(failures[1].err))
+}
+
+func TestCheckpointSetupRetriesTransientProbeFailures(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server, bucket, cluster := checkpointMetadataClients(t)
+	server.remainingFenceFailures.Store(1)
+	node := &internal.PerNodeConn{Addr: "node", Bucket: bucket, Cluster: cluster}
+
+	selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node}, "L")
+	require.NoError(t, err)
+	require.Same(t, node, selected)
+}
+
+func TestCheckpointSetupReturnsDefinitiveProbeFailure(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, bucket, cluster := checkpointMetadataClients(t)
+	node := &internal.PerNodeConn{Addr: "node", Bucket: bucket, Cluster: cluster}
+
+	_, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node}, "missing")
+	failures, ok := err.(checkpointSetupProbeFailures)
+	require.True(t, ok)
+	require.Len(t, failures, 1)
+	require.Equal(t, codes.InvalidArgument, status.Code(failures[0].err))
 }

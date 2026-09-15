@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"google.golang.org/grpc/metadata"
@@ -12,6 +13,33 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
+
+type checkpointSetupProbeFailure struct {
+	addr string
+	err  error
+}
+
+type checkpointSetupProbeFailures []checkpointSetupProbeFailure
+
+func (failures checkpointSetupProbeFailures) Error() string {
+	parts := make([]string, 0, len(failures))
+	for _, failure := range failures {
+		parts = append(parts, fmt.Sprintf("%s: %s", failure.addr, failure.err))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func (failures checkpointSetupProbeFailures) allTransient() bool {
+	if len(failures) == 0 {
+		return false
+	}
+	for _, failure := range failures {
+		if !internal.IsTransient(failure.err) && !errors.Is(failure.err, context.DeadlineExceeded) {
+			return false
+		}
+	}
+	return true
+}
 
 // The cluster metadata RPCs read local storage without a consistency fence.
 // Callers must supply bucket and cluster clients pinned to the same node:
@@ -42,7 +70,7 @@ func fenceCheckpointMetadata(ctx context.Context, bucket servicepb.BucketService
 // Probe before any setup mutation: an unavailable first address must not consume
 // the complete workload lifetime when another node can serve the baseline.
 func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns, ledger string) (*internal.PerNodeConn, error) {
-	failures := []error{errors.New("no reachable checkpoint setup node")}
+	failures := make(checkpointSetupProbeFailures, 0, len(nodes))
 	for _, node := range nodes {
 		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		err := fenceCheckpointMetadata(probeCtx, node.Bucket, ledger)
@@ -53,7 +81,31 @@ func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns,
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		failures = append(failures, fmt.Errorf("%s: %w", node.Addr, err))
+		failures = append(failures, checkpointSetupProbeFailure{addr: node.Addr, err: err})
 	}
-	return nil, errors.Join(failures...)
+	if len(failures) == 0 {
+		return nil, fmt.Errorf("no checkpoint setup nodes configured")
+	}
+	return nil, failures
+}
+
+func waitForCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns, ledger string) (*internal.PerNodeConn, error) {
+	for {
+		node, err := selectCheckpointSetupNode(ctx, nodes, ledger)
+		if err == nil {
+			return node, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		failures, ok := err.(checkpointSetupProbeFailures)
+		if !ok || !failures.allTransient() {
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
