@@ -301,6 +301,13 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 		return ErrMirrorRewriteRuleInvalid
 	}
 
+	if http := src.GetHttp(); http != nil {
+		u, err := url.Parse(http.GetBaseUrl())
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+			return ErrMirrorHTTPURLInvalid
+		}
+	}
+
 	pg := src.GetPostgres()
 	if pg == nil {
 		return nil

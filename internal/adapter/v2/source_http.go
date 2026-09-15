@@ -3,6 +3,7 @@ package v2
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,7 +37,10 @@ func NewHTTPSource(baseURL, ledgerName string, httpClient *http.Client) *HTTPSou
 func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (*http.Response, error) {
 	u, err := url.Parse(fmt.Sprintf("%s/v2/%s/%s", s.baseURL, s.ledgerName, path))
 	if err != nil {
-		return nil, fmt.Errorf("parsing URL: %w", err)
+		// url.Error includes the supplied URL, and even its underlying cause
+		// may echo sensitive input (for example an invalid port). Do not retain
+		// either in errors consumed by worker logs and replicated mirror status.
+		return nil, errors.New("parsing URL: invalid mirror source URL")
 	}
 
 	u.RawQuery = query.Encode()
