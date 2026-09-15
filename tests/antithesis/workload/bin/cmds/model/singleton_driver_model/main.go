@@ -321,14 +321,19 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	req := applyRequest(bulk)
 	var resp *servicepb.ApplyResponse
 	var err error
+	hadAmbiguousAttempt := false
 	for {
 		resp, err = client.Apply(ctx, req)
-		if err == nil || ctx.Err() != nil || internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+		if err == nil || ctx.Err() != nil {
+			break
+		}
+		if internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) && !hadAmbiguousAttempt {
 			break
 		}
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
 		}
+		hadAmbiguousAttempt = true
 		select {
 		case <-ctx.Done():
 		case <-time.After(200 * time.Millisecond):

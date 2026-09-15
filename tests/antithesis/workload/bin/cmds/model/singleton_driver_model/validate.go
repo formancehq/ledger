@@ -139,6 +139,20 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			}
 		}
 	}
+	for i, req := range bulk.Requests {
+		var payload *commonpb.LogPayload
+		if i < len(logs) {
+			payload = logs[i].GetPayload()
+		}
+		if err := validateLifecycleLog(req, payload); err != nil {
+			assert.Unreachable("singleton_driver_model: lifecycle response mismatch", internal.Details{
+				"ledger": oracle.LedgerOf(req),
+				"kind":   requestKinds(oracle.Bulk{Requests: []*servicepb.Request{req}}),
+				"error":  err.Error(),
+			})
+			return
+		}
+	}
 	for i, order := range res.Orders {
 		if order.PCV == nil || i >= len(logs) {
 			continue
@@ -653,6 +667,10 @@ func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*
 // atomic snapshot.
 func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) {
 	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		if !exists || lc.Deleted {
+			return false
+		}
 		ls := base.Ledger(ledger)
 		return ledgerReadMatches(ls, serverTypes, serverMeta, mode)
 	}) {
@@ -671,6 +689,22 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 
 func ledgerReadMatches(ls oracle.LedgerState, types map[string]*commonpb.AccountType, meta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) bool {
 	return chartMatches(ls, types) && ledgerMetaMatches(ls, meta) && ls.DefaultEnforcementMode() == mode
+}
+
+// validateLedgerNotFound accepts NotFound only when some legal serialization
+// has not created the ledger yet or has already deleted it.
+func (c *Checker) validateLedgerNotFound(maxTicket uint64, ledger, operation string) {
+	if c.matchesModel(maxTicket, operation+" NOT_FOUND", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		return !exists || lc.Deleted
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: ledger-scoped read returned unexplained NotFound", internal.Details{
+		"ledger":    ledger,
+		"operation": operation,
+	})
 }
 
 // chartMatches reports whether ls's chart equals the server's account types
@@ -755,6 +789,10 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // projection rather than just the per-op response echo.
 func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		if !exists || lc.Deleted {
+			return false
+		}
 		ls := base.Ledger(ledger)
 
 		return fieldTypesMatch(ls.AccountFieldTypes(), acct) &&
