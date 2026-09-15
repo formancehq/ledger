@@ -890,22 +890,171 @@ func (m script_varsMapReadonly) Range(yield func(string, string) bool) {
 	}
 }
 
+// BigUintReader provides read-only access to BigUint.
+// Call Mutate() to obtain a mutable clone.
+type BigUintReader interface {
+	GetMagnitude() []byte
+	Mutate() *BigUint
+}
+
+type bigUintReadonly BigUint
+
+func (r *bigUintReadonly) GetMagnitude() []byte {
+	return bytes.Clone((*BigUint)(r).GetMagnitude())
+}
+
+func (r *bigUintReadonly) Mutate() *BigUint {
+	return (*BigUint)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this BigUint.
+func (m *BigUint) AsReader() BigUintReader {
+	if m == nil {
+		return nil
+	}
+	return (*bigUintReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this BigUint.
+func (m *BigUint) Mutate() *BigUint {
+	return m.CloneVT()
+}
+
+// BigUintListReader provides read-only iteration over []*BigUint.
+type BigUintListReader interface {
+	Len() int
+	Get(i int) BigUintReader
+	Range(yield func(int, BigUintReader) bool)
+}
+
+type bigUintListReadonly []*BigUint
+
+func (l bigUintListReadonly) Len() int { return len(l) }
+
+func (l bigUintListReadonly) Get(i int) BigUintReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l bigUintListReadonly) Range(yield func(int, BigUintReader) bool) {
+	for i, v := range l {
+		var r BigUintReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewBigUintListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewBigUintListReader(s []*BigUint) BigUintListReader { return bigUintListReadonly(s) }
+
+// SignedBigIntReader provides read-only access to SignedBigInt.
+// Call Mutate() to obtain a mutable clone.
+type SignedBigIntReader interface {
+	GetNegative() bool
+	GetMagnitude() BigUintReader
+	Mutate() *SignedBigInt
+}
+
+type signedBigIntReadonly SignedBigInt
+
+func (r *signedBigIntReadonly) GetNegative() bool {
+	return (*SignedBigInt)(r).GetNegative()
+}
+
+func (r *signedBigIntReadonly) GetMagnitude() BigUintReader {
+	v := (*SignedBigInt)(r).GetMagnitude()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (r *signedBigIntReadonly) Mutate() *SignedBigInt {
+	return (*SignedBigInt)(r).CloneVT()
+}
+
+// AsReader returns a read-only view of this SignedBigInt.
+func (m *SignedBigInt) AsReader() SignedBigIntReader {
+	if m == nil {
+		return nil
+	}
+	return (*signedBigIntReadonly)(m)
+}
+
+// Mutate returns a mutable deep clone of this SignedBigInt.
+func (m *SignedBigInt) Mutate() *SignedBigInt {
+	return m.CloneVT()
+}
+
+// SignedBigIntListReader provides read-only iteration over []*SignedBigInt.
+type SignedBigIntListReader interface {
+	Len() int
+	Get(i int) SignedBigIntReader
+	Range(yield func(int, SignedBigIntReader) bool)
+}
+
+type signedBigIntListReadonly []*SignedBigInt
+
+func (l signedBigIntListReadonly) Len() int { return len(l) }
+
+func (l signedBigIntListReadonly) Get(i int) SignedBigIntReader {
+	v := l[i]
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
+}
+
+func (l signedBigIntListReadonly) Range(yield func(int, SignedBigIntReader) bool) {
+	for i, v := range l {
+		var r SignedBigIntReader
+		if v != nil {
+			r = v.AsReader()
+		}
+		if !yield(i, r) {
+			return
+		}
+	}
+}
+
+// NewSignedBigIntListReader wraps s for read-only iteration. The returned
+// view aliases the underlying slice; do not mutate s afterwards.
+func NewSignedBigIntListReader(s []*SignedBigInt) SignedBigIntListReader {
+	return signedBigIntListReadonly(s)
+}
+
 // VolumesReader provides read-only access to Volumes.
 // Call Mutate() to obtain a mutable clone.
 type VolumesReader interface {
-	GetInput() string
-	GetOutput() string
+	GetInput() BigUintReader
+	GetOutput() BigUintReader
 	Mutate() *Volumes
 }
 
 type volumesReadonly Volumes
 
-func (r *volumesReadonly) GetInput() string {
-	return (*Volumes)(r).GetInput()
+func (r *volumesReadonly) GetInput() BigUintReader {
+	v := (*Volumes)(r).GetInput()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
-func (r *volumesReadonly) GetOutput() string {
-	return (*Volumes)(r).GetOutput()
+func (r *volumesReadonly) GetOutput() BigUintReader {
+	v := (*Volumes)(r).GetOutput()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *volumesReadonly) Mutate() *Volumes {
@@ -963,24 +1112,36 @@ func NewVolumesListReader(s []*Volumes) VolumesListReader { return volumesListRe
 // VolumesWithBalanceReader provides read-only access to VolumesWithBalance.
 // Call Mutate() to obtain a mutable clone.
 type VolumesWithBalanceReader interface {
-	GetInput() string
-	GetOutput() string
-	GetBalance() string
+	GetInput() BigUintReader
+	GetOutput() BigUintReader
+	GetBalance() SignedBigIntReader
 	Mutate() *VolumesWithBalance
 }
 
 type volumesWithBalanceReadonly VolumesWithBalance
 
-func (r *volumesWithBalanceReadonly) GetInput() string {
-	return (*VolumesWithBalance)(r).GetInput()
+func (r *volumesWithBalanceReadonly) GetInput() BigUintReader {
+	v := (*VolumesWithBalance)(r).GetInput()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
-func (r *volumesWithBalanceReadonly) GetOutput() string {
-	return (*VolumesWithBalance)(r).GetOutput()
+func (r *volumesWithBalanceReadonly) GetOutput() BigUintReader {
+	v := (*VolumesWithBalance)(r).GetOutput()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
-func (r *volumesWithBalanceReadonly) GetBalance() string {
-	return (*VolumesWithBalance)(r).GetBalance()
+func (r *volumesWithBalanceReadonly) GetBalance() SignedBigIntReader {
+	v := (*VolumesWithBalance)(r).GetBalance()
+	if v == nil {
+		return nil
+	}
+	return v.AsReader()
 }
 
 func (r *volumesWithBalanceReadonly) Mutate() *VolumesWithBalance {

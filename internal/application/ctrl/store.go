@@ -124,15 +124,21 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 
 	out := make([]*commonpb.AccountVolume, 0, len(totals))
 	for _, v := range totals {
-		// Format the accumulated sums once, and compute the balance from the
-		// *big.Int totals (after any color collapse).
+		input, err := commonpb.NewBigUint(v.input)
+		if err != nil {
+			return nil, fmt.Errorf("encoding account input volume: %w", err)
+		}
+		output, err := commonpb.NewBigUint(v.output)
+		if err != nil {
+			return nil, fmt.Errorf("encoding account output volume: %w", err)
+		}
 		out = append(out, &commonpb.AccountVolume{
 			Asset: v.asset,
 			Color: v.color,
 			Volumes: &commonpb.VolumesWithBalance{
-				Input:   v.input.String(),
-				Output:  v.output.String(),
-				Balance: new(big.Int).Sub(v.input, v.output).String(),
+				Input:   input,
+				Output:  output,
+				Balance: commonpb.NewSignedBigInt(new(big.Int).Sub(v.input, v.output)),
 			},
 		})
 	}

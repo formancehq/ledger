@@ -135,7 +135,18 @@ func runGet(cmd *cobra.Command, args []string) error {
 		// server-side, so we just render in-order.
 		for _, entry := range account.GetVolumes() {
 			vol := entry.GetVolumes()
-			balance := vol.GetBalance()
+			balance, err := vol.GetBalance().Dec()
+			if err != nil {
+				return err
+			}
+			input, err := vol.GetInput().Dec()
+			if err != nil {
+				return err
+			}
+			output, err := vol.GetOutput().Dec()
+			if err != nil {
+				return err
+			}
 
 			balanceColor := pterm.Green
 			if balance != "" && balance[0] == '-' {
@@ -150,8 +161,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 			volumesTable = append(volumesTable, []string{
 				entry.GetAsset(),
 				displayColor,
-				vol.GetInput(),
-				vol.GetOutput(),
+				input,
+				output,
 				balanceColor(balance),
 			})
 		}

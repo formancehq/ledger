@@ -152,7 +152,7 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 				aggregated[k] = big.NewInt(0)
 			}
 
-			aggregated[k].Add(aggregated[k], parseBalance(entry.GetVolumes().GetBalance()))
+			aggregated[k].Add(aggregated[k], parseBalance(entry.GetVolumes().GetBalance().DecimalString()))
 		}
 	}
 
@@ -244,9 +244,9 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			asset := entry.GetAsset()
 			color := entry.GetColor()
 			vol := entry.GetVolumes()
-			input := parseBalance(vol.GetInput())
-			output := parseBalance(vol.GetOutput())
-			balance := parseBalance(vol.GetBalance())
+			input := parseBalance(vol.GetInput().DecimalString())
+			output := parseBalance(vol.GetOutput().DecimalString())
+			balance := parseBalance(vol.GetBalance().DecimalString())
 
 			internal.CheckVolume(input, output, balance, details.With(internal.Details{
 				"account": account.Address,
@@ -281,7 +281,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				continue
 			}
 
-			actualBalance := parseBalance(actualVol.GetBalance())
+			actualBalance := parseBalance(actualVol.GetBalance().DecimalString())
 			if balance.Cmp(actualBalance) != 0 {
 				// Reuse the preceding horizon: Q+1 is this recheck's own barrier.
 				// Other barriers and ambiguous RPC retries can also advance the

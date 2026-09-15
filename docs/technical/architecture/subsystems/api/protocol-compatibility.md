@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"13"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"14"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 13:
+leader. For example, with a schema implementing revision 14:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 13' \
+grpcurl -plaintext -H 'ledger-protocol-version: 14' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -192,6 +192,17 @@ and authentication-disabled actions now have distinct wire representations,
 and authenticated authorization state moved under its principal variant.
 Revision 12 clients and servers would decode these field numbers with different
 types and must not communicate with revision 13 peers.
+
+## Typed arbitrary-precision volumes (revision 14)
+
+Revision 14 replaces the decimal `string` fields in `Volumes` and
+`VolumesWithBalance` with typed arbitrary-precision integers. Non-negative
+input/output totals use a canonical minimal unsigned big-endian magnitude;
+balances use a sign plus that magnitude and reject negative zero. The HTTP JSON
+projection remains exact decimal strings, while protobuf clients must implement
+the new typed messages. The representation is unbounded because account color
+collapse may sum several independently bounded `Uint256` buckets beyond 256
+bits.
 
 ## Maintaining the revision
 

@@ -2170,12 +2170,12 @@ func compareTransactionPostCommitVolumes(
 				continue
 			}
 
-			gotInput, iok := new(big.Int).SetString(stored.GetInput(), 10)
-			gotOutput, ook := new(big.Int).SetString(stored.GetOutput(), 10)
+			gotInput, inputErr := stored.GetInput().ToBigInt()
+			gotOutput, outputErr := stored.GetOutput().ToBigInt()
 
-			if !iok || !ook {
+			if inputErr != nil || outputErr != nil {
 				emit(k.account, k.asset, k.color,
-					fmt.Sprintf("has unparsable amounts (input=%q output=%q)", stored.GetInput(), stored.GetOutput()))
+					fmt.Sprintf("has invalid amounts (input=%v output=%v)", inputErr, outputErr))
 
 				continue
 			}

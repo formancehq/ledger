@@ -88,12 +88,12 @@ func (u *Uint256) Dec() string {
 	return v.Dec()
 }
 
-// MarshalJSON encodes the Uint256 as a decimal string (no quotes) for JSON.
+// MarshalJSON encodes the Uint256 as a decimal number.
 func (u *Uint256) MarshalJSON() ([]byte, error) {
 	return []byte(u.Dec()), nil
 }
 
-// UnmarshalJSON decodes a decimal string (no quotes) into the Uint256.
+// UnmarshalJSON decodes a decimal number into the Uint256.
 func (u *Uint256) UnmarshalJSON(data []byte) error {
 	var v uint256.Int
 
