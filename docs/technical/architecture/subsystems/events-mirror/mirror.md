@@ -99,6 +99,28 @@ Two concrete implementations:
 
 Both adapters return v2 log entries in their native shape; translation to v3 orders happens upstream of the source interface.
 
+### HTTP URL parsing diagnostics
+
+Malformed HTTP mirror URLs fail before any network request. The adapter returns
+the fixed diagnostic `parsing URL: invalid mirror source URL`, without wrapping
+the original parser error: both `url.Error.URL` and its underlying error may
+contain credentials or fragments of the supplied URL. This boundary covers
+both latest-head discovery and batch fetching. Ledger identity remains in the
+worker's structured log fields and the `MirrorSyncUpdate` ledger name.
+
+A failed head lookup is logged and does not suppress the batch fetch. A failed
+batch is logged, then its safe diagnostic is proposed as `MirrorSyncError`.
+The FSM writes that reporting status when the proposal applies; ledger progress
+reads expose the same safe message. The ingestion boundary does not advance.
+This sanitization does not alter the configured source, accepted orders, or
+audit evidence, and does not change the status retry/clear lifecycle.
+
+`TestWorker_MalformedURLDoesNotDisclosePassword` exercises admission, both real
+HTTP source calls, worker logs, serialized proposals, real FSM application and
+ledger progress reads with a synthetic password and a transport that rejects
+any attempted network request. Adapter tests also cover invalid ports,
+userinfo escapes and control characters, including wrapped error chains.
+
 Ingestion must return the oldest available logs strictly after the supplied
 boundary, so replaying history cannot replace available transactions with
 synthetic gaps (EN-2024). The HTTP adapter uses the public sort and numeric
