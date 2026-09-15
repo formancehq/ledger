@@ -66,6 +66,19 @@ generated descriptors and authoritative documentation at the audited SHA.
 | H — Completeness and non-reversibility | The preparation base's `Config.redactedCopy`, JSON/YAML marshalers and redaction regression tests demonstrate value/pointer and absent/present requirements. The same deny-by-default principle must cover every registered variant and actual encoder. | Omission, a fixed placeholder or a presence boolean may be valid. Secret-dependent public lengths, prefixes, encodings or guessable digests are disclosures when they materially reveal the value; internal rollout hashes are not public output by default. |
 | I — Root-cause ownership | Assign the finding to the earliest component that wrongly serializes, retains in public state or passes the secret into an unsafe diagnostic. Later transports are evidence, not duplicate causes. | Auth decisions, filesystem containment, general API parity and event delivery have dedicated manifests. Cross-domain paths are valid evidence but must not multiply one defect into several findings. |
 
+### Operator backup credential oracle (EN-2060)
+
+`BackupDestination.s3AccessKeyIdFrom` and `s3SecretAccessKeyFrom` carry only
+same-namespace Secret name/key references. `buildBackupJob` emits non-optional
+`secretKeyRef` environment entries. Exercise full and incremental reconciliation
+and JSON/YAML serialization of Backup, BackupRun, Job and Pod template with
+separate synthetic key canaries and a retained bucket control. Require no raw
+or serialized/encoded credentials in these resources or S3 command arguments.
+Then exercise the production `ledgerctl` environment binder and storage protobuf
+builder to prove the credential reaches its intended RPC input. Omitted references
+must preserve the server's default AWS credential chain. Fake clients prove the
+rendered Pod template, not kubelet resolution or actual Pod propagation.
+
 ## Surface inventory required at execution
 
 Before testing, build a matrix with one row per sensitive field and columns for

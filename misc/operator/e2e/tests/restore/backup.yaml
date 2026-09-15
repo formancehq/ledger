@@ -1,3 +1,12 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: backup-s3-credentials
+type: Opaque
+stringData:
+  access-key-id: minioadmin
+  secret-access-key: minioadmin
+---
 apiVersion: ledger.formance.com/v1alpha1
 kind: Backup
 metadata:
@@ -10,7 +19,11 @@ spec:
       bucket: e2e-restore
       region: us-east-1
       endpoint: http://minio.minio.svc.cluster.local:9000
-    s3AccessKeyId: minioadmin
-    s3SecretAccessKey: minioadmin
+    s3AccessKeyIdFrom:
+      name: backup-s3-credentials
+      key: access-key-id
+    s3SecretAccessKeyFrom:
+      name: backup-s3-credentials
+      key: secret-access-key
   schedule:
     full: "* * * * *"

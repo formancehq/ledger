@@ -17,6 +17,18 @@ Source: `internal/infra/backup/` (lower-level storage + manifest) and `internal/
 
 `internal/infra/backup/storage.go:51-57` dispatches on the `kind` field of `StorageConfig`: only `"s3"` and `"azure"` are recognised. **There is no filesystem driver for backup** — backups must go to a real object store. The default light binary therefore has no functional backup target — operators who need backup build with `just build-full` or the matching `-tags` flag.
 
+## Operator credential delivery
+
+Static S3 backup credentials are referenced by Secret name/key in the Backup
+namespace. The operator creates Job environment `secretKeyRef` entries, and the
+kubelet resolves them for `ledgerctl`; the CLI sends the credentials in its
+backup RPC using the existing storage contract. Ordinary Backup/Job/Pod specs
+and S3 command arguments contain no credential values. Missing references prevent
+container startup; omission preserves the Ledger server's default AWS chain.
+See the [operational contract](../../../../ops/backup-restore.md#s3-credentials-for-operator-backups)
+for configuration, failure behavior and Secret update timing. This changes
+Kubernetes runtime delivery only, not audit state or incremental restore parity.
+
 ## How a backup is taken
 
 A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.

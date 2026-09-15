@@ -110,14 +110,15 @@ func TestBackupFlags_NilS3(t *testing.T) {
 }
 
 func TestBackupFlags_WithCredentials(t *testing.T) {
+	t.Parallel()
 	dest := &ledgerv1alpha1.BackupDestination{
 		Driver: "s3",
 		S3: &ledgerv1alpha1.S3Config{
 			Bucket:   "my-bucket",
 			Endpoint: "http://minio:9000",
 		},
-		S3AccessKeyID:     "AKID",
-		S3SecretAccessKey: "SECRET",
+		S3AccessKeyIDFrom:     &ledgerv1alpha1.SecretKeyRef{Name: "s3-auth", Key: "access-key-id"},
+		S3SecretAccessKeyFrom: &ledgerv1alpha1.SecretKeyRef{Name: "s3-auth", Key: "secret-access-key"},
 	}
 
 	flags := backupFlags(dest)
@@ -125,7 +126,5 @@ func TestBackupFlags_WithCredentials(t *testing.T) {
 		"--driver", "s3",
 		"--s3-bucket", "my-bucket",
 		"--s3-endpoint", "http://minio:9000",
-		"--s3-access-key-id", "AKID",
-		"--s3-secret-access-key", "SECRET",
 	}, flags)
 }

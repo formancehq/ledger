@@ -9,6 +9,14 @@ spec:
     s3:
       bucket: my-ledger-backups
       region: us-east-1
+    # For static auth, provision this Secret in the Backup namespace.
+    # Omit both references to use the Ledger server's default AWS chain.
+    # s3AccessKeyIdFrom:
+    #   name: backup-s3-credentials
+    #   key: access-key-id
+    # s3SecretAccessKeyFrom:
+    #   name: backup-s3-credentials
+    #   key: secret-access-key
   schedule:
     full: "0 2 * * 0"
     incremental: "0 * * * *"

@@ -31,15 +31,17 @@ type BackupDestination struct {
 	// +optional
 	S3 *S3Config `json:"s3,omitempty"`
 
-	// S3AccessKeyID is a static AWS access key ID for S3 authentication.
-	// If not set, the default AWS credential chain is used (env vars, IRSA, etc.).
+	// S3AccessKeyIDFrom references a static AWS access key ID in a Secret in
+	// the Backup namespace. Kubernetes injects it into the backup Job at runtime.
+	// If not set, the default AWS credential chain is used on the Ledger server.
 	// +optional
-	S3AccessKeyID string `json:"s3AccessKeyId,omitempty"`
+	S3AccessKeyIDFrom *SecretKeyRef `json:"s3AccessKeyIdFrom,omitempty"`
 
-	// S3SecretAccessKey is a static AWS secret access key for S3 authentication.
-	// If not set, the default AWS credential chain is used.
+	// S3SecretAccessKeyFrom references a static AWS secret access key in a Secret
+	// in the Backup namespace. The value never appears in the Backup or Job spec.
+	// If not set, the default AWS credential chain is used on the Ledger server.
 	// +optional
-	S3SecretAccessKey string `json:"s3SecretAccessKey,omitempty"`
+	S3SecretAccessKeyFrom *SecretKeyRef `json:"s3SecretAccessKeyFrom,omitempty"`
 }
 
 // BackupSchedule defines cron schedules for full and incremental backups.
