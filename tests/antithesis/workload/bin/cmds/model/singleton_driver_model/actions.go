@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/big"
+	"math/bits"
 	"slices"
 	"strings"
 
@@ -70,6 +71,33 @@ func poolName() string {
 // small enough that re-targeting the same cell is frequent.
 func poolAddress() string {
 	return fmt.Sprintf("%s:%d", poolName(), internal.Rand().Uint64()%numIDsPerPrefix)
+}
+
+// randomColor draws a posting color: the trailing-zero count of one uniform
+// draw, which is geometric with p=1/2 — "" half the time, "A" a quarter, "B" an
+// eighth, on down to a 65th bucket at 2^-64. The head keeps same-(account,
+// asset) color collisions frequent, which is what exposes a leak between
+// buckets; the tail keeps producing buckets touched once and never again,
+// where a leak has no re-touch to give it away. Drawn at the point of decision
+// so Antithesis controls it.
+func randomColor() string {
+	return colorName(bits.TrailingZeros64(random.GetRandom()))
+}
+
+// colorName encodes k as bijective base-26 letters — 0 is the uncolored
+// bucket, then A..Z, AA..ZZ — satisfying the ^[A-Z]*$ charset the admission
+// boundary enforces.
+func colorName(k int) string {
+	var out []byte
+	for k > 0 {
+		k--
+		out = append(out, byte('A'+k%26))
+		k /= 26
+	}
+
+	slices.Reverse(out)
+
+	return string(out)
 }
 
 // pickAtOrAfter returns the first entry at or after probe, wrapping to the
@@ -342,7 +370,7 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	n := 1 + int(random.RandomChoice([]uint8{0, 1, 2, 3}))
 	postings := make([]*commonpb.Posting, n)
 	for i := range postings {
-		postings[i] = commonpb.NewPosting(sourceAddress(), poolAddress(), assets[int(random.RandomChoice([]uint8{0, 1, 2}))], internal.RandomBigInt())
+		postings[i] = commonpb.NewColoredPosting(sourceAddress(), poolAddress(), assets[int(random.RandomChoice([]uint8{0, 1, 2}))], randomColor(), internal.RandomBigInt())
 	}
 
 	// Every transaction gets a unique reference so it is targetable by later
@@ -481,8 +509,8 @@ func pickPersistence() commonpb.AccountTypePersistence {
 }
 
 // Single-posting transaction with a fresh idempotency key. Transient
-// bulk generators build fund/drain pairs sharing address+asset+amount.
-func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *servicepb.Request {
+// bulk generators build fund/drain pairs sharing address+asset+color+amount.
+func txRequest(ledger, src, dest, asset, color string, amount *big.Int, force bool) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -491,7 +519,7 @@ func txRequest(ledger, src, dest, asset string, amount *big.Int, force bool) *se
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting(src, dest, asset, amount),
+								commonpb.NewColoredPosting(src, dest, asset, color, amount),
 							},
 							Force: force,
 						},
@@ -558,7 +586,7 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *servicepb.R
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting(srcKey.Address, "world", srcKey.Asset, balance.ToBig()),
+								commonpb.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
 							},
 							Force: true,
 						},
@@ -1006,11 +1034,12 @@ func generateTransientBalancedBulk(ledger string, ls oracle.LedgerState) []*serv
 	}
 
 	asset := assets[int(random.RandomChoice([]uint8{0, 1, 2}))]
+	color := randomColor()
 	amount := internal.RandomBigInt()
 
 	return []*servicepb.Request{
-		txRequest(ledger, "world", dest, asset, amount, true),
-		txRequest(ledger, dest, "world", asset, amount, true),
+		txRequest(ledger, "world", dest, asset, color, amount, true),
+		txRequest(ledger, dest, "world", asset, color, amount, true),
 	}
 }
 
@@ -1031,7 +1060,7 @@ func generateTransientUnbalancedBulk(ledger string, ls oracle.LedgerState) []*se
 	amount := internal.RandomBigInt()
 
 	return []*servicepb.Request{
-		txRequest(ledger, "world", dest, asset, amount, true),
+		txRequest(ledger, "world", dest, asset, randomColor(), amount, true),
 	}
 }
 

@@ -269,11 +269,12 @@ func renderMetaMap(m map[string]*commonpb.MetadataValue) string {
 	return "{" + strings.Join(parts, ",") + "}"
 }
 
-// renderVolumeSet renders a returned volume set as {asset=(in,out),...}, sorted.
-func renderVolumeSet(vols map[string]oracle.VolumePair) string {
+// renderVolumeSet renders a returned volume set as {asset|color=(in,out),...},
+// sorted.
+func renderVolumeSet(vols map[assetColor]oracle.VolumePair) string {
 	parts := make([]string, 0, len(vols))
-	for asset, vp := range vols {
-		parts = append(parts, fmt.Sprintf("%s=(%s,%s)", asset, vp.Input.Dec(), vp.Output.Dec()))
+	for key, vp := range vols {
+		parts = append(parts, fmt.Sprintf("%s=(%s,%s)", key, vp.Input.Dec(), vp.Output.Dec()))
 	}
 	sort.Strings(parts)
 

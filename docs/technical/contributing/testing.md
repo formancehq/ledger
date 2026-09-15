@@ -450,7 +450,9 @@ restart. It catches:
   set.
 
 It exercises the chart of accounts, STRICT/AUDIT enforcement switches through
-both setter forms, transactions and reverts (with post-commit volumes),
+both setter forms, transactions and reverts (with post-commit volumes), color
+segregation (postings draw a color geometrically, so the uncolored bucket
+dominates while a long tail of rarely-touched ones keeps appearing),
 account/transaction/ledger metadata, the typed-metadata schema and
 its index lifecycle (create, retype with serving-window closure, remove), and
 the transient/ephemeral persistence classes — and reads them back: account,

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,19 +41,18 @@ func servedRows(ls oracle.LedgerState, ledger string, ids ...uint64) []serverLog
 		}
 
 		out = append(out, serverLogRow{
-			ledger:       ledger,
-			id:           id,
-			kind:         row.Kind,
-			tx:           tx,
-			revertsID:    revertsID,
-			payload:      row.Payload,
-			date:         row.Date.GetData(),
-			hasDate:      row.Date != nil,
-			sequence:     row.Sequence,
-			purged:       row.PurgedVolumes,
-			newKept:      row.NewKeptVolumes,
-			ephemeral:    row.EphemeralVolumes,
-			volumesKnown: true,
+			ledger:    ledger,
+			id:        id,
+			kind:      row.Kind,
+			tx:        tx,
+			revertsID: revertsID,
+			payload:   row.Payload,
+			date:      row.Date.GetData(),
+			hasDate:   row.Date != nil,
+			sequence:  row.Sequence,
+			purged:    row.PurgedVolumes,
+			newKept:   row.NewKeptVolumes,
+			ephemeral: row.EphemeralVolumes,
 		})
 	}
 
@@ -494,25 +494,24 @@ func TestServerLogRows_ReadsVolumeAnnotations(t *testing.T) {
 	})})
 
 	require.Len(t, rows, 1)
-	require.True(t, rows[0].volumesKnown)
-	require.Equal(t, "e:1:USD", rows[0].purged)
-	require.Equal(t, "world:EUR,n:1:EUR", rows[0].newKept,
+	require.Equal(t, "e:1:USD:", rows[0].purged)
+	require.Equal(t, "world:EUR:,n:1:EUR:", rows[0].newKept,
 		"read verbatim: the model renders its own list sorted, so a mis-sorted served list must not be repaired here")
-	require.Equal(t, "e:2:USD", rows[0].ephemeral)
+	require.Equal(t, "e:2:USD:", rows[0].ephemeral)
 
 	coloured := serverLogRows([]*commonpb.Log{logOf(&commonpb.LedgerLog{
 		Id:             1,
-		NewKeptVolumes: []*commonpb.TouchedVolume{{Account: "n:1", Asset: "EUR", Color: "red"}},
+		NewKeptVolumes: []*commonpb.TouchedVolume{{Account: "n:1", Asset: "EUR", Color: "GRANTS"}},
 	})})
 
 	require.Len(t, coloured, 1)
-	require.False(t, coloured[0].volumesKnown, "a colour splits a cell the model holds as one")
+	require.Equal(t, "n:1:EUR:GRANTS", coloured[0].newKept,
+		"the colour segment carries the bucket, so a colour split is a different row")
 }
 
-// No generated posting carries a colour, so a coloured annotation is a cell
-// nothing in the run could have produced — a finding, not a reason to stop
-// comparing.
-func TestLogWindowMatches_ColouredVolumesAreRejected(t *testing.T) {
+// The annotation names the exact bucket it touched. Serving the same cell
+// under a different colour is a different cell, so the window must not match.
+func TestLogWindowMatches_ColourSplitIsAMismatch(t *testing.T) {
 	t.Parallel()
 
 	ls := buildGlobal(t, oracletest.TxReq("world", "acc:1", "USD/2", 5)).Ledger("L")
@@ -522,7 +521,7 @@ func TestLogWindowMatches_ColouredVolumesAreRejected(t *testing.T) {
 	require.True(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, servedRows(ls, "L", id)))
 
 	page := servedRows(ls, "L", id)
-	page[0].volumesKnown = false
+	page[0].newKept = strings.ReplaceAll(page[0].newKept, "USD/2:", "USD/2:GRANTS")
 	require.False(t, logWindowMatches(ls, "L", filter, 0, logTestPageSize, page))
 }
 

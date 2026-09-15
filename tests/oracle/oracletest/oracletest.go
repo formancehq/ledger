@@ -42,6 +42,11 @@ func RemoveTypeReq(name string) *servicepb.Request {
 }
 
 func TxReqL(ledger, src, dest, asset string, amount int64) *servicepb.Request {
+	return TxReqColoredL(ledger, src, dest, asset, "", amount)
+}
+
+// TxReqColoredL is TxReqL on an explicit color bucket; "" is the uncolored one.
+func TxReqColoredL(ledger, src, dest, asset, color string, amount int64) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
@@ -50,7 +55,7 @@ func TxReqL(ledger, src, dest, asset string, amount int64) *servicepb.Request {
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting(src, dest, asset, big.NewInt(amount)),
+								commonpb.NewColoredPosting(src, dest, asset, color, big.NewInt(amount)),
 							},
 						},
 					},

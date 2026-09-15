@@ -24,10 +24,12 @@ type TypeState struct {
 	Persistence commonpb.AccountTypePersistence
 }
 
-// VolumeKey is one (address, asset) cell of the volume table.
+// VolumeKey is one (address, asset, color) cell of the volume table. Color ""
+// is the uncolored bucket, segregated from every colored one.
 type VolumeKey struct {
 	Address string
 	Asset   string
+	Color   string
 }
 
 // MetaKey is one (address, key) cell of the account-metadata table.
@@ -45,19 +47,24 @@ func CompareMetaKey(a, b MetaKey) int {
 	return strings.Compare(a.Key, b.Key)
 }
 
-// VolumePair is the cumulative input/output for one (address, asset) cell.
+// VolumePair is the cumulative input/output for one (address, asset, color) cell.
 type VolumePair struct {
 	Input  uint256.Int
 	Output uint256.Int
 }
 
-// CompareVolumeKey compares VolumeKeys by address, then asset.
+// CompareVolumeKey compares VolumeKeys by address, then asset, then color —
+// the order the write set stamps touched volumes in (write_set_new_volumes.go).
 func CompareVolumeKey(a, b VolumeKey) int {
 	if c := strings.Compare(a.Address, b.Address); c != 0 {
 		return c
 	}
 
-	return strings.Compare(a.Asset, b.Asset)
+	if c := strings.Compare(a.Asset, b.Asset); c != 0 {
+		return c
+	}
+
+	return strings.Compare(a.Color, b.Color)
 }
 
 // LedgerState is one ledger's slice of the model: its chart of account types and
@@ -258,7 +265,7 @@ func typeTerm(name string, ts TypeState) Digest {
 
 func volumeTerm(k VolumeKey, v VolumePair) Digest {
 	t := newTerm("V")
-	t.str(k.Address, k.Asset)
+	t.str(k.Address, k.Asset, k.Color)
 	t.u256(&v.Input)
 	t.u256(&v.Output)
 
@@ -426,7 +433,7 @@ func txTerm(idx int, tx *txRecord) Digest {
 	// agreeing on current balances can still disagree on it.
 	for _, key := range sortedVolumeKeys(tx.pcv) {
 		vp := tx.pcv[key]
-		t.str(key.Address, key.Asset)
+		t.str(key.Address, key.Asset, key.Color)
 		t.str(vp.Input.Dec(), vp.Output.Dec())
 	}
 
@@ -449,7 +456,7 @@ func txTerm(idx int, tx *txRecord) Digest {
 	t.u64(uint64(len(tx.postings)))
 	for _, p := range tx.postings {
 		p.GetAmount().IntoUint256(&amt)
-		t.str(p.GetSource(), p.GetDestination(), p.GetAsset())
+		t.str(p.GetSource(), p.GetDestination(), p.GetAsset(), p.GetColor())
 		t.u256(&amt)
 	}
 
@@ -1228,9 +1235,7 @@ func sortedVolumeKeys[V any](cells map[VolumeKey]V) []VolumeKey {
 }
 
 // renderTouchedVolumes names a set of cells the way the FSM orders them on a
-// log: deduplicated, ascending by account then asset. Colour is a dimension of
-// the server's key that the model does not carry, so a colour split cannot be
-// caught here.
+// log: deduplicated, ascending by account, then asset, then color.
 func renderTouchedVolumes(cells map[VolumeKey]bool) string {
 	if len(cells) == 0 {
 		return ""
@@ -1240,7 +1245,7 @@ func renderTouchedVolumes(cells map[VolumeKey]bool) string {
 
 	parts := make([]string, 0, len(keys))
 	for _, key := range keys {
-		parts = append(parts, key.Address+":"+key.Asset)
+		parts = append(parts, key.Address+":"+key.Asset+":"+key.Color)
 	}
 
 	return strings.Join(parts, ",")
@@ -1435,6 +1440,7 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 			Destination: p.GetSource(),
 			Amount:      p.GetAmount(),
 			Asset:       p.GetAsset(),
+			Color:       p.GetColor(),
 		}
 	}
 
@@ -1536,8 +1542,8 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, to
 	for _, p := range postings {
 		var amt uint256.Int
 		p.GetAmount().IntoUint256(&amt)
-		asset := p.GetAsset()
-		srcKey := VolumeKey{Address: p.GetSource(), Asset: asset}
+		asset, color := p.GetAsset(), p.GetColor()
+		srcKey := VolumeKey{Address: p.GetSource(), Asset: asset, Color: color}
 		src := s.vol(srcKey)
 
 		var sum uint256.Int
@@ -1552,7 +1558,7 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, to
 		}
 
 		// The destination Input can never overflow either.
-		dstKey := VolumeKey{Address: p.GetDestination(), Asset: asset}
+		dstKey := VolumeKey{Address: p.GetDestination(), Asset: asset, Color: color}
 		dst := s.vol(dstKey)
 		if _, overflow := sum.AddOverflow(&dst.Input, &amt); overflow {
 			return pcv, domain.ErrReasonVolumeOverflow
@@ -1653,11 +1659,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 		rec.indexedAddrs = map[string]uint8{}
 
 		for _, p := range rec.postings {
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset()}, compiled) {
+			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
 			}
 
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset()}, compiled) {
+			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
 			}
 		}
