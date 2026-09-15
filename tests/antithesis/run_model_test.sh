@@ -135,6 +135,10 @@ SERVER_BIN="$WORKDIR/ledger-server"
 DRIVER_BIN="$WORKDIR/model-driver"
 LEDGERCTL_BIN="$WORKDIR/ledgerctl"
 DRIVER_PID=""
+DRIVER_SUPERVISOR_PID=""
+DRIVER_EXIT_RECORD="$WORKDIR/driver-exit"
+DRIVER_EXIT_FAILED=0
+DRIVER_EXIT_STATUS="unknown"
 RECOVERY_FAILED=0
 DRIVER_EXITED_EARLY=0
 RESTORE_CYCLES=0
@@ -168,6 +172,8 @@ log() { echo "[run_model_test] $*"; }
 cleanup() {
 	# SIGTERM then SIGKILL so a driver/server that ignores or is slow to handle
 	# the term signal cannot survive as an orphan polluting later runs.
+	# Before the PID handshake completes, the supervisor owns child cleanup.
+	if [ -z "$DRIVER_PID" ] && [ -n "$DRIVER_SUPERVISOR_PID" ]; then kill "$DRIVER_SUPERVISOR_PID" 2>/dev/null; fi
 	[ -n "$DRIVER_PID" ] && kill "$DRIVER_PID" 2>/dev/null
 	for pid in "${SERVER_PIDS[@]}"; do [ -n "$pid" ] && kill "$pid" 2>/dev/null; done
 	sleep 1
@@ -521,28 +527,54 @@ RESTORE_REQ_ENV="" RESTORE_RESP_ENV="" RESTORE_INTERVAL_ENV=""
 if [ "$RESTORE" = 1 ]; then
 	RESTORE_REQ_ENV="$RESTORE_REQ"; RESTORE_RESP_ENV="$RESTORE_RESP"; RESTORE_INTERVAL_ENV="$RESTORE_INTERVAL"
 fi
-LEDGER_GRPC_ADDR="$ADDR_LIST" \
-ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
-MODEL_DEBUG="${MODEL_DEBUG:-}" \
-MODEL_DUMP_BATCHES="${MODEL_DUMP_BATCHES:-}" \
-MODEL_LEDGERS="${MODEL_LEDGERS:-}" \
-MODEL_WORKERS="${MODEL_WORKERS:-}" \
-MODEL_MAX_SECONDS="$(( DURATION + 15 ))" \
-MODEL_RESTORE_REQ="$RESTORE_REQ_ENV" \
-MODEL_RESTORE_RESP="$RESTORE_RESP_ENV" \
-MODEL_RESTORE_INTERVAL="$RESTORE_INTERVAL_ENV" \
-	"$DRIVER_BIN" > "$DRIVER_LOG" 2>&1 &
-DRIVER_PID=$!
+# The supervisor records termination while the main shell may be blocked in a
+# restart/recovery cycle beyond the requested duration. Keep the real child PID
+# for cleanup; the FIFO makes this handoff blocking rather than a polling race.
+deadline=$(( $(date +%s) + DURATION ))
+driver_pid_pipe="$WORKDIR/driver-pid"
+mkfifo "$driver_pid_pipe" || exit 2
+# Open both ends before forking so a failed supervisor cannot strand the shell
+# in open(2) before read's timeout takes effect. The driver does not inherit it.
+exec 5<> "$driver_pid_pipe" || exit 2
+(
+	child=""
+	trap '[ -n "$child" ] && kill "$child" 2>/dev/null; [ -n "$child" ] && kill -9 "$child" 2>/dev/null; wait 2>/dev/null; exit 130' INT TERM
+	LEDGER_GRPC_ADDR="$ADDR_LIST" \
+	ANTITHESIS_SDK_LOCAL_OUTPUT="$ASSERTIONS" \
+	MODEL_DEBUG="${MODEL_DEBUG:-}" \
+	MODEL_DUMP_BATCHES="${MODEL_DUMP_BATCHES:-}" \
+	MODEL_LEDGERS="${MODEL_LEDGERS:-}" \
+	MODEL_WORKERS="${MODEL_WORKERS:-}" \
+	MODEL_MAX_SECONDS="$(( DURATION + 15 ))" \
+	MODEL_RESTORE_REQ="$RESTORE_REQ_ENV" \
+	MODEL_RESTORE_RESP="$RESTORE_RESP_ENV" \
+	MODEL_RESTORE_INTERVAL="$RESTORE_INTERVAL_ENV" \
+		"$DRIVER_BIN" 5>&- > "$DRIVER_LOG" 2>&1 &
+	child=$!
+	printf '%s\n' "$child" >&5
+	exec 5>&-
+	wait "$child"
+	driver_status=$?
+	printf '%s %s\n' "$(date +%s)" "$driver_status" > "$DRIVER_EXIT_RECORD.tmp"
+	mv "$DRIVER_EXIT_RECORD.tmp" "$DRIVER_EXIT_RECORD"
+) &
+DRIVER_SUPERVISOR_PID=$!
+if ! read -r -t 10 DRIVER_PID <&5; then
+ DRIVER_PID=""
+ echo "ERROR: model driver supervisor did not publish its child PID" >&2
+ exit 2
+fi
+exec 5>&-
+rm "$driver_pid_pipe"
 
 # Monitor loop. For N>1, roll a restart every RESTART_INTERVAL (kill one node,
 # rejoin, wait for full recovery before touching the next) -- quorum (N-1 of N)
 # is preserved throughout. MODEL_FAIL_FAST stops the moment a finding appears.
-deadline=$(( $(date +%s) + DURATION ))
 restart_idx=0
 cycle=0
 next_restart=$(( $(date +%s) + RESTART_INTERVAL ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
-	if ! kill -0 "$DRIVER_PID" 2>/dev/null; then log "driver exited early"; DRIVER_EXITED_EARLY=1; break; fi
+	if [ -f "$DRIVER_EXIT_RECORD" ]; then break; fi
 	if check_fail_fast; then log "fail-fast: model finding detected, stopping early"; break; fi
 
 	if [ "$NODES" -gt 1 ] && [ "$RESTART_INTERVAL" -gt 0 ] && [ "$(date +%s)" -ge "$next_restart" ]; then
@@ -576,16 +608,30 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 	sleep 1
 done
 
-# A driver can exit after the final poll but before the deadline check ends the loop.
-# Record that exit before sending our own shutdown signal.
-if ! kill -0 "$DRIVER_PID" 2>/dev/null; then DRIVER_EXITED_EARLY=1; fi
+# Reap an already departed child before deciding whether to signal it. Its
+# supervisor may still be publishing the exit record after wait returned.
+if ! kill -0 "$DRIVER_PID" 2>/dev/null; then wait "$DRIVER_SUPERVISOR_PID"; fi
 
 log "stopping driver..."
-kill "$DRIVER_PID" 2>/dev/null
-for _ in $(seq 1 5); do kill -0 "$DRIVER_PID" 2>/dev/null || break; sleep 1; done
-kill -9 "$DRIVER_PID" 2>/dev/null
-wait "$DRIVER_PID" 2>/dev/null
+driver_stop_requested=0
+if [ ! -f "$DRIVER_EXIT_RECORD" ]; then
+	if kill "$DRIVER_PID" 2>/dev/null; then driver_stop_requested=1; fi
+	for _ in $(seq 1 5); do kill -0 "$DRIVER_PID" 2>/dev/null || break; sleep 1; done
+	if kill -9 "$DRIVER_PID" 2>/dev/null; then driver_stop_requested=1; fi
+fi
+wait "$DRIVER_SUPERVISOR_PID" || DRIVER_EXIT_FAILED=1
+if read -r driver_exited_at DRIVER_EXIT_STATUS < "$DRIVER_EXIT_RECORD"; then
+	if [ "$driver_exited_at" -lt "$deadline" ]; then DRIVER_EXITED_EARLY=1; fi
+	# A nonzero spontaneous exit remains a failure even after the deadline.
+	# TERM/KILL are expected only when this harness requested shutdown.
+	if [ "$DRIVER_EXIT_STATUS" -ne 0 ]; then
+		if [ "$driver_stop_requested" -eq 0 ] || { [ "$DRIVER_EXIT_STATUS" -ne 143 ] && [ "$DRIVER_EXIT_STATUS" -ne 137 ]; }; then DRIVER_EXIT_FAILED=1; fi
+	fi
+else
+	DRIVER_EXIT_FAILED=1
+fi
 DRIVER_PID=""
+DRIVER_SUPERVISOR_PID=""
 
 # ---------------------------------------------------------------------------
 # Report
@@ -640,16 +686,20 @@ if [ "$RECOVERY_FAILED" -ne 0 ]; then
 	findings=$((findings + 1))
 fi
 
-# 5. Driver exited before the deadline with nothing above explaining it. The
-# driver self-terminates only at MODEL_MAX_SECONDS (> DURATION), so an exit
-# during the run is abnormal -- typically a setup/connection error that logged
-# and returned (NewClient / setupLedgers), leaving no assertion or panic. The
-# model did not run for the requested duration, so this is not a pass.
+# 5. Classify the supervised exit, not the time the restart loop noticed it.
+# Recovery can finish after MODEL_MAX_SECONDS, when a clean watchdog exit is
+# expected. A genuine early exit or unsuccessful late exit must still fail.
 if [ "$DRIVER_EXITED_EARLY" -ne 0 ] && [ "$findings" -eq 0 ]; then
 	echo
 	echo "DRIVER EXITED EARLY: the model ran for less than the requested ${DURATION}s"
 	echo "  (no assertion or crash recorded -- likely a setup/connection error; driver log:)"
 	tail -20 "$DRIVER_LOG" 2>/dev/null
+	findings=$((findings + 1))
+fi
+
+if [ "$DRIVER_EXIT_FAILED" -ne 0 ]; then
+	echo
+	echo "DRIVER EXIT FAILED: status $DRIVER_EXIT_STATUS (or missing supervisor record)"
 	findings=$((findings + 1))
 fi
 

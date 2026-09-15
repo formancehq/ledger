@@ -3,6 +3,7 @@ package oracle
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -60,15 +61,16 @@ func CompareVolumeKey(a, b VolumeKey) int {
 }
 
 // LedgerState is one ledger's slice of the model: its chart of account types and
-// per-cell volumes. Every field is a persistent, fingerprinted collection (see
-// pmap.go): a mutation rebinds the field to a new value sharing structure with
-// the old, so the checker forks a state across hypothesized serializations by
-// plain struct copy — forks never alias.
+// per-cell volumes. Collection fields are persistent and fingerprinted (see
+// pmap.go): mutations rebind values sharing structure with the old. The scalar
+// enforcement mode is copied by value, so the checker forks state across
+// hypothesized serializations by plain struct copy — forks never alias.
 type LedgerState struct {
-	types      Map[string, TypeState]
-	volumes    Map[VolumeKey, VolumePair]
-	metadata   Map[MetaKey, *commonpb.MetadataValue]
-	ledgerMeta Map[string, *commonpb.MetadataValue]
+	defaultEnforcementMode commonpb.ChartEnforcementMode
+	types                  Map[string, TypeState]
+	volumes                Map[VolumeKey, VolumePair]
+	metadata               Map[MetaKey, *commonpb.MetadataValue]
+	ledgerMeta             Map[string, *commonpb.MetadataValue]
 	// Declared metadata field types per key, driving value coercion. Keyed by
 	// metadata key (the schema is per (target, key), not per address).
 	accountFieldTypes Map[string, commonpb.MetadataType]
@@ -99,9 +101,8 @@ type LedgerState struct {
 	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
 	// (initialised to 1 at CreateLedger, so the first apply lands on 1). Every
 	// committed ledger-scoped order appends exactly one entry; a rejected one
-	// appends none, since the workload never opts into skippable_reasons —
-	// which is what makes a skip consume a log id (processor.go's skip branch)
-	// without committing anything.
+	// appends none. An opted-in skipped order consumes one log id without
+	// committing the failed order's mutations.
 	logs List[*logRecord]
 
 	// retypeWindows holds, per canonical metadata-index ID, the SET of declared
@@ -162,6 +163,11 @@ func NewLedgerState() LedgerState {
 	}
 }
 
+// DefaultEnforcementMode returns the current ledger chart enforcement mode.
+func (s LedgerState) DefaultEnforcementMode() commonpb.ChartEnforcementMode {
+	return s.defaultEnforcementMode
+}
+
 // collections lists every fingerprinted collection a LedgerState carries —
 // the single source Fingerprint and IsEmpty derive from, so neither can fall
 // behind the struct's fields. txByRef is excluded: it is an index derived from
@@ -181,9 +187,10 @@ func (s *LedgerState) collections() []interface {
 }
 
 // Fingerprint is the ledger state's 128-bit identity: a hash over its
-// collections' fingerprints in fixed field order.
+// enforcement mode and collections' fingerprints in fixed field order.
 func (s LedgerState) Fingerprint() Digest {
 	t := newTerm("ledger-state")
+	t.u64(uint64(s.defaultEnforcementMode))
 	for _, c := range s.collections() {
 		t.digest(c.Fingerprint())
 	}
@@ -194,6 +201,9 @@ func (s LedgerState) Fingerprint() Digest {
 // IsEmpty reports whether the state holds nothing — the identity of a
 // fresh NewLedgerState.
 func (s LedgerState) IsEmpty() bool {
+	if s.defaultEnforcementMode != commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+		return false
+	}
 	for _, c := range s.collections() {
 		if c.Len() > 0 {
 			return false
@@ -622,6 +632,10 @@ type OrderResult struct {
 	// Revert is set for a committed RevertTransaction: the original id and the
 	// predicted reversed postings, checked against the RevertedTransaction log.
 	Revert *revertEffect
+	// Skipped describes an opted-in business failure that committed a log but no mutations.
+	Skipped *commonpb.OrderSkippedLog
+	// LogID is the independently assigned ledger-local log ID, zero for non-ledger logs.
+	LogID uint64
 }
 
 // metaEffect is a metadata write's predicted effect, for asserting the server's
@@ -707,6 +721,8 @@ type ApplyResult struct {
 // LedgerOf returns the ledger a request targets.
 func LedgerOf(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		return r.SetDefaultEnforcementMode.GetLedger()
 	case *servicepb.Request_Apply:
 		return r.Apply.GetLedger()
 	case *servicepb.Request_AddAccountType:
@@ -766,12 +782,15 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	// Admission validates every order's structure and converts the whole batch
 	// before it reaches the FSM, so a single malformed order rejects the entire
-	// bulk ahead of any per-order FSM outcome. The only structural rejection the
-	// workload produces is an empty create (no postings, no script → VALIDATION);
+	// bulk ahead of any per-order FSM outcome. Structural rejections include invalid skippable reasons and
+	// an empty create (no postings, no script → VALIDATION);
 	// model it here so a bulk mixing an empty create with an FSM-rejecting order
 	// reports VALIDATION, matching validateOrderContent rather than the FSM reason
 	// the sequential pass below would reach first.
 	for _, req := range bulk.Requests {
+		if !validSkippableReasons(req.GetApply()) {
+			return ApplyResult{Reason: domain.ErrReasonValidation, State: g}
+		}
 		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
 			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
 		}
@@ -825,7 +844,13 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 
 		orderCells := map[VolumeKey]bool{}
 
+		beforeOrder := ls
 		oc := ls.applyOne(req, orderCells)
+		if !oc.OK && slices.Contains(req.GetApply().GetSkippableReasons(), domain.ReasonCode(oc.Reason)) {
+			ls = beforeOrder
+			orderCells = map[VolumeKey]bool{}
+			oc = OrderResult{OK: true, Skipped: predictSkippedLog(ls, req, oc.Reason)}
+		}
 
 		for key := range orderCells {
 			cells[key] = true
@@ -838,10 +863,19 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			// ledger-scoped order produces exactly one log, so a handler that
 			// forgot would silently shorten the stream and mis-id every log
 			// after it.
-			ls.appendLog(req, oc.TxID)
+			if oc.Skipped != nil {
+				ls.logs = ls.logs.Append(&logRecord{
+					id:      uint64(ls.logs.Len()) + 1,
+					kind:    "order_skipped",
+					payload: canonicalSkippedLog(oc.Skipped),
+				})
+			} else {
+				ls.appendLog(req, oc.TxID)
+			}
 		}
 
 		if ls.logs.Len() > logsBefore {
+			oc.LogID = uint64(ls.logs.Len())
 			orderTouches = append(orderTouches, orderTouch{ledger: name, logIdx: ls.logs.Len() - 1, cells: orderCells})
 		}
 
@@ -895,23 +929,42 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	return ApplyResult{OK: true, State: next, Orders: orders}
 }
 
-// RequestsEqual reports whether two request slices are element-wise equal,
-// telling a genuine replay (same body) from a same-key/different-body conflict.
-// It is a faithful proxy for the server's idempotency hash: every request field
-// rides on the hashed order, and only admission's OrderTechnical is excluded —
-// so equal requests hash identically (replay) and any difference conflicts.
+// RequestsEqual compares the modeled business intent of request slices. Chart
+// actions have equivalent top-level and ledger-action wire forms, which admission
+// normalizes before hashing. Preserve the ledger, payload and skip opt-ins while
+// comparing those forms independently of the production converter.
 func RequestsEqual(a, b []*servicepb.Request) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
 	for i := range a {
-		if !a[i].EqualVT(b[i]) {
+		if !canonicalIdempotencyRequest(a[i]).EqualVT(canonicalIdempotencyRequest(b[i])) {
 			return false
 		}
 	}
 
 	return true
+}
+
+func canonicalIdempotencyRequest(req *servicepb.Request) *servicepb.Request {
+	var ledger string
+	var action *servicepb.LedgerAction
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_AddAccountType:
+		ledger = r.AddAccountType.GetLedger()
+		action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: r.AddAccountType.GetAccountType()}}}
+	case *servicepb.Request_RemoveAccountType:
+		ledger = r.RemoveAccountType.GetLedger()
+		action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: r.RemoveAccountType.GetName()}}}
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		ledger = r.SetDefaultEnforcementMode.GetLedger()
+		action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: r.SetDefaultEnforcementMode.GetEnforcementMode()}}}
+	default:
+		return req
+	}
+
+	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: ledger, Action: action}}}
 }
 
 // LogIDs returns the ledger-local ids of every committed log, ascending. The
@@ -941,7 +994,10 @@ func (s LedgerState) LogIDs() []uint64 {
 // top-level SavedLedgerMetadata / DeletedLedgerMetadata payload, so they take
 // no ledger-local id and never appear in ListLogs.
 func logKindFor(req *servicepb.Request) string {
+	req = chartRequest(req)
 	switch r := req.GetType().(type) {
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		return "updated_default_enforcement_mode"
 	case *servicepb.Request_AddAccountType:
 		return "added_account_type"
 	case *servicepb.Request_RemoveAccountType:
@@ -958,6 +1014,8 @@ func logKindFor(req *servicepb.Request) string {
 		return "drop_index"
 	case *servicepb.Request_Apply:
 		switch r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+			return "updated_default_enforcement_mode"
 		case *servicepb.LedgerAction_CreateTransaction:
 			return "created_transaction"
 		case *servicepb.LedgerAction_AddMetadata:
@@ -980,7 +1038,10 @@ func logKindFor(req *servicepb.Request) string {
 // validated against the model's transaction records by the ListTransactions
 // path, which compares ids, references, revert relationships and stamps.
 func logPayloadFor(req *servicepb.Request) string {
+	req = chartRequest(req)
 	switch r := req.GetType().(type) {
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		return "mode=" + strconv.Itoa(int(r.SetDefaultEnforcementMode.GetEnforcementMode()))
 	case *servicepb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 
@@ -1000,6 +1061,8 @@ func logPayloadFor(req *servicepb.Request) string {
 		return "index=" + indexes.Canonical(r.DropIndex.GetId())
 	case *servicepb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+			return "mode=" + strconv.Itoa(int(a.SetDefaultEnforcementMode.GetEnforcementMode()))
 		case *servicepb.LedgerAction_AddMetadata:
 			return "target=" + canonicalTarget(a.AddMetadata.GetTarget()) + "|" + canonicalMetadata(a.AddMetadata.GetMetadata())
 		case *servicepb.LedgerAction_DeleteMetadata:
@@ -1015,6 +1078,10 @@ func logPayloadFor(req *servicepb.Request) string {
 // is one this rendering does not pin (a transaction).
 func CanonicalServedLogPayload(data *commonpb.LedgerLogPayload) string {
 	switch {
+	case data.GetOrderSkipped() != nil:
+		return canonicalSkippedLog(data.GetOrderSkipped())
+	case data.GetUpdatedDefaultEnforcementMode() != nil:
+		return "mode=" + strconv.Itoa(int(data.GetUpdatedDefaultEnforcementMode().GetEnforcementMode()))
 	case data.GetAddedAccountType() != nil:
 		at := data.GetAddedAccountType().GetAccountType()
 
@@ -1203,7 +1270,12 @@ func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeA
 // applyOne mutates the (already-forked) working state for one request and
 // returns its predicted outcome, recording touched volume cells.
 func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool) OrderResult {
+	req = chartRequest(req)
 	switch r := req.GetType().(type) {
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		s.defaultEnforcementMode = r.SetDefaultEnforcementMode.GetEnforcementMode()
+
+		return OrderResult{OK: true}
 	case *servicepb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 		name := at.GetName()
@@ -1247,6 +1319,10 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 
 	case *servicepb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+			s.defaultEnforcementMode = a.SetDefaultEnforcementMode.GetEnforcementMode()
+
+			return OrderResult{OK: true}
 		case *servicepb.LedgerAction_CreateTransaction:
 			return s.applyTransaction(a.CreateTransaction, touched)
 		case *servicepb.LedgerAction_AddMetadata:
@@ -1258,14 +1334,12 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 		default:
 			// The generator emits only the actions above; any other is unmodeled
 			// — fail loudly, the generator and model must stay in lockstep.
-			// TODO(model): SetDefaultEnforcementMode.
 			panic(fmt.Sprintf("model: unmodeled LedgerApply action %T", r.Apply.GetAction().GetData()))
 		}
 
 	default:
 		// The generator emits only Add/RemoveAccountType and Apply; any other
 		// top-level request is unmodeled.
-		// TODO(model): top-level chart/enforcement-mode requests.
 		panic(fmt.Sprintf("model: unmodeled request type %T", req.GetType()))
 	}
 }
@@ -1414,8 +1488,11 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 // chartRejects reports whether any non-world address in postings fails to match
 // the chart. Enforcement only applies once the chart is non-empty (the server's
 // validateAccountAgainstAccountTypes short-circuits on an empty chart); the
-// default mode is STRICT, which the workload never changes.
+// current ledger default controls rejection of unmatched accounts.
 func (s *LedgerState) chartRejects(postings []*commonpb.Posting) bool {
+	if s.defaultEnforcementMode != commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT {
+		return false
+	}
 	compiled := s.compiled()
 	if len(compiled) == 0 {
 		return false
@@ -1604,10 +1681,10 @@ func (s *LedgerState) applyAddMetadata(cmd *commonpb.SaveMetadataCommand) OrderR
 }
 
 // applyAddAccountMetadata sets account metadata last-writer-wins, under STRICT
-// chart enforcement on the address (same as a transaction posting).
+// chart enforcement on the address when the ledger default is STRICT.
 func (s *LedgerState) applyAddAccountMetadata(addr string, md map[string]*commonpb.MetadataValue) OrderResult {
 	compiled := s.compiled()
-	if len(compiled) > 0 && addr != "world" && s.match(addr, compiled) == nil {
+	if s.defaultEnforcementMode == commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT && len(compiled) > 0 && addr != "world" && s.match(addr, compiled) == nil {
 		return OrderResult{Reason: domain.ErrReasonAccountNotMatchingType}
 	}
 

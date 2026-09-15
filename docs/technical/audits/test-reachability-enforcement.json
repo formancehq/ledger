@@ -21,6 +21,7 @@
   "related_docs": [
     "AGENTS.md",
     "docs/technical/agent-context.md",
+    "docs/technical/audits/test-reachability-enforcement.md",
     "docs/technical/contributing/testing.md",
     "docs/technical/contributing/development.md",
     "docs/technical/contributing/getting-started.md",
@@ -39,6 +40,7 @@
     "Unique or critical coverage has an intentional execution layer appropriate to its cost and dependencies, which may be PR, merge, release, scheduled, or external/manual; the audit identifies accidental gaps and policy mismatches without requiring every test to run on every pull request.",
     "External and manual campaigns, including autonomous or credentialed systems, are identified as such and are not represented as ordinary GitHub PR or merge protection without evidence that connects their execution and result to that integration event.",
     "Runner manifests, target lists, package selectors, build-tag sets, framework configurations, generated test inventories, and helper or verifier entry points correspond to current repository tests and do not silently omit, rename, or retain nonexistent targets.",
+    "Generated or instrumented test modules receive the complete transitive source closure required by their module replacements and selected packages; a driver that exists in the source tree is not reachable when image construction cannot resolve or compile its imports.",
     "Where repository policy claims exhaustive protection, discovery fails closed as the test topology evolves: adding a nested module, tagged test, fuzz target, framework spec, driver, scenario, or verifier is either collected automatically or requires an explicit runner/configuration update whose omission is detected by validation."
   ],
   "adversarial_questions": [
@@ -52,6 +54,7 @@
     "Are merge_group triggers, successful check runs, or external campaign reports being mistaken for enforced merge-queue or branch protection without direct policy evidence?",
     "Do fuzz seed-replay and active-fuzzing target inventories match the repository's Fuzz functions, and is seed replay being mistaken for scheduled active fuzzing?",
     "Do Antithesis image construction, template selection, optional driver filters, assertion registration, and campaign launch paths make every relied-upon driver and coverage assertion reachable, and are platform-only campaigns labelled as external?",
+    "When Antithesis instrumentation rewrites the workload module and resolves its root-module replacement from a synthetic filesystem location, does the image copy every root package imported transitively by the selected driver and its tests before go mod tidy and compilation?",
     "Can a helper, oracle, generated verifier, invariant checker, scenario, or dashboard test be maintained and cited without any runner invoking the entry point that reaches its assertions?",
     "If a new module, build tag, test package, Ginkgo spec, Chainsaw case, Antithesis driver, fuzz function, or verifier were added following current conventions, would claimed exhaustive validation discover it or visibly require a configuration change?",
     "When a suspected reachability gap appears, what repository, collection, execution-history, or enforcement evidence supports it, and what independent evidence could reject it as redundant, intentionally manual, or protected at another appropriate layer?",
@@ -63,6 +66,7 @@
     "use go list -test and go test -list under the exact runner tag sets and package selectors to compare intended and effective Go collection without treating -coverpkg as execution",
     "render Just recipes and trace agent-check wrappers and GitHub workflow commands to map each source family to its effective package selectors, environment, trigger, and exit-status propagation",
     "perform framework-native dry discovery or result inspection for Ginkgo, Schemathesis, Chainsaw, scenarios, operator envtest/e2e, dashboard tests, and Antithesis image template/driver layouts",
+    "build the Antithesis workload compiler target with instrumentation and each supported driver filter so module replacement, go mod tidy, transitive root-package imports, and driver compilation are exercised together",
     "enumerate Fuzz functions and compare them with seed-replay lists, active-fuzz target lists, and any scheduled or external campaign configuration",
     "inspect Skip, pending, focus, credential, environment, and dependency gates and prove whether the exact claimed runner reaches the core assertion rather than only collecting its container",
     "query GitHub workflow/check histories together with current rulesets, branch protection, and merge-queue configuration to build a job -> trigger -> status context -> enforced integration-event map",

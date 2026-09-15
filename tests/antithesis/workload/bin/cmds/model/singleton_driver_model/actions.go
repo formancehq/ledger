@@ -142,42 +142,49 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 
 	size := bulkSize()
 	requests := make([]*servicepb.Request, 0, size)
+	appendRequest := func(req *servicepb.Request) {
+		requests = append(requests, maybeAddSkippableReason(req))
+	}
 
 	for i := 0; i < size; i++ {
 		ledger := random.RandomChoice(picks)
 		ls := g.Ledger(ledger)
 
+		if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
+			appendRequest(generateEnforcementMode(ledger))
+			continue
+		}
 		if rollChartOp() {
 			if req := generateChartOp(ledger); req != nil {
-				requests = append(requests, req)
+				appendRequest(req)
 				continue
 			}
 		}
 
 		if rollSchemaOp() {
 			if req := generateSchemaOp(ledger, ls); req != nil {
-				requests = append(requests, req)
+				appendRequest(req)
 				continue
 			}
 		}
 
 		if rollMetadataOp() {
 			if req := generateMetadataOp(ledger, ls); req != nil {
-				requests = append(requests, req)
+				appendRequest(req)
 				continue
 			}
 		}
 
 		if rollRevert() {
 			if req := generateRevert(ledger, ls); req != nil {
-				requests = append(requests, req)
+				appendRequest(req)
 				continue
 			}
 		}
 
 		if rollTransaction(ls) {
 			if req := generateTransaction(ledger, ls); req != nil {
-				requests = append(requests, req)
+				appendRequest(req)
 				continue
 			}
 		}
@@ -186,7 +193,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 		// slot stays productive and the workload exercises existing state rather
 		// than creating ever more transactions as the ledger fills up.
 		if req := generateMetadataOp(ledger, ls); req != nil {
-			requests = append(requests, req)
+			appendRequest(req)
 		}
 	}
 
@@ -370,11 +377,12 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 }
 
 // applyCreate wraps a CreateTransactionPayload as a ledger Apply request.
-func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload) *servicepb.Request {
+func applyCreate(ledger string, payload *servicepb.CreateTransactionPayload, skippableReasons ...commonpb.ErrorReason) *servicepb.Request {
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: ledger,
+				Ledger:           ledger,
+				SkippableReasons: skippableReasons,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: payload,

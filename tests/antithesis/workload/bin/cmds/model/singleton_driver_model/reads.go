@@ -307,7 +307,7 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
-	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata())
+	c.validateLedgerRead(maxTicket, ledger, info.GetAccountTypes(), info.GetMetadata(), info.GetDefaultEnforcementMode())
 }
 
 // pickTransactionID picks a ledger and a transaction id to read back. Usually a

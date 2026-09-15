@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y bash git gcc
 RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.7.0
 
 COPY go.* /src/
+COPY cmd/server /src/cmd/server
 COPY internal /src/internal
 COPY pkg /src/pkg
 COPY tests/oracle /src/tests/oracle
@@ -17,7 +18,8 @@ COPY tests/antithesis/workload/internal /src/tests/antithesis/workload/internal
 
 # The instrumentor outputs to /instrumented/customer/ and runs go mod tidy there.
 # The replace directive (../../../) resolves to / from that path, so place the root module at /.
-RUN cp /src/go.* / && cp -r /src/internal /internal && cp -r /src/pkg /pkg \
+RUN cp /src/go.* / && mkdir -p /cmd && cp -r /src/cmd/server /cmd/server \
+    && cp -r /src/internal /internal && cp -r /src/pkg /pkg \
     && mkdir -p /tests && cp -r /src/tests/oracle /tests/oracle
 
 RUN mkdir /instrumented

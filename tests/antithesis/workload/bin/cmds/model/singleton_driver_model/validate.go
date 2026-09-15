@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
@@ -80,6 +81,29 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	}
 
 	logs := resp.GetLogs()
+	if len(logs) != len(res.Orders) {
+		assert.Unreachable("singleton_driver_model: committed log count mismatch", internal.Details{"expected": len(res.Orders), "actual": len(logs)})
+		return
+	}
+	for i, order := range res.Orders {
+		entry := logs[i].GetPayload().GetApply()
+		if order.LogID != 0 && (entry.GetLog().GetId() != order.LogID || entry.GetLedgerName() != oracle.LedgerOf(bulk.Requests[i])) {
+			assert.Unreachable("singleton_driver_model: committed ledger log identity mismatch", internal.Details{"order": i, "expected": order.LogID, "actual": entry.GetLog().GetId()})
+			return
+		}
+		data := logs[i].GetPayload().GetApply().GetLog().GetData()
+		if (data.GetOrderSkipped() != nil) != (order.Skipped != nil) ||
+			(order.Skipped != nil && (data.GetOrderSkipped().GetReason() != order.Skipped.GetReason() || !maps.Equal(data.GetOrderSkipped().GetContext(), order.Skipped.GetContext()))) {
+			assert.Unreachable("singleton_driver_model: skipped-order response mismatch", internal.Details{"order": i, "expected": order.Skipped, "actual": data.GetOrderSkipped()})
+			return
+		}
+		if mode := requestedEnforcementMode(bulk.Requests[i]); mode != nil {
+			if data.GetUpdatedDefaultEnforcementMode() == nil || data.GetUpdatedDefaultEnforcementMode().GetEnforcementMode() != *mode {
+				assert.Unreachable("singleton_driver_model: enforcement-mode response mismatch", internal.Details{"order": i, "expected": mode, "actual": data.GetUpdatedDefaultEnforcementMode()})
+				return
+			}
+		}
+	}
 	for i, order := range res.Orders {
 		if order.PCV == nil || i >= len(logs) {
 			continue
@@ -160,6 +184,9 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		data := logs[i].GetPayload().GetApply().GetLog().GetData()
 
 		order := res.Orders[i]
+		if order.Skipped != nil {
+			continue
+		}
 
 		if order.Revert != nil {
 			rt := data.GetRevertedTransaction()
@@ -259,6 +286,10 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			}
 		}
 
+		if !chartResponseMatches(req, data) {
+			assert.Unreachable("singleton_driver_model: chart response mismatch", internal.Details{"order": i})
+			return
+		}
 		switch r := req.GetType().(type) {
 		case *servicepb.Request_SetMetadataFieldType:
 			lg, rq := data.GetSetMetadataFieldType(), r.SetMetadataFieldType
@@ -322,32 +353,10 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				return
 			}
 
-		case *servicepb.Request_AddAccountType:
-			lg, rq := data.GetAddedAccountType().GetAccountType(), r.AddAccountType.GetAccountType()
-			if lg.GetName() != rq.GetName() || lg.GetPattern() != rq.GetPattern() || lg.GetPersistence() != rq.GetPersistence() {
-				assert.Unreachable("singleton_driver_model: add-account-type response mismatch", internal.Details{
-					"ledger":    oracle.LedgerOf(req),
-					"requested": fmt.Sprintf("%s=%s/p%d", rq.GetName(), rq.GetPattern(), rq.GetPersistence()),
-					"returned":  fmt.Sprintf("%s=%s/p%d", lg.GetName(), lg.GetPattern(), lg.GetPersistence()),
-				})
-
-				return
-			}
-
-		case *servicepb.Request_RemoveAccountType:
-			lg := data.GetRemovedAccountType()
-			if lg.GetName() != r.RemoveAccountType.GetName() {
-				assert.Unreachable("singleton_driver_model: remove-account-type response mismatch", internal.Details{
-					"ledger":    oracle.LedgerOf(req),
-					"requested": r.RemoveAccountType.GetName(),
-					"returned":  lg.GetName(),
-				})
-
-				return
-			}
 		}
 	}
 
+	noteApplyCoverage(bulk, res)
 	c.modelState = res.State
 
 	// A committed retype of an indexed key opened (or chained onto) a serving
@@ -438,6 +447,8 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 
 	if matched {
+		invalidOptIn := reason == domain.ErrReasonValidation && bulkHasInvalidSkippableReason(failedBulk)
+		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil, coverageHit)
 		// Coverage: each deliberately-triggered rejection branch must actually be
 		// exercised — if one stops firing, the generator has stopped emitting that
 		// shape and the branch is no longer tested.
@@ -594,12 +605,12 @@ func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*
 
 // validateLedgerRead checks one GetLedger snapshot against the model: legal iff
 // some candidate base holds both the server's chart (account types) and exactly
-// the server's ledger metadata. Both must hold on the SAME base — the read is one
+// the server's ledger metadata and enforcement mode. All must hold on the SAME base — the read is one
 // atomic snapshot.
-func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) {
 	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
-		return chartMatches(ls, serverTypes) && ledgerMetaMatches(ls, serverMeta)
+		return ledgerReadMatches(ls, serverTypes, serverMeta, mode)
 	}) {
 		return
 	}
@@ -612,6 +623,10 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 		"serverChart": renderChart(serverTypes),
 		"modelChart":  c.modelChartDump(ledger),
 	})
+}
+
+func ledgerReadMatches(ls oracle.LedgerState, types map[string]*commonpb.AccountType, meta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) bool {
+	return chartMatches(ls, types) && ledgerMetaMatches(ls, meta) && ls.DefaultEnforcementMode() == mode
 }
 
 // chartMatches reports whether ls's chart equals the server's account types

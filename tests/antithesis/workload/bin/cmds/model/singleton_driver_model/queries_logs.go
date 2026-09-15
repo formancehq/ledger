@@ -275,6 +275,10 @@ func renderServedVolumes(vols []*commonpb.TouchedVolume) (string, bool) {
 // request that produced it (oracle logKindOf), so the two are comparable.
 func serverLogKind(l *commonpb.Log) string {
 	switch d := l.GetPayload().GetApply().GetLog().GetData(); {
+	case d.GetOrderSkipped() != nil:
+		return "order_skipped"
+	case d.GetUpdatedDefaultEnforcementMode() != nil:
+		return "updated_default_enforcement_mode"
 	case d.GetCreatedTransaction() != nil:
 		return "created_transaction"
 	case d.GetRevertedTransaction() != nil:
