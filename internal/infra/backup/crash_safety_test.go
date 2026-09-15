@@ -667,6 +667,9 @@ func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, manifest.Exports)
 
+	// Reproduce the checkpoint state, then exercise the production export +
+	// rebuild composition. RebuildDelta commits all prepared-query mutations in
+	// this sub-5,000-log fixture in one durable batch.
 	dst := newBackupTestStore(t)
 	dstSeed := dst.OpenWriteSession()
 	require.NoError(t, dstSeed.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
