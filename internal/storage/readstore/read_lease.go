@@ -136,3 +136,19 @@ func (r *LeaseRegistry) ReclaimFloor() uint64 {
 
 	return r.floor
 }
+
+// AnyLiveIn reports whether a live lease holds a sequence in [lo, hi). A
+// reservation counts at the sequence it was reserved at, which is at or below
+// the pin it will become, so a read still waiting for alignment is covered.
+func (r *LeaseRegistry) AnyLiveIn(lo, hi uint64) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, seq := range r.leases {
+		if lo <= seq && seq < hi {
+			return true
+		}
+	}
+
+	return false
+}
