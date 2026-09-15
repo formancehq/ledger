@@ -238,10 +238,111 @@ func TestNewAccumulator_GroupedWhenPrefixes(t *testing.T) {
 func TestPow10(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, uint256.NewInt(1), pow10(0))
-	require.Equal(t, uint256.NewInt(10), pow10(1))
-	require.Equal(t, uint256.NewInt(100), pow10(2))
-	require.Equal(t, uint256.NewInt(1000000), pow10(6))
+	for exp, expected := range map[uint8]*uint256.Int{
+		0: uint256.NewInt(1),
+		1: uint256.NewInt(10),
+		2: uint256.NewInt(100),
+		6: uint256.NewInt(1000000),
+	} {
+		actual, overflow := pow10(exp)
+		require.False(t, overflow)
+		require.Equal(t, expected, actual)
+	}
+
+	maxFactor, overflow := pow10(77)
+	require.False(t, overflow)
+	require.Equal(t, mustUint256Decimal(t, "100000000000000000000000000000000000000000000000000000000000000000000000000000"), maxFactor)
+
+	result, overflow := pow10(78)
+	require.True(t, overflow)
+	require.Nil(t, result)
+}
+
+func mustUint256Decimal(t *testing.T, value string) *uint256.Int {
+	t.Helper()
+
+	result := new(uint256.Int)
+	require.NoError(t, result.SetFromDecimal(value))
+
+	return result
+}
+
+func TestVolumeAggregator_UseMaxPrecision_FactorBoundary(t *testing.T) {
+	t.Parallel()
+
+	t.Run("difference 77 is exact", func(t *testing.T) {
+		t.Parallel()
+
+		va := newVolumeAggregator(true, false)
+		require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", 1, 1)))
+		require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/77", 1, 1)))
+
+		result, err := va.result()
+		require.NoError(t, err)
+		require.Len(t, result.GetVolumes(), 1)
+
+		expected := mustUint256Decimal(t, "100000000000000000000000000000000000000000000000000000000000000000000000000001")
+		var input, output uint256.Int
+		result.GetVolumes()[0].GetInput().IntoUint256(&input)
+		result.GetVolumes()[0].GetOutput().IntoUint256(&output)
+		require.Equal(t, expected, &input)
+		require.Equal(t, expected, &output)
+	})
+
+	for _, side := range []string{"input", "output"} {
+		t.Run("difference 78 rejects "+side, func(t *testing.T) {
+			t.Parallel()
+
+			va := newVolumeAggregator(true, false)
+			lowInput, lowOutput := uint64(0), uint64(0)
+			if side == "input" {
+				lowInput = 1
+			} else {
+				lowOutput = 1
+			}
+			require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", lowInput, lowOutput)))
+			require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/78", 1, 1)))
+
+			result, err := va.result()
+			require.Nil(t, result)
+			var overflow *ErrAggregateOverflow
+			require.ErrorAs(t, err, &overflow)
+			require.Equal(t, "max-precision-rescale", overflow.Stage)
+			require.Equal(t, side, overflow.Side)
+		})
+	}
+
+	t.Run("zero lower precision bucket remains representable", func(t *testing.T) {
+		t.Parallel()
+
+		va := newVolumeAggregator(true, false)
+		require.NoError(t, va.accumulate(makeEntry("test", "a", "USD", 0, 0)))
+		require.NoError(t, va.accumulate(makeEntry("test", "b", "USD/78", 1, 1)))
+
+		result, err := va.result()
+		require.NoError(t, err)
+		require.Len(t, result.GetVolumes(), 1)
+		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetInput())
+		require.Equal(t, commonpb.NewUint256FromUint64(1), result.GetVolumes()[0].GetOutput())
+	})
+}
+
+func TestGroupedAggregator_UseMaxPrecision_FactorOverflow(t *testing.T) {
+	t.Parallel()
+
+	ga := newGroupedAggregator(AggregateOptions{
+		UseMaxPrecision: true,
+		GroupByPrefixes: []string{"users:"},
+	})
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:alice", "USD", 1, 0)))
+	require.NoError(t, ga.accumulate(makeEntry("test", "users:bob", "USD/78", 1, 0)))
+
+	result, err := ga.result()
+	require.Nil(t, result)
+	var overflow *ErrAggregateOverflow
+	require.ErrorAs(t, err, &overflow)
+	require.Equal(t, "max-precision-rescale", overflow.Stage)
+	require.Equal(t, "input", overflow.Side)
 }
 
 // makeColoredEntry builds a volume entry with a non-empty color, used to

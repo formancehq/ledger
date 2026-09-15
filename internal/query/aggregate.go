@@ -88,16 +88,19 @@ func (va *volumeAggregator) accumulateAsset(base string, precision uint8, color 
 	return nil
 }
 
-// pow10 returns 10^exp as a uint256.Int.
-func pow10(exp uint8) *uint256.Int {
+// pow10 returns 10^exp as a uint256.Int and reports whether the exact result
+// exceeds uint256.
+func pow10(exp uint8) (*uint256.Int, bool) {
 	result := uint256.NewInt(1)
 	ten := uint256.NewInt(10)
 
 	for range exp {
-		result.Mul(result, ten)
+		if _, overflow := result.MulOverflow(result, ten); overflow {
+			return nil, true
+		}
 	}
 
-	return result
+	return result, false
 }
 
 func (va *volumeAggregator) result() (*commonpb.AggregateResult, error) {
@@ -199,7 +202,19 @@ func (va *volumeAggregator) resultWithMaxPrecision() (*commonpb.AggregateResult,
 				return nil, &ErrAggregateOverflow{Stage: "max-precision-merge", Side: "output"}
 			}
 		} else {
-			factor := pow10(target - key.precision)
+			if agg.input.IsZero() && agg.output.IsZero() {
+				continue
+			}
+
+			factor, overflow := pow10(target - key.precision)
+			if overflow {
+				side := "input"
+				if agg.input.IsZero() {
+					side = "output"
+				}
+
+				return nil, &ErrAggregateOverflow{Stage: "max-precision-rescale", Side: side}
+			}
 
 			var scaled uint256.Int
 			if _, overflow := scaled.MulOverflow(agg.input, factor); overflow {
