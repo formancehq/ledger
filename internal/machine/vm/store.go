@@ -47,13 +47,13 @@ type StaticStore map[string]*AccountWithBalances
 func (s StaticStore) GetBalances(_ context.Context, query BalanceQuery) (Balances, error) {
 	ret := Balances{}
 	for accountAddress, assets := range query {
-		for _, asset := range assets {
+		if _, ok := ret[accountAddress]; !ok {
 			ret[accountAddress] = make(map[string]*big.Int)
+		}
+		for _, asset := range assets {
 			account, ok := s[accountAddress]
 			if !ok {
-				ret[accountAddress] = map[string]*big.Int{
-					asset: new(big.Int),
-				}
+				ret[accountAddress][asset] = new(big.Int)
 				continue
 			}
 			balance, ok := account.Balances[asset]
