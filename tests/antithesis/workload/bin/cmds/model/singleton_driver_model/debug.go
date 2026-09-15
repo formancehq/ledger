@@ -86,6 +86,14 @@ func requestKinds(b oracle.Bulk) string {
 
 	for i, r := range b.Requests {
 		switch r.GetType().(type) {
+		case *servicepb.Request_CreateLedger:
+			parts[i] = "createLedger"
+		case *servicepb.Request_DeleteLedger:
+			parts[i] = "deleteLedger"
+		case *servicepb.Request_PromoteLedger:
+			parts[i] = "promoteLedger"
+		case *servicepb.Request_SetMaintenanceMode:
+			parts[i] = "maintenance"
 		case *servicepb.Request_Apply:
 			switch r.GetApply().GetAction().GetData().(type) {
 			case *servicepb.LedgerAction_CreateTransaction:

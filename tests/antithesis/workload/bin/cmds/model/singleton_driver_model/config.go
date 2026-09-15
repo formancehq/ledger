@@ -147,6 +147,9 @@ const replayConflictOneIn = 6
 // Worker → processor channel cap, well above steady-state inflight.
 const incomingBuffer = 256
 
+// Maximum maintenance window before an independently dispatched disable.
+const maintenanceMaxWindow = 3 * time.Second
+
 // --- Index readiness poller ---------------------------------------------
 
 // Base interval between per-replica index-readiness reconciliations. Short so a

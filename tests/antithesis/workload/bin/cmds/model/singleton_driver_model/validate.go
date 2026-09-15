@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
@@ -29,6 +30,36 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 
 	c.crossCheckCommit(bulk, resp)
 	c.recordIndexCreates(bulk, resp)
+	for _, req := range bulk.Requests {
+		switch {
+		case req.GetCreateLedger() != nil:
+			name := req.GetCreateLedger().GetName()
+			c.ledgerMu.Lock()
+			if !slices.Contains(c.ledgerNames, name) {
+				c.ledgerNames = append(c.ledgerNames, name)
+			}
+			c.ledgerMu.Unlock()
+		case req.GetDeleteLedger() != nil:
+			name := req.GetDeleteLedger().GetName()
+			c.ledgerMu.Lock()
+			for i, candidate := range c.ledgerNames {
+				if candidate == name {
+					c.ledgerNames = append(c.ledgerNames[:i], c.ledgerNames[i+1:]...)
+					break
+				}
+			}
+			c.ledgerMu.Unlock()
+			delete(c.indexCreateSeq, name)
+			for key, obs := range c.retypeObs {
+				if obs.ledger == name {
+					delete(c.retypeObs, key)
+				}
+			}
+			emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": name}, coverageHit)
+		case req.GetPromoteLedger() != nil:
+			emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": req.GetPromoteLedger().GetLedger()}, coverageHit)
+		}
+	}
 }
 
 // recordIndexCreates advances the create frontier of every index this bulk
@@ -102,6 +133,20 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				assert.Unreachable("singleton_driver_model: enforcement-mode response mismatch", internal.Details{"order": i, "expected": mode, "actual": data.GetUpdatedDefaultEnforcementMode()})
 				return
 			}
+		}
+	}
+	for i, req := range bulk.Requests {
+		var payload *commonpb.LogPayload
+		if i < len(logs) {
+			payload = logs[i].GetPayload()
+		}
+		if err := validateLifecycleLog(req, payload); err != nil {
+			assert.Unreachable("singleton_driver_model: lifecycle response mismatch", internal.Details{
+				"ledger": oracle.LedgerOf(req),
+				"kind":   requestKinds(oracle.Bulk{Requests: []*servicepb.Request{req}}),
+				"error":  err.Error(),
+			})
+			return
 		}
 	}
 	for i, order := range res.Orders {
@@ -432,6 +477,7 @@ func learnTxStamps(gs oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log
 // Caller holds c.mu.
 func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqErr error) {
 	var reason string
+	observedReason := internal.ErrorReason(reqErr)
 
 	matched := false
 	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
@@ -441,6 +487,69 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			matched = true
 
 			return true
+		}
+
+		// Admission validates requests independently before the FSM applies the
+		// atomic bulk. It may therefore return a deterministic error from a later
+		// request even when applying the complete bulk would encounter an earlier
+		// FSM rejection, such as LEDGER_IN_MIRROR_MODE.
+		if individualReason, ok := individualFailureReason(base, failedBulk, observedReason); ok {
+			reason = individualReason
+			matched = true
+
+			return true
+		}
+
+		// Maintenance is enforced by both a node-local admission interceptor and
+		// the replicated FSM gate. Around a toggle, an operation can therefore
+		// surface an earlier deterministic rejection (for example LEDGER_DELETED)
+		// from the admission path even though the committed candidate already has
+		// maintenance enabled. Evaluate that underlying rejection without the gate;
+		// a success is never accepted because the FSM still blocks the write.
+		if base.MaintenanceMode() {
+			disabled := base.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
+				Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}},
+			}}})
+			underlying := disabled.State.Apply(failedBulk)
+			if !underlying.OK && internal.HasErrorReason(reqErr, underlying.Reason) {
+				reason = underlying.Reason
+				matched = true
+
+				return true
+			}
+
+			// With the maintenance gate removed, admission may expose an underlying
+			// deterministic error that is hidden in the committed candidate state.
+			for _, req := range failedBulk.Requests {
+				individual := disabled.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+				if !individual.OK && internal.HasErrorReason(reqErr, individual.Reason) {
+					reason = individual.Reason
+					matched = true
+
+					return true
+				}
+			}
+		}
+
+		// DeleteLedgerData purges persisted ledger metadata but intentionally
+		// leaves the LedgerInfo tombstone. A live node may still validate a
+		// deletion against its cached metadata entry, while a restarted node
+		// observes the range deletion and returns METADATA_NOT_FOUND. The oracle
+		// retains the entry so it can model the successful outcome; accept the
+		// post-restart outcome explicitly for the same deleted tombstone.
+		if internal.HasErrorReason(reqErr, domain.ErrReasonMetadataNotFound) {
+			for _, req := range failedBulk.Requests {
+				deletedMeta := req.GetDeleteLedgerMetadata()
+				if deletedMeta == nil {
+					continue
+				}
+				if lifecycle, exists := base.Lifecycle(deletedMeta.GetLedger()); exists && lifecycle.Deleted {
+					reason = domain.ErrReasonMetadataNotFound
+					matched = true
+
+					return true
+				}
+			}
 		}
 
 		return false
@@ -493,6 +602,29 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 }
 
+func individualFailureReason(base oracle.GlobalState, bulk oracle.Bulk, observedReason string) (string, bool) {
+	for _, req := range bulk.Requests {
+		states := []oracle.GlobalState{base}
+		ledger := oracle.LedgerOf(req)
+		if lifecycle, exists := base.Lifecycle(ledger); exists && lifecycle.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			promoted := base.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
+				Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: ledger}},
+			}}})
+			if promoted.OK {
+				states = append(states, promoted.State)
+			}
+		}
+		for _, state := range states {
+			individual := state.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+			if !individual.OK && individual.Reason == observedReason {
+				return individual.Reason, true
+			}
+		}
+	}
+
+	return "", false
+}
+
 // validateEmptyCommit handles a successful Apply that returned no committed log
 // (no sequenced entry). This is always a finding: the server assigns a log
 // sequence to every committed order — transaction or chart op (ProcessOrders) —
@@ -541,8 +673,12 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[string]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[string]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
+		lifecycle, exists := base.Lifecycle(ledger)
+		if !exists || lifecycle.Deleted {
+			return !found
+		}
 		ls := base.Ledger(ledger)
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
 	}) {
@@ -609,6 +745,10 @@ func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*
 // atomic snapshot.
 func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) {
 	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		if !exists || lc.Deleted {
+			return false
+		}
 		ls := base.Ledger(ledger)
 		return ledgerReadMatches(ls, serverTypes, serverMeta, mode)
 	}) {
@@ -627,6 +767,22 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 
 func ledgerReadMatches(ls oracle.LedgerState, types map[string]*commonpb.AccountType, meta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) bool {
 	return chartMatches(ls, types) && ledgerMetaMatches(ls, meta) && ls.DefaultEnforcementMode() == mode
+}
+
+// validateLedgerNotFound accepts NotFound only when some legal serialization
+// has not created the ledger yet or has already deleted it.
+func (c *Checker) validateLedgerNotFound(maxTicket uint64, ledger, operation string) {
+	if c.matchesModel(maxTicket, operation+" NOT_FOUND", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		return !exists || lc.Deleted
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: ledger-scoped read returned unexplained NotFound", internal.Details{
+		"ledger":    ledger,
+		"operation": operation,
+	})
 }
 
 // chartMatches reports whether ls's chart equals the server's account types
@@ -677,6 +833,10 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 // cross-routing bug class — is caught here for transactions.
 func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
+		lifecycle, exists := base.Lifecycle(ledger)
+		if !exists || lifecycle.Deleted {
+			return !found
+		}
 		txs := base.Ledger(ledger).Txs()
 		if id == 0 || id > uint64(txs.Len()) {
 			return !found // no tx at this id in this base: consistent only with NotFound
@@ -711,6 +871,10 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // projection rather than just the per-op response echo.
 func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
+		_, exists := base.Lifecycle(ledger)
+		if !exists {
+			return false
+		}
 		ls := base.Ledger(ledger)
 
 		return fieldTypesMatch(ls.AccountFieldTypes(), acct) &&

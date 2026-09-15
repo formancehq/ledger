@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -494,7 +496,7 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 
 // runLogQuery drives one ListLogs page and checks it against the model.
 func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, _ := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 0)
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {
@@ -539,6 +541,10 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	}
 
 	maxTicket := c.ticketSeq.Load()
+	if status.Code(err) == codes.NotFound {
+		c.validateLedgerNotFound(maxTicket, ledger, "ListLogs")
+		return
+	}
 
 	errKind, gated := classifyLogQueryError(err)
 	if !gated {

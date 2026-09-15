@@ -30,7 +30,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 
 	// Picking runs lock-free on the snapshot; registering the read first only
 	// holds the drain gate a little longer, never less.
-	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, c.ledgerNames)
+	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, c.ledgerNamesSnapshot())
 	if !ok {
 		return
 	}
@@ -67,7 +67,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		}
 		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
-			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil)
+			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, false)
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetAccount returned unexpected error", internal.Details{
@@ -80,7 +80,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	}
 
 	gotVols, wellFormed := accountVolumeSet(acct)
-	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata())
+	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata(), true)
 }
 
 // isShutdownError reports whether err is a context cancellation/deadline — what
@@ -256,7 +256,7 @@ func absentLedgerName(ledgers []string) string {
 // read can never otherwise detect the server serving a ledger the model never
 // created. An absent ledger must answer NotFound; a served snapshot is a finding.
 func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, absent bool) {
-	if percentChance(absentPct) {
+	if len(ledgers) == 0 || percentChance(absentPct) {
 		return absentLedgerName(ledgers), true
 	}
 
@@ -268,7 +268,7 @@ func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, ab
 // ledger's whole snapshot (account types and ledger metadata, see
 // validateLedgerRead), or an absent ledger's mandatory NotFound.
 func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -284,14 +284,13 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: a ledger outside the fleet must resolve NotFound.
-			assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			}
+			c.validateLedgerNotFound(maxTicket, ledger, "GetLedger")
 			return
 		}
-		// A fleet ledger is created at setup and never deleted, so a definitive
-		// error on it — NotFound, Internal — is a real finding; so is any
-		// non-NotFound definitive error on an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetLedger returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"absent": absent,
@@ -301,8 +300,6 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	}
 
 	if absent {
-		// The fleet never grows, so a snapshot for a name outside it is a ledger the
-		// server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: GetLedger served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}
@@ -344,7 +341,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	ledger, id, absentLedger, ok := pickTransactionID(state, c.ledgerNames)
+	ledger, id, absentLedger, ok := pickTransactionID(state, c.ledgerNamesSnapshot())
 	if !ok {
 		return
 	}
@@ -387,7 +384,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
 func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 3)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 3)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -403,14 +400,13 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: a schema read of a ledger outside the fleet must resolve NotFound.
-			assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			}
+			c.validateLedgerNotFound(maxTicket, ledger, "GetMetadataSchemaStatus")
 			return
 		}
-		// A fleet ledger is created at setup and never deleted, so a definitive
-		// error on it is a real finding; so is any non-NotFound definitive error on
-		// an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"absent": absent,
@@ -420,8 +416,6 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	}
 
 	if absent {
-		// The fleet never grows, so a schema for a name outside it is a ledger the
-		// server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}

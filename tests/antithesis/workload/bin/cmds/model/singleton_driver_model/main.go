@@ -46,8 +46,11 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -89,6 +92,20 @@ func main() {
 		return
 	}
 	defer conn.Close()
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := client.Apply(cleanupCtx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+			log.Printf("disable maintenance during shutdown: %v", err)
+		}
+	}()
+
+	// A previous driver may have died after enabling the cluster-wide gate.
+	// Recover before setup so CreateLedger cannot wait behind maintenance forever.
+	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+		log.Printf("disable maintenance during startup: %v", err)
+		return
+	}
 
 	// Unique per-run prefix so a fresh invocation never reattaches to a
 	// previous run's ledgers (the model starts empty; inherited committed
@@ -168,6 +185,7 @@ func main() {
 	workers.Wait()
 	restore.Wait()
 	pollers.Wait()
+	checker.recoveries.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -191,15 +209,16 @@ func runWorker(
 			return
 		}
 
-		// 1-in-5: a read this iteration, split across the whole-ledger read
+		// 1-in-3: a read this iteration, split across the whole-ledger read
 		// (chart + ledger metadata), a single-account read, a transaction read
 		// (id + postings + reverted + metadata), a metadata-schema read (declared
 		// field types), and the two list queries (filtered, paginated, ordered
 		// windows over accounts and transactions). Reads validate against the
 		// in-flight bulk set, exercising cross-node freshness without needing
-		// quiescence.
-		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+		// quiescence. Transaction queries receive three slots because they must
+		// exercise seven builtin indexes plus declared metadata indexes.
+		if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -208,11 +227,11 @@ func runWorker(
 				runSchemaRead(ctx, client, c)
 			case 3:
 				runAccountQuery(ctx, client, c)
-			case 4:
+			case 4, 5, 6:
 				runTransactionQuery(ctx, client, c)
-			case 5:
+			case 7:
 				runReplay(ctx, client, c)
-			case 6:
+			case 8:
 				runLogQuery(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
@@ -229,86 +248,140 @@ func runWorker(
 			continue
 		}
 		state := c.modelState
+		ledgers := c.ledgerNamesSnapshot()
 		c.mu.Unlock()
 
-		bulk := generateBulk(state, c.ledgerNames)
+		bulk := generateBulk(state, ledgers, c.nextLedgerName())
 		if len(bulk.Requests) == 0 {
 			continue
 		}
 
-		c.mu.Lock()
-		// A pause committed while generating: back out without dispatching,
-		// so no bulk commits between the drain and the backup.
-		if c.paused {
-			c.mu.Unlock()
-			continue
-		}
-		// Occasionally tag this bulk with an idempotency key — reusing a committed
-		// key on a different body (conflict) or minting a fresh tracked one (a
-		// replayable original) — to exercise the server's dedup.
-		c.stampIdempotency(&bulk)
-		ticket := c.registerInflight(bulk)
+		dispatchBulk(ctx, client, c, bulk)
+	}
+}
+
+// dispatchBulk sends every generated request through the same inflight and
+// processor path. Maintenance enable schedules a modeled disable independently,
+// so a write-blocked worker fleet cannot stall the run permanently.
+func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, bulk oracle.Bulk) {
+	c.mu.Lock()
+	if c.paused {
 		c.mu.Unlock()
+		return
+	}
+	c.stampIdempotency(&bulk)
+	ticket := c.registerInflight(bulk)
+	c.mu.Unlock()
 
-		// Application-level retry to a definitive outcome. The gRPC-layer
-		// retries live inside one call's context, so a cancellation that
-		// kills the call — a dying node propagates codes.Canceled from its
-		// handler, a connection teardown cancels every in-flight RPC — ends
-		// the whole chain with the bulk possibly committed. The request is
-		// rendered ONCE (the idempotency key must pin the first attempt's
-		// identity) and re-submitted until the server gives a commit — served
-		// from its idempotency cache when the lost attempt landed — or a
-		// business rejection. Only this driver's own context ending abandons
-		// a bulk, which the processor's shutdown skip already models.
-		req := applyRequest(bulk)
-
-		var (
-			resp *servicepb.ApplyResponse
-			err  error
-		)
-
-		for {
-			resp, err = client.Apply(ctx, req)
-			if err == nil || ctx.Err() != nil {
-				break
-			}
-
-			if !internal.IsTransient(err) && !internal.IsCanceled(err) {
-				break
-			}
-
-			select {
-			case <-ctx.Done():
-			case <-time.After(200 * time.Millisecond):
-			}
+	req := applyRequest(bulk)
+	var resp *servicepb.ApplyResponse
+	var err error
+	hadAmbiguousAttempt := false
+	for {
+		resp, err = client.Apply(ctx, req)
+		if err == nil || ctx.Err() != nil {
+			break
 		}
-
-		dumpBatch(ticket, req, resp, err)
-
-		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
-		// the drain gate compares outstanding tickets against it (see tryDrain).
-		// This is a loose upper bound: a sibling worker can register its own bulk
-		// between Apply returning and this Load, so observeTicket may cover a
-		// ticket whose effect could not precede this response. That only enlarges
-		// the candidate-base set validation considers (it gets more permissive),
-		// never shrinks it — it can mask a divergence but never manufacture a
-		// false failure. The window is irreducible: the counter can always climb
-		// between the RPC returning and the atomic read, so we accept it.
-		obs := observation{
-			ticket:        ticket,
-			bulk:          bulk,
-			resp:          resp,
-			err:           err,
-			observeTicket: c.ticketSeq.Load(),
+		if internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) && !hadAmbiguousAttempt {
+			break
 		}
-
-		// Block on a full channel — natural back-pressure.
+		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
+			break
+		}
+		hadAmbiguousAttempt = true
 		select {
 		case <-ctx.Done():
-			return
-		case c.incoming <- obs:
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
+
+	dumpBatch(ticket, req, resp, err)
+	obs := observation{ticket: ticket, bulk: bulk, resp: resp, err: err, observeTicket: c.ticketSeq.Load()}
+	select {
+	case <-ctx.Done():
+		return
+	case c.incoming <- obs:
+	}
+
+	if err == nil && bulkEnablesMaintenance(bulk) {
+		scheduleMaintenanceRecovery(ctx, client, c)
+	}
+}
+
+func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	c.mu.Lock()
+	c.maintenanceEnableSeq++
+	if c.maintenanceRecoveryActive {
+		c.mu.Unlock()
+		return
+	}
+	c.maintenanceRecoveryActive = true
+	recoveryID := c.registerRead()
+	c.recoveries.Add(1)
+	c.mu.Unlock()
+
+	go func() {
+		defer c.recoveries.Done()
+		defer c.finishRead(recoveryID)
+		for {
+			c.mu.Lock()
+			enableSeq := c.maintenanceEnableSeq
+			c.mu.Unlock()
+
+			delay := time.Duration(internal.Rand().Int63n(int64(maintenanceMaxWindow)))
+			select {
+			case <-ctx.Done():
+				c.mu.Lock()
+				c.maintenanceRecoveryActive = false
+				c.mu.Unlock()
+				return
+			case <-time.After(delay):
+			}
+			dispatchMaintenanceRecovery(ctx, client, c)
+
+			c.mu.Lock()
+			if c.maintenanceEnableSeq == enableSeq {
+				c.maintenanceRecoveryActive = false
+				c.mu.Unlock()
+				return
+			}
+			c.mu.Unlock()
+		}
+	}()
+}
+
+// dispatchMaintenanceRecovery bypasses the restore pause because the recovery
+// read registered before its delay keeps pauseAndDrain from completing. A fresh
+// key prevents deliberate conflict injection from turning a temporary
+// maintenance window into a permanent stall.
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	bulk := oracle.Bulk{
+		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
+		IdempotencyKey: idempotencyKey(),
+	}
+
+	c.mu.Lock()
+	ticket := c.registerInflight(bulk)
+	c.mu.Unlock()
+
+	req := applyRequest(bulk)
+	resp, err := client.Apply(ctx, req)
+	dumpBatch(ticket, req, resp, err)
+	obs := observation{ticket: ticket, bulk: bulk, resp: resp, err: err, observeTicket: c.ticketSeq.Load()}
+	select {
+	case <-ctx.Done():
+		return
+	case c.incoming <- obs:
+	}
+}
+
+func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
+	for _, req := range bulk.Requests {
+		if toggle := req.GetSetMaintenanceMode(); toggle != nil && toggle.GetEnabled() {
+			return true
+		}
+	}
+	return false
 }
 
 // initialSchema generates a small, random metadata schema declared at ledger
