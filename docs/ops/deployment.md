@@ -724,6 +724,21 @@ Changes in this release line that fall under the rule:
 
 Making this structurally safe would require a failure-projection semantics version carried alongside `HashVersion`, so old entries keep reproducing their original bytes. That is a deliberate design change, tracked as EN-1661; until it lands, the rule above is the mitigation. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
 
+### Upgrading across an FSM outcome change
+
+A related but heavier case: a release that makes the FSM *reject* an order it used to accept. The rule above assumes both binaries fail the order and only disagree on how they label the failure, which is why it can promise that no data wipe is required. An outcome change breaks that assumption — the two binaries disagree on whether anything happened at all.
+
+An accepted order writes its rows, returns a log payload, and consumes a global log sequence; a rejected one does none of the three (`processing.RequestProcessor.ProcessOrders` skips the whole block on a nil payload). So for one and the same committed Raft entry inside a mixed-binary window, the old binary appends a log and mutates state while the new binary records only an audit failure. Every later log on the old node then carries a sequence number one higher than on the new node, and the rows the old node wrote exist nowhere else.
+
+- **Mixed-binary rolling upgrades are not supported across that change**, for the reason above and one further one.
+- **A replica that straddled the window cannot be repaired by restarting it onto the new binary.** Its divergence is in the state store and the log stream, not only in the audit hash, so it has to be resynchronised from the leader (`state.Synchronizer.SynchronizeWithLeader` installs a leader checkpoint). `ledgerctl check` reports `HASH_MISMATCH` on the disagreeing node, but the hash is the symptom rather than the whole defect.
+
+Changes in this release line that fall under this rule:
+
+| Change | Outcome that flips | Exposure |
+|--------|--------------------|----------|
+| EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.
