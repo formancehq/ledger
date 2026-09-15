@@ -5,7 +5,9 @@ ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 
-RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.7.0
+# Must match the SDK pinned in go.mod: the 0.8.0 line added a column
+# parameter to assert.AssertRaw, which the generated catalog calls.
+RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.8.0-default-no-op
 
 COPY go.* /src/
 COPY cmd/server /src/cmd/server
@@ -24,16 +26,24 @@ RUN cp /src/go.* / && mkdir -p /cmd && cp -r /src/cmd/server /cmd/server \
 
 RUN mkdir /instrumented
 WORKDIR /src/tests/antithesis/workload
-RUN antithesis-go-instrumentor . /instrumented
+# -instrumentor_version pins the SDK the generated notifier module requires.
+# It defaults to the instrumentor's own SDK_Version ("0.8.0"), and stable
+# v0.8.0 outranks the v0.8.0-default-no-op prerelease in module resolution —
+# so without this flag the instrumented build silently resolves to the stable,
+# live-by-default SDK and enable_antithesis_sdk becomes inert here.
+RUN antithesis-go-instrumentor -instrumentor_version v0.8.0-default-no-op . /instrumented
 WORKDIR /instrumented/customer
 
-RUN go build -o /init ./bin/init
+# enable_antithesis_sdk arms the SDK, which v0.8.0-default-no-op compiles
+# out unless asked. This image exists only to drive Antithesis runs, so
+# every binary in it is built armed.
+RUN go build -tags enable_antithesis_sdk -o /init ./bin/init
 RUN mkdir -p /cmds
 
 # Pre-warm the build cache: compile all shared dependencies once (race-instrumented).
 # This avoids recompiling the same packages once per driver — subsequent builds only
 # compile the unique main.go (~117 LOC each).
-RUN go build -race ./internal/...
+RUN go build -race -tags enable_antithesis_sdk ./internal/...
 
 # Optional dev-loop filter: when INCLUDED_DRIVERS is a non-empty comma-separated
 # list of <template>/<driver> paths (e.g. "main/parallel_driver_bulk,main/first_default_ledger"),
@@ -58,7 +68,7 @@ RUN set -e; \
         cp /tmp/all-drivers.txt /tmp/targets.txt; \
     fi; \
     cat /tmp/targets.txt \
-        | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -o "/cmds/$1" "./bin/cmds/$1"' _ {}
+        | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -tags enable_antithesis_sdk -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner
 FROM debian:trixie AS runner

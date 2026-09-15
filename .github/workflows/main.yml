@@ -73,6 +73,9 @@ jobs:
       - name: Run internal tests with optional features and coverage
         run: >
           nix develop --command just test-internal-coverage
+      - name: Run Antithesis assertion-emission contract tests
+        run: >
+          nix develop --command just test-antithesis-assertions
       - name: Upload coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

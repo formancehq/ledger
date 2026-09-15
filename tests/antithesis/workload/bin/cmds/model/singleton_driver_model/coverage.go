@@ -98,7 +98,9 @@ func registerCoverage() {
 }
 
 func emitCoverage(cond bool, msg string, details internal.Details, hit bool) {
-	assert.AssertRaw(cond, msg, details, coverageClass, "noteQueryCoverage", coverageFile, 0,
+	// The two zeros are line and column: these sondes are registered by name,
+	// not discovered at a source location.
+	assert.AssertRaw(cond, msg, details, coverageClass, "noteQueryCoverage", coverageFile, 0, 0,
 		hit, true, "sometimes", "Sometimes", msg)
 }
 
