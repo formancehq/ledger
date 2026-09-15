@@ -360,7 +360,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	spinner.Success("Added")
 
-	if handled, err := cmdutil.EncodeStructured(cmd, redactSinkConfig(config)); handled || err != nil {
+	displayConfig := redactSinkConfig(config)
+	if handled, err := cmdutil.EncodeStructured(cmd, displayConfig); handled || err != nil {
 		return err
 	}
 
@@ -371,16 +372,16 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	switch {
 	case hasNATS:
-		pterm.Printf("URL:    %s\n", natsURL)
+		pterm.Printf("URL:    %s\n", displayConfig.GetNats().GetUrl())
 		pterm.Printf("Topic:  %s\n", natsTopic)
 	case hasCH:
-		pterm.Printf("DSN:    %s\n", cmdutil.ObfuscateDSN(chDSN))
+		pterm.Printf("DSN:    %s\n", displayConfig.GetClickhouse().GetDsn())
 		pterm.Printf("Table:  %s\n", chTable)
 	case hasKafka:
 		pterm.Printf("Brokers: %s\n", kafkaBrokersStr)
 		pterm.Printf("Topic:   %s\n", kafkaTopic)
 	case hasHTTP:
-		pterm.Printf("Endpoint: %s\n", httpEndpoint)
+		pterm.Printf("Endpoint: %s\n", displayConfig.GetHttp().GetEndpoint())
 
 		if httpSecret != "" {
 			pterm.Printf("Secret:   (set)\n")

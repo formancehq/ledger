@@ -2,6 +2,7 @@ package cmdutil
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -69,6 +70,70 @@ func WrapText(text string, maxWidth int, separator string) []string {
 // Works with postgres://, postgresql://, clickhouse:// and similar URL-format DSNs.
 // If the DSN is not URL-formatted or has no password, it is returned unchanged.
 func ObfuscateDSN(dsn string) string {
+	return obfuscateURLPassword(dsn)
+}
+
+// ObfuscateClickHouseDSN replaces userinfo passwords and the ClickHouse
+// driver's supported password query parameter with "****".
+func ObfuscateClickHouseDSN(dsn string) string {
+	obfuscated := ObfuscateDSN(dsn)
+	parsed, err := url.Parse(obfuscated)
+	if err != nil {
+		return obfuscated
+	}
+
+	query := parsed.Query()
+	passwords, ok := query["password"]
+	if !ok {
+		return obfuscated
+	}
+
+	for index, password := range passwords {
+		if password != "" {
+			passwords[index] = "****"
+		}
+	}
+	parsed.RawQuery = query.Encode()
+
+	return restoreObfuscationMask(parsed.String())
+}
+
+// ObfuscateURLPassword replaces a URL password with "****" while preserving
+// the username and all other connection details.
+func ObfuscateURLPassword(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User == nil {
+		return value
+	}
+
+	username := parsed.User.Username()
+	password, hasPassword := parsed.User.Password()
+	if hasPassword && password != "" {
+		parsed.User = url.UserPassword(username, "****")
+	}
+
+	return restoreObfuscationMask(parsed.String())
+}
+
+// ObfuscateURLUserinfo replaces URL passwords and token-only userinfo with
+// "****" while preserving non-secret connection details. A username paired
+// with a password remains visible; sole userinfo is treated as a token.
+func ObfuscateURLUserinfo(value string) string {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.User == nil {
+		return value
+	}
+
+	if _, hasPassword := parsed.User.Password(); !hasPassword {
+		parsed.User = url.User("****")
+
+		return restoreObfuscationMask(parsed.String())
+	}
+
+	return ObfuscateURLPassword(value)
+}
+
+func obfuscateURLPassword(dsn string) string {
 	schemeEnd := strings.Index(dsn, "://")
 	if schemeEnd == -1 {
 		return dsn
@@ -92,4 +157,8 @@ func ObfuscateDSN(dsn string) string {
 	hostPart := rest[lastAt:]
 
 	return dsn[:schemeEnd+3] + user + ":****" + hostPart
+}
+
+func restoreObfuscationMask(value string) string {
+	return strings.ReplaceAll(value, "%2A%2A%2A%2A", "****")
 }
