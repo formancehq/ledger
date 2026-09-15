@@ -336,6 +336,16 @@ func RebuildDelta(
 				}
 			}
 
+		case *commonpb.LogPayload_RemovedEventsSink:
+			if p.RemovedEventsSink != nil {
+				key := domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()}
+				if err := sinkConfig.Delete(batch, key.Bytes()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("deleting events sink at log %d: %w", seq, err)
+				}
+			}
+
 		case *commonpb.LogPayload_SavedLedgerMetadata:
 			if p.SavedLedgerMetadata != nil {
 				for key, value := range p.SavedLedgerMetadata.GetMetadata() {
@@ -458,7 +468,6 @@ func RebuildDelta(
 			}
 
 		// Log types with no persistent state to rebuild:
-		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
 		}
