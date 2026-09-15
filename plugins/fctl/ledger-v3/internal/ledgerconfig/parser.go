@@ -1,0 +1,1145 @@
+package ledgerconfig
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/alecthomas/participle/v2"
+	"github.com/alecthomas/participle/v2/lexer"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+)
+
+// MaxParseDepth bounds the nesting depth participle is allowed to
+// descend through during Parse. Participle does recursive-descent
+// parsing on the grammar rules `UnaryExpr → 'not' UnaryExpr` and
+// `Primary → '(' OrExpr ')'`; an input with 100k repetitions of
+// `not ` or `(` overflows the Go stack — a fatal, unrecoverable
+// process abort (review-2 L-19 / #341).
+//
+// 200 is well above any legitimate filter expression. The check is
+// a syntactic upper bound (counts `not` keywords plus open parens),
+// not an exact AST depth — but those tokens are the only sources of
+// participle recursion in this grammar.
+const MaxParseDepth = 200
+
+// ErrFilterTooDeep is returned by Parse when the lexical nesting
+// indicators exceed MaxParseDepth.
+var ErrFilterTooDeep = fmt.Errorf("filter expression nesting exceeds maximum depth (%d)", MaxParseDepth)
+
+// Custom lexer: Keywords are matched before Ident so that reserved words
+// (and, or, not, in, between, metadata, address, source, destination, ledger,
+// exists, true, false) cannot be consumed as bare values.
+//
+// A bare Ident is plain-alphanumeric (`[a-zA-Z_][a-zA-Z0-9_]*`): it does NOT
+// include `-`, `:`, `.`, `/`. Any key or value that contains one of those special
+// characters must be written as a quoted String (EN-1547). This is what makes the
+// keyword `\b` boundary safe — a keyword can no longer be the prefix of a longer
+// bare identifier that continues with punctuation (there is no such identifier),
+// so `metadata["x-request-id"]` / `metadata["foo.bar"]` are expressible via
+// quoting rather than mis-tokenizing. The one structured exception is the asset
+// reference `BASE/PRECISION` (e.g. USD/2), which has its own AssetRef token
+// (matched before Ident) because it is a first-class literal in the `has asset`
+// position, not a free-form string.
+var filterLexer = lexer.MustSimple([]lexer.SimpleRule{
+	{Name: "Whitespace", Pattern: `\s+`},
+	{Name: "OpEq", Pattern: `==`},
+	{Name: "OpNe", Pattern: `!=`},
+	{Name: "OpPrefix", Pattern: `\^=`},
+	{Name: "OpGte", Pattern: `>=`},
+	{Name: "OpLte", Pattern: `<=`},
+	{Name: "OpGt", Pattern: `>`},
+	{Name: "OpLt", Pattern: `<`},
+	{Name: "LBracket", Pattern: `\[`},
+	{Name: "RBracket", Pattern: `\]`},
+	{Name: "LParen", Pattern: `\(`},
+	{Name: "RParen", Pattern: `\)`},
+	{Name: "Dollar", Pattern: `\$`},
+	{Name: "String", Pattern: `"[^"]*"|'[^']*'`},
+	{Name: "Comma", Pattern: `,`},
+	{Name: "Keyword", Pattern: `\b(and|or|not|in|between|metadata|address|source|destination|ledger|exists|true|false)\b`},
+	{Name: "Number", Pattern: `-?[0-9]+`},
+	// AssetRef is the base/precision asset reference (e.g. USD/2) used only in the
+	// `has asset` position. It is its own token — matched before Ident — because
+	// the `/` separator is not an Ident char. The bare base form (USD) has no `/`
+	// and lexes as an ordinary Ident; only the slashed form needs this rule.
+	{Name: "AssetRef", Pattern: `[a-zA-Z][a-zA-Z0-9]*/[0-9]+`},
+	{Name: "Ident", Pattern: `[a-zA-Z_][a-zA-Z0-9_]*`},
+})
+
+var filterParser = participle.MustBuild[OrExpr](
+	participle.Lexer(filterLexer),
+	participle.Elide("Whitespace"),
+)
+
+// Parse parses a human-readable filter expression into a QueryFilter, resolving
+// bare field names against target.
+//
+// The grammar is context-free, but a handful of bare fields are target-aware:
+// their proto arm depends on the query target. On QUERY_TARGET_AUDIT the bare
+// audit fields (seq, proposal_id, timestamp, log_seq, outcome, caller_subject,
+// ledger, order_type) resolve to the AuditCondition arm; on every other target
+// the intrinsic fields resolve to their own arms — `timestamp` to the
+// transaction builtin range, `date` to the log builtin range, `ledger` to the
+// LedgerCondition — and the audit-only field names are rejected (they carry no
+// meaning off the audit target). This is what lets a single flat DSL serve both
+// audit reads (`outcome == failure`, `ledger == main`, `timestamp >= "…"`) and
+// transaction/log reads (`timestamp >= "…"`, `ledger == main`) without an
+// `audit[…]` namespace prefix (EN-1549).
+//
+// Grammar:
+//
+//	expression     := or_expr
+//	:= and_expr ("or" and_expr)*
+//	and_expr       := unary_expr ("and" unary_expr)*
+//	unary_expr     := "not" unary_expr | primary
+//	:= "(" expression ")" | condition
+//	:= asset_cond | metadata_cond | address_cond | field_cond
+//	metadata_cond  := "metadata" "[" KEY "]" ("==" VALUE | "!=" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "exists" | "in" "(" VALUE ("," VALUE)* ")")
+//	address_cond   := ("address" | "source" | "destination") ("==" VALUE | "^=" VALUE | "in" "(" VALUE ("," VALUE)* ")")
+//	field_cond     := FIELD ("==" VALUE | ">" VALUE | ">=" VALUE | "<" VALUE | "<=" VALUE | "between" VALUE "and" VALUE | "in" "(" VALUE ("," VALUE)* ")")
+//	value          := "$" Ident | "true" | "false" | String | Number | Ident
+func Parse(input string, target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	// Reject pathologically nested inputs BEFORE handing them to
+	// participle. Participle's recursive-descent parser would
+	// otherwise stack-overflow on counts beyond a few thousand,
+	// killing the process (#341). Count open parens plus `not`
+	// occurrences as a conservative syntactic depth proxy.
+	if strings.Count(input, "(")+strings.Count(input, "not") > MaxParseDepth {
+		return nil, ErrFilterTooDeep
+	}
+
+	ast, err := filterParser.ParseString("", input)
+	if err != nil {
+		return nil, fmt.Errorf("parse error: %w", err)
+	}
+
+	return ast.toProto(target)
+}
+
+// --- AST types ---
+
+type OrExpr struct {
+	Operands []*AndExpr `parser:"@@ ('or' @@)*"`
+}
+
+func (e *OrExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if len(e.Operands) == 1 {
+		return e.Operands[0].toProto(target)
+	}
+
+	filters := make([]*commonpb.QueryFilter, len(e.Operands))
+	for i, op := range e.Operands {
+		f, err := op.toProto(target)
+		if err != nil {
+			return nil, err
+		}
+
+		filters[i] = f
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: filters},
+		},
+	}, nil
+}
+
+type AndExpr struct {
+	Operands []*UnaryExpr `parser:"@@ ('and' @@)*"`
+}
+
+func (e *AndExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if len(e.Operands) == 1 {
+		return e.Operands[0].toProto(target)
+	}
+
+	filters := make([]*commonpb.QueryFilter, len(e.Operands))
+	for i, op := range e.Operands {
+		f, err := op.toProto(target)
+		if err != nil {
+			return nil, err
+		}
+
+		filters[i] = f
+	}
+
+	// An `and` of exactly two complementary single-bound date/timestamp range
+	// clauses (one lower, one upper on the same builtin field) folds into a
+	// single range condition, mirroring the JSON codec's foldRangeAnd. This is
+	// what lets an exclusive closed range survive a Format -> Parse round-trip:
+	// Format emits `timestamp > X and timestamp < Y` (a `between` would drop the
+	// exclusivity), and this fold rebuilds the single UintCondition it came from.
+	if folded, ok := foldDateRangeAnd(filters); ok {
+		return folded, nil
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_And{
+			And: &commonpb.AndFilter{Filters: filters},
+		},
+	}, nil
+}
+
+// foldDateRangeAnd merges exactly two complementary single-bound range clauses on
+// the same builtin date field into one range condition. It is the textual-parser
+// counterpart of commonpb.foldRangeAnd (which folds the JSON `$and` of a $gt/$gte
+// and a $lt/$lte), so both DSLs collapse a closed range to the identical proto.
+// It only fires on the EN-1544 date fields — transaction `timestamp`
+// (QueryFilter_BuiltinUint) and log `date` (QueryFilter_LogBuiltinUint) — the
+// only builtin ranges the textual grammar produces. ok=false leaves the `and`
+// untouched.
+func foldDateRangeAnd(filters []*commonpb.QueryFilter) (*commonpb.QueryFilter, bool) {
+	if len(filters) != 2 {
+		return nil, false
+	}
+
+	// Both transaction timestamp clauses.
+	if a, b := filters[0].GetBuiltinUint(), filters[1].GetBuiltinUint(); a != nil && b != nil {
+		if a.GetField() != b.GetField() {
+			return nil, false
+		}
+		uc, ok := mergeComplementaryBounds(a.GetCond(), b.GetCond())
+		if !ok {
+			return nil, false
+		}
+
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{Field: a.GetField(), Cond: uc},
+		}}, true
+	}
+
+	// Both log date clauses.
+	if a, b := filters[0].GetLogBuiltinUint(), filters[1].GetLogBuiltinUint(); a != nil && b != nil {
+		if a.GetField() != b.GetField() {
+			return nil, false
+		}
+		uc, ok := mergeComplementaryBounds(a.GetCond(), b.GetCond())
+		if !ok {
+			return nil, false
+		}
+
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{Field: a.GetField(), Cond: uc},
+		}}, true
+	}
+
+	return nil, false
+}
+
+// mergeComplementaryBounds combines two single-bound UintConditions — one with
+// only a lower bound, the other with only an upper bound — into one closed range,
+// preserving each side's exclusivity. Returns ok=false unless the pair is exactly
+// one lower + one upper single-bound condition (e.g. two lower bounds, an
+// already-closed range, or an equality do not fold).
+func mergeComplementaryBounds(x, y *commonpb.UintCondition) (*commonpb.UintCondition, bool) {
+	lower, upper := x, y
+	if isSingleLowerBound(y) && isSingleUpperBound(x) {
+		lower, upper = y, x
+	}
+
+	if !isSingleLowerBound(lower) || !isSingleUpperBound(upper) {
+		return nil, false
+	}
+
+	lo := lower.GetMin()
+	hi := upper.GetMax()
+
+	return &commonpb.UintCondition{
+		Min:          &lo,
+		Max:          &hi,
+		MinExclusive: lower.GetMinExclusive(),
+		MaxExclusive: upper.GetMaxExclusive(),
+	}, true
+}
+
+// isSingleLowerBound reports whether uc carries only a lower bound (Min set, Max
+// unset). isSingleUpperBound is the symmetric check.
+func isSingleLowerBound(uc *commonpb.UintCondition) bool {
+	return uc.Min != nil && uc.Max == nil
+}
+
+func isSingleUpperBound(uc *commonpb.UintCondition) bool {
+	return uc.Max != nil && uc.Min == nil
+}
+
+type UnaryExpr struct {
+	Not     *UnaryExpr `parser:"  'not' @@"`
+	Primary *Primary   `parser:"| @@"`
+}
+
+func (e *UnaryExpr) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if e.Not != nil {
+		inner, err := e.Not.toProto(target)
+		if err != nil {
+			return nil, err
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Not{
+				Not: &commonpb.NotFilter{Filter: inner},
+			},
+		}, nil
+	}
+
+	return e.Primary.toProto(target)
+}
+
+type Primary struct {
+	Group     *OrExpr    `parser:"  '(' @@ ')'"`
+	Condition *Condition `parser:"| @@"`
+}
+
+func (p *Primary) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if p.Group != nil {
+		return p.Group.toProto(target)
+	}
+
+	return p.Condition.toProto(target)
+}
+
+// Condition tries the specialized productions first (asset / metadata / address),
+// then falls back to the generic FieldCond for every bare `field OP value` form
+// — the intrinsic fields (`timestamp`, `date`, `ledger`) and the bare audit
+// fields. PEG alternation ordering matters: FieldCond's `@(Ident | Keyword)`
+// would otherwise swallow the `has`/`metadata`/`address` lead tokens, so it must
+// come last.
+type Condition struct {
+	Asset    *AssetCond    `parser:"  @@"`
+	Metadata *MetadataCond `parser:"| @@"`
+	Address  *AddressCond  `parser:"| @@"`
+	Field    *FieldCond    `parser:"| @@"`
+}
+
+func (c *Condition) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if c.Asset != nil {
+		return c.Asset.toProto()
+	}
+
+	if c.Metadata != nil {
+		return c.Metadata.toProto()
+	}
+
+	if c.Field != nil {
+		return c.Field.toProto(target)
+	}
+
+	return c.Address.toProto()
+}
+
+// --- Bare field conditions ---
+
+// FieldCond is the generic `field OP value` production for bare, target-aware
+// field names: the intrinsic fields (`timestamp`, `date`, `ledger`) and — on the
+// audit target — the audit fields (seq, proposal_id, timestamp, log_seq, outcome,
+// caller_subject, ledger, order_type). Which proto arm the field resolves to is
+// decided at toProto time from the query target (EN-1549), not by the grammar.
+//
+// `@(Ident | Keyword)` admits both a plain identifier field (`timestamp`, `seq`,
+// `date`) and a keyword field (`ledger` is a lexer keyword). It deliberately sits
+// last in the Condition alternation so the specialized asset/metadata/address
+// productions win their lead tokens first.
+type FieldCond struct {
+	Field string      `parser:"@(Ident | Keyword)"`
+	Op    *MetadataOp `parser:"@@"`
+}
+
+func (a *FieldCond) toProto(target commonpb.QueryTarget) (*commonpb.QueryFilter, error) {
+	if a.Op == nil {
+		return nil, fmt.Errorf("field %q requires an operator", a.Field)
+	}
+
+	if target == commonpb.QueryTarget_QUERY_TARGET_AUDIT {
+		return a.auditToProto()
+	}
+
+	return a.intrinsicToProto()
+}
+
+type auditFieldKind int
+
+const (
+	auditKindUint auditFieldKind = iota
+	auditKindString
+	// auditKindDatetime is a uint field whose DSL value additionally accepts an
+	// RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z"), coerced to the
+	// same uint64 microseconds the index stores. Raw microseconds still parse.
+	auditKindDatetime
+)
+
+type auditFieldSpec struct {
+	field commonpb.AuditField
+	kind  auditFieldKind
+}
+
+// auditFieldKeys maps the DSL field key to its enum + value kind. The set is
+// exactly the fields the audit access path can resolve efficiently (index
+// lookup or key-range bound) — see AuditField in common.proto.
+var auditFieldKeys = map[string]auditFieldSpec{
+	"seq":            {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
+	"proposal_id":    {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
+	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
+	"log_seq":        {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
+	"outcome":        {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
+	"caller_subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
+	"ledger":         {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
+	"order_type":     {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
+}
+
+// auditToProto resolves a bare field on the AUDIT target into the matching
+// AuditCondition arm.
+func (a *FieldCond) auditToProto() (*commonpb.QueryFilter, error) {
+	spec, ok := auditFieldKeys[a.Field]
+	if !ok {
+		return nil, fmt.Errorf("unknown audit field %q", a.Field)
+	}
+
+	switch spec.kind {
+	case auditKindUint:
+		return a.uintToProto(spec.field)
+	case auditKindDatetime:
+		return a.datetimeToProto(spec.field)
+	case auditKindString:
+		return a.stringToProto(spec.field)
+	default:
+		return nil, fmt.Errorf("unhandled audit field kind for %q", a.Field)
+	}
+}
+
+// intrinsicToProto resolves a bare field on a non-audit target (transactions /
+// logs / accounts) into its own proto arm: `timestamp` → transaction builtin
+// range, `date` → log builtin range, `ledger` → LedgerCondition. Any other bare
+// name (including the audit-only fields) is rejected: those field names carry no
+// meaning off the audit target and would otherwise silently vanish. Whether a
+// resolved field is valid on the SPECIFIC non-audit target (e.g. `date` on
+// transactions) is not decided here — the downstream per-target validity gate
+// (domain.ValidateFilterForTarget) handles that, the same way the structured JSON
+// DSL does.
+func (a *FieldCond) intrinsicToProto() (*commonpb.QueryFilter, error) {
+	switch a.Field {
+	case "timestamp", "date":
+		return a.dateToProto()
+	case "ledger":
+		return a.ledgerToProto()
+	default:
+		return nil, fmt.Errorf("unknown field %q", a.Field)
+	}
+}
+
+func auditQF(field commonpb.AuditField, cond *commonpb.AuditCondition) *commonpb.QueryFilter {
+	cond.Field = field
+
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: cond}}
+}
+
+func (a *FieldCond) uintToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		n, err := strconv.ParseUint(v.resolve(), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("audit field %q requires an unsigned integer, got %q", a.Field, v.resolve())
+		}
+
+		return n, nil
+	}
+
+	return a.uintProtoWithParse(field, parse)
+}
+
+// datetimeToProto builds a uint audit condition whose operands may be written as
+// an RFC3339 timestamp (quoted, e.g. "2023-11-14T22:13:20Z") or as raw unsigned
+// microseconds. Both forms coerce to the uint64 microseconds the audit index
+// stores, through the shared commonpb.CoerceDatetimeMicros (the same coercion the
+// structured JSON DSL and the top-level date/timestamp fields use, EN-1544).
+func (a *FieldCond) datetimeToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		return coerceDatetimeValue(v)
+	}
+
+	return a.uintProtoWithParse(field, parse)
+}
+
+// coerceDatetimeValue turns a resolved DSL Value into the uint64 microseconds a
+// date index stores, accepting an RFC3339 timestamp or raw unsigned microseconds
+// through the single shared coercion (commonpb.CoerceDatetimeMicros). Pre-epoch
+// RFC3339 values are rejected there. Shared by the audit timestamp field and the
+// top-level date/timestamp fields (EN-1544) so all three define the accepted
+// forms once. Callers reject $param operands before calling this.
+func coerceDatetimeValue(v *Value) (uint64, error) {
+	return commonpb.CoerceDatetimeMicros(v.resolve())
+}
+
+// uintProtoWithParse assembles a uint audit condition from the operator, using
+// parse to turn each operand into a uint64. Shared by plain-uint fields and the
+// datetime timestamp field.
+func (a *FieldCond) uintProtoWithParse(field commonpb.AuditField, parse func(*Value) (uint64, error)) (*commonpb.QueryFilter, error) {
+	uc, err := uintConditionFromOp(a.Op, parse)
+	if err != nil {
+		return nil, fmt.Errorf("audit field %q: %w", a.Field, err)
+	}
+
+	return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_UintCond{UintCond: uc}}), nil
+}
+
+// uintConditionFromOp folds a comparison operator (==, >, >=, <, <=, between)
+// into a single commonpb.UintCondition, using parse to turn each operand Value
+// into a uint64. It is the shared range assembler for every textual uint range
+// field — the audit uint/datetime fields and the top-level date/timestamp fields
+// (EN-1544) — so the operator-to-bound mapping lives in one place. Parameters
+// ($param) are not accepted here: the fields that use this helper are evaluated
+// without a parameter-resolution context, and each parse closure rejects a param
+// operand with a field-specific message.
+func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*commonpb.UintCondition, error) {
+	uc := &commonpb.UintCondition{}
+
+	switch {
+	case op.Eq != nil:
+		n, err := parse(op.Eq)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.Max = &n, &n
+	case op.Gt != nil:
+		n, err := parse(op.Gt)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.MinExclusive = &n, true
+	case op.Gte != nil:
+		n, err := parse(op.Gte)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min = &n
+	case op.Lt != nil:
+		n, err := parse(op.Lt)
+		if err != nil {
+			return nil, err
+		}
+		uc.Max, uc.MaxExclusive = &n, true
+	case op.Lte != nil:
+		n, err := parse(op.Lte)
+		if err != nil {
+			return nil, err
+		}
+		uc.Max = &n
+	case op.Between != nil:
+		lo, err := parse(op.Between.Low)
+		if err != nil {
+			return nil, err
+		}
+		hi, err := parse(op.Between.High)
+		if err != nil {
+			return nil, err
+		}
+		uc.Min, uc.Max = &lo, &hi
+	default:
+		return nil, errors.New("supports ==, >, >=, <, <= and between only")
+	}
+
+	return uc, nil
+}
+
+func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFilter, error) {
+	op := a.Op
+
+	// Audit filters are evaluated without a parameter-resolution context, so a
+	// $param value cannot be honored — reject it rather than degrading to a
+	// match against the empty string.
+	mk := func(v *Value) (*commonpb.QueryFilter, error) {
+		if v.Param != "" {
+			return nil, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringCond{
+			StringCond: &commonpb.StringCondition{Value: &commonpb.StringCondition_Hardcoded{Hardcoded: v.resolve()}},
+		}}), nil
+	}
+
+	switch {
+	case op.Eq != nil:
+		return mk(op.Eq)
+	case len(op.In) > 0:
+		filters := make([]*commonpb.QueryFilter, len(op.In))
+		for i, v := range op.In {
+			f, err := mk(v)
+			if err != nil {
+				return nil, err
+			}
+			filters[i] = f
+		}
+
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
+	default:
+		return nil, fmt.Errorf("audit field %q supports == and in only", a.Field)
+	}
+}
+
+// --- Date / timestamp conditions ---
+
+// dateToProto is the non-audit resolution of the bare `date OP value` (logs) /
+// `timestamp OP value` (transactions) range filter over a builtin date index
+// (EN-1544). The operand is an RFC3339 timestamp (quoted, e.g.
+// "2023-11-14T22:13:20Z") or raw unsigned microseconds — the same forms the audit
+// timestamp field accepts, coerced through the one shared datetime coercion.
+// `date` compiles to a log date condition (LogBuiltinIndex_DATE); `timestamp` to
+// a transaction timestamp condition (TransactionBuiltinIndex_TIMESTAMP). Which
+// target each is valid on is NOT decided here: the field just selects the proto
+// arm, and the per-target validity gate (domain.ValidateFilterForTarget) rejects
+// `date` on a non-logs target and `timestamp` on a non-transactions target
+// downstream — the same gate the structured JSON DSL goes through.
+//
+// `date`/`timestamp` are matched by the generic FieldCond production against the
+// plain `Ident` token (they are NOT lexer keywords), so they act as field names
+// at condition position while remaining usable as ordinary identifiers everywhere
+// else. Making them keywords would tokenize only the prefix of an identifier that
+// continues with an Ident-continuation char (`-`, `:`, `.`, `/`) — e.g.
+// `metadata[date-range]` — because the keyword `\b` boundary matches before those
+// characters, breaking filters that parsed before.
+func (d *FieldCond) dateToProto() (*commonpb.QueryFilter, error) {
+	parse := func(v *Value) (uint64, error) {
+		if v.Param != "" {
+			return 0, fmt.Errorf("%s field does not support parameters", d.Field)
+		}
+
+		return coerceDatetimeValue(v)
+	}
+
+	uc, err := uintConditionFromOp(d.Op, parse)
+	if err != nil {
+		return nil, fmt.Errorf("%s field: %w", d.Field, err)
+	}
+
+	switch d.Field {
+	case "date":
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+				Cond:  uc,
+			},
+		}}, nil
+	case "timestamp":
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{
+			BuiltinUint: &commonpb.BuiltinUintCondition{
+				Field: commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP,
+				Cond:  uc,
+			},
+		}}, nil
+	default:
+		// Unreachable: intrinsicToProto only routes "date"/"timestamp" here.
+		return nil, fmt.Errorf("invariant: unhandled date field %q", d.Field)
+	}
+}
+
+// --- Asset conditions ---
+
+// AssetCond is the `has asset <assetRef>` filter. <assetRef> is a bare base
+// ("USD" → precision 0) or base/precision ("USD/4"). Resolved via the
+// ACCT_BUILTIN_INDEX_ASSET readstore index.
+type AssetCond struct {
+	// The operand is either a bare base (an Ident, e.g. USD) or a base/precision
+	// asset reference (the AssetRef token, e.g. USD/2). splitAsset validates the
+	// combined string against the canonical asset rules.
+	Asset string `parser:"'has' 'asset' @(AssetRef | Ident)"`
+}
+
+func (a *AssetCond) toProto() (*commonpb.QueryFilter, error) {
+	base, precision, err := splitAsset(a.Asset)
+	if err != nil {
+		return nil, err
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_AccountHasAsset{
+			AccountHasAsset: &commonpb.AccountHasAssetCondition{
+				AssetBase: base,
+				Precision: uint32(precision),
+			},
+		},
+	}, nil
+}
+
+// splitAsset splits an asset string of the form "BASE" or "BASE/PRECISION"
+// into its base and precision parts. It defers to the canonical asset rules
+// in internal/domain — the single source of truth shared by the hot path
+// (domain.ValidateAsset in processor_transaction) and the volume-key encoder
+// (domain.ParseAssetPrecision in keys.go) — rather than re-deriving them here.
+// Validate-then-parse mirrors that idiom: ValidateAsset rejects a malformed
+// base, a non-numeric or out-of-range precision, and the non-canonical
+// suffixes ("USD/0", "USD/02", "USD/2/3") that would alias a different volume
+// cell, so ParseAssetPrecision can split a known-canonical string. A bare base
+// (no "/") yields precision 0.
+func splitAsset(asset string) (string, uint8, error) {
+	base, precisionText, hasPrecision := strings.Cut(asset, "/")
+	if len(base) == 0 || len(base) > 17 || base[0] < 'A' || base[0] > 'Z' {
+		return "", 0, fmt.Errorf("invalid asset %q", asset)
+	}
+	for index := 1; index < len(base); index++ {
+		character := base[index]
+		if (character < 'A' || character > 'Z') && (character < '0' || character > '9') {
+			return "", 0, fmt.Errorf("invalid asset %q", asset)
+		}
+	}
+	if !hasPrecision {
+		return base, 0, nil
+	}
+	if len(precisionText) == 0 || len(precisionText) > 3 || precisionText[0] == '0' {
+		return "", 0, fmt.Errorf("invalid asset %q", asset)
+	}
+	precision, err := strconv.ParseUint(precisionText, 10, 8)
+	if err != nil || precision == 0 {
+		return "", 0, fmt.Errorf("invalid asset %q", asset)
+	}
+	return base, uint8(precision), nil
+}
+
+// --- Metadata conditions ---
+
+type MetadataCond struct {
+	Key     string      `parser:"'metadata' '[' @(Ident | Keyword | String | Number) ']'"`
+	Exists  bool        `parser:"( @'exists'"`
+	Compare *MetadataOp `parser:"| @@ )"`
+}
+
+func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
+	key := unquote(m.Key)
+	field := &commonpb.FieldRef{Metadata: key}
+
+	if m.Exists {
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{
+				Field: &commonpb.FieldCondition{
+					Field:     field,
+					Condition: &commonpb.FieldCondition_ExistsCond{ExistsCond: &commonpb.ExistsCondition{}},
+				},
+			},
+		}, nil
+	}
+
+	return m.Compare.toProto(field)
+}
+
+type MetadataOp struct {
+	Eq      *Value        `parser:"  '==' @@"`
+	Ne      *Value        `parser:"| '!=' @@"`
+	Gte     *Value        `parser:"| '>=' @@"`
+	Gt      *Value        `parser:"| '>' @@"`
+	Lte     *Value        `parser:"| '<=' @@"`
+	Lt      *Value        `parser:"| '<' @@"`
+	Between *BetweenRange `parser:"| 'between' @@"`
+	In      []*Value      `parser:"| 'in' '(' @@ (',' @@)* ')'"`
+}
+
+// BetweenRange parses `LOW and HIGH` for the `between` operator. The inner
+// 'and' is consumed here while parsing the metadata condition, so the outer
+// AndExpr never sees it — participle's PEG ordering ensures the BetweenRange
+// production wins over the AndExpr continuation at this point in the grammar.
+type BetweenRange struct {
+	Low  *Value `parser:"@@"`
+	High *Value `parser:"'and' @@"`
+}
+
+func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, error) {
+	switch {
+	case op.Eq != nil:
+		return metadataEqualityToProto(field, op.Eq)
+	case op.Ne != nil:
+		inner, err := metadataEqualityToProto(field, op.Ne)
+		if err != nil {
+			return nil, err
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Not{
+				Not: &commonpb.NotFilter{Filter: inner},
+			},
+		}, nil
+	case op.Gt != nil:
+		return metadataRangeToProto(field, op.Gt, ">")
+	case op.Gte != nil:
+		return metadataRangeToProto(field, op.Gte, ">=")
+	case op.Lt != nil:
+		return metadataRangeToProto(field, op.Lt, "<")
+	case op.Lte != nil:
+		return metadataRangeToProto(field, op.Lte, "<=")
+	case op.Between != nil:
+		return metadataBetweenToProto(field, op.Between)
+	case len(op.In) > 0:
+		return metadataInToProto(field, op.In)
+	default:
+		return nil, errors.New("missing operator")
+	}
+}
+
+// --- Ledger conditions ---
+
+// ledgerToProto is the non-audit resolution of the bare `ledger == value` filter
+// into a LedgerCondition. Only equality is meaningful (the ledger name is an
+// exact string match, and a param is honored at execution time), so any other
+// operator is rejected — mirroring the pre-EN-1549 `ledger == VALUE`-only
+// grammar. On the audit target the same `ledger ==` shape resolves to the audit
+// ledger arm instead (see auditToProto).
+func (l *FieldCond) ledgerToProto() (*commonpb.QueryFilter, error) {
+	if l.Op.Eq == nil {
+		return nil, errors.New("ledger field supports == only")
+	}
+
+	cond := &commonpb.StringCondition{}
+	if l.Op.Eq.Param != "" {
+		cond.Value = &commonpb.StringCondition_Param{Param: l.Op.Eq.Param}
+	} else {
+		cond.Value = &commonpb.StringCondition_Hardcoded{Hardcoded: l.Op.Eq.resolve()}
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Ledger{
+			Ledger: &commonpb.LedgerCondition{Cond: cond},
+		},
+	}, nil
+}
+
+// --- Address conditions ---
+
+type AddressCond struct {
+	Keyword string   `parser:"@('address' | 'source' | 'destination')"`
+	Exact   *Value   `parser:"( '==' @@"`
+	Prefix  *Value   `parser:"| '^=' @@"`
+	In      []*Value `parser:"| 'in' '(' @@ (',' @@)* ')' )"`
+}
+
+func (a *AddressCond) toProto() (*commonpb.QueryFilter, error) {
+	role := addressRole(a.Keyword)
+
+	if len(a.In) > 0 {
+		return addressInToProto(role, a.In)
+	}
+
+	am := &commonpb.AddressMatch{Role: role}
+
+	if a.Exact != nil {
+		if a.Exact.Param != "" {
+			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: a.Exact.Param}
+		} else {
+			am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: a.Exact.resolve()}
+		}
+	} else {
+		if a.Prefix.Param != "" {
+			am.Match = &commonpb.AddressMatch_ParamPrefix{ParamPrefix: a.Prefix.Param}
+		} else {
+			am.Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: a.Prefix.resolve()}
+		}
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{Address: am},
+	}, nil
+}
+
+func addressRole(keyword string) commonpb.AddressRole {
+	switch keyword {
+	case "source":
+		return commonpb.AddressRole_ADDRESS_ROLE_SOURCE
+	case "destination":
+		return commonpb.AddressRole_ADDRESS_ROLE_DESTINATION
+	default:
+		return commonpb.AddressRole_ADDRESS_ROLE_ANY
+	}
+}
+
+// --- Value ---
+
+type Value struct {
+	Param string `parser:"  '$' @Ident"`
+	Str   string `parser:"| @String"`
+	Num   string `parser:"| @Number"`
+	Bool  string `parser:"| @('true' | 'false')"`
+	// Kw accepts the "noun" keywords as bare right-hand-side values so that a
+	// reserved word can still be used as an unquoted value (e.g.
+	// `metadata[type] == ledger` / `== source`). Only field/prefix keywords are
+	// listed — the structural operators (and/or/not/in/between) are deliberately
+	// excluded so they keep terminating expressions rather than being swallowed
+	// as values. true/false are handled by Bool above.
+	Kw   string `parser:"| @('metadata' | 'address' | 'source' | 'destination' | 'ledger' | 'exists')"`
+	Bare string `parser:"| @Ident"`
+}
+
+func (v *Value) resolve() string {
+	if v.Str != "" {
+		return unquote(v.Str)
+	}
+
+	if v.Num != "" {
+		return v.Num
+	}
+
+	if v.Bool != "" {
+		return v.Bool
+	}
+
+	if v.Kw != "" {
+		return v.Kw
+	}
+
+	return v.Bare
+}
+
+// --- Proto conversion helpers ---
+
+func metadataEqualityToProto(field *commonpb.FieldRef, val *Value) (*commonpb.QueryFilter, error) {
+	fc := &commonpb.FieldCondition{Field: field}
+
+	if val.Param != "" {
+		// Parameterized: default to string
+		fc.Condition = &commonpb.FieldCondition_StringCond{
+			StringCond: &commonpb.StringCondition{
+				Value: &commonpb.StringCondition_Param{Param: val.Param},
+			},
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{Field: fc},
+		}, nil
+	}
+
+	raw := val.resolve()
+
+	switch raw {
+	case "true":
+		fc.Condition = &commonpb.FieldCondition_BoolCond{
+			BoolCond: &commonpb.BoolCondition{
+				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: true},
+			},
+		}
+	case "false":
+		fc.Condition = &commonpb.FieldCondition_BoolCond{
+			BoolCond: &commonpb.BoolCondition{
+				Value: &commonpb.BoolCondition_Hardcoded{Hardcoded: false},
+			},
+		}
+	default:
+		if intVal, intErr := strconv.ParseInt(raw, 10, 64); intErr == nil {
+			fc.Condition = &commonpb.FieldCondition_IntCond{
+				IntCond: &commonpb.IntCondition{
+					Min: &intVal,
+					Max: &intVal,
+				},
+			}
+		} else {
+			fc.Condition = &commonpb.FieldCondition_StringCond{
+				StringCond: &commonpb.StringCondition{
+					Value: &commonpb.StringCondition_Hardcoded{Hardcoded: raw},
+				},
+			}
+		}
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{Field: fc},
+	}, nil
+}
+
+func metadataRangeToProto(field *commonpb.FieldRef, val *Value, op string) (*commonpb.QueryFilter, error) {
+	if val.Param != "" {
+		ic := &commonpb.IntCondition{}
+
+		switch op {
+		case ">":
+			ic.ParamMin = val.Param
+			ic.MinExclusive = true
+		case ">=":
+			ic.ParamMin = val.Param
+		case "<":
+			ic.ParamMax = val.Param
+			ic.MaxExclusive = true
+		case "<=":
+			ic.ParamMax = val.Param
+		}
+
+		return &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Field{
+				Field: &commonpb.FieldCondition{
+					Field:     field,
+					Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+				},
+			},
+		}, nil
+	}
+
+	raw := val.resolve()
+
+	intVal, intErr := strconv.ParseInt(raw, 10, 64)
+	if intErr != nil {
+		return nil, fmt.Errorf("range operators only support integer values, got %q", raw)
+	}
+
+	ic := &commonpb.IntCondition{}
+
+	switch op {
+	case ">":
+		ic.Min = &intVal
+		ic.MinExclusive = true
+	case ">=":
+		ic.Min = &intVal
+	case "<":
+		ic.Max = &intVal
+		ic.MaxExclusive = true
+	case "<=":
+		ic.Max = &intVal
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     field,
+				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+			},
+		},
+	}, nil
+}
+
+// metadataBetweenToProto desugars `metadata[key] between LOW and HIGH` into
+// a single IntCondition with both bounds set, inclusive on both ends (SQL
+// semantics: LOW <= value <= HIGH). Hardcoded bounds with LOW > HIGH return
+// a parse error — a transposed pair is almost certainly a bug, not a request
+// for the empty result.
+func metadataBetweenToProto(field *commonpb.FieldRef, r *BetweenRange) (*commonpb.QueryFilter, error) {
+	low := r.Low
+	high := r.High
+
+	if low.Param != "" || high.Param != "" {
+		ic := &commonpb.IntCondition{}
+
+		if low.Param != "" {
+			ic.ParamMin = low.Param
+		} else {
+			v, err := parseIntValue(low)
+			if err != nil {
+				return nil, err
+			}
+			ic.Min = &v
+		}
+
+		if high.Param != "" {
+			ic.ParamMax = high.Param
+		} else {
+			v, err := parseIntValue(high)
+			if err != nil {
+				return nil, err
+			}
+			ic.Max = &v
+		}
+
+		return wrapIntCondition(field, ic), nil
+	}
+
+	lowVal, err := parseIntValue(low)
+	if err != nil {
+		return nil, err
+	}
+
+	highVal, err := parseIntValue(high)
+	if err != nil {
+		return nil, err
+	}
+
+	if lowVal > highVal {
+		return nil, fmt.Errorf("between bounds out of order: %d > %d", lowVal, highVal)
+	}
+
+	return wrapIntCondition(field, &commonpb.IntCondition{
+		Min: &lowVal,
+		Max: &highVal,
+	}), nil
+}
+
+// parseIntValue parses a Value as a 64-bit signed integer, returning the same
+// error message that metadataRangeToProto uses so the two operators report
+// type-mismatches consistently.
+func parseIntValue(v *Value) (int64, error) {
+	raw := v.resolve()
+
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("range operators only support integer values, got %q", raw)
+	}
+
+	return n, nil
+}
+
+// wrapIntCondition packages an IntCondition as a leaf FieldCondition.
+func wrapIntCondition(field *commonpb.FieldRef, ic *commonpb.IntCondition) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Field{
+			Field: &commonpb.FieldCondition{
+				Field:     field,
+				Condition: &commonpb.FieldCondition_IntCond{IntCond: ic},
+			},
+		},
+	}
+}
+
+// metadataInToProto desugars `metadata[key] in (v1, v2, ...)` into
+// an OrFilter of equality conditions, one per value.
+func metadataInToProto(field *commonpb.FieldRef, values []*Value) (*commonpb.QueryFilter, error) {
+	filters := make([]*commonpb.QueryFilter, len(values))
+	for i, v := range values {
+		f, err := metadataEqualityToProto(field, v)
+		if err != nil {
+			return nil, err
+		}
+
+		filters[i] = f
+	}
+
+	return wrapOrFilter(filters), nil
+}
+
+// addressInToProto desugars `address in (v1, v2, ...)` into
+// an OrFilter of exact address matches, one per value.
+func addressInToProto(role commonpb.AddressRole, values []*Value) (*commonpb.QueryFilter, error) {
+	filters := make([]*commonpb.QueryFilter, len(values))
+	for i, v := range values {
+		am := &commonpb.AddressMatch{Role: role}
+		if v.Param != "" {
+			am.Match = &commonpb.AddressMatch_ParamExact{ParamExact: v.Param}
+		} else {
+			am.Match = &commonpb.AddressMatch_HardcodedExact{HardcodedExact: v.resolve()}
+		}
+
+		filters[i] = &commonpb.QueryFilter{
+			Filter: &commonpb.QueryFilter_Address{Address: am},
+		}
+	}
+
+	return wrapOrFilter(filters), nil
+}
+
+// wrapOrFilter returns the single filter if len==1, otherwise wraps in OrFilter.
+func wrapOrFilter(filters []*commonpb.QueryFilter) *commonpb.QueryFilter {
+	if len(filters) == 1 {
+		return filters[0]
+	}
+
+	return &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Or{
+			Or: &commonpb.OrFilter{Filters: filters},
+		},
+	}
+}
+
+func unquote(s string) string {
+	if len(s) >= 2 && ((s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'')) {
+		return s[1 : len(s)-1]
+	}
+
+	return s
+}

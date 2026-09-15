@@ -1,0 +1,7 @@
+//go:build fctl_component_guest
+
+package main
+
+import _ "github.com/formancehq/ledger/v3/plugins/fctl/ledger-v3/bindings/wit_exports"
+
+func main() {}

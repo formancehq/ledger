@@ -43,7 +43,7 @@ func PeekBatch(ar *ApplyRequest) (*ApplyBatch, error) {
 		}
 
 		batch := &ApplyBatch{}
-		if err := batch.UnmarshalVT(v.Signed.GetPayload()); err != nil {
+		if err := unmarshalApplyBatch(v.Signed.GetPayload(), batch); err != nil {
 			return nil, fmt.Errorf("peeking signed payload: %w", err)
 		}
 

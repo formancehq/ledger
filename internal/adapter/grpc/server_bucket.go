@@ -1065,8 +1065,10 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 		return domain.ErrLedgerNameRequired
 	}
 
-	onProgress := func(processed, total uint64) {
-		_ = stream.Send(&servicepb.AnalyzeAccountsEvent{
+	analysisCtx, cancelAnalysis := context.WithCancel(stream.Context())
+	defer cancelAnalysis()
+	progress := newAnalyzeProgressEmitter(func(processed, total uint64) error {
+		return stream.Send(&servicepb.AnalyzeAccountsEvent{
 			Type: &servicepb.AnalyzeAccountsEvent_Progress{
 				Progress: &servicepb.AnalyzeProgress{
 					Processed: processed,
@@ -1075,9 +1077,12 @@ func (impl *BucketServiceServerImpl) AnalyzeAccounts(req *servicepb.AnalyzeAccou
 				},
 			},
 		})
-	}
+	}, cancelAnalysis)
 
-	resp, err := impl.ctrl.AnalyzeAccounts(stream.Context(), req.GetLedger(), req.GetVariableThreshold(), onProgress)
+	resp, err := impl.ctrl.AnalyzeAccounts(analysisCtx, req.GetLedger(), req.GetVariableThreshold(), progress.report)
+	if err := progress.err(); err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
@@ -1096,8 +1101,10 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 		return domain.ErrLedgerNameRequired
 	}
 
-	onProgress := func(processed, total uint64) {
-		_ = stream.Send(&servicepb.AnalyzeTransactionsEvent{
+	analysisCtx, cancelAnalysis := context.WithCancel(stream.Context())
+	defer cancelAnalysis()
+	progress := newAnalyzeProgressEmitter(func(processed, total uint64) error {
+		return stream.Send(&servicepb.AnalyzeTransactionsEvent{
 			Type: &servicepb.AnalyzeTransactionsEvent_Progress{
 				Progress: &servicepb.AnalyzeProgress{
 					Processed: processed,
@@ -1105,9 +1112,12 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 				},
 			},
 		})
-	}
+	}, cancelAnalysis)
 
-	resp, err := impl.ctrl.AnalyzeTransactions(stream.Context(), req.GetLedger(), req.GetVariableThreshold(), onProgress)
+	resp, err := impl.ctrl.AnalyzeTransactions(analysisCtx, req.GetLedger(), req.GetVariableThreshold(), progress.report)
+	if err := progress.err(); err != nil {
+		return err
+	}
 	if err != nil {
 		return err
 	}
@@ -1115,6 +1125,40 @@ func (impl *BucketServiceServerImpl) AnalyzeTransactions(req *servicepb.AnalyzeT
 	return stream.Send(&servicepb.AnalyzeTransactionsEvent{
 		Type: &servicepb.AnalyzeTransactionsEvent_Result{Result: resp},
 	})
+}
+
+// analyzeProgressEmitter keeps progress useful for arbitrarily large scans
+// without letting it crowd the final result out of a bounded response stream.
+// The first callback and then power-of-two callback ordinals are emitted. A
+// uint64 ordinal has at most 64 powers of two, so the complete RPC has at most
+// 64 progress messages plus its final result, independently of ledger size.
+type analyzeProgressEmitter struct {
+	seen    uint64
+	send    func(processed, total uint64) error
+	onError func()
+	sendErr error
+}
+
+func newAnalyzeProgressEmitter(send func(processed, total uint64) error, onError func()) *analyzeProgressEmitter {
+	return &analyzeProgressEmitter{send: send, onError: onError}
+}
+
+func (e *analyzeProgressEmitter) report(processed, total uint64) {
+	if e.sendErr != nil || e.seen == ^uint64(0) {
+		return
+	}
+	e.seen++
+	if e.seen&(e.seen-1) != 0 {
+		return
+	}
+	e.sendErr = e.send(processed, total)
+	if e.sendErr != nil && e.onError != nil {
+		e.onError()
+	}
+}
+
+func (e *analyzeProgressEmitter) err() error {
+	return e.sendErr
 }
 
 func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, req *servicepb.ListPreparedQueriesRequest) (*servicepb.ListPreparedQueriesResponse, error) {
