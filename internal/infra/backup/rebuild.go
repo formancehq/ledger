@@ -1460,7 +1460,7 @@ func (w *attributeReplayWriter) DeleteMetadata(canonicalKey []byte) error {
 	return w.metadata.Delete(w.batch, canonicalKey)
 }
 
-func (w *attributeReplayWriter) PurgeAccount(ledger, account string) error {
+func (w *attributeReplayWriter) PurgeAccount(ledger, account string, _ replay.ExclusionCollector) error {
 	for _, spec := range []struct{ attrCode, separator byte }{
 		{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
 		{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},

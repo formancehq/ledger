@@ -245,7 +245,12 @@ func ReplayLedgerLog(
 	}
 
 	for _, account := range purgedAccounts {
-		if err := w.PurgeAccount(ledger, account); err != nil {
+		if ephemeralPurgeBuffer != nil {
+			ephemeralPurgeBuffer.AddAccount(ledger, account)
+
+			continue
+		}
+		if err := w.PurgeAccount(ledger, account, nil); err != nil {
 			return fmt.Errorf("purging ephemeral account %q: %w", account, err)
 		}
 	}
@@ -255,6 +260,25 @@ func ReplayLedgerLog(
 
 type pendingEphemeralPurge struct {
 	postings []*commonpb.Posting
+	accounts map[string]struct{}
+}
+
+// AddAccount defers an explicit account-wide purge until the proposal boundary,
+// preserving each transaction log's pre-purge post-commit volume snapshot.
+func (b *EphemeralPurgeBuffer) AddAccount(ledger, account string) {
+	if b == nil {
+		return
+	}
+	pending := b.byLedger[ledger]
+	if pending == nil {
+		pending = &pendingEphemeralPurge{}
+		b.byLedger[ledger] = pending
+		b.ledgers = append(b.ledgers, ledger)
+	}
+	if pending.accounts == nil {
+		pending.accounts = make(map[string]struct{})
+	}
+	pending.accounts[account] = struct{}{}
 }
 
 // ExclusionCollector is called once per (ledger, account, asset, color) that
@@ -315,6 +339,11 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 	for _, ledger := range b.ledgers {
 		pending := b.byLedger[ledger]
+		for account := range pending.accounts {
+			if err := w.PurgeAccount(ledger, account, collector); err != nil {
+				return err
+			}
+		}
 		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes, collector); err != nil {
 			return err
 		}
