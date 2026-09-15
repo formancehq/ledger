@@ -1,10 +1,6 @@
 package main
 
-import (
-	"fmt"
-
-	"github.com/formancehq/ledger/v3/tests/oracle"
-)
+import "github.com/formancehq/ledger/v3/tests/oracle"
 
 // candidateBases enumerates the distinct committed states the server could be in
 // relative to a not-yet-linearized observation (a failure or a read): modelState
@@ -91,24 +87,25 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 		}
 	}
 
-	// The remaining-inflight set is a bitmask, so the dedup key stays a small
-	// comparable value.
-	if len(inflight) > 64 {
-		panic(fmt.Sprintf("candidateBases: %d in-flight bulks exceed the 64-bit set", len(inflight)))
+	// Use a dynamically sized bitset: maintenance and node restarts can keep more
+	// than 64 requests in flight even with a small fixed worker pool. Encoding it
+	// as a string keeps the dedup key comparable without imposing a hard limit.
+	allRem := make([]byte, (len(inflight)+7)/8)
+	for idx := range inflight {
+		allRem[idx/8] |= 1 << (idx % 8)
 	}
-	allRem := uint64(1)<<len(inflight) - 1
 
 	type dedupKey struct {
 		state oracle.Digest
 		pIdx  int
-		rem   uint64
+		rem   string
 	}
 	seen := map[dedupKey]bool{}
 
-	var rec func(base oracle.GlobalState, pIdx int, rem uint64) bool
+	var rec func(base oracle.GlobalState, pIdx int, rem []byte) bool
 
-	rec = func(base oracle.GlobalState, pIdx int, rem uint64) bool {
-		k := dedupKey{state: base.Fingerprint(), pIdx: pIdx, rem: rem}
+	rec = func(base oracle.GlobalState, pIdx int, rem []byte) bool {
+		k := dedupKey{state: base.Fingerprint(), pIdx: pIdx, rem: string(rem)}
 		if seen[k] {
 			return false
 		}
@@ -132,7 +129,8 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 
 		// Fold in any one of the remaining in-flight bulks (unknown position).
 		for idx := 0; idx < len(inflight); idx++ {
-			if rem&(1<<idx) == 0 {
+			byteIdx, mask := idx/8, byte(1<<(idx%8))
+			if rem[byteIdx]&mask == 0 {
 				continue
 			}
 
@@ -145,7 +143,10 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 				return true
 			}
 
-			if rec(res.State, pIdx, rem&^(1<<idx)) {
+			rem[byteIdx] &^= mask
+			matched := rec(res.State, pIdx, rem)
+			rem[byteIdx] |= mask
+			if matched {
 				return true
 			}
 		}

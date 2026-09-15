@@ -138,7 +138,7 @@ func sourceAddress() string {
 // snapshot (a published GlobalState is never mutated — Apply forks first).
 func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string) oracle.Bulk {
 	active := activeLedgers(g, ledgers)
-	if req := generateLifecycle(g, active, newLedger); req != nil {
+	if req := generateLifecycle(g, ledgers, newLedger); req != nil {
 		return oracle.Bulk{Requests: []*servicepb.Request{req}}
 	}
 	if len(active) == 0 {
@@ -239,7 +239,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string) orac
 func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 	out := make([]string, 0, len(ledgers))
 	for _, name := range ledgers {
-		if lc, ok := g.Lifecycle(name); !ok || !lc.Deleted {
+		if lc, ok := g.Lifecycle(name); !ok || (!lc.Deleted && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR) {
 			out = append(out, name)
 		}
 	}
@@ -249,7 +249,22 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 // generateLifecycle mixes administrative transitions into the same concurrent
 // stream as business writes. Creation is biased when deletions shrink the live
 // pool, providing the same bounded-state back-pressure as transaction creation.
-func generateLifecycle(g oracle.GlobalState, active []string, newLedger string) *servicepb.Request {
+func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string) *servicepb.Request {
+	live := make([]string, 0, len(ledgers))
+	deleted := make([]string, 0, len(ledgers))
+	for _, name := range ledgers {
+		if lc, ok := g.Lifecycle(name); ok {
+			if lc.Deleted {
+				deleted = append(deleted, name)
+			} else {
+				live = append(live, name)
+			}
+		}
+	}
+	active := activeLedgers(g, ledgers)
+	if len(deleted) > 0 && random.RandomChoice(indexPool(32)) == 0 {
+		return actions.CreateLedgerAction(random.RandomChoice(deleted), nil)
+	}
 	if len(active) < defaultLedgers || random.RandomChoice(indexPool(64)) == 0 {
 		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
@@ -265,9 +280,15 @@ func generateLifecycle(g oracle.GlobalState, active []string, newLedger string) 
 
 	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
 	case 0:
-		return actions.DeleteLedgerAction(random.RandomChoice(active))
+		if len(live) > 0 {
+			return actions.DeleteLedgerAction(random.RandomChoice(live))
+		}
+		return nil
 	case 1:
-		name := random.RandomChoice(active)
+		if len(live) == 0 {
+			return nil
+		}
+		name := random.RandomChoice(live)
 		lc, ok := g.Lifecycle(name)
 		if ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 			return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: name}}}

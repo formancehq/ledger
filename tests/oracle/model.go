@@ -824,6 +824,14 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 }
 
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
+	// The cluster-wide maintenance interceptor rejects non-toggle bulks before
+	// request conversion and structural validation. This ordering matters for a
+	// malformed request observed while maintenance is enabled: the service
+	// reports MAINTENANCE_MODE, not the request's validation error.
+	if g.maintenance && !allMaintenanceRequests(bulk.Requests) {
+		return ApplyResult{OK: false, Reason: domain.ErrReasonMaintenanceMode, State: g}
+	}
+
 	// Admission validates every order's structure and converts the whole batch
 	// before it reaches the FSM, so a single malformed order rejects the entire
 	// bulk ahead of any per-order FSM outcome. Structural rejections include invalid skippable reasons and
@@ -838,12 +846,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
 			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
 		}
-	}
-
-	// Both admission and the FSM gate before audit and idempotency. Only an
-	// all-toggle batch may enter while maintenance is enabled.
-	if g.maintenance && !allMaintenanceRequests(bulk.Requests) {
-		return ApplyResult{OK: false, Reason: domain.ErrReasonMaintenanceMode, State: g}
 	}
 
 	// Per-batch idempotency, checked after admission's structural and maintenance
@@ -865,7 +867,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
-	retired := map[string]struct{}{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -893,17 +894,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			if !oc.OK {
 				return ApplyResult{Reason: oc.Reason, State: g, Orders: orders}
 			}
-			if req.GetDeleteLedger() != nil {
-				retired[name] = struct{}{}
-			}
 
 			continue
 		}
-		if lc, exists := next.lifecycle.Get(name); exists && lc.Deleted && req.GetSaveLedgerMetadata() == nil && req.GetDeleteLedgerMetadata() == nil {
+		if lc, exists := next.lifecycle.Get(name); exists && lc.Deleted {
 			return ApplyResult{Reason: domain.ErrReasonLedgerDeleted, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerDeleted})}
 		}
 
-		if lc, exists := next.lifecycle.Get(name); exists && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR && req.GetApply() != nil {
+		if lc, exists := next.lifecycle.Get(name); exists && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !mirrorSafeRequest(req) {
 			return ApplyResult{Reason: domain.ErrReasonLedgerInMirrorMode, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerInMirrorMode})}
 		}
 		ls, ok := next.ledgers[name]
@@ -990,11 +988,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		next.ledgers[name] = ls
-	}
-
-	// The deletion cascade runs after all orders and transient validation.
-	for name := range retired {
-		delete(next.ledgers, name)
 	}
 
 	// Freeze the committed outcome so a later bulk with this key replays it. Only
@@ -2153,10 +2146,6 @@ func allMaintenanceRequests(requests []*servicepb.Request) bool {
 
 func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool) {
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_SaveLedgerMetadata, *servicepb.Request_DeleteLedgerMetadata:
-		// TODO(EN-2045): ledger metadata currently bypasses the DeletedAt gate.
-		// Model the released behavior until the service rejects these on tombstones.
-		return OrderResult{}, false
 	case *servicepb.Request_SetMaintenanceMode:
 		g.maintenance = r.SetMaintenanceMode.GetEnabled()
 
@@ -2174,6 +2163,7 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 			return OrderResult{Reason: domain.ErrReasonLedgerAlreadyExists}, true
 		}
 		ls := NewLedgerState()
+		ls.defaultEnforcementMode = r.CreateLedger.GetDefaultEnforcementMode()
 		for _, key := range slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes())) {
 			at := r.CreateLedger.GetAccountTypes()[key]
 			if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
@@ -2191,9 +2181,6 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 	case *servicepb.Request_PromoteLedger:
 		name := r.PromoteLedger.GetLedger()
 		lc, exists := g.lifecycle.Get(name)
-		if exists && lc.Deleted {
-			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
-		}
 		if !exists {
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
@@ -2246,4 +2233,19 @@ func (g GlobalState) SeedQueryCheckpoints(ids []uint64, nextID uint64) GlobalSta
 	g.checkpointSchedule = ""
 
 	return g
+}
+
+func mirrorSafeRequest(req *servicepb.Request) bool {
+	if req.GetApply() == nil {
+		return true
+	}
+
+	switch req.GetApply().GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_AddAccountType,
+		*servicepb.LedgerAction_RemoveAccountType,
+		*servicepb.LedgerAction_SetDefaultEnforcementMode:
+		return true
+	default:
+		return false
+	}
 }

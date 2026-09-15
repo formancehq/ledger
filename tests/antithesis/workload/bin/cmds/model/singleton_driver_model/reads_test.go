@@ -64,4 +64,8 @@ func TestPickLedgerReadTarget(t *testing.T) {
 			require.True(t, known[ledger], "known target is not a fleet ledger: %s", ledger)
 		}
 	}
+
+	ledger, absent := pickLedgerReadTarget(nil, 0)
+	require.True(t, absent)
+	require.NotEmpty(t, ledger)
 }

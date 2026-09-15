@@ -133,3 +133,22 @@ func TestModelFailure_NoSelfExplanation(t *testing.T) {
 	withAdd.inflight[1] = bulkOf(oracletest.AddTypeReq("T"))
 	require.True(t, alreadyExistsExplained(collectBases(withAdd)))
 }
+
+func TestCandidateBasesSupportsMoreThan64InflightBulks(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	for ticket := uint64(1); ticket <= 65; ticket++ {
+		// Removing an absent type cannot be folded, so the search stays small
+		// while exercising the dynamic remaining-set representation.
+		c.inflight[ticket] = bulkOf(oracletest.RemoveTypeReq("absent"))
+	}
+
+	visited := 0
+	c.candidateBases(65, func(oracle.GlobalState) bool {
+		visited++
+
+		return false
+	})
+	require.Equal(t, 1, visited)
+}

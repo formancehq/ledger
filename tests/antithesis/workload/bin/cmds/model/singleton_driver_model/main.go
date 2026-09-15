@@ -199,6 +199,7 @@ func main() {
 	workers.Wait()
 	restore.Wait()
 	pollers.Wait()
+	checker.recoveries.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -223,15 +224,16 @@ func runWorker(
 			return
 		}
 
-		// 1-in-5: a read this iteration, split across the whole-ledger read
+		// 1-in-3: a read this iteration, split across the whole-ledger read
 		// (chart + ledger metadata), a single-account read, a transaction read
 		// (id + postings + reverted + metadata), a metadata-schema read (declared
 		// field types), and the two list queries (filtered, paginated, ordered
 		// windows over accounts and transactions). Reads validate against the
 		// in-flight bulk set, exercising cross-node freshness without needing
-		// quiescence.
-		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
+		// quiescence. Transaction queries receive three slots because they must
+		// exercise seven builtin indexes plus declared metadata indexes.
+		if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -240,13 +242,13 @@ func runWorker(
 				runSchemaRead(ctx, client, c)
 			case 3:
 				runAccountQuery(ctx, client, c)
-			case 4:
+			case 4, 5, 6:
 				runTransactionQuery(ctx, client, c)
-			case 5:
+			case 7:
 				runReplay(ctx, client, c)
-			case 6:
-				runLogQuery(ctx, client, c)
 			case 8:
+				runLogQuery(ctx, client, c)
+			case 9:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
 			default:
@@ -348,6 +350,12 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	if checkpointCreate {
 		obs.processed = make(chan struct{})
 	}
+	// Register the disable recovery before publishing the successful enable.
+	// The processor may otherwise make that enable visible to restore, which can
+	// begin draining while no recovery read protects the maintenance window.
+	if err == nil && bulkEnablesMaintenance(bulk) {
+		scheduleMaintenanceRecovery(ctx, client, c)
+	}
 	select {
 	case <-ctx.Done():
 		return
@@ -359,17 +367,84 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		case <-obs.processed:
 		}
 	}
+}
 
-	if err == nil && bulkEnablesMaintenance(bulk) {
-		go func() {
+func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	c.mu.Lock()
+	c.maintenanceEnableSeq++
+	if c.maintenanceRecoveryActive {
+		c.mu.Unlock()
+		return
+	}
+	c.maintenanceRecoveryActive = true
+	recoveryID := c.registerRead()
+	c.recoveries.Add(1)
+	c.mu.Unlock()
+
+	go func() {
+		defer c.recoveries.Done()
+		defer c.finishRead(recoveryID)
+		for {
+			c.mu.Lock()
+			enableSeq := c.maintenanceEnableSeq
+			c.mu.Unlock()
+
 			delay := time.Duration(internal.Rand().Int63n(int64(maintenanceMaxWindow)))
 			select {
 			case <-ctx.Done():
+				c.mu.Lock()
+				c.maintenanceRecoveryActive = false
+				c.mu.Unlock()
 				return
 			case <-time.After(delay):
 			}
-			dispatchBulk(ctx, client, checkpointNodes, c, oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(false)}})
-		}()
+			dispatchMaintenanceRecovery(ctx, client, c)
+
+			c.mu.Lock()
+			if c.maintenanceEnableSeq == enableSeq {
+				c.maintenanceRecoveryActive = false
+				c.mu.Unlock()
+				return
+			}
+			c.mu.Unlock()
+		}
+	}()
+}
+
+// dispatchMaintenanceRecovery bypasses the restore pause because the recovery
+// read registered before its delay keeps pauseAndDrain from completing. A fresh
+// key prevents deliberate conflict injection from turning a temporary
+// maintenance window into a permanent stall.
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	bulk := oracle.Bulk{
+		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
+		IdempotencyKey: idempotencyKey(),
+	}
+
+	c.mu.Lock()
+	ticket := c.registerInflight(bulk)
+	c.mu.Unlock()
+
+	req := applyRequest(bulk)
+	var resp *servicepb.ApplyResponse
+	var err error
+	for {
+		resp, err = client.Apply(ctx, req)
+		if err == nil || ctx.Err() != nil || (!internal.IsTransient(err) && !internal.IsCanceled(err)) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	dumpBatch(ticket, req, resp, err)
+	obs := observation{ticket: ticket, bulk: bulk, resp: resp, err: err, observeTicket: c.ticketSeq.Load()}
+	select {
+	case <-ctx.Done():
+		return
+	case c.incoming <- obs:
 	}
 }
 

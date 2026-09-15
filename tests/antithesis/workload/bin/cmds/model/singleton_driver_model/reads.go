@@ -67,7 +67,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		}
 		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
-			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil)
+			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, false)
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetAccount returned unexpected error", internal.Details{
@@ -80,7 +80,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	}
 
 	gotVols, wellFormed := accountVolumeSet(acct)
-	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata())
+	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata(), true)
 }
 
 // isShutdownError reports whether err is a context cancellation/deadline — what
@@ -260,7 +260,7 @@ func absentLedgerName(ledgers []string) string {
 // read can never otherwise detect the server serving a ledger the model never
 // created. An absent ledger must answer NotFound; a served snapshot is a finding.
 func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, absent bool) {
-	if percentChance(absentPct) {
+	if len(ledgers) == 0 || percentChance(absentPct) {
 		return absentLedgerName(ledgers), true
 	}
 

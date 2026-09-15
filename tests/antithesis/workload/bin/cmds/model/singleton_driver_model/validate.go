@@ -41,23 +41,21 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 			c.ledgerMu.Unlock()
 		case req.GetDeleteLedger() != nil:
 			name := req.GetDeleteLedger().GetName()
-			c.ledgerMu.Lock()
-			for i, candidate := range c.ledgerNames {
-				if candidate == name {
-					c.ledgerNames = append(c.ledgerNames[:i], c.ledgerNames[i+1:]...)
-					break
-				}
-			}
-			c.ledgerMu.Unlock()
 			delete(c.indexCreateSeq, name)
 			for key, obs := range c.retypeObs {
 				if obs.ledger == name {
 					delete(c.retypeObs, key)
 				}
 			}
-			emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": name}, coverageHit)
+			c.pendingDeleted[name] = struct{}{}
 		case req.GetPromoteLedger() != nil:
-			emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": req.GetPromoteLedger().GetLedger()}, coverageHit)
+			c.pendingPromoted[req.GetPromoteLedger().GetLedger()] = struct{}{}
+		case req.GetApply() != nil:
+			ledger := req.GetApply().GetLedger()
+			if _, pending := c.pendingPromoted[ledger]; pending {
+				emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": ledger}, coverageHit)
+				delete(c.pendingPromoted, ledger)
+			}
 		}
 	}
 }
@@ -493,10 +491,42 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			return true
 		}
 
+		// Maintenance is enforced by both a node-local admission interceptor and
+		// the replicated FSM gate. Around a toggle, an operation can therefore
+		// surface an earlier deterministic rejection (for example LEDGER_DELETED)
+		// from the admission path even though the committed candidate already has
+		// maintenance enabled. Evaluate that underlying rejection without the gate;
+		// a success is never accepted because the FSM still blocks the write.
+		if base.MaintenanceMode() {
+			disabled := base.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
+				Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}},
+			}}})
+			underlying := disabled.State.Apply(failedBulk)
+			if !underlying.OK && internal.HasErrorReason(reqErr, underlying.Reason) {
+				reason = underlying.Reason
+				matched = true
+
+				return true
+			}
+
+		}
+
 		return false
 	})
 
 	if matched {
+		if reason == domain.ErrReasonLedgerDeleted {
+			for _, req := range failedBulk.Requests {
+				created := req.GetCreateLedger()
+				if created == nil {
+					continue
+				}
+				if _, pending := c.pendingDeleted[created.GetName()]; pending {
+					emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": created.GetName()}, coverageHit)
+					delete(c.pendingDeleted, created.GetName())
+				}
+			}
+		}
 		invalidOptIn := reason == domain.ErrReasonValidation && bulkHasInvalidSkippableReason(failedBulk)
 		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil, coverageHit)
 		// Coverage: each deliberately-triggered rejection branch must actually be
@@ -593,8 +623,12 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
+		lifecycle, exists := base.Lifecycle(ledger)
+		if !exists || lifecycle.Deleted {
+			return !found
+		}
 		ls := base.Ledger(ledger)
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
 	}) {
@@ -755,6 +789,10 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 // cross-routing bug class — is caught here for transactions.
 func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
+		lifecycle, exists := base.Lifecycle(ledger)
+		if !exists || lifecycle.Deleted {
+			return !found
+		}
 		txs := base.Ledger(ledger).Txs()
 		if id == 0 || id > uint64(txs.Len()) {
 			return !found // no tx at this id in this base: consistent only with NotFound
@@ -789,8 +827,8 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // projection rather than just the per-op response echo.
 func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
-		lc, exists := base.Lifecycle(ledger)
-		if !exists || lc.Deleted {
+		_, exists := base.Lifecycle(ledger)
+		if !exists {
 			return false
 		}
 		ls := base.Ledger(ledger)

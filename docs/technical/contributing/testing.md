@@ -473,6 +473,8 @@ Signing-key lifecycle and signed submissions remain outside this model driver.
 The model driver generates ledger creation, deletion, mirror promotion, and
 maintenance toggles in the same concurrent bulk stream as business writes. The
 oracle owns ledger existence and filters deleted names from reads and generation.
+Mirror ledgers remain eligible for lifecycle operations and reads, but enter the
+business-write pool only after their promotion has committed.
 Because deletion permanently reserves a name, committed creations grow the
 `model-<runID>-<n>` pool; creation is biased when deletion shrinks the live pool.
 
@@ -497,11 +499,9 @@ projection cleanup by querying a successfully recreated ledger. Concurrent
 ledger-scoped reads validate NotFound against candidate lifecycle states when a
 selected ledger is deleted before the read executes. Reads otherwise hide retired
 ledgers even when ledger-scoped rows remain physically present. Repeated
-deletion can still operate on retained tombstones. Until EN-2045 adds the missing
-deletion gate, ledger metadata save/delete commands on tombstones are modeled as
-accepted according to the released service behavior. Other operations continue
-to return `LEDGER_DELETED`. The service-backed lifecycle scenario compares the
-supported outcomes with the real API.
+deletion can still operate on retained tombstones. Other ledger-scoped writes,
+including ledger metadata changes, return `LEDGER_DELETED`. The service-backed
+lifecycle scenario compares the supported outcomes with the real API.
 
 #### How it works
 

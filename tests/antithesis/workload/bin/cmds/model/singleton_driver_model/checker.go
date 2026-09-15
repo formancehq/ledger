@@ -87,10 +87,21 @@ type Checker struct {
 	// replayRegistryCap. Guarded by mu.
 	replayable []replayEntry
 
+	// Lifecycle coverage is credited only after the follow-up promised by the
+	// sonde has itself been observed and model-validated.
+	pendingDeleted  map[string]struct{}
+	pendingPromoted map[string]struct{}
+
 	// paused gates worker dispatch during a restore cycle; resumeCh is closed on
 	// resume so parked workers wake. Both guarded by mu (see restore.go).
 	paused   bool
 	resumeCh chan struct{}
+
+	// Maintenance recovery is coalesced so concurrent successful enables do not
+	// create an unbounded fleet of delayed disable RPCs. Guarded by mu.
+	maintenanceEnableSeq      uint64
+	maintenanceRecoveryActive bool
+	recoveries                sync.WaitGroup
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark
@@ -168,6 +179,8 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		checkpoints:                map[uint64]checkpointSnapshot{},
 		deletedCheckpointSnapshots: map[uint64]checkpointSnapshot{},
 		retypeObs:                  map[string]*retypeObservation{},
+		pendingDeleted:             map[string]struct{}{},
+		pendingPromoted:            map[string]struct{}{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}

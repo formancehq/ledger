@@ -495,10 +495,12 @@ func dropIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
 	}}
 }
 
-// rollIndexOp: ~1-in-16 a bulk is an index create/drop rather than ledger
-// traffic, churning the index lifecycles the indexed queries probe.
+// rollIndexOp: ~1-in-8 a bulk is an index create/drop rather than ledger
+// traffic. Lifecycle operations consume part of the same finite run, so this
+// rate keeps every builtin and metadata index reachable before the coverage
+// sondes are evaluated.
 func rollIndexOp() bool {
-	return oneIn(16)
+	return oneIn(8)
 }
 
 // generateIndexOp picks one workload index; creates it when the ledger lacks
