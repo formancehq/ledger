@@ -43,6 +43,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 		return &commonpb.IdempotencyKeyValue{
 			Hash:      recomputeProposalHash(items),
 			CreatedAt: entry.GetTimestamp().GetData(),
+			ExpiresAt: entry.GetIdempotency().GetExpiresAt(),
 			Failure: &commonpb.IdempotencyFailure{
 				Reason:   reason,
 				Message:  out.Failure.GetMessage(),
@@ -63,6 +64,7 @@ func IdempotencyValueFromAudit(entry *auditpb.AuditEntry, items []*auditpb.Audit
 			FirstLogSequence: minSeq,
 			LogCount:         uint32(maxSeq - minSeq + 1),
 			CreatedAt:        entry.GetTimestamp().GetData(),
+			ExpiresAt:        entry.GetIdempotency().GetExpiresAt(),
 		}, true
 
 	default:

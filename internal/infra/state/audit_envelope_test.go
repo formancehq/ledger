@@ -66,7 +66,7 @@ func TestHashChain_Envelope_Golden(t *testing.T) {
 			Scopes: []string{"write", "read"}, // builder must sort
 			God:    false,
 		},
-		Idempotency: &commonpb.Idempotency{Key: "batch-key-42"},
+		Idempotency: &commonpb.Idempotency{Key: "batch-key-42", ExpiresAt: 0x0102030405060708},
 		Signature: &signaturepb.SignedApplyBatch{
 			KeyId:     "sign-kid",
 			Signature: []byte("sig-bytes"),
@@ -329,6 +329,7 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 	}
 
 	buf = goldenLenString(buf, e.GetIdempotency().GetKey())
+	buf = goldenU64(buf, e.GetIdempotency().GetExpiresAt())
 	buf = goldenLenBytes(buf, goldenBuildSignature(e.GetSignature()))
 
 	return buf

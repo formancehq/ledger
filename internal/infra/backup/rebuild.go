@@ -1019,7 +1019,11 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 // delta range. The full checkpoint carries pre-checkpoint keys as raw SSTs, but
 // keys frozen after it live only in the audit — so RebuildDelta re-derives each
 // keyed proposal's frozen outcome and persists it, letting a restored node dedup
-// a retried key instead of re-executing it.
+// a retried key instead of re-executing it. The restored outcome is Rebuilt from
+// the audited delta, not preserved: its frozen expires_at rides the audit header
+// (IdempotencyValueFromAudit), and SaveIdempotencyKey re-creates both the main
+// key AND — for a non-zero expiry — its eviction time-index entry, so a restored
+// node evicts on the source's schedule.
 //
 // Entries are folded in ascending order, last write wins. No overwrite guard is
 // needed: IdempotencyValueFromAudit returns ok=false for the only rejection that

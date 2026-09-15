@@ -26,6 +26,16 @@ type FSMState struct {
 	LastAppliedTimestamp uint64
 	SnapshotIndex        uint64
 
+	// LastIdempotencyEvictionCutoff is the monotonic high-water scan horizon
+	// (wall-clock microseconds — the leader's eviction cutoff, not an HLC
+	// timestamp) of every applied IdempotencyEviction. It bounds what the leader
+	// has scanned, not what is provably evicted: entries beyond one tick's
+	// maxEvictionBatchSize stay live below the cutoff until a later tick. The
+	// preload re-injection gate reads it only to skip re-injecting an
+	// already-scanned outcome; a still-live one is always in Registry.Idempotency,
+	// so that skip is a no-op (see applyIdempotencyEviction).
+	LastIdempotencyEvictionCutoff uint64
+
 	// Sequence counters bumped on every apply.
 	NextSequenceID        uint64
 	NextAuditSequenceID   uint64
@@ -212,6 +222,13 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 	}
 
 	s.LastAppliedTimestamp = lastAppliedTimestamp
+
+	lastIdempotencyEvictionCutoff, err := query.ReadLastIdempotencyEvictionCutoff(reader)
+	if err != nil {
+		return nil, fmt.Errorf("reading last idempotency eviction cutoff: %w", err)
+	}
+
+	s.LastIdempotencyEvictionCutoff = lastIdempotencyEvictionCutoff
 
 	nextLedgerID, err := query.ReadNextLedgerID(reader)
 	if err != nil {

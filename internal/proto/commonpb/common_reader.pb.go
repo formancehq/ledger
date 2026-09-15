@@ -2105,6 +2105,7 @@ func NewIndexListReader(s []*Index) IndexListReader { return indexListReadonly(s
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyReader interface {
 	GetKey() string
+	GetExpiresAt() uint64
 	Mutate() *Idempotency
 }
 
@@ -2112,6 +2113,10 @@ type idempotencyReadonly Idempotency
 
 func (r *idempotencyReadonly) GetKey() string {
 	return (*Idempotency)(r).GetKey()
+}
+
+func (r *idempotencyReadonly) GetExpiresAt() uint64 {
+	return (*Idempotency)(r).GetExpiresAt()
 }
 
 func (r *idempotencyReadonly) Mutate() *Idempotency {
@@ -8913,6 +8918,7 @@ type IdempotencyKeyValueReader interface {
 	GetCreatedAt() uint64
 	GetFailure() IdempotencyFailureReader
 	GetLogCount() uint32
+	GetExpiresAt() uint64
 	Mutate() *IdempotencyKeyValue
 }
 
@@ -8944,6 +8950,10 @@ func (r *idempotencyKeyValueReadonly) GetFailure() IdempotencyFailureReader {
 
 func (r *idempotencyKeyValueReadonly) GetLogCount() uint32 {
 	return (*IdempotencyKeyValue)(r).GetLogCount()
+}
+
+func (r *idempotencyKeyValueReadonly) GetExpiresAt() uint64 {
+	return (*IdempotencyKeyValue)(r).GetExpiresAt()
 }
 
 func (r *idempotencyKeyValueReadonly) Mutate() *IdempotencyKeyValue {
@@ -11770,7 +11780,6 @@ func NewLedgerStatsListReader(s []*LedgerStats) LedgerStatsListReader {
 type PersistedConfigReader interface {
 	GetNodeId() uint64
 	GetClusterId() string
-	GetIdempotencyTtlSeconds() uint64
 	GetStorageSchemaVersion() uint32
 	Mutate() *PersistedConfig
 }
@@ -11783,10 +11792,6 @@ func (r *persistedConfigReadonly) GetNodeId() uint64 {
 
 func (r *persistedConfigReadonly) GetClusterId() string {
 	return (*PersistedConfig)(r).GetClusterId()
-}
-
-func (r *persistedConfigReadonly) GetIdempotencyTtlSeconds() uint64 {
-	return (*PersistedConfig)(r).GetIdempotencyTtlSeconds()
 }
 
 func (r *persistedConfigReadonly) GetStorageSchemaVersion() uint32 {

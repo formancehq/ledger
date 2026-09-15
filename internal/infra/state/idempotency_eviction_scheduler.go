@@ -13,9 +13,10 @@ import (
 const maxEvictionBatchSize = 10000
 
 // IdempotencyEvictionScheduler periodically proposes an IdempotencyEviction
-// command through Raft when this node is the leader. The cutoff timestamp
-// is computed from wall-clock time minus the configured TTL and embedded in
-// the Raft proposal so all nodes apply the same deterministic eviction.
+// command through Raft when this node is the leader. The cutoff is the current
+// wall-clock time; the leader scans the time index for outcomes whose stored
+// expires_at is at or before it and embeds the cutoff and key hashes in the Raft
+// proposal so all nodes apply the same deterministic eviction.
 //
 // The scheduler pre-scans the Pebble time index on the leader side to collect
 // expired key hashes (up to maxEvictionBatchSize per tick). These hashes are
@@ -25,8 +26,9 @@ const maxEvictionBatchSize = 10000
 // callers should propagate it to their Raft propose so a Stop() cancels an
 // in-flight proposal cleanly. There is intentionally no internal timeout: a
 // timeout that fires after Raft has accepted the proposal would cause the
-// next tick to re-submit the same hashes, and the FSM apply path's
-// SingleDelete contract forbids double-deleting a Pebble main key.
+// next tick to re-submit the same hashes — a wasteful duplicate proposal. The
+// FSM apply gates each main-key delete on the in-memory map, so a duplicate
+// apply is a clean no-op, but the redundant proposal is still worth avoiding.
 type IdempotencyEvictionScheduler struct {
 	logger      logging.Logger
 	isLeader    func() bool
@@ -34,7 +36,6 @@ type IdempotencyEvictionScheduler struct {
 	store       dal.BackgroundScanner
 	idempotency *IdempotencyStore
 	interval    time.Duration
-	ttl         time.Duration
 	w           worker.Worker
 }
 
@@ -51,7 +52,6 @@ func NewIdempotencyEvictionScheduler(
 	store dal.BackgroundScanner,
 	idempotency *IdempotencyStore,
 	interval time.Duration,
-	ttl time.Duration,
 ) *IdempotencyEvictionScheduler {
 	return &IdempotencyEvictionScheduler{
 		logger:      logger,
@@ -60,7 +60,6 @@ func NewIdempotencyEvictionScheduler(
 		store:       store,
 		idempotency: idempotency,
 		interval:    interval,
-		ttl:         ttl,
 		w:           worker.New(),
 	}
 }
@@ -79,9 +78,9 @@ func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
 	// ctx is supplied by Worker.RunCtx and is cancelled by Stop(). It
 	// flows to proposeFn so an in-flight Raft propose unblocks on
 	// shutdown instead of pinning the worker, and so no bounded timeout
-	// can fire after Raft has accepted the proposal (which would force
-	// a retry that double-SingleDeletes the same Pebble main keys —
-	// undefined per Pebble's SingleDelete contract).
+	// can fire after Raft has accepted the proposal (which would force a
+	// wasteful retry re-submitting the same hashes; the FSM's map gate
+	// makes the duplicate apply a no-op).
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -94,7 +93,7 @@ func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
 				continue
 			}
 
-			cutoff := uint64(time.Now().UnixMicro()) - uint64(s.ttl.Microseconds())
+			cutoff := uint64(time.Now().UnixMicro())
 
 			// Pre-scan Pebble time index on the leader to collect expired key hashes.
 			// The hashes are included in the Raft proposal so the FSM apply is write-only.

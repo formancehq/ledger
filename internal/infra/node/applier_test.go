@@ -133,7 +133,7 @@ func newTestApplierSetupWithNotifier(t *testing.T, sink LocalResponses, notifier
 
 	nodeAttrs := attributes.New()
 
-	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs, 0)
+	nodeRegistry := state.NewStateRegistry(nodeCache, nodeAttrs)
 	nodeSnapshotter := state.NewCacheSnapshotter(logger, nodeRegistry, nil)
 	fsm, err := state.NewMachine(
 		logger, nodeRegistry, nodeSnapshotter, pebbleStore, dal.NewSentinelFactory(pebbleStore, false), meterProvider,

@@ -308,6 +308,14 @@ const (
 	// [ZoneGlobal][SubGlobClusterPolicy] → common.ClusterPolicy. A single global
 	// row; revision monotonicity is validated in the FSM apply path.
 	SubGlobClusterPolicy byte = 0x13
+	// SubGlobLastIdempotencyEvictionCutoff stores the monotonic high-water scan
+	// horizon of every applied IdempotencyEviction: [ZoneGlobal][…] → uint64 BE
+	// (wall-clock microseconds — the leader's eviction cutoff, not an HLC
+	// timestamp). It marks how far the leader has scanned, not a frontier below
+	// which every outcome is evicted (a tick's scan is batch-bounded). The preload
+	// re-injection gate reads it — not the wall-clock-lagging HLC — as a skip hint;
+	// correctness rests on the in-memory map, not on this cutoff being exact.
+	SubGlobLastIdempotencyEvictionCutoff byte = 0x14
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

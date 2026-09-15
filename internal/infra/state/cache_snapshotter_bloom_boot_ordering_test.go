@@ -347,7 +347,7 @@ func newRegistryAndSnapshotter(
 	c, err := cache.New(rotationThreshold, noop.NewMeterProvider().Meter("test-cache"))
 	require.NoError(t, err)
 
-	registry := NewStateRegistry(c, attrs, 0)
+	registry := NewStateRegistry(c, attrs)
 	snapshotter := NewCacheSnapshotter(logger, registry, bloomFilters)
 
 	return registry, snapshotter

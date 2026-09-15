@@ -288,6 +288,24 @@ func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *
 		return fmt.Errorf("evicting idempotency keys: %w", err)
 	}
 
+	// Advance the eviction high-water cutoff and persist it in the same batch as
+	// the deletions above. This cutoff is the leader's wall-clock scan horizon,
+	// not a frontier below which every outcome is already evicted: a tick that
+	// finds more than maxEvictionBatchSize expired entries advances it to the
+	// full "now" but evicts only the first batch, leaving the rest live below the
+	// cutoff until a later tick. The preload re-injection gate consults it only
+	// as a skip hint; its correctness rests on the map-superset invariant (a
+	// still-live outcome is always present in Registry.Idempotency), not on this
+	// cutoff being an exact eviction frontier. Written even when this batch
+	// deleted nothing (a scheduler retry).
+	if cutoff := eviction.GetCutoffMicros(); cutoff > fsm.State.LastIdempotencyEvictionCutoff {
+		fsm.State.LastIdempotencyEvictionCutoff = cutoff
+
+		if err := setLastIdempotencyEvictionCutoff(batch, cutoff); err != nil {
+			return fmt.Errorf("persisting idempotency eviction cutoff: %w", err)
+		}
+	}
+
 	if evicted > 0 {
 		fsm.logger.Infof("Evicted %d expired idempotency keys (cutoff=%d)", evicted, eviction.GetCutoffMicros())
 	}
