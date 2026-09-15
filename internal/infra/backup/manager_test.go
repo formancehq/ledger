@@ -930,7 +930,7 @@ func TestExportEntries_SplitsOnlyAtSequenceBoundaries(t *testing.T) {
 
 		for {
 			k, _, err := reader.ReadEntry()
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, errKVStreamEnd) {
 				break
 			}
 
