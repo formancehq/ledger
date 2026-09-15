@@ -163,12 +163,22 @@ func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
 	hits := coverageHits(accounts, filterMetaExists("k1"), nil, true, 1, false)
 	for _, msg := range coverageMessages() {
 		if slices.Contains(applyCoverageMessages(), msg) {
-			continue // Apply sondes are evaluated by validated Apply outcomes.
+			continue // Apply sondes are decided below from Apply outcomes.
 		}
 		if msg == coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS) {
 			continue // the other target's sonde is decided by its own queries
 		}
 
+		_, decided := hits[msg]
+		require.True(t, decided, "%q was not evaluated", msg)
+	}
+}
+
+func TestApplyCoverageHits_DecidesEveryApplySonde(t *testing.T) {
+	t.Parallel()
+
+	hits := applyCoverageHits(oracle.Bulk{}, oracle.ApplyResult{})
+	for _, msg := range applyCoverageMessages() {
 		_, decided := hits[msg]
 		require.True(t, decided, "%q was not evaluated", msg)
 	}

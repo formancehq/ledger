@@ -16,16 +16,16 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Exercise the same wire requests through the real admission/FSM path and the
@@ -47,6 +47,49 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		require.Len(t, checker.modelState.Ledger("L").LogRows(), before+len(reqs), "response validator must advance the model")
 		return resp
 	}
+	rejectCorruption := func(t *testing.T, mutate func(*servicepb.ApplyResponse), reqs ...*servicepb.Request) *servicepb.ApplyResponse {
+		t.Helper()
+		bulk := oracle.Bulk{Requests: reqs}
+		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...))
+		require.NoError(t, err)
+		before := checker.modelState.Fingerprint()
+		corrupted := proto.Clone(resp).(*servicepb.ApplyResponse)
+		mutate(corrupted)
+		checker.crossCheckCommit(bulk, corrupted)
+		require.Equal(t, before, checker.modelState.Fingerprint(), "a rejected response must not advance the model")
+		checker.crossCheckCommit(bulk, resp)
+		require.NotEqual(t, before, checker.modelState.Fingerprint(), "the matching response must advance the model")
+		return resp
+	}
+
+	t.Run("commit response checks reject mutations", func(t *testing.T) {
+		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+			resp.Logs[0].GetPayload().GetApply().GetLog().Id++
+		}, oracletest.TxReqRefL("L", "identity-check", "world", "typed:1", "USD", 1))
+
+		duplicate := actions.WithSkippableReasons(
+			oracletest.TxReqRefL("L", "identity-check", "world", "typed:1", "USD", 1),
+			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		)
+		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED
+		}, duplicate, oracletest.TxReq("world", "typed:1", "USD", 1))
+
+		mode := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+			Ledger: "L",
+			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT},
+			}},
+		}}}
+		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetUpdatedDefaultEnforcementMode().EnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
+		}, mode)
+
+		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetAddedAccountType().AccountType.Name = "corrupted"
+		}, actions.AddAccountTypeAction("L", "response-check", "response-check:{id}"))
+	})
+
 	first := commit(t, oracletest.TxReqRefL("L", "original", "world", "typed:1", "USD", 10))
 	txID := first.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
 	commit(t, oracletest.RevertReqL("L", txID, true))
