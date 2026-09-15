@@ -225,7 +225,7 @@ Each row is keyed by generation and cache type:
 
 The value uses the "lean" format (`internal/infra/state/cache_incremental.go`, `cacheValueHeaderLen = 9`): an 8-byte little-endian tag, a one-byte live/tombstone flag, then the attribute value marshalled with vtproto. `protoSnapshotSlot[V]` (`internal/infra/state/cache_snapshotter.go`) supplies the per-type marshalling, so each cache type (volumes, metadata, ledger info, boundaries, references, transaction state) persists its own proto value rather than a field in a shared message.
 
-Tombstones are exactly the 9-byte header with no payload -- the pre-delete value is deliberately not marshalled, since `AttributeCache.Del` only flips the `Deleted` flag and keeps the payload in memory, which would otherwise resurrect the entry on restore. On the read path `parseLeanValue` fails closed on any malformed row (short buffer, unknown flag byte, or a tombstone carrying trailing bytes) rather than restoring partial or forged cache state (EN-1527).
+Tombstones are exactly the 9-byte header with no payload -- the pre-delete value is deliberately not marshalled. `KeyStore.Tombstone` writes `Entry{Tag: tag, Data: zero, Deleted: true}`, clearing the payload before the tombstone reaches disk, which prevents a stale value from being resurrected on restore. On the read path `parseLeanValue` fails closed on any malformed row (short buffer, unknown flag byte, or a tombstone carrying trailing bytes) rather than restoring partial or forged cache state (EN-1527).
 
 Reversions are **not** part of the cache snapshot. They are stored per-word in Pebble zone `0x03` (`ZonePerLedger` + `SubPLReversions`) and reconstructed from Pebble via `ReadReversions` on startup or snapshot restore.
 

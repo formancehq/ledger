@@ -159,10 +159,12 @@ func TestSentinelMergePreservesLogicalPurgeDeltas(t *testing.T) {
 			require.Len(t, buf.KeptVolumeUpdates(), 2)
 			require.NoError(t, verifyVolumeDeltasMatchPostings(buf.AllVolumeUpdates(), []*commonpb.Log{sentinelLog(false, sentinelPosting("world", "clearing:1", "USD", "", 10), sentinelPosting("clearing:1", "destination", "USD", "", 10))}))
 			key := domain.NewVolumeKey("test", "clearing:1", "USD", "")
-			cached, _, err := machine.Registry.Volumes.GetKey(key)
-			require.NoError(t, err)
-			require.Zero(t, cached.GetInput().ToBigInt().Sign())
-			require.Zero(t, cached.GetOutput().ToBigInt().Sign())
+			// After a purge the cache entry is tombstoned, not zero-valued:
+			// GetKey returns ErrNotFound; GetEntry returns the tombstone.
+			cachedEntry, ok := machine.Registry.Volumes.KeyStore().GetEntry(key.Bytes())
+			require.True(t, ok, "tombstoned entry must remain cache-resident")
+			require.True(t, cachedEntry.Deleted, "purged ephemeral volume must be tombstoned")
+			require.Nil(t, cachedEntry.Data, "tombstone data must be zero")
 			persisted, err := machine.Registry.Attrs.Volume.Get(store, key.Bytes())
 			require.NoError(t, err)
 			require.Nil(t, persisted)

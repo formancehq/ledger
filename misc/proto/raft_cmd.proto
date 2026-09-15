@@ -728,7 +728,7 @@ message ExecutionPlan {
 // `attr_code`. When `value` is set, the FSM's MirrorPreload seeds the
 // cache with it (CacheMiss + Pebble-load-hit at admission); when unset,
 // the entry is coverage-only and Preload skips it — AttributeCache.Get's
-// gen0→gen1 fallback and AttributeCache.Del's lazy Gen0-tombstone
+// gen0→gen1 fallback and KeyStore.Tombstone's lazy Gen0-tombstone
 // fabrication handle reads and deletes without a preemptive promote pass.
 // attr_code (dal.SubAttrXxx) lives on the envelope so coverage indexing,
 // dispatch, and unmarshal routing all read the same field.

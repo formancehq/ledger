@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -83,56 +82,6 @@ func (a *AttributeCache[T]) GetAndPut(k attributes.U128, v attributes.Entry[T]) 
 
 	// New value is already in gen0. Check gen1 for the old value.
 	return a.gen1.Load().Get(k)
-}
-
-// Del tombstones the entry in Gen0 in-place, mirroring the on-disk
-// writeCacheTombstone which writes a single row to the current gen0 byte.
-//
-// If Gen0 doesn't hold the entry, Del promotes the Gen1 entry's tag into
-// a fresh Gen0 tombstone (Deleted=true, Data=zero). Gen1's live row is
-// intentionally left untouched: the Gen0 tombstone shadows it on every
-// read (Get returns the tombstone via the gen0→gen1 fallback semantics —
-// gen0 hits first), and rotation purges the stale Gen1 row on the next
-// generation flip. This lazy promote replaces the historical
-// systematic-MirrorTouch-at-Preload pass: coverage_bits (invariant #9)
-// already prevents Del from firing on keys admission did not declare,
-// so promoting at Del time is both sufficient and cheaper than
-// pre-promoting every declared key upfront.
-//
-// Returns ErrNotFound if the key is genuinely absent from both
-// generations. Under proper admission, every Delete is preceded by a
-// Get that would surface the same ErrNotFound at the business layer,
-// so this error rarely reaches Del — DerivedKeyStore.Merge treats it
-// as a soft no-op.
-//
-// Data is reset to the zero value: a tombstone's payload is unreadable
-// by contract (every consumer checks Deleted first), and retaining it
-// has historically caused snapshot/restore resurrection (EN-1377).
-//
-// Called only from the FSM goroutine.
-func (a *AttributeCache[T]) Del(k attributes.U128) error {
-	var zero T
-
-	gen0 := a.gen0.Load()
-	if entry, ok := gen0.Get(k); ok {
-		entry.Deleted = true
-		entry.Data = zero
-		gen0.Put(k, entry)
-
-		return nil
-	}
-
-	// Gen0 miss — try Gen1 to reuse the entry's tag on the fabricated
-	// tombstone. The tag is what KeyStore.Delete matched against; a
-	// U128 collision on a different canonical key would already have
-	// been rejected upstream by KeyStore.Delete's tag check.
-	if gen1Entry, ok := a.gen1.Load().Get(k); ok {
-		gen0.Put(k, attributes.Entry[T]{Tag: gen1Entry.Tag, Deleted: true, Data: zero})
-
-		return nil
-	}
-
-	return domain.ErrNotFound
 }
 
 func (a *AttributeCache[T]) Size() uint64 {
