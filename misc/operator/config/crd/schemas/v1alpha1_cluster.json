@@ -1038,42 +1038,6 @@
             }
           ]
         },
-        "coldStorage": {
-          "description": "ColdStorage configuration for chapter archival.",
-          "properties": {
-            "bucketId": {
-              "description": "BucketID is the shared namespace prefix for archives.",
-              "type": "string"
-            },
-            "driver": {
-              "description": "Driver is the storage driver: \"filesystem\" or \"s3\".",
-              "type": "string"
-            },
-            "path": {
-              "description": "Path is the base path for filesystem driver.",
-              "type": "string"
-            },
-            "s3": {
-              "description": "S3 configuration.",
-              "properties": {
-                "bucket": {
-                  "description": "Bucket is the S3 bucket name.",
-                  "type": "string"
-                },
-                "endpoint": {
-                  "description": "Endpoint is a custom S3 endpoint (for MinIO).",
-                  "type": "string"
-                },
-                "region": {
-                  "description": "Region is the AWS region.",
-                  "type": "string"
-                }
-              },
-              "type": "object"
-            }
-          },
-          "type": "object"
-        },
         "dataDir": {
           "default": "/data/app",
           "description": "DataDir is the application data directory.",
@@ -2011,20 +1975,6 @@
                 "port": {
                   "description": "Port for the trace exporter.",
                   "type": "string"
-                },
-                "sampling": {
-                  "description": "Sampling configuration.",
-                  "properties": {
-                    "enabled": {
-                      "description": "Enabled enables error-aware trace sampling.",
-                      "type": "boolean"
-                    },
-                    "successRatio": {
-                      "description": "SuccessRatio is the sampling ratio for successful traces (0.0-1.0).",
-                      "type": "string"
-                    }
-                  },
-                  "type": "object"
                 }
               },
               "type": "object"
@@ -2390,60 +2340,6 @@
         "persistence": {
           "description": "Persistence configuration for WAL and data volumes.",
           "properties": {
-            "coldCache": {
-              "description": "ColdCache persistence configuration for cold storage read cache.\nUses a separate volume to avoid filling the data disk when reading archived chapters.",
-              "properties": {
-                "accessMode": {
-                  "default": "ReadWriteOnce",
-                  "description": "AccessMode for the PVC.\nMutually exclusive with hostPath.",
-                  "type": "string"
-                },
-                "hostPath": {
-                  "description": "HostPath configures a host-local volume instead of a PVC.\nWhen set, no PersistentVolumeClaim is created for this volume.\nThe pod uses a hostPath volume mounted from the specified path on the node.\nEach pod gets an isolated subdirectory named after its ordinal index.\nThis is intended for NVMe instance stores where Raft replication provides durability.\nMutually exclusive with storageClass, accessMode, and volumeAttributesClassName.",
-                  "properties": {
-                    "path": {
-                      "description": "Path on the host node (e.g. \"/mnt/nvme0/data\").\nEach pod gets an isolated subdirectory: \u003cpath\u003e/\u003cpod-ordinal\u003e.",
-                      "type": "string"
-                    },
-                    "type": {
-                      "default": "DirectoryOrCreate",
-                      "description": "Type is the hostPath type.",
-                      "enum": [
-                        "Directory",
-                        "DirectoryOrCreate"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "path"
-                  ],
-                  "type": "object"
-                },
-                "size": {
-                  "anyOf": [
-                    {
-                      "type": "integer"
-                    },
-                    {
-                      "type": "string"
-                    }
-                  ],
-                  "description": "Size of the volume.",
-                  "pattern": "^(\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\\+|-)?(([0-9]+(\\.[0-9]*)?)|(\\.[0-9]+))))?$",
-                  "x-kubernetes-int-or-string": true
-                },
-                "storageClass": {
-                  "description": "StorageClass for the PVC.\nMutually exclusive with hostPath.",
-                  "type": "string"
-                },
-                "volumeAttributesClassName": {
-                  "description": "VolumeAttributesClassName is the name of the VolumeAttributesClass to use for the PVC.\nRequires the VolumeAttributesClass feature gate to be enabled (beta in K8s 1.31+).\nMutually exclusive with hostPath.",
-                  "type": "string"
-                }
-              },
-              "type": "object"
-            },
             "data": {
               "description": "Data persistence configuration.",
               "properties": {
@@ -3187,21 +3083,6 @@
               "description": "Number of seconds after which the probe times out.\nDefaults to 1 second. Minimum value is 1.\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probes",
               "format": "int32",
               "type": "integer"
-            }
-          },
-          "type": "object"
-        },
-        "receiptSigning": {
-          "description": "ReceiptSigning configures HMAC signing for JWT transaction receipts.",
-          "properties": {
-            "secretKey": {
-              "default": "key",
-              "description": "SecretKey is the key in the secret containing the HMAC key.",
-              "type": "string"
-            },
-            "secretName": {
-              "description": "SecretName is the Kubernetes secret containing the HMAC key.",
-              "type": "string"
             }
           },
           "type": "object"
