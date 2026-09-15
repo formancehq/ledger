@@ -736,7 +736,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// SubGlobNextLedgerID (0x10)
 	if b.NextLedgerID != b.fsm.State.NextLedgerID {
-		if err := saveNextLedgerID(batch, b.NextLedgerID); err != nil {
+		if err := StoreNextLedgerID(batch, b.NextLedgerID); err != nil {
 			return fmt.Errorf("storing next ledger ID: %w", err)
 		}
 	}

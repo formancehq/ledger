@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"math"
 	"math/big"
 	"strings"
 
@@ -93,6 +94,17 @@ func rebuildDelta(
 	defer func() { _ = readHandle.Close() }()
 
 	writer.readHandle = readHandle
+
+	// The checkpoint counter is the fold seed. Every post-checkpoint ledger
+	// creation advances it monotonically below, including creations whose ledger
+	// is later deleted in the same delta.
+	nextLedgerID, err := query.ReadNextLedgerID(readHandle)
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("seeding next ledger ID: %w", err)
+	}
+	rebuildNextLedgerID := false
 
 	// Seed ledger account types from state already in the store. On an
 	// incremental rebuild the AddAccountType logs precede fromLogSeq, so
@@ -228,6 +240,13 @@ func rebuildDelta(
 			// MirrorSource, AccountTypes, and DefaultEnforcementMode, all part of
 			// the stored projection. ToLedgerInfo copies every creation-time field.
 			info := p.CreateLedger.ToLedgerInfo()
+			if info.GetId() == math.MaxUint32 {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying ledger creation at log %d: ledger ID space exhausted", seq)
+			}
+			nextLedgerID = max(nextLedgerID, info.GetId()+1)
+			rebuildNextLedgerID = true
 
 			if err := writer.saveLedgerInfo(info); err != nil {
 				_ = batch.Cancel()
@@ -535,6 +554,18 @@ func rebuildDelta(
 			_ = batch.Cancel()
 
 			return fmt.Errorf("restoring next query checkpoint ID: %w", err)
+		}
+	}
+
+	// Persist the allocator in the same final batch as the last replayed ledger
+	// projections. A successful rebuild therefore cannot expose a created ledger
+	// without also reserving its ID; on failure the staging restore is not
+	// activated and this batch is cancelled or fails atomically.
+	if rebuildNextLedgerID {
+		if err := state.StoreNextLedgerID(batch, nextLedgerID); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("restoring next ledger ID: %w", err)
 		}
 	}
 

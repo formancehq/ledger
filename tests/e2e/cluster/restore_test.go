@@ -892,6 +892,35 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(employeeResp.FindVolume("USD", "").GetInput()).To(Equal("1200"))
 		})
 
+		It("should allocate fresh ledger IDs after restoring post-checkpoint creations", func() {
+			const (
+				firstPostRestoreLedger  = "post-restore-ledger-a"
+				secondPostRestoreLedger = "post-restore-ledger-b"
+			)
+
+			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(firstPostRestoreLedger, nil)))
+			Expect(err).To(Succeed())
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(secondPostRestoreLedger, nil)))
+			Expect(err).To(Succeed())
+
+			deltaInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: deltaLedger})
+			Expect(err).To(Succeed())
+			firstInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: firstPostRestoreLedger})
+			Expect(err).To(Succeed())
+			secondInfo, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: secondPostRestoreLedger})
+			Expect(err).To(Succeed())
+
+			ids := []uint32{
+				deltaInfo.GetId(),
+				firstInfo.GetId(),
+				secondInfo.GetId(),
+			}
+			Expect(ids[1]).To(BeNumerically(">", ids[0]))
+			Expect(ids[2]).To(BeNumerically(">", ids[1]))
+			Expect(map[uint32]struct{}{ids[0]: {}, ids[1]: {}, ids[2]: {}}).To(HaveLen(3),
+				"restored and post-restore ledgers must not share an allocated ID")
+		})
+
 		It("should accept new transactions after restore", func() {
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("bank", "charlie", big.NewInt(1000), "USD"),

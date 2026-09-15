@@ -52,8 +52,8 @@ func SaveLedger(b *dal.WriteSession, name string, info *commonpb.LedgerInfo) err
 	return nil
 }
 
-// SaveNextLedgerID persists the next ledger ID counter to Pebble.
-func saveNextLedgerID(b *dal.WriteSession, nextID uint32) error {
+// StoreNextLedgerID persists the next ledger ID counter to Pebble.
+func StoreNextLedgerID(b *dal.WriteSession, nextID uint32) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobNextLedgerID)
 
 	var buf [4]byte
