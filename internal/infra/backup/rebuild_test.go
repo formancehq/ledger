@@ -1028,6 +1028,37 @@ func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
 	require.Nil(t, pair, "balanced ephemeral account should have been purged")
 }
 
+func TestRebuildDelta_PurgesCheckpointEraEphemeralAccountState(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+	attrs := attributes.New()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	metadataKey := domain.MetadataKey{AccountKey: volumeKey.AccountKey, Key: "holdId"}
+
+	batch := store.OpenWriteSession()
+	_, err := attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(5)})
+	require.NoError(t, err)
+	_, err = attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("hold-1"))
+	require.NoError(t, err)
+	purge := applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{})
+	purge.GetPayload().GetApply().Log.PurgedAccounts = []string{"orders:1"}
+	require.NoError(t, batch.SetProto(coldLogKey(2), purge))
+	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 2, 2)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0))
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	volume, err := attrs.Volume.Get(handle, volumeKey.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, volume)
+	metadata, err := attrs.Metadata.Get(handle, metadataKey.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, metadata)
+}
+
 // newAttributeReplayWriter builds an isolated writer for regression tests of
 // EN-1425: an in-batch create followed by a mutate must produce the merged
 // state, not overwrite it with a fresh zero-value TransactionState.

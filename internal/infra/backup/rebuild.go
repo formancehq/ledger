@@ -212,7 +212,7 @@ func rebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), p.Apply.GetLog().GetPurgedAccounts(), p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -1458,6 +1458,33 @@ func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value *commonpb
 
 func (w *attributeReplayWriter) DeleteMetadata(canonicalKey []byte) error {
 	return w.metadata.Delete(w.batch, canonicalKey)
+}
+
+func (w *attributeReplayWriter) PurgeAccount(ledger, account string) error {
+	for _, spec := range []struct{ attrCode, separator byte }{
+		{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
+		{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},
+	} {
+		prefix := []byte{dal.ZoneAttributes, spec.attrCode}
+		canonicalPrefix := domain.LedgerScopedPrefix(ledger)
+		canonicalPrefix = append(canonicalPrefix, account...)
+		canonicalPrefix = append(canonicalPrefix, spec.separator)
+		prefix = append(prefix, canonicalPrefix...)
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		if err := w.batch.DeleteRangeNoSync(prefix, upper); err != nil {
+			return err
+		}
+		if spec.attrCode == dal.SubAttrVolume {
+			for key := range w.pendingVolumes {
+				if strings.HasPrefix(key, string(canonicalPrefix)) {
+					w.pendingVolumes[key] = nil
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {

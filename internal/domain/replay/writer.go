@@ -17,6 +17,7 @@ type Writer interface {
 	MoveVolume(oldKey, newKey []byte) error
 	SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error
 	DeleteMetadata(canonicalKey []byte) error
+	PurgeAccount(ledger, account string) error
 	MoveMetadata(oldKey, newKey []byte) error
 	CreateTransaction(canonicalKey []byte, seq uint64, timestamp *commonpb.Timestamp, metadata map[string]*commonpb.MetadataValue, postings []*commonpb.Posting, revertsTransaction uint64) error
 	SetTransactionReference(ledgerName, reference string, txID uint64) error
