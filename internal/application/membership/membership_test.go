@@ -3,14 +3,12 @@ package membership
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
 // These tests cover input validation before any dependency is touched.
@@ -52,28 +50,15 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
 	t.Parallel()
 
-	const (
-		nodeID          = uint64(2)
-		committedAddr   = "member-2:8080"
-		uncommittedAddr = "attacker:8080"
-	)
+	s, servicePool := newMembershipServiceNodeWithPool(t)
+	const committedAddr = "self:8888"
+	require.NoError(t, servicePool.AddPeer(1, committedAddr))
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
 
-	servicePool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
-	require.NoError(t, servicePool.AddPeer(nodeID, committedAddr))
-	t.Cleanup(func() { require.NoError(t, servicePool.Close()) })
-
-	s := &Service{
-		servicePool: servicePool,
-		addRaftPeer: func(uint64, string) {},
-		addLearner: func(context.Context, uint64, string, string, []byte) error {
-			return node.ErrNodeAlreadyInCluster
-		},
-		logger: logging.Testing(),
-	}
-
-	err := s.AddLearner(context.Background(), nodeID, "member-2:7070", uncommittedAddr, nil)
+	err := s.AddLearner(ctx, 1, "self:7777", "attacker:8080", []byte("self-instance-id"))
 	require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
-	require.Equal(t, committedAddr, servicePool.GetPeerAddress(nodeID))
+	require.Equal(t, committedAddr, servicePool.GetPeerAddress(1))
 }
 
 func TestService_JoinAsLearner_RejectsMissingInstanceID(t *testing.T) {
