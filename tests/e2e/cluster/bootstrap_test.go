@@ -361,12 +361,12 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the correct account balances", func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(aliceTransfer)))
+			Expect(aliceResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal(strconv.Itoa(aliceTransfer)))
 
 			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
-			Expect(bankResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(bankFunding)))
-			Expect(bankResp.FindVolume("USD", "").Output).To(Equal(strconv.Itoa(bankOutput)))
+			Expect(bankResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal(strconv.Itoa(bankFunding)))
+			Expect(bankResp.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal(strconv.Itoa(bankOutput)))
 		})
 
 		It("should have the correct account metadata", func() {
@@ -378,7 +378,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the data added after the first backup (via second full backup)", func() {
 			eveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "eve"})
 			Expect(err).To(Succeed())
-			Expect(eveResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(eveTransfer)))
+			Expect(eveResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal(strconv.Itoa(eveTransfer)))
 		})
 
 		It("should accept new transactions after bootstrap", func() {
@@ -389,7 +389,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
-			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal(strconv.Itoa(charlieTransfer)))
+			Expect(charlieResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal(strconv.Itoa(charlieTransfer)))
 		})
 	})
 })

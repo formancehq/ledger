@@ -62,9 +62,9 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 		}
 
 		vol.GetInput().IntoUint256(&scratch)
-		inputStr := scratch.Dec()
+		input := commonpb.NewBigUintFromUint256(&scratch)
 		vol.GetOutput().IntoUint256(&scratch)
-		outputStr := scratch.Dec()
+		output := commonpb.NewBigUintFromUint256(&scratch)
 
 		byAssets, ok := volumesByAccount[t.account]
 		if !ok {
@@ -75,8 +75,8 @@ func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Pos
 			Asset: t.asset,
 			Color: t.color,
 			Volumes: &commonpb.Volumes{
-				Input:  inputStr,
-				Output: outputStr,
+				Input:  input,
+				Output: output,
 			},
 		})
 	}

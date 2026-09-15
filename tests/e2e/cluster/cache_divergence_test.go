@@ -191,7 +191,7 @@ func verifyVolumesConsistent(ctx context.Context, servers []*testutil.ServiceWit
 					// distinct in the divergence snapshot. Empty color is the
 					// uncolored bucket.
 					key := fmt.Sprintf("%s/%s/%s", acct.GetAddress(), entry.GetAsset(), entry.GetColor())
-					snap.volumes[key] = fmt.Sprintf("%s:%s", vol.GetInput(), vol.GetOutput())
+					snap.volumes[key] = fmt.Sprintf("%s:%s", vol.GetInput().DecimalString(), vol.GetOutput().DecimalString())
 				}
 			}
 

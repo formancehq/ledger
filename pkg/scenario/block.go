@@ -81,8 +81,8 @@ func GetColoredAccountBalance(ctx context.Context, client servicepb.BucketServic
 		if entry.GetAsset() != asset || entry.GetColor() != color {
 			continue
 		}
-		balance, ok := new(big.Int).SetString(entry.GetVolumes().GetBalance(), 10)
-		if !ok {
+		balance, err := entry.GetVolumes().GetBalance().ToBigInt()
+		if err != nil {
 			return big.NewInt(0), false
 		}
 

@@ -143,6 +143,18 @@ All monetary amounts use the `Uint256` protobuf message - a fixed-size 4 x `fixe
 
 See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wire-format.md) for the full design rationale.
 
+## API volume integer formats
+
+`Volumes` and `VolumesWithBalance` use `BigUint` for cumulative input/output
+totals and `SignedBigInt` for balances. These response and audited-projection
+types are deliberately arbitrary precision: an individual persisted color
+bucket is bounded by `Uint256`, but `collapseColors` may sum multiple buckets
+past 256 bits. `BigUint.magnitude` is the minimal unsigned big-endian magnitude
+(empty for zero, never prefixed with a zero octet). `SignedBigInt` adds a sign;
+its zero has no magnitude and can never be negative. Public HTTP JSON continues
+to expose canonical decimal strings so JavaScript and other IEEE-754 consumers
+do not lose precision.
+
 ## Mirror-Related Proto Types
 
 Mirror mode introduces several protobuf types across multiple files:

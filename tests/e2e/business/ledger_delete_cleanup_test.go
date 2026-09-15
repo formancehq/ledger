@@ -47,7 +47,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(account.FindVolume("USD", "")).NotTo(BeNil(), "expected USD entry on account")
-				g.Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
+				g.Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 
@@ -108,7 +108,7 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(account.FindVolume("USD", "")).NotTo(BeNil(), "expected USD entry on account")
-				g.Expect(account.FindVolume("USD", "").Balance).To(Equal("0"))
+				g.Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 
