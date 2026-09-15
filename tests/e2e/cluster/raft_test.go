@@ -282,7 +282,7 @@ var _ = Describe("Simple cluster", func() {
 				Address: offlineAccountAddress,
 			})
 			Expect(err).To(Succeed())
-			Expect(account.FindVolume("USD", "").Balance).To(Equal(fmt.Sprintf("%d", countTransactions*100)))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal(fmt.Sprintf("%d", countTransactions*100)))
 		})
 
 		It("should restart as expected after a second restart", func() {

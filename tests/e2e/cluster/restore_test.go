@@ -680,16 +680,16 @@ var _ = Describe("Restore", Ordered, func() {
 		It("should have the correct account balances on ledger 1", func() {
 			aliceResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(aliceResp.FindVolume("USD", "").Input).To(Equal("3000"))
+			Expect(aliceResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("3000"))
 
 			bobResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bob"})
 			Expect(err).To(Succeed())
-			Expect(bobResp.FindVolume("USD", "").Input).To(Equal("2000"))
+			Expect(bobResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("2000"))
 
 			bankResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "bank"})
 			Expect(err).To(Succeed())
-			Expect(bankResp.FindVolume("USD", "").Input).To(Equal("10000"))
-			Expect(bankResp.FindVolume("USD", "").Output).To(Equal("5000"))
+			Expect(bankResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("10000"))
+			Expect(bankResp.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("5000"))
 		})
 
 		It("should have the correct account metadata", func() {
@@ -716,7 +716,7 @@ var _ = Describe("Restore", Ordered, func() {
 		It("should have the correct data on ledger 2", func() {
 			treasuryResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger2, Address: "treasury"})
 			Expect(err).To(Succeed())
-			Expect(treasuryResp.FindVolume("EUR", "").Input).To(Equal("50000"))
+			Expect(treasuryResp.FindVolume("EUR", "").GetInput().DecimalString()).To(Equal("50000"))
 		})
 
 		It("should have post-checkpoint data restored from export segments", func() {
@@ -724,7 +724,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// only be present if the restore applied the incremental exports.
 			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
 			Expect(err).To(Succeed())
-			Expect(daveResp.FindVolume("USD", "").Input).To(Equal("1500"),
+			Expect(daveResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1500"),
 				"transaction written after the checkpoint must be restored from export segments")
 		})
 
@@ -734,7 +734,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// BOTH incrementals — the full + multiple incrementals chain.
 			erinResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "erin"})
 			Expect(err).To(Succeed())
-			Expect(erinResp.FindVolume("USD", "").Input).To(Equal("2500"),
+			Expect(erinResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("2500"),
 				"transaction written in the second incremental must be restored from the full + multi-incremental chain")
 		})
 
@@ -787,7 +787,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			daveResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "dave"})
 			Expect(err).To(Succeed())
-			Expect(daveResp.FindVolume("USD", "").Input).To(Equal("2000"),
+			Expect(daveResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("2000"),
 				"apply must see dave's restored balance via the cache; a cache/bloom-blind apply yields 500")
 		})
 
@@ -900,7 +900,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			charlieResp, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledgerName, Address: "charlie"})
 			Expect(err).To(Succeed())
-			Expect(charlieResp.FindVolume("USD", "").Input).To(Equal("1000"))
+			Expect(charlieResp.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1000"))
 		})
 
 		It("should transfer the restored state to a learner joining before any raft snapshot", func() {
