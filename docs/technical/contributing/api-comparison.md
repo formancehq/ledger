@@ -646,40 +646,81 @@ account metadata covers the same use cases on the existing machinery, so the
 fields stay out.
 
 **Supported replacement — read side:** declare an account metadata key as
-`datetime` (`MetadataFieldTypeCommand.type`, stored as int64 micros), create an
-account metadata index on that key, wait for READY, then range-filter it:
+`datetime` (`MetadataFieldTypeCommand.type`), which parses the RFC3339 value it
+is given into signed int64 epoch microseconds; create an account metadata index
+on that key, wait for READY, then range-filter it:
 
 ```
-filter=metadata[first_usage] >= "2024-01-01T00:00:00Z"
+filter=metadata[first_usage] >= 1704067200000000
 ```
+
+The operand is raw microseconds, not RFC3339: `metadataRangeToProto`
+(`internal/pkg/filterexpr/parser.go`) parses metadata range operands with
+`strconv.ParseInt` and rejects anything else with `range operators only support
+integer values`. The RFC3339 coercion of EN-1544 covers the builtin
+`date`/`timestamp` fields, which are not valid on the accounts target at all —
+declaring the field `datetime` governs how the stored *value* is read, not how
+the filter operand is written.
 
 This works on `GET /v3/{ledgerName}/accounts` and on
 `GET /v3/{ledgerName}/volumes` (which compiles its filter for the accounts
-target). Covered end to end by
-`tests/e2e/business/datetime_metadata_index_test.go` and
-`tests/e2e/business/accounts_test.go`.
+target). The two halves are covered separately:
+`tests/e2e/business/accounts_test.go` for metadata range filtering on the
+accounts target (int64 `age`), and
+`tests/e2e/business/datetime_metadata_index_test.go` for the `datetime`
+declaration, RFC3339 values in and integer-micro bounds out (transactions
+target).
 
 **Supported replacement — write side:** there is no set-if-absent.
 `SaveAccountMetadata` is a blind overwrite, admission does not preload old
 values, and Numscript's `set_account_meta` has no conditional form — so a rule
 that stamps the key on every transaction yields *last* usage, not first. To
-stamp exactly once without a client-side read, hang the stamp on a transaction
-carrying `reference: "open:<address>"` together with
-`skippableReasons: ["TRANSACTION_REFERENCE_CONFLICT"]`
-(`account_metadata` rides on `CreateTransactionPayload`): the FSM arbitrates in
-Raft order and every later attempt is skipped rather than overwriting. The
-transaction must produce at least one posting (`domain.ErrEmptyTransaction`),
-so this is clean where there is a real opening transaction and awkward where
-accounts appear implicitly.
+stamp exactly once without a client-side read, send the opening transaction
+through the **bulk** endpoint (`POST /v3/{ledgerName}/bulk`, body = a JSON
+array of entries) with a per-address `reference` and the skip opt-in —
+`skippableReasons` sits on the entry, not inside `data`:
+
+```json
+[
+  {
+    "action": "CREATE_TRANSACTION",
+    "skippableReasons": ["TRANSACTION_REFERENCE_CONFLICT"],
+    "data": {
+      "reference": "open:users:alice",
+      "postings": [{ "source": "world", "destination": "users:alice", "asset": "USD/2", "amount": 100 }],
+      "accountMetadata": { "users:alice": { "first_usage": "2024-01-01T00:00:00Z" } }
+    }
+  }
+]
+```
+
+The FSM arbitrates the reference in Raft order, so every later attempt is
+skipped rather than overwriting. The envelope matters: the unitary
+`POST /v3/{ledgerName}/transactions` deliberately does **not** expose
+`skippableReasons` (`internal/adapter/http/handlers_create_transaction.go`), so
+the same request there returns 409 on the second attempt instead of skipping.
+gRPC callers set `LedgerApplyRequest.skippable_reasons` directly; the HTTP bulk
+handler hoists the per-entry list onto that field. The transaction must produce
+at least one posting (`domain.ErrEmptyTransaction`), so this is clean where
+there is a real opening transaction and awkward where accounts appear
+implicitly.
 
 **Migration from the original ledger:** nothing in the mirror path carries
-`first_usage` across, so either copy it into the typed `datetime` metadata key
-at cut-over, or reconstruct it afterwards — history is permanent and each log
-carries `new_kept_volumes`, the cells first materialized by that log, so first
-usage is recoverable from the log history at O(history) as a one-off backfill.
-`new_kept_volumes` is keyed per `(account, asset, color)`, not per account, so
-an account that picks up a second asset later produces another new cell: take
-the minimum per address.
+`first_usage` across. Copying the v2 value into the typed `datetime` metadata
+key at cut-over is the only lossless option. Reconstruction after the fact is
+possible because history is permanent, but it has to reproduce what v2 actually
+means: `upsertTransactionAccounts` lowers `first_usage` to the **effective
+date** of every transaction the account takes part in (`release/v2.4`), so the
+equivalent is the minimum transaction timestamp over every transaction touching
+that address, scanned across the whole log — O(history), fine as a one-off.
+
+Do **not** shortcut that through the `new_kept_volumes` log annotation. It
+records the cells a log *first materialized*, which is a different set: a
+backdated transaction against an already-materialized cell lowers v2's
+`first_usage` but produces no new-kept entry, and a cell created and drained
+within a single log is recorded as `ephemeral_volumes` instead, so an account
+whose only activity is a pass-through never appears at all. The annotation is
+also keyed per `(account, asset, color)` while `first_usage` is per address.
 
 ---
 
