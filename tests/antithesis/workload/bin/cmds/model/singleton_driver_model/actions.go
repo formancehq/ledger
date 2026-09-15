@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -107,8 +108,15 @@ func sourceAddress() string {
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Runs lock-free on a state
 // snapshot (a published GlobalState is never mutated — Apply forks first).
-func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
-	picks := pickLedgers(ledgers)
+func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string) oracle.Bulk {
+	active := activeLedgers(g, ledgers)
+	if req := generateLifecycle(g, active, newLedger); req != nil {
+		return oracle.Bulk{Requests: []*servicepb.Request{req}}
+	}
+	if len(active) == 0 {
+		return oracle.Bulk{Requests: []*servicepb.Request{actions.CreateLedgerAction(newLedger, nil)}}
+	}
+	picks := pickLedgers(active)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
 	// make sense single-ledger. Gate them by the same back-pressure as
@@ -198,6 +206,48 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 	}
 
 	return oracle.Bulk{Requests: requests}
+}
+
+func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
+	out := make([]string, 0, len(ledgers))
+	for _, name := range ledgers {
+		if lc, ok := g.Lifecycle(name); !ok || !lc.Deleted {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// generateLifecycle mixes administrative transitions into the same concurrent
+// stream as business writes. Creation is biased when deletions shrink the live
+// pool, providing the same bounded-state back-pressure as transaction creation.
+func generateLifecycle(g oracle.GlobalState, active []string, newLedger string) *servicepb.Request {
+	if len(active) < defaultLedgers || random.RandomChoice(indexPool(64)) == 0 {
+		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
+				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
+			}}}
+		}
+		return actions.CreateLedgerAction(newLedger, nil)
+	}
+	if random.RandomChoice(indexPool(24)) != 0 {
+		return nil
+	}
+
+	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+	case 0:
+		return actions.DeleteLedgerAction(random.RandomChoice(active))
+	case 1:
+		name := random.RandomChoice(active)
+		lc, ok := g.Lifecycle(name)
+		if ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: name}}}
+		}
+		return nil
+	default:
+		return actions.SetMaintenanceModeAction(!g.MaintenanceMode())
+	}
 }
 
 // rollTransaction reports whether to create a new transaction, tapering with the

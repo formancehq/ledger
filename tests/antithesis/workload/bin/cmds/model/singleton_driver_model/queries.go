@@ -56,7 +56,7 @@ func queryPageSize() int {
 // page against the model's ordered window (see validateAccountQuery). Filters
 // cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger := random.RandomChoice(c.ledgerNamesSnapshot())
 	filter := genAccountFilter(c.sampleAccountFieldSeeds(ledger))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
@@ -168,7 +168,7 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 // streamed page against the model's ordered window (see validateTransactionQuery).
 // Filters cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger := random.RandomChoice(c.ledgerNamesSnapshot())
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)

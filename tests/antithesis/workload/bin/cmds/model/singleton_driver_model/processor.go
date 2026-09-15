@@ -5,6 +5,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -92,7 +93,7 @@ func (c *Checker) handleObservation(obs observation) {
 	// effectively didn't happen. Shutdown errors (ctx cancelled / deadline
 	// from MODEL_MAX_SECONDS) are dropped the same way: the outcome is
 	// unknown but we're tearing down, so there's nothing to validate.
-	if obs.err != nil && (internal.IsTransient(obs.err) || isShutdownError(obs.err)) {
+	if obs.err != nil && ((internal.IsTransient(obs.err) && !internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode)) || isShutdownError(obs.err)) {
 		dbg("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		return
 	}
@@ -103,6 +104,9 @@ func (c *Checker) handleObservation(obs observation) {
 		// high-water reproduces the observed error (validateFailure).
 		dbg("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
+		if internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode) {
+			emitCoverage(true, coverageMaintenanceMessage, internal.Details{}, coverageHit)
+		}
 		markModelOutcomeVerified()
 		return
 	}

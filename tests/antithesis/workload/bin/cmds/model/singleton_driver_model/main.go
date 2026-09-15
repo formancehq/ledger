@@ -46,9 +46,11 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -68,8 +70,7 @@ func main() {
 		_ = os.Setenv("LEDGER_RETRY_FOREVER", "1")
 	}
 
-	ctx, stop := context.WithCancel(context.Background())
-	defer stop()
+	ctx := context.Background()
 
 	// Self-terminate after MODEL_MAX_SECONDS so an orphaned driver from
 	// a killed shell can't keep hammering a shared ledger into the next
@@ -91,6 +92,20 @@ func main() {
 		return
 	}
 	defer conn.Close()
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := client.Apply(cleanupCtx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+			log.Printf("disable maintenance during shutdown: %v", err)
+		}
+	}()
+
+	// A previous driver may have died after enabling the cluster-wide gate.
+	// Recover before setup so CreateLedger cannot wait behind maintenance forever.
+	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+		log.Printf("disable maintenance during startup: %v", err)
+		return
+	}
 
 	// Unique per-run prefix so a fresh invocation never reattaches to a
 	// previous run's ledgers (the model starts empty; inherited committed
@@ -117,23 +132,6 @@ func main() {
 	// up as an unsatisfied property rather than as no output at all.
 	registerCoverage()
 
-	probeConn, err := internal.NewGRPCConnWithoutRetries()
-	if err != nil {
-		log.Printf("lifecycle probe connection: %v", err)
-		return
-	}
-	defer probeConn.Close()
-	probe := servicepb.NewBucketServiceClient(probeConn)
-	cluster := clusterpb.NewClusterServiceClient(probeConn)
-	lifecycle := &lifecycleDriver{client: probe, cluster: cluster, checker: checker}
-	if err := lifecycle.runEpisode(ctx, "model-"+runID+"-lifecycle-0"); err != nil {
-		if ctx.Err() == nil {
-			assert.Unreachable("singleton_driver_model: lifecycle outside model", internal.Details{"error": err.Error()})
-		}
-		log.Printf("lifecycle episode: %v", err)
-		return
-	}
-
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
 
@@ -147,17 +145,6 @@ func main() {
 	}()
 
 	var workers sync.WaitGroup
-	workers.Add(1)
-	go func() {
-		defer workers.Done()
-		if err := lifecycle.runCycles(ctx, "model-"+runID); err != nil {
-			if ctx.Err() == nil {
-				assert.Unreachable("singleton_driver_model: lifecycle cycle outside model", internal.Details{"error": err.Error()})
-			}
-			log.Printf("lifecycle cycle: %v", err)
-			stop()
-		}
-	}()
 	for i := 0; i < numWorkers; i++ {
 		workers.Add(1)
 		go func() {
@@ -259,86 +246,76 @@ func runWorker(
 			continue
 		}
 		state := c.modelState
+		ledgers := c.ledgerNamesSnapshot()
 		c.mu.Unlock()
 
-		bulk := generateBulk(state, c.ledgerNames)
+		bulk := generateBulk(state, ledgers, c.nextLedgerName())
 		if len(bulk.Requests) == 0 {
 			continue
 		}
 
-		c.mu.Lock()
-		// A pause committed while generating: back out without dispatching,
-		// so no bulk commits between the drain and the backup.
-		if c.paused {
-			c.mu.Unlock()
-			continue
-		}
-		// Occasionally tag this bulk with an idempotency key — reusing a committed
-		// key on a different body (conflict) or minting a fresh tracked one (a
-		// replayable original) — to exercise the server's dedup.
-		c.stampIdempotency(&bulk)
-		ticket := c.registerInflight(bulk)
+		dispatchBulk(ctx, client, c, bulk)
+	}
+}
+
+// dispatchBulk sends every generated request through the same inflight and
+// processor path. Maintenance enable schedules a modeled disable independently,
+// so a write-blocked worker fleet cannot stall the run permanently.
+func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, bulk oracle.Bulk) {
+	c.mu.Lock()
+	if c.paused {
 		c.mu.Unlock()
+		return
+	}
+	c.stampIdempotency(&bulk)
+	ticket := c.registerInflight(bulk)
+	c.mu.Unlock()
 
-		// Application-level retry to a definitive outcome. The gRPC-layer
-		// retries live inside one call's context, so a cancellation that
-		// kills the call — a dying node propagates codes.Canceled from its
-		// handler, a connection teardown cancels every in-flight RPC — ends
-		// the whole chain with the bulk possibly committed. The request is
-		// rendered ONCE (the idempotency key must pin the first attempt's
-		// identity) and re-submitted until the server gives a commit — served
-		// from its idempotency cache when the lost attempt landed — or a
-		// business rejection. Only this driver's own context ending abandons
-		// a bulk, which the processor's shutdown skip already models.
-		req := applyRequest(bulk)
-
-		var (
-			resp *servicepb.ApplyResponse
-			err  error
-		)
-
-		for {
-			resp, err = client.Apply(ctx, req)
-			if err == nil || ctx.Err() != nil {
-				break
-			}
-
-			if !internal.IsTransient(err) && !internal.IsCanceled(err) {
-				break
-			}
-
-			select {
-			case <-ctx.Done():
-			case <-time.After(200 * time.Millisecond):
-			}
+	req := applyRequest(bulk)
+	var resp *servicepb.ApplyResponse
+	var err error
+	for {
+		resp, err = client.Apply(ctx, req)
+		if err == nil || ctx.Err() != nil || internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+			break
 		}
-
-		dumpBatch(ticket, req, resp, err)
-
-		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
-		// the drain gate compares outstanding tickets against it (see tryDrain).
-		// This is a loose upper bound: a sibling worker can register its own bulk
-		// between Apply returning and this Load, so observeTicket may cover a
-		// ticket whose effect could not precede this response. That only enlarges
-		// the candidate-base set validation considers (it gets more permissive),
-		// never shrinks it — it can mask a divergence but never manufacture a
-		// false failure. The window is irreducible: the counter can always climb
-		// between the RPC returning and the atomic read, so we accept it.
-		obs := observation{
-			ticket:        ticket,
-			bulk:          bulk,
-			resp:          resp,
-			err:           err,
-			observeTicket: c.ticketSeq.Load(),
+		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
+			break
 		}
-
-		// Block on a full channel — natural back-pressure.
 		select {
 		case <-ctx.Done():
-			return
-		case c.incoming <- obs:
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
+
+	dumpBatch(ticket, req, resp, err)
+	obs := observation{ticket: ticket, bulk: bulk, resp: resp, err: err, observeTicket: c.ticketSeq.Load()}
+	select {
+	case <-ctx.Done():
+		return
+	case c.incoming <- obs:
+	}
+
+	if err == nil && bulkEnablesMaintenance(bulk) {
+		go func() {
+			delay := time.Duration(internal.Rand().Int63n(int64(maintenanceMaxWindow)))
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delay):
+			}
+			dispatchBulk(ctx, client, c, oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(false)}})
+		}()
+	}
+}
+
+func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
+	for _, req := range bulk.Requests {
+		if toggle := req.GetSetMaintenanceMode(); toggle != nil && toggle.GetEnabled() {
+			return true
+		}
+	}
+	return false
 }
 
 // initialSchema generates a small, random metadata schema declared at ledger

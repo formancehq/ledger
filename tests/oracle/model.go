@@ -621,7 +621,6 @@ func (g GlobalState) Fingerprint() Digest {
 	// them disjoint from the ledger terms. Lifecycle and maintenance state likewise
 	// remain observable independently of the ledger data projections.
 	t := newTerm("maintenance")
-	t.u64(0)
 	if g.maintenance {
 		t.u64(1)
 	}
@@ -817,8 +816,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 	}
 
-	// Per-batch idempotency, checked after admission's structural gate (the
-	// empty-create above) and before any FSM outcome — mirroring the server,
+	// Both admission and the FSM gate before audit and idempotency. Only an
+	// all-toggle batch may enter while maintenance is enabled.
+	if g.maintenance && !allMaintenanceRequests(bulk.Requests) {
+		return ApplyResult{OK: false, Reason: domain.ErrReasonMaintenanceMode, State: g}
+	}
+
+	// Per-batch idempotency, checked after admission's structural and maintenance
+	// gates and before any other FSM outcome — mirroring the server,
 	// where the dedup runs in the apply path ahead of ProcessOrders. Only
 	// successes are frozen (see the commit return below), so a hit is always a
 	// committed outcome: same body replays it verbatim with no new state; a
@@ -862,7 +867,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 
 			continue
 		}
-		if lc, exists := next.lifecycle.Get(name); exists && lc.Deleted {
+		if lc, exists := next.lifecycle.Get(name); exists && lc.Deleted && req.GetSaveLedgerMetadata() == nil && req.GetDeleteLedgerMetadata() == nil {
 			return ApplyResult{Reason: domain.ErrReasonLedgerDeleted, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerDeleted})}
 		}
 
@@ -2021,13 +2026,21 @@ func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
 // rejects new business requests while enabled; already-admitted requests can commit.
 func (g GlobalState) MaintenanceMode() bool { return g.maintenance }
 
+func allMaintenanceRequests(requests []*servicepb.Request) bool {
+	for _, req := range requests {
+		if req.GetSetMaintenanceMode() == nil {
+			return false
+		}
+	}
+
+	return len(requests) > 0
+}
+
 func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool) {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_SaveLedgerMetadata, *servicepb.Request_DeleteLedgerMetadata:
-		if lc, exists := g.lifecycle.Get(LedgerOf(req)); exists && lc.Deleted {
-			panic("model: metadata commands on deleted ledgers require cache-generation modeling")
-		}
-
+		// TODO(EN-2045): ledger metadata currently bypasses the DeletedAt gate.
+		// Model the released behavior until the service rejects these on tombstones.
 		return OrderResult{}, false
 	case *servicepb.Request_SetMaintenanceMode:
 		g.maintenance = r.SetMaintenanceMode.GetEnabled()
@@ -2045,7 +2058,6 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		if _, exists := g.ledgers[name]; exists {
 			return OrderResult{Reason: domain.ErrReasonLedgerAlreadyExists}, true
 		}
-		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
 		ls := NewLedgerState()
 		for _, key := range slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes())) {
 			at := r.CreateLedger.GetAccountTypes()[key]
@@ -2057,12 +2069,16 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		for _, field := range r.CreateLedger.GetInitialSchema() {
 			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
 		}
+		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
 		g.ledgers[name] = ls
 
 		return OrderResult{OK: true}, true
 	case *servicepb.Request_PromoteLedger:
 		name := r.PromoteLedger.GetLedger()
 		lc, exists := g.lifecycle.Get(name)
+		if exists && lc.Deleted {
+			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
+		}
 		if !exists {
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
@@ -2079,6 +2095,9 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 	case *servicepb.Request_DeleteLedger:
 		name := r.DeleteLedger.GetName()
 		lc, exists := g.lifecycle.Get(name)
+		if exists && lc.Deleted {
+			return OrderResult{OK: true}, true
+		}
 		if !exists {
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true

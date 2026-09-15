@@ -494,7 +494,7 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 
 // runLogQuery drives one ListLogs page and checks it against the model.
 func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger := random.RandomChoice(c.ledgerNamesSnapshot())
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {

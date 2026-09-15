@@ -91,13 +91,35 @@ func TestGlobalState_LifecycleMaintenanceCommitOrder(t *testing.T) {
 	require.False(t, base.MaintenanceMode())
 	require.Empty(t, enabled.State.Ledgers())
 	require.NotEqual(t, base.Fingerprint(), enabled.State.Fingerprint())
-	// A request admitted before maintenance was enabled can still commit after it.
-	admitted := enabled.State.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5)))
-	require.True(t, admitted.OK)
-	require.True(t, admitted.State.MaintenanceMode())
+	denied := enabled.State.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5)))
+	require.False(t, denied.OK)
+	require.Equal(t, domain.ErrReasonMaintenanceMode, denied.Reason)
+	mixed := enabled.State.Apply(bulkOf(
+		&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}}},
+		oracletest.TxReq("world", "a:1", "USD", 5),
+	))
+	require.False(t, mixed.OK)
+	require.Equal(t, domain.ErrReasonMaintenanceMode, mixed.Reason)
 	disabled := enabled.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}}}))
 	require.True(t, disabled.OK)
 	require.Equal(t, base.Fingerprint(), disabled.State.Fingerprint())
+}
+
+func TestGlobalState_MaintenanceGatesBeforeIdempotency(t *testing.T) {
+	t.Parallel()
+
+	write := Bulk{IdempotencyKey: "write", Requests: []*servicepb.Request{oracletest.TxReq("world", "a:1", "USD", 5)}}
+	committed := NewGlobalState().Apply(write)
+	require.True(t, committed.OK)
+	enabled := committed.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: true}}}))
+	replay := enabled.State.Apply(write)
+	require.False(t, replay.OK)
+	require.Equal(t, domain.ErrReasonMaintenanceMode, replay.Reason)
+
+	blocked := Bulk{IdempotencyKey: "blocked", Requests: []*servicepb.Request{oracletest.TxReq("world", "a:2", "USD", 5)}}
+	require.Equal(t, domain.ErrReasonMaintenanceMode, enabled.State.Apply(blocked).Reason)
+	disabled := enabled.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}}}))
+	require.True(t, disabled.State.Apply(blocked).OK, "maintenance rejection must not freeze an idempotency outcome")
 }
 
 func TestGlobalState_LifecycleInitialConfiguration(t *testing.T) {
@@ -159,15 +181,18 @@ func TestGlobalState_LifecycleReplayedStream(t *testing.T) {
 	}
 }
 
-func TestGlobalState_TombstoneMetadataIsExplicitlyUnmodeled(t *testing.T) {
+func TestGlobalState_TombstoneMetadataMatchesReleasedBehavior(t *testing.T) {
 	t.Parallel()
 	created := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)))
 	deleted := created.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}))
+	state := deleted.State
 	for _, request := range []*servicepb.Request{
-		{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L"}}},
+		{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L", Metadata: map[string]*commonpb.MetadataValue{"hidden": commonpb.NewStringValue("yes")}}}},
 		{Type: &servicepb.Request_DeleteLedgerMetadata{DeleteLedgerMetadata: &servicepb.DeleteLedgerMetadataRequest{Ledger: "L", Key: "hidden"}}},
 	} {
-		require.PanicsWithValue(t, "model: metadata commands on deleted ledgers require cache-generation modeling", func() { deleted.State.Apply(bulkOf(request)) })
+		result := state.Apply(bulkOf(request))
+		require.True(t, result.OK)
+		state = result.State
 	}
 }
 

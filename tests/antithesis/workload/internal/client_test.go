@@ -5,6 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 func TestIsTolerated_LocalReadinessTimeoutIsInconclusive(t *testing.T) {
@@ -39,5 +45,20 @@ func TestIsTolerated_LocalReadinessTimeoutIsInconclusive(t *testing.T) {
 				t.Fatalf("IsTolerated(%v) = %t, want %t", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRetryableRPCError_SurfacesMaintenance(t *testing.T) {
+	t.Parallel()
+
+	maintenance, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retryableRPCError(maintenance.Err()) {
+		t.Fatal("maintenance rejection must escape the retry loop")
+	}
+	if !retryableRPCError(status.Error(codes.Unavailable, "no leader")) {
+		t.Fatal("infrastructure unavailability must remain retryable")
 	}
 }
