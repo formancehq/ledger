@@ -1936,6 +1936,16 @@ func compareTransactionPostCommitVolumes(
 
 				continue
 			}
+			if stored == nil {
+				emit(k.account, k.asset, k.color, "has invalid amounts (volumes are missing)")
+
+				continue
+			}
+			if err := stored.Validate(); err != nil {
+				emit(k.account, k.asset, k.color, fmt.Sprintf("has invalid amounts (%v)", err))
+
+				continue
+			}
 
 			gotInput, inputErr := stored.GetInput().ToBigInt()
 			gotOutput, outputErr := stored.GetOutput().ToBigInt()
