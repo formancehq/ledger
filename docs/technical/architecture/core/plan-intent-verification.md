@@ -1,7 +1,7 @@
 # Plan intent verification
 
 **Status**: in force since EN-1242.
-**Owning code**: `internal/infra/plan/`, `internal/infra/state/machine.go` (Preload path), `internal/infra/state/cache_snapshotter.go`, `internal/infra/cache/cache.go` (`AttributeCache.Get` / `AttributeCache.Del`).
+**Owning code**: `internal/infra/plan/`, `internal/infra/state/machine.go` (Preload path), `internal/infra/state/cache_snapshotter.go`, `internal/infra/cache/cache.go` (`AttributeCache.Get` / `KeyStore.Tombstone`).
 **Related invariants**: [#1 (cache is authority)](../../../CLAUDE.md), [#3 (no Pebble reads on hot path)](../../../CLAUDE.md), [#6 (every FSM read has a preload)](../../../CLAUDE.md), [#7 (never silently skip)](../../../CLAUDE.md), [#9 (never bypass the coverage gate)](../../../CLAUDE.md).
 
 ## TL;DR
@@ -9,7 +9,7 @@
 `AttributeCoverage.value` is optional:
 
 - **`value` set** — seeding action. Admission's Pebble scan found a value; the FSM's `MirrorPreload` writes it into Gen0+Gen1 with gen1-wins semantics.
-- **`value` nil** — coverage-only entry. Admission declares "this key is in scope for the emitting order" so the per-order `coverage_bits` (invariant #9) admit reads and deletes against it. **Preload skips coverage-only entries**: no promote pass runs at all. Reads rely on `AttributeCache.Get`'s gen0→gen1 fallback; deletes rely on `AttributeCache.Del`'s lazy Gen0-tombstone fabrication from Gen1's tag.
+- **`value` nil** — coverage-only entry. Admission declares "this key is in scope for the emitting order" so the per-order `coverage_bits` (invariant #9) admit reads and deletes against it. **Preload skips coverage-only entries**: no promote pass runs at all. Reads rely on `AttributeCache.Get`'s gen0→gen1 fallback; deletes rely on `KeyStore.Tombstone`'s lazy Gen0-tombstone fabrication from Gen1's tag.
 
 Correctness is anchored by two out-of-band guardrails: the **admission-side `CacheUnreachable` verdict** bounds the propose→apply window to at most one cache rotation, and the **coverage gate (invariant #9)** ensures the FSM apply path only reads keys admission actually declared.
 
@@ -31,7 +31,7 @@ T2  Rotation fires (raftIndex crosses cache-rotation-threshold)
       → net state: Gen1[id] = v (live), Gen0[id] = ∅
 
 T3  Delete(X.k) applies at raftIndex N > M
-      KeyStore.Delete → s.M.Get(id) hits Gen1 via fallback → passes tag check
+      KeyStore.Tombstone → s.M.Get(id) hits Gen1 via fallback → passes tag check
                      → s.M.Put(id, entry{Deleted=true}) writes to Gen0 only
       Mem net:  Gen0[id] = tombstone (fabricated via Put),
                 Gen1[id] = v         (live, untouched)
@@ -46,10 +46,10 @@ Between T3 and the next rotation the follower and leader can diverge on any read
 
 **1. Admission bounds the race window.** `CheckCache` returns `CacheUnreachable` when 2+ generation rotations are predicted between propose-time and apply-time. Admission rejects the proposal with `plan.ErrCacheHorizonExceeded` (gRPC `Unavailable`, HTTP 503 + `Retry-After: 1`) so the client re-admits against a fresh snapshot. This is what makes the propose→apply window a bounded race — at most one rotation, never two.
 
-**2. `AttributeCache.Get` and `AttributeCache.Del` handle the bounded race in place.** With the race bounded to a single rotation, everything that could exist for a declared key is still somewhere in Gen0 or Gen1. Two primitives absorb the concern without a Preload-time promote pass:
+**2. `AttributeCache.Get` and `KeyStore.Tombstone` handle the bounded race in place.** With the race bounded to a single rotation, everything that could exist for a declared key is still somewhere in Gen0 or Gen1. Two primitives absorb the concern without a Preload-time promote pass:
 
 - `AttributeCache.Get` falls back Gen0 → Gen1 when Gen0 misses. Reads on a rotated entry surface it directly.
-- `AttributeCache.Del` first tries to tombstone in place in Gen0; on Gen0 miss it *fabricates* a Gen0 tombstone borrowing Gen1's tag. `writeCacheTombstone` writes a single row to the Gen0 byte — the in-memory tombstone and the on-disk tombstone stay byte-equivalent for the same applied index (invariant #1).
+- `KeyStore.Tombstone` validates the existing entry through the Gen0→Gen1 lookup, then writes a Gen0 tombstone with the canonical key's validated tag. `writeCacheTombstone` writes the matching row to the Gen0 byte — the in-memory tombstone and the on-disk tombstone stay byte-equivalent for the same applied index (invariant #1).
 
 Applied to the race above, T3 now becomes:
 
@@ -59,7 +59,7 @@ T3  Delete(X.k) applies at raftIndex N > M
       processDeleteMetadata:
         s.AccountMetadata().Get(metaKey) → v (Gen0 miss, Gen1 fallback)
         s.AccountMetadata().Delete(metaKey)
-          → KeyStore.Delete → AttributeCache.Del(id)
+          → KeyStore.Tombstone(id)
           → Gen0 miss, Gen1 hit → fabricate Gen0 tombstone (borrow Gen1's tag)
           → writeCacheTombstone(gen0Byte, ...) mirrors to Pebble
 ```
@@ -70,13 +70,13 @@ Gen1's live row is intentionally left untouched: the Gen0 tombstone shadows it o
 
 ### `CacheUnreachable` (admission-side)
 
-The fix relies on the concurrent Save's value still being *somewhere* in cache when the delete runs. If two rotations fire between propose and apply, the value is dropped entirely (moved to Gen1 by rotation 1, discarded by rotation 2), and Del would find nothing to fabricate a tombstone from. `CacheUnreachable` prevents this: it rejects the proposal with `plan.ErrCacheHorizonExceeded` when 2+ rotations are predicted, forcing a retry against a fresh admission snapshot. Under a correctly tuned rotation threshold and a healthy apply rate, this should not fire — recurring occurrences indicate either a too-low threshold or FSM apply falling behind admission.
+The fix relies on the concurrent Save's value still being *somewhere* in cache when the delete runs. If two rotations fire between propose and apply, the value is dropped entirely (moved to Gen1 by rotation 1, discarded by rotation 2), and Tombstone would find nothing to fabricate a tombstone from. `CacheUnreachable` prevents this: it rejects the proposal with `plan.ErrCacheHorizonExceeded` when 2+ rotations are predicted, forcing a retry against a fresh admission snapshot. Under a correctly tuned rotation threshold and a healthy apply rate, this should not fire — recurring occurrences indicate either a too-low threshold or FSM apply falling behind admission.
 
 See `internal/infra/cache/cache.go` `CheckCache` / `internal/infra/plan/planerr/errors.go` `ErrCacheHorizonExceeded`.
 
 ### Coverage gate (invariant #9)
 
-Every cache-attribute read on the FSM hot path goes through `Scope.GetX(...)` so the per-order `coverage_bits` admit it. The gate enforces that admission's declared preload set is the FSM's only legitimate read horizon. This is what keeps the coverage-only + lazy-Get/Del model honest: an order that reads a key admission didn't declare is rejected at the gate, not silently surfaced by the Gen1 fallback. Combined with the boundedness of the race window, coverage guarantees that "declared but not seeded" is a safe state — either the cache had the value all along and `Get`/`Del` surface it, or the key is genuinely absent and the handler gets a clean `ErrNotFound`.
+Every cache-attribute read on the FSM hot path goes through `Scope.GetX(...)` so the per-order `coverage_bits` admit it. The gate enforces that admission's declared preload set is the FSM's only legitimate read horizon. This is what keeps the coverage-only + lazy-Get/Tombstone model honest: an order that reads a key admission didn't declare is rejected at the gate, not silently surfaced by the Gen1 fallback. Combined with the boundedness of the race window, coverage guarantees that "declared but not seeded" is a safe state — either the cache had the value all along and `Get`/`Tombstone` surface it, or the key is genuinely absent and the handler gets a clean `ErrNotFound`.
 
 ## Read semantics — gen0→gen1 fallback
 
@@ -92,7 +92,7 @@ Verifying `value` at Preload would require either a Pebble re-read (violates inv
 
 ## Delete-like handlers
 
-Delete cascades route through `KeyStore.Delete → AttributeCache.Del`. Admission declares coverage with `p.Add(dal.SubAttrX, key.Bytes())`; `AttributeCache.Del` handles the lazy Gen0-tombstone fabrication from Gen1's tag when needed. The relevant sites are enumerated as a checklist so new deletes don't drift:
+Delete cascades route through `KeyStore.Tombstone`, which writes an explicit tombstone into Gen0. Admission declares coverage with `p.Add(dal.SubAttrX, key.Bytes())`; the Gen0 write shadows a matching Gen1 entry when needed. The relevant sites are enumerated as a checklist so new deletes don't drift:
 
 | Order / cascade | Cache | Admission emission site |
 |---|---|---|
@@ -105,14 +105,14 @@ Delete cascades route through `KeyStore.Delete → AttributeCache.Del`. Admissio
 | `DeleteLedger` (Boundaries cascade) | Boundaries | `admission.go` `LedgerScopedOrder_DeleteLedger` |
 | `RemoveEventsSink` (SinkConfigs cascade) | SinkConfigs | `admission.go` `SystemScopedOrder_RemoveEventsSink` |
 
-Any new Del site MUST declare coverage for the deleted key. Coverage alone is sufficient — Del's lazy fabrication and Get's fallback handle the race safety.
+Any new tombstone site MUST declare coverage for the deleted key. Coverage alone is sufficient — Tombstone's lazy fabrication and Get's fallback handle the race safety.
 
 ## Cross-references
 
 - Proto definitions: `misc/proto/raft_cmd.proto` — `AttributeCoverage` (optional `value` field)
 - Emission: `internal/infra/plan/resolve.go` — `resolveCoverage` maps `CheckCache` verdicts to seed / coverage-only entries
 - Verification: `internal/infra/state/machine.go` `Preload` — one dispatch per plan entry (skip when `value` is nil)
-- Cache primitives: `internal/infra/cache/cache.go` — `AttributeCache.Get` (gen0→gen1 fallback), `AttributeCache.Del` (in-place tombstone + lazy Gen0 fabrication), `CheckCache` (returns `CacheUnreachable` for 2+ rotation prediction)
+- Cache primitives: `internal/infra/cache/cache.go` — `AttributeCache.Get` (gen0→gen1 fallback), `KeyStore.Tombstone` (in-place tombstone + lazy Gen0 fabrication), `CheckCache` (returns `CacheUnreachable` for 2+ rotation prediction)
 - Admission guard: `internal/infra/plan/planerr/errors.go` `ErrCacheHorizonExceeded` — the admission rejection sentinel
-- Regression harness: `tests/antithesis/run_model_test.sh` (singleton_driver_model exercises the delete-after-rotation flow through `CheckCache` + `AttributeCache.Del` under fault injection)
+- Regression harness: `tests/antithesis/run_model_test.sh` (singleton_driver_model exercises the delete-after-rotation flow through `CheckCache` + `KeyStore.Tombstone` under fault injection)
 - Adapter mappings: `internal/adapter/grpc/server.go` (`codes.Unavailable`), `internal/adapter/http/error_handler.go` (503 + `Retry-After: 1`)
