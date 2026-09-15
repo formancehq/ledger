@@ -258,6 +258,25 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
 }
 
+func (s *replayStore) PurgeAccount(ledger, account string) error {
+	for _, spec := range []struct{ replayPrefix, separator byte }{
+		{replayPrefixVolume, dal.CanonicalKeySepVolume},
+		{replayPrefixMetadata, dal.CanonicalKeySepMetadata},
+	} {
+		prefix := []byte{spec.replayPrefix}
+		prefix = append(prefix, domain.LedgerScopedPrefix(ledger)...)
+		prefix = append(prefix, account...)
+		prefix = append(prefix, spec.separator)
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		if err := s.db.DeleteRange(prefix, upper, pebble.NoSync); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // CreateTransaction records a transaction creation op via merge (no read).
 // A 1-byte presence flag distinguishes a nil timestamp from a real
 // Timestamp{Data: 0} (Unix epoch) — the FSM persists the latter unchanged,

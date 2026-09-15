@@ -1,0 +1,38 @@
+package indexbuilder
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+)
+
+func TestPurgeCurrentAccountIndexesReconcilesSameBatchMembership(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	batch := b.seedActiveBatch(t)
+	b.seenAcctAsset = make(map[string]struct{})
+
+	const ledger, account = "ledger", "hold:1"
+	b.wb.SetEventSequence(1)
+	require.NoError(t, b.writeAccountByAssetDedup(b.kb, ledger, account, "USD", 2))
+	b.wb.SetEventSequence(2)
+	require.NoError(t, b.purgeCurrentAccountIndexes(&ledgerIndexConfig{}, ledger, account))
+	require.Empty(t, b.seenAcctAsset, "purge must invalidate in-batch dedup state")
+
+	// A re-fund later in the same indexer batch must queue a Put after the
+	// purge Delete and recreate current membership.
+	b.wb.SetEventSequence(3)
+	require.NoError(t, b.writeAccountByAssetDedup(b.kb, ledger, account, "USD", 2))
+	require.NoError(t, batch.Commit())
+	b.wb.Reset()
+
+	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), ledger, "USD", 2, account)
+	value, closer, err := b.readStore.DB().Get(key)
+	require.NoError(t, err)
+	require.NotEmpty(t, value)
+	require.NoError(t, closer.Close())
+}

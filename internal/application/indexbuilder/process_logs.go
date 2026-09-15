@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -308,6 +309,13 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 				return cursor, err
 			}
+			for _, account := range ledgerLog.GetPurgedAccounts() {
+				if err := b.purgeCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
+					_ = batch.Cancel()
+
+					return cursor, err
+				}
+			}
 		}
 
 		if batchCount == 0 {
@@ -499,6 +507,92 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	}
 
 	return cursor, nil
+}
+
+// purgeCurrentAccountIndexes removes projections describing current account
+// state while deliberately preserving immutable account-to-transaction history.
+func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
+	if cfg == nil {
+		return nil
+	}
+
+	// has-asset is asset-first, so scan the bounded ledger keyspace and delete
+	// rows whose terminal entity is exactly this address.
+	prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
+	// Reconcile keys already queued in this write batch before consulting
+	// committed Pebble. Removing them from the dedup set also lets a later
+	// re-fund in the same batch recreate the membership after this delete.
+	for sk := range b.seenAcctAsset {
+		key := []byte(sk)
+		if bytes.HasPrefix(key, prefix) && accountByAssetKeyAccount(key[len(prefix):]) == account {
+			if err := b.wb.DeleteKey(key); err != nil {
+				return err
+			}
+			delete(b.seenAcctAsset, sk)
+		}
+	}
+	upper := append([]byte(nil), prefix...)
+	upper[len(upper)-1]++
+	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+	if err != nil {
+		return err
+	}
+	for iter.First(); iter.Valid(); iter.Next() {
+		rest := iter.Key()[len(prefix):]
+		indexedAccount := accountByAssetKeyAccount(rest)
+		if indexedAccount == "" {
+			_ = iter.Close()
+
+			return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
+		}
+		if indexedAccount == account {
+			if err := b.wb.DeleteKey(append([]byte(nil), iter.Key()...)); err != nil {
+				_ = iter.Close()
+
+				return err
+			}
+		}
+	}
+	if err := iter.Error(); err != nil {
+		_ = iter.Close()
+
+		return err
+	}
+	if err := iter.Close(); err != nil {
+		return err
+	}
+
+	for canonical, index := range cfg.byCanonical {
+		metadata := index.GetId().GetMetadata()
+		if metadata == nil || metadata.GetTarget() != commonpb.TargetType_TARGET_TYPE_ACCOUNT {
+			continue
+		}
+		current, pending := b.versionFor(ledger, canonical)
+		for _, version := range []uint32{current, pending} {
+			if version == 0 {
+				continue
+			}
+			reverseKey := readstore.AccountReverseMapKeyV(b.kb, ledger, account, metadata.GetKey(), version)
+			old, err := b.reverseMapValue(reverseKey)
+			if err != nil {
+				return err
+			}
+			if err := b.wb.DeleteMetadataEntryWithPreviousV(b.kb, reverseKey, ledger, readstore.NamespaceAccount, metadata.GetKey(), version, old, []byte(account)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func accountByAssetKeyAccount(rest []byte) string {
+	sep := bytes.IndexByte(rest, 0)
+	if sep < 0 || len(rest) < sep+2 {
+		return ""
+	}
+
+	return string(rest[sep+2:])
 }
 
 func (b *Builder) materializePendingCheckpoint(ctx context.Context) error {

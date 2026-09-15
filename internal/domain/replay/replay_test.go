@@ -30,6 +30,7 @@ func (w *writerStub) SetMetadata([]byte, *commonpb.MetadataValue) error {
 	return nil
 }
 func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
+func (w *writerStub) PurgeAccount(string, string) error { return nil }
 func (w *writerStub) MoveMetadata([]byte, []byte) error { return nil }
 func (w *writerStub) CreateTransaction([]byte, uint64, *commonpb.Timestamp, map[string]*commonpb.MetadataValue, []*commonpb.Posting, uint64) error {
 	return nil
@@ -88,7 +89,7 @@ func metaIndexID(key string) *commonpb.IndexID {
 func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {
 	t.Helper()
 
-	return replay.ReplayLedgerLog("ledger", 1, payload, date, w,
+	return replay.ReplayLedgerLog("ledger", 1, payload, nil, date, w,
 		map[string]map[string]*commonpb.AccountType{},
 		map[string][]accounttype.CompiledType{}, nil)
 }

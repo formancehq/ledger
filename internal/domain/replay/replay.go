@@ -21,6 +21,7 @@ func ReplayLedgerLog(
 	ledger string,
 	seq uint64,
 	payload *commonpb.LedgerLogPayload,
+	purgedAccounts []string,
 	date *commonpb.Timestamp,
 	w Writer,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
@@ -240,6 +241,12 @@ func ReplayLedgerLog(
 
 		if err := w.SetDefaultEnforcementMode(ledger, p.UpdatedDefaultEnforcementMode.GetEnforcementMode()); err != nil {
 			return fmt.Errorf("replaying default enforcement mode: %w", err)
+		}
+	}
+
+	for _, account := range purgedAccounts {
+		if err := w.PurgeAccount(ledger, account); err != nil {
+			return fmt.Errorf("purging ephemeral account %q: %w", account, err)
 		}
 	}
 

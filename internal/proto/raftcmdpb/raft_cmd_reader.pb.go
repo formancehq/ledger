@@ -5174,6 +5174,7 @@ type AttributeCoverageReader interface {
 	GetId() AttributeIDReader
 	GetAttrCode() uint32
 	GetValue() AttributeValueReader
+	GetCanonicalKey() []byte
 	Mutate() *AttributeCoverage
 }
 
@@ -5197,6 +5198,10 @@ func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *attributeCoverageReadonly) GetCanonicalKey() []byte {
+	return bytes.Clone((*AttributeCoverage)(r).GetCanonicalKey())
 }
 
 func (r *attributeCoverageReadonly) Mutate() *AttributeCoverage {
