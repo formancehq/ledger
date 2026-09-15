@@ -4793,6 +4793,9 @@ Manage event sinks (NATS, ClickHouse, Kafka, HTTP, Databricks) that receive doma
 ### `events list`
 
 List all configured event sinks and their current status (cursor position, errors).
+Human, JSON, YAML, and JSON result-file output mask credentials embedded in
+NATS, HTTP, and ClickHouse URLs. Usernames and connection details remain
+visible, while passwords and token-only NATS userinfo display as `****`.
 
 ```bash
 ledgerctl events list
@@ -4807,6 +4810,9 @@ ledgerctl events list
 ### `events add-sink`
 
 Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
+
+After a successful update, the displayed configuration applies the same URL
+credential masking as `events list`; the submitted configuration is unchanged.
 
 Currently supported sink types: **NATS JetStream**, **ClickHouse**, **Kafka**, **HTTP**, **Databricks**.
 

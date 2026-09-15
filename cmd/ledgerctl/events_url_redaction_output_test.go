@@ -1,0 +1,240 @@
+package main
+
+import (
+	"context"
+	"net"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/pterm/pterm"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+)
+
+type eventsURLRedactionServer struct {
+	servicepb.UnimplementedBucketServiceServer
+
+	response      *servicepb.GetEventsSinksResponse
+	applyRequests chan *servicepb.ApplyRequest
+}
+
+func (s *eventsURLRedactionServer) GetEventsSinks(context.Context, *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
+	return s.response, nil
+}
+
+func (s *eventsURLRedactionServer) Apply(_ context.Context, request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+	s.applyRequests <- request
+
+	return &servicepb.ApplyResponse{}, nil
+}
+
+// Sequential because command execution redirects process-global stdout and
+// pterm output while the local gRPC fixture serves multiple output modes.
+func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
+	const (
+		natsPassword       = "nats-output-password"
+		natsToken          = "nats-output-token"
+		httpPassword       = "http-output-password"
+		clickHousePassword = "clickhouse-output-password"
+	)
+
+	fixture := &eventsURLRedactionServer{
+		response: &servicepb.GetEventsSinksResponse{
+			Sinks: []*commonpb.SinkConfig{
+				{
+					Name: "stream",
+					Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{
+						Url:   "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222",
+						Topic: "events",
+					}},
+				},
+				{
+					Name: "webhook",
+					Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{
+						Endpoint: "https://operator:" + httpPassword + "@hooks.example/events",
+					}},
+				},
+				{
+					Name: "analytics",
+					Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{
+						Dsn: "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
+					}},
+				},
+			},
+		},
+		applyRequests: make(chan *servicepb.ApplyRequest, 16),
+	}
+	listControls := []string{
+		"stream", "operator", "events", "one:4222", "two:4222",
+		"hooks.example", "db.example", "secure=true",
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	servicepb.RegisterBucketServiceServer(server, fixture)
+	serveResult := make(chan error, 1)
+	go func() { serveResult <- server.Serve(listener) }()
+	t.Cleanup(func() {
+		server.Stop()
+		require.NoError(t, <-serveResult)
+	})
+
+	configDir := t.TempDir()
+	t.Setenv("HOME", configDir)
+	t.Setenv("XDG_CONFIG_HOME", configDir)
+	t.Setenv("APPDATA", configDir)
+	t.Setenv("LEDGERCTL_PROFILE", "")
+
+	for _, format := range []string{"table", "json", "yaml"} {
+		t.Run("list "+format, func(t *testing.T) {
+			args := []string{
+				"events", "list", "--server", listener.Addr().String(), "--insecure",
+				"--tls-ca-cert=", "--tls-server-name=", "--result-file=",
+				"--signing-key=", "--response-verify-key=", "--auth-token=test-token",
+			}
+			var resultPath string
+			if format != "table" {
+				args = append(args, "--"+format)
+			}
+			if format == "json" {
+				resultPath = filepath.Join(t.TempDir(), "result.json")
+				require.NoError(t, os.WriteFile(resultPath, nil, 0o600))
+				args = append(args, "--result-file="+resultPath)
+			}
+
+			output := executeEventsCommand(t, args)
+			for _, credential := range []string{natsPassword, natsToken, httpPassword, clickHousePassword} {
+				assert.NotContains(t, output, credential)
+			}
+			for _, control := range listControls {
+				assert.Contains(t, output, control)
+			}
+
+			if resultPath != "" {
+				result, err := os.ReadFile(resultPath)
+				require.NoError(t, err)
+				for _, credential := range []string{natsPassword, natsToken, httpPassword, clickHousePassword} {
+					assert.NotContains(t, string(result), credential)
+				}
+				for _, control := range listControls {
+					assert.Contains(t, string(result), control)
+				}
+			}
+		})
+	}
+
+	addCases := []struct {
+		name       string
+		flags      []string
+		credential string
+		controls   []string
+	}{
+		{
+			name: "NATS password",
+			flags: []string{
+				"--nats-url", "nats://operator:" + natsPassword + "@one:4222",
+				"--nats-topic", "events",
+			},
+			credential: natsPassword,
+			controls:   []string{"stream", "operator", "one:4222", "events"},
+		},
+		{
+			name: "NATS token",
+			flags: []string{
+				"--nats-url", "nats://" + natsToken + "@two:4222",
+				"--nats-topic", "events",
+			},
+			credential: natsToken,
+			controls:   []string{"stream", "two:4222", "events"},
+		},
+		{
+			name: "HTTP password",
+			flags: []string{
+				"--http-endpoint", "https://operator:" + httpPassword + "@hooks.example/events",
+			},
+			credential: httpPassword,
+			controls:   []string{"stream", "operator", "hooks.example"},
+		},
+		{
+			name: "ClickHouse query password",
+			flags: []string{
+				"--clickhouse-dsn", "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
+			},
+			credential: clickHousePassword,
+			controls:   []string{"stream", "db.example", "secure=true"},
+		},
+	}
+	for _, format := range []string{"table", "json", "yaml"} {
+		for _, addCase := range addCases {
+			t.Run("add-sink "+format+" "+addCase.name, func(t *testing.T) {
+				args := []string{
+					"events", "add-sink", "--name", "stream",
+					"--server", listener.Addr().String(), "--insecure",
+					"--tls-ca-cert=", "--tls-server-name=", "--result-file=",
+					"--signing-key=", "--response-verify-key=", "--auth-token=test-token",
+				}
+				args = append(args, addCase.flags...)
+				var resultPath string
+				if format != "table" {
+					args = append(args, "--"+format)
+				}
+				if format == "json" {
+					resultPath = filepath.Join(t.TempDir(), "result.json")
+					require.NoError(t, os.WriteFile(resultPath, nil, 0o600))
+					args = append(args, "--result-file="+resultPath)
+				}
+
+				output := executeEventsCommand(t, args)
+				assert.NotContains(t, output, addCase.credential)
+				for _, control := range addCase.controls {
+					assert.Contains(t, output, control)
+				}
+				if resultPath != "" {
+					result, err := os.ReadFile(resultPath)
+					require.NoError(t, err)
+					assert.NotContains(t, string(result), addCase.credential)
+					for _, control := range addCase.controls {
+						assert.Contains(t, string(result), control)
+					}
+				}
+
+				select {
+				case request := <-fixture.applyRequests:
+					assert.True(t, strings.Contains(request.String(), addCase.credential), "Apply must receive the original credential")
+				default:
+					t.Fatal("events add-sink did not call Apply")
+				}
+			})
+		}
+	}
+}
+
+func executeEventsCommand(t *testing.T, args []string) string {
+	t.Helper()
+
+	stdout, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	require.NoError(t, err)
+	originalStdout := os.Stdout
+	os.Stdout = stdout
+	pterm.SetDefaultOutput(stdout)
+	defer func() {
+		os.Stdout = originalStdout
+		pterm.SetDefaultOutput(originalStdout)
+	}()
+
+	root := newRootCommand()
+	root.SetArgs(args)
+	require.NoError(t, root.ExecuteContext(t.Context()))
+	require.NoError(t, stdout.Close())
+
+	output, err := os.ReadFile(stdout.Name())
+	require.NoError(t, err)
+
+	return string(output)
+}

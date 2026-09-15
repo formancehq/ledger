@@ -58,7 +58,8 @@ func runList(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to get event sinks", err)
 	}
 
-	if handled, err := cmdutil.EncodeStructured(cmd, redactGetEventsSinksResponse(resp)); handled || err != nil {
+	resp = redactGetEventsSinksResponse(resp)
+	if handled, err := cmdutil.EncodeStructured(cmd, resp); handled || err != nil {
 		return err
 	}
 

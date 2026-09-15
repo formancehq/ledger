@@ -1,6 +1,8 @@
 package events
 
 import (
+	"strings"
+
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
@@ -46,17 +48,34 @@ func redactSinkConfigInPlace(cfg *commonpb.SinkConfig) {
 		}
 	case *commonpb.SinkConfig_Http:
 		if t.Http != nil {
+			t.Http.Endpoint = cmdutil.ObfuscateURLPassword(t.Http.GetEndpoint())
 			t.Http.Secret = redactSecret(t.Http.GetSecret())
 		}
 	case *commonpb.SinkConfig_Clickhouse:
 		if t.Clickhouse != nil {
-			t.Clickhouse.Dsn = cmdutil.ObfuscateDSN(t.Clickhouse.GetDsn())
+			t.Clickhouse.Dsn = cmdutil.ObfuscateClickHouseDSN(t.Clickhouse.GetDsn())
 		}
 	case *commonpb.SinkConfig_Databricks:
 		if t.Databricks != nil {
 			redactDatabricksAuthInPlace(t.Databricks)
 		}
+	case *commonpb.SinkConfig_Nats:
+		if t.Nats != nil {
+			t.Nats.Url = obfuscateNATSURLs(t.Nats.GetUrl())
+		}
 	}
+}
+
+func obfuscateNATSURLs(value string) string {
+	servers := strings.Split(value, ",")
+	for index, server := range servers {
+		trimmed := strings.TrimSpace(server)
+		leading := server[:len(server)-len(strings.TrimLeft(server, " \t"))]
+		trailing := server[len(strings.TrimRight(server, " \t")):]
+		servers[index] = leading + cmdutil.ObfuscateURLUserinfo(trimmed) + trailing
+	}
+
+	return strings.Join(servers, ",")
 }
 
 // redactDatabricksAuthInPlace mutates d.Auth, masking the PAT or OAuth M2M

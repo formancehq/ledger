@@ -92,7 +92,7 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Http{
 			Http: &commonpb.HttpSinkConfig{
-				Endpoint: "https://example.com/hook",
+				Endpoint: "https://operator:http-password@example.com/hook",
 				Secret:   "hmac-key",
 			},
 		},
@@ -100,8 +100,20 @@ func TestRedactSinkConfig_Http(t *testing.T) {
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t, "https://example.com/hook", redacted.GetHttp().GetEndpoint())
+	assert.Equal(t, "https://operator:****@example.com/hook", redacted.GetHttp().GetEndpoint())
 	assert.Equal(t, secretSet, redacted.GetHttp().GetSecret())
+}
+
+func TestRedactSinkConfig_HTTPUsernameOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := &commonpb.SinkConfig{
+		Type: &commonpb.SinkConfig_Http{
+			Http: &commonpb.HttpSinkConfig{Endpoint: "https://operator@example.com/hook"},
+		},
+	}
+
+	assert.Equal(t, "https://operator@example.com/hook", redactSinkConfig(cfg).GetHttp().GetEndpoint())
 }
 
 func TestRedactSinkConfig_Kafka_SASL(t *testing.T) {
@@ -132,7 +144,7 @@ func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Clickhouse{
 			Clickhouse: &commonpb.ClickHouseSinkConfig{
-				Dsn:   "clickhouse://user:secretpw@host:9000/db",
+				Dsn:   "clickhouse://user:secretpw@host:9000/db?password=query-secret&secure=true",
 				Table: "events",
 			},
 		},
@@ -142,22 +154,30 @@ func TestRedactSinkConfig_ClickHouse_DSNObfuscated(t *testing.T) {
 
 	dsn := redacted.GetClickhouse().GetDsn()
 	assert.NotContains(t, dsn, "secretpw")
+	assert.NotContains(t, dsn, "query-secret")
 	assert.Contains(t, dsn, "user")
 	assert.Contains(t, dsn, "host:9000")
+	assert.Contains(t, dsn, "secure=true")
 }
 
-func TestRedactSinkConfig_NatsHasNoSecret(t *testing.T) {
+func TestRedactSinkConfig_NATSCredentials(t *testing.T) {
 	t.Parallel()
 
 	cfg := &commonpb.SinkConfig{
 		Type: &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{Url: "nats://localhost:4222", Topic: "evt"},
+			Nats: &commonpb.NatsSinkConfig{
+				Url:   "nats://operator:nats-password@one:4222, nats://nats-token@two:4222,nats://three:4222",
+				Topic: "evt",
+			},
 		},
 	}
 
 	redacted := redactSinkConfig(cfg)
 
-	assert.Equal(t, "nats://localhost:4222", redacted.GetNats().GetUrl())
+	assert.Equal(t,
+		"nats://operator:****@one:4222, nats://****@two:4222,nats://three:4222",
+		redacted.GetNats().GetUrl(),
+	)
 	assert.Equal(t, "evt", redacted.GetNats().GetTopic())
 }
 
@@ -182,6 +202,10 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 		"http-hmac-leak",
 		"kafka-sasl-leak",
 		"clickhouse-dsn-leak",
+		"nats-password-leak",
+		"nats-token-leak",
+		"http-userinfo-leak",
+		"clickhouse-query-leak",
 	}
 
 	resp := &servicepb.GetEventsSinksResponse{
@@ -211,7 +235,10 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 			{
 				Name: "hook",
 				Type: &commonpb.SinkConfig_Http{
-					Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.com", Secret: secrets[2]},
+					Http: &commonpb.HttpSinkConfig{
+						Endpoint: "https://operator:" + secrets[7] + "@example.com",
+						Secret:   secrets[2],
+					},
 				},
 			},
 			{
@@ -229,7 +256,15 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 				Name: "ch",
 				Type: &commonpb.SinkConfig_Clickhouse{
 					Clickhouse: &commonpb.ClickHouseSinkConfig{
-						Dsn: "clickhouse://user:" + secrets[4] + "@host:9000/db",
+						Dsn: "clickhouse://user:" + secrets[4] + "@host:9000/db?password=" + secrets[8],
+					},
+				},
+			},
+			{
+				Name: "nats",
+				Type: &commonpb.SinkConfig_Nats{
+					Nats: &commonpb.NatsSinkConfig{
+						Url: "nats://operator:" + secrets[5] + "@one:4222,nats://" + secrets[6] + "@two:4222",
 					},
 				},
 			},
@@ -252,7 +287,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 	for _, want := range []string{
 		"adb-1.azuredatabricks.net",
 		"adb-2.azuredatabricks.net",
-		"https://example.com",
+		"example.com",
 		"b:9092",
 		"host:9000",
 	} {
