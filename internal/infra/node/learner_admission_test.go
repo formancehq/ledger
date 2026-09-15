@@ -75,6 +75,8 @@ func TestAddLearnerZeroProgressRefreshProposesCompleteReplacement(t *testing.T) 
 	t.Parallel()
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
+	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+	n.fsm = setup.fsm
 	require.Zero(t, n.rawNode.Status().Progress[2].Match)
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
@@ -110,6 +112,13 @@ func TestAddLearnerZeroProgressRefreshProposesCompleteReplacement(t *testing.T) 
 	pending, err := n.takePendingConfChange(cc, changes[0].GetIndex())
 	require.NoError(t, err)
 	require.NotNil(t, pending)
+	// The new success boundary requires durable FSM application as well as
+	// commit correlation. Replay the election prefix and the captured change.
+	prefix, err := n.wal.Entries(1, changes[0].GetIndex(), ^uint64(0))
+	require.NoError(t, err)
+	_, err = setup.fsm.ApplyEntries(t.Context(), setup.store, append(prefix, changes[0])...)
+	require.NoError(t, err)
+	require.Equal(t, changes[0].GetIndex(), setup.fsm.LastPersistedIndex())
 	pending.future.Resolve(pending.index, nil)
 	cmd.errCh <- nil
 	require.NoError(t, receiveForceRemoveError(t, results))
