@@ -40,6 +40,17 @@ func RebuildDelta(
 	fromLogSeq uint64,
 	fromAuditSeq uint64,
 ) error {
+	return rebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq, state.DeleteQueryCheckpointScheduleFromBatch)
+}
+
+func rebuildDelta(
+	ctx context.Context,
+	logger logging.Logger,
+	store *dal.Store,
+	fromLogSeq uint64,
+	fromAuditSeq uint64,
+	deleteQueryCheckpointSchedule func(*dal.WriteSession) error,
+) error {
 	attrs := attributes.New()
 	batch := store.OpenWriteSession()
 
@@ -465,7 +476,7 @@ func RebuildDelta(
 			// must tombstone its schedule row just as live apply does. The delete
 			// stays in this rebuild batch, so an error before commit leaves the
 			// checkpoint-era value intact rather than exposing a partial fold.
-			if err := state.DeleteQueryCheckpointScheduleFromBatch(batch); err != nil {
+			if err := deleteQueryCheckpointSchedule(batch); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("deleting query checkpoint schedule at log %d: %w", seq, err)
