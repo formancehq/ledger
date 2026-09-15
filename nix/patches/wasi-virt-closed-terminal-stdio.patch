@@ -1,0 +1,93 @@
+diff --git a/src/virt_io.rs b/src/virt_io.rs
+index 6cf7ceb..296cf7f 100644
+--- a/src/virt_io.rs
++++ b/src/virt_io.rs
+@@ -9 +9,3 @@ use crate::data::{Data, WasmEncode};
+-use crate::walrus_ops::{get_active_data_segment, get_stack_global, strip_virt, stub_virt};
++use crate::walrus_ops::{
++    get_active_data_segment, get_stack_global, strip_virt, stub_closed_terminal_virt, stub_virt,
++};
+@@ -354 +356,2 @@ pub(crate) fn create_io_virt<'a>(
+-        stub_virt(module, &["wasi:cli/std", "wasi:cli/terminal"], false)?;
++        stub_virt(module, &["wasi:cli/std"], false)?;
++        stub_closed_terminal_virt(module)?;
+@@ -511 +514 @@ pub(crate) fn create_io_virt<'a>(
+-            stub_virt(module, &["wasi:io/"], false)?;
++            stub_virt(module, &["wasi:io/error", "wasi:io/streams"], false)?;
+diff --git a/src/walrus_ops.rs b/src/walrus_ops.rs
+index 181641f..8eed4be 100644
+--- a/src/walrus_ops.rs
++++ b/src/walrus_ops.rs
+@@ -2 +2,4 @@ use anyhow::{bail, Context, Result};
+-use walrus::{ir::Value, ConstExpr, Data, DataKind, GlobalKind, MemoryId, Module};
++use walrus::ir::{MemArg, Store, StoreKind};
++use walrus::{
++    ir::Value, ConstExpr, Data, DataKind, FunctionKind, GlobalKind, MemoryId, Module, ValType,
++};
+@@ -88,0 +92,66 @@ pub(crate) fn bump_stack_global(module: &mut Module, offset: i32) -> Result<u32>
++/// Close the exact terminal imports emitted by the pinned preview1 adapter.
++pub(crate) fn stub_closed_terminal_virt(module: &mut Module) -> Result<()> {
++    let memory = module
++        .memories
++        .iter()
++        .next()
++        .context("virtual adapter does not export a memory")?
++        .id();
++    let imports = [
++        ("wasi:cli/terminal-stdin@0.2.12", "get-terminal-stdin", true),
++        ("wasi:cli/terminal-stdout@0.2.12", "get-terminal-stdout", true),
++        ("wasi:cli/terminal-stderr@0.2.12", "get-terminal-stderr", true),
++        (
++            "wasi:cli/terminal-input@0.2.12",
++            "[resource-drop]terminal-input",
++            false,
++        ),
++        (
++            "wasi:cli/terminal-output@0.2.12",
++            "[resource-drop]terminal-output",
++            false,
++        ),
++    ];
++    for (module_name, func_name, writes_none) in imports {
++        let fid = module
++            .imports
++            .get_func(module_name, func_name)
++            .with_context(|| {
++                format!("missing closed terminal import [{func_name}] in module [{module_name}]")
++            })?;
++        {
++            let function = module.funcs.get(fid);
++            let FunctionKind::Import(imported) = &function.kind else {
++                bail!("closed terminal function [{func_name}] is not an import");
++            };
++            let ty = module.types.get(imported.ty);
++            if ty.params() != [ValType::I32] || !ty.results().is_empty() {
++                bail!(
++                    "closed terminal import [{func_name}] in module [{module_name}] has an unexpected signature"
++                );
++            }
++        }
++        module
++            .replace_imported_func(fid, |(body, args)| {
++                if writes_none {
++                    body.local_get(args[0]);
++                    body.i32_const(0);
++                    body.instr(Store {
++                        memory,
++                        kind: StoreKind::I32 { atomic: false },
++                        arg: MemArg {
++                            align: 4,
++                            offset: 0,
++                        },
++                    });
++                }
++            })
++            .with_context(|| {
++                format!(
++                    "failed to close terminal import [{func_name}] in module [{module_name}]"
++                )
++            })?;
++    }
++    Ok(())
++}
++

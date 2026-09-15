@@ -1,6 +1,6 @@
 set dotenv-load
 
-pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint fctl-ledger-v3-build-component
+pre-commit: fuzz-inventory-check generate generate-proto operator-generate test-dashboards tidy lint fctl-ledger-v3-test
 pc: pre-commit
 
 # plugins/fctl/ledger-v3 is a separate Go module. Keep its SDK contract,
@@ -17,8 +17,11 @@ fctl-ledger-v3-tidy-check:
 fctl-ledger-v3-test:
     cd plugins/fctl/ledger-v3 && just test
 
+# Produce the deterministic portable component. Keep the Rust authoring
+# toolchain out of the default shell: it is a heavier release gate and should
+# not make every Go CI job fetch crates.
 fctl-ledger-v3-build-component:
-    cd plugins/fctl/ledger-v3 && just build-component
+    nix shell .#componentize-go .#wasi-virt .#wasm-tools .#wasm-opt --command bash -c 'cd plugins/fctl/ledger-v3 && just build-component'
 
 # Regenerate the Grafana dashboards (otel + prom variants) from Jsonnet
 # sources under misc/devenv/monitoring-dashboards/jsonnet/. The output

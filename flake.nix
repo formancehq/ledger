@@ -8,9 +8,13 @@
       url = "github:nix-community/NUR";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
+  outputs = { self, nixpkgs, nixpkgs-unstable, nur, rust-overlay }:
     let
       supportedSystems = [
         "x86_64-linux"
@@ -24,7 +28,7 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ nur.overlays.default ];
+              overlays = [ nur.overlays.default rust-overlay.overlays.default ];
               config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
                 "acli"
                 "acli-unwrapped"
@@ -40,6 +44,22 @@
 
     in
     {
+      # The Ledger v3 fctl plugin builds a portable WebAssembly component. Its
+      # authoring toolchain is not published in nixpkgs, so the pinned
+      # definitions are carried in-tree rather than pulled from the private
+      # fctl flake, which Ledger CI cannot reach. Keep it out of the default
+      # shell: these are Rust builds, and making every Go CI job fetch crates
+      # turns a crates.io rate limit into an unrelated red build.
+      packages = forEachSupportedSystem ({ pkgs, ... }:
+        let
+          componentTools = pkgs.callPackage ./nix/fctl-component-tools.nix { };
+        in
+        {
+          inherit (componentTools) componentize-go wasi-virt wasm-tools;
+          wasm-opt = pkgs.binaryen;
+        }
+      );
+
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
           stablePackages = with pkgs; [

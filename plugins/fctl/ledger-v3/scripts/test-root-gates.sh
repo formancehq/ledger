@@ -13,9 +13,15 @@ fail() {
 
 precommit_plan="$(cd "$repository_root" && just --dry-run pre-commit 2>&1)"
 coverage_plan="$(cd "$repository_root" && just --dry-run test-coverage 2>&1)"
+component_plan="$(cd "$repository_root" && just --dry-run fctl-ledger-v3-build-component 2>&1)"
 plugin_test_plan="$(cd "$plugin_root" && just --dry-run test 2>&1)"
 
-[[ "$precommit_plan" == *'cd plugins/fctl/ledger-v3 && just build-component'* ]] || fail 'root pre-commit omits the Ledger v3 component build check'
+[[ "$precommit_plan" == *'cd plugins/fctl/ledger-v3 && just test'* ]] || fail 'root pre-commit omits the Ledger v3 test gate'
+# The component build stays reachable from the root, but as its own heavier
+# gate: it is the only path needing the Rust authoring toolchain, and pulling
+# that into every pre-commit run makes unrelated Go jobs fetch crates.
+[[ "$component_plan" == *'cd plugins/fctl/ledger-v3 && just build-component'* ]] || fail 'root component gate omits the Ledger v3 component build'
+[[ "$component_plan" == *'nix shell .#componentize-go .#wasi-virt .#wasm-tools .#wasm-opt'* ]] || fail 'Ledger v3 component build does not isolate the authoring toolchain'
 [[ "$coverage_plan" == *'cd plugins/fctl/ledger-v3 && just test'* ]] || fail 'root test-coverage omits the Ledger v3 test gate'
 [[ "$plugin_test_plan" == *'scripts/check-coverage-threshold.sh'* ]] || fail 'Ledger v3 tests omit the coverage threshold'
 [[ "$plugin_test_plan" == *'go test -race -coverpkg=./... -coverprofile='* ]] || fail 'Ledger v3 coverage is not module-wide'
