@@ -2484,3 +2484,55 @@ func (s *mockStore) GetBalances(_ context.Context, query BalanceQuery) (Balances
 func (s *mockStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
 	panic("not implemented")
 }
+
+// A negative send amount is invalid whatever the funds happen to be, so it
+// must be reported as a negative amount and not as a funding problem.
+//
+// OP_TAKE_MAX has guarded this since 0cc2844e4, but OP_TAKE never did. Every
+// source shape except an unbounded overdraft routes through OP_TAKE, so all of
+// them reported "insufficient funds" instead — sending you to look at balances
+// for a script that could not have run at any balance.
+func TestNegativeAmountRejectedForEverySourceShape(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		source string
+		// The allotment splits the amount before it reaches OP_TAKE, so each
+		// half arrives already halved.
+		wantAmount string
+	}{
+		{"plain account", `@alice`, "-10"},
+		{"unbounded overdraft", `@alice allowing unbounded overdraft`, "-10"},
+		{"bounded overdraft", `@alice allowing overdraft up to [COIN 100]`, "-10"},
+		{"capped", `max [COIN 100] from @alice`, "-10"},
+		{"in-order", "{\n\t\t@alice\n\t\t@carol\n\t}", "-10"},
+		{"allotment", "{\n\t\t1/2 from @alice\n\t\t1/2 from @carol\n\t}", "-5"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p, err := compiler.Compile(fmt.Sprintf(`send [COIN 0] - [COIN 10] (
+	source = %s
+	destination = @bob
+)`, tc.source))
+			require.NoError(t, err)
+
+			store := StaticStore{
+				"alice": {
+					Account:  ledger.Account{Address: "alice"},
+					Balances: map[string]*big.Int{"COIN": big.NewInt(1000)},
+				},
+				"carol": {
+					Account:  ledger.Account{Address: "carol"},
+					Balances: map[string]*big.Int{"COIN": big.NewInt(1000)},
+				},
+			}
+
+			m := NewMachine(*p)
+			require.NoError(t, m.ResolveResources(context.Background(), store))
+			require.NoError(t, m.ResolveBalances(context.Background(), store))
+
+			// Balances are deliberately ample: the only thing wrong with the
+			// script is the sign of the amount.
+			require.ErrorContains(t, m.Execute(),
+				fmt.Sprintf("cannot send a monetary with a negative amount: [COIN %s]", tc.wantAmount))
+		})
+	}
+}

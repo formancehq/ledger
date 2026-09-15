@@ -310,6 +310,11 @@ func (m *Machine) tick() (bool, error) {
 
 	case program.OP_TAKE:
 		mon := pop[machine.Monetary](m)
+		if mon.Amount.Ltz() {
+			return true, fmt.Errorf(
+				"cannot send a monetary with a negative amount: [%s %s]",
+				string(mon.Asset), mon.Amount)
+		}
 		funding := pop[machine.Funding](m)
 		if funding.Asset != mon.Asset {
 			return true, machine.NewErrInvalidScript("cannot take from different assets: %v and %v", funding.Asset, mon.Asset)
