@@ -60,7 +60,7 @@ func TestBigIntegerRejectsNonCanonicalEncodings(t *testing.T) {
 		var value BigUint
 		require.Error(t, json.Unmarshal([]byte(input), &value), input)
 	}
-	for _, input := range []string{`0`, `""`, `"-0"`, `"00"`, `"-01"`, `"+1"`, `"1.0"`, `"1e3"`} {
+	for _, input := range []string{`0`, `""`, `"-"`, `"-0"`, `"00"`, `"-01"`, `"+1"`, `"1.0"`, `"1e3"`} {
 		var value SignedBigInt
 		require.Error(t, json.Unmarshal([]byte(input), &value), input)
 	}
