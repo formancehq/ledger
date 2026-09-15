@@ -16,6 +16,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -604,4 +607,100 @@ func TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds(t *testing.T) 
 	info, err := query.GetLedgerByName(ctx, handle, "delta-ledger")
 	require.NoError(t, err)
 	require.NotNil(t, info, "the healthy retry must rebuild the post-checkpoint operation")
+}
+
+// TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore pins the
+// checkpoint + delta composition for sink configuration lifecycle. The full
+// checkpoint seeds the restored fold with a configured sink; its removal is
+// committed only after that checkpoint, so the non-empty incremental export is
+// the sole evidence that RebuildDelta can use to delete the persisted
+// attribute. The source and restored keysets must both remain empty.
+func TestBackup_RemovedEventSinkDoesNotSurviveIncrementalRestore(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bucketID = "removed-sink-bucket"
+		sinkName = "removed-sink"
+	)
+
+	ctx := context.Background()
+	storage := newInMemoryBackupStorage()
+	src := newBackupTestStore(t)
+	attrs := attributes.New()
+	sink := &commonpb.SinkConfig{
+		Name:         sinkName,
+		Format:       "json",
+		BatchSize:    1,
+		BatchDelayMs: 1,
+		Type: &commonpb.SinkConfig_Http{
+			Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		},
+	}
+	addLog := &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_AddedEventsSink{
+			AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: sink},
+		}},
+	}
+
+	checkpointBatch := src.OpenWriteSession()
+	require.NoError(t, checkpointBatch.SetProto(coldLogKey(1), addLog))
+	require.NoError(t, checkpointBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	_, err := attrs.SinkConfig.Set(checkpointBatch, domain.SinkConfigKey{Name: sinkName}.Bytes(), sink)
+	require.NoError(t, err)
+	require.NoError(t, checkpointBatch.Commit())
+	require.NoError(t, src.Flush())
+
+	fullResult, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "sink-checkpoint")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, fullResult.LastLogSequence)
+
+	removeLog := &commonpb.Log{
+		Sequence: 2,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
+			RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: sinkName},
+		}},
+	}
+	deltaBatch := src.OpenWriteSession()
+	require.NoError(t, deltaBatch.SetProto(coldLogKey(2), removeLog))
+	require.NoError(t, deltaBatch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 2)))
+	require.NoError(t, attrs.SinkConfig.Delete(deltaBatch, domain.SinkConfigKey{Name: sinkName}.Bytes()))
+	require.NoError(t, deltaBatch.Commit())
+
+	incResult, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.Positive(t, incResult.LogEntriesExported, "the removal must be present in the exported delta")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports, "the restore must exercise a non-empty post-checkpoint delta")
+
+	// Reproduce the checkpoint seed in a fresh store, then compose it with the
+	// exported delta through the production restore entry point.
+	dst := newBackupTestStore(t)
+	seedBatch := dst.OpenWriteSession()
+	require.NoError(t, seedBatch.SetProto(coldLogKey(1), addLog))
+	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	_, err = attrs.SinkConfig.Set(seedBatch, domain.SinkConfigKey{Name: sinkName}.Bytes(), sink)
+	require.NoError(t, err)
+	require.NoError(t, seedBatch.Commit())
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest))
+	require.NoError(t, dst.Flush(), "the restored absence must be durable")
+
+	for _, candidate := range []struct {
+		label string
+		store *dal.Store
+	}{
+		{label: "source", store: src},
+		{label: "restored", store: dst},
+	} {
+		handle, err := candidate.store.NewDirectReadHandle()
+		require.NoError(t, err)
+		configs, readErr := query.ReadAllSinkConfigs(attrs.SinkConfig, handle)
+		closeErr := handle.Close()
+		require.NoError(t, readErr)
+		require.NoError(t, closeErr)
+		require.Empty(t, configs, "%s store must not contain the removed sink", candidate.label)
+	}
 }
