@@ -240,6 +240,60 @@ func TestRebuildDelta_TruncatedStreamReturnsErrorAndDoesNotCommit(t *testing.T) 
 		"partial rebuild state must not be committed when the stream errors")
 }
 
+func TestRebuildDelta_PreparedQueryUpdateFailsThenRetries(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "ledger"
+
+	store := newRebuildTestStore(t)
+	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{}}}
+	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
+	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{
+		Sequence: 2,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{
+			UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+				Ledger:         ledger,
+				Name:           "q",
+				PreviousFilter: oldFilter,
+				NewFilter:      newFilter,
+			},
+		}},
+	}))
+	require.NoError(t, batch.Commit())
+
+	err := RebuildDelta(context.Background(), testLogger(), store, 0, 0)
+	require.ErrorContains(t, err, `updating missing prepared query "q"`)
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	ledgerInfo, err := query.GetLedgerByName(context.Background(), handle, ledger)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+	require.Nil(t, ledgerInfo, "the failed rebuild must not commit earlier mutations from its current batch")
+	require.NoError(t, handle.Close())
+
+	// Repair the checkpoint seed and retry the same durable log stream. This is
+	// a real fail-then-success sequence, not two independently constructed runs.
+	seed := store.OpenWriteSession()
+	require.NoError(t, state.SavePreparedQuery(seed, ledger, &commonpb.PreparedQuery{
+		Name:   "q",
+		Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		Filter: oldFilter,
+	}))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err = store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	restored, err := query.ReadPreparedQuery(context.Background(), attributes.New().PreparedQuery, handle, ledger, "q")
+	require.NoError(t, err)
+	require.NotNil(t, restored)
+	require.True(t, restored.GetFilter().EqualVT(newFilter))
+}
+
 func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	t.Parallel()
 
