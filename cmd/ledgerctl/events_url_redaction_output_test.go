@@ -66,6 +66,30 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 						Dsn: "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
 					}},
 				},
+				{
+					Name: "kafka-empty-secret",
+					Type: &commonpb.SinkConfig_Kafka{Kafka: &commonpb.KafkaSinkConfig{
+						Brokers:       []string{"kafka.example:9092"},
+						Topic:         "events",
+						SaslMechanism: "PLAIN",
+					}},
+				},
+				{
+					Name: "databricks-empty-token",
+					Type: &commonpb.SinkConfig_Databricks{Databricks: &commonpb.DatabricksSinkConfig{
+						ServerHostname: "databricks.example",
+						Auth:           &commonpb.DatabricksSinkConfig_Token{},
+					}},
+				},
+				{
+					Name: "databricks-empty-client-secret",
+					Type: &commonpb.SinkConfig_Databricks{Databricks: &commonpb.DatabricksSinkConfig{
+						ServerHostname: "databricks.example",
+						Auth: &commonpb.DatabricksSinkConfig_OauthM2M{OauthM2M: &commonpb.DatabricksOAuthM2M{
+							ClientId: "client-id",
+						}},
+					}},
+				},
 			},
 		},
 		applyRequests: make(chan *servicepb.ApplyRequest, 16),
@@ -114,6 +138,10 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			}
 			for _, control := range listControls {
 				assert.Contains(t, output, control)
+			}
+			if format == "table" {
+				assert.NotContains(t, output, "(set)")
+				assert.Equal(t, 4, strings.Count(output, "(none)"))
 			}
 
 			if resultPath != "" {
