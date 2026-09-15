@@ -497,7 +497,7 @@ config:
       enabled: false
       serverAddress: "http://pyroscope:4040"
       applicationName: ""  # Defaults to serviceName
-      authToken: ""        # For Grafana Cloud
+      # authTokenFrom: {name: pyroscope-auth, key: token}
       tenantId: ""         # For multi-tenant Pyroscope
       uploadRate: "15s"
       tags: ""             # Format: key=value,key2=value2
@@ -509,40 +509,67 @@ config:
 
 #### Pyroscope Continuous Profiling
 
-The operator supports [Grafana Pyroscope](https://grafana.com/docs/pyroscope/latest/) for continuous profiling:
+Configure profiling under `spec.monitoring.pyroscope` on a `Cluster`. The
+Ledger image must include the `pyroscope` build tag. For Grafana Cloud, create
+a Kubernetes Secret named `pyroscope-auth` in the Cluster namespace with a
+`token` key, then reference it:
 
 ```yaml
-config:
-  monitoring:
-    pyroscope:
-      enabled: true
-      serverAddress: "http://pyroscope:4040"
-      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
-```
-
-Available profile types:
-- `cpu` - CPU usage
-- `alloc_objects` - Number of allocated objects
-- `alloc_space` - Total allocated memory
-- `inuse_objects` - Objects currently in use
-- `inuse_space` - Memory currently in use
-- `goroutines` - Goroutine stacks
-- `mutex_count` / `mutex_duration` - Mutex contention
-- `block_count` / `block_duration` - Blocking operations
-
-For Grafana Cloud:
-
-```yaml
-config:
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+  namespace: ledger
+spec:
   monitoring:
     pyroscope:
       enabled: true
       serverAddress: "https://profiles-prod-001.grafana.net"
-      authToken: "${GRAFANA_CLOUD_PYROSCOPE_TOKEN}"
+      authTokenFrom:
+        name: pyroscope-auth
+        key: token
       tenantId: "your-tenant-id"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
 ```
 
-**Note**: Monitoring configuration can also be set globally. Global values take precedence if `config.monitoring` values are not set.
+For basic authentication, set `basicAuthUser` and `basicAuthPasswordFrom`:
+
+```yaml
+spec:
+  monitoring:
+    pyroscope:
+      enabled: true
+      serverAddress: "https://pyroscope.example.com"
+      basicAuthUser: "ledger"
+      basicAuthPasswordFrom:
+        name: pyroscope-auth
+        key: password
+```
+
+Both references are optional; each supplied reference requires a non-empty
+Secret name and key. The plaintext `authToken` and `basicAuthPassword` fields
+are removed (EN-2061). Provision credential values only in Secrets, never in
+Cluster manifests. The operator writes `valueFrom.secretKeyRef` into the Pod
+template without reading or copying the credential bytes. It emits no Pyroscope
+environment entries when profiling is disabled. With profiling enabled, an
+omitted reference leaves its credential environment variable unset; a missing
+referenced Secret or key prevents the container from starting.
+
+Changing a reference changes the Pod template and triggers a rolling update.
+Changing bytes in an existing Secret does not trigger an operator rollout;
+restart the Pods after rotation with `kubectl ledger restart my-ledger -n ledger`.
+Non-secret settings retain their behavior: `applicationName` defaults to
+`monitoring.serviceName`, and tenant, username, upload rate, tags, profile types,
+mutex/block sampling rates and GC options pass through unchanged.
+
+Available profile types:
+
+- `cpu` — CPU usage
+- `alloc_objects` / `alloc_space` — allocation counts / bytes
+- `inuse_objects` / `inuse_space` — live object counts / bytes
+- `goroutines` — goroutine stacks
+- `mutex_count` / `mutex_duration` — mutex contention
+- `block_count` / `block_duration` — blocking operations
 
 #### Collector-Side Trace Sampling
 
