@@ -684,7 +684,7 @@ send [USD/2 200] (
 				g.Expect(err).To(Succeed())
 				usdVol := account.FindVolume("USD/2", "")
 				g.Expect(usdVol).NotTo(BeNil())
-				g.Expect(usdVol.GetBalance()).To(Equal("300"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("300"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 	})

@@ -539,8 +539,8 @@ var _ = Describe("Reversions", Ordered, func() {
 
 				original := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-rv-original"].FindVolume("USD", "")
 				g.Expect(original).NotTo(BeNil())
-				g.Expect(original.GetInput()).To(Equal("250"))
-				g.Expect(original.GetOutput()).To(Equal("0"))
+				g.Expect(original.GetInput().DecimalString()).To(Equal("250"))
+				g.Expect(original.GetOutput().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 

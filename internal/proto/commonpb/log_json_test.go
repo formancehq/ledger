@@ -29,8 +29,8 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		Postings: []*commonpb.Posting{commonpb.NewColoredPosting("world", "users:alice", "USD/2", "GOLD", new(big.Int).Lsh(big.NewInt(1), 100))},
 		PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
 			"users:alice": {Volumes: []*commonpb.VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &commonpb.Volumes{Input: "123", Output: "0"}},
-				{Asset: "USD/2", Color: "GOLD", Volumes: &commonpb.Volumes{Input: "1267650600228229401496703205376", Output: "0"}},
+				{Asset: "USD/2", Color: "", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("123"), Output: commonpb.MustBigUintFromDecimal("0")}},
+				{Asset: "USD/2", Color: "GOLD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("1267650600228229401496703205376"), Output: commonpb.MustBigUintFromDecimal("0")}},
 			}},
 		}},
 	}

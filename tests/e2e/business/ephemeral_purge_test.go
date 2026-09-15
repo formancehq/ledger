@@ -90,8 +90,8 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil(), "expected USD volumes on bank:main")
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
-				g.Expect(usdVol.GetBalance()).To(Equal("100"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -112,7 +112,7 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil(), "expected USD volumes after reuse")
-				g.Expect(usdVol.GetInput()).To(Equal("50"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("50"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -145,9 +145,9 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil(), "expected USD volumes on non-ephemeral account")
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
-				g.Expect(usdVol.GetOutput()).To(Equal("100"))
-				g.Expect(usdVol.GetBalance()).To(Equal("0"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetOutput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

@@ -84,8 +84,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil(), "expected USD volumes on wallet:main")
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
-				g.Expect(usdVol.GetBalance()).To(Equal("100"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -237,7 +237,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil())
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Now mark staging:{id} as transient
@@ -299,8 +299,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil())
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
-				g.Expect(usdVol.GetBalance()).To(Equal("100"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("100"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -399,8 +399,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil())
-				g.Expect(usdVol.GetInput()).To(Equal("200"))
-				g.Expect(usdVol.GetBalance()).To(Equal("200"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("200"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("200"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
@@ -438,8 +438,8 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				g.Expect(err).To(Succeed())
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil())
-				g.Expect(usdVol.GetInput()).To(Equal("100"))
-				g.Expect(usdVol.GetBalance()).To(Equal("0"))
+				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Now mark staging:{id} as transient.

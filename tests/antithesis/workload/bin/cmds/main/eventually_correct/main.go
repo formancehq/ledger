@@ -146,7 +146,7 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 				aggregated[k] = big.NewInt(0)
 			}
 
-			aggregated[k].Add(aggregated[k], parseBalance(entry.GetVolumes().GetBalance()))
+			aggregated[k].Add(aggregated[k], parseBalance(entry.GetVolumes().GetBalance().DecimalString()))
 		}
 	}
 
@@ -226,9 +226,9 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 			asset := entry.GetAsset()
 			color := entry.GetColor()
 			vol := entry.GetVolumes()
-			input := parseBalance(vol.GetInput())
-			output := parseBalance(vol.GetOutput())
-			balance := parseBalance(vol.GetBalance())
+			input := parseBalance(vol.GetInput().DecimalString())
+			output := parseBalance(vol.GetOutput().DecimalString())
+			balance := parseBalance(vol.GetBalance().DecimalString())
 
 			internal.CheckVolume(input, output, balance, details.With(internal.Details{
 				"account": account.Address,
@@ -263,7 +263,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 				continue
 			}
 
-			actualBalance := parseBalance(actualVol.GetBalance())
+			actualBalance := parseBalance(actualVol.GetBalance().DecimalString())
 			if balance.Cmp(actualBalance) != 0 {
 				// Mismatch detected — check if the commit index has advanced
 				// (late proposals from killed drivers arrived after quiescence).
