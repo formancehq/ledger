@@ -514,3 +514,34 @@ func TestChartRoundTripEquality(t *testing.T) {
 
 	require.Equal(t, original, decoded)
 }
+
+func TestMatchPattern(t *testing.T) {
+	t.Parallel()
+
+	s := &ChartVariableSegment{Pattern: pointer.For("^[0-9]{3}$")}
+
+	// First call: cache miss, compiles.
+	matches, err := s.matchPattern("001")
+	require.NoError(t, err)
+	require.True(t, matches)
+
+	// Second call: cache hit.
+	matches, err = s.matchPattern("002")
+	require.NoError(t, err)
+	require.True(t, matches)
+
+	matches, err = s.matchPattern("abc")
+	require.NoError(t, err)
+	require.False(t, matches)
+
+	// No pattern: everything matches.
+	none := &ChartVariableSegment{}
+	matches, err = none.matchPattern("anything")
+	require.NoError(t, err)
+	require.True(t, matches)
+
+	// Invalid pattern on a directly-constructed segment surfaces the error.
+	bad := &ChartVariableSegment{Pattern: pointer.For("[[")}
+	_, err = bad.matchPattern("x")
+	require.Error(t, err)
+}
