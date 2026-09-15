@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -306,6 +307,7 @@ func serverPCVFromRec(rec txRecordView) *commonpb.PostCommitVolumes {
 
 		entry.Volumes = append(entry.Volumes, &commonpb.VolumeEntry{
 			Asset:   key.Asset,
+			Color:   key.Color,
 			Volumes: &commonpb.Volumes{Input: vp.Input.Dec(), Output: vp.Output.Dec()},
 		})
 	}
@@ -697,9 +699,37 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 	require.False(t, txRecordMatches(rec, invented), "an invented cell is a finding")
 
 	coloured := serverTxFromRec(rec)
-	coloured.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Color = "red"
+	coloured.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Color = "GRANTS"
 	require.False(t, txRecordMatches(rec, coloured),
-		"no generated posting is coloured, so a coloured cell is unexplained data")
+		"the snapshot names one bucket, so the same amounts under another colour is a different cell")
+}
+
+// The posting carries the colour of the funds that moved, so a served
+// transaction is held to it: a recoloured posting moves a different bucket, and
+// a stripped one claims the uncolored bucket moved.
+func TestTxRecordMatches_ComparesPostingColour(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t, oracletest.TxReqColoredL("L", "world", "acc:1", "USD", "GRANTS", 5))
+	rec := gs.Ledger("L").Txs().Get(0)
+	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
+
+	// serverTxFromRec hands out the record's own posting slice, so each variant
+	// gets a fresh one.
+	served := func(postings ...*commonpb.Posting) *commonpb.Transaction {
+		tx := serverTxFromRec(rec)
+		tx.Postings = postings
+
+		return tx
+	}
+
+	require.False(t, txRecordMatches(rec, served(
+		commonpb.NewColoredPosting("world", "acc:1", "USD", "GOLD", big.NewInt(5)),
+	)), "a recoloured posting moves a bucket the model never touched")
+
+	require.False(t, txRecordMatches(rec, served(
+		commonpb.NewPosting("world", "acc:1", "USD", big.NewInt(5)),
+	)), "dropping the colour claims the uncolored bucket moved")
 }
 
 // assembleAccount never stamps these, so the oracle pins them absent rather
@@ -735,27 +765,33 @@ func TestAccountMatches_RejectsUnmodelledTimestamps(t *testing.T) {
 	}
 }
 
-// No generated posting carries a colour, so a coloured bucket is a row nothing
-// in the run could have produced — dropping it would let a fabricated one
-// through the exact volume comparison untouched.
-func TestAccountMatches_RejectsColouredVolumes(t *testing.T) {
+// Buckets are compared one for one: a colour the model does not hold is a
+// fabricated row, and a colour it does hold must come back under that colour.
+func TestAccountMatches_SegregatesColourBuckets(t *testing.T) {
 	t.Parallel()
 
-	ls := buildGlobal(t, oracletest.TxReqL("L", "world", "acc:1", "USD", 5)).Ledger("L")
+	ls := buildGlobal(t,
+		oracletest.TxReqL("L", "world", "acc:1", "USD", 5),
+		oracletest.TxReqColoredL("L", "world", "acc:1", "USD", "GRANTS", 7),
+	).Ledger("L")
 
-	acct := &commonpb.Account{
-		Address: "acc:1",
-		Volumes: []*commonpb.AccountVolume{
-			{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}},
-		},
+	bucket := func(color, in, bal string) *commonpb.AccountVolume {
+		return &commonpb.AccountVolume{
+			Asset: "USD", Color: color,
+			Volumes: &commonpb.VolumesWithBalance{Input: in, Output: "0", Balance: bal},
+		}
 	}
-	require.True(t, accountMatches(ls, "acc:1", acct))
+	account := func(vols ...*commonpb.AccountVolume) *commonpb.Account {
+		return &commonpb.Account{Address: "acc:1", Volumes: vols}
+	}
 
-	acct.Volumes = append(acct.Volumes, &commonpb.AccountVolume{
-		Asset: "USD", Color: "red",
-		Volumes: &commonpb.VolumesWithBalance{Input: "1", Output: "0", Balance: "1"},
-	})
-	require.False(t, accountMatches(ls, "acc:1", acct))
+	require.True(t, accountMatches(ls, "acc:1", account(bucket("", "5", "5"), bucket("GRANTS", "7", "7"))))
+
+	require.False(t, accountMatches(ls, "acc:1", account(bucket("", "5", "5"), bucket("GOLD", "7", "7"))),
+		"a bucket the model does not hold")
+
+	require.False(t, accountMatches(ls, "acc:1", account(bucket("", "12", "12"))),
+		"summing across buckets hides the segregation")
 }
 
 // The volume lists carry one entry per asset. A repeat collapses into the

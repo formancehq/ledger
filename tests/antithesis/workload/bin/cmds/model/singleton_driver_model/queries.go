@@ -560,10 +560,9 @@ func accountUniverse(ls oracle.LedgerState) []string {
 }
 
 // accountMatches reports whether the server account is exactly what the model
-// holds for addr: the same uncolored volume cells (per asset, input and output)
-// and the same metadata. The workload only exercises uncolored postings, so
-// colored buckets are out of scope. metadataMatches is shared with the single
-// GetAccount read.
+// holds for addr: the same volume cells (per asset and color, input and output)
+// and the same metadata. metadataMatches is shared with the single GetAccount
+// read.
 func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account) bool {
 	if !metadataMatches(ls, addr, serverAcct.GetMetadata()) {
 		return false
@@ -578,25 +577,18 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		return false
 	}
 
-	model := map[string]oracle.VolumePair{}
+	model := map[assetColor]oracle.VolumePair{}
 	for k, vp := range ls.Volumes().All() {
 		if k.Address == addr {
-			model[k.Asset] = vp
+			model[assetColor{Asset: k.Asset, Color: k.Color}] = vp
 		}
 	}
 
-	// One entry per asset, per the list's contract. A repeat would collapse
-	// into this map and be counted once, so the exact comparison below would
-	// never see it.
-	server := map[string]struct{ in, out uint256.Int }{}
+	// One entry per (asset, color), per the list's contract. A repeat would
+	// collapse into this map and be counted once, so the exact comparison below
+	// would never see it.
+	server := map[assetColor]struct{ in, out uint256.Int }{}
 	for _, av := range serverAcct.GetVolumes() {
-		// No generated posting carries a colour, so a coloured bucket is a row
-		// nothing in this run could have produced. Dropping it here would let a
-		// fabricated one through untouched.
-		if av.GetColor() != "" {
-			return false
-		}
-
 		var in, out uint256.Int
 		if err := in.SetFromDecimal(av.GetVolumes().GetInput()); err != nil {
 			return false
@@ -605,19 +597,20 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 			return false
 		}
 
-		if _, dup := server[av.GetAsset()]; dup {
+		key := assetColor{Asset: av.GetAsset(), Color: av.GetColor()}
+		if _, dup := server[key]; dup {
 			return false
 		}
 
-		server[av.GetAsset()] = struct{ in, out uint256.Int }{in, out}
+		server[key] = struct{ in, out uint256.Int }{in, out}
 	}
 
 	if len(model) != len(server) {
 		return false
 	}
 
-	for asset, vp := range model {
-		sv, ok := server[asset]
+	for key, vp := range model {
+		sv, ok := server[key]
 		if !ok || vp.Input.Cmp(&sv.in) != 0 || vp.Output.Cmp(&sv.out) != 0 {
 			return false
 		}
@@ -695,19 +688,13 @@ func txRecordMatches(rec txRecordView, serverTx *commonpb.Transaction) bool {
 // pcvSnapshotMatches compares a served post-commit snapshot against the
 // model's cell for cell, in both directions: an absent cell and a fabricated
 // one are equally wrong, and so is a repeated one — only the first copy of a
-// cell is ever read, so a duplicate would hide whatever the second carries. A coloured entry fails outright — no generated
-// posting carries a colour, so the model's colourless key addresses every cell
-// the run can produce.
+// cell is ever read, so a duplicate would hide whatever the second carries.
 func pcvSnapshotMatches(model map[oracle.VolumeKey]oracle.VolumePair, server *commonpb.PostCommitVolumes) bool {
 	served := map[oracle.VolumeKey]struct{}{}
 
 	for account, byAssets := range server.GetVolumesByAccount() {
 		for _, entry := range byAssets.GetVolumes() {
-			if entry.GetColor() != "" {
-				return false
-			}
-
-			key := oracle.VolumeKey{Address: account, Asset: entry.GetAsset()}
+			key := oracle.VolumeKey{Address: account, Asset: entry.GetAsset(), Color: entry.GetColor()}
 			if _, dup := served[key]; dup {
 				return false
 			}

@@ -541,7 +541,7 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[string]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
 		ls := base.Ledger(ledger)
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
@@ -560,21 +560,27 @@ func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset stri
 	})
 }
 
+// assetColor identifies one (asset, color) bucket of an account's volume list.
+// Color "" is the uncolored bucket, which segregates from every colored one.
+type assetColor struct{ Asset, Color string }
+
+func (k assetColor) String() string { return k.Asset + "|" + k.Color }
+
 // accountVolumesMatch reports whether ls holds exactly the returned volume set
-// for addr — same assets, same cumulative volumes. GetAccount returns the
+// for addr — same buckets, same cumulative volumes. GetAccount returns the
 // account's whole volume set in one linearizable snapshot, so a returned cell
-// the base lacks (a ghost row under ANY asset, e.g. a stranded zero-balance
-// row the base's purge sweep removed) and a base cell the server omitted are
-// both mismatches. Seeks to addr's key range — O(log n + cells of addr), not a
-// table walk (this runs per candidate base).
-func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[string]oracle.VolumePair) bool {
+// the base lacks (a ghost row under ANY (asset, color), e.g. a stranded
+// zero-balance row the base's purge sweep removed) and a base cell the server
+// omitted are both mismatches. Seeks to addr's key range — O(log n + cells of
+// addr), not a table walk (this runs per candidate base).
+func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[assetColor]oracle.VolumePair) bool {
 	cells := 0
 	for k, vp := range ls.Volumes().From(oracle.VolumeKey{Address: addr}) {
 		if k.Address != addr {
 			break
 		}
 
-		g, ok := got[k.Asset]
+		g, ok := got[assetColor{Asset: k.Asset, Color: k.Color}]
 		if !ok || g.Input.Cmp(&vp.Input) != 0 || g.Output.Cmp(&vp.Output) != 0 {
 			return false
 		}
@@ -782,6 +788,7 @@ func postingsEqual(a, b []*commonpb.Posting) bool {
 		if a[i].GetSource() != b[i].GetSource() ||
 			a[i].GetDestination() != b[i].GetDestination() ||
 			a[i].GetAsset() != b[i].GetAsset() ||
+			a[i].GetColor() != b[i].GetColor() ||
 			!x.Eq(&y) {
 			return false
 		}
@@ -799,7 +806,7 @@ func renderPostings(ps []*commonpb.Posting) string {
 		if out != "" {
 			out += ","
 		}
-		out += p.GetSource() + "->" + p.GetDestination() + ":" + amt.Dec() + p.GetAsset()
+		out += p.GetSource() + "->" + p.GetDestination() + ":" + amt.Dec() + p.GetAsset() + "|" + p.GetColor()
 	}
 
 	return "[" + out + "]"
@@ -841,10 +848,9 @@ func accountMetaMapEqual(a, b map[string]*commonpb.MetadataMap) bool {
 
 // postCommitVolume extracts (input, output) for one cell from a server response,
 // parsing the decimal-string volumes into uint256 — the ledger's native volume
-// type. The workload only ever exercises uncolored postings, so we match the
-// uncolored bucket (color="") explicitly — colored buckets are out of scope
-// for this driver model. ok is false when the cell is absent or the values
-// don't parse.
+// type. The cell is addressed by (account, asset, color), so a bucket the key
+// does not name is not a match. ok is false when the cell is absent or the
+// values don't parse.
 func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in, out uint256.Int, ok bool) {
 	byAsset, found := pcv.GetVolumesByAccount()[key.Address]
 	if !found {
@@ -853,7 +859,7 @@ func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in
 
 	var vol *commonpb.Volumes
 	for _, entry := range byAsset.GetVolumes() {
-		if entry.GetAsset() == key.Asset && entry.GetColor() == "" {
+		if entry.GetAsset() == key.Asset && entry.GetColor() == key.Color {
 			vol = entry.GetVolumes()
 
 			break

@@ -180,23 +180,21 @@ type logWindowRow struct {
 // serverLogRow is one log of a page, reduced to what the model can pin: the
 // ledger it belongs to, its per-ledger id, its payload kind, the date the
 // server assigned it, its end-of-bulk volume annotations, and whether it
-// arrived signed. volumesKnown is false when an annotation names a colour,
-// which no generated posting produces.
+// arrived signed.
 type serverLogRow struct {
-	ledger       string
-	id           uint64
-	kind         string
-	payload      string
-	tx           *commonpb.Transaction
-	revertsID    uint64
-	date         uint64
-	hasDate      bool
-	sequence     uint64
-	purged       string
-	newKept      string
-	ephemeral    string
-	volumesKnown bool
-	signed       bool
+	ledger    string
+	id        uint64
+	kind      string
+	payload   string
+	tx        *commonpb.Transaction
+	revertsID uint64
+	date      uint64
+	hasDate   bool
+	sequence  uint64
+	purged    string
+	newKept   string
+	ephemeral string
+	signed    bool
 }
 
 // serverLogRows reads a page into comparable rows.
@@ -208,25 +206,20 @@ func serverLogRows(logs []*commonpb.Log) []serverLogRow {
 
 		tx, revertsID := servedLogTransaction(entry.GetData())
 
-		purged, purgedOK := renderServedVolumes(entry.GetPurgedVolumes())
-		newKept, newKeptOK := renderServedVolumes(entry.GetNewKeptVolumes())
-		ephemeral, ephemeralOK := renderServedVolumes(entry.GetEphemeralVolumes())
-
 		out = append(out, serverLogRow{
-			ledger:       l.GetPayload().GetApply().GetLedgerName(),
-			id:           entry.GetId(),
-			kind:         serverLogKind(l),
-			payload:      oracle.CanonicalServedLogPayload(entry.GetData()),
-			tx:           tx,
-			revertsID:    revertsID,
-			date:         entry.GetDate().GetData(),
-			hasDate:      entry.GetDate() != nil,
-			sequence:     l.GetSequence(),
-			purged:       purged,
-			newKept:      newKept,
-			ephemeral:    ephemeral,
-			volumesKnown: purgedOK && newKeptOK && ephemeralOK,
-			signed:       l.GetResponseSignature() != nil,
+			ledger:    l.GetPayload().GetApply().GetLedgerName(),
+			id:        entry.GetId(),
+			kind:      serverLogKind(l),
+			payload:   oracle.CanonicalServedLogPayload(entry.GetData()),
+			tx:        tx,
+			revertsID: revertsID,
+			date:      entry.GetDate().GetData(),
+			hasDate:   entry.GetDate() != nil,
+			sequence:  l.GetSequence(),
+			purged:    renderServedVolumes(entry.GetPurgedVolumes()),
+			newKept:   renderServedVolumes(entry.GetNewKeptVolumes()),
+			ephemeral: renderServedVolumes(entry.GetEphemeralVolumes()),
+			signed:    l.GetResponseSignature() != nil,
 		})
 	}
 
@@ -250,25 +243,21 @@ func servedLogTransaction(data *commonpb.LedgerLogPayload) (*commonpb.Transactio
 }
 
 // renderServedVolumes names a served annotation list the way the oracle names
-// its own: "account:asset" entries joined by commas, verbatim in the order the
-// server sent them, so a mis-sorted or duplicated list is a mismatch. The
-// second result is false when an entry carries a colour — no generated posting
-// does, so such a cell is a row nothing in this run could have produced.
-func renderServedVolumes(vols []*commonpb.TouchedVolume) (string, bool) {
+// its own (renderTouchedVolumes): "account:asset:color" entries joined by
+// commas, verbatim in the order the server sent them, so a mis-sorted or
+// duplicated list is a mismatch. The colour segment is always present, empty
+// for the uncolored bucket.
+func renderServedVolumes(vols []*commonpb.TouchedVolume) string {
 	if len(vols) == 0 {
-		return "", true
+		return ""
 	}
 
 	parts := make([]string, 0, len(vols))
 	for _, v := range vols {
-		if v.GetColor() != "" {
-			return "", false
-		}
-
-		parts = append(parts, v.GetAccount()+":"+v.GetAsset())
+		parts = append(parts, v.GetAccount()+":"+v.GetAsset()+":"+v.GetColor())
 	}
 
-	return strings.Join(parts, ","), true
+	return strings.Join(parts, ",")
 }
 
 // serverLogKind names a log's payload the way the model names it from the
@@ -429,8 +418,7 @@ func logRowMatches(ledger string, row logWindowRow, got serverLogRow) bool {
 	// The three volume annotations are derived, never learned: the model runs
 	// the same end-of-bulk partition, so all three are pinned exactly — an
 	// empty list included.
-	if !got.volumesKnown ||
-		got.purged != row.purged || got.newKept != row.newKept || got.ephemeral != row.ephemeral {
+	if got.purged != row.purged || got.newKept != row.newKept || got.ephemeral != row.ephemeral {
 		return false
 	}
 

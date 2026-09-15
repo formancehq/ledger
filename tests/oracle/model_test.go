@@ -28,6 +28,70 @@ func dec(v uint256.Int) string { return v.Dec() }
 
 func bulkOf(reqs ...*servicepb.Request) Bulk { return Bulk{Requests: reqs} }
 
+// Color splits one (account, asset) into strictly isolated buckets: the
+// balance floor is per bucket, so funds under one color cannot pay a posting
+// drawing from another.
+func TestGlobalState_Apply_ColorSegregatesBalances(t *testing.T) {
+	t.Parallel()
+
+	funded := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReqColoredL("L", "world", "a:1", "USD", "GRANTS", 10),
+	))
+	require.True(t, funded.OK)
+
+	ls := funded.State.Ledger("L")
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD", "GRANTS"}).Input))
+	require.False(t, ls.volumes.Has(VolumeKey{"a:1", "USD", ""}),
+		"the uncolored bucket is a different cell and was never touched")
+
+	// The account holds 10 under GRANTS, but the uncolored bucket is empty.
+	spent := funded.State.Apply(bulkOf(oracletest.TxReqL("L", "a:1", "b:1", "USD", 1)))
+	require.False(t, spent.OK)
+	require.Equal(t, domain.ErrReasonInsufficientFunds, spent.Reason)
+
+	sameBucket := funded.State.Apply(bulkOf(
+		oracletest.TxReqColoredL("L", "a:1", "b:1", "USD", "GRANTS", 10),
+	))
+	require.True(t, sameBucket.OK)
+	moved := sameBucket.State.Ledger("L")
+	require.Equal(t, "10", dec(moved.vol(VolumeKey{"b:1", "USD", "GRANTS"}).Input))
+}
+
+// A revert moves the funds back into the bucket they came from; sending them
+// to the uncolored one would mint value in a bucket the original never touched.
+func TestGlobalState_Apply_RevertPreservesColor(t *testing.T) {
+	t.Parallel()
+
+	committed := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReqColoredL("L", "world", "a:1", "USD", "GRANTS", 10),
+	))
+	require.True(t, committed.OK)
+
+	reverted := committed.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, true)))
+	require.True(t, reverted.OK)
+
+	ls := reverted.State.Ledger("L")
+	cell := ls.vol(VolumeKey{"a:1", "USD", "GRANTS"})
+	require.Equal(t, "10", dec(cell.Input))
+	require.Equal(t, "10", dec(cell.Output))
+	require.False(t, ls.volumes.Has(VolumeKey{"a:1", "USD", ""}))
+}
+
+// Two bulks differing only in the color of an otherwise identical posting are
+// different states, so the fingerprint must separate them — otherwise the
+// serialization search would accept one as an explanation for the other.
+func TestGlobalState_Fingerprint_DistinguishesColor(t *testing.T) {
+	t.Parallel()
+
+	base := NewGlobalState()
+	grants := base.Apply(bulkOf(oracletest.TxReqColoredL("L", "world", "a:1", "USD", "GRANTS", 10)))
+	gold := base.Apply(bulkOf(oracletest.TxReqColoredL("L", "world", "a:1", "USD", "GOLD", 10)))
+
+	require.True(t, grants.OK)
+	require.True(t, gold.OK)
+	require.NotEqual(t, hashState(grants.State), hashState(gold.State))
+}
+
 func TestGlobalState_Apply_ChartOps(t *testing.T) {
 	t.Parallel()
 
@@ -67,7 +131,7 @@ func TestGlobalState_Apply_IdempotencyReplay(t *testing.T) {
 	require.Equal(t, uint64(1), replay.Orders[0].TxID)
 	require.Equal(t, 1, replay.State.Ledger("L").txs.Len(), "replay must not append a second transaction")
 	replayed := replay.State.Ledger("L")
-	require.Equal(t, "5", dec(replayed.vol(VolumeKey{"a:1", "USD"}).Input),
+	require.Equal(t, "5", dec(replayed.vol(VolumeKey{"a:1", "USD", ""}).Input),
 		"replay must not move volumes again")
 
 	// A fresh key with the same body applies for real (id 2).
@@ -149,8 +213,8 @@ func TestGlobalState_Apply_CrossLedgerAtomicRejection(t *testing.T) {
 	require.Equal(t, domain.ErrReasonAccountTypeNotFound, res.Reason)
 
 	a := res.State.Ledger("A")
-	require.False(t, a.volumes.Has(VolumeKey{"x:1", "USD"}))
-	require.False(t, a.volumes.Has(VolumeKey{"world", "USD"}))
+	require.False(t, a.volumes.Has(VolumeKey{"x:1", "USD", ""}))
+	require.False(t, a.volumes.Has(VolumeKey{"world", "USD", ""}))
 }
 
 func TestGlobalState_Apply_CrossLedgerCommit(t *testing.T) {
@@ -165,9 +229,9 @@ func TestGlobalState_Apply_CrossLedgerCommit(t *testing.T) {
 
 	a := res.State.Ledger("A")
 	b := res.State.Ledger("B")
-	require.Equal(t, "5", dec(a.vol(VolumeKey{"x:1", "USD"}).Input))
-	require.Equal(t, "7", dec(b.vol(VolumeKey{"y:1", "USD"}).Input))
-	require.False(t, a.volumes.Has(VolumeKey{"y:1", "USD"}))
+	require.Equal(t, "5", dec(a.vol(VolumeKey{"x:1", "USD", ""}).Input))
+	require.Equal(t, "7", dec(b.vol(VolumeKey{"y:1", "USD", ""}).Input))
+	require.False(t, a.volumes.Has(VolumeKey{"y:1", "USD", ""}))
 }
 
 func TestGlobalState_Apply_TxEnforcement(t *testing.T) {
@@ -198,13 +262,13 @@ func TestGlobalState_Apply_Volumes(t *testing.T) {
 
 	// Per-tx PCV: world out=5, a:1 in=5.
 	pcv := res.Orders[0].PCV
-	require.Equal(t, "5", dec(pcv[VolumeKey{"world", "USD"}].Output))
-	require.Equal(t, "0", dec(pcv[VolumeKey{"world", "USD"}].Input))
-	require.Equal(t, "5", dec(pcv[VolumeKey{"a:1", "USD"}].Input))
+	require.Equal(t, "5", dec(pcv[VolumeKey{"world", "USD", ""}].Output))
+	require.Equal(t, "0", dec(pcv[VolumeKey{"world", "USD", ""}].Input))
+	require.Equal(t, "5", dec(pcv[VolumeKey{"a:1", "USD", ""}].Input))
 
 	// Persisted into the resulting state (no type -> no purge).
 	ls := res.State.Ledger("L")
-	require.Equal(t, "5", dec(ls.vol(VolumeKey{"a:1", "USD"}).Input))
+	require.Equal(t, "5", dec(ls.vol(VolumeKey{"a:1", "USD", ""}).Input))
 }
 
 func TestGlobalState_Apply_TransientNonZero(t *testing.T) {
@@ -220,7 +284,7 @@ func TestGlobalState_Apply_TransientNonZero(t *testing.T) {
 	// Balanced within the bulk (in then out) -> commits, and t:1 is purged.
 	good := s.Apply(bulkOf(oracletest.TxReq("world", "t:1", "USD", 5), oracletest.TxReq("t:1", "world", "USD", 5)))
 	require.True(t, good.OK)
-	require.False(t, good.State.Ledger("L").volumes.Has(VolumeKey{"t:1", "USD"}))
+	require.False(t, good.State.Ledger("L").volumes.Has(VolumeKey{"t:1", "USD", ""}))
 }
 
 func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
@@ -230,7 +294,7 @@ func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
 	// (g:1 matches no type, so it isn't purged).
 	s := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "g:1", "USD", 5))).State
 	sl := s.Ledger("L")
-	require.Equal(t, "5", dec(sl.vol(VolumeKey{"g:1", "USD"}).Input))
+	require.Equal(t, "5", dec(sl.vol(VolumeKey{"g:1", "USD", ""}).Input))
 
 	// A bulk now declares g as TRANSIENT and touches g:1 again, leaving it
 	// non-zero. The pre-existing balance grandfathers it, so the bulk commits
@@ -241,7 +305,7 @@ func TestGlobalState_Apply_TransientGrandfather(t *testing.T) {
 	))
 	require.True(t, res.OK)
 	rl := res.State.Ledger("L")
-	require.Equal(t, "8", dec(rl.vol(VolumeKey{"g:1", "USD"}).Input))
+	require.Equal(t, "8", dec(rl.vol(VolumeKey{"g:1", "USD", ""}).Input))
 }
 
 // Asset touches land in everAsset iff the cell escapes the server's exclusion
@@ -313,11 +377,11 @@ func TestGlobalState_Apply_EphemeralPurge(t *testing.T) {
 	nonZero := s.Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 5)))
 	require.True(t, nonZero.OK)
 	nl := nonZero.State.Ledger("L")
-	require.Equal(t, "5", dec(nl.vol(VolumeKey{"e:1", "USD"}).Input))
+	require.Equal(t, "5", dec(nl.vol(VolumeKey{"e:1", "USD", ""}).Input))
 
 	zeroed := s.Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 5), oracletest.TxReq("e:1", "world", "USD", 5)))
 	require.True(t, zeroed.OK)
-	require.False(t, zeroed.State.Ledger("L").volumes.Has(VolumeKey{"e:1", "USD"}))
+	require.False(t, zeroed.State.Ledger("L").volumes.Has(VolumeKey{"e:1", "USD", ""}))
 }
 
 // MetaValueString must render every MetadataValue wire kind with a distinct,
@@ -350,7 +414,7 @@ func TestApplyTransaction_BalanceFloor(t *testing.T) {
 	ok := funded.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 6)))
 	require.True(t, ok.OK)
 	okLedger := ok.State.Ledger("L")
-	require.Equal(t, "6", dec(okLedger.vol(VolumeKey{"x:1", "USD"}).Output))
+	require.Equal(t, "6", dec(okLedger.vol(VolumeKey{"x:1", "USD", ""}).Output))
 
 	// Exactly the balance is allowed (input >= output+amount, equality passes).
 	require.True(t, funded.State.Apply(bulkOf(oracletest.TxReq("x:1", "y:1", "USD", 10))).OK)
@@ -360,7 +424,7 @@ func TestApplyTransaction_BalanceFloor(t *testing.T) {
 	require.False(t, over.OK)
 	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
 	overLedger := over.State.Ledger("L")
-	require.Equal(t, "0", dec(overLedger.vol(VolumeKey{"x:1", "USD"}).Output))
+	require.Equal(t, "0", dec(overLedger.vol(VolumeKey{"x:1", "USD", ""}).Output))
 
 	// Force skips the floor: an over-balance forced debit commits.
 	require.True(t, funded.State.Apply(bulkOf(oracletest.TxReqForce("x:1", "y:1", "USD", 1000, true))).OK)
@@ -438,9 +502,9 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	)))
 	require.True(t, ok.OK)
 	ls := ok.State.Ledger("L")
-	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD"}).Input))
-	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD"}).Output))
-	require.Equal(t, "10", dec(ls.vol(VolumeKey{"b:1", "USD"}).Input))
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD", ""}).Input))
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"a:1", "USD", ""}).Output))
+	require.Equal(t, "10", dec(ls.vol(VolumeKey{"b:1", "USD", ""}).Input))
 
 	// A later posting that exceeds a:1's running balance rejects the whole tx;
 	// the atomic bulk commits nothing.
@@ -450,7 +514,7 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	)))
 	require.False(t, over.OK)
 	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
-	require.False(t, over.State.Ledger("L").volumes.Has(VolumeKey{"a:1", "USD"}))
+	require.False(t, over.State.Ledger("L").volumes.Has(VolumeKey{"a:1", "USD", ""}))
 }
 
 func TestApplyTransaction_Timestamp(t *testing.T) {
@@ -643,16 +707,16 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	}
 
 	require.Equal(t, map[uint64]ann{
-		1:  {},                                   // added_account_type: no cells
-		2:  {},                                   //
-		3:  {},                                   //
-		4:  {newKept: "e:1:USD,world:USD"},       // both cells born here, both survive
-		5:  {purged: "e:1:USD"},                  // drained a cell that held 7
-		6:  {newKept: "n:1:USD,n:2:USD,n:3:USD"}, // sorted, and world was already recorded
-		7:  {ephemeral: "e:2:USD"},               // born and zeroed inside the bulk,
-		8:  {ephemeral: "e:2:USD"},               // so both its orders carry it
-		9:  {},                                   // transient, absent before the bulk
-		10: {},                                   //
+		1:  {},                                      // added_account_type: no cells
+		2:  {},                                      //
+		3:  {},                                      //
+		4:  {newKept: "e:1:USD:,world:USD:"},        // both cells born here, both survive
+		5:  {purged: "e:1:USD:"},                    // drained a cell that held 7
+		6:  {newKept: "n:1:USD:,n:2:USD:,n:3:USD:"}, // sorted, and world was already recorded
+		7:  {ephemeral: "e:2:USD:"},                 // born and zeroed inside the bulk,
+		8:  {ephemeral: "e:2:USD:"},                 // so both its orders carry it
+		9:  {},                                      // transient, absent before the bulk
+		10: {},                                      //
 	}, have)
 }
 
@@ -680,8 +744,8 @@ func TestGlobalState_Fingerprint_DistinguishesVolumeAnnotations(t *testing.T) {
 
 	// world is born inside the second bulk, so its second order is annotated
 	// too; across two bulks it is already old by then.
-	require.Equal(t, "a:2:USD", one.State.Ledger("L").LogRows()[1].NewKeptVolumes)
-	require.Equal(t, "a:2:USD,world:USD", together.State.Ledger("L").LogRows()[1].NewKeptVolumes)
+	require.Equal(t, "a:2:USD:", one.State.Ledger("L").LogRows()[1].NewKeptVolumes)
+	require.Equal(t, "a:2:USD:,world:USD:", together.State.Ledger("L").LogRows()[1].NewKeptVolumes)
 
 	require.NotEqual(t, hashState(one.State), hashState(together.State))
 }
