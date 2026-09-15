@@ -1932,6 +1932,48 @@ func TestTwoBalanceVarsOnSameAccount(t *testing.T) {
 	test(t, tc)
 }
 
+// Two balance() variables may name the same account with DIFFERENT assets. The
+// balance query then carries several assets for one address, and every one of
+// them must come back resolved.
+func TestTwoBalanceVarsOnSameAccountDifferentAssets(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		monetary $a = balance(@src, USD)
+		monetary $b = balance(@src, EUR)
+	}
+
+	send $a (
+		source = @world
+		destination = @dst1
+	)
+
+	send $b (
+		source = @world
+		destination = @dst2
+	)`)
+	tc.setBalance("src", "USD", 10)
+	tc.setBalance("src", "EUR", 20)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst1",
+			},
+			{
+				Asset:       "EUR",
+				Amount:      machine.NewMonetaryInt(20),
+				Source:      "world",
+				Destination: "dst2",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
 func TestMachine(t *testing.T) {
 	p, err := compiler.Compile(`
 		vars {
