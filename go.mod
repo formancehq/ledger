@@ -318,3 +318,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/gotestsum v1.8.2 // indirect
 )
+
+replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204

@@ -31,9 +31,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, domain.StoreFailure("checking reverted status", err)
 	}
 
-	assert.Sometimes(reverted, "repeat revert rejected", map[string]any{
-		"ledger": ledger, "transactionId": order.GetTransactionId(),
-	})
+	if assert.Enabled {
+		assert.Sometimes(reverted, "repeat revert rejected", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
+	}
 	if reverted {
 		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.GetTransactionId()}
 	}
