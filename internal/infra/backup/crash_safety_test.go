@@ -16,6 +16,10 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -604,4 +608,93 @@ func TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds(t *testing.T) 
 	info, err := query.GetLedgerByName(ctx, handle, "delta-ledger")
 	require.NoError(t, err)
 	require.NotNil(t, info, "the healthy retry must rebuild the post-checkpoint operation")
+}
+
+func TestBackup_PreparedQueryMutationsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	const (
+		bucketID = "bucket"
+		ledger   = "ledger"
+	)
+
+	ctx := context.Background()
+	attrs := attributes.New()
+	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: false}}}
+	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
+	queryQ := &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	queryR := &commonpb.PreparedQuery{Name: "r", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+	queryS := &commonpb.PreparedQuery{Name: "s", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: oldFilter}
+
+	preparedQueryLog := func(seq uint64, payload *commonpb.LogPayload) *commonpb.Log {
+		return &commonpb.Log{Sequence: seq, Payload: payload}
+	}
+
+	src := newBackupTestStore(t)
+	seed := src.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, state.SavePreparedQuery(seed, ledger, queryQ))
+	require.NoError(t, state.SavePreparedQuery(seed, ledger, queryR))
+	require.NoError(t, seed.Commit())
+	require.NoError(t, src.Flush())
+
+	storage := newInMemoryBackupStorage()
+	full, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "full")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, full.LastLogSequence)
+
+	delta := src.OpenWriteSession()
+	require.NoError(t, delta.SetProto(coldLogKey(2), preparedQueryLog(2, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "q", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(3), preparedQueryLog(3, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "r"}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(4), preparedQueryLog(4, &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{Ledger: ledger, Query: queryS}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(5), preparedQueryLog(5, &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{Ledger: ledger, Name: "s", PreviousFilter: oldFilter, NewFilter: newFilter}}})))
+	require.NoError(t, delta.SetProto(coldLogKey(6), preparedQueryLog(6, &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{Ledger: ledger, Name: "s"}}})))
+	for seq := uint64(2); seq <= 6; seq++ {
+		require.NoError(t, delta.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+	}
+	updatedQ := queryQ.CloneVT()
+	updatedQ.Filter = newFilter
+	require.NoError(t, state.SavePreparedQuery(delta, ledger, updatedQ))
+	require.NoError(t, state.DeletePreparedQuery(delta, ledger, "r"))
+	require.NoError(t, delta.Commit())
+
+	inc, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.EqualValues(t, 5, inc.LogEntriesExported, "the post-checkpoint mutation delta must be non-empty")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports)
+
+	dst := newBackupTestStore(t)
+	dstSeed := dst.OpenWriteSession()
+	require.NoError(t, dstSeed.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
+	require.NoError(t, dstSeed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, state.SavePreparedQuery(dstSeed, ledger, queryQ))
+	require.NoError(t, state.SavePreparedQuery(dstSeed, ledger, queryR))
+	require.NoError(t, dstSeed.Commit())
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest))
+
+	sourceHandle, err := src.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = sourceHandle.Close() }()
+	restoredHandle, err := dst.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = restoredHandle.Close() }()
+
+	sourceQueries, err := query.ReadPreparedQueries(ctx, attrs.PreparedQuery, sourceHandle, ledger)
+	require.NoError(t, err)
+	restoredQueries, err := query.ReadPreparedQueries(ctx, attrs.PreparedQuery, restoredHandle, ledger)
+	require.NoError(t, err)
+	require.Equal(t, sourceQueries, restoredQueries)
+	require.Len(t, restoredQueries, 1)
+	require.True(t, restoredQueries[0].EqualVT(updatedQ), "the restored definition must contain the post-checkpoint filter")
+
+	for _, deletedName := range []string{"r", "s"} {
+		deleted, err := attrs.PreparedQuery.Get(restoredHandle, domain.PreparedQueryKey{LedgerName: ledger, Name: deletedName}.Bytes())
+		require.NoError(t, err)
+		require.Nil(t, deleted, "deleted prepared query %q must not survive restore", deletedName)
+	}
 }
