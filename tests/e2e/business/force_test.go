@@ -119,7 +119,7 @@ var _ = Describe("Force Transactions", Ordered, func() {
 					Address: tc.addr,
 				})
 				Expect(err).To(Succeed())
-				Expect(account.FindVolume(tc.asset, "").GetBalance()).To(Equal(tc.balance))
+				Expect(account.FindVolume(tc.asset, "").GetBalance().DecimalString()).To(Equal(tc.balance))
 			}
 		})
 
