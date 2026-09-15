@@ -48,7 +48,11 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    temp directory.
 7. Both stores are opened read-only when a query specifies `checkpoint_id`.
    Reads verify the frozen projection certificate against the main checkpoint's
-   durable applied index rather than trusting `.ready` alone.
+   durable applied index rather than trusting `.ready` alone. Opening the pair
+   also acquires a node-local filesystem lease before checking readiness. A
+   committed deletion rejects later acquisitions immediately, but physical
+   removal of both directories waits for every already-acquired reader to close;
+   this preserves lazy Pebble SST opens for the reader's full lifetime.
 
 ## Readiness and Error Contract
 
@@ -80,6 +84,14 @@ The read index materializes asynchronously and **per-replica** (step 5). Readine
   can end while cleanup is still removing directories. No durable tombstone or
   new restore state is introduced; the existing checkpoint counter and registry
   provide the lifecycle evidence.
+- **Deletion does not invalidate an acquired reader.** The metadata deletion is
+  authoritative for new requests as soon as it commits. On each replica, file
+  cleanup is deferred while a checkpoint-store pair is leased by an existing
+  request, then removes the whole `{id}/` directory after the final release.
+  The main-store apply cleanup and the read-index builder cleanup share this
+  lease gate, so neither component can unlink an SST that Pebble may still open
+  lazily. These leases are node-local and ephemeral because they protect only
+  live process resources; checkpoint IDs are never reused.
 - **Audit is part of the readiness promise.** The checkpoint log carries `H`.
   The normal builder does not publish `.ready` until the audit projection has
   certified `H`, so a filtered audit query cannot be frozen against an

@@ -559,3 +559,77 @@ func TestStore_NewStoreReopensExisting(t *testing.T) {
 	require.Equal(t, []byte("persist-val"), val)
 	require.NoError(t, closer.Close())
 }
+
+// TestDeleteQueryCheckpointFilesDefersRemovalForAcquiredReader reproduces
+// EN-2047: Pebble can open an SST lazily after a checkpoint reader is acquired,
+// so neither component may be unlinked until that reader releases its lease.
+func TestDeleteQueryCheckpointFilesDefersRemovalForAcquiredReader(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	store, err := NewStore(dataDir, logging.NopZap(), noop.NewMeterProvider().Meter("test"), DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	const checkpointID = uint64(41)
+	mainFile := filepath.Join(store.QueryCheckpointMainDir(checkpointID), "main.sst")
+	readIndexFile := filepath.Join(store.QueryCheckpointReadIndexDir(checkpointID), "read-index.sst")
+	for _, path := range []string{mainFile, readIndexFile} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+		require.NoError(t, os.WriteFile(path, []byte("still-readable"), 0o640))
+	}
+
+	release, acquired := store.AcquireQueryCheckpoint(checkpointID)
+	require.True(t, acquired)
+	require.NoError(t, store.DeleteQueryCheckpointFiles(checkpointID))
+
+	for _, path := range []string{mainFile, readIndexFile} {
+		contents, readErr := os.ReadFile(path)
+		require.NoError(t, readErr)
+		require.Equal(t, []byte("still-readable"), contents)
+	}
+
+	_, acquired = store.AcquireQueryCheckpoint(checkpointID)
+	require.False(t, acquired, "deletion must reject readers that arrive after the commit")
+
+	release()
+	_, err = os.Stat(filepath.Dir(filepath.Dir(mainFile)))
+	require.True(t, os.IsNotExist(err), "the last release must remove both checkpoint components")
+}
+
+func TestDeleteQueryCheckpointFilesWaitsForConcurrentReaders(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	store, err := NewStore(dataDir, logging.NopZap(), noop.NewMeterProvider().Meter("test"), DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+
+	const checkpointID = uint64(42)
+	checkpointDir := filepath.Dir(store.QueryCheckpointMainDir(checkpointID))
+	require.NoError(t, os.MkdirAll(checkpointDir, 0o750))
+
+	releaseFirst, acquired := store.AcquireQueryCheckpoint(checkpointID)
+	require.True(t, acquired)
+	releaseSecond, acquired := store.AcquireQueryCheckpoint(checkpointID)
+	require.True(t, acquired)
+	require.NoError(t, store.DeleteQueryCheckpointFiles(checkpointID))
+
+	firstReleased := make(chan struct{})
+	go func() {
+		releaseFirst()
+		close(firstReleased)
+	}()
+	<-firstReleased
+	_, err = os.Stat(checkpointDir)
+	require.NoError(t, err, "one remaining reader must keep the checkpoint")
+
+	secondReleased := make(chan struct{})
+	go func() {
+		releaseSecond()
+		close(secondReleased)
+	}()
+	<-secondReleased
+	_, err = os.Stat(checkpointDir)
+	require.True(t, os.IsNotExist(err), "the concurrent final release must remove the checkpoint")
+}

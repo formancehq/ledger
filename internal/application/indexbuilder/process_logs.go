@@ -703,10 +703,11 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 	return nil
 }
 
-// deleteReadIndexCheckpoint removes the physical read index checkpoint files.
+// deleteReadIndexCheckpoint drives the same whole-checkpoint cleanup as the
+// FSM. The shared DAL lease gate makes this duplicate trigger idempotent and
+// prevents either component from being removed under an acquired reader.
 func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
-	destDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
-	if err := os.RemoveAll(destDir); err != nil {
+	if err := b.pebbleStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
 		b.logger.WithFields(map[string]any{
 			"error":        err,
 			"checkpointID": checkpointID,
