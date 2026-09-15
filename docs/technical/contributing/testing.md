@@ -471,6 +471,8 @@ Signing-key lifecycle and signed submissions remain outside this model driver.
 The model driver generates ledger creation, deletion, mirror promotion, and
 maintenance toggles in the same concurrent bulk stream as business writes. The
 oracle owns ledger existence and filters deleted names from reads and generation.
+Mirror ledgers remain eligible for lifecycle operations and reads, but enter the
+business-write pool only after their promotion has committed.
 Because deletion permanently reserves a name, committed creations grow the
 `model-<runID>-<n>` pool; creation is biased when deletion shrinks the live pool.
 

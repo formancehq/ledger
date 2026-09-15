@@ -12,7 +12,18 @@ import (
 // iteration order is sorted, so callers may draw Antithesis-reproducible
 // decisions while ranging.
 
-func (g GlobalState) Ledgers() map[string]LedgerState { return g.ledgers }
+func (g GlobalState) Ledgers() map[string]LedgerState {
+	active := make(map[string]LedgerState, len(g.ledgers))
+	for name, state := range g.ledgers {
+		lifecycle, exists := g.lifecycle.Get(name)
+		if exists && lifecycle.Deleted {
+			continue
+		}
+		active[name] = state
+	}
+
+	return active
+}
 
 func (s LedgerState) Types() Map[string, TypeState]                    { return s.types }
 func (s LedgerState) Volumes() Map[VolumeKey, VolumePair]              { return s.volumes }

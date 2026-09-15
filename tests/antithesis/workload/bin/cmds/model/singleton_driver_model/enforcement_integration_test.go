@@ -63,3 +63,23 @@ func TestEnforcementModesAgainstServer(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, checker.modelState.Ledger("L").DefaultEnforcementMode(), info.GetDefaultEnforcementMode())
 }
+
+func TestMirrorBulkAdmissionReportsLaterRequestError(t *testing.T) {
+	t.Parallel()
+	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
+		Name:         "L",
+		Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+		MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "source"},
+		AccountTypes: map[string]*commonpb.AccountType{
+			"known": {Name: "known", Pattern: "known:{id}"},
+		},
+	}}}
+	tx := oracletest.TxReq("world", "known:1", "USD", 1)
+	duplicate := actions.AddAccountTypeAction("L", "known", "known:{id}")
+	state := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{create}}).State
+	bulk := oracle.Bulk{Requests: []*servicepb.Request{tx, duplicate}}
+	require.Equal(t, "LEDGER_IN_MIRROR_MODE", state.Apply(bulk).Reason)
+	reason, matched := individualFailureReason(state, bulk, "ACCOUNT_TYPE_ALREADY_EXISTS")
+	require.True(t, matched)
+	require.Equal(t, "ACCOUNT_TYPE_ALREADY_EXISTS", reason)
+}

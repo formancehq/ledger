@@ -800,6 +800,14 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 }
 
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
+	// The cluster-wide maintenance interceptor rejects non-toggle bulks before
+	// request conversion and structural validation. This ordering matters for a
+	// malformed request observed while maintenance is enabled: the service
+	// reports MAINTENANCE_MODE, not the request's validation error.
+	if g.maintenance && !allMaintenanceRequests(bulk.Requests) {
+		return ApplyResult{OK: false, Reason: domain.ErrReasonMaintenanceMode, State: g}
+	}
+
 	// Admission validates every order's structure and converts the whole batch
 	// before it reaches the FSM, so a single malformed order rejects the entire
 	// bulk ahead of any per-order FSM outcome. Structural rejections include invalid skippable reasons and
@@ -814,12 +822,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		if ct := req.GetApply().GetAction().GetCreateTransaction(); ct != nil && len(ct.GetPostings()) == 0 {
 			return ApplyResult{OK: false, Reason: domain.ErrReasonValidation, State: g}
 		}
-	}
-
-	// Both admission and the FSM gate before audit and idempotency. Only an
-	// all-toggle batch may enter while maintenance is enabled.
-	if g.maintenance && !allMaintenanceRequests(bulk.Requests) {
-		return ApplyResult{OK: false, Reason: domain.ErrReasonMaintenanceMode, State: g}
 	}
 
 	// Per-batch idempotency, checked after admission's structural and maintenance
@@ -841,7 +843,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
-	retired := map[string]struct{}{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -860,9 +861,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			orders = append(orders, oc)
 			if !oc.OK {
 				return ApplyResult{Reason: oc.Reason, State: g, Orders: orders}
-			}
-			if req.GetDeleteLedger() != nil {
-				retired[name] = struct{}{}
 			}
 
 			continue
@@ -958,11 +956,6 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		next.ledgers[name] = ls
-	}
-
-	// The deletion cascade runs after all orders and transient validation.
-	for name := range retired {
-		delete(next.ledgers, name)
 	}
 
 	// Freeze the committed outcome so a later bulk with this key replays it. Only
@@ -2076,9 +2069,6 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 	case *servicepb.Request_PromoteLedger:
 		name := r.PromoteLedger.GetLedger()
 		lc, exists := g.lifecycle.Get(name)
-		if exists && lc.Deleted {
-			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
-		}
 		if !exists {
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true

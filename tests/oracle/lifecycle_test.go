@@ -44,6 +44,7 @@ func TestGlobalState_LifecycleDeletion(t *testing.T) {
 	lc, exists := deleted.State.Lifecycle("L")
 	require.True(t, exists)
 	require.True(t, lc.Deleted)
+	require.Equal(t, 1, deleted.State.Ledger("L").Txs().Len(), "tombstone-backed metadata operations retain ledger state")
 	require.Equal(t, before, created.State.Fingerprint())
 	require.Equal(t, 1, created.State.Ledger("L").Txs().Len())
 	rejected := deleted.State.Apply(bulkOf(oracletest.TxReq("world", "a:2", "USD", 1)))
@@ -80,6 +81,25 @@ func TestGlobalState_LifecyclePromotion(t *testing.T) {
 	twice := promoted.State.Apply(bulkOf(promote))
 	require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, twice.Reason)
 	require.True(t, promoted.State.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5))).OK)
+}
+
+func TestGlobalState_PromotesDeletedMirrorLedger(t *testing.T) {
+	t.Parallel()
+
+	create := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_MIRROR)
+	created := NewGlobalState().Apply(bulkOf(create)).State
+	deleted := created.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}})).State
+	promoted := deleted.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_PromoteLedger{
+		PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "L"},
+	}}))
+
+	require.True(t, promoted.OK)
+	lifecycle, exists := promoted.State.Lifecycle("L")
+	require.True(t, exists)
+	require.True(t, lifecycle.Deleted)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, lifecycle.Mode)
 }
 
 func TestGlobalState_LifecycleMaintenanceCommitOrder(t *testing.T) {
@@ -120,6 +140,18 @@ func TestGlobalState_MaintenanceGatesBeforeIdempotency(t *testing.T) {
 	require.Equal(t, domain.ErrReasonMaintenanceMode, enabled.State.Apply(blocked).Reason)
 	disabled := enabled.State.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}}}))
 	require.True(t, disabled.State.Apply(blocked).OK, "maintenance rejection must not freeze an idempotency outcome")
+}
+
+func TestGlobalState_MaintenanceGatesBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	enabled := NewGlobalState().Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{
+		SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: true},
+	}})).State
+	emptyTransaction := bulkOf(oracletest.TxReqMulti(false))
+
+	require.Equal(t, domain.ErrReasonMaintenanceMode, enabled.Apply(emptyTransaction).Reason)
+	require.Equal(t, domain.ErrReasonValidation, NewGlobalState().Apply(emptyTransaction).Reason)
 }
 
 func TestGlobalState_LifecycleInitialConfiguration(t *testing.T) {

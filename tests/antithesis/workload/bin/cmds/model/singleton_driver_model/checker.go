@@ -80,6 +80,12 @@ type Checker struct {
 	// resume so parked workers wake. Both guarded by mu (see restore.go).
 	paused   bool
 	resumeCh chan struct{}
+
+	// Maintenance recovery is coalesced so concurrent successful enables do not
+	// create an unbounded fleet of delayed disable RPCs. Guarded by mu.
+	maintenanceEnableSeq      uint64
+	maintenanceRecoveryActive bool
+	recoveries                sync.WaitGroup
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark

@@ -211,7 +211,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string) orac
 func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 	out := make([]string, 0, len(ledgers))
 	for _, name := range ledgers {
-		if lc, ok := g.Lifecycle(name); !ok || !lc.Deleted {
+		if lc, ok := g.Lifecycle(name); !ok || (!lc.Deleted && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR) {
 			out = append(out, name)
 		}
 	}
