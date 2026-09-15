@@ -114,7 +114,9 @@ Malformed credential-bearing HTTP source URLs must fail before network I/O and
 must not pass raw parser errors into head/batch logs or replicated
 `MirrorSyncError`. Removing only `url.Error.URL` is insufficient: the underlying
 cause may echo an invalid port or another URL fragment. Preserve a safe parsing
-failure marker and ledger identity. The regression in
+failure category and ledger identity, with corrective hints for percent-encoding,
+ports, userinfo and IPv6 syntax. Unknown parser errors must return fixed generic
+text and must not retain the underlying cause. The regression in
 `internal/application/mirror/worker_diagnostic_test.go` follows admission, the
 real source and worker, serialized technical proposals, real FSM application
 and ledger progress reads. `internal/adapter/v2/source_http_diagnostic_test.go`

@@ -102,9 +102,15 @@ Both adapters return v2 log entries in their native shape; translation to v3 ord
 ### HTTP URL parsing diagnostics
 
 Malformed HTTP mirror URLs fail before any network request. The adapter returns
-the fixed diagnostic `parsing URL: invalid mirror source URL`, without wrapping
+a diagnostic identifying the failure category, such as
+`parsing URL: invalid URL escape; check percent-encoding` or
+`parsing URL: invalid port; use a numeric port after ':'`. Known categories also
+distinguish control characters, invalid userinfo, host characters, IPv6 brackets
+and scheme syntax. Only fixed diagnostic text is emitted, without wrapping
 the original parser error: both `url.Error.URL` and its underlying error may
-contain credentials or fragments of the supplied URL. This boundary covers
+contain credentials or fragments of the supplied URL. Unknown parser failures
+fall back to `parsing URL: invalid mirror source URL`; a new toolchain error
+cannot accidentally expose its raw cause. This boundary covers
 both latest-head discovery and batch fetching. Ledger identity remains in the
 worker's structured log fields and the `MirrorSyncUpdate` ledger name.
 

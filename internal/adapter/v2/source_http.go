@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // HTTPSource is a Source that fetches logs from a v2 ledger HTTP API.
@@ -40,7 +41,7 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 		// url.Error includes the supplied URL, and even its underlying cause
 		// may echo sensitive input (for example an invalid port). Do not retain
 		// either in errors consumed by worker logs and replicated mirror status.
-		return nil, errors.New("parsing URL: invalid mirror source URL")
+		return nil, safeHTTPURLParseError(err)
 	}
 
 	u.RawQuery = query.Encode()
@@ -63,6 +64,45 @@ func (s *HTTPSource) doGet(ctx context.Context, path string, query url.Values) (
 	}
 
 	return resp, nil
+}
+
+// safeHTTPURLParseError preserves the failure category without retaining any
+// input fragments or wrapping chain. net/url exports types for only some parse
+// failures; recognize the remaining known messages but emit only fixed text.
+// Unknown errors keep a generic diagnostic, including after toolchain upgrades.
+func safeHTTPURLParseError(err error) error {
+	reason := "invalid mirror source URL"
+	if parseErr, ok := errors.AsType[*url.Error](err); ok {
+		var escapeErr url.EscapeError
+		var hostErr url.InvalidHostError
+		switch {
+		case errors.As(parseErr.Err, &escapeErr):
+			reason = "invalid URL escape; check percent-encoding"
+		case errors.As(parseErr.Err, &hostErr):
+			reason = "invalid character in host"
+		case strings.HasPrefix(parseErr.Err.Error(), "invalid port "):
+			reason = "invalid port; use a numeric port after ':'"
+		case strings.HasPrefix(parseErr.Err.Error(), "invalid host:"):
+			reason = "invalid IP-literal; check the bracketed IPv6 address"
+		default:
+			switch parseErr.Err.Error() {
+			case "net/url: invalid control character in URL":
+				reason = "control character in URL"
+			case "net/url: invalid userinfo":
+				reason = "invalid userinfo; percent-encode special characters in credentials"
+			case "missing ']' in host":
+				reason = "missing ']' in host; enclose IPv6 addresses in brackets"
+			case "invalid IP-literal":
+				reason = "invalid IP-literal; check the bracketed IPv6 address"
+			case "missing protocol scheme":
+				reason = "missing protocol scheme"
+			case "first path segment in URL cannot contain colon":
+				reason = "first path segment cannot contain ':'; check the URL scheme"
+			}
+		}
+	}
+
+	return fmt.Errorf("parsing URL: %s", reason)
 }
 
 // FetchLogs fetches logs from the v2 API.

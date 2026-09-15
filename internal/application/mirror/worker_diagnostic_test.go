@@ -52,7 +52,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	t.Parallel()
 	const password = "AUDIT_MIRROR_PASS_52c91"
 	const ledgerName = "audit-mirror"
-	const diagnostic = "parsing URL: invalid mirror source URL"
+	const diagnostic = "parsing URL: invalid URL escape; check percent-encoding"
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var logs bytes.Buffer
