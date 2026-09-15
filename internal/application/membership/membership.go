@@ -12,12 +12,10 @@
 //     used by a joining node before it has any user identity.
 //
 // Both adapters share the same underlying state machine: validate the
-// request → mutate the local transport pools so the leader can reach
-// the peer → propose the matching ConfChange. Keeping that sequence in
-// a single type prevents the two adapters from drifting (e.g. one
-// forgetting to add the peer to the service pool, or one ignoring a
-// future per-operation invariant such as "no membership change while
-// in maintenance mode").
+// request → wire the Raft transport so the leader can replicate to a new
+// peer → propose the matching ConfChange. The service pool is updated only
+// by the committed ConfChange observer, so a rejected request cannot alter
+// client routing.
 //
 // The adapter layer is still responsible for:
 //   - authentication (different on each surface),
@@ -55,6 +53,8 @@ type Service struct {
 	node             *node.Node
 	raftTransport    *node.DefaultTransport
 	servicePool      *transport.ConnectionPool
+	addLearner       func(context.Context, uint64, string, string, []byte) error
+	addRaftPeer      func(uint64, string)
 	infraMembership  *membership.Membership
 	logger           logging.Logger
 	localRaftAddr    string
@@ -73,6 +73,8 @@ func NewService(
 		node:             n,
 		raftTransport:    raftTransport,
 		servicePool:      servicePool,
+		addLearner:       n.AddLearner,
+		addRaftPeer:      raftTransport.AddPeer,
 		infraMembership:  infraMembership,
 		logger:           logger.WithField("component", "cluster-membership"),
 		localRaftAddr:    localRaftAddr,
@@ -87,8 +89,9 @@ func (s *Service) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 	return s.infraMembership.IsRemoved(nodeID, instanceID)
 }
 
-// AddLearner wires the new peer into the local transport pools and
-// proposes the AddLearner ConfChange on the leader. The caller must
+// AddLearner wires the new peer into the Raft transport and proposes the
+// AddLearner ConfChange on the leader. The committed ConfChange observer
+// updates the service pool. The caller must
 // have already routed the request to the leader. instanceID is the
 // joining peer's 16-byte identity UUID (EN-1045); may be empty for
 // legacy clients that predate the field.
@@ -106,16 +109,9 @@ func (s *Service) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		"serviceAddress": serviceAddr,
 	}).Infof("AddLearner: wiring peer and proposing ConfChange")
 
-	s.raftTransport.AddPeer(nodeID, raftAddr)
+	s.addRaftPeer(nodeID, raftAddr)
 
-	if err := s.servicePool.AddPeer(nodeID, serviceAddr); err != nil {
-		// Non-fatal: the leader can still propose the ConfChange; the
-		// service pool will be refreshed by the ConfChange observer
-		// after commit. Surface as a warning so it stays visible.
-		s.logger.WithFields(map[string]any{"error": err}).Errorf("AddLearner: failed to add learner to service pool")
-	}
-
-	if err := s.node.AddLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID); err != nil {
+	if err := s.addLearner(ctx, nodeID, raftAddr, serviceAddr, instanceID); err != nil {
 		return fmt.Errorf("adding learner: %w", err)
 	}
 

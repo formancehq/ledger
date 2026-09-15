@@ -6,13 +6,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-)
 
-// Membership service unit tests cover the input-validation branches.
-// Leader-side mutation (raftTransport.AddPeer + servicePool.AddPeer +
-// node.AddLearner) requires a real *node.Node and is covered by the
-// e2e cluster suite — input validation alone runs before any of those
-// dependencies is touched, which is what we assert here.
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/infra/transport"
+)
 
 func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 	t.Parallel()
@@ -41,6 +40,33 @@ func TestService_AddLearner_ValidatesRequest(t *testing.T) {
 			assert.Contains(t, err.Error(), tc.wantSubstr)
 		})
 	}
+}
+
+func TestService_AddLearner_RejectionPreservesServiceRouting(t *testing.T) {
+	t.Parallel()
+
+	const (
+		nodeID          = uint64(2)
+		committedAddr   = "member-2:8080"
+		uncommittedAddr = "attacker:8080"
+	)
+
+	servicePool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
+	require.NoError(t, servicePool.AddPeer(nodeID, committedAddr))
+	t.Cleanup(func() { require.NoError(t, servicePool.Close()) })
+
+	s := &Service{
+		servicePool: servicePool,
+		addRaftPeer: func(uint64, string) {},
+		addLearner: func(context.Context, uint64, string, string, []byte) error {
+			return node.ErrNodeAlreadyInCluster
+		},
+		logger: logging.Testing(),
+	}
+
+	err := s.AddLearner(context.Background(), nodeID, "member-2:7070", uncommittedAddr, nil)
+	require.ErrorIs(t, err, node.ErrNodeAlreadyInCluster)
+	require.Equal(t, committedAddr, servicePool.GetPeerAddress(nodeID))
 }
 
 func TestService_PromoteLearner_RejectsZeroNodeID(t *testing.T) {

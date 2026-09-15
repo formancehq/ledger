@@ -149,8 +149,13 @@ When a ConfChange is committed (adding a learner or promoting a voter), an obser
 
 The `AddLearner` gRPC handler on the leader:
 
-1. Pre-registers the new peer in its local transport and service pool (so Raft messages can reach the new node immediately)
+1. Pre-registers the new peer only in its local Raft transport, so Raft messages can reach the new node immediately
 2. Proposes a `ConfChangeV2` with `ConfChangeAddLearnerNode`
+3. After commit, the ConfChange observer updates the service pool from the
+   committed peer address
+
+The service route is not changed before the proposal commits. A rejected
+`AddLearner` request therefore leaves routing for any existing member unchanged.
 
 If the request reaches a follower, it is transparently forwarded to the leader.
 
