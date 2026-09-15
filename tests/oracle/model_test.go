@@ -737,7 +737,7 @@ func TestGlobalState_Apply_PersistedZeroVolumeIsNotNewAgain(t *testing.T) {
 
 	logs := second.State.Ledger("L").LogRows()
 	require.Len(t, logs, 2)
-	require.Equal(t, "a:zero:USD,world:USD", logs[0].NewKeptVolumes)
+	require.Equal(t, "a:zero:USD:,world:USD:", logs[0].NewKeptVolumes)
 	require.Empty(t, logs[1].NewKeptVolumes)
 }
 

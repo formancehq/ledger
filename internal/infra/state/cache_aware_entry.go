@@ -85,9 +85,9 @@ func (c *CacheAwareEntry[K, V]) TombstoneCacheOnly(
 	genByte byte,
 	canonical []byte,
 ) error {
-	id, tag, err := c.store.Delete(canonical)
+	id, tag, err := c.store.Tombstone(canonical)
 	if err != nil {
-		return fmt.Errorf("keystore delete: %w", err)
+		return fmt.Errorf("keystore tombstone: %w", err)
 	}
 
 	if err := writeCacheTombstone(batch, genByte, c.cacheType, id, tag); err != nil {

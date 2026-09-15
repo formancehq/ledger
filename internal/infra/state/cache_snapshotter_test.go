@@ -671,13 +671,13 @@ func TestCacheSnapshotter_MachineIntegration(t *testing.T) {
 }
 
 // TestCacheSnapshotter_EN1242_DeleteAfterRotationCrashRestart drives the full
-// EN-1242 cycle end-to-end with a real Pebble store under the lazy-Del model:
+// EN-1242 cycle end-to-end with a real Pebble store under the lazy-tombstone model:
 //
 //  1. Put a metadata key — mem gen0 + disk gen0 byte = live.
 //  2. Rotate the cache (mem) and writeCacheRotation (disk) — the live row
 //     migrates: mem gen1 holds it, gen0 is empty; disk's old gen0 byte now
 //     plays gen1, and the new gen0 byte was purged.
-//  3. FSM-apply batch: KeyStore.Delete (via s.M.Del → AttributeCache.Del)
+//  3. FSM-apply batch: KeyStore.Tombstone (via a Gen0 tombstone Put)
 //     lazy-fabricates a gen0 tombstone from Gen1's tag — no separate
 //     MirrorTouch pass needed. writeCacheTombstone writes the tombstone to
 //     disk gen0 byte.
@@ -729,18 +729,18 @@ func TestCacheSnapshotter_EN1242_DeleteAfterRotationCrashRestart(t *testing.T) {
 	require.True(t, gen1Has)
 	require.False(t, postRotateLive.Deleted, "precondition: live row migrated to Gen1")
 
-	// Step 3: FSM apply — KeyStore.Delete lazy-fabricates the gen0
+	// Step 3: FSM apply — KeyStore.Tombstone lazy-fabricates the gen0
 	// tombstone from Gen1's tag (no separate MirrorTouch step), and
 	// writeCacheTombstone mirrors the tombstone to the gen0 byte on disk.
 	batch = dataStore.OpenWriteSession()
-	_, _, err = ks.Delete(canonical)
-	require.NoError(t, err, "Delete must succeed via the lazy gen1→gen0 promote")
+	_, _, err = ks.Tombstone(canonical)
+	require.NoError(t, err, "Tombstone must succeed via the gen1→gen0 write")
 
 	require.NoError(t, writeCacheTombstone(batch, gen0Byte, dal.SubAttrLedgerMetadata, id, tag))
 	require.NoError(t, batch.Commit())
 
 	// Pre-restart sanity: Gen0 mem = fabricated tombstone (borrowed tag),
-	// Gen1 mem = pre-rotation live row (untouched by Del).
+	// Gen1 mem = pre-rotation live row (untouched by Tombstone).
 	memTombstone, ok := registry.Cache.LedgerMetadata.Gen0().Get(id)
 	require.True(t, ok)
 	require.True(t, memTombstone.Deleted)
@@ -851,10 +851,10 @@ func TestCacheSnapshotter_EN1377_LiveZeroByteProtoRoundTrip(t *testing.T) {
 
 // TestCacheSnapshotter_EN1377_PersistRotationDoesNotResurrectDeletedEntry
 // guards the latent bug in persistLeanProtoEntries that EN-1377 fixes
-// alongside the format change: AttributeCache.Del keeps the pre-delete
-// payload in entry.Data with Deleted=true. Before the fix, persist marshaled
-// entry.Data unconditionally — restoring the deleted key as live with its
-// pre-delete value. The explicit flag byte makes persist emit a tombstone row.
+// alongside the format change: a tombstoned entry may carry stale payload in
+// entry.Data. Before the fix, persist marshaled entry.Data unconditionally —
+// restoring the deleted key as live with its pre-delete value. The explicit
+// flag byte makes persist emit a tombstone row.
 func TestCacheSnapshotter_EN1377_PersistRotationDoesNotResurrectDeletedEntry(t *testing.T) {
 	t.Parallel()
 
@@ -865,7 +865,7 @@ func TestCacheSnapshotter_EN1377_PersistRotationDoesNotResurrectDeletedEntry(t *
 	value := commonpb.NewStringValue("pre-delete-payload")
 	const tag uint64 = 7
 
-	// Live entry, then deleted in place (Del flips Deleted but keeps Data).
+	// Model a legacy tombstone retaining its pre-delete payload.
 	registry.Cache.LedgerMetadata.Gen0().Put(u128, attributes.Entry[*commonpb.MetadataValue]{
 		Tag:     tag,
 		Data:    value,

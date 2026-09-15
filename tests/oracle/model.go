@@ -1855,8 +1855,8 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 
 	switch t.Persistence {
 	case commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT:
-		bv := base.vol(key)
-		if bv.Input.IsZero() && bv.Output.IsZero() {
+		_, existed := base.volumes.Get(key)
+		if !existed {
 			return true
 		}
 
@@ -1883,8 +1883,8 @@ func (s *LedgerState) cellHistoryExcluded(base *LedgerState, key VolumeKey, comp
 		return false
 	}
 
-	bv := base.vol(key)
-	if bv.Input.IsZero() && bv.Output.IsZero() {
+	_, existed := base.volumes.Get(key)
+	if !existed {
 		return true
 	}
 
@@ -2286,8 +2286,10 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 		}
 
 		// Grandfather clause: pre-existing non-zero balance is exempt.
-		bv := base.vol(key)
-		if bv.Input.Cmp(&bv.Output) != 0 {
+		// A row that existed before the bulk (even at {0,0}) is grandfathered:
+		// it is a previously persisted row being drained, not a fresh transient.
+		_, existed := base.volumes.Get(key)
+		if existed {
 			continue
 		}
 
