@@ -1891,6 +1891,47 @@ func TestResolveBalances(t *testing.T) {
 	}
 }
 
+// Two balance() variables may name the same account. Both must be resolved:
+// registering them under a single resource index left the first one with a nil
+// amount, which panicked as soon as it was used.
+func TestTwoBalanceVarsOnSameAccount(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		monetary $a = balance(@src, COIN)
+		monetary $b = balance(@src, COIN)
+	}
+
+	send $a (
+		source = @src
+		destination = @dst1
+	)
+
+	send $b (
+		source = @world
+		destination = @dst2
+	)`)
+	tc.setBalance("src", "COIN", 40)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(40),
+				Source:      "src",
+				Destination: "dst1",
+			},
+			{
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(40),
+				Source:      "world",
+				Destination: "dst2",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
 func TestMachine(t *testing.T) {
 	p, err := compiler.Compile(`
 		vars {
