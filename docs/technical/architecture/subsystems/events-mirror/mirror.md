@@ -101,7 +101,16 @@ Both adapters return v2 log entries in their native shape; translation to v3 ord
 
 ### HTTP URL parsing diagnostics
 
-Malformed HTTP mirror URLs fail before any network request. The adapter returns
+At creation, admission parses `mirrorSource.http.baseUrl` and requires an
+absolute HTTP(S) URL with a nonempty hostname. Invalid configuration returns
+`mirrorSource.http.baseUrl must be a valid absolute HTTP(S) URL with a host`
+before any Raft proposal, ledger/audit persistence, or worker startup. The check
+performs no network I/O and never returns the URL or the raw parser error.
+Valid configuration is not rewritten. Reachability and authentication failures
+remain runtime concerns.
+
+The adapter also protects configurations loaded outside creation admission,
+including restored state: malformed URLs fail before any network request and it returns
 the fixed diagnostic `parsing URL: invalid mirror source URL`, without wrapping
 the original parser error: both `url.Error.URL` and its underlying error may
 contain credentials or fragments of the supplied URL. This boundary covers
@@ -115,7 +124,10 @@ reads expose the same safe message. The ingestion boundary does not advance.
 This sanitization does not alter the configured source, accepted orders, or
 audit evidence, and does not change the status retry/clear lifecycle.
 
-`TestWorker_MalformedURLDoesNotDisclosePassword` exercises admission, both real
+`TestAdmission_MalformedHTTPMirrorRejectedBeforeProposal` proves rejection
+before Raft and absence of a new ledger or mirror status.
+`TestWorker_MalformedURLDoesNotDisclosePassword` separately seeds persisted
+configuration after checking admission rejection, retaining coverage of both real
 HTTP source calls, worker logs, serialized proposals, real FSM application and
 ledger progress reads with a synthetic password and a transport that rejects
 any attempted network request. Adapter tests also cover invalid ports,

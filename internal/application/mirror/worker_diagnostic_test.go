@@ -20,6 +20,7 @@ import (
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -46,8 +47,9 @@ func (r rejectingHTTPMirrorTransport) RoundTrip(*http.Request) (*http.Response, 
 	return nil, errors.New("unexpected network request")
 }
 
-// Exercise admission, the real source and worker, proposal serialization, FSM
-// application and ledger progress reads. Only the Raft transport is replaced.
+// Admission rejects the malformed URL. Seed the persisted fixture separately
+// to retain runtime defense coverage for configurations loaded outside admission.
+// The source, worker, FSM and reads are real; only Raft transport is replaced.
 func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	t.Parallel()
 	const password = "AUDIT_MIRROR_PASS_52c91"
@@ -67,7 +69,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	attrs := attributes.New()
 	c, err := cache.New(100, meters.Meter("test"))
 	require.NoError(t, err)
-	registry := state.NewStateRegistry(c, attrs, 0)
+	registry := state.NewStateRegistry(c, attrs)
 	keys := keystore.NewKeyStore()
 	shared := state.NewSharedState()
 	machine, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil), store, dal.NewSentinelFactory(store, false), meters, keys, shared, signal.NewNotifications(), nil, "test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
@@ -89,7 +91,17 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	_, err = adm.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}},
 	}))
-	require.NoError(t, err, "malformed HTTP source must reach the production worker path")
+	require.ErrorIs(t, err, admission.ErrMirrorHTTPURLInvalid)
+	require.Equal(t, uint64(1), tracker.Next(), "rejection must not propose to Raft")
+	key := domain.LedgerKey{Name: ledgerName}
+	info := &commonpb.LedgerInfo{Name: ledgerName, Id: 1, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: config}
+	session := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(session, ledgerName, info))
+	_, _, err = registry.Ledgers.PutWithCache(session, 0, key.Bytes(), info)
+	require.NoError(t, err)
+	_, _, err = registry.Boundaries.PutWithCache(session, 0, key.Bytes(), &raftcmdpb.LedgerBoundaries{NextTransactionId: 1})
+	require.NoError(t, err)
+	require.NoError(t, session.Commit())
 	controller := ctrl.NewDefaultController(adm, store, logger, attrs, nil, nil, meters.Meter("test"))
 	ledger, err := controller.GetLedgerByName(ctx, ledgerName)
 	require.NoError(t, err)

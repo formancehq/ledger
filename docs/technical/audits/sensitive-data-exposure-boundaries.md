@@ -110,13 +110,18 @@ The matrix must include at least:
 
 ### HTTP mirror parser error oracle
 
-Malformed credential-bearing HTTP source URLs must fail before network I/O and
+Malformed credential-bearing HTTP source URLs must be rejected at creation
+before Raft, ledger/audit persistence or worker startup, with a safe field-specific
+validation error. `internal/application/admission/mirror_http_url_test.go` guards
+that ingress. Separately seed persisted malformed configuration to verify runtime
+defense for state loaded outside creation admission: it must fail before network I/O and
 must not pass raw parser errors into head/batch logs or replicated
 `MirrorSyncError`. Removing only `url.Error.URL` is insufficient: the underlying
 cause may echo an invalid port or another URL fragment. Preserve a safe parsing
 failure marker and ledger identity. The regression in
-`internal/application/mirror/worker_diagnostic_test.go` follows admission, the
-real source and worker, serialized technical proposals, real FSM application
+`internal/application/mirror/worker_diagnostic_test.go` follows
+admission rejection, then a seeded persisted configuration through the real
+source and worker, serialized technical proposals, real FSM application
 and ledger progress reads. `internal/adapter/v2/source_http_diagnostic_test.go`
 also checks wrapped causes for malformed path/userinfo escapes, ports and control
 characters. Credential-bearing configuration and authoritative audit evidence

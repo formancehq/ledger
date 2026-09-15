@@ -7,6 +7,11 @@ import "github.com/formancehq/ledger/v3/internal/domain"
 // Domain errors stay in internal/domain; cross-cutting application errors
 // live here so the domain package keeps its narrow ledger-semantics scope.
 var (
+	// ErrMirrorHTTPURLInvalid rejects unusable HTTP source URLs before the
+	// configuration reaches Raft. Never include the credential-bearing input
+	// or the URL parser's error in this public validation message.
+	ErrMirrorHTTPURLInvalid = domain.NewValidationSentinel("mirrorSource.http.baseUrl must be a valid absolute HTTP(S) URL with a host")
+
 	// ErrMirrorIAMRegionRequired is raised when a CreateLedger order carries a
 	// Postgres mirror source with awsIamAuth set but an empty region. The
 	// region is mandatory to sign the SigV4 IAM auth token, and validating it

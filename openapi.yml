@@ -4519,7 +4519,7 @@ components:
           description: Source type (defaults to "http" if omitted)
         baseUrl:
           type: string
-          description: Base URL of the v2 API (required for HTTP source)
+          description: Valid absolute HTTP(S) URL with a nonempty hostname for the v2 API (required for HTTP source); checked at creation before persistence, without a network probe
         oauth2ClientId:
           type: string
           description: OAuth2 client ID for the v2 API (HTTP source only)
