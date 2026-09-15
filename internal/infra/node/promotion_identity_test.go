@@ -50,6 +50,8 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 
 	n := newConfiguredPeersTestNode(t)
 	n.logger = logging.Testing()
+	setup := newTestApplierSetupWithConfChangeHandler(t, make(LocalResponses, 1024), n.membership.WriteConfChange)
+	n.fsm = setup.fsm
 	results := make(chan error, 1)
 	go func() {
 		results <- n.PromoteLearner(t.Context(), 2)
@@ -68,6 +70,13 @@ func TestPromoteLearner_ProposesCompleteRegisteredIdentity(t *testing.T) {
 	pending, err := n.takePendingConfChange(cc, entry.GetIndex())
 	require.NoError(t, err)
 	require.NotNil(t, pending)
+	// The new success boundary requires durable FSM application as well as
+	// commit correlation. Replay the election prefix and the captured change.
+	prefix, err := n.wal.Entries(1, entry.GetIndex(), ^uint64(0))
+	require.NoError(t, err)
+	_, err = setup.fsm.ApplyEntries(t.Context(), setup.store, append(prefix, entry)...)
+	require.NoError(t, err)
+	require.Equal(t, entry.GetIndex(), setup.fsm.LastPersistedIndex())
 	pending.future.Resolve(pending.index, nil)
 	cmd.errCh <- nil
 	require.NoError(t, <-results)

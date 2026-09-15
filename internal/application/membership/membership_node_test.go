@@ -28,6 +28,13 @@ import (
 // only the existing voter contributes to the registration's commit quorum.
 func newMembershipServiceNode(t *testing.T) *Service {
 	t.Helper()
+	s, _ := newMembershipServiceNodeWithPool(t)
+
+	return s
+}
+
+func newMembershipServiceNodeWithPool(t *testing.T) (*Service, *transport.ConnectionPool) {
+	t.Helper()
 	require.Equal(t, wal.InstanceIDLen, inframembership.InstanceIDLen, "WAL and membership must agree on persisted identity length")
 
 	logger := logging.Testing()
@@ -69,7 +76,7 @@ func newMembershipServiceNode(t *testing.T) *Service {
 
 	c, err := cache.New(1000, nil)
 	require.NoError(t, err)
-	registry := state.NewStateRegistry(c, attributes.New(), 0)
+	registry := state.NewStateRegistry(c, attributes.New())
 	fsm, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil),
 		store, dal.NewSentinelFactory(store, false), meters, nil, state.NewSharedState(),
 		signal.NewNotifications(), nil, "membership-service-test", 0, m.WriteConfChange)
@@ -121,7 +128,7 @@ func newMembershipServiceNode(t *testing.T) *Service {
 	defer cancel()
 	require.NoError(t, n.WaitLeaderReady(ctx))
 
-	return NewService(n, m, logger, "public-self:7777", "public-self:8888")
+	return NewService(n, m, logger, "public-self:7777", "public-self:8888"), pool
 }
 
 func TestService_LearnerRegistrationCommitsAndPreservesCallerIntent(t *testing.T) {
