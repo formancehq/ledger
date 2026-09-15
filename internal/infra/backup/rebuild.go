@@ -436,7 +436,7 @@ func rebuildDelta(
 			if updated := p.UpdatedPreparedQuery; updated != nil {
 				keyBytes := domain.PreparedQueryKey{LedgerName: updated.GetLedger(), Name: updated.GetName()}.Bytes()
 				key := string(keyBytes)
-				existing, loaded := preparedQueries[key]
+				_, loaded := preparedQueries[key]
 				if !loaded {
 					existing, err := attrs.PreparedQuery.Get(readHandle, keyBytes)
 					if err != nil {
@@ -447,7 +447,7 @@ func rebuildDelta(
 					preparedQueries[key] = existing
 				}
 
-				existing = preparedQueries[key]
+				existing := preparedQueries[key]
 				if existing == nil {
 					_ = batch.Cancel()
 
