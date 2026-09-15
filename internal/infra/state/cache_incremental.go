@@ -78,7 +78,7 @@ func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attribut
 }
 
 // writeCacheTombstone writes a tombstone row to the current gen0 byte in 0xFF,
-// matching AttributeCache.Del's gen0-only tombstone semantic. The on-disk form
+// matching KeyStore.Tombstone's gen0-only tombstone semantic. The on-disk form
 // is [tag 8][0x01] (no trailing bytes).
 //
 // The gen1 byte is intentionally NOT touched: any pre-existing live entry sits
