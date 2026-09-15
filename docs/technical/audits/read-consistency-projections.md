@@ -66,7 +66,9 @@ when target-specific gates project it back to the main pin:
 - transaction and log membership use `query.MainHorizonKeep`;
 - account metadata resolves event history at the pin and has-asset rows use
   first-touch stamps;
-- folded account membership retains the documented purged-address exception;
+- folded account membership applies an account-wide ephemeral purge to every
+  current has-asset and metadata index in the same batch as aligned progress,
+  while historical account-to-transaction mappings remain queryable;
 - schema and `IndexVersionState` come from their owning pinned views.
 
 ### Audit and usage projections

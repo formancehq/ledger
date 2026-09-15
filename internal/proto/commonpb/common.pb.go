@@ -6084,8 +6084,12 @@ type LedgerLog struct {
 	//     (previous encoding carried them in both purged_volumes AND
 	//     new_volumes, doubling bytes on ephemeral-heavy workloads).
 	EphemeralVolumes []*TouchedVolume `protobuf:"bytes,6,rep,name=ephemeral_volumes,json=ephemeralVolumes,proto3" json:"ephemeral_volumes,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Account addresses whose complete EPHEMERAL current state was removed by
+	// this log. Historical transaction mappings remain intact; consumers use
+	// this signal to purge only current-account secondary projections.
+	PurgedAccounts []string `protobuf:"bytes,7,rep,name=purged_accounts,json=purgedAccounts,proto3" json:"purged_accounts,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *LedgerLog) Reset() {
@@ -6156,6 +6160,13 @@ func (x *LedgerLog) GetNewKeptVolumes() []*TouchedVolume {
 func (x *LedgerLog) GetEphemeralVolumes() []*TouchedVolume {
 	if x != nil {
 		return x.EphemeralVolumes
+	}
+	return nil
+}
+
+func (x *LedgerLog) GetPurgedAccounts() []string {
+	if x != nil {
+		return x.PurgedAccounts
 	}
 	return nil
 }
@@ -13097,14 +13108,15 @@ const file_common_proto_rawDesc = "" +
 	"\x0eApplyLedgerLog\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +
 	"ledgerName\x12#\n" +
-	"\x03log\x18\x02 \x01(\v2\x11.common.LedgerLogR\x03log\"\xb3\x02\n" +
+	"\x03log\x18\x02 \x01(\v2\x11.common.LedgerLogR\x03log\"\xdc\x02\n" +
 	"\tLedgerLog\x12,\n" +
 	"\x04data\x18\x01 \x01(\v2\x18.common.LedgerLogPayloadR\x04data\x12%\n" +
 	"\x04date\x18\x02 \x01(\v2\x11.common.TimestampR\x04date\x12\x0e\n" +
 	"\x02id\x18\x03 \x01(\x06R\x02id\x12<\n" +
 	"\x0epurged_volumes\x18\x04 \x03(\v2\x15.common.TouchedVolumeR\rpurgedVolumes\x12?\n" +
 	"\x10new_kept_volumes\x18\x05 \x03(\v2\x15.common.TouchedVolumeR\x0enewKeptVolumes\x12B\n" +
-	"\x11ephemeral_volumes\x18\x06 \x03(\v2\x15.common.TouchedVolumeR\x10ephemeralVolumes\"U\n" +
+	"\x11ephemeral_volumes\x18\x06 \x03(\v2\x15.common.TouchedVolumeR\x10ephemeralVolumes\x12'\n" +
+	"\x0fpurged_accounts\x18\a \x03(\tR\x0epurgedAccounts\"U\n" +
 	"\rTouchedVolume\x12\x18\n" +
 	"\aaccount\x18\x01 \x01(\tR\aaccount\x12\x14\n" +
 	"\x05asset\x18\x02 \x01(\tR\x05asset\x12\x14\n" +

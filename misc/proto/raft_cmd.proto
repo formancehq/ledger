@@ -737,6 +737,9 @@ message AttributeCoverage {
   uint32 attr_code = 2;
   // Optional seed: nil = coverage-only; non-nil = seed into the FSM cache.
   AttributeValue value = 3;
+  // Canonical key bytes retained for proposal-wide deterministic lifecycle
+  // operations that must enumerate only the keys admission declared.
+  bytes canonical_key = 4;
 }
 
 // AttributeValue carries the typed value to seed the FSM-side cache for

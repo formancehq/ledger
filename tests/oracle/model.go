@@ -136,9 +136,9 @@ type LedgerState struct {
 
 	// everAsset is the account-by-asset index projection: the set of
 	// (account, assetBase, precision) any committed, non-excluded posting has ever
-	// touched, on either side. This is the exact set the has-asset filter serves
-	// (see recordAssetTouches) — a monotonic history, NOT the current volume set:
-	// an account drained to zero and purged from the volume table stays here.
+	// touched, on either side. This is the exact current set the has-asset filter
+	// serves (see recordAssetTouches); account-wide EPHEMERAL purge removes every
+	// membership, while a later re-fund records it again.
 	everAsset Map[assetTouch, struct{}]
 
 	// compiledChart memoizes compiled() for the current types value — nil means
@@ -897,6 +897,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
 	retired := map[string]struct{}{}
+	touchedAccounts := map[string]map[string]bool{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -961,6 +962,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		orderCells := map[VolumeKey]bool{}
+		accounts := touchedAccounts[name]
+		if accounts == nil {
+			accounts = map[string]bool{}
+			touchedAccounts[name] = accounts
+		}
+		for account := range requestAccountTouches(req) {
+			accounts[account] = true
+		}
 
 		beforeOrder := ls
 		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
@@ -1022,7 +1031,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		ls.recordAssetTouches(&base, cells)
 		ls.recordIndexedAddrs(&base, uint64(base.Txs().Len())+1)
 
-		purged := ls.purgeZeroBalance(cells)
+		purged := ls.purgeZeroBalance(cells, touchedAccounts[name])
 
 		ann := ls.classifyVolumes(&base, cells, purged)
 		for _, ot := range orderTouches {
@@ -1048,6 +1057,30 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	}
 
 	return ApplyResult{OK: true, State: next, Orders: orders}
+}
+
+func requestAccountTouches(req *servicepb.Request) map[string]bool {
+	out := map[string]bool{}
+	apply := req.GetApply()
+	if apply == nil {
+		return out
+	}
+	switch action := apply.GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction:
+		for account := range action.CreateTransaction.GetAccountMetadata() {
+			out[account] = true
+		}
+	case *servicepb.LedgerAction_AddMetadata:
+		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil {
+			out[account.GetAddr()] = true
+		}
+	case *servicepb.LedgerAction_DeleteMetadata:
+		if account := action.DeleteMetadata.GetTarget().GetAccount(); account != nil {
+			out[account.GetAddr()] = true
+		}
+	}
+
+	return out
 }
 
 // RequestsEqual compares the modeled business intent of request slices. Chart
@@ -2205,11 +2238,12 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 
 // purgeZeroBalance drops touched EPHEMERAL/TRANSIENT cells that landed at a zero
 // balance, mirroring the server's post-commit write-set sweep (PR #151).
-func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey]bool {
+func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccounts map[string]bool) map[VolumeKey]bool {
 	purged := map[VolumeKey]bool{}
 	compiled := s.compiled()
 
 	for key := range touched {
+		touchedAccounts[key.Address] = true
 		vp, ok := s.volumes.Get(key)
 		if !ok {
 			continue
@@ -2226,6 +2260,42 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey
 			if vp.Input.Cmp(&vp.Output) == 0 {
 				s.volumes = s.volumes.Delete(key)
 				purged[key] = true
+			}
+		}
+	}
+
+	for address := range touchedAccounts {
+		t := s.match(address, compiled)
+		if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			continue
+		}
+		live := false
+		for key, volume := range s.volumes.All() {
+			if key.Address == address && volume.Input.Cmp(&volume.Output) != 0 {
+				live = true
+
+				break
+			}
+		}
+		if live {
+			continue
+		}
+		for key := range s.volumes.All() {
+			if key.Address == address {
+				s.volumes = s.volumes.Delete(key)
+				if touched[key] {
+					purged[key] = true
+				}
+			}
+		}
+		for key := range s.metadata.All() {
+			if key.Address == address {
+				s.metadata = s.metadata.Delete(key)
+			}
+		}
+		for key := range s.everAsset.All() {
+			if key.address == address {
+				s.everAsset = s.everAsset.Delete(key)
 			}
 		}
 	}

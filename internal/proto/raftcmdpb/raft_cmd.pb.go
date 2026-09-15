@@ -4894,7 +4894,10 @@ type AttributeCoverage struct {
 	Id       *AttributeID           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	AttrCode uint32                 `protobuf:"varint,2,opt,name=attr_code,json=attrCode,proto3" json:"attr_code,omitempty"`
 	// Optional seed: nil = coverage-only; non-nil = seed into the FSM cache.
-	Value         *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	Value *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// Canonical key bytes retained for proposal-wide deterministic lifecycle
+	// operations that must enumerate only the keys admission declared.
+	CanonicalKey  []byte `protobuf:"bytes,4,opt,name=canonical_key,json=canonicalKey,proto3" json:"canonical_key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4946,6 +4949,13 @@ func (x *AttributeCoverage) GetAttrCode() uint32 {
 func (x *AttributeCoverage) GetValue() *AttributeValue {
 	if x != nil {
 		return x.Value
+	}
+	return nil
+}
+
+func (x *AttributeCoverage) GetCanonicalKey() []byte {
+	if x != nil {
+		return x.CanonicalKey
 	}
 	return nil
 }
@@ -5681,11 +5691,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x03 \x03(\v2\x17.raft.AttributeCoverageR\n" +
 	"attributes\x12E\n" +
-	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\x7f\n" +
+	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\xa4\x01\n" +
 	"\x11AttributeCoverage\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1b\n" +
 	"\tattr_code\x18\x02 \x01(\rR\battrCode\x12*\n" +
-	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\"-\n" +
+	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\x12#\n" +
+	"\rcanonical_key\x18\x04 \x01(\fR\fcanonicalKey\"-\n" +
 	"\x0eAttributeValue\x12\x1b\n" +
 	"\traw_value\x18\x01 \x01(\fR\brawValue\"[\n" +
 	"\x14ReloadIdempotencyKey\x12\x10\n" +

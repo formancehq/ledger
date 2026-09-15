@@ -742,6 +742,10 @@ message LedgerLog {
   //     (previous encoding carried them in both purged_volumes AND
   //     new_volumes, doubling bytes on ephemeral-heavy workloads).
   repeated TouchedVolume ephemeral_volumes = 6;
+  // Account addresses whose complete EPHEMERAL current state was removed by
+  // this log. Historical transaction mappings remain intact; consumers use
+  // this signal to purge only current-account secondary projections.
+  repeated string purged_accounts = 7;
 }
 
 // TouchedVolume identifies a (ledger-local) volume cell — an account paired

@@ -1892,6 +1892,11 @@ func (m *AttributeCoverage) CloneVT() *AttributeCoverage {
 	r.Id = m.Id.CloneVT()
 	r.AttrCode = m.AttrCode
 	r.Value = m.Value.CloneVT()
+	if rhs := m.CanonicalKey; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.CanonicalKey = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -5331,6 +5336,9 @@ func (this *AttributeCoverage) EqualVT(that *AttributeCoverage) bool {
 		return false
 	}
 	if !this.Value.EqualVT(that.Value) {
+		return false
+	}
+	if string(this.CanonicalKey) != string(that.CanonicalKey) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -10079,6 +10087,13 @@ func (m *AttributeCoverage) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.CanonicalKey) > 0 {
+		i -= len(m.CanonicalKey)
+		copy(dAtA[i:], m.CanonicalKey)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.CanonicalKey)))
+		i--
+		dAtA[i] = 0x22
+	}
 	if m.Value != nil {
 		size, err := m.Value.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
@@ -12613,6 +12628,10 @@ func (m *AttributeCoverage) SizeVT() (n int) {
 	}
 	if m.Value != nil {
 		l = m.Value.SizeVT()
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	l = len(m.CanonicalKey)
+	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
@@ -23504,6 +23523,40 @@ func (m *AttributeCoverage) UnmarshalVT(dAtA []byte) error {
 			}
 			if err := m.Value.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CanonicalKey", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CanonicalKey = append(m.CanonicalKey[:0], dAtA[iNdEx:postIndex]...)
+			if m.CanonicalKey == nil {
+				m.CanonicalKey = []byte{}
 			}
 			iNdEx = postIndex
 		default:

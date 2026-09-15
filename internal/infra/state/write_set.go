@@ -134,6 +134,11 @@ type WriteSet struct {
 	// by the index builder (skip acct->tx mappings) alongside
 	// purgedByLog; contributes 0 to VolumeCount.
 	ephemeralByLog [][]*commonpb.TouchedVolume
+	// purgedAccounts is the deterministic set of EPHEMERAL addresses whose
+	// complete current state is removed at this proposal boundary.
+	purgedAccounts            map[domain.AccountKey]struct{}
+	purgedAccountVolumeKeys   []domain.VolumeKey
+	purgedAccountMetadataKeys []domain.MetadataKey
 
 	// bloomUpdates collects canonical keys per attribute type during Merge
 	// for bloom filter updates before batch.Commit().
@@ -246,6 +251,13 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
 	// === Phase 1: overlay drain (no Pebble writes) ============================
+	// Account-wide purge preparation has already classified the end state. Any
+	// covered, untouched volume rows and all account metadata are staged here;
+	// dirty volume rows stay intact so the existing per-volume usage annotations
+	// remain correct when partitionVolumes drains them below.
+	if err := b.stagePurgedAccountRows(); err != nil {
+		return fmt.Errorf("staging purged account rows: %w", err)
+	}
 	//
 	// derived.Merge() pulls each DerivedKeyStore's dirty values into a
 	// (updates, deletions) pair and resets the overlay. Order is dictated by
@@ -257,7 +269,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		return fmt.Errorf("failed to merge ledgers: %w", err)
 	}
 
-	volumeUpdates, _, err := b.Derived.Volumes.Merge()
+	volumeUpdates, volumeDeletions, err := b.Derived.Volumes.Merge()
 	if err != nil {
 		return fmt.Errorf("failed to merge volumes: %w", err)
 	}
@@ -486,8 +498,27 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 				ledgerLog.EphemeralVolumes = b.ephemeralByLog[i]
 			}
 		}
-
 		createdLogs = append(createdLogs, log)
+	}
+	// Emit each account-wide purge exactly once, on the last fresh ledger log
+	// for that ledger. This covers metadata-only orders and ensures replay folds
+	// every proposal-local payload before applying the terminal deletion.
+	lastLogByLedger := make(map[string]*commonpb.LedgerLog)
+	for _, log := range createdLogs {
+		apply := log.GetPayload().GetApply()
+		if apply != nil && apply.GetLog() != nil {
+			lastLogByLedger[apply.GetLedgerName()] = apply.GetLog()
+		}
+	}
+	for key := range b.purgedAccounts {
+		ledgerLog := lastLogByLedger[key.LedgerName]
+		if ledgerLog == nil {
+			return fmt.Errorf("invariant: purged account %q in ledger %q has no fresh ledger log", key.Account, key.LedgerName)
+		}
+		ledgerLog.PurgedAccounts = append(ledgerLog.PurgedAccounts, key.Account)
+	}
+	for _, ledgerLog := range lastLogByLedger {
+		sort.Strings(ledgerLog.GetPurgedAccounts())
 	}
 
 	// === Phase 3: Pebble flush in monotone zone+sub order =====================
@@ -513,6 +544,9 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	if err := b.applyEphemeralPurge(batch, genByte, partResult.purged); err != nil {
 		return fmt.Errorf("failed purging ephemeral volumes: %w", err)
+	}
+	if err := b.applyCoveredVolumeDeletions(batch, genByte, volumeDeletions); err != nil {
+		return fmt.Errorf("failed purging covered account volumes: %w", err)
 	}
 
 	// Transient volumes are NOT written to 0xF1 (attributes). The in-memory
