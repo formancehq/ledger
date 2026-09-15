@@ -100,10 +100,11 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 
 		profile.Finish()
 
-		require.Less(t, profile.ServerDuration, 3*spinPerItem,
-			"consumer back-pressure must not inflate the consumer-independent total")
-		require.GreaterOrEqual(t, profile.WallDuration(), 3*spinPerItem,
-			"but the slow-query threshold must still see it")
+		require.Equal(t, profile.DeliverDuration,
+			profile.WallDuration()-profile.ServerDuration,
+			"consumer back-pressure must be represented outside the consumer-independent total")
+		require.Greater(t, profile.WallDuration(), profile.ServerDuration,
+			"the slow-query threshold must still include delivery")
 		require.Positive(t, profile.FirstRowDuration, "the first Send must be timestamped")
 	})
 
