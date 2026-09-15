@@ -31,24 +31,17 @@ import (
 // genLogFilter builds a filter over the conditions valid on LOGS: ledger name,
 // log id range, and the boolean combinators. Returns nil for the unfiltered
 // case, which exercises the universe scan itself.
-func genLogFilter(ledger string, depth int) *commonpb.QueryFilter {
+func genLogFilter(ledger string, dates []uint64, depth int) *commonpb.QueryFilter {
 	if depth >= 2 || oneIn(3) {
-		return genLogLeaf(ledger)
+		return genLogLeaf(ledger, dates)
 	}
 
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
-	case 0:
-		return filterAnd(genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1))
-	case 1:
-		return filterOr(genLogFilter(ledger, depth+1), genLogFilter(ledger, depth+1))
-	default:
-		return filterNot(genLogFilter(ledger, depth+1))
-	}
+	return genBoolean(depth, func(d int) *commonpb.QueryFilter { return genLogFilter(ledger, dates, d) })
 }
 
 // genLogLeaf picks one LOGS-valid leaf. Bounds straddle the populated range so
 // empty, partial and total windows all occur.
-func genLogLeaf(ledger string) *commonpb.QueryFilter {
+func genLogLeaf(ledger string, dates []uint64) *commonpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
 		name := ledger
@@ -69,7 +62,7 @@ func genLogLeaf(ledger string) *commonpb.QueryFilter {
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
 			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
 				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-				Cond:  genLogUintCond(),
+				Cond:  genLogDateCond(dates),
 			},
 		}}
 	}
@@ -87,6 +80,46 @@ func genLogUintCond() *commonpb.UintCondition {
 	if oneIn(2) {
 		max := 8 + internal.Rand().Uint64()%64
 		cond.Max = &max
+		cond.MaxExclusive = oneIn(2)
+	}
+
+	return cond
+}
+
+// genLogDateCond rolls date bounds on the learned-date scale. A log date is a
+// wall-clock microsecond count, so bounds drawn from the small numeric range
+// the id conditions use would put every date on one side and the window would
+// be total or empty; sampling a served date and jittering around it makes the
+// partial windows the date index is read for. With no date learned yet the
+// bounds stay unset and the leaf is the trivial match.
+func genLogDateCond(dates []uint64) *commonpb.UintCondition {
+	cond := &commonpb.UintCondition{}
+	if len(dates) == 0 {
+		return cond
+	}
+
+	const jitterMicros = 1000
+
+	pick := func() uint64 {
+		d := dates[int(internal.Rand().Uint64()%uint64(len(dates)))]
+		offset := internal.Rand().Uint64() % (2*jitterMicros + 1)
+
+		if offset > d {
+			return 0
+		}
+
+		return d + offset - jitterMicros
+	}
+
+	if oneIn(2) {
+		lo := pick()
+		cond.Min = &lo
+		cond.MinExclusive = oneIn(2)
+	}
+
+	if cond.Min == nil || oneIn(2) {
+		hi := pick()
+		cond.Max = &hi
 		cond.MaxExclusive = oneIn(2)
 	}
 
@@ -320,16 +353,21 @@ func logWindowRows(ls oracle.LedgerState, ledger string, filter *commonpb.QueryF
 			continue
 		}
 
-		rows = append(rows, logWindowRow{
-			id: row.ID, kind: row.Kind, payload: row.Payload,
-			tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
-			date: row.Date, sequence: row.Sequence,
-			purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
-			required: known,
-		})
+		rows = append(rows, logWindowRowOf(ls, row, known))
 	}
 
 	return rows
+}
+
+// logWindowRowOf is one committed log as a comparable row of its base.
+func logWindowRowOf(ls oracle.LedgerState, row oracle.LogRow, required bool) logWindowRow {
+	return logWindowRow{
+		id: row.ID, kind: row.Kind, payload: row.Payload,
+		tx: modelTxForLog(ls, row.TxID), revertsID: revertedIDForLog(ls, row),
+		date: row.Date, sequence: row.Sequence,
+		purged: row.PurgedVolumes, newKept: row.NewKeptVolumes, ephemeral: row.EphemeralVolumes,
+		required: required,
+	}
 }
 
 // modelTxForLog resolves the transaction a log announces, nil when the log
@@ -494,7 +532,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {
-		filter = genLogFilter(ledger, 0)
+		filter = genLogFilter(ledger, c.modelLogDateSample(ledger), 0)
 	}
 
 	pageSize := queryPageSize()
@@ -725,6 +763,25 @@ func (c *Checker) describeLogDates(ledger string) string {
 	return strings.Join(parts, ",")
 }
 
+// modelLogDateSample returns the dates the committed model has learned for this
+// ledger's logs, the scale genLogDateCond draws its bounds from. Acquires c.mu.
+func (c *Checker) modelLogDateSample(ledger string) []uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	rows := c.modelState.Ledger(ledger).LogDates()
+
+	out := make([]uint64, 0, len(rows))
+
+	for _, row := range rows {
+		if row.Date != nil {
+			out = append(out, row.Date.GetData())
+		}
+	}
+
+	return out
+}
+
 // describeLogIndexStates renders the committed model's lifecycle state for each
 // needed index, for a finding's diagnostics. Acquires c.mu.
 func (c *Checker) describeLogIndexStates(ledger string, needed map[string]struct{}) string {
@@ -749,22 +806,6 @@ func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, af
 	defer c.mu.Unlock()
 
 	return logWindow(c.modelState.Ledger(ledger), ledger, filter, afterSeq, pageSize)
-}
-
-// equalUint64 compares two id sequences elementwise; a nil and an empty slice
-// are the same empty page.
-func equalUint64(a, b []uint64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
 }
 
 // recheckLogIDs re-reads the ledger's logs unfiltered after the finding, at a
@@ -813,30 +854,7 @@ func recheckLogKinds(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	out := make([]string, 0, len(logs))
 	for _, l := range logs {
-		switch d := l.GetPayload().GetApply().GetLog().GetData(); {
-		case d.GetCreatedTransaction() != nil:
-			out = append(out, "created_transaction")
-		case d.GetRevertedTransaction() != nil:
-			out = append(out, "reverted_transaction")
-		case d.GetSavedMetadata() != nil:
-			out = append(out, "saved_metadata")
-		case d.GetDeletedMetadata() != nil:
-			out = append(out, "deleted_metadata")
-		case d.GetSetMetadataFieldType() != nil:
-			out = append(out, "set_metadata_field_type")
-		case d.GetRemovedMetadataFieldType() != nil:
-			out = append(out, "removed_metadata_field_type")
-		case d.GetCreateIndex() != nil:
-			out = append(out, "create_index")
-		case d.GetDropIndex() != nil:
-			out = append(out, "drop_index")
-		case d.GetAddedAccountType() != nil:
-			out = append(out, "added_account_type")
-		case d.GetRemovedAccountType() != nil:
-			out = append(out, "removed_account_type")
-		default:
-			out = append(out, "other")
-		}
+		out = append(out, serverLogKind(l))
 	}
 
 	return out, nil

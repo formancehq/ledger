@@ -670,7 +670,11 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 			// ready", so the answer must be locally attributable. The default
 			// linearizable read forwards exactly when the node is syncing —
 			// crediting a rebuilding follower with the leader's ready state.
-			resp, err := pc.Bucket.GetIndexStatus(internal.WithStaleConsistency(ctx), &servicepb.GetIndexStatusRequest{Ledger: ledger})
+			// Bounded per node: a replica that is down must read as not-ready
+			// this tick, not stall the whole poll until the next one.
+			pollCtx, cancel := context.WithTimeout(internal.WithStaleConsistency(ctx), indexPollInterval)
+			resp, err := pc.Bucket.GetIndexStatus(pollCtx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+			cancel()
 			if err != nil {
 				for canon := range canons {
 					readyAll[canon] = false

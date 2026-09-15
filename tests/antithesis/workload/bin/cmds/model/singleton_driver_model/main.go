@@ -136,6 +136,15 @@ func main() {
 		}()
 	}
 
+	var checkpoints sync.WaitGroup
+
+	checkpoints.Add(1)
+
+	go func() {
+		defer checkpoints.Done()
+		runCheckpointCycle(ctx, checker, client)
+	}()
+
 	var restore sync.WaitGroup
 	if trigger := selectRestoreTrigger(); trigger != nil {
 		restore.Add(1)
@@ -168,6 +177,7 @@ func main() {
 	workers.Wait()
 	restore.Wait()
 	pollers.Wait()
+	checkpoints.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -199,7 +209,7 @@ func runWorker(
 		// in-flight bulk set, exercising cross-node freshness without needing
 		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -214,6 +224,18 @@ func runWorker(
 				runReplay(ctx, client, c)
 			case 6:
 				runLogQuery(ctx, client, c)
+			case 7:
+				runAggregateQuery(ctx, client, c)
+			case 8:
+				runAuditQuery(ctx, client, c)
+			case 9:
+				runLedgersList(ctx, client, c)
+			case 10:
+				runLedgerStats(ctx, client, c)
+			case 11:
+				runIndexIntrospection(ctx, client, c)
+			case 12:
+				runGetLog(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}

@@ -373,6 +373,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		}
 	}
 	learnTxStamps(c.modelState, bulk, logs)
+	c.learnLedgerLogSequences(bulk, logs)
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server
@@ -438,6 +439,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 
 	if matched {
+		c.recordRejection(failedBulk, reason)
 		// Coverage: each deliberately-triggered rejection branch must actually be
 		// exercised — if one stops firing, the generator has stopped emitting that
 		// shape and the branch is no longer tested.
