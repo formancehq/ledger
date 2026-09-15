@@ -76,11 +76,11 @@ const coverageRetypeMessage = coveragePrefix + "a query was served while a retyp
 const (
 	coverageDeletionMessage    = coveragePrefix + "ledger deletion and reserved-name rejection verified"
 	coveragePromotionMessage   = coveragePrefix + "mirror promotion and write recovery verified"
-	coverageMaintenanceMessage = coveragePrefix + "maintenance rejection reads and recovery verified"
+	coverageMaintenanceMessage = coveragePrefix + "concurrent maintenance rejection verified"
 )
 
 // Query sondes are evaluated by served pages; lifecycle sondes are evaluated
-// only after a complete, drained lifecycle episode validates their outcomes.
+// when their generated concurrent outcomes pass model validation.
 func queryCoverageMessages() []string {
 	out := make([]string, 0, len(coverageIndexes)+3)
 	for _, wi := range coverageIndexes {

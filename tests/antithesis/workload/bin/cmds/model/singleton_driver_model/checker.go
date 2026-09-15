@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -25,10 +27,14 @@ type Checker struct {
 	checkpointCreateMu sync.Mutex
 	// cycleMu gives a restore or lifecycle episode exclusive ownership of the
 	// dispatch pause. Neither may resume workers while the other is active.
-	cycleMu sync.Mutex
+	cycleMu  sync.Mutex
+	ledgerMu sync.RWMutex
 
-	// ledgerNames is the fleet the generator and reads draw from. Immutable.
-	ledgerNames []string
+	// ledgerNames grows when a generated CreateLedger commits. Deleted names stay
+	// reserved in the oracle but are filtered from generation and reads.
+	ledgerNames  []string
+	ledgerPrefix string
+	ledgerSeq    atomic.Uint64
 
 	// ticketSeq hands out a monotonic ticket per dispatched operation (bulk or
 	// read) — the dispatch order the drain gate compares against. It is atomic
@@ -119,6 +125,14 @@ type pendingObservation struct {
 func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
 	modelState := oracle.NewGlobalState()
 	for _, ledger := range ledgerNames {
+		// setupLedgers created these outside the modeled Apply stream. Seed their
+		// identities so lifecycle generation can delete or otherwise target even
+		// a still-empty initial ledger without predicting LEDGER_NOT_FOUND.
+		created := modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger}},
+		}}})
+		modelState = created.State
+
 		cmds := schemas[ledger]
 		if len(cmds) == 0 {
 			continue
@@ -143,8 +157,10 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		modelState = modelState.SeedInitialSchema(reqs)
 	}
 
-	return &Checker{
+	prefix := strings.TrimSuffix(ledgerNames[0], fmt.Sprintf("-%d", len(ledgerNames)-1))
+	c := &Checker{
 		ledgerNames:                ledgerNames,
+		ledgerPrefix:               prefix,
 		inflight:                   map[uint64]oracle.Bulk{},
 		reads:                      map[uint64]struct{}{},
 		incoming:                   make(chan observation, incomingBuffer),
@@ -155,6 +171,18 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}
+	c.ledgerSeq.Store(uint64(len(ledgerNames)))
+	return c
+}
+
+func (c *Checker) nextLedgerName() string {
+	return fmt.Sprintf("%s-%d", c.ledgerPrefix, c.ledgerSeq.Add(1)-1)
+}
+
+func (c *Checker) ledgerNamesSnapshot() []string {
+	c.ledgerMu.RLock()
+	defer c.ledgerMu.RUnlock()
+	return append([]string(nil), c.ledgerNames...)
 }
 
 // retypeObservation drives one retype window's closure, two-phase per node so

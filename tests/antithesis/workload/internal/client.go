@@ -25,25 +25,16 @@ import (
 // UNAVAILABLE and round-robin load balancing across all provided addresses.
 // LEDGER_GRPC_ADDR accepts a comma-separated list (e.g. "ledger-0:8888,ledger-1:8888,ledger-2:8888").
 func NewGRPCConn() (*grpc.ClientConn, error) {
-	// LEDGER_NO_RETRY disables the automatic UNAVAILABLE retry entirely (both the
-	// service-config policy and the interceptors). Useful for isolating whether a
-	// divergence is caused by retried (and thus possibly double-applied, when the
-	// request is non-idempotent) Apply calls.
-	return newGRPCConn(os.Getenv("LEDGER_NO_RETRY") != "")
-}
-
-// NewGRPCConnWithoutRetries creates a connection that surfaces the first RPC
-// outcome, allowing maintenance probes to observe admission rejections. It keeps
-// the ordinary resolver, protocol metadata and error classification configuration.
-func NewGRPCConnWithoutRetries() (*grpc.ClientConn, error) {
-	return newGRPCConn(true)
-}
-
-func newGRPCConn(retryDisabled bool) (*grpc.ClientConn, error) {
 	target := os.Getenv("LEDGER_GRPC_ADDR")
 	if target == "" {
 		target = "localhost:15100"
 	}
+
+	// LEDGER_NO_RETRY disables the automatic UNAVAILABLE retry entirely (both the
+	// service-config policy and the interceptors). Useful for isolating whether a
+	// divergence is caused by retried (and thus possibly double-applied, when the
+	// request is non-idempotent) Apply calls.
+	retryDisabled := os.Getenv("LEDGER_NO_RETRY") != ""
 
 	// LEDGER_RETRY_FOREVER raises the retry budget to ~infinite (off by default —
 	// master keeps MaxAttempts 50, which grpc-go silently caps to 5 because no
@@ -68,24 +59,9 @@ func newGRPCConn(retryDisabled bool) (*grpc.ClientConn, error) {
 		interceptorAttempts = maxAttempts
 	}
 
-	// Service-config retry covers the raw UNAVAILABLE code; the interceptors also
-	// handle deadline and external-service classifications below.
-	methodConfig := ""
-	if !retryDisabled {
-		methodConfig = fmt.Sprintf(`,
-		"methodConfig": [{
-			"name": [{}],
-			"retryPolicy": {
-				"MaxAttempts": %d,
-				"InitialBackoff": "0.2s",
-				"MaxBackoff": "2s",
-				"BackoffMultiplier": 1.5,
-				"RetryableStatusCodes": ["UNAVAILABLE"]
-			}
-		}]`, maxAttempts)
-	}
-	// Round-robin load balancing always applies; only the retry policy is toggled.
-	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]` + methodConfig + `}`
+	// Retry in the interceptor, where business-reason details are visible. A
+	// service-config UNAVAILABLE retry cannot distinguish maintenance rejection.
+	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]}`
 
 	addrs := strings.Split(target, ",")
 	opts := []grpc.DialOption{
@@ -120,7 +96,7 @@ func newGRPCConn(retryDisabled bool) (*grpc.ClientConn, error) {
 			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
 		}
 	} else {
-		// Retry disabled explicitly or by LEDGER_NO_RETRY — classify stays on; same Chain*
+		// Retry disabled (LEDGER_NO_RETRY) — classify stays on; same Chain*
 		// option for consistency, even with a single member.
 		opts = append(opts,
 			grpc.WithChainUnaryInterceptor(classifyUnaryInterceptor()),
@@ -189,7 +165,7 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		var err error
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if !IsTransient(err) {
+			if !retryableRPCError(err) {
 				return err
 			}
 			select {
@@ -200,6 +176,13 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		}
 		return err
 	}
+}
+
+// retryableRPCError keeps maintenance as a definitive model outcome even though
+// its transport code is Unavailable. Every other transient retains the existing
+// retry behavior.
+func retryableRPCError(err error) bool {
+	return IsTransient(err) && !HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
@@ -274,7 +257,7 @@ func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
 		)
 		for attempt := range maxAttempts {
 			stream, err = streamer(ctx, desc, cc, method, opts...)
-			if !IsTransient(err) {
+			if !retryableRPCError(err) {
 				return stream, err
 			}
 			select {

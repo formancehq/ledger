@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
@@ -29,6 +30,36 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 
 	c.crossCheckCommit(bulk, resp)
 	c.recordIndexCreates(bulk, resp)
+	for _, req := range bulk.Requests {
+		switch {
+		case req.GetCreateLedger() != nil:
+			name := req.GetCreateLedger().GetName()
+			c.ledgerMu.Lock()
+			if !slices.Contains(c.ledgerNames, name) {
+				c.ledgerNames = append(c.ledgerNames, name)
+			}
+			c.ledgerMu.Unlock()
+		case req.GetDeleteLedger() != nil:
+			name := req.GetDeleteLedger().GetName()
+			c.ledgerMu.Lock()
+			for i, candidate := range c.ledgerNames {
+				if candidate == name {
+					c.ledgerNames = append(c.ledgerNames[:i], c.ledgerNames[i+1:]...)
+					break
+				}
+			}
+			c.ledgerMu.Unlock()
+			delete(c.indexCreateSeq, name)
+			for key, obs := range c.retypeObs {
+				if obs.ledger == name {
+					delete(c.retypeObs, key)
+				}
+			}
+			emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": name}, coverageHit)
+		case req.GetPromoteLedger() != nil:
+			emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": req.GetPromoteLedger().GetLedger()}, coverageHit)
+		}
+	}
 }
 
 // recordIndexCreates advances the create frontier of every index this bulk
