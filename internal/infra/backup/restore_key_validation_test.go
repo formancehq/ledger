@@ -44,6 +44,30 @@ func TestApplyExportsRejectsUnsupportedEmptySegment(t *testing.T) {
 	require.ErrorContains(t, err, `unsupported export segment type "unknown"`)
 }
 
+func TestApplyExportsRejectsIncompleteSequenceCoverage(t *testing.T) {
+	t.Parallel()
+
+	key := dal.NewKeyBuilder().
+		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).
+		PutUint64(2).
+		Build()
+
+	var stream bytes.Buffer
+	writer := NewKVStreamWriter(&stream)
+	require.NoError(t, writer.WriteHeader())
+	require.NoError(t, writer.WriteEntry(key, []byte("value")))
+	require.NoError(t, writer.WriteFooter())
+
+	store := newBackupTestStore(t)
+	storage := &recordingStorage{manifestBody: stream.Bytes()}
+	err := ApplyExports(context.Background(), logging.Testing(), storage, store, []ExportSegment{
+		{Type: "log", StartSeq: 1, EndSeq: 2, Key: "missing-start"},
+	})
+	require.ErrorContains(t, err, "incomplete export segment")
+	require.Zero(t, countKeysInSub(t, store, dal.SubHistoryLog),
+		"an incomplete segment must not commit its unverified batch")
+}
+
 // TestValidateExportKeyRequiresExactKeyShape pins the per-type key length: a key
 // carrying trailing bytes still resolves to a valid sequence for prefix scans
 // and seqFromKey, so accepting it would let a tampered segment add a second

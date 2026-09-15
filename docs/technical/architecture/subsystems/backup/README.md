@@ -113,6 +113,16 @@ A fresh backup against an empty destination is just a "full" backup with an empt
 4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
 5. Boot the node against the restored directory.
 
+Each export object must terminate with its explicit stream footer and contain
+the complete sequence range advertised by the manifest. A physical EOF, an
+empty segment, or missing range boundary fails the download before the staging
+restore can be considered successful. `ApplyExports` writes large segments in
+bounded Pebble batches, so batches committed before a later read failure can
+remain until the caller discards or retries that staging directory. The gRPC
+download job wipes staging on failure and never enables finalization; an
+offline retry with the intact immutable object safely overwrites the same raw
+history keys before rebuild.
+
 `RebuildDelta` is a second fold of committed effects: the checkpoint contains
 projection values only up to its sequence boundary, while later incremental
 segments carry the evidence needed to reconstruct their updates. Any persisted

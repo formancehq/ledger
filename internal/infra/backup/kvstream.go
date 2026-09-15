@@ -2,6 +2,7 @@ package backup
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -14,6 +15,8 @@ import (
 var kvStreamMagic = [4]byte{'L', 'B', 'K', 'V'}
 
 const kvStreamVersion = 1
+
+var errKVStreamEnd = errors.New("end of KV stream")
 
 // KVStreamWriter writes Pebble KV pairs to an io.Writer in the KV stream format.
 type KVStreamWriter struct {
@@ -106,7 +109,8 @@ func (r *KVStreamReader) ReadHeader() error {
 	return nil
 }
 
-// ReadEntry reads a single key-value pair. Returns io.EOF when the footer sentinel is reached.
+// ReadEntry reads a single key-value pair. It returns errKVStreamEnd only when
+// the explicit footer sentinel is reached; physical EOF remains a read error.
 func (r *KVStreamReader) ReadEntry() (key, value []byte, err error) {
 	if _, err := io.ReadFull(r.r, r.buf[:]); err != nil {
 		return nil, nil, fmt.Errorf("reading key length: %w", err)
@@ -114,7 +118,7 @@ func (r *KVStreamReader) ReadEntry() (key, value []byte, err error) {
 
 	keyLen := binary.BigEndian.Uint32(r.buf[:])
 	if keyLen == 0 {
-		return nil, nil, io.EOF // sentinel
+		return nil, nil, errKVStreamEnd
 	}
 
 	key = make([]byte, keyLen)

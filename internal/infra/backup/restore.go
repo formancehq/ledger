@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -101,11 +100,15 @@ func ApplyExports(
 
 		batch := store.OpenWriteSession()
 
-		var count uint64
+		var (
+			count    uint64
+			firstSeq uint64
+			lastSeq  uint64
+		)
 
 		for {
 			key, value, err := kvReader.ReadEntry()
-			if errors.Is(err, io.EOF) {
+			if errors.Is(err, errKVStreamEnd) {
 				break // footer sentinel: clean end of stream
 			}
 
@@ -122,6 +125,12 @@ func ApplyExports(
 
 				return fmt.Errorf("invalid key in segment %s: %w", seg.Key, err)
 			}
+
+			seq := binary.BigEndian.Uint64(key[2:10])
+			if count == 0 {
+				firstSeq = seq
+			}
+			lastSeq = seq
 
 			if err := batch.Set(key, value, pebble.NoSync); err != nil {
 				_ = reader.Close()
@@ -142,6 +151,16 @@ func ApplyExports(
 
 				batch = store.OpenWriteSession()
 			}
+		}
+
+		if count == 0 || firstSeq != seg.StartSeq || lastSeq != seg.EndSeq {
+			_ = reader.Close()
+			_ = batch.Cancel()
+
+			return fmt.Errorf(
+				"incomplete export segment %s: restored sequence coverage [%d,%d], expected [%d,%d]",
+				seg.Key, firstSeq, lastSeq, seg.StartSeq, seg.EndSeq,
+			)
 		}
 
 		_ = reader.Close()

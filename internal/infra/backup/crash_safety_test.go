@@ -17,6 +17,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // crashSafetyState is the stateful backing behind the generated MockStorage used
@@ -512,4 +513,95 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		require.NoError(t, err, "ledger %q written post-checkpoint must be restored", name)
 		require.NotNil(t, info, "ledger %q must exist after full + multi-incremental restore", name)
 	}
+}
+
+// TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds reproduces a
+// stored export object that ends at a realistic record boundary: the producer
+// uploaded the header and complete entry, but the four-byte footer is absent.
+// The manifest still advertises the original object size and sequence range.
+// Restore must reject that artifact before reporting success, while a retry
+// against the intact object must remain safe and reconstruct the delta.
+func TestBackup_TruncatedIncrementalFailsThenHealthyRetrySucceeds(t *testing.T) {
+	t.Parallel()
+
+	const bucketID = "bucket-truncated-export"
+
+	ctx := context.Background()
+	src := newBackupTestStore(t)
+	storage := newInMemoryBackupStorage()
+
+	writeHistory := func(seq uint64, name string) {
+		batch := src.OpenWriteSession()
+		require.NoError(t, batch.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
+		require.NoError(t, batch.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		require.NoError(t, batch.Commit())
+	}
+
+	writeHistory(1, "checkpoint-ledger")
+	require.NoError(t, src.Flush())
+
+	full, err := RunBackup(ctx, logging.Testing(), src, storage, bucketID, "bk-full")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, full.LastLogSequence)
+
+	writeHistory(2, "delta-ledger")
+	incremental, err := RunIncrementalBackup(ctx, logging.Testing(), src, storage, bucketID, 0)
+	require.NoError(t, err)
+	require.Positive(t, incremental.LogEntriesExported, "the post-checkpoint delta must be non-empty")
+
+	manifest, err := ReadManifest(ctx, storage, ManifestKey(bucketID))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifest.Exports)
+
+	var logSegment *ExportSegment
+	for i := range manifest.Exports {
+		if manifest.Exports[i].Type == "log" {
+			logSegment = &manifest.Exports[i]
+
+			break
+		}
+	}
+	require.NotNil(t, logSegment)
+
+	storage.mu.Lock()
+	healthyBody := bytes.Clone(storage.files[logSegment.Key])
+	require.Equal(t, logSegment.Size, int64(len(healthyBody)))
+	require.Greater(t, len(healthyBody), 4)
+	storage.files[logSegment.Key] = bytes.Clone(healthyBody[:len(healthyBody)-4])
+	storage.mu.Unlock()
+
+	dst := newBackupTestStore(t)
+	seed := dst.OpenWriteSession()
+	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "checkpoint-ledger", 1)))
+	require.NoError(t, seed.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	require.NoError(t, seed.Commit())
+
+	err = ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest)
+	require.ErrorContains(t, err, "reading key length: EOF",
+		"physical EOF must not be accepted as the explicit stream footer")
+	require.Equal(t, 1, countKeysInSub(t, dst, dal.SubHistoryLog),
+		"the unverified segment batch must leave only the checkpoint log")
+
+	failedInfo, err := query.GetLedgerByName(ctx, dst, "delta-ledger")
+	require.ErrorContains(t, err, "not found")
+	require.Nil(t, failedInfo, "rebuild must not publish derived delta state after the failed download")
+
+	storage.mu.Lock()
+	storage.files[logSegment.Key] = healthyBody
+	storage.mu.Unlock()
+
+	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest),
+		"retrying the staged restore with the complete artifact must succeed")
+
+	handle, err := dst.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	restoredLastLog, err := query.ReadLastLog(handle)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, restoredLastLog.GetSequence())
+
+	info, err := query.GetLedgerByName(ctx, handle, "delta-ledger")
+	require.NoError(t, err)
+	require.NotNil(t, info, "the healthy retry must rebuild the post-checkpoint operation")
 }
