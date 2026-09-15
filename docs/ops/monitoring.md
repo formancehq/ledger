@@ -752,29 +752,29 @@ Available profile types:
 
 ### Kubernetes Deployment
 
-Add Pyroscope configuration to your Helm values:
+Set `spec.monitoring.pyroscope` on the operator's `Cluster` resource:
 
 ```yaml
-config:
-  pyroscope:
-    enabled: true
-    serverAddress: "http://pyroscope.monitoring.svc.cluster.local:4040"
-    applicationName: "ledger"
-    tags: "env=production"
-    profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
+spec:
+  monitoring:
+    pyroscope:
+      enabled: true
+      serverAddress: "https://profiles-prod-001.grafana.net"
+      applicationName: "ledger"
+      authTokenFrom:
+        name: pyroscope-auth
+        key: token
+      tenantId: "your-tenant-id"
+      tags: "env=production"
+      profileTypes: "cpu,alloc_objects,alloc_space,inuse_objects,inuse_space"
 ```
 
-For Grafana Cloud:
-
-```yaml
-config:
-  pyroscope:
-    enabled: true
-    serverAddress: "https://profiles-prod-001.grafana.net"
-    authToken: "${GRAFANA_CLOUD_PYROSCOPE_TOKEN}"
-    tenantId: "your-tenant-id"
-    applicationName: "ledger"
-```
+Create the referenced Secret in the Cluster namespace. For basic authentication,
+use `basicAuthUser` and `basicAuthPasswordFrom: {name: pyroscope-auth, key: password}`.
+Credentials are delivered through Pod `secretKeyRef` entries. See
+[deployment](deployment.md#pyroscope-continuous-profiling) for omission, missing
+Secret and rotation behavior. Kubernetes manifests must use these references;
+the runtime environment variables above are populated by Kubernetes.
 
 ### Automatic Tags
 

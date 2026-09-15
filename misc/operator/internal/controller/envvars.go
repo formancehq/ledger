@@ -430,10 +430,14 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 		}
 		envs = appendIfStr(envs, "PYROSCOPE_APPLICATION_NAME", appName)
 
-		envs = appendIfStr(envs, "PYROSCOPE_AUTH_TOKEN", mon.Pyroscope.AuthToken)
+		if ref := mon.Pyroscope.AuthTokenFrom; ref != nil {
+			envs = append(envs, secretKeyEnv("PYROSCOPE_AUTH_TOKEN", ref.Name, ref.Key))
+		}
 		envs = appendIfStr(envs, "PYROSCOPE_TENANT_ID", mon.Pyroscope.TenantID)
 		envs = appendIfStr(envs, "PYROSCOPE_BASIC_AUTH_USER", mon.Pyroscope.BasicAuthUser)
-		envs = appendIfStr(envs, "PYROSCOPE_BASIC_AUTH_PASSWORD", mon.Pyroscope.BasicAuthPassword)
+		if ref := mon.Pyroscope.BasicAuthPasswordFrom; ref != nil {
+			envs = append(envs, secretKeyEnv("PYROSCOPE_BASIC_AUTH_PASSWORD", ref.Name, ref.Key))
+		}
 		envs = appendIfStr(envs, "PYROSCOPE_UPLOAD_RATE", mon.Pyroscope.UploadRate)
 		envs = appendIfStr(envs, "PYROSCOPE_TAGS", mon.Pyroscope.Tags)
 		envs = appendIfStr(envs, "PYROSCOPE_PROFILE_TYPES", mon.Pyroscope.ProfileTypes)

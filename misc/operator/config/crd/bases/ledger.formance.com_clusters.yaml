@@ -1944,12 +1944,40 @@ spec:
                       applicationName:
                         description: ApplicationName overrides the application name.
                         type: string
-                      authToken:
-                        description: AuthToken for Pyroscope authentication.
-                        type: string
-                      basicAuthPassword:
-                        description: BasicAuthPassword for basic authentication.
-                        type: string
+                      authTokenFrom:
+                        description: AuthTokenFrom references a Pyroscope authentication
+                          token in a Secret in the Cluster namespace.
+                        properties:
+                          key:
+                            description: Key is the key within the Secret.
+                            type: string
+                          name:
+                            description: Name is the Secret name.
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                        x-kubernetes-validations:
+                        - message: secret name and key must be non-empty
+                          rule: self.name != '' && self.key != ''
+                      basicAuthPasswordFrom:
+                        description: BasicAuthPasswordFrom references a basic-auth
+                          password in a Secret in the Cluster namespace.
+                        properties:
+                          key:
+                            description: Key is the key within the Secret.
+                            type: string
+                          name:
+                            description: Name is the Secret name.
+                            type: string
+                        required:
+                        - key
+                        - name
+                        type: object
+                        x-kubernetes-validations:
+                        - message: secret name and key must be non-empty
+                          rule: self.name != '' && self.key != ''
                       basicAuthUser:
                         description: BasicAuthUser for basic authentication.
                         type: string
