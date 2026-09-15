@@ -13,6 +13,36 @@ func newTestMeter() sdkmetric.Option {
 	return sdkmetric.WithReader(sdkmetric.NewManualReader())
 }
 
+func TestVolumeUsage_PublishesCoherentSample(t *testing.T) {
+	t.Parallel()
+
+	var usage VolumeUsage
+	usage.store(70, 100)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 200000 {
+			usage.store(154, 200)
+			usage.store(70, 100)
+		}
+	}()
+
+	for {
+		used, total := usage.Load()
+		require.True(t,
+			used == 70 && total == 100 || used == 154 && total == 200,
+			"observed fabricated disk sample %d/%d", used, total,
+		)
+
+		select {
+		case <-done:
+			return
+		default:
+		}
+	}
+}
+
 func TestCollector_StartAndStop(t *testing.T) {
 	t.Parallel()
 
@@ -24,10 +54,12 @@ func TestCollector_StartAndStop(t *testing.T) {
 	c.Start()
 
 	// After Start, collect should have run once synchronously via Statfs
-	require.Positive(t, c.WALVolume.UsedBytes())
-	require.Positive(t, c.WALVolume.TotalBytes())
-	require.Positive(t, c.DataVolume.UsedBytes())
-	require.Positive(t, c.DataVolume.TotalBytes())
+	walUsed, walTotal := c.WALVolume.Load()
+	dataUsed, dataTotal := c.DataVolume.Load()
+	require.Positive(t, walUsed)
+	require.Positive(t, walTotal)
+	require.Positive(t, dataUsed)
+	require.Positive(t, dataTotal)
 
 	c.Stop()
 }
