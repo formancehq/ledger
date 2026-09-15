@@ -5,12 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"sort"
 	"strconv"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -390,7 +388,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 		// Best-effort: this read-only store is only being unwound after open failed.
 		_ = mainStore.Close()
 
-		return nil, nil, nil, impl.checkpointReadIndexOpenError(ctx, checkpointID, err)
+		return nil, nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
 	}
 	keepLease = true
 	cleanup := func() {
@@ -401,27 +399,6 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	}
 
 	return mainStore, readIdx, cleanup, nil
-}
-
-func (impl *BucketServiceServerImpl) checkpointReadIndexOpenError(ctx context.Context, checkpointID uint64, err error) error {
-	// Deletion can remove files after the readiness check and main open.
-	// Reclassify only missing files backed by a committed deletion; storage
-	// loss on a still-live checkpoint and other corruption remain errors.
-	missing := errors.Is(err, pebble.ErrDBDoesNotExist) || errors.Is(err, fs.ErrNotExist)
-	if !pebble.IsCorruptionError(err) && missing {
-		deleted, lifecycleErr := impl.queryCheckpointDeleted(checkpointID)
-		if lifecycleErr != nil {
-			diagnostic := fmt.Errorf("opening checkpoint read index: %w", errors.Join(err, fmt.Errorf("reading checkpoint lifecycle: %w", lifecycleErr)))
-			correlationID := recordGRPCInternalError(ctx, impl.logger, diagnostic)
-
-			return status.Errorf(codes.Unavailable, "checkpoint lifecycle unavailable (correlation ID: %s)", correlationID)
-		}
-		if deleted {
-			return commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)
-		}
-	}
-
-	return fmt.Errorf("opening checkpoint read index: %w", err)
 }
 
 // resolveMissingMarker classifies a checkpoint read whose local .ready marker is
