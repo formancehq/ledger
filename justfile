@@ -27,7 +27,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     echo "==> golangci-lint (.)"
-    golangci-lint run --fix --build-tags it,local,{{all_tags}} --timeout 5m
+    golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
     cd misc/operator && golangci-lint run --fix --timeout 5m
 
@@ -85,6 +85,13 @@ install-client:
 # Run unit tests for the root module (light build)
 test:
     go test -race ./... -timeout 20m
+
+# Compile every internal package with the Antithesis SDK armed and run the
+# assertion-emission contract tests. The SDK is pinned to v0.8.0-default-no-op,
+# which compiles to no-ops unless enable_antithesis_sdk is set, so the default
+# suite above cannot observe a single assertion emit.
+test-antithesis-assertions:
+    go test -race -tags enable_antithesis_sdk -run 'TestAntithesis' ./internal/... -timeout 15m
 
 # Run unit tests with all optional features
 test-full:

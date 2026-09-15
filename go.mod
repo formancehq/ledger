@@ -11,7 +11,7 @@ require (
 	github.com/IBM/sarama v1.46.3
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/alecthomas/participle/v2 v2.1.4
-	github.com/antithesishq/antithesis-sdk-go v0.7.0
+	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/aws/aws-sdk-go-v2 v1.43.8
 	github.com/aws/aws-sdk-go-v2/config v1.32.39
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.38

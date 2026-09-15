@@ -168,14 +168,18 @@ func registerBlockProperties(blocks []*scenario.Block) {
 	}
 }
 
+// The two zeros after blockFile are line and column. These properties are
+// registered by name rather than discovered by the instrumentor at a source
+// location, so both are 0 — the same value the SDK's own high-level entry
+// points record for column.
 func emitBlockSucceeded(name string, hit bool, details internal.Details) {
 	msg := fmt.Sprintf("block %s succeeded", name)
-	assert.AssertRaw(true, msg, details, blockClass, "RunLoop", blockFile, 0, hit, true, "reachability", "Reachable", msg)
+	assert.AssertRaw(true, msg, details, blockClass, "RunLoop", blockFile, 0, 0, hit, true, "reachability", "Reachable", msg)
 }
 
 func emitBlockFailed(name string, hit bool, details internal.Details) {
 	msg := fmt.Sprintf("block %s failed", name)
-	assert.AssertRaw(false, msg, details, blockClass, "RunLoop", blockFile, 0, hit, false, "reachability", "Unreachable", msg)
+	assert.AssertRaw(false, msg, details, blockClass, "RunLoop", blockFile, 0, 0, hit, false, "reachability", "Unreachable", msg)
 }
 
 // isAlreadyExists checks if the gRPC error code is AlreadyExists.

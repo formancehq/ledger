@@ -5,6 +5,55 @@ independent end-to-end oracle. They report specific contract failures that a
 failed HTTP response or later recovery could hide. They do not classify every
 storage error, internal error, or failed request as corruption.
 
+## Where the SDK is live
+
+The SDK is pinned to `v0.8.0-default-no-op`, the upstream branch whose build
+constraints are inverted: `assert`, `lifecycle`, `random` and `instrumentation`
+all compile to no-ops unless `enable_antithesis_sdk` is set. Nothing has to be
+tagged to get a quiet, fast binary — released builds, local `go build` and the
+default test suite all get one for free, and forgetting a tag can only ever cost
+observability, never performance.
+
+That default matters beyond assertions: with a live SDK, `lifecycle.SendEvent`
+JSON-marshals a map on every batch commit and discards it when no output file is
+configured (~600ns and 13 allocations per commit), and each assertion captures
+its call site through `runtime.Caller` and takes two package-global mutexes.
+
+Four places set `enable_antithesis_sdk`, and each would be silently useless
+without it:
+
+| Build | Why it must be armed |
+|---|---|
+| `Dockerfile.antithesis` | The instrumented SUT. Unarmed, the generated `assert.AssertRaw` registrations do nothing, the catalog is empty, and the campaign reports no violations because no property was ever registered — a silent pass. |
+| `tests/antithesis/workload/Dockerfile` | The drivers that produce the campaign's `Sometimes` coverage. |
+| `tests/antithesis/run_model_test.sh` | The **driver only**. It reads the SDK's local JSON output and requires specific assertions, so an unarmed driver yields an empty stream. The server is left unarmed on purpose: it is never given `ANTITHESIS_SDK_LOCAL_OUTPUT`, so its assertions have nowhere to go, and arming it costs enough throughput to starve the run's coverage sondes — a measured failure of this gate. |
+| `just test-antithesis-assertions` | The emission contract tests below. |
+
+Keep the instrumentor pin equal to the SDK pin, and pass
+`-instrumentor_version v0.8.0-default-no-op` as well. Two separate pins are in
+play: `go install ...@<v>` selects the instrumentor binary, while
+`-instrumentor_version` sets the SDK version the *generated notifier module*
+requires. That flag defaults to the instrumentor's own `SDK_Version` ("0.8.0"),
+and stable `v0.8.0` outranks the `v0.8.0-default-no-op` prerelease in module
+resolution — so omitting it makes the instrumented build resolve to the stable,
+live-by-default SDK. That is not an empty catalog (assertions still emit), but
+the image then runs a different SDK than the repository pins and
+`enable_antithesis_sdk` is inert inside it. Verified by building the
+instrumented output both ways: with the flag the tag controls emission (0
+records untagged, 3 tagged); without it the tag makes no difference (3 either
+way).
+
+The 0.8.0 line also added a `column` parameter to `assert.AssertRaw`, which is
+what the generated catalog calls, so a mismatched instrumentor/SDK pair fails to
+build.
+
+The no-op removes the call, not its arguments: `details` is an eager parameter,
+so the map is still constructed and any `err.Error()` or `id.Hex()` inside it
+still evaluated before the no-op callee is reached. A site on a path *every*
+request takes may therefore still need a branch guard — see
+`AlignedIndexSnapshot`. Removing that residue needs a lazy entry point, which
+the SDK does not offer.
+
 ## Safety properties
 
 The existing errors, panics, audit bytes and idempotency decisions remain in
@@ -67,8 +116,13 @@ bash scripts/agent-check
 bash scripts/agent-validation-env --ephemeral nix develop --command \
   go test -race ./internal/infra/state ./internal/domain/processing \
   ./internal/query ./internal/application/ctrl
+just test-antithesis-assertions
 AI_REVIEW_BASE_SHA=<exact-base-sha> bash scripts/agent-check-pr
 ```
+
+The default suite compiles the assertion sites but cannot observe one emit, so
+`just test-antithesis-assertions` is the target that proves emission: it builds
+every internal package with `enable_antithesis_sdk` and runs the contract tests.
 
 `TestAntithesisStateEmission` and each affected package's
 `TestAntithesisContractEmission` run deliberately corrupt fixtures in isolated
@@ -79,8 +133,8 @@ integration tests read committed business projections after transfer/revert
 rollback and successful idempotency replay. The unexpected-balanced-pair
 regression must fail if the reverse delta check is removed.
 
-Build through the existing `Dockerfile.antithesis` (SDK/instrumentor v0.7.0,
-race detector, CGO and symbols), and inspect the generated catalog, including
+Build through the existing `Dockerfile.antithesis` (SDK/instrumentor
+v0.8.0-default-no-op, `enable_antithesis_sdk`, race detector, CGO and symbols), and inspect the generated catalog, including
 properties that have not fired. SDK JSON evidence alone does not prove that
 the deployed image catalogs every property.
 
