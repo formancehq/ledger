@@ -720,7 +720,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// SubGlobQueryCheckpointSchedule (0x10)
 	if b.queryCheckpointScheduleUpdate != nil {
 		if *b.queryCheckpointScheduleUpdate == "" {
-			err := batchDeleteQueryCheckpointSchedule(batch)
+			err := DeleteQueryCheckpointScheduleFromBatch(batch)
 			if err != nil {
 				return fmt.Errorf("deleting query checkpoint schedule: %w", err)
 			}

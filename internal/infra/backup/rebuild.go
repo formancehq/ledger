@@ -461,6 +461,15 @@ func RebuildDelta(
 		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
+			// The checkpoint is the fold seed: a deletion in the exported delta
+			// must tombstone its schedule row just as live apply does. The delete
+			// stays in this rebuild batch, so an error before commit leaves the
+			// checkpoint-era value intact rather than exposing a partial fold.
+			if err := state.DeleteQueryCheckpointScheduleFromBatch(batch); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("deleting query checkpoint schedule at log %d: %w", seq, err)
+			}
 		}
 
 		if ephemeralPurgeBuffer != nil && hasProposalEnd && seq == nextProposalEnd {

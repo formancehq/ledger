@@ -68,6 +68,15 @@ For a rebuilt value, answer all of the following before implementation:
 5. How do later delete, promote, purge, or recreate operations affect the result?
 6. Which checker pass independently re-derives or validates the final value?
 
+Query-checkpoint schedules use the checkpoint row as their fold seed. A
+post-checkpoint `SetQueryCheckpointSchedule` log replaces that value and a
+`DeleteQueryCheckpointSchedule` log deletes it; later logs win in sequence
+order. Both effects are staged in the current rebuild batch. Before that batch
+commits, a replay error leaves the last committed checkpoint-or-delta value in
+place; after commit, durable state contains the complete fold and startup loads
+that value into the scheduler. The audit-bound schedule log is the replay
+evidence; schedule checker coverage remains a separate integrity concern.
+
 If the ledger-log payload omits information that the live apply used, inspect the
 chain-bound serialized order in `AuditItem` and the `AppliedProposal` companion
 record. Do not silently default a missing fact. Prefer a shared, pure decoder for

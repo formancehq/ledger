@@ -222,8 +222,8 @@ func SaveQueryCheckpointSchedule(b *dal.WriteSession, cron string) error {
 	return nil
 }
 
-// BatchDeleteQueryCheckpointSchedule removes the query checkpoint schedule from the batch.
-func batchDeleteQueryCheckpointSchedule(b *dal.WriteSession) error {
+// DeleteQueryCheckpointScheduleFromBatch removes the query checkpoint schedule from the batch.
+func DeleteQueryCheckpointScheduleFromBatch(b *dal.WriteSession) error {
 	err := b.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpointSchedule})
 	if err != nil {
 		return fmt.Errorf("deleting query checkpoint schedule: %w", err)
