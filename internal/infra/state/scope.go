@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
@@ -399,6 +400,13 @@ func (g *gatedScope) CheckCoverage(kind byte, key processing.CoverageKey) error 
 
 func (g *gatedScope) coverageMiss(kind byte, canonical []byte, id attributes.U128) *ErrCoverageMiss {
 	kindName := kindLabel(kind)
+	// Report the admission contract violation without changing the safe
+	// rejection below or forwarding the undeclared access to the cache.
+	assert.Unreachable("admission declared every FSM attribute access", map[string]any{
+		"attribute": kindName,
+		"idHex":     id.Hex(),
+		"raftIndex": g.raftIndex,
+	})
 
 	details := map[string]any{
 		"kind":          kindName,

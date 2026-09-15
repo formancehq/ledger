@@ -445,13 +445,18 @@ has_verified_model_outcome() {
 # untagged build silently tolerates it. The local server is always built with
 # the tag so both environments police the same store invariants; the cost is
 # a few percent, not race-detector overhead.
+# The server is deliberately NOT built with enable_antithesis_sdk. Only the
+# driver is given ANTITHESIS_SDK_LOCAL_OUTPUT below, so server-side assertions
+# have nowhere to go in this harness — arming it would buy no signal and cost
+# throughput on a gate whose coverage sondes depend on how much work the run
+# completes.
 server_tags="-tags invariants"
 [ "$RESTORE" = 1 ] && server_tags="-tags invariants,s3"
 build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
 if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
 fi
-build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
+build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -tags enable_antithesis_sdk -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
 
 # Build inside the nix dev shell for a reproducible toolchain — unless we are
 # already in one (CI runs this as `nix develop --command just test-model`), in

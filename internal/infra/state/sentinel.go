@@ -117,6 +117,15 @@ func verifyPostCommitVolumes(
 		}
 
 		if pebbleValue == nil {
+			assert.Unreachable("committed volume is present in pebble", map[string]any{
+				"ledger":         update.Key.LedgerName,
+				"account":        update.Key.Account,
+				"asset":          update.Key.Asset,
+				"color":          update.Key.Color,
+				"raftIndex":      raftIndex,
+				"expectedInput":  update.New.GetInput().ToBigInt().String(),
+				"expectedOutput": update.New.GetOutput().ToBigInt().String(),
+			})
 			logger.WithFields(map[string]any{
 				"ledger":       update.Key.LedgerName,
 				"account":      update.Key.Account,
@@ -148,6 +157,7 @@ func verifyPostCommitVolumes(
 				"ledger":         update.Key.LedgerName,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
+				"color":          update.Key.Color,
 				"expectedInput":  expectedInput.String(),
 				"expectedOutput": expectedOutput.String(),
 				"pebbleInput":    pebbleInput.String(),
@@ -161,6 +171,7 @@ func verifyPostCommitVolumes(
 				"ledger":         update.Key.LedgerName,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
+				"color":          update.Key.Color,
 				"expectedInput":  expectedInput.String(),
 				"expectedOutput": expectedOutput.String(),
 				"pebbleInput":    pebbleInput.String(),
@@ -212,6 +223,7 @@ func verifyVolumeUpdateMonotonicity(
 				"ledger":   update.Key.LedgerName,
 				"account":  update.Key.Account,
 				"asset":    update.Key.Asset,
+				"color":    update.Key.Color,
 				"oldInput": oldInput.String(),
 				"newInput": newInput.String(),
 			})
@@ -228,6 +240,7 @@ func verifyVolumeUpdateMonotonicity(
 				"ledger":    update.Key.LedgerName,
 				"account":   update.Key.Account,
 				"asset":     update.Key.Asset,
+				"color":     update.Key.Color,
 				"oldOutput": oldOutput.String(),
 				"newOutput": newOutput.String(),
 			})
@@ -246,7 +259,9 @@ func verifyVolumeUpdateMonotonicity(
 // verifyVolumeDeltasMatchPostings cross-checks that the volume deltas produced
 // by buffer processing match what the postings in the committed logs prescribe.
 // This catches bugs where volumes are updated incorrectly (wrong amount, wrong
-// account, or missed posting).
+// account, or missed posting), including balanced writes not explained by any
+// posting. Call with pre-purge logical updates: cache resets and persisted
+// deletions are lifecycle effects, not posting deltas.
 func verifyVolumeDeltasMatchPostings(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	logs []*commonpb.Log,
@@ -335,6 +350,12 @@ func verifyVolumeDeltasMatchPostings(
 	for key, exp := range expected {
 		act, ok := actual[key]
 		if !ok {
+			assert.Unreachable("posting has a volume update", map[string]any{
+				"ledger": key.LedgerName, "account": key.Account,
+				"asset": key.Asset, "color": key.Color,
+				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+			})
+
 			return fmt.Errorf(
 				"volume delta missing for %q/%s/%s: expected input_delta=%s output_delta=%s",
 				key.LedgerName, key.Account, key.Asset, exp.input.String(), exp.output.String(),
@@ -342,6 +363,13 @@ func verifyVolumeDeltasMatchPostings(
 		}
 
 		if exp.input.Cmp(act.input) != 0 || exp.output.Cmp(act.output) != 0 {
+			assert.Unreachable("volume delta matches posting quantities", map[string]any{
+				"ledger": key.LedgerName, "account": key.Account,
+				"asset": key.Asset, "color": key.Color,
+				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+				"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			})
+
 			return fmt.Errorf(
 				"volume delta mismatch for %q/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
 				key.LedgerName, key.Account, key.Asset,
@@ -349,6 +377,25 @@ func verifyVolumeDeltasMatchPostings(
 				act.input.String(), act.output.String(),
 			)
 		}
+	}
+
+	// A conserved but unrelated debit/credit pair must not escape the check.
+	// An unchanged touched key has no business delta and is legitimate.
+	for key, act := range actual {
+		if _, ok := expected[key]; ok || (act.input.Sign() == 0 && act.output.Sign() == 0) {
+			continue
+		}
+
+		assert.Unreachable("nonzero volume delta is explained by postings", map[string]any{
+			"ledger": key.LedgerName, "account": key.Account,
+			"asset": key.Asset, "color": key.Color,
+			"actualInput": act.input.String(), "actualOutput": act.output.String(),
+		})
+
+		return fmt.Errorf(
+			"unexpected volume delta for %q/%s/%s/%s: input_delta=%s output_delta=%s",
+			key.LedgerName, key.Account, key.Asset, key.Color, act.input.String(), act.output.String(),
+		)
 	}
 
 	return nil

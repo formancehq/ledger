@@ -8,7 +8,7 @@ replace github.com/formancehq/ledger/v3 => ../../../
 // replace github.com/formancehq/ledger/v3/tests/antithesis/workload => .
 
 require (
-	github.com/antithesishq/antithesis-sdk-go v0.7.0
+	github.com/antithesishq/antithesis-sdk-go v0.8.0-default-no-op
 	github.com/formancehq/go-libs/v5 v5.7.2
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
@@ -291,3 +291,5 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -58,7 +59,7 @@ func TestListAuditEntriesRejectsMainSnapshotBehindReadBarrier(t *testing.T) {
 	ctx := query.WithReadBarrierHorizon(context.Background(), 13)
 
 	_, err := ctrl.ListAuditEntries(ctx, 10, 0, nil, false)
-	require.ErrorContains(t, err, "behind ReadIndex horizon")
+	require.EqualError(t, err, "main-store snapshot applied index 12 is behind ReadIndex horizon 13")
 }
 
 func TestListAuditEntriesFrozenProjectionMustCoverMainCheckpoint(t *testing.T) {
@@ -273,4 +274,21 @@ func TestListAuditEntriesUsesAlignedAuditSnapshotAndMainHorizon(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []uint64{1}, collectAuditSequences(t, c),
 		"audit candidates ahead of H must be trimmed before main-store materialization")
+}
+
+func TestListAuditEntriesAcceptsCoveredOrAbsentReadBarrier(t *testing.T) {
+	t.Parallel()
+	for _, barrier := range []uint64{0, 11, 12} {
+		t.Run(strconv.FormatUint(barrier, 10), func(t *testing.T) {
+			t.Parallel()
+			ctrl, _ := newAuditAlignmentController(t, 12, 1)
+			ctx := t.Context()
+			if barrier != 0 {
+				ctx = query.WithReadBarrierHorizon(ctx, barrier)
+			}
+			cursor, err := ctrl.ListAuditEntries(ctx, 10, 0, nil, false)
+			require.NoError(t, err)
+			require.Equal(t, []uint64{1}, collectAuditSequences(t, cursor))
+		})
+	}
 }
