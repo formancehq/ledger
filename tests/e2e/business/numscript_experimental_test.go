@@ -517,7 +517,7 @@ send [COIN 100] (
 				})
 				g.Expect(err).To(Succeed())
 				// The RED credit lands on the segregated RED bucket only.
-				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("100"))
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("100"))
 				g.Expect(pool.FindVolume("COIN", "")).To(BeNil(),
 					"the colored credit must not collapse onto the uncolored bucket")
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -557,14 +557,14 @@ send [COIN 40] (
 				})
 				g.Expect(err).To(Succeed())
 				// RED drained by 40 (100 - 40 = 60).
-				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("60"))
 
 				spent, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "clr:spent",
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(spent.FindVolume("COIN", "RED").GetBalance()).To(Equal("40"))
+				g.Expect(spent.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("40"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 
@@ -596,7 +596,7 @@ send [COIN 1000] (
 					Address: "clr:pool",
 				})
 				g.Expect(err).To(Succeed())
-				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
+				g.Expect(pool.FindVolume("COIN", "RED").GetBalance().DecimalString()).To(Equal("60"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})

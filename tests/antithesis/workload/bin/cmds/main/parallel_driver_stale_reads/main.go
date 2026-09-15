@@ -149,17 +149,17 @@ func main() {
 			}
 
 			var (
-				input   = parseAmount(vol.GetInput())
-				output  = parseAmount(vol.GetOutput())
-				balance = parseAmount(vol.GetBalance())
+				input   = parseAmount(vol.GetInput().DecimalString())
+				output  = parseAmount(vol.GetOutput().DecimalString())
+				balance = parseAmount(vol.GetBalance().DecimalString())
 			)
 
 			if input == nil || output == nil || balance == nil {
 				assert.Unreachable("stale read returned unparsable volume strings",
 					details.With(internal.Details{
-						"input":   vol.GetInput(),
-						"output":  vol.GetOutput(),
-						"balance": vol.GetBalance(),
+						"input":   vol.GetInput().DecimalString(),
+						"output":  vol.GetOutput().DecimalString(),
+						"balance": vol.GetBalance().DecimalString(),
 					}))
 
 				continue

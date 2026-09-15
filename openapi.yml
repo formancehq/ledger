@@ -3967,13 +3967,16 @@ components:
       properties:
         input:
           type: string
-          description: Total amount received (as big integer string)
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Total amount received as a canonical unsigned decimal string
         output:
           type: string
-          description: Total amount sent (as big integer string)
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Total amount sent as a canonical unsigned decimal string
         balance:
           type: string
-          description: Current balance (input - output, as big integer string)
+          pattern: '^(0|-?[1-9][0-9]*)$'
+          description: Current balance (input - output) as a canonical signed decimal string
 
     AggregateVolumesResponse:
       type: object
@@ -4551,10 +4554,12 @@ components:
           description: Empty string for the uncolored bucket; always emitted.
         input:
           type: string
-          description: big.Int as string.
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Canonical unsigned decimal string.
         output:
           type: string
-          description: big.Int as string.
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Canonical unsigned decimal string.
 
     Volumes:
       type: object
@@ -4564,10 +4569,12 @@ components:
       properties:
         input:
           type: string
-          description: Total amount received (as big integer string)
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Total amount received as a canonical unsigned decimal string
         output:
           type: string
-          description: Total amount sent (as big integer string)
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Total amount sent as a canonical unsigned decimal string
 
     MirrorSourceConfig:
       type: object

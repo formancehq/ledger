@@ -195,8 +195,8 @@ func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.Bu
 	vol := acct.FindVolume(asset, "")
 	require.NotNil(t, vol, "account %s has no volumes for asset %s (uncolored)", address, asset)
 
-	balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
-	require.True(t, ok, "invalid balance %q for account %s asset %s", vol.GetBalance(), address, asset)
+	balance, err := vol.GetBalance().ToBigInt()
+	require.NoError(t, err, "invalid balance %q for account %s asset %s", vol.GetBalance(), address, asset)
 	require.True(t, balance.Sign() > 0,
 		"account %s asset %s: expected positive balance, got %s", address, asset, balance.String())
 }
@@ -215,8 +215,8 @@ func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb
 	for _, acct := range accounts {
 		for _, entry := range acct.GetVolumes() {
 			vol := entry.GetVolumes()
-			balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
-			require.True(t, ok, "invalid balance %q for account %s asset %s color %q",
+			balance, err := vol.GetBalance().ToBigInt()
+			require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
 				vol.GetBalance(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 
 			k := bucket{asset: entry.GetAsset(), color: entry.GetColor()}
@@ -253,8 +253,8 @@ func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client servic
 	vol := acct.FindVolume(asset, color)
 	require.NotNil(t, vol, "account %s has no volumes for asset %s color %q", address, asset, color)
 
-	balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
-	require.True(t, ok, "invalid balance %q for account %s asset %s color %q",
+	balance, err := vol.GetBalance().ToBigInt()
+	require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
 		vol.GetBalance(), address, asset, color)
 
 	require.Equal(t, 0, expected.Cmp(balance),
@@ -282,8 +282,8 @@ func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb
 		}
 		for _, entry := range acct.GetVolumes() {
 			vol := entry.GetVolumes()
-			balance, ok := new(big.Int).SetString(vol.GetBalance(), 10)
-			require.True(t, ok, "invalid balance %q for account %s asset %s color %q",
+			balance, err := vol.GetBalance().ToBigInt()
+			require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
 				vol.GetBalance(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 			require.True(t, balance.Sign() >= 0,
 				"negative balance on account %s asset %s color %q: %s",

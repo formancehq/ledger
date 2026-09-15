@@ -212,9 +212,19 @@ and the ledger `name` metadata; revision 14 returned `NotFound` without
 
 This is an incompatible response-semantic change even though the service
 protobuf schema is unchanged: revision-14 clients may interpret the structured
-reason and metadata differently. The revision increments from the target
-branch's 14 to 15, and all communicating service clients and servers must be
-rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
+reason and metadata differently. All communicating service clients and servers
+must be rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
+
+## Typed arbitrary-precision volumes (revision 16)
+
+Revision 16 replaces the decimal `string` fields in `Volumes` and
+`VolumesWithBalance` with typed arbitrary-precision integers. Non-negative
+input/output totals use a canonical minimal unsigned big-endian magnitude;
+balances use a sign plus that magnitude and reject negative zero. The HTTP JSON
+projection remains exact decimal strings, while protobuf clients must implement
+the new typed messages. The representation is unbounded because account color
+collapse may sum several independently bounded `Uint256` buckets beyond 256
+bits.
 
 ## Filterless prepared-query updates (revision 16)
 
