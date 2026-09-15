@@ -63,7 +63,7 @@ table is a discovery map, not a frozen exhaustive schema.
 | Raw delta application | `internal/infra/backup/restore.go`: verify manifest/type/range/key-shape/stream validation, batch commits, partial-prefix behavior and retry. Permanent history residency must equal the source logically. |
 | Derived-state rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/`: compare every replay branch and fold with its live writer. Essential facts may live in `LedgerLog`, chain-bound serialized `AuditItem`, or `AppliedProposal`; absence must not silently become a default. |
 | Restore preparation and bootstrap | `internal/infra/attributes/prepare.go`, `internal/bootstrap/`, restore gRPC and `ledgerctl` commands: distinguish retained genesis boundary and business provenance from cleared source identity, peers, transient jobs, cache/bloom state, and restored query-checkpoint provenance. |
-| Projection and cascade inventory | Balances/volumes, transactions/references, LedgerInfo/account types/default enforcement, boundaries/mirror progress, ledger metadata, indexes/registry, numscripts, reversions, idempotency outcomes, signing, policy, maintenance mode, sink config and query checkpoints. Test create/update/delete/reset variants actually present at the SHA. |
+| Projection and cascade inventory | Balances/volumes, transactions/references, LedgerInfo/account types/default enforcement, boundaries/mirror progress, ledger metadata, indexes/registry, numscripts, reversions, idempotency outcomes, signing, policy, maintenance mode, sink config, query checkpoints and their schedule. Test create/update/delete/reset variants actually present at the SHA. |
 | Integrity oracle | `internal/application/check/` and `CheckStore`: identify the independent audit-bound witness and actual checked fields. A clean checker result corroborates direct parity; it cannot launder an omitted projection or shared replay mistake. |
 | Cross-lifecycle evidence | `internal/infra/backup/*_test.go`, `tests/e2e/cluster/restore*_test.go`, restore-enabled model tests: record the exact post-checkpoint mutation, non-empty delta assertion, restore composition, logical comparison, checker result and next consuming operation actually reached. |
 
@@ -94,7 +94,7 @@ other current child owned by `DeleteLedger`. Include a live neighboring ledger
 so an over-wide range deletion cannot pass.
 
 Apply the same rule to row-absence semantics such as signing-key revocation,
-index drop, metadata/numscript deletion, query-checkpoint deletion, ephemeral or
+index drop, metadata/numscript deletion, query-checkpoint or schedule deletion, ephemeral or
 transient volume purge, and any reset or replacement. A creation-only replay
 matrix is insufficient. When live apply derives a cascade from state not present
 at restore time, prove the exported record carries the resolved set or another

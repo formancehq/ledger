@@ -102,13 +102,14 @@ var _ = Describe("Restore", Ordered, func() {
 	ports := lease.Ports()
 
 	var (
-		ctx                        context.Context
-		restoreWalDir              string
-		restoreDataDir             string
-		minioEndpoint              string
-		s3Client                   *s3.Client
-		deltaCheckpointID          uint64
-		deltaCheckpointMaxSequence uint64
+		ctx                         context.Context
+		restoreWalDir               string
+		restoreDataDir              string
+		minioEndpoint               string
+		s3Client                    *s3.Client
+		deltaCheckpointID           uint64
+		deltaCheckpointMaxSequence  uint64
+		scheduleDeletionLogSequence uint64
 	)
 
 	BeforeAll(func() {
@@ -268,7 +269,14 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should take a backup to S3", func() {
-			resp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
+			// Seed the full checkpoint with an enabled schedule. Its deletion is
+			// deliberately committed only after this checkpoint, so restore must
+			// fold the deletion from a non-empty incremental export.
+			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", setQueryCheckpointScheduleAction("* * * * * *")))
+			Expect(err).To(Succeed())
+			Expect(resp.GetLogs()).To(HaveLen(1))
+
+			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
 					Bucket:   restoreS3Bucket,
 					Region:   restoreS3Region,
@@ -276,14 +284,19 @@ var _ = Describe("Restore", Ordered, func() {
 				}),
 			})
 			Expect(err).To(Succeed())
-			Expect(resp.GetTotalFiles()).To(BeNumerically(">", 0))
+			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
 		It("should write post-checkpoint data and take an incremental backup", func() {
+			deleteResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", deleteQueryCheckpointScheduleAction()))
+			Expect(err).To(Succeed())
+			Expect(deleteResp.GetLogs()).To(HaveLen(1))
+			scheduleDeletionLogSequence = deleteResp.GetLogs()[0].GetSequence()
+
 			// This transaction is written AFTER the full checkpoint, so it
 			// lives only in incremental export segments — never in the
 			// checkpoint files. A restore that ignores exports loses it.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(1500), "USD"),
 			}, map[string]string{"type": "post-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
@@ -361,10 +374,14 @@ var _ = Describe("Restore", Ordered, func() {
 
 			logSegments := 0
 			checkpointLogExported := false
+			scheduleDeletionExported := false
 			checkpointLogSequence := deltaCheckpointMaxSequence + 1
 			for _, seg := range manifest.Exports {
 				if seg.Type == "log" {
 					logSegments++
+					if seg.StartSeq <= scheduleDeletionLogSequence && seg.EndSeq >= scheduleDeletionLogSequence {
+						scheduleDeletionExported = true
+					}
 					if seg.StartSeq <= checkpointLogSequence && seg.EndSeq >= checkpointLogSequence {
 						checkpointLogExported = true
 					}
@@ -375,6 +392,8 @@ var _ = Describe("Restore", Ordered, func() {
 				"a 1-byte segment cap must split the multi-sequence log export into multiple segments")
 			Expect(checkpointLogExported).To(BeTrue(),
 				"the manifest must export the post-checkpoint query-checkpoint creation log")
+			Expect(scheduleDeletionExported).To(BeTrue(),
+				"the manifest must export the post-checkpoint schedule deletion log")
 		})
 
 		It("should write more data and take a SECOND incremental backup", func() {
@@ -732,6 +751,24 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(result.Errors).To(BeEmpty(),
 				"CheckStore must validate the rebuilt applied_index against the exported audit chain")
+		})
+
+		It("should keep the deleted checkpoint schedule disabled", func() {
+			resp, err := clusterClient.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+			Expect(err).To(Succeed())
+			Expect(resp.GetCron()).To(BeEmpty(),
+				"the restored schedule must reflect the deletion in the incremental delta")
+
+			checkpoints, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+			Expect(err).To(Succeed())
+			countAfterRestore := len(checkpoints.GetCheckpoints())
+
+			Consistently(func(g Gomega) {
+				current, err := clusterClient.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+				g.Expect(err).To(Succeed())
+				g.Expect(current.GetCheckpoints()).To(HaveLen(countAfterRestore))
+			}).Within(2*time.Second).ProbeEvery(100*time.Millisecond).Should(Succeed(),
+				"the restored scheduler must not recreate checkpoints from the deleted cron")
 		})
 
 		It("should account for a post-checkpoint balance on the apply path after restore", func() {

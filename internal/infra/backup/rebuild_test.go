@@ -3,8 +3,11 @@ package backup
 import (
 	"bytes"
 	"context"
+	"errors"
 	"math"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -16,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
+	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -547,6 +551,97 @@ func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
 	next, err := query.ReadNextQueryCheckpointID(handle)
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), next)
+}
+
+// A checkpoint carries the schedule value as of its boundary. A later deletion
+// lives only in the incremental log export, so rebuild must remove the seeded
+// key or the restored scheduler arms the obsolete cron expression.
+func TestRebuildDelta_ReplaysDeletedQueryCheckpointSchedule(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "* * * * * *"))
+	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},
+			},
+		},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	readSchedule := func() string {
+		handle, err := store.NewDirectReadHandle()
+		require.NoError(t, err)
+		defer func() { require.NoError(t, handle.Close()) }()
+
+		cron, err := query.ReadQueryCheckpointSchedule(handle)
+		require.NoError(t, err)
+
+		return cron
+	}
+	restoredSchedule := readSchedule()
+	require.Empty(t, restoredSchedule, "the post-checkpoint deletion must remove the checkpoint-seeded schedule")
+
+	var proposed atomic.Int32
+	scheduler := state.NewQueryCheckpointScheduler(
+		testLogger(),
+		func() bool { return true },
+		func() string { return restoredSchedule },
+		func() error {
+			proposed.Add(1)
+
+			return nil
+		},
+		signal.New(),
+	)
+	scheduler.Start()
+	t.Cleanup(scheduler.Stop)
+
+	require.Never(t, func() bool { return proposed.Load() != 0 }, 1500*time.Millisecond, 25*time.Millisecond,
+		"the restored scheduler must remain disabled")
+}
+
+func TestRebuildDelta_DeletedQueryCheckpointScheduleErrorKeepsCheckpointSeed(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "* * * * * *"))
+	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{
+			Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},
+			},
+		},
+	}))
+	require.NoError(t, batch.Commit())
+
+	injectedErr := errors.New("injected schedule deletion failure")
+	var attempts atomic.Int32
+	err := rebuildDelta(context.Background(), testLogger(), store, 0, 0, func(*dal.WriteSession) error {
+		attempts.Add(1)
+
+		return injectedErr
+	})
+	require.ErrorIs(t, err, injectedErr)
+	require.Equal(t, int32(1), attempts.Load())
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+
+	cron, err := query.ReadQueryCheckpointSchedule(handle)
+	require.NoError(t, err)
+	require.Equal(t, "* * * * * *", cron,
+		"a failed rebuild batch must leave the last committed checkpoint value intact")
 }
 
 func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
