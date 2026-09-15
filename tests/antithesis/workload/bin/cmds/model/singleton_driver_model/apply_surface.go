@@ -46,7 +46,7 @@ func maybeAddSkippableReason(req *servicepb.Request) *servicepb.Request {
 		}}}
 	}
 
-	reason, ok := skippableReason(req)
+	reason, ok := generatedSkippableReason(req)
 	if !ok {
 		return req
 	}
@@ -58,9 +58,21 @@ func maybeAddSkippableReason(req *servicepb.Request) *servicepb.Request {
 	return req
 }
 
-// skippableReason maps existing Apply actions to their admitted skip reason.
+// generatedSkippableReason maps existing Apply actions to a skip reason.
 // Mode setters deliberately use a disallowed reason to cover admission rejection.
-func skippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
+func generatedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
+	if reason, ok := allowedSkippableReason(req); ok {
+		return reason, true
+	}
+	if req.GetApply().GetAction().GetSetDefaultEnforcementMode() != nil {
+		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
+	}
+	return commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
+}
+
+// allowedSkippableReason is the model's independent copy of the public
+// per-action whitelist. It must not use admission's generated lookup table.
+func allowedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
 	action := req.GetApply().GetAction()
 	switch action.GetData().(type) {
 	case *servicepb.LedgerAction_CreateTransaction:
@@ -73,11 +85,25 @@ func skippableReason(req *servicepb.Request) (commonpb.ErrorReason, bool) {
 		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS, true
 	case *servicepb.LedgerAction_RemoveAccountType:
 		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
-	case *servicepb.LedgerAction_SetDefaultEnforcementMode:
-		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
 	default:
 		return commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
 	}
+}
+
+func bulkHasInvalidSkippableReason(bulk oracle.Bulk) bool {
+	for _, req := range bulk.Requests {
+		reasons := req.GetApply().GetSkippableReasons()
+		if len(reasons) == 0 {
+			continue
+		}
+		allowed, ok := allowedSkippableReason(req)
+		for _, reason := range reasons {
+			if !ok || reason != allowed {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 var skippedReasons = []commonpb.ErrorReason{

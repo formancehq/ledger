@@ -447,14 +447,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 
 	if matched {
-		invalidOptIn := false
-		if reason == domain.ErrReasonValidation {
-			for _, req := range failedBulk.Requests {
-				if len(req.GetApply().GetSkippableReasons()) > 0 {
-					invalidOptIn = true
-				}
-			}
-		}
+		invalidOptIn := reason == domain.ErrReasonValidation && bulkHasInvalidSkippableReason(failedBulk)
 		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil, coverageHit)
 		// Coverage: each deliberately-triggered rejection branch must actually be
 		// exercised — if one stops firing, the generator has stopped emitting that

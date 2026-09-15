@@ -183,3 +183,21 @@ func TestApplyCoverageHits_DecidesEveryApplySonde(t *testing.T) {
 		require.True(t, decided, "%q was not evaluated", msg)
 	}
 }
+
+func TestBulkHasInvalidSkippableReason_RequiresDisallowedReason(t *testing.T) {
+	t.Parallel()
+
+	validReason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
+	validButOtherwiseInvalid := oracle.Bulk{Requests: []*servicepb.Request{
+		applyCreate("L", &servicepb.CreateTransactionPayload{}, validReason),
+		applyCreate("L", &servicepb.CreateTransactionPayload{Reference: "valid-opt-in"}, validReason),
+	}}
+	require.False(t, bulkHasInvalidSkippableReason(validButOtherwiseInvalid),
+		"a valid opt-in must not receive credit for an unrelated validation failure")
+
+	disallowed := enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
+	disallowed.GetApply().SkippableReasons = []commonpb.ErrorReason{
+		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
+	}
+	require.True(t, bulkHasInvalidSkippableReason(oracle.Bulk{Requests: []*servicepb.Request{disallowed}}))
+}
