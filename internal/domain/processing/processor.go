@@ -270,9 +270,11 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 				continue
 			}
 
-			assert.Sometimes(stagedTransactions > 0, "atomic proposal rejected after staging an earlier transaction", map[string]any{
-				"orderCount": len(orders), "failingOrderIndex": i, "stagedTransactions": stagedTransactions,
-			})
+			if assert.Enabled {
+				assert.Sometimes(stagedTransactions > 0, "atomic proposal rejected after staging an earlier transaction", map[string]any{
+					"orderCount": len(orders), "failingOrderIndex": i, "stagedTransactions": stagedTransactions,
+				})
+			}
 
 			return nil, err
 		}
@@ -329,8 +331,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// log payload and updates whatever cross-order accumulator
 		// the framework needs.
 		sink.Absorb(order, log)
-		if ledgerPayload := payload.GetApply().GetLog().GetData(); ledgerPayload.GetCreatedTransaction() != nil || ledgerPayload.GetRevertedTransaction() != nil {
-			stagedTransactions++
+		if assert.Enabled {
+			if ledgerPayload := payload.GetApply().GetLog().GetData(); ledgerPayload.GetCreatedTransaction() != nil || ledgerPayload.GetRevertedTransaction() != nil {
+				stagedTransactions++
+			}
 		}
 
 		// Accumulate the derivations applyProposal previously rebuilt

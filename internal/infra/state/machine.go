@@ -808,11 +808,13 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 			}
 		}
 
-		assert.Sometimes(true, "nonempty sentinel verification completed", map[string]any{
-			"raftIndex":     pb.lastAppliedIndex,
-			"volumeUpdates": len(pb.sentinelUpdates),
-			"ledgers":       len(pb.sentinelLedgerNames),
-		})
+		if assert.Enabled {
+			assert.Sometimes(true, "nonempty sentinel verification completed", map[string]any{
+				"raftIndex":     pb.lastAppliedIndex,
+				"volumeUpdates": len(pb.sentinelUpdates),
+				"ledgers":       len(pb.sentinelLedgerNames),
+			})
+		}
 
 		return nil
 	}); err != nil {
@@ -845,17 +847,21 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	// These facts belong to this prepared batch. The next preparation may
 	// already have changed the live FSM, and only a successful commit counts.
-	for _, result := range pb.Result.Results {
-		if result.Error != nil || result.Replayed {
-			continue
+	// Guarded: the walk and its details maps exist only for these properties,
+	// and this runs on every commit.
+	if assert.Enabled {
+		for _, result := range pb.Result.Results {
+			if result.Error != nil || result.Replayed {
+				continue
+			}
+			details := map[string]any{
+				"proposalId":   result.ProposalID,
+				"raftIndex":    result.AppliedIndex,
+				"transactions": result.createdTransactions,
+			}
+			assert.Sometimes(result.createdTransactions >= 2, "multi-transaction proposal committed", details)
+			assert.Sometimes(result.revertedTransaction, "transaction revert committed", details)
 		}
-		details := map[string]any{
-			"proposalId":   result.ProposalID,
-			"raftIndex":    result.AppliedIndex,
-			"transactions": result.createdTransactions,
-		}
-		assert.Sometimes(result.createdTransactions >= 2, "multi-transaction proposal committed", details)
-		assert.Sometimes(result.revertedTransaction, "transaction revert committed", details)
 	}
 
 	return nil
@@ -1319,9 +1325,11 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		if stored, ok := fsm.Registry.Idempotency.Get(idempotencyKey); ok &&
 			!fsm.Registry.Idempotency.IsExpired(stored, effectiveDate.GetData()) {
 			matchingHash := bytes.Equal(proposalHash, stored.GetHash())
-			details := map[string]any{"proposalId": proposal.GetId(), "raftIndex": raftIndex}
-			assert.Sometimes(!matchingHash, "idempotency body conflict rejected", details)
-			assert.Sometimes(matchingHash && stored.GetFailure() == nil, "successful idempotency outcome replayed", details)
+			if assert.Enabled {
+				details := map[string]any{"proposalId": proposal.GetId(), "raftIndex": raftIndex}
+				assert.Sometimes(!matchingHash, "idempotency body conflict rejected", details)
+				assert.Sometimes(matchingHash && stored.GetFailure() == nil, "successful idempotency outcome replayed", details)
+			}
 			switch {
 			case !matchingHash:
 				err = &domain.ErrIdempotencyKeyConflict{Key: idempotencyKey}
@@ -1671,15 +1679,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	queryCheckpointCreated := buffer.QueryCheckpointCreated()
 	queryCheckpointDeleted := buffer.QueryCheckpointDeleted()
 
-	var createdTransactions int
-	var revertedTransaction bool
-	for _, log := range createdLogs {
-		payload := log.GetPayload().GetApply().GetLog().GetData()
-		if payload.GetCreatedTransaction() != nil {
-			createdTransactions++
-		}
-		if payload.GetRevertedTransaction() != nil {
-			revertedTransaction = true
+	// Bookkeeping that exists only to feed the commit-milestone properties, so
+	// it is guarded with them: an unarmed build walks no logs here at all.
+	var (
+		createdTransactions int
+		revertedTransaction bool
+	)
+
+	if assert.Enabled {
+		for _, log := range createdLogs {
+			payload := log.GetPayload().GetApply().GetLog().GetData()
+			if payload.GetCreatedTransaction() != nil {
+				createdTransactions++
+			}
+			if payload.GetRevertedTransaction() != nil {
+				revertedTransaction = true
+			}
 		}
 	}
 

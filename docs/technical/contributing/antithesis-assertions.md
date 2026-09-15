@@ -5,54 +5,69 @@ independent end-to-end oracle. They report specific contract failures that a
 failed HTTP response or later recovery could hide. They do not classify every
 storage error, internal error, or failed request as corruption.
 
-## Where the SDK is live
+## Where the SDK is live, and guarding its cost
 
-The SDK is pinned to `v0.8.0-default-no-op`, the upstream branch whose build
-constraints are inverted: `assert`, `lifecycle`, `random` and `instrumentation`
-all compile to no-ops unless `enable_antithesis_sdk` is set. Nothing has to be
-tagged to get a quiet, fast binary — released builds, local `go build` and the
-default test suite all get one for free, and forgetting a tag can only ever cost
-observability, never performance.
+The SDK is pinned to the Formance fork
+(`github.com/formancehq/antithesis-sdk-go`, branch
+`feat/assert-enabled-default-no-op`) through a `replace` in `go.mod`, because
+the fork keeps the upstream module path. It is no-op by default: `assert`,
+`lifecycle`, `random` and `instrumentation` compile to no-ops unless
+`enable_antithesis_sdk` is set. Nothing has to be tagged to get a quiet, fast
+binary — released builds, local `go build` and the default test suite all get
+one — so a forgotten tag costs observability, never throughput.
 
-That default matters beyond assertions: with a live SDK, `lifecycle.SendEvent`
-JSON-marshals a map on every batch commit and discards it when no output file is
-configured (~600ns and 13 allocations per commit), and each assertion captures
-its call site through `runtime.Caller` and takes two package-global mutexes.
+A no-op call is still an ordinary Go call, so its **arguments are evaluated**:
+the details map is built and any `err.Error()` or `id.Hex()` inside it run
+before the empty callee is reached. The fork adds `assert.Enabled`, a `const`
+that is false in an unarmed build, so wrapping assertion-only work in it makes
+the compiler discard the work entirely — verified: the guarded helper is not
+merely skipped but absent from the linked binary.
 
-Four places set `enable_antithesis_sdk`, and each would be silently useless
+```go
+if assert.Enabled {
+    details := map[string]any{"raftIndex": idx, "lag": lag}
+    assert.Sometimes(cond, "some milestone", details)
+}
+```
+
+Write the guard in that exact positive form: no `else`, not negated, not a
+comparison. The fork's instrumentor recognises precisely this shape and skips
+the "not taken" coverage edge it would otherwise synthesise — an edge that can
+never be reached, since the condition is constant. Assertions inside a guard are
+still discovered and still registered in the catalog, so no property is lost.
+
+Guard by call frequency: a per-request, per-proposal or per-order path, plus any
+bookkeeping that exists only to feed such a property (the commit-outcome
+counters, for instance). Leave cold invariant branches unguarded — a guard buys
+nothing there and reads worse.
+
+Four builds set `enable_antithesis_sdk`, and each would be silently useless
 without it:
 
 | Build | Why it must be armed |
 |---|---|
 | `Dockerfile.antithesis` | The instrumented SUT. Unarmed, the generated `assert.AssertRaw` registrations do nothing, the catalog is empty, and the campaign reports no violations because no property was ever registered — a silent pass. |
 | `tests/antithesis/workload/Dockerfile` | The drivers that produce the campaign's `Sometimes` coverage. |
-| `tests/antithesis/run_model_test.sh` | The **driver only**. It reads the SDK's local JSON output and requires specific assertions, so an unarmed driver yields an empty stream. The server is left unarmed on purpose: it is never given `ANTITHESIS_SDK_LOCAL_OUTPUT`, so its assertions have nowhere to go, and arming it costs enough throughput to starve the run's coverage sondes — a measured failure of this gate. |
+| `tests/antithesis/run_model_test.sh` | The **driver only**. It reads the SDK's local JSON output and requires specific assertions, so an unarmed driver yields an empty stream. The server is left unarmed deliberately: it is never given `ANTITHESIS_SDK_LOCAL_OUTPUT`, so arming it would buy no signal and only cost throughput on a gate whose coverage sondes depend on completed work. |
 | `just test-antithesis-assertions` | The emission contract tests below. |
 
-Keep the instrumentor pin equal to the SDK pin, and pass
-`-instrumentor_version v0.8.0-default-no-op` as well. Two separate pins are in
-play: `go install ...@<v>` selects the instrumentor binary, while
-`-instrumentor_version` sets the SDK version the *generated notifier module*
-requires. That flag defaults to the instrumentor's own `SDK_Version` ("0.8.0"),
-and stable `v0.8.0` outranks the `v0.8.0-default-no-op` prerelease in module
-resolution — so omitting it makes the instrumented build resolve to the stable,
-live-by-default SDK. That is not an empty catalog (assertions still emit), but
-the image then runs a different SDK than the repository pins and
-`enable_antithesis_sdk` is inert inside it. Verified by building the
-instrumented output both ways: with the flag the tag controls emission (0
-records untagged, 3 tagged); without it the tag makes no difference (3 either
-way).
+Both images build the instrumentor from the fork at the same SHA as the
+`replace`, because `go install pkg@version` ignores `replace` and so cannot
+reach a fork that keeps the upstream module path. Keep the two in step: an
+instrumentor that does not know the `assert.Enabled` shape leaves an
+unreachable coverage edge at every guarded site.
 
-The 0.8.0 line also added a `column` parameter to `assert.AssertRaw`, which is
-what the generated catalog calls, so a mismatched instrumentor/SDK pair fails to
-build.
-
-The no-op removes the call, not its arguments: `details` is an eager parameter,
-so the map is still constructed and any `err.Error()` or `id.Hex()` inside it
-still evaluated before the no-op callee is reached. A site on a path *every*
-request takes may therefore still need a branch guard — see
-`AlignedIndexSnapshot`. Removing that residue needs a lazy entry point, which
-the SDK does not offer.
+Both images also pass `-instrumentor_version`, which sets the SDK version the
+*generated notifier module* requires. With the `replace` in place this does not
+decide which SDK is built — a versionless `replace` redirects every selected
+version, so the notifier's requirement cannot outrank it, and instrumenting both
+ways confirms the fork is used either way. The flag keeps the generated require
+line matching the one we declare, and it restores the real guarantee if the
+`replace` is ever dropped: the flag then defaults to the instrumentor's own
+`SDK_Version` ("0.8.0"), and stable `v0.8.0` outranks a prerelease in module
+resolution, which would silently select the upstream live-by-default SDK. That
+is about module selection only — dropping the `replace` today would not build
+at all, since upstream has no `assert.Enabled`.
 
 ## Safety properties
 
@@ -107,6 +122,35 @@ carried by its `PreparedBatch`. Post-commit reporting never consults the live
 WriteSet or FSM state, which may already belong to the next preparation. This
 bookkeeping is neither persisted nor added to protobuf messages.
 
+## A coverage sonde single-node runs often miss
+
+`just test-model 180` (single node) intermittently reports
+`coverage index tx_builtin:TX_BUILTIN_INDEX_DESTINATION_ADDRESS served a
+model-verified page` as never satisfied. Repeated runs of one unchanged commit
+give both PASS and FAIL, on either side of an unrelated change, so a single run
+— red or green — identifies nothing on its own.
+
+Satisfying a sonde is narrow. One query must do three things at once
+(`coverage.go`, `coverageHits`): need that index — the address leaf must roll
+the `DESTINATION` role, one of three; come back non-empty; and pass oracle
+verification. The generator deliberately emits unmatchable filters, so empty
+pages are common.
+
+Several things can consume an opportunity without producing a finding, which is
+why `model findings: none` accompanies the miss and why it is not by itself
+evidence of any one cause:
+
+- the query never rolls a matching destination-role filter at all;
+- a needed index is not yet active, making a not-ready rejection legal
+  (`indexes.go`, `validateIndexedTransactionQuery`);
+- the call fails transiently and returns before coverage is recorded
+  (`queries.go`, the `IsTransient` early return).
+
+So index-readiness delays and throughput changes can contribute alongside plain
+exploration starvation. Treat a miss as an open question, not a diagnosis:
+reproduce several times on both sides before attributing it to a change, and on
+the cluster topology CI gates (`just test-model-cluster`) rather than this one.
+
 ## Local verification and campaign handoff
 
 Run the pinned environment and repository gates:
@@ -133,8 +177,8 @@ integration tests read committed business projections after transfer/revert
 rollback and successful idempotency replay. The unexpected-balanced-pair
 regression must fail if the reverse delta check is removed.
 
-Build through the existing `Dockerfile.antithesis` (SDK/instrumentor
-v0.8.0-default-no-op, `enable_antithesis_sdk`, race detector, CGO and symbols), and inspect the generated catalog, including
+Build through the existing `Dockerfile.antithesis` (forked SDK/instrumentor at
+the pinned SHA, `enable_antithesis_sdk`, race detector, CGO and symbols), and inspect the generated catalog, including
 properties that have not fired. SDK JSON evidence alone does not prove that
 the deployed image catalogs every property.
 

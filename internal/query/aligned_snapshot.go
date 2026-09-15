@@ -216,13 +216,14 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 
 		if lastIndexed >= mainAppliedIndex {
 			releaseHold()
-			// Only the post-wait return is the milestone. The SDK is a no-op
-			// unless enable_antithesis_sdk is set, but its no-op still builds
-			// the details map at the call site because details is an eager
-			// argument — and every read takes this path, so the already-aligned
-			// fast path must not reach the call at all.
-			if waited {
-				assert.Sometimes(true, "indexed snapshot aligned after waiting for projection", map[string]any{
+			// assert.Enabled is a constant, so an unarmed build discards this
+			// block and its details map rather than evaluating them on a path
+			// every read takes. That is what lets the property keep evaluating
+			// `waited` instead of firing only on the slow path: Antithesis
+			// reads the false evaluations as a signal to steer toward
+			// projection lag.
+			if assert.Enabled {
+				assert.Sometimes(waited, "indexed snapshot aligned after waiting for projection", map[string]any{
 					"appliedIndex": mainAppliedIndex, "indexedIndex": lastIndexed, "initialLag": initialLag,
 				})
 			}

@@ -5,9 +5,15 @@ ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 
-# Must match the SDK pinned in go.mod: the 0.8.0 line added a column
-# parameter to assert.AssertRaw, which the generated catalog calls.
-RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.8.0-default-no-op
+# Built from the Formance fork rather than `go install ...@version`: the fork
+# keeps the upstream module path, so it is reachable only through the go.mod
+# replace, which `go install pkg@version` ignores. Keep this SHA equal to the
+# replace in go.mod — the instrumentor must know the assert.Enabled guard shape,
+# or it synthesizes an unreachable coverage edge for every guarded site.
+RUN git clone --quiet https://github.com/formancehq/antithesis-sdk-go /sdk \
+ && git -C /sdk checkout --quiet 1c9afdaf82044c6c7b52d1feb751358034c98506 \
+ && cd /sdk/tools/antithesis-go-instrumentor \
+ && go build -o /usr/local/bin/antithesis-go-instrumentor .
 
 COPY go.* /src/
 COPY cmd/server /src/cmd/server
@@ -26,11 +32,12 @@ RUN cp /src/go.* / && mkdir -p /cmd && cp -r /src/cmd/server /cmd/server \
 
 RUN mkdir /instrumented
 WORKDIR /src/tests/antithesis/workload
-# -instrumentor_version pins the SDK the generated notifier module requires.
-# It defaults to the instrumentor's own SDK_Version ("0.8.0"), and stable
-# v0.8.0 outranks the v0.8.0-default-no-op prerelease in module resolution —
-# so without this flag the instrumented build silently resolves to the stable,
-# live-by-default SDK and enable_antithesis_sdk becomes inert here.
+# -instrumentor_version sets the SDK version the generated notifier module
+# requires. The versionless replace above already redirects every selected
+# version to the fork, so this does not change which SDK is built; it keeps
+# the generated require line matching the one we declare, and restores the
+# real guarantee if the replace is ever dropped (upstream stable v0.8.0
+# outranks the prerelease in module resolution).
 RUN antithesis-go-instrumentor -instrumentor_version v0.8.0-default-no-op . /instrumented
 WORKDIR /instrumented/customer
 
