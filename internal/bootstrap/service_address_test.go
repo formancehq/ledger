@@ -59,7 +59,7 @@ func TestServiceAdvertiseAddr_IPv6RemoteRPC(t *testing.T) {
 		GRPCPort: listener.Addr().(*net.TCPAddr).Port,
 	}
 	// Exercise the same provider registered in the bootstrap Fx graph.
-	published, err := buildNodeConfig(cfg)
+	published, err := provideNodeConfig(cfg)
 	require.NoError(t, err)
 	require.Equal(t, cfg.RaftConfig.AdvertiseAddr, published.AdvertiseAddr)
 	require.Equal(t, cfg.DataDir, published.DataDir)
@@ -69,7 +69,7 @@ func TestServiceAdvertiseAddr_IPv6RemoteRPC(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	peerStore := membership.NewPeerStore(newTestStore(t))
 	remote, err := membership.NewMembership(peerStore, serviceAddressRaftTransport{}, pool,
-		1, "", "", nil, logging.Testing())
+		1, "", "", []byte("self-instance-id"), logging.Testing())
 	require.NoError(t, err)
 	require.NoError(t, remote.Register(published.NodeID, published.AdvertiseAddr,
 		published.ServiceAdvertiseAddr, published.InstanceID))

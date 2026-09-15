@@ -20,7 +20,10 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"10"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"11"`. Revision 11 requires a 16-byte `instance_id` for administrative
+`ClusterService.AddLearner` requests (EN-1874); revision 10 clients that omit
+the identity are incompatible. `pkg/grpcprotocol.MetadataKey` is
+`ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +80,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 10:
+leader. For example, with a schema implementing revision 11:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 10' \
+grpcurl -plaintext -H 'ledger-protocol-version: 11' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 

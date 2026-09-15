@@ -36,6 +36,19 @@ type PeerStore struct {
 	store *dal.Store
 }
 
+type invalidPeerIdentityError struct {
+	nodeID uint64
+	cause  error
+}
+
+func (e *invalidPeerIdentityError) Error() string {
+	return fmt.Sprintf("persisted peer %d has invalid identity: %v", e.nodeID, e.cause)
+}
+
+func (e *invalidPeerIdentityError) Unwrap() error {
+	return e.cause
+}
+
 // NewPeerStore returns a PeerStore backed by the given Pebble store.
 func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
@@ -75,12 +88,14 @@ func peerKeyRange() (lower, upper []byte) {
 }
 
 // Put writes (nodeID, raftAddr, serviceAddr, instanceID) to Pebble. Called
-// from the ConfChange apply path on AddNode / AddLearnerNode / UpdateNode.
-// instanceID may be empty for bootstrap initial-peer entries and for admin
-// AddLearner rows written before the peer boots — those rows get refreshed
-// with a real instance_id when the peer later goes through JoinAsLearner
-// (EN-1045).
+// from lifecycle paths for self and initial-peer registration. ConfChange
+// apply uses the caller's WriteSession directly. Every persisted peer must
+// carry the concrete member's 16-byte WAL/PVC identity.
 func (p *PeerStore) Put(nodeID uint64, raftAddr, serviceAddr string, instanceID []byte) error {
+	if err := ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("writing peer %d: %w", nodeID, err)
+	}
+
 	session := p.store.OpenWriteSession()
 	if err := session.SetProto(peerKey(nodeID), &raftcmdpb.PeerAddress{
 		NodeId:         nodeID,
@@ -159,6 +174,9 @@ func (p *PeerStore) LoadAll() (map[uint64]ConfChangeContext, error) {
 		if err := pa.UnmarshalVT(iter.Value()); err != nil {
 			return nil, fmt.Errorf("invariant: unmarshalling peer at key %x: %w", key, err)
 		}
+		if err := ValidateInstanceID(pa.GetInstanceId()); err != nil {
+			return nil, fmt.Errorf("invariant: %w", &invalidPeerIdentityError{nodeID: pa.GetNodeId(), cause: err})
+		}
 
 		out[pa.GetNodeId()] = ConfChangeContext{
 			RaftAddress:    pa.GetRaftAddress(),
@@ -180,7 +198,7 @@ func (p *PeerStore) LoadAll() (map[uint64]ConfChangeContext, error) {
 
 // removedMemberKeyLen is the fixed length of a removed-member key:
 // 1 byte zone + 1 byte sub-prefix + 8 bytes big-endian NodeID + 16 bytes instance UUID.
-const removedMemberKeyLen = 1 + 1 + 8 + 16
+const removedMemberKeyLen = 1 + 1 + 8 + InstanceIDLen
 
 // Reason strings for RemovedMemberEntry.Reason. Stable public values (they
 // surface on the admin list-removed CLI output and cross-node audit); do
@@ -201,8 +219,8 @@ const (
 // catch before reaching here (instanceID is the identity we blacklist on,
 // silently truncating or padding would produce wrong keys).
 func removedMemberKey(nodeID uint64, instanceID []byte) []byte {
-	if len(instanceID) != 16 {
-		panic(fmt.Sprintf("removedMemberKey: instance id must be 16 bytes, got %d", len(instanceID)))
+	if err := ValidateInstanceID(instanceID); err != nil {
+		panic(fmt.Sprintf("removedMemberKey: %v", err))
 	}
 
 	key := make([]byte, removedMemberKeyLen)
@@ -240,15 +258,14 @@ func removedMemberNodeIDPrefix(nodeID uint64) (lower, upper []byte) {
 // MarkRemoved writes a RemovedMemberEntry to the caller's WriteSession
 // (typically the in-flight FSM apply batch). The session is committed by
 // its owner as part of the surrounding batch. Called from
-// Membership.WriteConfChange when it observes a ConfChangeRemoveNode with
-// a non-empty context.
+// Membership.WriteConfChange when it observes a ConfChangeRemoveNode.
 func (p *PeerStore) MarkRemoved(session *dal.WriteSession, entry *raftcmdpb.RemovedMemberEntry) error {
 	if entry == nil {
 		return errors.New("MarkRemoved: nil entry")
 	}
 
-	if len(entry.GetInstanceId()) != 16 {
-		return fmt.Errorf("MarkRemoved: instance id must be 16 bytes, got %d", len(entry.GetInstanceId()))
+	if err := ValidateInstanceID(entry.GetInstanceId()); err != nil {
+		return fmt.Errorf("MarkRemoved: %w", err)
 	}
 
 	if err := session.SetProto(removedMemberKey(entry.GetNodeId(), entry.GetInstanceId()), entry); err != nil {
@@ -262,8 +279,8 @@ func (p *PeerStore) MarkRemoved(session *dal.WriteSession, entry *raftcmdpb.Remo
 // instanceID must be exactly 16 bytes — every cluster member acquires one
 // at first boot via wal.EnsureInstanceID.
 func (p *PeerStore) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
-	if len(instanceID) != 16 {
-		return false, fmt.Errorf("PeerStore.IsRemoved: instance id must be 16 bytes, got %d", len(instanceID))
+	if err := ValidateInstanceID(instanceID); err != nil {
+		return false, fmt.Errorf("PeerStore.IsRemoved: %w", err)
 	}
 
 	handle, err := p.store.NewDirectReadHandle()
@@ -367,8 +384,8 @@ func (p *PeerStore) AnyRemovedForNodeID(nodeID uint64) (bool, error) {
 // forget-removed` admin path, which packages the delete as a technical
 // FSM proposal so every node applies it deterministically.
 func (p *PeerStore) DeleteRemovedInSession(session *dal.WriteSession, nodeID uint64, instanceID []byte) error {
-	if len(instanceID) != 16 {
-		return fmt.Errorf("DeleteRemovedInSession: instance id must be 16 bytes, got %d", len(instanceID))
+	if err := ValidateInstanceID(instanceID); err != nil {
+		return fmt.Errorf("DeleteRemovedInSession: %w", err)
 	}
 
 	if err := session.DeleteKey(removedMemberKey(nodeID, instanceID)); err != nil {

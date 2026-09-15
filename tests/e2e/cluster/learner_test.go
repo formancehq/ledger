@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/google/uuid"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -24,8 +26,9 @@ import (
 // address (EN-1784). AllocateDeadAddress claims the port for this process and
 // leaves nothing listening on it, which is exactly what a peer that never starts
 // needs.
-func phantomPeer() (raftAddr, serviceAddr string) {
-	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress()
+func phantomPeer() (raftAddr, serviceAddr string, instanceID []byte) {
+	identity := uuid.New()
+	return testserver.AllocateDeadAddress(), testserver.AllocateDeadAddress(), identity[:]
 }
 
 // waitForLearner polls the cluster state on the leader until the given node appears as a learner.
@@ -60,12 +63,13 @@ var _ = Describe("Learner node", func() {
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 
@@ -172,12 +176,13 @@ var _ = Describe("Learner node", func() {
 		BeforeAll(func() {
 			ctx, servers, _, leaderID = testutil.SetupMultiNodeCluster(countInstances)
 
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[*leaderID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 
@@ -225,12 +230,13 @@ var _ = Describe("Learner node", func() {
 		It("should forward promote-learner from follower to leader", func() {
 			lid := *leaderID
 
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         5,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 			waitForLearner(servers[lid-1].ClusterClient, lid, 5)
@@ -310,12 +316,13 @@ var _ = Describe("Learner node", func() {
 
 		It("should reject duplicate add-learner", func() {
 			lid := *leaderID
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[lid-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 
@@ -325,6 +332,7 @@ var _ = Describe("Learner node", func() {
 				NodeId:         4,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(HaveOccurred())
 		})
@@ -333,12 +341,13 @@ var _ = Describe("Learner node", func() {
 			lid := *leaderID
 			followerID := ((lid + 1) % countInstances) + 1
 
-			raftAddr, serviceAddr := phantomPeer()
+			raftAddr, serviceAddr, instanceID := phantomPeer()
 
 			_, err := servers[followerID-1].ClusterClient.AddLearner(ctx, &clusterpb.AddLearnerRequest{
 				NodeId:         5,
 				RaftAddress:    raftAddr,
 				ServiceAddress: serviceAddr,
+				InstanceId:     instanceID,
 			})
 			Expect(err).To(Succeed())
 
