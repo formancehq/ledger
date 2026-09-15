@@ -56,6 +56,31 @@ func (c *countingPool) RemovePeer(uint64) error {
 	return nil
 }
 
+type recordingTransport struct {
+	peers map[uint64]string
+}
+
+func (r *recordingTransport) AddPeer(id uint64, addr string) { r.peers[id] = addr }
+func (r *recordingTransport) RemovePeer(_ context.Context, id uint64) {
+	delete(r.peers, id)
+}
+
+type recordingPool struct {
+	peers map[uint64]string
+}
+
+func (r *recordingPool) AddPeer(id uint64, addr string) error {
+	r.peers[id] = addr
+
+	return nil
+}
+
+func (r *recordingPool) RemovePeer(id uint64) error {
+	delete(r.peers, id)
+
+	return nil
+}
+
 // newTestPeerStore returns a fresh PeerStore backed by an in-memory Pebble
 // store in a temp directory, cleaned up at test end.
 func newTestPeerStore(t *testing.T) *PeerStore {
@@ -348,34 +373,52 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 // RecoverAndReplay so the recovered cache + transport match Pebble
 // before the Raft node starts.
 //
-// This simulates the scenario: cache loaded at boot from Pebble (peer
-// 7), then "WAL replay" mutates Pebble out-of-band (peer 7 removed,
-// peers 1 and 3 added), then Rehydrate must catch the cache up.
+// This simulates the scenario: cache and transports loaded at boot from
+// Pebble (peers 7 and 9), then "WAL replay" mutates Pebble out-of-band (peer
+// 7's endpoints change, peer 9 is removed, and peers 1 and 3 are added), then
+// Rehydrate must catch all three in-memory views up.
 func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	t.Parallel()
 
 	ps := newTestPeerStore(t)
 
 	require.NoError(t, ps.Put(7, "before:1", "before:2", nil))
+	require.NoError(t, ps.Put(9, "removed:1", "removed:2", nil))
 
-	m, err := NewMembership(ps, noopTransport{}, noopPool{}, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
+	raftTransport := &recordingTransport{peers: map[uint64]string{}}
+	servicePool := &recordingPool{peers: map[uint64]string{}}
+	m, err := NewMembership(ps, raftTransport, servicePool, testSelfNodeID, testSelfRaftAddr, testSelfServiceAddr, nil, logging.Testing())
 	require.NoError(t, err)
 	m.Start()
 	require.Equal(t, "before:1", m.PeerAddresses()[7].RaftAddress)
+	require.Equal(t, "before:1", raftTransport.peers[7])
+	require.Equal(t, "before:2", servicePool.peers[7])
+	require.Equal(t, "removed:1", raftTransport.peers[9])
+	require.Equal(t, "removed:2", servicePool.peers[9])
 
 	// Simulate WAL replay: WriteConfChange wrote these rows directly to
 	// Pebble without touching the cache.
-	require.NoError(t, ps.Delete(7))
+	require.NoError(t, ps.Put(7, "after:7", "after:8", nil))
+	require.NoError(t, ps.Delete(9))
 	require.NoError(t, ps.Put(1, "after:1", "after:2", nil))
 	require.NoError(t, ps.Put(3, "after:3", "after:4", nil))
 
 	require.NoError(t, m.Rehydrate())
 
 	got := m.PeerAddresses()
-	require.Len(t, got, 2, "replayed removal of peer 7 + additions of 1 and 3 must reflect in cache")
+	require.Len(t, got, 3, "replayed refresh of peer 7 + additions of 1 and 3 must reflect in cache")
 	require.Equal(t, "after:1", got[1].RaftAddress)
 	require.Equal(t, "after:3", got[3].RaftAddress)
-	require.NotContains(t, got, uint64(7))
+	require.Equal(t, "after:7", got[7].RaftAddress)
+	require.Equal(t, "after:7", raftTransport.peers[7],
+		"post-replay Rehydrate must refresh the live Raft dial target")
+	require.Equal(t, "after:8", servicePool.peers[7],
+		"post-replay Rehydrate must refresh the live service dial target")
+	require.NotContains(t, got, uint64(9), "replayed peer removal must leave the cache")
+	require.NotContains(t, raftTransport.peers, uint64(9),
+		"replayed peer removal must unwire the Raft transport")
+	require.NotContains(t, servicePool.peers, uint64(9),
+		"replayed peer removal must unwire the service pool")
 }
 
 // TestMembership_StartGate pins the Start-gated wiring behavior: any

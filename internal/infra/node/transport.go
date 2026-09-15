@@ -342,18 +342,19 @@ func (t *DefaultTransport) closePeers() error {
 	return t.connectionPool.Close()
 }
 
-// AddPeer adds a peer to the transport. If the peer already exists, it is a no-op.
+// AddPeer adds a peer to the transport. An existing peer keeps its send loop
+// and queues, but its pooled connection is refreshed when addr changed.
 func (t *DefaultTransport) AddPeer(id uint64, addr string) {
 	t.peersMu.Lock()
 	defer t.peersMu.Unlock()
 
-	if _, exists := t.peers[id]; exists {
-		return
-	}
-
 	if err := t.connectionPool.AddPeer(id, addr); err != nil {
 		t.logger.WithFields(map[string]any{"peer": strconv.FormatUint(id, 16), "addr": addr, "error": err}).Errorf("Failed to add peer to client pool")
 
+		return
+	}
+
+	if _, exists := t.peers[id]; exists {
 		return
 	}
 

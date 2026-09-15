@@ -123,6 +123,64 @@ func TestConnectionPool_OptionalProbeKeepsTLS(t *testing.T) {
 	require.True(t, entry.usingTLS, "expected TLS for TLS-capable peer")
 }
 
+// TestConnectionPool_AddressReplacementRetriesCommittedTarget covers
+// fail-then-success refreshes in optional TLS mode. A transient probe failure
+// must retain the replacement address for both the Raft loop's explicit restart
+// and a repeated same-address registration from service-pool wiring.
+func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
+	t.Parallel()
+
+	retries := map[string]func(*ConnectionPool, string) error{
+		"raft restart": func(pool *ConnectionPool, _ string) error {
+			return pool.RestartConnection(1)
+		},
+		"service re-registration": func(pool *ConnectionPool, addr string) error {
+			return pool.AddPeer(1, addr)
+		},
+	}
+
+	for name, retry := range retries {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			oldServer := newPlaintextEchoServer(t)
+			defer oldServer.Close()
+
+			clientCfg := &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				RootCAs:    x509.NewCertPool(),
+				ServerName: "localhost",
+			}
+			pool := NewConnectionPool(TLSPolicy{TLSConfig: clientCfg}, PoolConfig{})
+			pool.probeTimeout = 500 * time.Millisecond
+			defer func() { require.NoError(t, pool.Close()) }()
+
+			require.NoError(t, pool.AddPeer(1, oldServer.addr()))
+
+			newAddr := "replacement.example:9000"
+			probeCalls := 0
+			pool.probeTLS = func(string, *tls.Config, time.Duration) error {
+				probeCalls++
+				if probeCalls == 1 {
+					return errors.New("replacement endpoint unavailable")
+				}
+
+				return nil
+			}
+
+			require.Error(t, pool.AddPeer(1, newAddr), "first probe must observe the endpoint outage")
+			require.Equal(t, newAddr, pool.GetPeerAddress(1),
+				"the replacement target must survive the failed probe")
+
+			require.NoError(t, retry(pool, newAddr),
+				"retry after endpoint recovery must dial the replacement target")
+			require.Equal(t, 2, probeCalls, "retry must re-probe the replacement target")
+			require.Equal(t, newAddr, pool.GetPeerAddress(1))
+			require.Len(t, pool.PeerIDs(), 1)
+		})
+	}
+}
+
 // TestConnectionPool_StrictTLSNoProbe verifies that strict mode does NOT
 // run a probe (the dial would fail if it did against a plaintext peer).
 func TestConnectionPool_StrictTLSNoProbe(t *testing.T) {

@@ -162,7 +162,8 @@ type ConnectionPool struct {
 	config PoolConfig
 	closed bool
 
-	// probeTimeout and failureGrace are overridable in tests.
+	// probeTLS, probeTimeout, and failureGrace are overridable in tests.
+	probeTLS     func(string, *tls.Config, time.Duration) error
 	probeTimeout time.Duration
 	failureGrace time.Duration
 }
@@ -179,13 +180,18 @@ func NewConnectionPool(policy TLSPolicy, cfg PoolConfig) *ConnectionPool {
 		peers:        make(map[uint64]*peerEntry),
 		policy:       policy,
 		config:       cfg,
+		probeTLS:     probeTLS,
 		probeTimeout: defaultProbeTimeout,
 		failureGrace: defaultFailureGrace,
 	}
 }
 
 // AddPeer adds a peer to the pool and creates a raw gRPC connection.
-// If the peer already exists with the same address, it is a no-op.
+// If the peer already has a live connection at the same address, it is a no-op;
+// a same-address registration retries a closed entry. When a replacement dial
+// fails, the committed target address is retained on the closed entry so the
+// owning peer loop or a repeated registration retries that target rather than
+// the superseded endpoint.
 func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -194,13 +200,15 @@ func (p *ConnectionPool) AddPeer(id uint64, addr string) error {
 		return errors.New("connection pool is closed")
 	}
 
-	if existing, ok := p.peers[id]; ok && existing.addr == addr {
+	if existing, ok := p.peers[id]; ok && existing.addr == addr &&
+		existing.conn != nil && existing.conn.GetState() != connectivity.Shutdown {
 		return nil
 	}
 
 	// Close any pre-existing connection for this peer.
 	if existing, ok := p.peers[id]; ok {
 		p.teardownLocked(existing)
+		existing.addr = addr
 	}
 
 	entry, err := p.dialPeer(id, addr)
@@ -262,7 +270,7 @@ func (p *ConnectionPool) decideTLS(addr string) (bool, error) {
 		return true, nil
 	}
 
-	err := probeTLS(addr, p.policy.TLSConfig, p.probeTimeout)
+	err := p.probeTLS(addr, p.policy.TLSConfig, p.probeTimeout)
 	if err == nil {
 		return true, nil
 	}
@@ -309,9 +317,9 @@ func (p *ConnectionPool) RestartConnection(id uint64) error {
 
 	entry, err := p.dialPeer(id, addr)
 	if err != nil {
-		// On failure the peer entry is gone — caller is expected to retry
-		// via AddPeer.
-		delete(p.peers, id)
+		// Keep the closed entry and its desired address. A Raft peer loop retries
+		// RestartConnection; service pools retry when lifecycle wiring registers
+		// the same address again.
 
 		return err
 	}
@@ -356,14 +364,15 @@ func (p *ConnectionPool) monitorPeer(ctx context.Context, id uint64) {
 			continue
 		}
 
-		// Re-dial; ignore errors here because the next iteration will pick up
-		// the new conn (or the peer entry will have been removed).
+		// Re-dial. A failed attempt leaves the desired address on a closed entry;
+		// this monitor then exits on Shutdown, while the Raft peer loop remains
+		// responsible for retrying RestartConnection.
 		_ = p.RestartConnection(id)
 	}
 }
 
-// getPeerConn returns the live conn for a peer, or nil if the peer has been
-// removed.
+// getPeerConn returns the current conn for a peer, including a retained closed
+// conn after a failed replacement, or nil if the peer has been removed.
 func (p *ConnectionPool) getPeerConn(id uint64) *grpc.ClientConn {
 	p.mu.Lock()
 	defer p.mu.Unlock()

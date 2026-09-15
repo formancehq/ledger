@@ -15,6 +15,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	transportpkg "github.com/formancehq/ledger/v3/internal/infra/transport"
 )
 
 func TestTransportRecvQueueMetricsExposePriorityAttributes(t *testing.T) {
@@ -59,6 +61,42 @@ func TestTransportRecvQueueMetricsExposePriorityAttributes(t *testing.T) {
 	}
 
 	require.True(t, found, "queue measurements must expose priority labels as metric attributes")
+}
+
+func TestDefaultTransport_AddressRefreshPreservesPeerLoopAndQueues(t *testing.T) {
+	t.Parallel()
+
+	pool := transportpkg.NewConnectionPool(transportpkg.TLSPolicy{}, transportpkg.PoolConfig{})
+	tr := NewTransport(
+		logging.Testing(),
+		pool,
+		noop.NewMeterProvider(),
+		1,
+		TransportConfig{Reception: []int{1, 1, 1}, Send: []int{1, 1, 1}},
+		"test-cluster",
+		1,
+		"self:7000",
+		"self:8000",
+	)
+	t.Cleanup(func() {
+		tr.RemovePeer(context.Background(), 2)
+		require.NoError(t, pool.Close())
+	})
+
+	tr.AddPeer(2, "old:7000")
+	original := tr.peers[2]
+	require.NotNil(t, original)
+	originalHigh := original.highPriorityCh
+	originalMedium := original.mediumPriorityCh
+	originalLow := original.lowPriorityCh
+
+	tr.AddPeer(2, "new:7000")
+
+	require.Same(t, original, tr.peers[2], "address refresh must keep the peer loop")
+	require.Equal(t, originalHigh, tr.peers[2].highPriorityCh)
+	require.Equal(t, originalMedium, tr.peers[2].mediumPriorityCh)
+	require.Equal(t, originalLow, tr.peers[2].lowPriorityCh)
+	require.Equal(t, "new:7000", pool.GetPeerAddress(2))
 }
 
 // captureUnreachable wires a channel-backed sink for the pushUnreachable

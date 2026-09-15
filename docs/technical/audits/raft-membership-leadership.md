@@ -135,6 +135,17 @@ horizon. A forwarded fallback must not become an unbarriered local read merely
 because leadership changed during resolution; explicit stale mode remains the
 only expected bypass.
 
+A committed `ConfChangeUpdateNode` with a peer-registration payload first
+refreshes the membership cache plus the operational Raft and service connection
+pools when `finishReady` observes the commit. The committed entry is submitted
+to the asynchronous FSM applier afterward, and `WriteConfChange` then persists
+the row in Pebble without a transport side effect. During that interval the
+cache and pools contain the new endpoint while Pebble may still contain the old
+row; a crash is repaired by committed-WAL replay followed by `Rehydrate`. Prove
+that the next Raft dial uses the committed endpoint while the existing peer
+identity, role, send loop, and queues remain intact, and that Pebble eventually
+converges to the same registration.
+
 ### Snapshot installation and catch-up
 
 Prove compatibility and order across Raft snapshot metadata/`ConfState`, WAL
