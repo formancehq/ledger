@@ -2076,6 +2076,20 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 		}
 	}
 
+	// Candidate bases can retain zero-state rows from a concurrently linearized
+	// bulk even when that bulk's reconstructed touch set is not part of this
+	// Apply call. Normalize the whole current-state universe before validating
+	// account reads; non-zero accounts and non-EPHEMERAL types are unaffected.
+	for key := range s.volumes.All() {
+		touchedAccounts[key.Address] = true
+	}
+	for key := range s.metadata.All() {
+		touchedAccounts[key.Address] = true
+	}
+	for key := range s.everAsset.All() {
+		touchedAccounts[key.address] = true
+	}
+
 	for address := range touchedAccounts {
 		t := s.match(address, compiled)
 		if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
