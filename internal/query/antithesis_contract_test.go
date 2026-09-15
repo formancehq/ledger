@@ -28,6 +28,9 @@ func TestAntithesisContractEmission(t *testing.T) {
 		{"TestAlignedIndexSnapshotRejectsMainSnapshotBehindReadBarrier", "linearizable query snapshot covers its read barrier", false, true},
 		{"TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier", "linearizable query snapshot covers its read barrier", false, false},
 		{"TestAlignedIndexSnapshotAlignsAfterObservedWait", "indexed snapshot aligned after waiting for projection", true, true},
+		// The already-aligned fast path must not reach the SDK call at all, so
+		// it emits no record — not even a false evaluation.
+		{"TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier", "indexed snapshot aligned after waiting for projection", false, false},
 		{"TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows", "indexed snapshot aligned after waiting for projection", true, false},
 		{"TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows", "linearizable query snapshot covers its read barrier", false, false},
 	} {
