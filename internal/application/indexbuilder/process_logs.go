@@ -435,13 +435,8 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				unpersistedCursor = lastSeq
 				unpersistedCount += batchCount
 			} else {
-				b.lastAppliedProposalSeq = appliedProposalSeq
-				cursor = lastSeq
-				unpersistedCursor = cursor
-				b.lastIndexedSeq.Store(cursor)
-				b.logsIndexed.Add(uint64(batchCount + unpersistedCount))
-				unpersistedCount = 0
-				b.readStore.NotifyProgress()
+				b.advanceCursors(lastSeq, appliedProposalSeq, batchCount+unpersistedCount)
+				cursor, unpersistedCursor, unpersistedCount = lastSeq, lastSeq, 0
 			}
 
 			needsPersist = false
@@ -506,13 +501,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, fmt.Errorf("committing progress past checkpoint log %d: %w", lastSeq, err)
 			}
 
-			b.lastAppliedProposalSeq = appliedProposalSeq
-			cursor = lastSeq
-			unpersistedCursor = cursor
-			b.lastIndexedSeq.Store(cursor)
-			b.logsIndexed.Add(uint64(unpersistedCount))
-			unpersistedCount = 0
-			b.readStore.NotifyProgress()
+			// The checkpoint batch folded its own count into unpersistedCount.
+			b.advanceCursors(lastSeq, appliedProposalSeq, unpersistedCount)
+			cursor, unpersistedCursor, unpersistedCount = lastSeq, lastSeq, 0
 		}
 
 		// Sample pebble last sequence from the cached atomic (written by the FSM
@@ -608,6 +599,15 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 	}
 
 	return cursor, nil
+}
+
+// advanceCursors publishes a committed progress batch: both durable cursors now
+// stand at lastSeq and indexed logs were folded under it.
+func (b *Builder) advanceCursors(lastSeq, appliedProposalSeq uint64, indexed int) {
+	b.lastAppliedProposalSeq = appliedProposalSeq
+	b.lastIndexedSeq.Store(lastSeq)
+	b.logsIndexed.Add(uint64(indexed))
+	b.readStore.NotifyProgress()
 }
 
 func (b *Builder) materializePendingCheckpoint(ctx context.Context) error {

@@ -956,9 +956,9 @@ const queryCheckpointsDir = "query-checkpoints"
 // idempotent: the FSM cursor commits in the same batch as the trigger entry and
 // apply skips entries at or below it, so the applier does not re-cross the
 // trigger, and recovery skips a marked directory before calling.
-func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
+func (s *Store) CreateQueryCheckpoint(id uint64) (dir string, err error) {
 	base := filepath.Join(s.dataDir, queryCheckpointsDir, strconv.FormatUint(id, 10))
-	dir := filepath.Join(base, "main")
+	dir = filepath.Join(base, "main")
 	tmpDir := dir + ".tmp"
 
 	// pebble.Checkpoint refuses an existing destination.
@@ -981,39 +981,39 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (string, error) {
 		return "", fmt.Errorf("clearing stale temp query checkpoint %d: %w", id, err)
 	}
 
-	if err := s.checkpointQueryTemp(tmpDir); err != nil {
-		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
+	// A failure from here on leaves the attempt under one of the two names;
+	// discard it so the next call starts clean. Best effort: the error being
+	// returned is the one that matters.
+	defer func() {
+		if err != nil {
+			_ = os.RemoveAll(tmpDir)
+			_ = os.RemoveAll(dir)
+		}
+	}()
 
+	if err := s.checkpointQueryTemp(tmpDir); err != nil {
 		return "", err
 	}
 
 	// fsync the fully-built temp directory before the marker vouches for it.
 	if err := FsyncDir(tmpDir); err != nil {
-		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
-
 		return "", fmt.Errorf("fsync temp query checkpoint %d: %w", id, err)
 	}
 
 	// The marker is written while the directory is still under its temp name,
 	// so the rename below publishes content and marker together.
 	if err := MarkCheckpointReady(tmpDir); err != nil {
-		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
-
 		return "", fmt.Errorf("marking query checkpoint %d ready: %w", id, err)
 	}
 
 	// Atomic rename into the final location: a reader sees either nothing or a
 	// complete, marked directory.
 	if err := os.Rename(tmpDir, dir); err != nil {
-		_ = os.RemoveAll(tmpDir) // best-effort cleanup of the failed attempt
-
 		return "", fmt.Errorf("renaming query checkpoint %d into place: %w", id, err)
 	}
 
 	// fsync the parent so the rename itself is durable.
 	if err := FsyncDir(base); err != nil {
-		_ = os.RemoveAll(dir) // best-effort cleanup of the failed attempt
-
 		return "", fmt.Errorf("fsync query checkpoint %d parent: %w", id, err)
 	}
 

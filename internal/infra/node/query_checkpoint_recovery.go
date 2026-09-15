@@ -27,7 +27,8 @@ func recoverQueryCheckpointMainStores(store *dal.Store, logger logging.Logger, l
 	}
 
 	checkpoints, err := query.ListQueryCheckpoints(handle)
-	// The handle holds the store's read lock; release it before materializing.
+	// Close only releases the store's read lock the materialization below
+	// needs; the rows are already in hand, so its error changes nothing here.
 	_ = handle.Close()
 	if err != nil {
 		return err
