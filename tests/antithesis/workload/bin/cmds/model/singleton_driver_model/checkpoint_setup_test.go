@@ -1,49 +1,46 @@
 package main
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/stretchr/testify/require"
 )
 
-func TestCheckpointBaselineIncludesDeletedLastAllocation(t *testing.T) {
+func TestCheckpointBaselineUsesProbeAllocationFrontier(t *testing.T) {
 	t.Parallel()
-	listed := &clusterpb.ListQueryCheckpointsResponse{Checkpoints: []*clusterpb.QueryCheckpointInfo{{CheckpointId: 3}}}
-	var reads []uint64
-	ids, next, err := checkpointBaseline(listed, 10, func(sequence uint64) (*commonpb.Log, error) {
-		reads = append(reads, sequence)
-		entry := &commonpb.Log{Sequence: sequence}
-		if sequence == 9 {
-			entry.Payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 7}}}
-		}
-		if sequence == 8 {
-			entry.Payload = &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{CheckpointId: 7}}}
-		}
-		return entry, nil
-	})
+	listed := &clusterpb.ListQueryCheckpointsResponse{Checkpoints: []*clusterpb.QueryCheckpointInfo{{CheckpointId: 3}, {CheckpointId: 7}}}
+	ids, next, err := checkpointBaseline(listed, 12)
 	require.NoError(t, err)
-	require.Equal(t, []uint64{10, 9, 8}, reads)
-	require.Equal(t, []uint64{3}, ids)
-	require.Equal(t, uint64(8), next)
+	require.Equal(t, []uint64{3, 7, 12}, ids)
+	require.Equal(t, uint64(13), next)
 }
 
-func TestCheckpointBaselineFreshAndInvalidHistory(t *testing.T) {
+func TestCheckpointBaselineRejectsInvalidRegistry(t *testing.T) {
 	t.Parallel()
-	ids, next, err := checkpointBaseline(&clusterpb.ListQueryCheckpointsResponse{}, 0, func(uint64) (*commonpb.Log, error) {
-		t.Fatal("empty history must not read a log")
-		return nil, nil
-	})
-	require.NoError(t, err)
-	require.Empty(t, ids)
-	require.Equal(t, uint64(1), next)
-	failure := errors.New("read failed")
-	_, _, err = checkpointBaseline(nil, 1, func(uint64) (*commonpb.Log, error) { return nil, failure })
-	require.ErrorIs(t, err, failure)
-	_, _, err = checkpointBaseline(nil, 1, func(uint64) (*commonpb.Log, error) { return &commonpb.Log{Sequence: 2}, nil })
-	require.ErrorContains(t, err, "wrong sequence")
-	_, _, err = checkpointBaseline(&clusterpb.ListQueryCheckpointsResponse{Checkpoints: []*clusterpb.QueryCheckpointInfo{{CheckpointId: 1}}}, 0, nil)
-	require.ErrorContains(t, err, "invalid checkpoint baseline registry")
+	for _, tc := range []struct {
+		name    string
+		listed  *clusterpb.ListQueryCheckpointsResponse
+		probeID uint64
+	}{
+		{name: "zero probe", probeID: 0},
+		{name: "maximum probe", probeID: ^uint64(0)},
+		{name: "zero registry ID", listed: checkpointRegistry(0), probeID: 4},
+		{name: "registry reaches probe", listed: checkpointRegistry(4), probeID: 4},
+		{name: "duplicate registry ID", listed: checkpointRegistry(2, 2), probeID: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, _, err := checkpointBaseline(tc.listed, tc.probeID)
+			require.Error(t, err)
+		})
+	}
+}
+
+func checkpointRegistry(ids ...uint64) *clusterpb.ListQueryCheckpointsResponse {
+	response := &clusterpb.ListQueryCheckpointsResponse{}
+	for _, id := range ids {
+		response.Checkpoints = append(response.Checkpoints, &clusterpb.QueryCheckpointInfo{CheckpointId: id})
+	}
+	return response
 }

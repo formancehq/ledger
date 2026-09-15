@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/metadata"
@@ -16,72 +17,100 @@ import (
 
 // setupQueryCheckpoints establishes the inherited global lifecycle baseline.
 // Unlike ledgers, checkpoint IDs cannot be isolated by the per-run prefix. The
-// exclusive model template has no other writers and installs only a non-firing
-// schedule. Resetting that schedule before observing the registry establishes
-// its startup boundary. An arbitrary active scheduler is not supported: disabling
-// it cannot cancel an already proposed creation. Historical logs are trusted
-// only as setup state; subsequent effects are predicted.
+// exclusive model template has no other writers and installs only non-firing
+// schedules. Setup resets the schedule, frees one slot when the registry is at
+// capacity, then creates a probe checkpoint. Its assigned ID gives the next-ID
+// frontier in constant RPC count, even after arbitrarily long prior runs.
 func setupQueryCheckpoints(ctx context.Context, bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient, c *Checker) bool {
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	bulk := oracle.Bulk{Requests: []*servicepb.Request{{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}}}}
-	response, err := bucket.Apply(ctx, applyRequest(bulk))
-	if err == nil {
-		logs := response.GetLogs()
-		if len(logs) != 1 || logs[0].GetSequence() == 0 || logs[0].GetPayload().GetDeleteQueryCheckpointSchedule() == nil {
-			err = fmt.Errorf("schedule reset returned no committed deletion log")
-		} else {
-			var listed *clusterpb.ListQueryCheckpointsResponse
-			listed, err = readCheckpointRegistry(ctx, bucket, cluster, c.ledgerNames[0])
-			if err == nil {
-				var ids []uint64
-				var nextID uint64
-				ids, nextID, err = checkpointBaseline(listed, logs[0].GetSequence()-1, func(sequence uint64) (*commonpb.Log, error) {
-					return bucket.GetLog(ctx, &servicepb.GetLogRequest{Sequence: sequence})
-				})
-				if err == nil {
-					c.modelState = c.modelState.SeedQueryCheckpoints(ids, nextID)
-					return true
-				}
-			}
-		}
+	scheduleLog, err := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}})
+	if err != nil {
+		return checkpointSetupFailure(err)
 	}
-	if isShutdownError(err) {
+	if scheduleLog.GetPayload().GetDeleteQueryCheckpointSchedule() == nil {
+		return checkpointSetupFailure(fmt.Errorf("checkpoint schedule reset returned the wrong log"))
+	}
+
+	listed, err := readCheckpointRegistry(ctx, bucket, cluster, c.ledgerNames[0])
+	if err != nil {
+		return checkpointSetupFailure(err)
+	}
+
+	limit := c.modelState.QueryCheckpointLimit()
+	if limit != 0 && uint64(len(listed.GetCheckpoints())) >= limit {
+		victim := listed.GetCheckpoints()[0].GetCheckpointId()
+		log, deleteErr := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: victim}}})
+		if deleteErr != nil {
+			return checkpointSetupFailure(deleteErr)
+		}
+		if log.GetPayload().GetDeletedQueryCheckpoint().GetCheckpointId() != victim {
+			return checkpointSetupFailure(fmt.Errorf("checkpoint baseline deletion returned the wrong log"))
+		}
+		listed.Checkpoints = slices.DeleteFunc(listed.GetCheckpoints(), func(cp *clusterpb.QueryCheckpointInfo) bool {
+			return cp.GetCheckpointId() == victim
+		})
+	}
+
+	log, err := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
+	if err != nil {
+		return checkpointSetupFailure(err)
+	}
+	created := log.GetPayload().GetCreatedQueryCheckpoint()
+	if created == nil || created.GetCheckpointId() == 0 || created.GetCheckpointId() == ^uint64(0) || created.GetMaxSequence() != log.GetSequence()-1 {
+		return checkpointSetupFailure(fmt.Errorf("checkpoint baseline creation returned an invalid log"))
+	}
+
+	ids, nextID, err := checkpointBaseline(listed, created.GetCheckpointId())
+	if err != nil {
+		return checkpointSetupFailure(err)
+	}
+	c.modelState = c.modelState.SeedQueryCheckpoints(ids, nextID)
+	c.checkpoints[created.GetCheckpointId()] = checkpointSnapshot{state: c.modelState, maxSequence: created.GetMaxSequence()}
+
+	return true
+}
+
+func applyCheckpointSetup(ctx context.Context, bucket servicepb.BucketServiceClient, request *servicepb.Request) (*commonpb.Log, error) {
+	response, err := bucket.Apply(ctx, applyRequest(oracle.Bulk{Requests: []*servicepb.Request{request}}))
+	if err != nil {
+		return nil, err
+	}
+	logs := response.GetLogs()
+	if len(logs) != 1 || logs[0].GetSequence() == 0 {
+		return nil, fmt.Errorf("checkpoint setup returned no committed log")
+	}
+
+	return logs[0], nil
+}
+
+func checkpointSetupFailure(err error) bool {
+	if internal.IsTransient(err) || isShutdownError(err) {
 		return false
 	}
 	assert.Unreachable("singleton_driver_model: checkpoint setup failed", internal.Details{"error": err.Error()})
+
 	return false
 }
 
-// checkpointBaseline scans backwards because the largest live ID need not be
-// the last allocated ID. A deleted last checkpoint still advances the counter.
-func checkpointBaseline(listed *clusterpb.ListQueryCheckpointsResponse, sequence uint64, read func(uint64) (*commonpb.Log, error)) ([]uint64, uint64, error) {
-	ids := make([]uint64, 0, len(listed.GetCheckpoints()))
-	for _, cp := range listed.GetCheckpoints() {
-		ids = append(ids, cp.GetCheckpointId())
+// checkpointBaseline combines the current registry with the setup probe. The
+// probe is the latest allocation, so it establishes the next ID without walking
+// the global log history from the previous invocation.
+func checkpointBaseline(listed *clusterpb.ListQueryCheckpointsResponse, probeID uint64) ([]uint64, uint64, error) {
+	if probeID == 0 || probeID == ^uint64(0) {
+		return nil, 0, fmt.Errorf("checkpoint baseline has invalid probe ID %d", probeID)
 	}
-	nextID := uint64(1)
-	for ; sequence > 0; sequence-- {
-		entry, err := read(sequence)
-		if err != nil {
-			return nil, 0, fmt.Errorf("reading checkpoint baseline log %d: %w", sequence, err)
-		}
-		if entry == nil || entry.GetSequence() != sequence {
-			return nil, 0, fmt.Errorf("checkpoint baseline log %d has wrong sequence", sequence)
-		}
-		if cp := entry.GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
-			if cp.GetCheckpointId() == 0 || cp.GetCheckpointId() == ^uint64(0) {
-				return nil, 0, fmt.Errorf("checkpoint baseline has invalid ID %d", cp.GetCheckpointId())
-			}
-			nextID = cp.GetCheckpointId() + 1
-			break
-		}
-	}
+	ids := make([]uint64, 0, len(listed.GetCheckpoints())+1)
 	seen := map[uint64]bool{}
-	for _, id := range ids {
-		if id == 0 || id >= nextID || seen[id] {
-			return nil, 0, fmt.Errorf("invalid checkpoint baseline registry ID %d with next ID %d", id, nextID)
+	for _, cp := range listed.GetCheckpoints() {
+		id := cp.GetCheckpointId()
+		if id == 0 || id >= probeID || seen[id] {
+			return nil, 0, fmt.Errorf("invalid checkpoint baseline registry ID %d with probe ID %d", id, probeID)
 		}
 		seen[id] = true
+		ids = append(ids, id)
 	}
-	return ids, nextID, nil
+	ids = append(ids, probeID)
+	slices.Sort(ids)
+
+	return ids, probeID + 1, nil
 }

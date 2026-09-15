@@ -50,6 +50,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 func main() {
@@ -112,10 +113,10 @@ func main() {
 	checker := NewChecker(names, schemas)
 	checker.modelState = checker.modelState.WithQueryCheckpointLimit(uint64(envInt("MODEL_QUERY_CHECKPOINT_LIMIT", defaultModelCheckpointLimit)))
 	dialCtx, cancelDial := context.WithTimeout(ctx, 5*time.Second)
-	checkpointNodes, err := internal.DialPerNode(dialCtx)
+	checkpointNodes, _ := internal.DialPerNode(dialCtx)
 	cancelDial()
-	if err != nil || len(checkpointNodes) == 0 {
-		assert.Unreachable("singleton_driver_model: checkpoint node connections unavailable", internal.Details{"error": fmt.Sprint(err)})
+	if len(checkpointNodes) == 0 {
+		assert.Unreachable("singleton_driver_model: checkpoint node connections unavailable", nil)
 		return
 	}
 	defer checkpointNodes.Close()
@@ -167,8 +168,8 @@ func main() {
 
 	// Index readiness poller: reconciles each created index's active flag against
 	// per-replica CurrentVersion, so has-asset queries validate results once the
-	// index is live everywhere. Per-node conns are lazy, so dialing never fails on
-	// a down node; it is skipped only when no addresses resolve.
+	// index is live everywhere. Per-node conns are lazy, so a down node is handled
+	// by the poller's transient-error path.
 	var pollers sync.WaitGroup
 	pollers.Add(1)
 	go func() {
@@ -249,9 +250,11 @@ func runWorker(
 		state := c.modelState
 		c.mu.Unlock()
 
-		bulk := generateBulk(state, c.ledgerNames)
+		var bulk oracle.Bulk
 		if percentChance(10) {
 			bulk = generateCheckpointBulk(state)
+		} else {
+			bulk = generateBulk(state, c.ledgerNames)
 		}
 		if len(bulk.Requests) == 0 {
 			continue
@@ -268,8 +271,27 @@ func runWorker(
 		// key on a different body (conflict) or minting a fresh tracked one (a
 		// replayable original) — to exercise the server's dedup.
 		c.stampIdempotency(&bulk)
+		var predictedCheckpointID uint64
+		if len(bulk.Requests) == 1 && bulk.Requests[0].GetCreateQueryCheckpoint() != nil {
+			predictedCheckpointID = c.modelState.NextQueryCheckpointID()
+		}
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
+
+		var probeDone <-chan struct{}
+		if len(bulk.Requests) == 1 && bulk.Requests[0].GetCreateQueryCheckpoint() != nil {
+			start := make(chan struct{})
+			registered := make(chan struct{})
+			done := make(chan struct{})
+			probeDone = done
+			node := random.RandomChoice(checkpointNodes)
+			go func() {
+				defer close(done)
+				runPredictedCheckpointRead(ctx, node.Bucket, c, predictedCheckpointID, start, registered)
+			}()
+			<-registered
+			close(start)
+		}
 
 		// Application-level retry to a definitive outcome. The gRPC-layer
 		// retries live inside one call's context, so a cancellation that
@@ -305,6 +327,9 @@ func runWorker(
 		}
 
 		dumpBatch(ticket, req, resp, err)
+		if probeDone != nil {
+			<-probeDone
+		}
 
 		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
 		// the drain gate compares outstanding tickets against it (see tryDrain).

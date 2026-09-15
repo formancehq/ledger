@@ -390,7 +390,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 		// Best-effort: this read-only store is only being unwound after open failed.
 		_ = mainStore.Close()
 
-		return nil, nil, nil, impl.checkpointReadIndexOpenError(checkpointID, err)
+		return nil, nil, nil, impl.checkpointReadIndexOpenError(ctx, checkpointID, err)
 	}
 	keepLease = true
 	cleanup := func() {
@@ -403,7 +403,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	return mainStore, readIdx, cleanup, nil
 }
 
-func (impl *BucketServiceServerImpl) checkpointReadIndexOpenError(checkpointID uint64, err error) error {
+func (impl *BucketServiceServerImpl) checkpointReadIndexOpenError(ctx context.Context, checkpointID uint64, err error) error {
 	// Deletion can remove files after the readiness check and main open.
 	// Reclassify only missing files backed by a committed deletion; storage
 	// loss on a still-live checkpoint and other corruption remain errors.
@@ -411,7 +411,10 @@ func (impl *BucketServiceServerImpl) checkpointReadIndexOpenError(checkpointID u
 	if !pebble.IsCorruptionError(err) && missing {
 		deleted, lifecycleErr := impl.queryCheckpointDeleted(checkpointID)
 		if lifecycleErr != nil {
-			return errors.Join(err, lifecycleErr)
+			diagnostic := fmt.Errorf("opening checkpoint read index: %w", errors.Join(err, fmt.Errorf("reading checkpoint lifecycle: %w", lifecycleErr)))
+			correlationID := recordGRPCInternalError(ctx, impl.logger, diagnostic)
+
+			return status.Errorf(codes.Unavailable, "checkpoint lifecycle unavailable (correlation ID: %s)", correlationID)
 		}
 		if deleted {
 			return commonpb.NewNotFoundError("query checkpoint %d not found", checkpointID)

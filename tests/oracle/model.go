@@ -2011,6 +2011,9 @@ func (g GlobalState) WithQueryCheckpointLimit(limit uint64) GlobalState {
 // QueryCheckpointLimit returns the model's configured live checkpoint cap.
 func (g GlobalState) QueryCheckpointLimit() uint64 { return g.checkpointLimit }
 
+// NextQueryCheckpointID returns the ID the next successful create will assign.
+func (g GlobalState) NextQueryCheckpointID() uint64 { return g.nextCheckpointID }
+
 // QueryCheckpointIDs returns the live checkpoint IDs in ascending order.
 func (g GlobalState) QueryCheckpointIDs() []uint64 {
 	ids := make([]uint64, 0, g.checkpoints.Len())

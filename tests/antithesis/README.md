@@ -34,9 +34,11 @@ Adding a driver is just adding a directory under `bin/cmds/main/` with a
 
 The model template exclusively owns the checkpoint timeline, with no other
 driver or automatic checkpoint creator running alongside it. At startup it
-disables the inherited schedule and seeds the existing checkpoint registry and
-allocation counter from the live registry and historical creation log. This
-supports repeated model invocations without deleting inherited checkpoints.
+disables the inherited schedule, frees one inherited slot when the registry is
+at capacity, and creates a probe checkpoint. The probe's assigned ID seeds the
+allocation counter in constant RPC count even after arbitrarily long prior runs;
+the current registry seeds the live set. The probe also receives a frozen
+snapshot, while other inherited checkpoints do not.
 An unrelated active schedule is not supported: disabling it cannot cancel an
 already proposed creation. Only
 checkpoints created during the current invocation receive frozen read snapshots. Checkpoint
@@ -63,9 +65,13 @@ transient-error contract covers replicas whose checkpoint read index is not read
 `--query-checkpoint-limit`. Creation deliberately attempts to exceed the cap and
 requires `CHECKPOINT_LIMIT_REACHED`. Live snapshots are bounded by that cap;
 only the ten most recent deleted checkpoints with known frozen snapshots are
-retained for deletion probes. Schedule set/get/delete uses a valid 100-year interval so no scheduler-generated writes
-enter the model timeline. Restore cycles retain the frozen business snapshots
-and continue validating them after the cluster rebuilds its checkpoint stores.
+retained for deletion probes. Schedule set/get/delete rotates among several
+non-firing expressions so reads verify the stored value without introducing
+scheduler-generated writes into the model timeline. Restore cycles retain the
+frozen business snapshots, but audit rebuild cannot reconstruct their physical
+checkpoint files. Those inherited IDs therefore remain retryably unavailable
+until the workload deletes them; newly created checkpoints resume frozen-read
+coverage afterward.
 
 Coverage properties are registered before workers start for lifecycle commits,
 cap rejection, nonempty frozen reads, deleted reads, listing, and schedule
