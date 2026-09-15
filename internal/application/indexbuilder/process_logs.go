@@ -1117,8 +1117,9 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	// Pebble directly and cannot see the pending range delete, so it would
 	// report the about-to-be-deleted row as present and suppress this Put —
 	// which the range delete then wipes at commit, dropping the row. Force the
-	// idempotent Put instead; queued after the range delete (the recreated
-	// ledger's logs have higher sequence), it wins at commit.
+	// idempotent Put instead; queued after the range delete (later logs for
+	// that name have higher sequences), it wins at commit. processCreateLedger
+	// rejects a create under a soft-deleted name, so this path is defensive.
 	if _, deleted := b.deletedThisBatch[ledger]; !deleted {
 		exists, err := b.readstoreKeyExists(key)
 		if err != nil {

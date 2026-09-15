@@ -171,3 +171,37 @@ func TestClosingCursor_EmptyInner(t *testing.T) {
 	require.NoError(t, cursor.Close())
 	require.True(t, closer.closed)
 }
+
+// Latest reads the store's current committed state while the handle keeps its
+// own point-in-time view, and it needs no lock of its own: closing the store
+// under an open handle waits for that handle, and a Latest taken meanwhile
+// must not join the wait.
+func TestReadHandle_LatestSeesLaterCommits(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	rh, err := s.NewReadHandle()
+	require.NoError(t, err)
+
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("late-key"), []byte("late-val")))
+	require.NoError(t, batch.Commit())
+
+	closed := make(chan error, 1)
+	go func() { closed <- s.Close() }()
+
+	latest := rh.Latest()
+
+	_, _, err = rh.Get([]byte("late-key"))
+	require.ErrorIs(t, err, pebble.ErrNotFound, "the handle keeps its pinned view")
+
+	val, closer, err := latest.Get([]byte("late-key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("late-val"), val)
+	require.NoError(t, closer.Close())
+
+	require.NoError(t, latest.Close())
+	require.NoError(t, rh.Close())
+	require.NoError(t, <-closed)
+}

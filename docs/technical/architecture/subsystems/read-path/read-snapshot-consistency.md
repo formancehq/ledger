@@ -178,3 +178,15 @@ it that way and returns `ErrIndexNotFound`; a record present at version 0
 still means a build in progress and returns `ErrIndexBuilding`. Telling a
 client to wait for readiness that will never arrive is the failure this
 prevents.
+
+**A deleted ledger rejects the aligned read**: `DeleteLedger` folds
+as a wipe of every ledger-scoped projection row while the mainstore handle
+that admitted the read still holds the ledger live. Index leaves then fail
+readiness as removed, and the unfiltered LOGS universe — served from the
+projection alone — has nothing left to fail on: a deletion folded between the
+two acquisitions would answer a successful empty page for a ledger the pin
+holds logs for. Every aligned read is therefore gated on the ledger still
+being live, re-read from a mainstore snapshot taken *after* the projection
+snapshot; a deleted ledger is `ErrLedgerNotFound`, the answer every later
+read gives. `requireLedgerLive` in `internal/query/aligned_snapshot.go`
+carries the ordering argument that makes the re-read sufficient.

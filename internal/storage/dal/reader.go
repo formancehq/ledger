@@ -48,6 +48,7 @@ type PebbleReader interface {
 type ReadHandle struct {
 	reader PebbleReader
 	snap   *pebble.Snapshot // nil in direct mode
+	db     *pebble.DB
 	mu     *sync.RWMutex
 }
 
@@ -67,7 +68,7 @@ func (s *Store) NewReadHandle() (*ReadHandle, error) {
 
 	snap := db.NewSnapshot()
 
-	return &ReadHandle{reader: snap, snap: snap, mu: &s.dbMu}, nil
+	return &ReadHandle{reader: snap, snap: snap, db: db, mu: &s.dbMu}, nil
 }
 
 // NewDirectReadHandle creates a ReadHandle backed by the DB directly (no snapshot).
@@ -87,7 +88,16 @@ func (s *Store) NewDirectReadHandle() (*ReadHandle, error) {
 		return nil, ErrStoreClosed
 	}
 
-	return &ReadHandle{reader: db, mu: &s.dbMu}, nil
+	return &ReadHandle{reader: db, db: db, mu: &s.dbMu}, nil
+}
+
+// Latest returns a snapshot of the store's current committed state, taken
+// under the lifecycle lock this handle already holds. Close it before the
+// handle. A second NewReadHandle from the handle's owner would take a second
+// RLock, and a queued writer (Close, RestoreCheckpoint) blocks new readers
+// while it waits for this handle: both sides would wedge for good.
+func (h *ReadHandle) Latest() *pebble.Snapshot {
+	return h.db.NewSnapshot()
 }
 
 func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
