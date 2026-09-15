@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -9,6 +10,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/membership"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 )
+
+func TestCompleteCommittedConfChangeRequiresDurableLocalApplyWithoutHook(t *testing.T) {
+	t.Parallel()
+
+	setup := newTestApplierSetup(t)
+	n := &Node{fsm: setup.fsm}
+
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, n.completeCommittedConfChange(cancelled, 1, nil), context.Canceled,
+		"commit and WAL ConfState persistence alone must not produce success")
+
+	entry, _ := makeCreateLedgerEntry(t, 1, "membership-success-boundary")
+	setup.applyEntry(t, context.Background(), entry)
+
+	require.NoError(t, n.completeCommittedConfChange(context.Background(), 1, nil),
+		"success is allowed once the correlated index is durable locally")
+}
 
 func correlatedConfChange(t *testing.T, proposalID string, nodeID uint64, changeType raftpb.ConfChangeType) *raftpb.ConfChangeV2 {
 	t.Helper()

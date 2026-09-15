@@ -2553,13 +2553,14 @@ func (node *Node) proposeConfChangeAndWait(
 // it commits or the context is cancelled. etcd/raft silently drops ConfChange
 // proposals when another is pending; this method handles that transparently.
 //
-// postApplyFn (optional) is invoked while confChangeMu is still held, AFTER
-// the ConfChange has been committed and the pending-future has been resolved
-// by finishReady. Callers use it to block until a specific FSM side-effect
-// is visible in Pebble — the future in finishReady resolves before the
-// async applier has processed the entry, so subsequent operations acquiring
-// confChangeMu may otherwise not observe the FSM write. Currently used by
-// RemoveNode to guarantee the RemovedMemberEntry tombstone is visible
+// Every successful return is gated on the correlated entry's durable local FSM
+// application while confChangeMu is still held. The future in finishReady
+// resolves after the ConfState WAL update but before the async applier has
+// processed the entry, so commit alone is not a sufficient response boundary.
+// With no hook, retryConfChange supplies the common applied-index barrier used
+// by addition and promotion. A postApplyFn replaces that default and must
+// establish at least the same barrier before any operation-specific checks;
+// RemoveNode does so while also verifying the RemovedMemberEntry tombstone
 // before a racing JoinAsLearner's blacklist re-check runs (EN-1045).
 func (node *Node) retryConfChange(
 	ctx context.Context,
@@ -2589,17 +2590,31 @@ func (node *Node) retryConfChange(
 		}
 
 		if committed {
-			if postApplyFn == nil {
-				return nil
-			}
-
-			return postApplyFn(ctx, committedIndex)
+			return node.completeCommittedConfChange(ctx, committedIndex, postApplyFn)
 		}
 
 		node.logger.WithFields(map[string]any{
 			"nodeID": nodeID,
 		}).Infof("%s: retrying (previous proposal likely dropped due to pending ConfChange)", name)
 	}
+}
+
+// completeCommittedConfChange establishes the common success boundary for
+// normal membership changes. A nil operation-specific hook waits for the
+// correlated Raft index to be durable in the local FSM. A hook replaces that
+// default because removal needs to wrap post-commit wait failures and verify its
+// tombstone. A cancelled wait returns an error even though the ConfChange is
+// already committed and may apply later.
+func (node *Node) completeCommittedConfChange(
+	ctx context.Context,
+	committedIndex uint64,
+	postApplyFn func(ctx context.Context, committedIndex uint64) error,
+) error {
+	if postApplyFn != nil {
+		return postApplyFn(ctx, committedIndex)
+	}
+
+	return node.fsm.WaitForApplied(ctx, committedIndex)
 }
 
 // existingLearnerAction is the decision AddLearner takes when the leader
@@ -2663,7 +2678,8 @@ func classifyExistingLearner(match uint64, existingInstanceID []byte, hasRow boo
 }
 
 // AddLearner proposes adding a non-voting learner node to the Raft cluster.
-// The call blocks until the ConfChange is committed through Raft consensus.
+// The call blocks until the ConfChange is committed through Raft consensus and
+// the correlated entry is durably applied to the local FSM.
 // instanceID (16 bytes, empty only from the admin cluster.AddLearner RPC
 // where the target pod hasn't booted yet) travels in the marshaled
 // ConfChangeContext so every node's FSM apply lands the same PeerAddress
@@ -2765,7 +2781,8 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 }
 
 // PromoteLearner proposes promoting a learner node to a full voter.
-// The call blocks until the ConfChange is committed through Raft consensus.
+// The call blocks until the ConfChange is committed through Raft consensus and
+// the correlated entry is durably applied to the local FSM.
 // Must be called on the leader.
 func (node *Node) PromoteLearner(ctx context.Context, nodeID uint64) error {
 	proposalID := uuid.NewString()
