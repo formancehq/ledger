@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 type checkpointWaitObservedContext struct {
@@ -76,13 +76,13 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 			require.NoError(t, err)
 			require.Len(t, response.GetLogs(), len(logs))
 			require.True(t, proto.Equal(logs[0], response.GetLogs()[0]))
-			require.False(t, readstore.CheckpointDirReady(serving.store.QueryCheckpointReadIndexDir(1)))
+			require.False(t, dal.CheckpointDirReady(serving.store.QueryCheckpointReadIndexDir(1)))
 			select {
 			case err := <-originalDone:
 				t.Fatalf("original returned before materialization: %v", err)
 			default:
 			}
-			require.NoError(t, readstore.MarkCheckpointReady(mkdirAllForCheckpoint(t, leader.store.QueryCheckpointReadIndexDir(1))))
+			require.NoError(t, dal.MarkCheckpointReady(mkdirAllForCheckpoint(t, leader.store.QueryCheckpointReadIndexDir(1))))
 			leader.readStore.NotifyProgress()
 			select {
 			case err := <-originalDone:
@@ -161,5 +161,5 @@ func TestApplyCheckpointDeletedWhileFreshCreationWaits(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("deletion did not release fresh creation wait")
 	}
-	require.False(t, readstore.CheckpointDirReady(impl.store.QueryCheckpointReadIndexDir(1)))
+	require.False(t, dal.CheckpointDirReady(impl.store.QueryCheckpointReadIndexDir(1)))
 }
