@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/bluele/gcache"
+
 	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
 )
 
@@ -42,6 +44,10 @@ const METADATA_KEY = PROPERTY_PREFIX + "metadata"
 type ChartOfAccounts map[string]ChartSegment
 
 var ChartSegmentRegexp = regexp.MustCompile(`^(\$|\.)?[a-zA-Z0-9_-]+$`)
+
+const patternCacheMaxSize = 4096
+
+var patternCache = gcache.New(patternCacheMaxSize).LFU().Build()
 
 func ValidateSegment(addr string) bool {
 	return ChartSegmentRegexp.Match([]byte(addr))
@@ -248,6 +254,21 @@ func (s ChartVariableSegment) MarshalJSON() ([]byte, error) {
 	return json.Marshal(out)
 }
 
+func (s *ChartVariableSegment) matchPattern(v string) (bool, error) {
+	if s.Pattern == nil {
+		return true, nil
+	}
+	if cached, err := patternCache.Get(*s.Pattern); err == nil {
+		return cached.(*regexp.Regexp).MatchString(v), nil
+	}
+	re, err := regexp.Compile(*s.Pattern)
+	if err != nil {
+		return false, err
+	}
+	_ = patternCache.Set(*s.Pattern, re)
+	return re.MatchString(v), nil
+}
+
 func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, variableSegment *ChartVariableSegment, account []string) (*ChartAccount, error) {
 	nextSegment := account[0]
 	if segment, ok := fixedSegments[nextSegment]; ok {
@@ -265,13 +286,9 @@ func findAccountSchema(path []string, fixedSegments map[string]ChartSegment, var
 		}
 	}
 	if variableSegment != nil {
-		matches := true
-		if variableSegment.Pattern != nil {
-			var err error
-			matches, err = regexp.Match(*variableSegment.Pattern, []byte(nextSegment))
-			if err != nil {
-				return nil, fmt.Errorf("invalid pattern regex: %v", err)
-			}
+		matches, err := variableSegment.matchPattern(nextSegment)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pattern regex: %v", err)
 		}
 		if matches {
 			if len(account) > 1 {
