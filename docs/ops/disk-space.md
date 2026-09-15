@@ -193,3 +193,26 @@ transactions, account types, prepared queries, reversions) in the same apply
 that records the deletion. The `LedgerInfo` row is kept as a tombstone so
 reads answer "ledger deleted", and the global log and audit history — which
 is shared across ledgers and permanent — retains the ledger's entries.
+
+The tombstone also closes the ledger to writes. Every command that would
+record new state for it is rejected with `LEDGER_DELETED`: the apply-scoped
+orders (transactions, account types, metadata schema, indexes), ledger
+metadata, numscript versions, prepared-query create/update/delete, and
+`PromoteLedger`. `CreateLedger` refuses the name for the same reason, so a
+deleted name is never reusable. The gate is applied in the FSM, on the
+replicated `LedgerInfo.DeletedAt`, so every replica reaches the same verdict
+for a committed entry and the refusal is recorded in the audit chain.
+
+Two commands sit outside the gate. `DeleteLedger` must resolve the tombstone
+it re-stamps, so a second delete on an already-deleted ledger succeeds and
+emits a second `DeletedLedgerLog`. `MirrorIngest` needs no gate of its own:
+`DeleteLedger` drops the ledger's `LedgerBoundaries` row in the same apply, so
+an ingest on a tombstoned ledger is already rejected — as `LEDGER_NOT_FOUND`
+rather than `LEDGER_DELETED`, since the boundary lookup fails first.
+
+A write accepted before the tombstone existed is purged with everything else.
+A write accepted *after* it would not have been. The purge is a Pebble range
+delete issued in the deleting apply, and a range tombstone only shadows keys
+written before it, so rows landing in a later apply survive it: unreachable
+through the read API, and reclaimed only if the ledger is deleted a second
+time. Closing the ledger to writes is what keeps that from arising.

@@ -14,7 +14,7 @@ func processAddLedgerMetadata(ledger string, order *raftcmdpb.SaveLedgerMetadata
 		return nil, domain.ErrLedgerNameRequired
 	}
 
-	if _, loadErr := loadLedgerReader(s, ledger); loadErr != nil {
+	if _, loadErr := loadLiveLedgerReader(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 
@@ -60,7 +60,7 @@ func processDeleteLedgerMetadata(ledger string, order *raftcmdpb.DeleteLedgerMet
 		return nil, domain.ErrMetadataKeyRequired
 	}
 
-	if _, loadErr := loadLedgerReader(s, ledger); loadErr != nil {
+	if _, loadErr := loadLiveLedgerReader(s, ledger); loadErr != nil {
 		return nil, loadErr
 	}
 

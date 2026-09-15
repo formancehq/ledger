@@ -543,7 +543,7 @@ func processMirrorRevertedTransaction(ledger string, rt *raftcmdpb.MirrorReverte
 func processPromoteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
 
-	info, loadErr := loadLedger(s, ledger)
+	info, loadErr := loadLiveLedger(s, ledger)
 	if loadErr != nil {
 		return nil, loadErr
 	}

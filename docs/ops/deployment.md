@@ -711,7 +711,7 @@ Mixed-binary rolling upgrades are **not supported** across this change. Stop all
 
 This is a standing rule rather than a per-change note. Whenever a release changes an FSM-emitted error's identity:
 
-- **Mixed-binary rolling upgrades are not supported across that change.** Restart every node onto the new binary. Note that the Kubernetes operator performs a *rolling* update by default (a pod-template spec-hash annotation drives it), so this constraint has to be applied deliberately — it is not the default behaviour. A failure of the affected class applied while the cluster straddles two builds diverges the audit chain at that index, and `ledgerctl check` then reports `HASH_MISMATCH` on whichever node disagrees with the persisted chain.
+- **Mixed-binary rolling upgrades are not supported across that change.** Restart every node onto the new binary. Note that the Kubernetes operator performs a *rolling* update by default (a pod-template spec-hash annotation drives it), so this constraint has to be applied deliberately — it is not the default behaviour. A failure of the affected class applied while the cluster straddles two builds diverges the audit chain at that index. `ledgerctl check` does not surface that: `Checker.verifyAuditHashChain` recomputes each hash from the entries the replica itself stored, so a chain that diverged from its peers at apply time is still internally consistent and still verifies clean. Detecting the divergence means comparing audit entries across replicas.
 - **No data wipe is required**, unlike the pre-#400 upgrade above. No persisted key layout or value encoding changes, `storage-schema-version` is unaffected, and existing entries stay verifiable byte-for-byte. The exposure is confined to entries written *inside* the mixed-binary window, and only to the affected failure class.
 
 Changes in this release line that fall under the rule:
@@ -723,6 +723,22 @@ Changes in this release line that fall under the rule:
 | EN-1379 | a preload coverage miss stops being flattened into `ERROR_REASON_STORAGE_OPERATION_FAILED` and surfaces as `ERROR_REASON_COVERAGE_MISS`, with `attribute`, `canonicalHex`, `idHex`, `raftIndex` intact | coverage misses only — themselves admission-contract violations that must never fire (invariant #7), so in a healthy cluster the window is empty |
 
 Making this structurally safe would require a failure-projection semantics version carried alongside `HashVersion`, so old entries keep reproducing their original bytes. That is a deliberate design change, tracked as EN-1661; until it lands, the rule above is the mitigation. See [coverage-gate.md](../technical/architecture/subsystems/fsm/coverage-gate.md#upgrade-note-the-reason-is-hash-bound) for the mechanism in detail.
+
+### Upgrading across an FSM outcome change
+
+A related but heavier case: a release that makes the FSM *reject* an order it used to accept. The rule above assumes both binaries fail the order and only disagree on how they label the failure, which is why it can promise that no data wipe is required. An outcome change breaks that assumption — the two binaries disagree on whether anything happened at all.
+
+An accepted order writes its rows, returns a log payload, and consumes a global log sequence; a rejected one does none of the three (`processing.RequestProcessor.ProcessOrders` skips the whole block on a nil payload). So for one and the same committed Raft entry inside a mixed-binary window, the old binary appends a log and mutates state while the new binary records only an audit failure. Every later log on the old node then carries a sequence number one higher than on the new node, and the rows the old node wrote exist nowhere else.
+
+- **Mixed-binary rolling upgrades are not supported across that change**, for the reason above and one further one.
+- **A replica that straddled the window cannot be repaired by restarting it onto the new binary.** Its divergence is in the state store and the log stream, not only in the audit hash, so it has to be resynchronised from the leader (`state.Synchronizer.SynchronizeWithLeader` installs a leader checkpoint).
+- **`ledgerctl check` does not detect this.** `Checker.verifyAuditHashChain` recomputes each hash from the entries that replica itself stored; it never re-executes a handler and never compares one replica against another. Both sides of an outcome divergence therefore hold an internally consistent chain and both report clean. A passing `check` is not evidence that no divergence occurred — finding one means comparing log sequences and audit entries across replicas.
+
+Changes in this release line that fall under this rule:
+
+| Change | Outcome that flips | Exposure |
+|--------|--------------------|----------|
+| EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
 
 ### Audit hash keying — threat model
 

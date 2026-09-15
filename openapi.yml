@@ -596,6 +596,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          description: The ledger has been deleted (`LEDGER_DELETED`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1659,8 +1665,9 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '409':
           description: |
-            The version already exists (`NUMSCRIPT_VERSION_ALREADY_EXISTS`).
-            Stored versions are immutable and cannot be overwritten.
+            The version already exists (`NUMSCRIPT_VERSION_ALREADY_EXISTS`) —
+            stored versions are immutable and cannot be overwritten — or the
+            ledger has been deleted (`LEDGER_DELETED`).
           content:
             application/json:
               schema:
@@ -1966,6 +1973,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
@@ -1995,6 +2004,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
         '500':
