@@ -54,6 +54,17 @@ ownership entries are retained: replacement of a previously tracked index and
 recovery after a lost successful create response or status update remain
 separate ownership concerns.
 
+## Pyroscope credentials
+
+`spec.monitoring.pyroscope.authTokenFrom` and `basicAuthPasswordFrom` accept
+`{name, key}` references to Secrets in the Cluster namespace. The operator
+renders required `valueFrom.secretKeyRef` entries only when profiling is enabled;
+it never copies those credential bytes into the Cluster or Pod template.
+Plaintext `authToken` and `basicAuthPassword` fields are not supported.
+Reference changes trigger a rollout; rotating Secret contents requires a Pod
+restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
+for examples and missing-reference behavior.
+
 ## Backup scheduling
 
 Backup schedules preserve their completion cursors in `Backup.status` before
