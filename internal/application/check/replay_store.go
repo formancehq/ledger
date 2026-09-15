@@ -14,6 +14,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -256,6 +257,48 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
 	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
+}
+
+func (s *replayStore) PurgeAccount(ledger, account string, collector domainreplay.ExclusionCollector) error {
+	for _, spec := range []struct{ replayPrefix, separator byte }{
+		{replayPrefixVolume, dal.CanonicalKeySepVolume},
+		{replayPrefixMetadata, dal.CanonicalKeySepMetadata},
+	} {
+		prefix := []byte{spec.replayPrefix}
+		prefix = append(prefix, domain.LedgerScopedPrefix(ledger)...)
+		prefix = append(prefix, account...)
+		prefix = append(prefix, spec.separator)
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		if collector != nil && spec.replayPrefix == replayPrefixVolume {
+			iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+			if err != nil {
+				return err
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				var key domain.VolumeKey
+				if err := key.Unmarshal(iter.Key()[1:]); err != nil {
+					_ = iter.Close()
+
+					return fmt.Errorf("decoding purged replay volume key: %w", err)
+				}
+				collector(ledger, account, key.Asset, key.Color)
+			}
+			if err := iter.Error(); err != nil {
+				_ = iter.Close()
+
+				return err
+			}
+			if err := iter.Close(); err != nil {
+				return err
+			}
+		}
+		if err := s.db.DeleteRange(prefix, upper, pebble.NoSync); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // CreateTransaction records a transaction creation op via merge (no read).

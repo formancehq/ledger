@@ -20,6 +20,7 @@ type writerStub struct {
 	dropIndex   func(ledger string, id *commonpb.IndexID) error
 
 	removedFieldTypes int
+	purgedAccounts    []string
 }
 
 func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return nil }
@@ -29,7 +30,12 @@ func (w *writerStub) MoveVolume([]byte, []byte) error                 { return n
 func (w *writerStub) SetMetadata([]byte, *commonpb.MetadataValue) error {
 	return nil
 }
-func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
+func (w *writerStub) DeleteMetadata([]byte) error { return nil }
+func (w *writerStub) PurgeAccount(_ string, account string, _ replay.ExclusionCollector) error {
+	w.purgedAccounts = append(w.purgedAccounts, account)
+
+	return nil
+}
 func (w *writerStub) MoveMetadata([]byte, []byte) error { return nil }
 func (w *writerStub) CreateTransaction([]byte, uint64, *commonpb.Timestamp, map[string]*commonpb.MetadataValue, []*commonpb.Posting, uint64) error {
 	return nil
@@ -85,10 +91,33 @@ func metaIndexID(key string) *commonpb.IndexID {
 	}
 }
 
+func TestReplayLedgerLog_DefersExplicitAccountPurgeToProposalBoundary(t *testing.T) {
+	t.Parallel()
+
+	w := &writerStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	err := replay.ReplayLedgerLog(
+		"ledger",
+		1,
+		&commonpb.LedgerLogPayload{},
+		[]string{"ephemeral:1"},
+		nil,
+		w,
+		nil,
+		nil,
+		buffer,
+	)
+	require.NoError(t, err)
+	require.Empty(t, w.purgedAccounts, "transaction post-commit volumes are checked before the proposal boundary")
+
+	require.NoError(t, buffer.Flush(w, nil, nil))
+	require.Equal(t, []string{"ephemeral:1"}, w.purgedAccounts)
+}
+
 func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {
 	t.Helper()
 
-	return replay.ReplayLedgerLog("ledger", 1, payload, date, w,
+	return replay.ReplayLedgerLog("ledger", 1, payload, nil, date, w,
 		map[string]map[string]*commonpb.AccountType{},
 		map[string][]accounttype.CompiledType{}, nil)
 }

@@ -58,7 +58,7 @@
   "adversarial_questions": [
     "For every public read and mode, where is ReadIndexAndWait invoked, how is its index transported, and can a direct, prepared, inspect, audit, stats, or checkpoint path drop or relabel it?",
     "Can a request open the main handle before reserving history, derive H or sequence from another handle, release a lease early, or read the certificate outside the projection snapshot it uses?",
-    "Can a builder advance Raft progress or its native cursor before all rows, deletions, registry/version state, audit entries, or counters represented by that position share a successful batch? What is visible after commit, flush, or retry failure?",
+    "Can a builder advance Raft progress or its native cursor before all rows, deletions, registry/version state, audit entries, or counters represented by that position share a successful batch? For account-wide ephemeral purge, are committed and earlier in-batch has-asset rows, current/pending metadata versions, and dedup state removed before aligned progress while historical transaction mappings survive? What is visible after commit, flush, or retry failure?",
     "Do no-log Raft entries, empty ledgers, rollback/reset, terminal corruption, or restart make a waiter hang, accept incomplete empty state, or skip a required position?",
     "Can a projection ahead of H leak a post-H transaction/log, metadata event, first-touch row, schema type, or promoted version into enrichment at H?",
     "During create, backfill, retype, drop, delete/recreate, and reclamation, can readiness/version publication precede complete rows or race an active reader into a deleted keyspace?",

@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
+	"sort"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -20,6 +23,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -102,6 +106,7 @@ type Admission struct {
 	ordersPreparationDurationHistogram  metric.Int64Histogram
 	scriptsDurationHistogram            metric.Int64Histogram
 	responseResolutionDurationHistogram metric.Int64Histogram
+	ephemeralLifecycleLocks             [64]sync.Mutex
 }
 
 // phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
@@ -636,6 +641,11 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
+	releaseLifecycle, err := a.expandAccountLifecycleCoverage(needs, perOrder)
+	if err != nil {
+		return nil, fmt.Errorf("expanding account lifecycle coverage: %w", err)
+	}
+	defer releaseLifecycle()
 	stopScripts()
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
@@ -880,6 +890,168 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	}
 
 	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
+}
+
+// expandAccountLifecycleCoverage enumerates every persisted volume and metadata
+// key owned by an account already mentioned by an order's coverage. The FSM
+// uses this closed key set to decide and apply an account-wide EPHEMERAL purge
+// without scanning Pebble or bypassing the coverage gate.
+func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage) (func(), error) {
+	compiledByLedger := make(map[string][]accounttype.CompiledType)
+	lockSet := make(map[int]struct{})
+
+	// Lock every touched ephemeral account (striped by canonical identity) until
+	// this Admit call observes FSM completion. A later admission for another
+	// asset of the same account then enumerates state only after the earlier
+	// proposal is durable, closing the snapshot/enumeration race.
+	for _, coverage := range perOrder {
+		for attrCode, entries := range coverage.Attributes {
+			for _, coverageEntry := range entries {
+				var account domain.AccountKey
+				switch attrCode {
+				case dal.SubAttrVolume:
+					var key domain.VolumeKey
+					if err := key.Unmarshal(coverageEntry.Canonical); err != nil {
+						return nil, err
+					}
+					account = key.AccountKey
+				case dal.SubAttrMetadata:
+					var key domain.MetadataKey
+					if err := key.Unmarshal(coverageEntry.Canonical); err != nil {
+						return nil, err
+					}
+					account = key.AccountKey
+				default:
+					continue
+				}
+				compiled, ok := compiledByLedger[account.LedgerName]
+				if !ok {
+					info, err := a.attrs.Ledger.Get(a.store, domain.LedgerKey{Name: account.LedgerName}.Bytes())
+					if err != nil {
+						return nil, err
+					}
+					if info != nil {
+						compiled = accounttype.CompileTypes(info.GetAccountTypes())
+					}
+					compiledByLedger[account.LedgerName] = compiled
+				}
+				matched := accounttype.FindMatchingType(account.Account, compiled)
+				if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+					lockSet[accountLifecycleLockIndex(account)] = struct{}{}
+				}
+			}
+		}
+	}
+	lockIndexes := make([]int, 0, len(lockSet))
+	for index := range lockSet {
+		lockIndexes = append(lockIndexes, index)
+	}
+	sort.Ints(lockIndexes)
+	for _, index := range lockIndexes {
+		a.ephemeralLifecycleLocks[index].Lock()
+	}
+	release := func() {
+		for _, lockIndexe := range slices.Backward(lockIndexes) {
+			a.ephemeralLifecycleLocks[lockIndexe].Unlock()
+		}
+	}
+	success := false
+	defer func() {
+		if !success {
+			release()
+		}
+	}()
+	handle, err := a.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = handle.Close() }()
+
+	for _, coverage := range perOrder {
+		accounts := make(map[domain.AccountKey]struct{})
+		for attrCode, entries := range coverage.Attributes {
+			for _, entry := range entries {
+				switch attrCode {
+				case dal.SubAttrVolume:
+					var key domain.VolumeKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return nil, err
+					}
+					accounts[key.AccountKey] = struct{}{}
+				case dal.SubAttrMetadata:
+					var key domain.MetadataKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return nil, err
+					}
+					accounts[key.AccountKey] = struct{}{}
+				}
+			}
+		}
+
+		for account := range accounts {
+			compiled, ok := compiledByLedger[account.LedgerName]
+			if !ok {
+				info, err := a.attrs.Ledger.Get(handle, domain.LedgerKey{Name: account.LedgerName}.Bytes())
+				if err != nil {
+					return nil, err
+				}
+				if info != nil {
+					compiled = accounttype.CompileTypes(info.GetAccountTypes())
+				}
+				compiledByLedger[account.LedgerName] = compiled
+			}
+			matched := accounttype.FindMatchingType(account.Account, compiled)
+			if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+				continue
+			}
+			for _, attrCode := range []byte{dal.SubAttrVolume, dal.SubAttrMetadata} {
+				sep := dal.CanonicalKeySepVolume
+				if attrCode == dal.SubAttrMetadata {
+					sep = dal.CanonicalKeySepMetadata
+				}
+				canonicalPrefix := append(domain.LedgerScopedPrefix(account.LedgerName), account.Account...)
+				canonicalPrefix = append(canonicalPrefix, sep)
+				lower := append([]byte{dal.ZoneAttributes, attrCode}, canonicalPrefix...)
+				upper := append([]byte(nil), lower...)
+				upper[len(upper)-1]++
+
+				iter, err := dal.NewBoundedIter(handle, lower, upper)
+				if err != nil {
+					return nil, err
+				}
+				for iter.First(); iter.Valid(); iter.Next() {
+					canonical := append([]byte(nil), iter.Key()[2:]...)
+					coverage.Add(attrCode, canonical)
+					aggregate.Add(attrCode, append([]byte(nil), canonical...))
+				}
+				if err := iter.Error(); err != nil {
+					_ = iter.Close()
+
+					return nil, err
+				}
+				if err := iter.Close(); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	success = true
+
+	return release, nil
+}
+
+func accountLifecycleLockIndex(account domain.AccountKey) int {
+	var hash uint64 = 1469598103934665603
+	for _, value := range []string{account.LedgerName, account.Account} {
+		for i := range len(value) {
+			hash ^= uint64(value[i])
+			hash *= 1099511628211
+		}
+		hash ^= 0xff
+	}
+
+	return int(hash % 64)
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {

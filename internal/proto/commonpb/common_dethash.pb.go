@@ -1553,6 +1553,15 @@ func (m *LedgerLog) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, error
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if len(m.PurgedAccounts) > 0 {
+		for iNdEx := len(m.PurgedAccounts) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.PurgedAccounts[iNdEx])
+			copy(dAtA[i:], m.PurgedAccounts[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PurgedAccounts[iNdEx])))
+			i--
+			dAtA[i] = 0x3a
+		}
+	}
 	if len(m.EphemeralVolumes) > 0 {
 		for iNdEx := len(m.EphemeralVolumes) - 1; iNdEx >= 0; iNdEx-- {
 			size, _ := m.EphemeralVolumes[iNdEx].MarshalToSizedBufferVT(dAtA[:i])
