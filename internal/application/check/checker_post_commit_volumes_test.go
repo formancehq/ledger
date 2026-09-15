@@ -129,6 +129,22 @@ func TestCompareTransactionPostCommitVolumes_DetectsModifiedRow(t *testing.T) {
 	require.Contains(t, msgs[0], "alice")
 }
 
+func TestCompareTransactionPostCommitVolumes_DetectsMissingZeroValuedField(t *testing.T) {
+	t.Parallel()
+
+	postings := []*commonpb.Posting{newPosting("world", "alice", "USD", 100)}
+	pcv := buildPCV(
+		pcvRow{account: "world", asset: "USD", input: "0", output: "100"},
+		pcvRow{account: "alice", asset: "USD", input: "100", output: "0"},
+	)
+	pcv.VolumesByAccount["alice"].Volumes[0].Volumes.Output = nil
+
+	msgs := runPCVCheck(t, postings, pcv)
+	require.Len(t, msgs, 1)
+	require.Contains(t, msgs[0], "invalid amounts")
+	require.Contains(t, msgs[0], "input and output must be present")
+}
+
 func TestCompareTransactionPostCommitVolumes_DetectsDuplicateRow(t *testing.T) {
 	t.Parallel()
 
