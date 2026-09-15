@@ -16,6 +16,11 @@ Since the FSM is called synchronously during Raft entry application, serializati
 
 Replace `BigInt` with `Uint256` — a fixed-size message of 4 `fixed64` fields representing the four 64-bit limbs of a 256-bit unsigned integer.
 
+This decision applies to persisted buckets and posting amounts. API volume
+projections use canonical `BigUint`/`SignedBigInt` messages: collapsing several color
+buckets may legitimately produce a total beyond 256 bits, and the public JSON
+projection renders those values as exact quoted decimals.
+
 ```protobuf
 message Uint256 {
   fixed64 v0 = 1;  // least significant limb

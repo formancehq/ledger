@@ -82,13 +82,13 @@ func TestBuildPostCommitVolumes_FoundAndAbsent(t *testing.T) {
 
 	bank := findVolumeEntry(result, "bank", "USD", "")
 	require.NotNil(t, bank)
-	require.Equal(t, "100", bank.GetInput())
-	require.Equal(t, "40", bank.GetOutput())
+	require.Equal(t, "100", bank.GetInput().DecimalString())
+	require.Equal(t, "40", bank.GetOutput().DecimalString())
 
 	users := findVolumeEntry(result, "users:001", "USD", "")
 	require.NotNil(t, users)
-	require.Equal(t, "0", users.GetInput())
-	require.Equal(t, "0", users.GetOutput())
+	require.Equal(t, "0", users.GetInput().DecimalString())
+	require.Equal(t, "0", users.GetOutput().DecimalString())
 }
 
 // findVolumeEntry looks up the Volumes for a single (account, asset, color)

@@ -31,11 +31,11 @@ func TestPostCommitVolumes_MarshalJSON_Flat(t *testing.T) {
 	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
 			"users:alice": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
-				{Asset: "USD/2", Color: "GOLD", Volumes: &Volumes{Input: "10", Output: "0"}},
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: MustBigUintFromDecimal("100"), Output: MustBigUintFromDecimal("40")}},
+				{Asset: "USD/2", Color: "GOLD", Volumes: &Volumes{Input: MustBigUintFromDecimal("10"), Output: MustBigUintFromDecimal("0")}},
 			}},
 			"world": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "0", Output: "100"}},
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: MustBigUintFromDecimal("0"), Output: MustBigUintFromDecimal("100")}},
 			}},
 		},
 	}
@@ -90,7 +90,7 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 	pcv := &PostCommitVolumes{
 		VolumesByAccount: map[string]*VolumesByAssets{
 			"volumesByAccount": {Volumes: []*VolumeEntry{
-				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: "100", Output: "40"}},
+				{Asset: "USD/2", Color: "", Volumes: &Volumes{Input: MustBigUintFromDecimal("100"), Output: MustBigUintFromDecimal("40")}},
 			}},
 		},
 	}

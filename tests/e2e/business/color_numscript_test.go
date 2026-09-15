@@ -77,9 +77,9 @@ send [USD/2 60] (
 			g.Expect(err).To(Succeed())
 
 			// GRANTS drained by 60 (200 - 60 = 140); others unchanged.
-			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance()).To(Equal("140"))
-			g.Expect(alice.FindVolume("USD/2", "").GetBalance()).To(Equal("300"))
-			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance()).To(Equal("100"))
+			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("140"))
+			g.Expect(alice.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("300"))
+			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance().DecimalString()).To(Equal("100"))
 
 			// bob received under the same color and only under that color.
 			bob, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -87,7 +87,7 @@ send [USD/2 60] (
 				Address: "bob",
 			})
 			g.Expect(err).To(Succeed())
-			g.Expect(bob.FindVolume("USD/2", "GRANTS").GetBalance()).To(Equal("60"))
+			g.Expect(bob.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("60"))
 			g.Expect(bob.FindVolume("USD/2", "")).To(BeNil(),
 				"the color stays with the funds — bob must not have an uncolored bucket")
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
@@ -134,9 +134,9 @@ send [USD/2 90] (
 			g.Expect(err).To(Succeed())
 
 			// Uncolored shrunk by 90 (300 - 90 = 210); colored stays intact.
-			g.Expect(alice.FindVolume("USD/2", "").GetBalance()).To(Equal("210"))
-			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance()).To(Equal("140"))
-			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance()).To(Equal("100"))
+			g.Expect(alice.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("210"))
+			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("140"))
+			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance().DecimalString()).To(Equal("100"))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 
@@ -152,11 +152,11 @@ send [USD/2 90] (
 		Expect(vols).To(HaveLen(3))
 		Expect(vols[0].GetAsset()).To(Equal("USD/2"))
 		Expect(vols[0].GetColor()).To(Equal(""))
-		Expect(vols[0].GetVolumes().GetBalance()).To(Equal("210"))
+		Expect(vols[0].GetVolumes().GetBalance().DecimalString()).To(Equal("210"))
 		Expect(vols[1].GetColor()).To(Equal("GRANTS"))
-		Expect(vols[1].GetVolumes().GetBalance()).To(Equal("140"))
+		Expect(vols[1].GetVolumes().GetBalance().DecimalString()).To(Equal("140"))
 		Expect(vols[2].GetColor()).To(Equal("OPS"))
-		Expect(vols[2].GetVolumes().GetBalance()).To(Equal("100"))
+		Expect(vols[2].GetVolumes().GetBalance().DecimalString()).To(Equal("100"))
 	})
 
 	It("Should collapse colors on GetAccount when collapseColors=true", func() {
@@ -172,7 +172,7 @@ send [USD/2 90] (
 		entry := acct.GetVolumes()[0]
 		Expect(entry.GetAsset()).To(Equal("USD/2"))
 		Expect(entry.GetColor()).To(Equal(""))
-		Expect(entry.GetVolumes().GetBalance()).To(Equal("450"))
+		Expect(entry.GetVolumes().GetBalance().DecimalString()).To(Equal("450"))
 	})
 })
 
@@ -319,8 +319,8 @@ var _ = Describe("ColorRevert", Ordered, func() {
 			g.Expect(err).To(Succeed())
 
 			// GRANTS bucket back to 0 (200 - 200); uncolored untouched at 100.
-			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance()).To(Equal("0"))
-			g.Expect(alice.FindVolume("USD/2", "").GetBalance()).To(Equal("100"))
+			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("0"))
+			g.Expect(alice.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("100"))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 })

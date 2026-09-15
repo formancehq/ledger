@@ -78,6 +78,14 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 		// VolumesByAssets.Volumes is sorted by (asset, color) server-side.
 		for _, entry := range vba.GetVolumes() {
 			v := entry.GetVolumes()
+			input, err := v.GetInput().Dec()
+			if err != nil {
+				return err
+			}
+			output, err := v.GetOutput().Dec()
+			if err != nil {
+				return err
+			}
 			displayColor := entry.GetColor()
 			if displayColor == "" {
 				displayColor = "-"
@@ -87,8 +95,8 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 				account,
 				entry.GetAsset(),
 				displayColor,
-				v.GetInput(),
-				v.GetOutput(),
+				input,
+				output,
 			})
 		}
 	}

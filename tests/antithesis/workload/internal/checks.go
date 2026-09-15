@@ -24,9 +24,9 @@ func CheckVolume(input, output, balance *big.Int, details Details) {
 func CheckAccountVolumes(volumes []*commonpb.AccountVolume, details Details) {
 	for _, entry := range volumes {
 		vol := entry.GetVolumes()
-		input, _ := new(big.Int).SetString(vol.GetInput(), 10)
-		output, _ := new(big.Int).SetString(vol.GetOutput(), 10)
-		balance, _ := new(big.Int).SetString(vol.GetBalance(), 10)
+		input, _ := vol.GetInput().ToBigInt()
+		output, _ := vol.GetOutput().ToBigInt()
+		balance, _ := vol.GetBalance().ToBigInt()
 		if input == nil {
 			input = big.NewInt(0)
 		}
@@ -52,8 +52,8 @@ func CheckPostCommitVolumes(pcv *commonpb.PostCommitVolumes, details Details) {
 	for account, volumesByAssets := range pcv.GetVolumesByAccount() {
 		for _, entry := range volumesByAssets.GetVolumes() {
 			vol := entry.GetVolumes()
-			input, _ := new(big.Int).SetString(vol.GetInput(), 10)
-			output, _ := new(big.Int).SetString(vol.GetOutput(), 10)
+			input, _ := vol.GetInput().ToBigInt()
+			output, _ := vol.GetOutput().ToBigInt()
 			if input == nil {
 				input = big.NewInt(0)
 			}
