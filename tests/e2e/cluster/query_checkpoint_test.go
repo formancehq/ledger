@@ -381,7 +381,7 @@ var _ = Describe("Query Checkpoints", func() {
 			})
 			Expect(err).To(Succeed())
 
-			Expect(resp.FindVolume(asset, "").GetBalance()).To(Equal("400"))
+			Expect(resp.FindVolume(asset, "").GetBalance().DecimalString()).To(Equal("400"))
 		})
 	})
 

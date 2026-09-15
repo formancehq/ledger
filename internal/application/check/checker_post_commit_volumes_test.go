@@ -21,9 +21,12 @@ func buildPCV(rows ...pcvRow) *commonpb.PostCommitVolumes {
 	for _, r := range rows {
 		byAccount[r.account] = &commonpb.VolumesByAssets{
 			Volumes: append(byAccount[r.account].GetVolumes(), &commonpb.VolumeEntry{
-				Asset:   r.asset,
-				Color:   r.color,
-				Volumes: &commonpb.Volumes{Input: r.input, Output: r.output},
+				Asset: r.asset,
+				Color: r.color,
+				Volumes: &commonpb.Volumes{
+					Input:  commonpb.MustBigUintFromDecimal(r.input),
+					Output: commonpb.MustBigUintFromDecimal(r.output),
+				},
 			}),
 		}
 	}

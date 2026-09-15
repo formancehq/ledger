@@ -99,17 +99,32 @@ message Script {
 // Volumes
 // ============================================================================
 
-// Volumes represents input and output volumes
-message Volumes {
-  string input = 1;   // big.Int as string
-  string output = 2;  // big.Int as string
+// BigUint represents an arbitrary-precision non-negative integer as a minimal
+// unsigned big-endian magnitude. Zero is the empty magnitude. Leading zero
+// octets are invalid.
+message BigUint {
+  bytes magnitude = 1;
 }
 
-// VolumesWithBalance represents volumes with balance
+// SignedBigInt represents an arbitrary-precision signed integer. Negative zero is
+// invalid; producers and consumers must reject it.
+message SignedBigInt {
+  bool negative = 1;
+  BigUint magnitude = 2;
+}
+
+// Volumes represents non-negative input and output volumes.
+message Volumes {
+  BigUint input = 1;
+  BigUint output = 2;
+}
+
+// VolumesWithBalance represents non-negative cumulative volumes and their
+// signed difference (input - output).
 message VolumesWithBalance {
-  string input = 1;    // big.Int as string
-  string output = 2;   // big.Int as string
-  string balance = 3;  // big.Int as string
+  BigUint input = 1;
+  BigUint output = 2;
+  SignedBigInt balance = 3;
 }
 
 // VolumesByAssets is a sorted list of post-commit (asset, color) volume

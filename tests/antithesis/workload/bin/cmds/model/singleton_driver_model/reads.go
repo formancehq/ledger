@@ -221,8 +221,8 @@ func accountVolumeSet(acct *commonpb.Account) (map[string]oracle.VolumePair, boo
 		}
 
 		var vp oracle.VolumePair
-		if vp.Input.SetFromDecimal(entry.GetVolumes().GetInput()) != nil ||
-			vp.Output.SetFromDecimal(entry.GetVolumes().GetOutput()) != nil {
+		if vp.Input.SetFromDecimal(entry.GetVolumes().GetInput().DecimalString()) != nil ||
+			vp.Output.SetFromDecimal(entry.GetVolumes().GetOutput().DecimalString()) != nil {
 			return nil, false
 		}
 

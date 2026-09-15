@@ -306,7 +306,7 @@ func serverPCVFromRec(rec txRecordView) *commonpb.PostCommitVolumes {
 
 		entry.Volumes = append(entry.Volumes, &commonpb.VolumeEntry{
 			Asset:   key.Asset,
-			Volumes: &commonpb.Volumes{Input: vp.Input.Dec(), Output: vp.Output.Dec()},
+			Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal(vp.Input.Dec()), Output: commonpb.MustBigUintFromDecimal(vp.Output.Dec())},
 		})
 	}
 
@@ -682,7 +682,7 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 	require.True(t, txRecordMatches(rec, serverTxFromRec(rec)))
 
 	current := serverTxFromRec(rec)
-	current.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Volumes.Input = "12"
+	current.PostCommitVolumes.GetVolumesByAccount()["acc:1"].Volumes[0].Volumes.Input = commonpb.MustBigUintFromDecimal("12")
 	require.False(t, txRecordMatches(rec, current),
 		"serving the current balance instead of the snapshot is a finding")
 
@@ -692,7 +692,7 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 
 	invented := serverTxFromRec(rec)
 	invented.PostCommitVolumes.GetVolumesByAccount()["ghost:1"] = &commonpb.VolumesByAssets{
-		Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: "1", Output: "0"}}},
+		Volumes: []*commonpb.VolumeEntry{{Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("1"), Output: commonpb.MustBigUintFromDecimal("0")}}},
 	}
 	require.False(t, txRecordMatches(rec, invented), "an invented cell is a finding")
 
@@ -713,7 +713,7 @@ func TestAccountMatches_RejectsUnmodelledTimestamps(t *testing.T) {
 		return &commonpb.Account{
 			Address: "acc:1",
 			Volumes: []*commonpb.AccountVolume{
-				{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}},
+				{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}},
 			},
 		}
 	}
@@ -746,14 +746,14 @@ func TestAccountMatches_RejectsColouredVolumes(t *testing.T) {
 	acct := &commonpb.Account{
 		Address: "acc:1",
 		Volumes: []*commonpb.AccountVolume{
-			{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}},
+			{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("5"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("5")}},
 		},
 	}
 	require.True(t, accountMatches(ls, "acc:1", acct))
 
 	acct.Volumes = append(acct.Volumes, &commonpb.AccountVolume{
 		Asset: "USD", Color: "red",
-		Volumes: &commonpb.VolumesWithBalance{Input: "1", Output: "0", Balance: "1"},
+		Volumes: &commonpb.VolumesWithBalance{Input: commonpb.MustBigUintFromDecimal("1"), Output: commonpb.MustBigUintFromDecimal("0"), Balance: commonpb.MustSignedBigIntFromDecimal("1")},
 	})
 	require.False(t, accountMatches(ls, "acc:1", acct))
 }
@@ -769,8 +769,12 @@ func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
 
 	usd := func(in, out, bal string) *commonpb.AccountVolume {
 		return &commonpb.AccountVolume{
-			Asset:   "USD",
-			Volumes: &commonpb.VolumesWithBalance{Input: in, Output: out, Balance: bal},
+			Asset: "USD",
+			Volumes: &commonpb.VolumesWithBalance{
+				Input:   commonpb.MustBigUintFromDecimal(in),
+				Output:  commonpb.MustBigUintFromDecimal(out),
+				Balance: commonpb.MustSignedBigIntFromDecimal(bal),
+			},
 		}
 	}
 
@@ -786,7 +790,7 @@ func TestVolumeComparisons_RejectDuplicateRows(t *testing.T) {
 
 	byAccount := snapshot.GetVolumesByAccount()["acc:1"]
 	byAccount.Volumes = append(byAccount.Volumes, &commonpb.VolumeEntry{
-		Asset: "USD", Volumes: &commonpb.Volumes{Input: "999", Output: "0"},
+		Asset: "USD", Volumes: &commonpb.Volumes{Input: commonpb.MustBigUintFromDecimal("999"), Output: commonpb.MustBigUintFromDecimal("0")},
 	})
 	require.False(t, pcvSnapshotMatches(rec.PostCommitVolumes(), snapshot),
 		"the second copy is never read, so it must not be tolerated")

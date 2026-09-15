@@ -140,7 +140,7 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 
 		vol := acct.FindVolume("USD", "")
 		Expect(vol).ToNot(BeNil(), "%s: %s USD volumes missing", phase, account)
-		Expect(vol.GetInput()).To(Equal("150"), "%s: %s USD input (keys must dedup, no double-apply)", phase, account)
+		Expect(vol.GetInput().DecimalString()).To(Equal("150"), "%s: %s USD input (keys must dedup, no double-apply)", phase, account)
 	}
 
 	storage := func() *commonpb.BackupStorage {
@@ -386,7 +386,7 @@ var _ = Describe("Restore idempotency keys", Ordered, func() {
 			Expect(err).To(Succeed())
 			vol := acct.FindVolume("USD", "")
 			Expect(vol).ToNot(BeNil(), "restored: %s USD volume missing", preservedAccount)
-			Expect(vol.GetInput()).To(Equal("77"), "the pre-checkpoint key must dedup (no double-apply)")
+			Expect(vol.GetInput().DecimalString()).To(Equal("77"), "the pre-checkpoint key must dedup (no double-apply)")
 		})
 
 		It("passes CheckStore on the restored store", func() {

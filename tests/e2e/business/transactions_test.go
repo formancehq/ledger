@@ -688,8 +688,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			// ev-simple is fresh — exact values are predictable
 			evSimple := pcv["ev-simple"].FindVolume("USD", "")
 			Expect(evSimple).NotTo(BeNil(), "expected USD entry on ev-simple")
-			Expect(evSimple.GetInput()).To(Equal("100"))
-			Expect(evSimple.GetOutput()).To(Equal("0"))
+			Expect(evSimple.GetInput().DecimalString()).To(Equal("100"))
+			Expect(evSimple.GetOutput().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple postings", func() {
@@ -725,10 +725,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			eur := vba.FindVolume("EUR", "")
 			Expect(usd).NotTo(BeNil(), "expected USD entry on ev-multi-asset")
 			Expect(eur).NotTo(BeNil(), "expected EUR entry on ev-multi-asset")
-			Expect(usd.GetInput()).To(Equal("100"))
-			Expect(usd.GetOutput()).To(Equal("0"))
-			Expect(eur.GetInput()).To(Equal("50"))
-			Expect(eur.GetOutput()).To(Equal("0"))
+			Expect(usd.GetInput().DecimalString()).To(Equal("100"))
+			Expect(usd.GetOutput().DecimalString()).To(Equal("0"))
+			Expect(eur.GetInput().DecimalString()).To(Equal("50"))
+			Expect(eur.GetOutput().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should reflect cumulative volumes across sequential transactions", func() {
@@ -810,7 +810,7 @@ var _ = Describe("Transactions", Ordered, func() {
 
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().GetTransaction().GetId()
 			createSnapshot := pcvOf(resp, 0)["ev-read"].FindVolume("GBP", "")
-			Expect(createSnapshot.GetInput()).To(Equal("300"))
+			Expect(createSnapshot.GetInput().DecimalString()).To(Equal("300"))
 
 			// Unitary get returns the stored historical snapshot verbatim.
 			Eventually(func(g Gomega) {
@@ -821,8 +821,8 @@ var _ = Describe("Transactions", Ordered, func() {
 
 				vba := tx.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"]
 				g.Expect(vba).NotTo(BeNil())
-				g.Expect(vba.FindVolume("GBP", "").GetInput()).To(Equal("300"))
-				g.Expect(vba.FindVolume("GBP", "").GetOutput()).To(Equal("0"))
+				g.Expect(vba.FindVolume("GBP", "").GetInput().DecimalString()).To(Equal("300"))
+				g.Expect(vba.FindVolume("GBP", "").GetOutput().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// List returns the same immutable snapshot.
@@ -837,7 +837,7 @@ var _ = Describe("Transactions", Ordered, func() {
 					}
 				}
 				g.Expect(found).NotTo(BeNil())
-				g.Expect(found.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"].FindVolume("GBP", "").GetInput()).To(Equal("300"))
+				g.Expect(found.GetPostCommitVolumes().GetVolumesByAccount()["ev-read"].FindVolume("GBP", "").GetInput().DecimalString()).To(Equal("300"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
 	})
