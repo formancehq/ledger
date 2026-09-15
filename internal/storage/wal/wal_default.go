@@ -183,7 +183,7 @@ func walDirPopulated(walDir string) (bool, error) {
 }
 
 // New creates a new DefaultWAL instance.
-func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (*DefaultWAL, error) {
+func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Option) (_ *DefaultWAL, retErr error) {
 	if err := mkdirAllSynced(dataDir); err != nil {
 		return nil, fmt.Errorf("creating data directory: %w", err)
 	}
@@ -194,6 +194,12 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if err != nil {
 		return nil, err
 	}
+
+	defer func() {
+		if retErr != nil {
+			_ = snapshotter.Close()
+		}
+	}()
 
 	s := &DefaultWAL{
 		entries:       make([]*raftpb.Entry, 0),

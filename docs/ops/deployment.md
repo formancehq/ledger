@@ -942,10 +942,13 @@ spec:
 **Symptom**: The node exits with `WAL directory is missing`, naming the WAL
 directory configured by `--wal-dir`
 
-**Cause**: That directory disappeared while the node was running. It holds the
-etcd WAL segments, `WAL_CREATION_COMPLETED` and `INSTANCE_ID`, so everything the
-node acknowledged as persisted after the removal is unrecoverable and restarting
-in place would rejoin the cluster as a new member.
+**Cause**: That directory disappeared while the node was running, or another
+directory was put back in its place. It holds the etcd WAL segments,
+`WAL_CREATION_COMPLETED` and `INSTANCE_ID`, so everything the node acknowledged
+as persisted after the removal is unrecoverable and restarting in place would
+rejoin the cluster as a new member. A directory present at the path is not
+evidence the node is healthy: what the node reports missing is the directory it
+opened at startup.
 
 **Solutions**:
 1. Check whether the volume is still mounted and what unmounted or wiped it

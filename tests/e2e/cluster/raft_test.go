@@ -225,6 +225,7 @@ var _ = Describe("Simple cluster", func() {
 				logging.FromContext(ctx),
 			)
 			Expect(err).To(Succeed())
+			defer func() { Expect(leaderSnapshotter.Close()).To(Succeed()) }()
 
 			Eventually(func(g Gomega) uint64 {
 				snapshot, err := leaderSnapshotter.Load()

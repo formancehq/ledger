@@ -477,6 +477,8 @@ Snapshots are created automatically by a periodic background maintenance timer (
 - **Only `snap/` is gone**: it is recreated (an error log plus an Antithesis assertion), because the etcd WAL is intact and a follower still needs the snapshot to catch up.
 - **`<wal-dir>` itself is gone**: the node stops. That directory holds the etcd WAL segments, `WAL_CREATION_COMPLETED` and `INSTANCE_ID`, so etcd is fsyncing unlinked inodes and every acknowledgement since the removal is unrecoverable — the next restart would find no creation marker, rebuild an empty WAL and rejoin as a new member.
 
+The two are told apart by a handle on `<wal-dir>` opened at startup and held for the life of the node. Every snapshot read, write and directory creation resolves from that handle rather than from the pathname, so a `<wal-dir>` that has been unlinked — including one replaced by another directory at the same path — fails the operation instead of resolving to a tree etcd does not hold open. The classification is taken from the failing operation itself, not only from the check that precedes it, so a removal landing mid-write is terminal too.
+
 A snapshot whose file fails to save for any other reason is not published: the WAL keeps reporting the previous snapshot, so the next maintenance tick retries at the same or a newer index.
 
 ### Snapshot Contents

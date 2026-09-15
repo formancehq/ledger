@@ -82,7 +82,10 @@ func newTestWALAt(t *testing.T, dir string, opts ...Option) *DefaultWAL {
 
 	w, err := New(dir, logger, meter, opts...)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = w.Close() })
+	t.Cleanup(func() {
+		_ = w.Close()
+		_ = w.snapshotter.Close()
+	})
 
 	return w
 }
@@ -1246,7 +1249,11 @@ func TestApplySnapshotUnlocksOnSnapshotSaveFailure(t *testing.T) {
 	t.Parallel()
 
 	w := newTestWAL(t)
-	w.snapshotter.dir = filepath.Join(t.TempDir(), "missing", "snap")
+
+	// A regular file occupying the snapshot directory fails the save without
+	// touching the WAL directory, so the failure stays retryable.
+	require.NoError(t, os.RemoveAll(w.snapshotter.dir))
+	require.NoError(t, os.WriteFile(w.snapshotter.dir, nil, 0600))
 
 	err := w.ApplySnapshot(&raftpb.Snapshot{
 		Metadata: snapshotMeta(10, 2, &raftpb.ConfState{Voters: []uint64{1}}),
