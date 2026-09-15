@@ -937,6 +937,34 @@ func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
 	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, attrInfo.GetDefaultEnforcementMode())
 }
 
+func TestRebuildDelta_AdvancesNextLedgerIDPastDeletedDeltaLedger(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.StoreNextLedgerID(batch, 2))
+	require.NoError(t, batch.SetProto(coldLogKey(2), createLedgerLog(2, "delta-ledger", 2)))
+	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
+		Sequence: 3,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
+			DeleteLedger: &commonpb.DeletedLedgerLog{Name: "delta-ledger"},
+		}},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	nextLedgerID, err := query.ReadNextLedgerID(handle)
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), nextLedgerID,
+		"deleting a delta ledger must not make its allocated ID reusable")
+}
+
 // TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo: an
 // AddAccountType replayed after the checkpoint must fold onto LedgerInfo and
 // persist to both the Global zone and the SubAttrLedger attribute, or the chart

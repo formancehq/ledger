@@ -163,6 +163,14 @@ entire staging store from the checkpoint before retrying; the restore service
 attempts to wipe the staging directory on failure or cancellation and logs any
 cleanup failure.
 
+Ledger IDs are a rebuilt monotonic projection. The checkpoint's
+`SubGlobNextLedgerID` value seeds the fold; every `CreatedLedgerLog` in the
+post-checkpoint delta raises it to at least `created_id + 1`, even if a later log
+deletes that ledger. The rebuilt ledger rows and allocator are committed through
+the replay write sessions before restore finalization. If replay fails, the
+partially rebuilt staging store is never activated; no allocator value from that
+failed attempt is served by a running node.
+
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
 The indexbuilder's `EMPTY`/`NON_EMPTY` ledger-history bytes are peer read-store state, not primary-store backup content. A restored node with a fresh read store reconstructs them by replaying the restored global log from zero; registry entries remain inactive until their `CreatedIndexLog` is reached. EMPTY ledgers promote their indexes without backfill, while NON_EMPTY ledgers schedule the normal replay. This state therefore needs no `RebuildDelta` branch: the exported log is its reconstruction evidence. Normal same-node restarts retain the byte atomically with the read-index cursor, and query checkpoints include it because they checkpoint the read store itself.
