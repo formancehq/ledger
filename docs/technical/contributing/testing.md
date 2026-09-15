@@ -475,11 +475,14 @@ Because deletion permanently reserves a name, committed creations grow the
 `model-<runID>-<n>` pool; creation is biased when deletion shrinks the live pool.
 
 Maintenance mode is a global admission gate modeled in `GlobalState.Apply`.
-The workload retry predicate surfaces its `MAINTENANCE_MODE` rejection even
-though the transport code is `Unavailable`. A successful enable schedules a
-randomly delayed disable through the normal in-flight/processor path, preventing
-all workers from becoming stuck behind the gate. Startup and shutdown also make
-a best-effort disable so an interrupted run cannot block the next invocation.
+The workload retry predicate surfaces a first-attempt `MAINTENANCE_MODE`
+rejection even though the transport code is `Unavailable`. When maintenance is
+observed after an ambiguous transport attempt, the same idempotency-keyed request
+keeps retrying until the server returns its committed outcome or accepts it after
+maintenance. A successful enable schedules a randomly delayed disable through
+the normal in-flight/processor path, preventing all workers from becoming stuck
+behind the gate. Startup and shutdown also make a best-effort disable so an
+interrupted run cannot block the next invocation.
 
 Each of deletion, promotion, and maintenance has a required coverage marker.
 Creation back-pressure keeps the live pool near its configured size while still
@@ -488,8 +491,10 @@ allowing retained tombstone names to accumulate as required by the service contr
 EN-1627's original successful same-name recreation expectation does not match the
 current service contract: deletion retains a tombstone and recreation returns
 `LEDGER_DELETED`. The model tests that rejection. It does not claim to prove
-projection cleanup by querying a successfully recreated ledger. Reads hide
-retired ledgers even when ledger-scoped rows remain physically present. Repeated
+projection cleanup by querying a successfully recreated ledger. Concurrent
+ledger-scoped reads validate NotFound against candidate lifecycle states when a
+selected ledger is deleted before the read executes. Reads otherwise hide retired
+ledgers even when ledger-scoped rows remain physically present. Repeated
 deletion can still operate on retained tombstones. Until EN-2045 adds the missing
 deletion gate, ledger metadata save/delete commands on tombstones are modeled as
 accepted according to the released service behavior. Other operations continue

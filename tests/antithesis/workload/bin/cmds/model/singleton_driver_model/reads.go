@@ -284,14 +284,13 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: a ledger outside the fleet must resolve NotFound.
-			assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			}
+			c.validateLedgerNotFound(maxTicket, ledger, "GetLedger")
 			return
 		}
-		// A fleet ledger is created at setup and never deleted, so a definitive
-		// error on it — NotFound, Internal — is a real finding; so is any
-		// non-NotFound definitive error on an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetLedger returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"absent": absent,
@@ -301,8 +300,6 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	}
 
 	if absent {
-		// The fleet never grows, so a snapshot for a name outside it is a ledger the
-		// server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: GetLedger served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}
@@ -403,14 +400,13 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: a schema read of a ledger outside the fleet must resolve NotFound.
-			assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			}
+			c.validateLedgerNotFound(maxTicket, ledger, "GetMetadataSchemaStatus")
 			return
 		}
-		// A fleet ledger is created at setup and never deleted, so a definitive
-		// error on it is a real finding; so is any non-NotFound definitive error on
-		// an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"absent": absent,
@@ -420,8 +416,6 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	}
 
 	if absent {
-		// The fleet never grows, so a schema for a name outside it is a ledger the
-		// server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}

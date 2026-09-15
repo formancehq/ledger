@@ -62,3 +62,18 @@ func TestRetryableRPCError_SurfacesMaintenance(t *testing.T) {
 		t.Fatal("infrastructure unavailability must remain retryable")
 	}
 }
+
+func TestRetryableRPCErrorAfterAttempt_PreservesAmbiguousCommit(t *testing.T) {
+	t.Parallel()
+
+	maintenance, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retryableRPCErrorAfterAttempt(maintenance.Err(), false) {
+		t.Fatal("first-attempt maintenance rejection must be observable")
+	}
+	if !retryableRPCErrorAfterAttempt(maintenance.Err(), true) {
+		t.Fatal("maintenance after an ambiguous attempt must keep retrying")
+	}
+}

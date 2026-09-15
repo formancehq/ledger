@@ -165,7 +165,7 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		var err error
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if !retryableRPCError(err) {
+			if !retryableRPCErrorAfterAttempt(err, attempt > 0) {
 				return err
 			}
 			select {
@@ -183,6 +183,16 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 // retry behavior.
 func retryableRPCError(err error) bool {
 	return IsTransient(err) && !HasErrorReason(err, domain.ErrReasonMaintenanceMode)
+}
+
+// retryableRPCErrorAfterAttempt preserves an ambiguous earlier attempt when a
+// later retry reaches the maintenance gate. A first-attempt maintenance error
+// is definitive and must remain observable by the model driver.
+func retryableRPCErrorAfterAttempt(err error, hadRetry bool) bool {
+	if HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+		return hadRetry
+	}
+	return retryableRPCError(err)
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
