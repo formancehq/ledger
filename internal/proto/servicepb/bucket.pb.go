@@ -9346,44 +9346,44 @@ const file_bucket_proto_rawDesc = "" +
 	"\x10InspectIndexMode\x12&\n" +
 	"\"INSPECT_INDEX_MODE_DISTINCT_VALUES\x10\x00\x12\x1d\n" +
 	"\x19INSPECT_INDEX_MODE_FACETS\x10\x01\x12\x1e\n" +
-	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xec\x13\n" +
-	"\rBucketService\x12?\n" +
-	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo0\x01\x129\n" +
-	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\x128\n" +
+	"\x1aINSPECT_INDEX_MODE_SUMMARY\x10\x022\xfc\x15\n" +
+	"\rBucketService\x12G\n" +
+	"\vListLedgers\x12\x1a.ledger.ListLedgersRequest\x1a\x12.common.LedgerInfo\"\x06\xd2\xd5\"\x02\x10\x010\x01\x12A\n" +
+	"\tGetLedger\x12\x18.ledger.GetLedgerRequest\x1a\x12.common.LedgerInfo\"\x06\xd2\xd5\"\x02\x10\x01\x12@\n" +
 	"\n" +
-	"GetAccount\x12\x19.ledger.GetAccountRequest\x1a\x0f.common.Account\x12O\n" +
-	"\x0eGetTransaction\x12\x1d.ledger.GetTransactionRequest\x1a\x1e.ledger.GetTransactionResponse\x12J\n" +
-	"\x10ListTransactions\x12\x1f.ledger.ListTransactionsRequest\x1a\x13.common.Transaction0\x01\x12>\n" +
-	"\fListAccounts\x12\x1b.ledger.ListAccountsRequest\x1a\x0f.common.Account0\x01\x124\n" +
-	"\x05Apply\x12\x14.ledger.ApplyRequest\x1a\x15.ledger.ApplyResponse\x12X\n" +
-	"\x11GetPrimaryMetrics\x12 .ledger.GetPrimaryMetricsRequest\x1a!.ledger.GetPrimaryMetricsResponse\x12^\n" +
-	"\x13GetSecondaryMetrics\x12\".ledger.GetSecondaryMetricsRequest\x1a#.ledger.GetSecondaryMetricsResponse\x12B\n" +
+	"GetAccount\x12\x19.ledger.GetAccountRequest\x1a\x0f.common.Account\"\x06\xd2\xd5\"\x02\x10\x05\x12W\n" +
+	"\x0eGetTransaction\x12\x1d.ledger.GetTransactionRequest\x1a\x1e.ledger.GetTransactionResponse\"\x06\xd2\xd5\"\x02\x10\x03\x12R\n" +
+	"\x10ListTransactions\x12\x1f.ledger.ListTransactionsRequest\x1a\x13.common.Transaction\"\x06\xd2\xd5\"\x02\x10\x030\x01\x12F\n" +
+	"\fListAccounts\x12\x1b.ledger.ListAccountsRequest\x1a\x0f.common.Account\"\x06\xd2\xd5\"\x02\x10\x050\x01\x12<\n" +
+	"\x05Apply\x12\x14.ledger.ApplyRequest\x1a\x15.ledger.ApplyResponse\"\x06\xd2\xd5\"\x02\x18\x01\x12`\n" +
+	"\x11GetPrimaryMetrics\x12 .ledger.GetPrimaryMetricsRequest\x1a!.ledger.GetPrimaryMetricsResponse\"\x06\xd2\xd5\"\x02\x10\t\x12f\n" +
+	"\x13GetSecondaryMetrics\x12\".ledger.GetSecondaryMetricsRequest\x1a#.ledger.GetSecondaryMetricsResponse\"\x06\xd2\xd5\"\x02\x10\t\x12J\n" +
 	"\n" +
-	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent0\x01\x12H\n" +
-	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry0\x01\x12@\n" +
-	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\x12O\n" +
-	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\x122\n" +
-	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log0\x01\x12,\n" +
-	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\x12G\n" +
-	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey0\x01\x12@\n" +
-	"\tDiscovery\x12\x18.ledger.DiscoveryRequest\x1a\x19.ledger.DiscoveryResponse\x12j\n" +
-	"\x17GetMetadataSchemaStatus\x12&.ledger.GetMetadataSchemaStatusRequest\x1a'.ledger.GetMetadataSchemaStatusResponse\x12Q\n" +
-	"\x0fAnalyzeAccounts\x12\x1e.ledger.AnalyzeAccountsRequest\x1a\x1c.ledger.AnalyzeAccountsEvent0\x01\x12]\n" +
-	"\x13AnalyzeTransactions\x12\".ledger.AnalyzeTransactionsRequest\x1a .ledger.AnalyzeTransactionsEvent0\x01\x12^\n" +
-	"\x13ListPreparedQueries\x12\".ledger.ListPreparedQueriesRequest\x1a#.ledger.ListPreparedQueriesResponse\x12a\n" +
-	"\x14ExecutePreparedQuery\x12#.ledger.ExecutePreparedQueryRequest\x1a$.ledger.ExecutePreparedQueryResponse\x12O\n" +
-	"\x0eGetIndexStatus\x12\x1d.ledger.GetIndexStatusRequest\x1a\x1e.ledger.GetIndexStatusResponse\x122\n" +
-	"\bGetIndex\x12\x17.ledger.GetIndexRequest\x1a\r.common.Index\x12M\n" +
-	"\x13GetIndexEntryStatus\x12\".ledger.GetIndexEntryStatusRequest\x1a\x12.ledger.IndexEntry\x12:\n" +
-	"\vListIndexes\x12\x1a.ledger.ListIndexesRequest\x1a\r.common.Index0\x01\x12D\n" +
-	"\x0eGetLedgerStats\x12\x1d.ledger.GetLedgerStatsRequest\x1a\x13.common.LedgerStats\x12L\n" +
-	"\x10AggregateVolumes\x12\x1f.ledger.AggregateVolumesRequest\x1a\x17.common.AggregateResult\x12B\n" +
-	"\fGetNumscript\x12\x1b.ledger.GetNumscriptRequest\x1a\x15.common.NumscriptInfo\x12H\n" +
-	"\x0eListNumscripts\x12\x1d.ledger.ListNumscriptsRequest\x1a\x15.common.NumscriptInfo0\x01\x12J\n" +
-	"\x10GetTemplateUsage\x12\x1f.ledger.GetTemplateUsageRequest\x1a\x15.common.TemplateUsage\x12d\n" +
-	"\x15ListNumscriptVersions\x12$.ledger.ListNumscriptVersionsRequest\x1a%.ledger.ListNumscriptVersionsResponse\x12I\n" +
-	"\fInspectIndex\x12\x1b.ledger.InspectIndexRequest\x1a\x1c.ledger.InspectIndexResponse\x12:\n" +
-	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponse:p\n" +
+	"CheckStore\x12\x19.ledger.CheckStoreRequest\x1a\x17.ledger.CheckStoreEvent\"\x06\xd2\xd5\"\x02\x10\t0\x01\x12P\n" +
+	"\x10ListAuditEntries\x12\x1f.ledger.ListAuditEntriesRequest\x1a\x11.audit.AuditEntry\"\x06\xd2\xd5\"\x02\x10\a0\x01\x12H\n" +
+	"\rGetAuditEntry\x12\x1c.ledger.GetAuditEntryRequest\x1a\x11.audit.AuditEntry\"\x06\xd2\xd5\"\x02\x10\a\x12W\n" +
+	"\x0eGetEventsSinks\x12\x1d.ledger.GetEventsSinksRequest\x1a\x1e.ledger.GetEventsSinksResponse\"\x06\xd2\xd5\"\x02\x10\t\x12:\n" +
+	"\bListLogs\x12\x17.ledger.ListLogsRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\x010\x01\x124\n" +
+	"\x06GetLog\x12\x15.ledger.GetLogRequest\x1a\v.common.Log\"\x06\xd2\xd5\"\x02\x10\t\x12O\n" +
+	"\x0fListSigningKeys\x12\x1e.ledger.ListSigningKeysRequest\x1a\x12.common.SigningKey\"\x06\xd2\xd5\"\x02\x10\t0\x01\x12H\n" +
+	"\tDiscovery\x12\x18.ledger.DiscoveryRequest\x1a\x19.ledger.DiscoveryResponse\"\x06\xd2\xd5\"\x02\b\x01\x12r\n" +
+	"\x17GetMetadataSchemaStatus\x12&.ledger.GetMetadataSchemaStatusRequest\x1a'.ledger.GetMetadataSchemaStatusResponse\"\x06\xd2\xd5\"\x02\x10\x05\x12Y\n" +
+	"\x0fAnalyzeAccounts\x12\x1e.ledger.AnalyzeAccountsRequest\x1a\x1c.ledger.AnalyzeAccountsEvent\"\x06\xd2\xd5\"\x02\x10\x050\x01\x12e\n" +
+	"\x13AnalyzeTransactions\x12\".ledger.AnalyzeTransactionsRequest\x1a .ledger.AnalyzeTransactionsEvent\"\x06\xd2\xd5\"\x02\x10\x030\x01\x12f\n" +
+	"\x13ListPreparedQueries\x12\".ledger.ListPreparedQueriesRequest\x1a#.ledger.ListPreparedQueriesResponse\"\x06\xd2\xd5\"\x02\x10\v\x12i\n" +
+	"\x14ExecutePreparedQuery\x12#.ledger.ExecutePreparedQueryRequest\x1a$.ledger.ExecutePreparedQueryResponse\"\x06\xd2\xd5\"\x02\x10\v\x12W\n" +
+	"\x0eGetIndexStatus\x12\x1d.ledger.GetIndexStatusRequest\x1a\x1e.ledger.GetIndexStatusResponse\"\x06\xd2\xd5\"\x02\x10\t\x12:\n" +
+	"\bGetIndex\x12\x17.ledger.GetIndexRequest\x1a\r.common.Index\"\x06\xd2\xd5\"\x02\x18\x02\x12U\n" +
+	"\x13GetIndexEntryStatus\x12\".ledger.GetIndexEntryStatusRequest\x1a\x12.ledger.IndexEntry\"\x06\xd2\xd5\"\x02\x18\x03\x12B\n" +
+	"\vListIndexes\x12\x1a.ledger.ListIndexesRequest\x1a\r.common.Index\"\x06\xd2\xd5\"\x02\x18\x040\x01\x12L\n" +
+	"\x0eGetLedgerStats\x12\x1d.ledger.GetLedgerStatsRequest\x1a\x13.common.LedgerStats\"\x06\xd2\xd5\"\x02\x10\x01\x12T\n" +
+	"\x10AggregateVolumes\x12\x1f.ledger.AggregateVolumesRequest\x1a\x17.common.AggregateResult\"\x06\xd2\xd5\"\x02\x10\x05\x12J\n" +
+	"\fGetNumscript\x12\x1b.ledger.GetNumscriptRequest\x1a\x15.common.NumscriptInfo\"\x06\xd2\xd5\"\x02\x10\v\x12P\n" +
+	"\x0eListNumscripts\x12\x1d.ledger.ListNumscriptsRequest\x1a\x15.common.NumscriptInfo\"\x06\xd2\xd5\"\x02\x10\v0\x01\x12R\n" +
+	"\x10GetTemplateUsage\x12\x1f.ledger.GetTemplateUsageRequest\x1a\x15.common.TemplateUsage\"\x06\xd2\xd5\"\x02\x10\v\x12l\n" +
+	"\x15ListNumscriptVersions\x12$.ledger.ListNumscriptVersionsRequest\x1a%.ledger.ListNumscriptVersionsResponse\"\x06\xd2\xd5\"\x02\x10\v\x12Q\n" +
+	"\fInspectIndex\x12\x1b.ledger.InspectIndexRequest\x1a\x1c.ledger.InspectIndexResponse\"\x06\xd2\xd5\"\x02\x10\x01\x12B\n" +
+	"\aBarrier\x12\x16.ledger.BarrierRequest\x1a\x17.ledger.BarrierResponse\"\x06\xd2\xd5\"\x02\x10\t:p\n" +
 	"\x19allowed_skippable_reasons\x12\x1d.google.protobuf.FieldOptions\x18٪\x04 \x03(\x0e2\x13.common.ErrorReasonR\x17allowedSkippableReasonsB:Z8github.com/formancehq/ledger/v3/internal/proto/servicepbb\x06proto3"
 
 var (

@@ -62,14 +62,14 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-// TestNewServiceServer_InjectsLoggerIntoRequestContexts drives the real
-// NewServiceServer interceptor chain (not the interceptors in isolation) and
+// TestServiceServer_InjectsLoggerIntoRequestContexts drives the real service
+// server interceptor chain (not the interceptors in isolation) and
 // asserts that a handler resolving logging.FromContext on both a unary and a
 // streaming call writes to the configured app logger. Removing
 // loggerInterceptor/loggerStreamInterceptor from the chain keeps the RPCs
 // succeeding but fails this test, because the lines would land on the
 // process stderr instead of the injected writer.
-func TestNewServiceServer_InjectsLoggerIntoRequestContexts(t *testing.T) {
+func TestServiceServer_InjectsLoggerIntoRequestContexts(t *testing.T) {
 	t.Parallel()
 
 	logs := &syncBuffer{}
@@ -78,7 +78,7 @@ func TestNewServiceServer_InjectsLoggerIntoRequestContexts(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	srv, err := NewServiceServer("", 0, logger, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyRestore, "", 0, logger, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 
 	healthpb.RegisterHealthServer(srv.GetServer(), contextLoggingHealth{})

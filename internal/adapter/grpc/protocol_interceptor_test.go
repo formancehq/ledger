@@ -33,7 +33,7 @@ func TestServiceServerProtocolVersion(t *testing.T) {
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
-	srv, err := NewServiceServer("", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyRestore, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 	servicepb.RegisterBucketServiceServer(srv.GetServer(), &servicepb.UnimplementedBucketServiceServer{})
 	clusterpb.RegisterClusterServiceServer(srv.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})

@@ -37,80 +37,148 @@ extend google.protobuf.FieldOptions {
 // BucketService provides ledger operations
 service BucketService {
   // ListLedgers streams all ledgers info in the cluster
-  rpc ListLedgers(ListLedgersRequest) returns (stream common.LedgerInfo);
+  rpc ListLedgers(ListLedgersRequest) returns (stream common.LedgerInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // GetLedger returns a ledger info by its name or ID
-  rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo);
+  rpc GetLedger(GetLedgerRequest) returns (common.LedgerInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // GetAccount retrieves an account by address
-  rpc GetAccount(GetAccountRequest) returns (common.Account);
+  rpc GetAccount(GetAccountRequest) returns (common.Account) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
   // GetTransaction retrieves a transaction by ID
-  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse);
+  rpc GetTransaction(GetTransactionRequest) returns (GetTransactionResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_TRANSACTION_READ };
+  }
   // ListTransactions streams all transactions for a ledger (newest first)
-  rpc ListTransactions(ListTransactionsRequest) returns (stream common.Transaction);
+  rpc ListTransactions(ListTransactionsRequest) returns (stream common.Transaction) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_TRANSACTION_READ };
+  }
   // ListAccounts streams all accounts for a ledger (alphabetical order)
-  rpc ListAccounts(ListAccountsRequest) returns (stream common.Account);
+  rpc ListAccounts(ListAccountsRequest) returns (stream common.Account) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
   // Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
-  rpc Apply(ApplyRequest) returns (ApplyResponse);
+  rpc Apply(ApplyRequest) returns (ApplyResponse) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_APPLY };
+  }
   // GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
-  rpc GetPrimaryMetrics(GetPrimaryMetricsRequest) returns (GetPrimaryMetricsResponse);
+  rpc GetPrimaryMetrics(GetPrimaryMetricsRequest) returns (GetPrimaryMetricsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
-  rpc GetSecondaryMetrics(GetSecondaryMetricsRequest) returns (GetSecondaryMetricsResponse);
+  rpc GetSecondaryMetrics(GetSecondaryMetricsRequest) returns (GetSecondaryMetricsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // CheckStore verifies store integrity (hash chain and derived data consistency)
-  rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent);
+  rpc CheckStore(CheckStoreRequest) returns (stream CheckStoreEvent) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // ListAuditEntries streams audit trail entries (success and failure)
-  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry);
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_AUDIT_READ };
+  }
   // GetAuditEntry returns a single audit entry by sequence number
-  rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry);
+  rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_AUDIT_READ };
+  }
   // GetEventsSinks returns the current per-sink configurations and statuses
-  rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse);
+  rpc GetEventsSinks(GetEventsSinksRequest) returns (GetEventsSinksResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // ListLogs streams system logs; when ledger is set, streams only logs for that ledger
-  rpc ListLogs(ListLogsRequest) returns (stream common.Log);
+  rpc ListLogs(ListLogsRequest) returns (stream common.Log) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // GetLog returns a single system log by sequence number
-  rpc GetLog(GetLogRequest) returns (common.Log);
+  rpc GetLog(GetLogRequest) returns (common.Log) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // ListSigningKeys streams all registered signing keys
-  rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey);
+  rpc ListSigningKeys(ListSigningKeysRequest) returns (stream common.SigningKey) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // Discovery returns server capabilities and configuration for clients
-  rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse);
+  rpc Discovery(DiscoveryRequest) returns (DiscoveryResponse) {
+    option (common.auth_policy) = { public: true };
+  }
   // GetMetadataSchemaStatus returns the declared type of every metadata field.
-  rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse);
+  rpc GetMetadataSchemaStatus(GetMetadataSchemaStatusRequest) returns (GetMetadataSchemaStatusResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
   // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts
-  rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (stream AnalyzeAccountsEvent);
+  rpc AnalyzeAccounts(AnalyzeAccountsRequest) returns (stream AnalyzeAccountsEvent) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
   // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns
-  rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (stream AnalyzeTransactionsEvent);
+  rpc AnalyzeTransactions(AnalyzeTransactionsRequest) returns (stream AnalyzeTransactionsEvent) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_TRANSACTION_READ };
+  }
   // ListPreparedQueries lists all prepared queries for a ledger
-  rpc ListPreparedQueries(ListPreparedQueriesRequest) returns (ListPreparedQueriesResponse);
+  rpc ListPreparedQueries(ListPreparedQueriesRequest) returns (ListPreparedQueriesResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // ExecutePreparedQuery executes a prepared query against the read index store
-  rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse);
+  rpc ExecutePreparedQuery(ExecutePreparedQueryRequest) returns (ExecutePreparedQueryResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // GetIndexStatus returns the current state of the read index builder
-  rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse);
+  rpc GetIndexStatus(GetIndexStatusRequest) returns (GetIndexStatusResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
   // GetIndex returns a single Index registry entry by (ledger, id).
-  rpc GetIndex(GetIndexRequest) returns (common.Index);
+  rpc GetIndex(GetIndexRequest) returns (common.Index) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_GET_INDEX };
+  }
   // GetIndexEntryStatus returns the per-index status view (registry entry +
   // backfill cursor + per-replica IndexVersionState) for a single index.
-  rpc GetIndexEntryStatus(GetIndexEntryStatusRequest) returns (IndexEntry);
+  rpc GetIndexEntryStatus(GetIndexEntryStatusRequest) returns (IndexEntry) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS };
+  }
   // ListIndexes streams the bucket-scoped index registry, optionally filtered
   // to a single ledger (or to bucket-scoped indexes when ledger is empty).
-  rpc ListIndexes(ListIndexesRequest) returns (stream common.Index);
+  rpc ListIndexes(ListIndexesRequest) returns (stream common.Index) {
+    option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_LIST_INDEXES };
+  }
   // GetLedgerStats returns aggregate statistics for a ledger
-  rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats);
+  rpc GetLedgerStats(GetLedgerStatsRequest) returns (common.LedgerStats) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // AggregateVolumes returns per-asset aggregated volumes for filtered accounts
-  rpc AggregateVolumes(AggregateVolumesRequest) returns (common.AggregateResult);
+  rpc AggregateVolumes(AggregateVolumesRequest) returns (common.AggregateResult) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_ACCOUNT_READ };
+  }
   // GetNumscript returns a numscript by name and optional version
-  rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo);
+  rpc GetNumscript(GetNumscriptRequest) returns (common.NumscriptInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // ListNumscripts streams all numscripts (latest version of each)
-  rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo);
+  rpc ListNumscripts(ListNumscriptsRequest) returns (stream common.NumscriptInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // GetTemplateUsage returns per-template invocation usage populated by the
   // usagebuilder subsystem. Eventually consistent — may lag the live FSM
   // by up to one usagebuilder tick interval.
-  rpc GetTemplateUsage(GetTemplateUsageRequest) returns (common.TemplateUsage);
+  rpc GetTemplateUsage(GetTemplateUsageRequest) returns (common.TemplateUsage) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // ListNumscriptVersions returns the latest pointer and every stored version
   // of a numscript, ordered greatest semver first.
-  rpc ListNumscriptVersions(ListNumscriptVersionsRequest) returns (ListNumscriptVersionsResponse);
+  rpc ListNumscriptVersions(ListNumscriptVersionsRequest) returns (ListNumscriptVersionsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_QUERY_READ };
+  }
   // InspectIndex scans a metadata index and returns distinct values, facets, or a summary
-  rpc InspectIndex(InspectIndexRequest) returns (InspectIndexResponse);
+  rpc InspectIndex(InspectIndexRequest) returns (InspectIndexResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_LEDGER_READ };
+  }
   // Barrier proposes a no-op through Raft consensus. When it returns, all
   // previously proposed entries are guaranteed to have been applied to the FSM.
   // Useful for ensuring read-after-write consistency across API calls.
-  rpc Barrier(BarrierRequest) returns (BarrierResponse);
+  rpc Barrier(BarrierRequest) returns (BarrierResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
+  }
 }
 
 // ============================================================================

@@ -63,7 +63,15 @@ Tokens may carry either **granular** scopes (used as-is) or **virtual** scopes (
 
 ### Authorization enforcement
 
-There is **no global gRPC interceptor**. Each RPC calls `auth.Authenticate(ctx, cfg, scopeRequired...)` explicitly — `server_bucket.go:106` and similar. The rationale (`server.go:692`): granular scopes vary per RPC, and per-method declaration keeps the contract visible at the call site.
+Every BucketService and ClusterService RPC declares a typed `common.auth_policy` method option in its protobuf definition. A policy is exactly one of:
+
+- `public: true` for an intentionally unauthenticated RPC;
+- `fixed_scope` for a method guarded by one granular scope; or
+- `dynamic_resolver` when the required scope depends on the request payload.
+
+`protoc-gen-rpcauth` rejects missing, false-public, unspecified, and unknown policy values during `just generate-proto`. It also emits `commonpb.RPCAuthPolicyForMethod`, whose unknown-method result is a typed error. At public-server startup, Ledger walks the registered service descriptors before binding the listener. BucketService and ClusterService methods must exist in that generated registry; only the exact gRPC health and reflection methods bypass it. This makes adding an RPC without an authentication decision a generation or startup failure.
+
+The generated inventory is the structural contract for the interceptor migration. During this first step, request behavior is unchanged: each RPC still calls `auth.Authenticate(ctx, cfg, scopeRequired...)` explicitly, and dynamic methods still derive their required scope in their handler.
 
 HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:100-126`) wraps each protected route.
 
@@ -167,6 +175,8 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 | JWT validation, scope enforcement | `internal/adapter/auth/grpc_auth.go` |
 | HTTP auth middleware | `internal/adapter/auth/http_middleware.go` |
 | Scope definitions and mapping | `internal/adapter/auth/scopes.go` |
+| gRPC policy declarations | `misc/proto/bucket.proto`, `misc/proto/cluster.proto` |
+| Generated gRPC policy registry | `internal/proto/commonpb/common_rpc_auth_policy.pb.go` |
 | Ed25519 static keyset | `internal/adapter/auth/ed25519_keys.go` |
 | Caller-snapshot resolution | `internal/adapter/auth/caller_snapshot.go` |
 | System-actor snapshot + component names | `internal/pkg/commands/system_caller.go` |
