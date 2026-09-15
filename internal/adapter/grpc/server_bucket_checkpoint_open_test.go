@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -149,8 +152,23 @@ func TestCheckpointReadIndexOpenErrorPreservesFailureBeforeDeletion(t *testing.T
 	require.Error(t, openErr)
 	require.NotErrorIs(t, openErr, os.ErrNotExist)
 	require.NoError(t, os.RemoveAll(path))
-	err := impl.checkpointReadIndexOpenError(id, openErr)
+	err := impl.checkpointReadIndexOpenError(context.Background(), id, openErr)
 	require.ErrorIs(t, err, openErr)
 	var notFound *commonpb.NotFoundError
 	require.False(t, errors.As(err, &notFound))
+}
+
+func TestCheckpointReadIndexOpenErrorReportsLifecycleFailureAsUnavailable(t *testing.T) {
+	t.Parallel()
+	impl, _ := newCheckpointWaitHarness(t)
+	var logs bytes.Buffer
+	impl.logger = logging.NewDefaultLogger(&logs, false, false, false)
+	require.NoError(t, impl.store.Close())
+
+	err := impl.checkpointReadIndexOpenError(context.Background(), 1, pebble.ErrDBDoesNotExist)
+	require.Equal(t, codes.Unavailable, status.Code(err))
+	require.Regexp(t, `^rpc error: code = Unavailable desc = checkpoint lifecycle unavailable \(correlation ID: [0-9a-f]+\)$`, err.Error())
+	require.Contains(t, logs.String(), "opening checkpoint read index")
+	require.Contains(t, logs.String(), "reading checkpoint lifecycle")
+	require.Contains(t, logs.String(), "correlation_id")
 }

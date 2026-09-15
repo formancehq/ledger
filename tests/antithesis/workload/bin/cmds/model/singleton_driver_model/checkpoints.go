@@ -10,11 +10,14 @@ import (
 
 // The model template owns its cluster's checkpoint timeline. This must match
 // the server's query-checkpoint-limit configuration (10 by default).
-const defaultModelCheckpointLimit = 10
+const (
+	defaultModelCheckpointLimit = 10
+	deletedCheckpointHistoryCap = 10
+)
 
 // A 100-year interval exercises configuration without introducing scheduler
 // writes outside the model driver's observed Apply stream during a test run.
-const modelCheckpointCron = "@every 876000h"
+var modelCheckpointCrons = []string{"@every 876000h", "@every 900000h", "@every 950000h"}
 
 type checkpointSnapshot struct {
 	state       oracle.GlobalState
@@ -27,12 +30,18 @@ type checkpointSnapshot struct {
 func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 	ids := state.QueryCheckpointIDs()
 	var req *servicepb.Request
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 	case 0:
-		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: modelCheckpointCron}}}
+		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: random.RandomChoice(modelCheckpointCrons)}}}
 	case 1:
 		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}}
-	case 2, 3:
+	case 2:
+		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: "invalid checkpoint cron"}}}
+	case 3:
+		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{}}}
+	case 4:
+		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: state.NextQueryCheckpointID()}}}
+	case 5, 6:
 		if len(ids) > 0 {
 			req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: random.RandomChoice(ids)}}}
 		}
@@ -104,7 +113,7 @@ func (c *Checker) recordCheckpoints(logs []*commonpb.Log) {
 			}
 			c.deletedCheckpointSnapshots[id] = snapshot
 			c.deletedCheckpoints = append(c.deletedCheckpoints, id)
-			if len(c.deletedCheckpoints) > defaultModelCheckpointLimit {
+			if len(c.deletedCheckpoints) > deletedCheckpointHistoryCap {
 				delete(c.deletedCheckpointSnapshots, c.deletedCheckpoints[0])
 				c.deletedCheckpoints = c.deletedCheckpoints[1:]
 			}

@@ -54,21 +54,7 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 		return
 	}
 	readID := c.registerRead()
-	var id uint64
-	var frozen oracle.GlobalState
-	deleted := len(c.deletedCheckpoints) > 0 && percentChance(25)
-	if deleted {
-		id = c.deletedCheckpoints[internal.Rand().Uint64()%uint64(len(c.deletedCheckpoints))]
-		frozen = c.deletedCheckpointSnapshots[id].state
-	} else if len(c.checkpoints) > 0 {
-		ids := make([]uint64, 0, len(c.checkpoints))
-		for candidate := range c.checkpoints {
-			ids = append(ids, candidate)
-		}
-		slices.Sort(ids)
-		id = ids[internal.Rand().Uint64()%uint64(len(ids))]
-		frozen = c.checkpoints[id].state
-	}
+	id, frozen, deleted := c.pickCheckpointReadTarget()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
@@ -167,6 +153,77 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 	if concrete {
 		noteCheckpointCoverage(checkpointReadCoverage)
 	}
+}
+
+// runPredictedCheckpointRead targets the ID assigned by the matching in-flight
+// create. NotFound is valid before commit; success must expose the exact model
+// state immediately before that create in a legal serialization.
+func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient, c *Checker, checkpointID uint64, start <-chan struct{}, registered chan<- struct{}) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	c.mu.Lock()
+	readID := c.registerRead()
+	c.mu.Unlock()
+	close(registered)
+	defer c.finishRead(readID)
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-start:
+	}
+
+	ledger := c.ledgerNames[0]
+	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	info, err := bucket.GetLedger(readCtx, &servicepb.GetLedgerRequest{
+		Ledger: ledger,
+		Read:   &commonpb.ReadOptions{CheckpointId: checkpointID},
+	})
+	maxTicket := c.ticketSeq.Load()
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+		if checkpointNotFound(err) && c.checkpointReadOutcomeMatches(checkpointID, maxTicket, false, err) {
+			return
+		}
+		assert.Unreachable("singleton_driver_model: predicted checkpoint read returned unexpected error", internal.Details{"checkpoint": checkpointID, "error": err.Error()})
+
+		return
+	}
+
+	c.mu.Lock()
+	matches := c.checkpointCreationMatches(maxTicket, checkpointID, func(state oracle.GlobalState) bool {
+		ls := state.Ledger(ledger)
+
+		return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
+	})
+	c.mu.Unlock()
+	if !matches {
+		assert.Unreachable("singleton_driver_model: predicted checkpoint read outside creation model", internal.Details{"checkpoint": checkpointID, "ledger": ledger})
+	}
+}
+
+// pickCheckpointReadTarget samples uniformly from every retained snapshot.
+// Whether the ID is live or deleted is derived from its owning registry and is
+// used only to credit a definitive post-deletion NotFound observation.
+// Caller holds c.mu.
+func (c *Checker) pickCheckpointReadTarget() (uint64, oracle.GlobalState, bool) {
+	ids := make([]uint64, 0, len(c.checkpoints)+len(c.deletedCheckpoints))
+	for id := range c.checkpoints {
+		ids = append(ids, id)
+	}
+	ids = append(ids, c.deletedCheckpoints...)
+	if len(ids) == 0 {
+		return 0, oracle.GlobalState{}, false
+	}
+	slices.Sort(ids)
+	id := ids[internal.Rand().Uint64()%uint64(len(ids))]
+	if snapshot, ok := c.checkpoints[id]; ok {
+		return id, snapshot.state, false
+	}
+
+	return id, c.deletedCheckpointSnapshots[id].state, true
 }
 
 func runCheckpointListRead(ctx context.Context, bucket servicepb.BucketServiceClient, client clusterpb.ClusterServiceClient, c *Checker) {

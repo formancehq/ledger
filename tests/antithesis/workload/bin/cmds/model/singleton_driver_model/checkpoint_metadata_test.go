@@ -39,7 +39,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	require.Empty(t, staleSchedule.GetCron())
 	schedule, err := readCheckpointSchedule(ctx, bucket, cluster, "L")
 	require.NoError(t, err)
-	require.Equal(t, modelCheckpointCron, schedule.GetCron())
+	require.Equal(t, modelCheckpointCrons[0], schedule.GetCron())
 }
 
 func TestCheckpointMetadataFenceFailureStopsRead(t *testing.T) {
@@ -103,7 +103,7 @@ func (s *checkpointMetadataServer) GetQueryCheckpointSchedule(context.Context, *
 	s.metadataReads.Add(1)
 	response := &clusterpb.GetQueryCheckpointScheduleResponse{}
 	if s.fenced.Load() {
-		response.Cron = modelCheckpointCron
+		response.Cron = modelCheckpointCrons[0]
 	}
 	return response, nil
 }
