@@ -373,3 +373,27 @@ func (g GlobalState) CloseRetypeWindow(ledger, canonical string) {
 		g.ledgers[ledger] = ls
 	}
 }
+
+// PreparedQueries returns the ledger's prepared-query registry, keyed by name.
+func (s LedgerState) PreparedQueries() Map[string, *commonpb.PreparedQuery] {
+	return s.preparedQueries
+}
+
+// PreparedQuery returns the stored definition for name, and whether it exists.
+// Validators must read the definition from the candidate base they are testing,
+// never from a driver-side copy: a concurrent update or delete makes the stored
+// filter base-dependent, and the execution window follows the filter.
+func (s LedgerState) PreparedQuery(name string) (*commonpb.PreparedQuery, bool) {
+	return s.preparedQueries.Get(name)
+}
+
+// PreparedQueryNames returns the registry's names. Map iteration is key-sorted,
+// so the result is sorted by name.
+func (s LedgerState) PreparedQueryNames() []string {
+	out := make([]string, 0, s.preparedQueries.Len())
+	for name := range s.preparedQueries.All() {
+		out = append(out, name)
+	}
+
+	return out
+}
