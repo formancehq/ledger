@@ -43,7 +43,14 @@ already removed.
 
 ## Declarative ledger indexes
 
-For a Ledger with `spec.indexes`, reconciliation lists the current registry and
+Initial provisioning sends the ledger, metadata schema and all `spec.indexes`
+in one atomic `ledgerctl ledgers create` batch. Mirror ingestion cannot commit
+between creation and these initial indexes. A UID/generation idempotency key
+allows identical retries after response loss or a failed status update; only a
+successful response records initial ownership. A pre-existing ledger is not
+proof of index ownership.
+
+For later changes to `spec.indexes`, reconciliation lists the current registry and
 creates only missing indexes. Creation is strict: if another writer creates the
 index after the list, `INDEX_ALREADY_EXISTS` is reported through
 `IndexesSynced=False` and reconciliation is retried. The failed creation adds
@@ -51,7 +58,7 @@ no entry to `status.appliedIndexes`; successful earlier operations in the same
 pass remain recorded. For an identity that was not previously tracked, the next
 pass lists the registry again and leaves the external index unowned. Existing
 ownership entries are retained: replacement of a previously tracked index and
-recovery after a lost successful create response or status update remain
+recovery after a lost successful standalone index-create response or status update remain
 separate ownership concerns.
 
 ## Backup scheduling

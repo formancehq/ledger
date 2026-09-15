@@ -39,22 +39,23 @@ func TargetTypeOptions() []string {
 
 // ParseSchemaEntry parses a "target:key:type" string into its components.
 func ParseSchemaEntry(s string) (commonpb.TargetType, string, commonpb.MetadataType, error) {
-	parts := strings.SplitN(s, ":", 3)
-	if len(parts) != 3 {
+	targetName, rest, ok := strings.Cut(s, ":")
+	separator := strings.LastIndex(rest, ":")
+	if !ok || separator < 0 {
 		return 0, "", 0, fmt.Errorf("invalid schema entry %q: expected target:key:type format", s)
 	}
 
-	target, err := ParseTargetType(parts[0])
+	target, err := ParseTargetType(targetName)
 	if err != nil {
 		return 0, "", 0, err
 	}
 
-	key := parts[1]
+	key := rest[:separator]
 	if key == "" {
 		return 0, "", 0, fmt.Errorf("invalid schema entry %q: key cannot be empty", s)
 	}
 
-	mdType, err := ParseMetadataType(parts[2])
+	mdType, err := ParseMetadataType(rest[separator+1:])
 	if err != nil {
 		return 0, "", 0, err
 	}

@@ -139,7 +139,9 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	defer cancel()
 
 	log.Info("creating ledger", "name", ledger.Spec.Name, "mode", ledger.Spec.Mode)
-	if err := r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort, args...); err != nil {
+	if err := createLedgerWithExec(&ledger, args, func(args ...string) error {
+		return r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort, args...)
+	}); err != nil {
 		if !isAlreadyExists(err) {
 			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 				Type:               conditionLedgerSynced,
@@ -368,6 +370,20 @@ func (r *LedgerReconciler) resolveEndpoint(ctx context.Context, ledger *ledgerv1
 // buildCreateArgs constructs the ledgerctl ledgers create arguments.
 func (r *LedgerReconciler) buildCreateArgs(ctx context.Context, ledger *ledgerv1alpha1.Ledger) ([]string, error) {
 	args := []string{"ledgers", "create", "--name", ledger.Spec.Name}
+	// A mirror starts consuming as soon as CreateLedger commits. Include the
+	// schema and every initial index in that same ApplyBatch (EN-2070).
+	for _, index := range desiredIndexes(ledger.Spec.Indexes) {
+		if index.typeFlag == metadataTypeFlag {
+			args = append(args, "--schema", index.target+":"+index.key+":"+index.mdType)
+		}
+		args = append(args, "--index", index.canonical)
+	}
+	if ledger.UID != "" {
+		// A replay after an exec timeout or a failed status write returns the
+		// original creation result. Generation scopes the key to the same spec;
+		// a recreated Kubernetes object has a new UID and cannot reuse the key.
+		args = append(args, "--idempotency-key", fmt.Sprintf("operator-ledger-create:%s:%d", ledger.UID, ledger.Generation))
+	}
 
 	mode := ledger.Spec.Mode
 	if mode == "" {
@@ -628,4 +644,18 @@ func nestedFieldNoCopy(obj map[string]any, fields ...string) (any, bool, error) 
 	}
 
 	return val, true, nil
+}
+
+// createLedgerWithExec records ownership only after the atomic batch reports
+// success, including an idempotent replay of that success. AlreadyExists alone
+// is not proof of ownership: that ledger and its indexes may be external.
+func createLedgerWithExec(ledger *ledgerv1alpha1.Ledger, args []string, exec func(...string) error) error {
+	if err := exec(args...); err != nil {
+		return err
+	}
+	ledger.Status.AppliedIndexes = nextAppliedIndexes(ledger.Status.AppliedIndexes, indexDiff{
+		toCreate: desiredIndexes(ledger.Spec.Indexes),
+	})
+
+	return nil
 }

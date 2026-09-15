@@ -294,12 +294,18 @@ spec:
         type: string
 ```
 
-The operator reconciles the index set by driving `ledgerctl` over pod-exec — there is **no** proto/FSM/checker change; index maintenance rides entirely on the existing `indexes create` / `indexes drop` / `ledgers set-metadata-type` commands. Key semantics (see `misc/operator/internal/controller/ledger_index_reconcile.go`):
+Separate ledger and index creation calls allow the mirror worker to ingest history between them, triggering unnecessary historical backfill during initial provisioning (EN-2070).
+
+For initial provisioning, the operator calls `ledgerctl ledgers create` with all desired indexes (`--index`) and their metadata schema (`--schema`). The CLI sends one existing `ApplyBatch`: `CreateLedger(initialSchema, mirrorSource)` followed by every `CreateIndex`. The mirror manager can discover the ledger after apply, but no ingestion can commit between these orders. The indexbuilder therefore sees EMPTY when folding each initial index, on leaders and followers alike, and activates it without historical backfill (EN-2070). Invalid initial declarations reject the whole batch.
+
+The creation batch uses an idempotency key derived from the Kubernetes object UID and generation. After an exec timeout or failed status write, an identical retry recovers the original success within the server's retention window. Only a successful creation response records initial index ownership. `AlreadyExists` alone never adopts external indexes; after a generation change or retention expiry, ambiguous ownership remains conservative.
+
+Later index changes still use `indexes create` / `indexes drop` / `ledgers set-metadata-type` over pod-exec. An index added after ingestion may legitimately need a backfill. Key semantics (see `misc/operator/internal/controller/ledger_index_reconcile.go`):
 
 - **Ownership-scoped.** The operator tracks the indexes it created in `status.appliedIndexes` and only ever drops those. Externally-created indexes and index kinds the CRD cannot express (the `id` tx-builtin, log builtins, ledger-target metadata, bucket-scoped audit indexes) are left untouched.
 - **Unmanaged by default.** Omitting `spec.indexes` (nil) means the operator never lists, creates, or drops indexes on the ledger. A present-but-empty `indexes: {}` means "managed with zero indexes" — it drops only the indexes the operator previously created.
 - **Mutable, unlike the ledger itself.** `spec.indexes` is excluded from the immutability spec-hash, so editing it reconciles instead of raising `SpecDrifted`. Convergence is reported via the `IndexesSynced` status condition.
-- **Metadata schema is reconciled too.** A metadata index requires its field to be declared in the schema first, so the operator issues `ledgers set-metadata-type` before creating the index — and re-issues it when the declared `type` changes (which the server treats as a schema change that bumps the index forward-encoding version).
+- **Metadata schema is reconciled too.** A metadata index requires its field to be declared in the schema first, so initial provisioning passes it in `--schema`; for later additions the operator issues `ledgers set-metadata-type` before creating the index — and re-issues it when the declared `type` changes (which the server treats as a schema change that bumps the index forward-encoding version).
 
 This applies to any mode; it is documented here because mirror ledgers are the primary case where the ledger has no other declarative surface for indexes.
 
