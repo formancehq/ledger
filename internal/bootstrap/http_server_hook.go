@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.uber.org/fx"
@@ -21,8 +22,26 @@ import (
 // OnStop so the service runner reports an unsuccessful exit.
 func httpServerHook(handler http.Handler, listener net.Listener, address string, logger logging.Logger, requestShutdown func() error) fx.Hook {
 	port := serverport.NewServer("http", serverport.WithListener(listener), serverport.WithAddress(address))
+	requestContext, cancelRequests := context.WithCancel(context.Background())
+	var connectionsMu sync.Mutex
+	connectionsChanged := sync.NewCond(&connectionsMu)
+	connections := map[net.Conn]struct{}{}
 	server := &http.Server{
-		Handler:           handler,
+		Handler: handler,
+		BaseContext: func(net.Listener) context.Context {
+			return requestContext
+		},
+		ConnState: func(connection net.Conn, state http.ConnState) {
+			connectionsMu.Lock()
+			defer connectionsMu.Unlock()
+			switch state {
+			case http.StateNew:
+				connections[connection] = struct{}{}
+			case http.StateClosed, http.StateHijacked:
+				delete(connections, connection)
+				connectionsChanged.Broadcast()
+			}
+		},
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
@@ -59,12 +78,28 @@ func httpServerHook(handler http.Handler, listener net.Listener, address string,
 		},
 		OnStop: func(ctx context.Context) error {
 			if wait == nil {
+				cancelRequests()
+
 				return errors.New("HTTP server: OnStop ran without a completed OnStart")
 			}
 			err := server.Shutdown(ctx)
+			if err != nil {
+				// Shutdown deliberately leaves active connections open when its
+				// context expires. Cancel their request contexts, close their
+				// transports to interrupt blocked I/O, then join every handler.
+				cancelRequests()
+				err = errors.Join(err, server.Close())
+			}
 			// Shutdown closes the listener even if request draining times out. Joining
-			// Serve publishes serveErr before it is read here.
+			// Serve publishes serveErr and makes the connection set stable before it
+			// is read and joined here.
 			wait()
+			connectionsMu.Lock()
+			for len(connections) > 0 {
+				connectionsChanged.Wait()
+			}
+			connectionsMu.Unlock()
+			cancelRequests()
 
 			return errors.Join(err, serveErr)
 		},

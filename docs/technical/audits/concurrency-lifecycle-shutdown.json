@@ -69,6 +69,7 @@
     "docs/technical/agent-context.md",
     "docs/technical/architecture/overview.md",
     "docs/technical/architecture/subsystems/api/README.md",
+    "docs/technical/architecture/subsystems/api/http-api.md",
     "docs/technical/architecture/subsystems/consensus/README.md",
     "docs/technical/architecture/subsystems/consensus/raft-consensus.md",
     "docs/technical/architecture/subsystems/storage/README.md",

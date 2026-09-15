@@ -15,7 +15,7 @@ that authorizes each operation:
 
 | Token | Current examples | Required rejection or join boundary |
 | --- | --- | --- |
-| Fx process lifetime | bootstrap hooks, HTTP/gRPC servers, stores, metrics registrations, health workers | Failed start unwinds only acquired resources. Stop rejects new work, unregisters callbacks and joins owned goroutines before dependencies close. A timed-out outer Fx call is not proof that a hook or worker has exited. |
+| Fx process lifetime | bootstrap hooks, HTTP/gRPC servers, stores, metrics registrations, health workers | Failed start unwinds only acquired resources. Stop rejects new work, unregisters callbacks and joins owned goroutines before dependencies close. An expired graceful HTTP drain cancels request contexts, closes active transports and joins handlers; a timed-out outer Fx call alone is not proof that a hook or worker has exited. |
 | Node run generation | `Node.Run`, `Applier`, transport, maintenance and FSM tasks | The persistent stop request is published once. Commit drain and child joins complete before node-owned storage or transport can close. |
 | Ordered leadership generation | node observer, event and mirror managers, backup orchestrator, leader-only reconcilers | The transition is recorded synchronously in observer order. Work that captured generation N cannot install or remove generation N+1 resources; Stop advances a terminal generation. |
 | Replicated resource identity | named sink configuration, mirror ledger incarnation/source, backup job and destination | Replacement invalidates old local ownership even if a human-readable name is reused. The successor resumes only from the replicated cursor/state promised by that subsystem. |

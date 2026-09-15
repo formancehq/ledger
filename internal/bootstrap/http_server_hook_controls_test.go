@@ -123,6 +123,63 @@ func TestHTTPServerHookGracefulStopDrainsRequest(t *testing.T) {
 	require.Zero(t, shutdowns.Load(), "normal shutdown must not be reported as a serving failure")
 }
 
+func TestHTTPServerHookExpiredStopTerminatesActiveRequest(t *testing.T) {
+	t.Parallel()
+	listener := &httpControlListener{Listener: mustListenLoopback(t, 0), closed: make(chan struct{})}
+	requestEntered := make(chan struct{})
+	requestCanceled := make(chan struct{})
+	handlerExited := make(chan struct{})
+	hook := httpServerHook(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		defer close(handlerExited)
+		close(requestEntered)
+		_, _ = io.Copy(io.Discard, request.Body)
+		<-request.Context().Done()
+		close(requestCanceled)
+	}), listener, "", logging.Testing(), func() error { return nil })
+
+	startCtx, startCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer startCancel()
+	require.NoError(t, hook.OnStart(startCtx))
+
+	connection, err := net.Dial("tcp", listener.Addr().String())
+	require.NoError(t, err)
+	defer func() { _ = connection.Close() }()
+	_, err = io.WriteString(connection, "POST / HTTP/1.1\r\nHost: ledger\r\nContent-Length: 2\r\n\r\nx")
+	require.NoError(t, err)
+	select {
+	case <-requestEntered:
+	case <-startCtx.Done():
+		t.Fatal("request did not reach the handler")
+	}
+
+	stopCtx, stopCancel := context.WithCancel(context.Background())
+	stopped := make(chan error, 1)
+	go func() { stopped <- hook.OnStop(stopCtx) }()
+	select {
+	case <-listener.closed:
+	case <-startCtx.Done():
+		t.Fatal("shutdown did not close the listener")
+	}
+	stopCancel()
+
+	select {
+	case err := <-stopped:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-startCtx.Done():
+		t.Fatal("shutdown did not return after its context expired")
+	}
+	select {
+	case <-requestCanceled:
+	case <-startCtx.Done():
+		t.Fatal("shutdown timeout did not cancel the active request")
+	}
+	select {
+	case <-handlerExited:
+	case <-startCtx.Done():
+		t.Fatal("shutdown timeout did not join the active request handler")
+	}
+}
+
 func TestHTTPServerHookRetriesTemporaryAcceptError(t *testing.T) {
 	t.Parallel()
 	listener := &httpControlListener{
