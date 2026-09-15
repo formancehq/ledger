@@ -218,7 +218,7 @@ func decodeCanonicalDecimal(data []byte, signed bool) (string, error) {
 		return "", fmt.Errorf("invalid non-canonical integer %q", decimal)
 	}
 	digits := strings.TrimPrefix(decimal, "-")
-	if strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+	if digits == "" || strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
 		return "", fmt.Errorf("invalid integer %q", decimal)
 	}
 
