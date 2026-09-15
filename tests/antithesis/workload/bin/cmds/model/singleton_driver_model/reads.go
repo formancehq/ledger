@@ -156,7 +156,10 @@ func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, as
 // the probe shares addr's address iff the account has state).
 func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
 	for k := range ls.Volumes().From(oracle.VolumeKey{Address: addr}) {
-		return k.Address == addr
+		if k.Address == addr {
+			return true
+		}
+		break // A later volume address does not rule out metadata on addr.
 	}
 	for k := range ls.Metadata().From(oracle.MetaKey{Address: addr}) {
 		return k.Address == addr
