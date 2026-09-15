@@ -111,9 +111,13 @@ func TestMatchAccountFilter(t *testing.T) {
 	require.True(t, matchAccountFilter(ls, filterAnd(filterHasAsset("USD", 2), filterAddrPrefix("acc:")), "acc:1"))
 	require.False(t, matchAccountFilter(ls, filterAnd(filterHasAsset("USD", 2), filterAddrPrefix("acc:")), "world"))
 
-	// Empty And/Or match nothing, mirroring the compiler's empty iterator.
-	require.False(t, matchAccountFilter(ls, filterAnd(), "acc:1"))
+	// Zero operands: And is vacuously true (the universe), Or vacuously false,
+	// matching the compiler. An empty And nested in a conjunction is therefore
+	// the identity operand, not an annihilator.
+	require.True(t, matchAccountFilter(ls, filterAnd(), "acc:1"))
 	require.False(t, matchAccountFilter(ls, filterOr(), "acc:1"))
+	require.True(t, matchAccountFilter(ls, filterAnd(filterAddrPrefix("acc:"), filterAnd()), "acc:1"))
+	require.False(t, matchAccountFilter(ls, filterAnd(filterAddrPrefix("acc:"), filterAnd()), "world"))
 }
 
 func TestMatchTxIDBounds(t *testing.T) {
@@ -166,6 +170,12 @@ func TestMatchTxFilter(t *testing.T) {
 
 	require.True(t, matchKnown(filterNot(filterReverted(true)), txs.Get(int(1))))
 	require.True(t, matchKnown(filterAnd(filterReverted(true), filterTxIDRange(1, 2)), txs.Get(int(0))))
+
+	// Zero operands, as on accounts: And is the universe, Or the empty set.
+	require.True(t, matchKnown(filterAnd(), txs.Get(int(0))))
+	require.False(t, matchKnown(filterOr(), txs.Get(int(0))))
+	require.True(t, matchKnown(filterAnd(filterReverted(true), filterAnd()), txs.Get(int(0))))
+	require.False(t, matchKnown(filterAnd(filterReverted(false), filterAnd()), txs.Get(int(0))))
 }
 
 func TestAccountUniverse_OrderIsByteAscending(t *testing.T) {

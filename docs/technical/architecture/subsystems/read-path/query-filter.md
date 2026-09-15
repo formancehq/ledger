@@ -109,6 +109,25 @@ cross-condition normalization. `startDate`/`endDate` AND-combine with the `filte
 parameter. `$or`/`$not` exist only *inside* a single filter expression — they do
 not compose across separate query parameters.
 
+A combinator over **zero** operands follows the algebra: `And{}` is vacuously
+true and selects the whole target universe (the same rows as no filter at all),
+`Or{}` is vacuously false and selects nothing. The compilers
+(`compileAnd`/`compileOr` and their descending twins) and the audit compiler
+(`compileAuditAnd`) all agree on this. The zero-operand form is reachable over
+gRPC only: both serializations of the REST surface require at least one operand
+per combinator (`decodeCombinator`, `internal/proto/commonpb/query_filter.go`).
+
+On ACCOUNTS, "the universe" is the main store's volume ∪ metadata rows
+(`NewPebbleAccountIterator`), and two leaves reach past it. A drained ephemeral
+account keeps its monotonic `abya` row after `applyEphemeralPurge` deletes its
+volume row, so `has asset` serves an account that the universe scan omits — the
+split the ACCOUNTS horizon carve-out exists to preserve
+(`MainHorizonKeep`). A conjunction that acquires a universe operand therefore
+intersects that split away: `has asset X and And{}` selects fewer accounts than
+`has asset X` alone. `not` acquires one the same way — `compileNot` builds
+`NotIterator(universe, child)` — so `has asset X and not address == "<absent>"`
+narrows identically, and does so independently of any empty combinator.
+
 ## 6. Typed date coercion
 
 `startDate`/`endDate` are RFC3339-only convenience shorthands that map to a

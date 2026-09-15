@@ -322,7 +322,9 @@ func compileAnd(ctx *compileCtx, and *commonpb.AndFilter) (readstore.EntityItera
 	}
 
 	if len(children) == 0 {
-		return readstore.NewSliceIterator(nil), nil
+		// A conjunction over zero operands is vacuously true: it selects the
+		// universe, the same result as no filter at all.
+		return compileUniverse(ctx)
 	}
 
 	if len(children) == 1 {
@@ -365,6 +367,7 @@ func compileOr(ctx *compileCtx, or *commonpb.OrFilter) (readstore.EntityIterator
 	}
 
 	if len(children) == 0 {
+		// A disjunction over zero operands is vacuously false: the empty set.
 		return readstore.NewSliceIterator(nil), nil
 	}
 

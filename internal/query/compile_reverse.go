@@ -263,7 +263,9 @@ func compileAndRev(ctx *compileCtx, and *commonpb.AndFilter) (readstore.ReverseI
 	}
 
 	if len(children) == 0 {
-		return emptyReverse(), nil
+		// A conjunction over zero operands is vacuously true: it selects the
+		// universe, the same result as no filter at all.
+		return compileUniverseRev(ctx)
 	}
 
 	if len(children) == 1 {
@@ -305,6 +307,7 @@ func compileOrRev(ctx *compileCtx, or *commonpb.OrFilter) (readstore.ReverseIter
 	}
 
 	if len(children) == 0 {
+		// A disjunction over zero operands is vacuously false: the empty set.
 		return emptyReverse(), nil
 	}
 

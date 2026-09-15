@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"8"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"9"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 8:
+leader. For example, with a schema implementing revision 9:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 8' \
+grpcurl -plaintext -H 'ledger-protocol-version: 9' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -124,6 +124,15 @@ all communicating service clients and nodes must use the matching revision.
 Revision 8 adds the replicated metadata ceilings and `METADATA_LIMIT_EXCEEDED`
 service error contract. It follows revision 7's Apply execution provenance
 changes; clients and servers must use the matching current revision.
+
+## Empty conjunction semantics (revision 9)
+
+Revision 9 reads a `QueryFilter` carrying an `AndFilter` with no children as
+vacuously true: it selects the target universe, the same rows as no filter at
+all. The `.proto` text is unchanged, so the difference is invisible to a schema
+comparison — a revision-8 peer answers the identical payload with an empty page.
+`OrFilter` with no children is the empty set at both revisions. See
+[query filtering](../read-path/query-filter.md#5-combination-semantics).
 
 ## Maintaining the revision
 

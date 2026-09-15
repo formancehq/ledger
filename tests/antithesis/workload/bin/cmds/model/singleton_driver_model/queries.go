@@ -1274,13 +1274,14 @@ func filterInvalidForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget
 }
 
 // matchAccountFilter evaluates an accounts filter against one address in ls.
-// Empty And/Or match nothing, mirroring the compiler's empty-iterator treatment;
-// a nil node is the universe (always matches). The AccountHasAsset arm needs the
-// account's volumes, so ls is threaded through even though the index-free arms
-// depend only on the address.
+// A combinator over zero operands follows the algebra the compiler implements:
+// an empty And is vacuously true (the universe), an empty Or vacuously false.
+// A nil node is the universe too. The AccountHasAsset arm needs the account's
+// volumes, so ls is threaded through even though the index-free arms depend
+// only on the address.
 func matchAccountFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, addr string) bool {
 	return foldFilter(f, filterFold[bool]{
-		and: func(children []bool) bool { return len(children) > 0 && allOf(children) },
+		and: allOf,
 		or:  anyOf,
 		not: negate,
 		leaf: func(leaf *commonpb.QueryFilter) bool {

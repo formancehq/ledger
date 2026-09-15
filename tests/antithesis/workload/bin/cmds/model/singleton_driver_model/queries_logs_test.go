@@ -87,6 +87,26 @@ func reasonErr(t *testing.T, code codes.Code, reason string) error {
 	return st.Err()
 }
 
+// LOGS agrees with the other targets on zero-operand combinators: And is
+// vacuously true, Or vacuously false, and an empty And nested in a conjunction
+// is the identity operand. Every verdict here is decided, so `known` holds.
+func TestMatchLogFilter_EmptyCombinators(t *testing.T) {
+	t.Parallel()
+
+	matchKnown := func(f *commonpb.QueryFilter) bool {
+		m, known := matchLogFilter("L", 1, nil, f)
+		require.True(t, known)
+
+		return m
+	}
+
+	require.True(t, matchKnown(nil))
+	require.True(t, matchKnown(filterAnd()))
+	require.False(t, matchKnown(filterOr()))
+	require.True(t, matchKnown(filterAnd(filterLogIDLeaf(), filterAnd())))
+	require.False(t, matchKnown(filterAnd(filterLogIDLeaf(), filterOr())))
+}
+
 // The date leaf is the only LOGS leaf served from an index, wherever it sits in
 // the tree; every other shape needs none.
 func TestNeededLogIndexes(t *testing.T) {
