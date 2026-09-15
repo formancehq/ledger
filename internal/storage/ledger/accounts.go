@@ -150,7 +150,11 @@ func (store *Store) UpsertAccounts(ctx context.Context, accounts ...ledger.Accou
 				}
 			})
 
-			var returnedRows []account
+			var returnedRows []struct {
+				ledger.Account `bun:",extend"`
+				Index          int  `bun:"batch_index,type:jsonb"`
+				Modified       bool `bun:"modified"`
+			}
 			err := store.db.NewRaw(`
 				WITH
 					data_batch (address, metadata, first_usage, insertion_date, updated_at, address_array, default_metadata, batch_index)
@@ -189,8 +193,16 @@ func (store *Store) UpsertAccounts(ctx context.Context, accounts ...ledger.Accou
 						RETURNING address, metadata, first_usage, updated_at, insertion_date,
 							(SELECT batch_index FROM data_batch WHERE address = ?1.accounts.address)
 					)
-				SELECT * FROM updated_rows
-				UNION ALL SELECT * FROM inserted_rows`,
+				SELECT *, true AS modified FROM updated_rows
+				UNION ALL SELECT *, true AS modified FROM inserted_rows
+				UNION ALL
+				-- Read unchanged accounts without updating their timestamps or metadata history.
+				-- Updated rows must come from RETURNING, not the statement's older snapshot.
+				SELECT a.address, a.metadata, a.first_usage, a.updated_at, a.insertion_date, d.batch_index, false AS modified
+				FROM ?1.accounts a
+				JOIN data_batch d ON a.address = d.address
+				WHERE a.ledger = ?2
+					AND NOT EXISTS (SELECT 1 FROM updated_rows u WHERE u.address = a.address)`,
 				store.db.NewValues(&rows),
 				bun.Ident(store.ledger.Bucket),
 				store.ledger.Name,
@@ -199,14 +211,18 @@ func (store *Store) UpsertAccounts(ctx context.Context, accounts ...ledger.Accou
 				return fmt.Errorf("upserting accounts: %w", postgres.ResolveError(err))
 			}
 
+			upserted := 0
 			for _, row := range returnedRows {
 				rows[row.Index].Metadata = row.Metadata
 				rows[row.Index].FirstUsage = row.FirstUsage
 				rows[row.Index].InsertionDate = row.InsertionDate
 				rows[row.Index].UpdatedAt = row.UpdatedAt
+				if row.Modified {
+					upserted++
+				}
 			}
 
-			span.SetAttributes(attribute.Int("upserted", len(returnedRows)))
+			span.SetAttributes(attribute.Int("upserted", upserted))
 
 			return nil
 		}),

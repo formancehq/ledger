@@ -47,6 +47,9 @@ func Float64(f float64) *float64 { return &f }
 // Pointer provides a helper function to return a pointer to a type
 func Pointer[T any](v T) *T { return &v }
 
+// Formance - Ledger API: Non-streaming JSON request bodies are limited to 4 MiB. Streaming log import and
+// streaming bulk media types are excluded so historical ledgers and large streams
+// can be processed incrementally.
 type Formance struct {
 	SDKVersion string
 	Ledger     *Ledger

@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -30,8 +29,7 @@ func addAccountMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var m metadata.Metadata
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		api.BadRequest(w, common.ErrValidation, errors.New("invalid metadata format"))
+	if !common.DecodeBody(w, r, &m) {
 		return
 	}
 
