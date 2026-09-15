@@ -1891,6 +1891,50 @@ func TestResolveBalances(t *testing.T) {
 	}
 }
 
+// Two distinct resources may resolve to the same account: here a variable
+// bound to "src" and the literal @src. Each balance() call allocates its own
+// resource, but both register under the same resolved address, so only one of
+// them ends up resolved and the other keeps a nil amount.
+func TestBalanceVarsOnAliasedAccountResources(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $acc
+		monetary $a = balance($acc, USD)
+		monetary $b = balance(@src, USD)
+	}
+
+	send $a (
+		source = @world
+		destination = @dst1
+	)
+
+	send $b (
+		source = @world
+		destination = @dst2
+	)`)
+	tc.setVarsFromJSON(t, `{"acc": "src"}`)
+	tc.setBalance("src", "USD", 10)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst1",
+			},
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst2",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
 func TestMachine(t *testing.T) {
 	p, err := compiler.Compile(`
 		vars {
