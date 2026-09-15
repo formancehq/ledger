@@ -29,14 +29,16 @@ type snapshotSession struct {
 // snapshotSessionStore manages snapshot sessions with TTL-based expiry.
 // Each session holds a reference to a temporary Pebble checkpoint.
 type snapshotSessionStore struct {
-	mu       sync.Mutex
-	sessions map[string]*snapshotSession
-	store    *dal.Store
-	logger   logging.Logger
-	ttl      time.Duration
-	stopCh   chan struct{}
-	stopOnce sync.Once
-	stopped  bool
+	mu        sync.Mutex
+	sessions  map[string]*snapshotSession
+	store     *dal.Store
+	logger    logging.Logger
+	ttl       time.Duration
+	stopCh    chan struct{}
+	startOnce sync.Once
+	stopOnce  sync.Once
+	started   bool
+	stopped   bool
 }
 
 func newSnapshotSessionStore(store *dal.Store, logger logging.Logger, ttl time.Duration) *snapshotSessionStore {
@@ -48,9 +50,16 @@ func newSnapshotSessionStore(store *dal.Store, logger logging.Logger, ttl time.D
 		stopCh:   make(chan struct{}),
 	}
 
-	go ss.reapLoop()
-
 	return ss
+}
+
+func (ss *snapshotSessionStore) start() {
+	ss.startOnce.Do(func() {
+		ss.mu.Lock()
+		ss.started = true
+		ss.mu.Unlock()
+		go ss.reapLoop()
+	})
 }
 
 func (ss *snapshotSessionStore) create(syncName, checkpointPath string) (string, error) {
