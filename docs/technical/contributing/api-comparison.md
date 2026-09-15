@@ -1079,3 +1079,10 @@ if ok {
     }
 }
 ```
+
+## Reserved ledger names
+
+Admission rejects the exact names `_` (system API routes) and `_system`
+(system events) on every ledger-scoped write, before proposing to Raft.
+This applies equally to HTTP and gRPC. Other underscore-prefixed names,
+including `_systemx` and `_System`, remain valid.

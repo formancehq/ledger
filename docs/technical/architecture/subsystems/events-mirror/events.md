@@ -342,6 +342,48 @@ Events are published to a configurable topic/subject per sink type:
 - **ClickHouse**: Events are inserted into the configured `table`.
 - **Databricks**: Events are inserted into the configured `catalog.schema.table`.
 
+### NATS ledger-name routing (EN-2023)
+
+Every admitted ledger name must route without blocking later selected events.
+NATS subjects use `{topic}.{ledgerToken}.{lowercaseEventType}`. The ledger token
+replaces every `.` with `%2E` (and every literal `%` with `%25` before escaping
+points). An empty event ledger uses `_system`; the exact ledger names `_`
+and `_system` are rejected at admission. Other admitted characters (`a-z`, `A-Z`, `0-9`,
+`_`, `:`, `-`) are preserved. Decode percent escapes once to recover a non-system
+ledger name. The event payload always retains the original name.
+
+| Event ledger | Subject with topic `events` and type `CREATED_LEDGER` |
+| --- | --- |
+| `orders` | `events.orders.created_ledger` |
+| `a..b` | `events.a%2E%2Eb.created_ledger` |
+| `.orders` | `events.%2Eorders.created_ledger` |
+| `orders.` | `events.orders%2E.created_ledger` |
+| `a.b` | `events.a%2Eb.created_ledger` |
+| `_systemx` | `events._systemx.created_ledger` |
+| empty | `events._system.created_ledger` |
+
+This representation is injective over admitted names and the empty sentinel:
+percent is not an admitted name character, every dot becomes an escape within
+one nonempty token, and the sentinel is disjoint from real names. Escaping
+percent explicitly also prevents escape collisions if such a value reaches the
+transport. Raw interpolation was rejected because leading, trailing and repeated
+dots create empty tokens and block JetStream acknowledgement even with a stream
+capturing `events.>`. Banning dotted names would unnecessarily limit every
+transport; encoding every name with base64 would change ordinary-name routing.
+
+Consumers, stream filters and subject permissions must use the encoded token for
+dotted names. Existing filters using dotted names
+as a hierarchy must be updated: `events.a.*.created_ledger` does not select the
+ledger `a.b`; use `events.a%2Eb.created_ledger`. `events.*.created_ledger` now
+matches exactly one ledger token, and `events.>` continues to capture all events.
+This is the unreleased v3 routing contract; no old-subject dual publication or
+fallback is provided. The configured topic remains the operator's subject prefix.
+
+Publication still waits for each JetStream acknowledgement. On failure, the
+emitter retains the pending batch's cursor, reports the error and retries;
+other named sinks advance independently. This change does not alter persisted
+state, audit payloads, FSM application or incremental restore behavior.
+
 ## Configuration
 
 ### Raft-Replicated Configuration via gRPC
