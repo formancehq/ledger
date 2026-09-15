@@ -38,7 +38,7 @@ var _ = Describe("NumscriptExperimental (EN-1406)", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			vol := account.FindVolume(asset, "")
 			g.Expect(vol).NotTo(BeNil())
-			return vol.GetBalance()
+			return vol.GetBalance().DecimalString()
 		}
 	}
 
