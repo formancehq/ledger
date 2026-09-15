@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"9"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"10"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 9:
+leader. For example, with a schema implementing revision 10:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 9' \
+grpcurl -plaintext -H 'ledger-protocol-version: 10' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -133,6 +133,16 @@ all. The `.proto` text is unchanged, so the difference is invisible to a schema
 comparison — a revision-8 peer answers the identical payload with an empty page.
 `OrFilter` with no children is the empty set at both revisions. See
 [query filtering](../read-path/query-filter.md#5-combination-semantics).
+
+## Deleted-ledger write rejection (revision 10)
+
+Revision 10 closes a soft-deleted ledger to every write the service exposes.
+`SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query
+create, update and delete, and `PromoteLedger` answer `LEDGER_DELETED` where a
+revision-9 peer applied them and returned success. The `.proto` text is
+unchanged and `LEDGER_DELETED` was already part of the error contract, so the
+difference is invisible to a schema comparison: only which request produces it
+changed. See [deleted ledger data retention](../../../../ops/disk-space.md#deleted-ledger-data-retention).
 
 ## Maintaining the revision
 
