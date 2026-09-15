@@ -855,6 +855,25 @@ func TestRebuildDelta_AdvancesNextLedgerIDPastDeletedDeltaLedger(t *testing.T) {
 		"deleting a delta ledger must not make its allocated ID reusable")
 }
 
+func TestRebuildDelta_RejectsExhaustedLedgerIDWithoutCommit(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "exhausted", math.MaxUint32)))
+	require.NoError(t, batch.Commit())
+
+	err := RebuildDelta(context.Background(), testLogger(), store, 0, 0)
+	require.ErrorContains(t, err, "ledger ID space exhausted")
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+
+	_, err = query.GetLedgerByName(context.Background(), handle, "exhausted")
+	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
 // TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo: an
 // AddAccountType replayed after the checkpoint must fold onto LedgerInfo and
 // persist to both the Global zone and the SubAttrLedger attribute, or the chart
