@@ -142,7 +142,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Address).To(Equal("account-with-meta"))
-			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 		})
 
 		It("Should create multiple transactions sequentially", func() {
@@ -172,14 +172,14 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "seq-account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1.FindVolume("USD", "").Balance).To(Equal("50")) // 100 - 50
+			Expect(account1.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("50")) // 100 - 50
 
 			account2, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "seq-account-2",
 			})
 			Expect(err).To(Succeed())
-			Expect(account2.FindVolume("USD", "").Balance).To(Equal("250")) // 200 + 50
+			Expect(account2.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("250")) // 200 + 50
 		})
 
 		It("Should create a transaction with multiple postings", func() {
@@ -204,21 +204,21 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "account-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountA.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(accountA.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 
 			accountB, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-b",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountB.FindVolume("USD", "").Balance).To(Equal("200"))
+			Expect(accountB.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("200"))
 
 			accountC, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "account-c",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountC.FindVolume("USD", "").Balance).To(Equal("300"))
+			Expect(accountC.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("300"))
 		})
 
 		It("Should create a transaction with multiple assets", func() {
@@ -238,9 +238,9 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Volumes).To(HaveLen(3))
-			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
-			Expect(account.FindVolume("EUR", "").Balance).To(Equal("50"))
-			Expect(account.FindVolume("JPY", "").Balance).To(Equal("1000"))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
+			Expect(account.FindVolume("EUR", "").GetBalance().DecimalString()).To(Equal("50"))
+			Expect(account.FindVolume("JPY", "").GetBalance().DecimalString()).To(Equal("1000"))
 		})
 
 		It("Should create multiple transactions in bulk", func() {
@@ -281,7 +281,7 @@ var _ = Describe("Transactions", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Address).To(Equal("implicit-account"))
-			Expect(account.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 		})
 
 		It("Should handle large amounts correctly", func() {
@@ -302,7 +302,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "large-amount-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.FindVolume("USD", "").Balance).To(Equal("99999999999999999999999999999"))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("99999999999999999999999999999"))
 		})
 	})
 
@@ -369,7 +369,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "recipient",
 			})
 			Expect(err).To(Succeed())
-			Expect(recipient.FindVolume("USD", "").Balance).To(Equal("1000000"))
+			Expect(recipient.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("1000000"))
 
 			// World's balance should be negative
 			world, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -377,7 +377,7 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "world",
 			})
 			Expect(err).To(Succeed())
-			Expect(world.FindVolume("USD", "").Balance).To(HavePrefix("-"))
+			Expect(world.FindVolume("USD", "").GetBalance().DecimalString()).To(HavePrefix("-"))
 		})
 	})
 
@@ -453,9 +453,9 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "volume-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(account.FindVolume("USD", "").Input).To(Equal("1000"))
-			Expect(account.FindVolume("USD", "").Output).To(Equal("300"))
-			Expect(account.FindVolume("USD", "").Balance).To(Equal("700"))
+			Expect(account.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("1000"))
+			Expect(account.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("300"))
+			Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("700"))
 		})
 
 		It("Should handle circular transactions correctly", func() {
@@ -486,9 +486,9 @@ var _ = Describe("Transactions", Ordered, func() {
 				Address: "cycle-a",
 			})
 			Expect(err).To(Succeed())
-			Expect(accountA.FindVolume("USD", "").Input).To(Equal("200"))  // from world + cycle-c
-			Expect(accountA.FindVolume("USD", "").Output).To(Equal("100")) // to cycle-b
-			Expect(accountA.FindVolume("USD", "").Balance).To(Equal("100"))
+			Expect(accountA.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("200"))  // from world + cycle-c
+			Expect(accountA.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("100")) // to cycle-b
+			Expect(accountA.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("100"))
 		})
 	})
 
@@ -704,10 +704,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(pcv).To(HaveKey("ev-multi-a"))
 			Expect(pcv).To(HaveKey("ev-multi-b"))
 
-			Expect(pcv["ev-multi-a"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-multi-a"].FindVolume("USD", "").Output).To(Equal("0"))
-			Expect(pcv["ev-multi-b"].FindVolume("USD", "").Input).To(Equal("200"))
-			Expect(pcv["ev-multi-b"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv["ev-multi-a"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(pcv["ev-multi-a"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
+			Expect(pcv["ev-multi-b"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("200"))
+			Expect(pcv["ev-multi-b"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should include correct volumes for multiple assets", func() {
@@ -738,8 +738,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv1 := pcvOf(resp1, 0)
-			Expect(pcv1["ev-cumul"].FindVolume("USD", "").Input).To(Equal("500"))
-			Expect(pcv1["ev-cumul"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv1["ev-cumul"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("500"))
+			Expect(pcv1["ev-cumul"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
 
 			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("ev-cumul", "ev-cumul-dest", big.NewInt(200), "USD"),
@@ -747,10 +747,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			pcv2 := pcvOf(resp2, 0)
-			Expect(pcv2["ev-cumul"].FindVolume("USD", "").Input).To(Equal("500"))
-			Expect(pcv2["ev-cumul"].FindVolume("USD", "").Output).To(Equal("200"))
-			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").Input).To(Equal("200"))
-			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv2["ev-cumul"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("500"))
+			Expect(pcv2["ev-cumul"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("200"))
+			Expect(pcv2["ev-cumul-dest"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should include post-commit volumes on a force transaction", func() {
@@ -765,10 +765,10 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(pcv).To(HaveKey("ev-force-src"))
 			Expect(pcv).To(HaveKey("ev-force-dst"))
 
-			Expect(pcv["ev-force-src"].FindVolume("USD", "").Input).To(Equal("0"))
-			Expect(pcv["ev-force-src"].FindVolume("USD", "").Output).To(Equal("100"))
-			Expect(pcv["ev-force-dst"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcv["ev-force-dst"].FindVolume("USD", "").Output).To(Equal("0"))
+			Expect(pcv["ev-force-src"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("0"))
+			Expect(pcv["ev-force-src"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(pcv["ev-force-dst"].FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes with Numscript transaction", func() {
@@ -784,8 +784,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			pcv := pcvOf(resp, 0)
 			Expect(pcv).To(HaveKey("world"))
 			Expect(pcv).To(HaveKey("user:001"))
-			Expect(pcv["user:001"].FindVolume("USD/2", "").Input).To(Equal("100"))
-			Expect(pcv["user:001"].FindVolume("USD/2", "").Output).To(Equal("0"))
+			Expect(pcv["user:001"].FindVolume("USD/2", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(pcv["user:001"].FindVolume("USD/2", "").GetOutput().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should include postCommitVolumes for every transaction in a bulk request", func() {
@@ -798,8 +798,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(2))
 
-			Expect(pcvOf(resp, 0)["ev-bulk-a"].FindVolume("USD", "").Input).To(Equal("100"))
-			Expect(pcvOf(resp, 1)["ev-bulk-b"].FindVolume("USD", "").Input).To(Equal("200"))
+			Expect(pcvOf(resp, 0)["ev-bulk-a"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("100"))
+			Expect(pcvOf(resp, 1)["ev-bulk-b"].FindVolume("USD", "").GetInput().DecimalString()).To(Equal("200"))
 		})
 
 		It("Should carry the same snapshot on the unitary get and list reads", func() {
