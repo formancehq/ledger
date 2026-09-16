@@ -148,7 +148,7 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 		return
 	}
 	frozenMatches := matches
-	matches = c.checkpointReadOutcomeMatches(id, ledger, maxTicket, frozenMatches, err)
+	matches = c.checkpointReadOutcomeMatches(id, maxTicket, frozenMatches, err)
 	if !matches {
 		details["error"] = fmt.Sprint(err)
 		assert.Unreachable("singleton_driver_model: checkpoint read outside frozen model", details)
@@ -197,7 +197,7 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if checkpointNotFound(err) && c.checkpointReadOutcomeMatches(checkpointID, ledger, maxTicket, false, err) {
+		if checkpointNotFound(err) && c.checkpointReadOutcomeMatches(checkpointID, maxTicket, false, err) {
 			return
 		}
 		assert.Unreachable("singleton_driver_model: predicted checkpoint read returned unexpected error", internal.Details{"checkpoint": checkpointID, "error": err.Error()})
@@ -311,7 +311,7 @@ func runCheckpointScheduleRead(ctx context.Context, bucket servicepb.BucketServi
 // checkpointReadOutcomeMatches never substitutes current business data for the
 // frozen result, including expected entity absence. Candidate states can
 // explain only a missing checkpoint.
-func (c *Checker) checkpointReadOutcomeMatches(id uint64, ledger string, maxTicket uint64, frozenMatches bool, err error) bool {
+func (c *Checker) checkpointReadOutcomeMatches(id, maxTicket uint64, frozenMatches bool, err error) bool {
 	if err == nil {
 		return frozenMatches
 	}
@@ -325,7 +325,7 @@ func (c *Checker) checkpointReadOutcomeMatches(id uint64, ledger string, maxTick
 	defer c.mu.Unlock()
 	matches := false
 	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
-		matches = !base.QueryCheckpointExists(id) || checkpointLedgerUnavailable(base, ledger)
+		matches = !base.QueryCheckpointExists(id)
 		return matches
 	})
 	return matches
