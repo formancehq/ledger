@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -31,6 +32,42 @@ func TestReleaseLifecycleWhenFSMCompletesWaitsPastCallerCancellation(t *testing.
 	case <-released:
 	case <-stdtime.After(stdtime.Second):
 		t.Fatal("lifecycle lock was not released after FSM completion")
+	}
+}
+
+func TestAccountTypeMutationSerializesAllLifecycleStripes(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	admission.ephemeralLifecycleLocks[0].Lock()
+
+	done := make(chan func(), 1)
+	go func() {
+		release, err := admission.expandAccountLifecycleCoverage(plan.NewCoverage(), []*plan.Coverage{plan.NewCoverage()}, []*raftcmdpb.Order{
+			ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
+					Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				}},
+			}}),
+		})
+		require.NoError(t, err)
+		done <- release
+	}()
+
+	select {
+	case release := <-done:
+		release()
+		t.Fatal("account-type mutation did not wait for an existing lifecycle holder")
+	case <-stdtime.After(20 * stdtime.Millisecond):
+	}
+
+	admission.ephemeralLifecycleLocks[0].Unlock()
+	select {
+	case release := <-done:
+		release()
+	case <-stdtime.After(stdtime.Second):
+		t.Fatal("account-type mutation did not acquire lifecycle locks after release")
 	}
 }
 

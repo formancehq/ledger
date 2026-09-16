@@ -967,9 +967,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			accounts = map[string]bool{}
 			touchedAccounts[name] = accounts
 		}
-		for account := range requestAccountTouches(req) {
-			accounts[account] = true
-		}
+		orderAccounts := requestAccountTouches(req)
 
 		beforeOrder := ls
 		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
@@ -986,6 +984,11 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		logsBefore := ls.logs.Len()
 
 		if oc.OK {
+			if oc.Skipped == nil {
+				for account := range orderAccounts {
+					accounts[account] = true
+				}
+			}
 			// Appended centrally rather than per handler: every committed
 			// ledger-scoped order produces exactly one log, so a handler that
 			// forgot would silently shorten the stream and mis-id every log
@@ -2262,20 +2265,6 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 				purged[key] = true
 			}
 		}
-	}
-
-	// Candidate bases can retain zero-state rows from a concurrently linearized
-	// bulk even when that bulk's reconstructed touch set is not part of this
-	// Apply call. Normalize the whole current-state universe before validating
-	// account reads; non-zero accounts and non-EPHEMERAL types are unaffected.
-	for key := range s.volumes.All() {
-		touchedAccounts[key.Address] = true
-	}
-	for key := range s.metadata.All() {
-		touchedAccounts[key.Address] = true
-	}
-	for key := range s.everAsset.All() {
-		touchedAccounts[key.address] = true
 	}
 
 	for address := range touchedAccounts {

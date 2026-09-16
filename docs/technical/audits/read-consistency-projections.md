@@ -71,6 +71,13 @@ when target-specific gates project it back to the main pin:
   while historical account-to-transaction mappings remain queryable;
 - schema and `IndexVersionState` come from their owning pinned views.
 
+Account-wide ephemeral purge is an explicit exception to projection-ahead
+reads. If the main handle is pinned before a purge while the aligned index
+snapshot is acquired after it, the physically deleted current has-asset and
+metadata membership cannot be reconstructed at the older main pin. Callers
+that require that pre-purge membership must use a checkpoint whose main and
+index snapshots are aligned at the same applied horizon.
+
 ### Audit and usage projections
 
 Audit-index and usagebuilder paths enter scope when their values are served.

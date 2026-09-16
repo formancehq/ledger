@@ -25,6 +25,9 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 	for key := range b.Derived.AccountMetadata.DirtyValues() {
 		candidates[key.AccountKey] = struct{}{}
 	}
+	for key := range b.Derived.AccountMetadata.DirtyDeletions() {
+		candidates[key.AccountKey] = struct{}{}
+	}
 
 	volumeKeys := make(map[domain.AccountKey][]domain.VolumeKey)
 	metadataKeys := make(map[domain.AccountKey][]domain.MetadataKey)
