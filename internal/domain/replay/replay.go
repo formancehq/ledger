@@ -371,10 +371,9 @@ func (b *EphemeralPurgeBuffer) Flush(
 
 	for _, ledger := range b.ledgers {
 		pending := b.byLedger[ledger]
+		accountsToPurge := make(map[string]struct{}, len(pending.accounts))
 		for account := range pending.accounts {
-			if err := w.PurgeAccount(ledger, account, collector); err != nil {
-				return err
-			}
+			accountsToPurge[account] = struct{}{}
 		}
 		if liveness, ok := w.(AccountLivenessWriter); ok {
 			compiled := ledgerAccountTypes[ledger]
@@ -388,14 +387,20 @@ func (b *EphemeralPurgeBuffer) Flush(
 					return fmt.Errorf("checking ephemeral account %q liveness: %w", account, err)
 				}
 				if !live {
-					if err := w.PurgeAccount(ledger, account, collector); err != nil {
-						return fmt.Errorf("purging replay-derived ephemeral account %q: %w", account, err)
-					}
+					accountsToPurge[account] = struct{}{}
 				}
 			}
 		}
+		// Derive exclusions only from proposal-touched cells. Account-wide
+		// purge also removes untouched historical rows, but live apply does not
+		// emit per-volume exclusion records for those covered deletions.
 		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes, collector); err != nil {
 			return err
+		}
+		for account := range accountsToPurge {
+			if err := w.PurgeAccount(ledger, account, nil); err != nil {
+				return fmt.Errorf("purging replay-derived ephemeral account %q: %w", account, err)
+			}
 		}
 	}
 
