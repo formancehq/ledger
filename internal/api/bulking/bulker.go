@@ -21,13 +21,24 @@ import (
 
 var ErrAtomicParallelConflict = errors.New("atomic and parallel options are mutually exclusive")
 
+// errBulkElementInternal is the public result for a recovered worker panic.
+// The panic value is recorded on the span only.
+var errBulkElementInternal = errors.New("internal error")
+
+func sendBulkResult(ctx context.Context, result chan BulkElementResult, res BulkElementResult) {
+	select {
+	case result <- res:
+	case <-ctx.Done():
+	}
+}
+
 type Bulker struct {
 	ctrl        ledgercontroller.Controller
 	parallelism int
 	tracer      trace.Tracer
 }
 
-func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, schemaVersion string, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel bool) bool {
+func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, schemaVersion string, bulk Bulk, result chan BulkElementResult, continueOnFailure, parallel, atomicBulk bool) bool {
 
 	parallelism := 1
 	if parallel && b.parallelism != 0 {
@@ -50,14 +61,18 @@ func (b *Bulker) run(ctx context.Context, ctrl ledgercontroller.Controller, sche
 			defer span.End()
 			// pond recovers worker panics and does not propagate them. Without
 			// this, hasError stays false and an atomic bulk commits survivors.
+			// Non-atomic paths keep the old omitted-result shape so later
+			// elements still run and HTTP status stays 200 when nothing else failed.
 			defer func() {
 				if recovered := recover(); recovered != nil {
-					hasError.Store(true)
-					err := fmt.Errorf("bulk element panicked: %v", recovered)
-					observe.RecordError(ctx, err)
-					result <- BulkElementResult{
-						Error: err,
+					observe.RecordError(ctx, fmt.Errorf("bulk element panicked: %v", recovered))
+					if !atomicBulk {
+						return
 					}
+					hasError.Store(true)
+					sendBulkResult(ctx, result, BulkElementResult{
+						Error: errBulkElementInternal,
+					})
 				}
 			}()
 
@@ -125,7 +140,7 @@ func (b *Bulker) Run(ctx context.Context, bulk Bulk, result chan BulkElementResu
 		}
 	}
 
-	hasError := b.run(ctx, ctrl, bulkOptions.SchemaVersion, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel)
+	hasError := b.run(ctx, ctrl, bulkOptions.SchemaVersion, bulk, result, bulkOptions.ContinueOnFailure, bulkOptions.Parallel, bulkOptions.Atomic)
 	if hasError && bulkOptions.Atomic {
 		if rollbackErr := ctrl.Rollback(ctx); rollbackErr != nil {
 			logging.FromContext(ctx).Errorf("failed to rollback transaction: %v", rollbackErr)
