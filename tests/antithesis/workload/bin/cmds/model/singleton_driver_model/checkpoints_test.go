@@ -8,6 +8,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestCheckpointCreateGateSerializesPredictedIDProbes(t *testing.T) {
@@ -77,6 +79,37 @@ func TestCheckpointCapturesCommitOrderInsteadOfResponseOrder(t *testing.T) {
 	require.True(t, ledgerMetaMatches(c.checkpoints[1].state.Ledger("L"), checkpointMetadata("before")))
 	require.True(t, ledgerMetaMatches(c.modelState.Ledger("L"), checkpointMetadata("after")))
 	require.False(t, ledgerMetaMatches(c.checkpoints[1].state.Ledger("L"), checkpointMetadata("after")))
+}
+
+func TestCheckpointCreateDrainsAfterEarlierInflightFailure(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	failed, _ := checkpointMetadataWrite("failed", 1)
+	create := bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
+	failedTicket := c.registerInflight(failed)
+	createTicket := c.registerInflight(create)
+	processed := make(chan struct{})
+
+	c.handleObservation(observation{
+		ticket: createTicket, bulk: create, resp: checkpointCreateResponse(1, 1),
+		observeTicket: createTicket, processed: processed,
+	})
+	require.Len(t, c.pending, 1, "the earlier in-flight request must initially gate the create")
+
+	c.handleObservation(observation{
+		ticket: failedTicket, bulk: failed,
+		err: status.Error(codes.Unavailable, "request outcome unavailable"),
+	})
+
+	require.Empty(t, c.pending)
+	require.Len(t, c.checkpoints, 1)
+	require.Equal(t, uint64(2), c.modelState.NextQueryCheckpointID())
+	select {
+	case <-processed:
+	default:
+		t.Fatal("the create worker was not released after the failed request stopped gating its observation")
+	}
 }
 
 func TestPredictedCheckpointMatchesCreationPredecessor(t *testing.T) {

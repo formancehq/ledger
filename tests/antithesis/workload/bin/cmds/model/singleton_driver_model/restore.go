@@ -58,9 +58,8 @@ func (c *Checker) pauseAndDrain(ctx context.Context) bool {
 		c.mu.Lock()
 		_, empty := c.earliestOutstanding()
 		if empty {
-			// Nothing is in flight; flush the re-order buffer. handleObservation's
-			// failure/transient paths drop the ticket without calling tryDrain, so
-			// with no further op to re-trigger it a committed success can sit here.
+			// Nothing is in flight; flush the re-order buffer defensively before
+			// checking for quiescence.
 			c.tryDrain()
 		}
 		idle := empty && len(c.pending) == 0

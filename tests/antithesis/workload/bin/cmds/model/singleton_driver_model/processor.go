@@ -87,6 +87,7 @@ func (c *Checker) handleObservation(obs observation) {
 	defer c.mu.Unlock()
 
 	c.removeInflight(obs.ticket)
+	defer c.tryDrain()
 
 	// Transient gRPC errors leave the model untouched — the bulk
 	// effectively didn't happen. Shutdown errors (ctx cancelled / deadline
@@ -119,7 +120,6 @@ func (c *Checker) handleObservation(obs observation) {
 	}
 
 	c.insertPending(&pendingObservation{minSeq: minSeq, obs: obs})
-	c.tryDrain()
 }
 
 // Drains buffered observations in log-sequence order while safe: the head drains
