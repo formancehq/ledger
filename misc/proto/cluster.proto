@@ -13,61 +13,91 @@ option go_package = "github.com/formancehq/ledger/v3/internal/proto/clusterpb";
 // ClusterService provides cluster operations
 service ClusterService {
   // GetClusterState returns the current state of the Raft cluster
-  rpc GetClusterState(GetClusterStateRequest) returns (ClusterState);
+  rpc GetClusterState(GetClusterStateRequest) returns (ClusterState) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
 
   // GetDiskUsage returns the disk usage of the local node
-  rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage);
+  rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
 
   // GetNodeTime returns the current physical clock time of the local node
-  rpc GetNodeTime(GetNodeTimeRequest) returns (NodeTime);
+  rpc GetNodeTime(GetNodeTimeRequest) returns (NodeTime) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
 
   // TransferLeadership transfers Raft leadership to a specific node
-  rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse);
+  rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // AddLearner adds a non-voting (learner) node to the Raft cluster.
   // The request is forwarded to the leader.
-  rpc AddLearner(AddLearnerRequest) returns (AddLearnerResponse);
+  rpc AddLearner(AddLearnerRequest) returns (AddLearnerResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // PromoteLearner promotes a learner node to a full voter.
   // The request is forwarded to the leader.
-  rpc PromoteLearner(PromoteLearnerRequest) returns (PromoteLearnerResponse);
+  rpc PromoteLearner(PromoteLearnerRequest) returns (PromoteLearnerResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // RemoveNode removes a node (voter or learner) from the Raft cluster.
   // The request is forwarded to the leader. Cannot remove the leader itself.
-  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse);
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
   // primary Pebble store. Node-local operation (not forwarded to leader).
-  rpc CompactPrimary(CompactPrimaryRequest) returns (CompactPrimaryResponse);
+  rpc CompactPrimary(CompactPrimaryRequest) returns (CompactPrimaryResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
   // Node-local operation (not forwarded to leader).
-  rpc CompactSecondary(CompactSecondaryRequest) returns (CompactSecondaryResponse);
+  rpc CompactSecondary(CompactSecondaryRequest) returns (CompactSecondaryResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // CreateCheckpoint creates a Pebble checkpoint of the current live database state.
   // Node-local operation (not forwarded to leader).
-  rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse);
+  rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // Backup performs a full checkpoint backup of the Pebble store.
   // The caller specifies the storage destination (filesystem or S3) in the request.
   // The request is forwarded to the leader (SST files are node-local).
-  rpc Backup(BackupRequest) returns (BackupResponse);
+  rpc Backup(BackupRequest) returns (BackupResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // IncrementalBackup exports new log and audit entries since the last export.
   // Can run on any node (log/audit sequences are identical across replicas).
-  rpc IncrementalBackup(IncrementalBackupRequest) returns (IncrementalBackupResponse);
+  rpc IncrementalBackup(IncrementalBackupRequest) returns (IncrementalBackupResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
 
   // ListQueryCheckpoints lists all existing query checkpoints.
   // Reads from replicated Pebble state (available on any node).
-  rpc ListQueryCheckpoints(ListQueryCheckpointsRequest) returns (ListQueryCheckpointsResponse);
+  rpc ListQueryCheckpoints(ListQueryCheckpointsRequest) returns (ListQueryCheckpointsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
 
   // GetQueryCheckpointInfo returns detailed information about a query checkpoint.
   // Reads from replicated Pebble state (available on any node).
-  rpc GetQueryCheckpointInfo(GetQueryCheckpointInfoRequest) returns (QueryCheckpointInfo);
+  rpc GetQueryCheckpointInfo(GetQueryCheckpointInfoRequest) returns (QueryCheckpointInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
 
   // GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
   // Reads from replicated Pebble state (available on any node).
-  rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQueryCheckpointScheduleResponse);
+  rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQueryCheckpointScheduleResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
 }
 
 message GetClusterStateRequest {
