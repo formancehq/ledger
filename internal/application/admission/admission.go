@@ -641,11 +641,11 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
-	releaseLifecycle, err := a.expandAccountLifecycleCoverage(needs, perOrder)
+	releaseLifecycle, err := a.expandAccountLifecycleCoverage(needs, perOrder, orders)
 	if err != nil {
 		return nil, fmt.Errorf("expanding account lifecycle coverage: %w", err)
 	}
-	defer releaseLifecycle()
+	defer func() { releaseLifecycle() }()
 	stopScripts()
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
@@ -824,6 +824,15 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	defer stopFSMWait()
 
 	result, err := fsmFuture.Wait(ctx)
+	if err != nil && ctx.Err() != nil {
+		// The proposal was accepted by Raft, so caller cancellation only stops
+		// this request's wait; it does not mean apply has finished. Transfer the
+		// lifecycle-lock release to an uncancellable waiter so a concurrent
+		// admission cannot enumerate the same account against pre-apply state.
+		release := releaseLifecycle
+		releaseLifecycle = func() {}
+		releaseLifecycleWhenFSMCompletes(fsmFuture, release)
+	}
 
 	// Observe caller attribution only when the FSM actually wrote an audit
 	// entry for this proposal — a success or a committed business-rule failure.
@@ -892,12 +901,22 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
 }
 
+func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResult], release func()) {
+	go func() {
+		_, _ = fsmFuture.Wait(context.Background())
+		release()
+	}()
+}
+
 // expandAccountLifecycleCoverage enumerates every persisted volume and metadata
 // key owned by an account already mentioned by an order's coverage. The FSM
 // uses this closed key set to decide and apply an account-wide EPHEMERAL purge
 // without scanning Pebble or bypassing the coverage gate.
-func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage) (func(), error) {
-	compiledByLedger := make(map[string][]accounttype.CompiledType)
+func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
+	compiledByLedger, err := a.accountLifecycleTypeSnapshots(orders)
+	if err != nil {
+		return nil, err
+	}
 	lockSet := make(map[int]struct{})
 
 	// Lock every touched ephemeral account (striped by canonical identity) until
@@ -924,19 +943,7 @@ func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, per
 				default:
 					continue
 				}
-				compiled, ok := compiledByLedger[account.LedgerName]
-				if !ok {
-					info, err := a.attrs.Ledger.Get(a.store, domain.LedgerKey{Name: account.LedgerName}.Bytes())
-					if err != nil {
-						return nil, err
-					}
-					if info != nil {
-						compiled = accounttype.CompileTypes(info.GetAccountTypes())
-					}
-					compiledByLedger[account.LedgerName] = compiled
-				}
-				matched := accounttype.FindMatchingType(account.Account, compiled)
-				if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
 					lockSet[accountLifecycleLockIndex(account)] = struct{}{}
 				}
 			}
@@ -989,19 +996,7 @@ func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, per
 		}
 
 		for account := range accounts {
-			compiled, ok := compiledByLedger[account.LedgerName]
-			if !ok {
-				info, err := a.attrs.Ledger.Get(handle, domain.LedgerKey{Name: account.LedgerName}.Bytes())
-				if err != nil {
-					return nil, err
-				}
-				if info != nil {
-					compiled = accounttype.CompileTypes(info.GetAccountTypes())
-				}
-				compiledByLedger[account.LedgerName] = compiled
-			}
-			matched := accounttype.FindMatchingType(account.Account, compiled)
-			if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			if !accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
 				continue
 			}
 			for _, attrCode := range []byte{dal.SubAttrVolume, dal.SubAttrMetadata} {
@@ -1039,6 +1034,69 @@ func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, per
 	success = true
 
 	return release, nil
+}
+
+// accountLifecycleTypeSnapshots returns every account-type view that can be
+// observed while the proposal is processed. Keeping the intermediate views is
+// deliberately conservative: a skipped add/remove may leave either side of a
+// transition effective, and coverage must be sufficient for both outcomes.
+func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, error) {
+	typesByLedger := make(map[string]map[string]*commonpb.AccountType)
+	snapshots := make(map[string][][]accounttype.CompiledType)
+	load := func(ledger string) (map[string]*commonpb.AccountType, error) {
+		if types, ok := typesByLedger[ledger]; ok {
+			return types, nil
+		}
+		info, err := a.attrs.Ledger.Get(a.store, domain.LedgerKey{Name: ledger}.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		types := make(map[string]*commonpb.AccountType)
+		if info != nil {
+			for name, accountType := range info.GetAccountTypes() {
+				types[name] = accountType.CloneVT()
+			}
+		}
+		typesByLedger[ledger] = types
+		snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+
+		return types, nil
+	}
+
+	for _, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		if ledgerOrder == nil || ledgerOrder.GetApply() == nil {
+			continue
+		}
+		ledger := ledgerOrder.GetLedger()
+		types, err := load(ledger)
+		if err != nil {
+			return nil, err
+		}
+		switch data := ledgerOrder.GetApply().GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType:
+			if accountType := data.AddAccountType.GetAccountType(); accountType != nil {
+				types[accountType.GetName()] = accountType.CloneVT()
+				snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+			}
+		case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+			delete(types, data.RemoveAccountType.GetName())
+			snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+		}
+	}
+
+	return snapshots, nil
+}
+
+func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.CompiledType) bool {
+	for _, compiled := range snapshots {
+		matched := accounttype.FindMatchingType(account, compiled)
+		if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			return true
+		}
+	}
+
+	return false
 }
 
 func accountLifecycleLockIndex(account domain.AccountKey) int {

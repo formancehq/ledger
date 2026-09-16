@@ -40,3 +40,9 @@ type Writer interface {
 	// The default enforcement mode lives on LedgerInfo as well.
 	SetDefaultEnforcementMode(ledger string, mode commonpb.ChartEnforcementMode) error
 }
+
+// AccountLivenessWriter lets integrity replay derive account-wide EPHEMERAL
+// purges from audit-bound effects without trusting the stored purge annotation.
+type AccountLivenessWriter interface {
+	AccountHasNonZeroVolume(ledger, account string) (bool, error)
+}

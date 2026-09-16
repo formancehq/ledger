@@ -868,6 +868,9 @@ func (b *WriteSet) Reset(at *commonpb.Timestamp) {
 	b.keptVolumeUpdates = b.keptVolumeUpdates[:0]
 	b.transientVolumes = nil
 	b.gatedLedgerTypes = nil
+	b.purgedAccounts = nil
+	b.purgedAccountVolumeKeys = b.purgedAccountVolumeKeys[:0]
+	b.purgedAccountMetadataKeys = b.purgedAccountMetadataKeys[:0]
 	b.volumes.Reset()
 	for i := range b.purgedByLog {
 		b.purgedByLog[i] = nil

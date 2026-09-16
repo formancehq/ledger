@@ -624,6 +624,9 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, acc
 	if cfg == nil {
 		return nil
 	}
+	if b.deletedAcctAsset == nil {
+		b.deletedAcctAsset = make(map[string]struct{})
+	}
 
 	// has-asset is asset-first, so scan the bounded ledger keyspace and delete
 	// rows whose terminal entity is exactly this address.
@@ -637,6 +640,7 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, acc
 			if err := b.wb.DeleteKey(key); err != nil {
 				return err
 			}
+			b.deletedAcctAsset[sk] = struct{}{}
 			delete(b.seenAcctAsset, sk)
 		}
 	}
@@ -655,11 +659,13 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, acc
 			return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
 		}
 		if indexedAccount == account {
-			if err := b.wb.DeleteKey(append([]byte(nil), iter.Key()...)); err != nil {
+			key := append([]byte(nil), iter.Key()...)
+			if err := b.wb.DeleteKey(key); err != nil {
 				_ = iter.Close()
 
 				return err
 			}
+			b.deletedAcctAsset[string(key)] = struct{}{}
 		}
 	}
 	if err := iter.Error(); err != nil {
@@ -1335,7 +1341,9 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	// which the range delete then wipes at commit, dropping the row. Force the
 	// idempotent Put instead; queued after the range delete (the recreated
 	// ledger's logs have higher sequence), it wins at commit.
-	if _, deleted := b.deletedThisBatch[ledger]; !deleted {
+	_, ledgerDeleted := b.deletedThisBatch[ledger]
+	_, exactDeleted := b.deletedAcctAsset[sk]
+	if !ledgerDeleted && !exactDeleted {
 		exists, err := b.readstoreKeyExists(key)
 		if err != nil {
 			return fmt.Errorf("account-by-asset dedup get: %w", err)

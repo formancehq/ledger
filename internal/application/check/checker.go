@@ -467,7 +467,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
 						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
 
-						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), payload.Apply.GetLog().GetPurgedAccounts(), payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+						// purged_accounts is an unhashed projection. Checker expectations
+						// are derived independently from audit-bound effects at the proposal
+						// boundary; trusting this field would let tampering hide stale rows.
+						if err := domainreplay.ReplayLedgerLog(ledgerName, seq, payload.Apply.GetLog().GetData(), nil, payload.Apply.GetLog().GetDate(), replayWriter, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 							return fmt.Errorf("replaying log %d: %w", seq, err)
 						}
 
@@ -636,6 +639,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// on otherwise-purged accounts).
 
 	// Comparison passes: expected = replayed state.
+	c.comparePurgedAccountAbsence(ctx, snap, replay.replayDerivedPurgedAccounts(), callback)
 	c.compareVolumes(ctx, snap, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
@@ -706,6 +710,79 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	return nil
+}
+
+// comparePurgedAccountAbsence verifies the physical current-state cascade for
+// account-wide EPHEMERAL purges. The ordinary comparison passes deliberately
+// exclude purged cells, so this independent assertion must run before those
+// filters can hide a surviving primary row.
+func (c *Checker) comparePurgedAccountAbsence(
+	ctx context.Context,
+	reader dal.PebbleReader,
+	purged map[domain.AccountKey]struct{},
+	callback func(*servicepb.CheckStoreEvent),
+) {
+	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("failed to scan purged-account volumes: %v", err), 0, "", "", ""))
+
+		return
+	}
+	for volumes.Next() {
+		if ctx.Err() != nil {
+			break
+		}
+		entry := volumes.Entry()
+		var key domain.VolumeKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+		if _, ok := purged[key.AccountKey]; ok {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("volume row survives replay-derived account purge for %s/%s", key.Account, key.Asset),
+				0, key.LedgerName, key.Account, key.Asset))
+		}
+	}
+	if err := volumes.Err(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("scanning purged-account volumes: %v", err), 0, "", "", ""))
+	}
+	if err := volumes.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("closing purged-account volume scan: %v", err), 0, "", "", ""))
+	}
+
+	metadata, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("failed to scan purged-account metadata: %v", err), 0, "", "", ""))
+
+		return
+	}
+	for metadata.Next() {
+		if ctx.Err() != nil {
+			break
+		}
+		entry := metadata.Entry()
+		var key domain.MetadataKey
+		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			continue
+		}
+		if _, ok := purged[key.AccountKey]; ok {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("metadata row survives replay-derived account purge for %s/%s", key.Account, key.Key),
+				0, key.LedgerName, key.Account, key.Key))
+		}
+	}
+	if err := metadata.Err(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("scanning purged-account metadata: %v", err), 0, "", "", ""))
+	}
+	if err := metadata.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			fmt.Sprintf("closing purged-account metadata scan: %v", err), 0, "", "", ""))
+	}
 }
 
 // collectStoredTransientVolumes walks the AppliedProposal stream and feeds

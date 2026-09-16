@@ -85,6 +85,9 @@ func ReplayLedgerLog(
 		}
 
 		for account, metadataMap := range p.CreatedTransaction.GetAccountMetadata() {
+			if ephemeralPurgeBuffer != nil {
+				ephemeralPurgeBuffer.TouchAccount(ledger, account)
+			}
 			if metadataMap != nil {
 				for key, value := range metadataMap.GetValues() {
 					mk := domain.MetadataKey{
@@ -145,6 +148,9 @@ func ReplayLedgerLog(
 
 		switch target := p.SavedMetadata.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
+			if ephemeralPurgeBuffer != nil {
+				ephemeralPurgeBuffer.TouchAccount(ledger, target.Account.GetAddr())
+			}
 			if len(p.SavedMetadata.GetMetadata()) > 0 {
 				for key, value := range p.SavedMetadata.GetMetadata() {
 					mk := domain.MetadataKey{
@@ -179,6 +185,9 @@ func ReplayLedgerLog(
 
 		switch target := p.DeletedMetadata.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
+			if ephemeralPurgeBuffer != nil {
+				ephemeralPurgeBuffer.TouchAccount(ledger, target.Account.GetAddr())
+			}
 			mk := domain.MetadataKey{
 				AccountKey: domain.AccountKey{
 					LedgerName: ledger,
@@ -259,8 +268,9 @@ func ReplayLedgerLog(
 }
 
 type pendingEphemeralPurge struct {
-	postings []*commonpb.Posting
-	accounts map[string]struct{}
+	postings        []*commonpb.Posting
+	accounts        map[string]struct{}
+	touchedAccounts map[string]struct{}
 }
 
 // AddAccount defers an explicit account-wide purge until the proposal boundary,
@@ -279,6 +289,24 @@ func (b *EphemeralPurgeBuffer) AddAccount(ledger, account string) {
 		pending.accounts = make(map[string]struct{})
 	}
 	pending.accounts[account] = struct{}{}
+}
+
+// TouchAccount records an account whose lifecycle must be evaluated at the
+// proposal boundary from audit-bound effects.
+func (b *EphemeralPurgeBuffer) TouchAccount(ledger, account string) {
+	if b == nil || account == "" || account == "world" {
+		return
+	}
+	pending := b.byLedger[ledger]
+	if pending == nil {
+		pending = &pendingEphemeralPurge{}
+		b.byLedger[ledger] = pending
+		b.ledgers = append(b.ledgers, ledger)
+	}
+	if pending.touchedAccounts == nil {
+		pending.touchedAccounts = make(map[string]struct{})
+	}
+	pending.touchedAccounts[account] = struct{}{}
 }
 
 // ExclusionCollector is called once per (ledger, account, asset, color) that
@@ -322,6 +350,10 @@ func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) 
 	}
 
 	pending.postings = append(pending.postings, postings...)
+	for _, posting := range postings {
+		b.TouchAccount(ledger, posting.GetSource())
+		b.TouchAccount(ledger, posting.GetDestination())
+	}
 }
 
 // Flush applies the accumulated purge decisions once per replay batch.
@@ -342,6 +374,24 @@ func (b *EphemeralPurgeBuffer) Flush(
 		for account := range pending.accounts {
 			if err := w.PurgeAccount(ledger, account, collector); err != nil {
 				return err
+			}
+		}
+		if liveness, ok := w.(AccountLivenessWriter); ok {
+			compiled := ledgerAccountTypes[ledger]
+			for account := range pending.touchedAccounts {
+				matched := accounttype.FindMatchingType(account, compiled)
+				if matched == nil || matched.GetPersistence() != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+					continue
+				}
+				live, err := liveness.AccountHasNonZeroVolume(ledger, account)
+				if err != nil {
+					return fmt.Errorf("checking ephemeral account %q liveness: %w", account, err)
+				}
+				if !live {
+					if err := w.PurgeAccount(ledger, account, collector); err != nil {
+						return fmt.Errorf("purging replay-derived ephemeral account %q: %w", account, err)
+					}
+				}
 			}
 		}
 		if err := SimulateEphemeralPurge(ledger, pending.postings, w, ledgerAccountTypes, collector); err != nil {
