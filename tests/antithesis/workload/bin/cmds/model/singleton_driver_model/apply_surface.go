@@ -23,7 +23,7 @@ func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcement
 // maybeAddSkippableReason composes skip opt-ins with ordinary generated slots,
 // preserving their position, ledger selection, and surrounding bulk shape.
 func maybeAddSkippableReason(req *servicepb.Request) *servicepb.Request {
-	if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) != 0 {
+	if random.RandomChoice([]uint8{0, 1, 2, 3}) != 0 {
 		return req
 	}
 
