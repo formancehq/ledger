@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -122,7 +123,8 @@ type Builder struct {
 	// in-flight batch. Committed Pebble still exposes those rows until commit,
 	// so a later re-fund must bypass the committed-state dedup read and queue a
 	// Put after the Delete.
-	deletedAcctAsset map[string]struct{}
+	deletedAcctAsset      map[string]struct{}
+	purgedCurrentAccounts map[domain.AccountKey]struct{}
 
 	// deletedThisBatch holds the names of ledgers whose read indexes were
 	// range-deleted earlier in the in-flight batch (DeleteLedger). The
@@ -737,6 +739,7 @@ func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})
 	b.deletedAcctAsset = make(map[string]struct{})
+	b.purgedCurrentAccounts = make(map[domain.AccountKey]struct{})
 	b.deletedThisBatch = make(map[string]struct{})
 }
 
