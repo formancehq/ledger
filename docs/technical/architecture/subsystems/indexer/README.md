@@ -6,8 +6,10 @@
 deletion and the per-replica read projection. For each address, the indexer
 removes current account metadata memberships (forward, existence, and reverse
 limbs) and has-asset rows in the same local batch that advances projection
-progress. Consequently an aligned reader observes either the complete pre-purge
-projection or the complete post-purge projection.
+progress. This guarantees atomic publication within the read projection. An
+aligned snapshot may use a projection already ahead of its main-store pin, so
+the has-asset exception and its mixed-horizon implications remain as documented
+in [read-consistency-projections.md](../../../audits/read-consistency-projections.md).
 
 Account-to-transaction, source, and destination mappings are immutable history
 and are deliberately retained. Physical deletion across the main and read-store

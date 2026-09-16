@@ -1456,7 +1456,12 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 // (see deletedThisBatch in writeAccountByAssetDedup).
 func (b *Builder) markLedgerDeletedInBatch(name string) {
 	b.deletedThisBatch[name] = struct{}{}
-	b.seenAcctAsset = make(map[string]struct{})
+	prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(name).Snapshot()
+	for key := range b.seenAcctAsset {
+		if bytes.HasPrefix([]byte(key), prefix) {
+			delete(b.seenAcctAsset, key)
+		}
+	}
 }
 
 // readstoreKeyExists reports whether key is present in committed read-store
