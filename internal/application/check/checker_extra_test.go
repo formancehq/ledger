@@ -65,7 +65,7 @@ func TestComparePurgedAccountProjections(t *testing.T) {
 	require.Contains(t, events[0].GetError().GetMessage()+events[1].GetError().GetMessage(), "bob")
 }
 
-func TestAccountPurgeDoesNotBecomeVolumeExclusion(t *testing.T) {
+func TestAccountPurgeProducesIndependentVolumeAndAccountProjections(t *testing.T) {
 	t.Parallel()
 
 	rs := newTestReplayStore(t)
@@ -74,9 +74,15 @@ func TestAccountPurgeDoesNotBecomeVolumeExclusion(t *testing.T) {
 		Asset:      "USD",
 	}
 	require.NoError(t, rs.AddVolumeDelta(key.Bytes(), big.NewInt(1), big.NewInt(1)))
-	collected := 0
-	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(_, _, _, _ string) { collected++ }))
-	require.Zero(t, collected)
+	var collected []domain.VolumeKey
+	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(ledger, account, asset, color string) {
+		collected = append(collected, domain.VolumeKey{
+			AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
+			Asset:      asset,
+			Color:      color,
+		})
+	}))
+	require.Equal(t, []domain.VolumeKey{key}, collected)
 	require.Contains(t, rs.takePendingPurgedAccounts(), key.AccountKey)
 }
 
