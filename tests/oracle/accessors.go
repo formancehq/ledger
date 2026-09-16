@@ -13,16 +13,7 @@ import (
 // decisions while ranging.
 
 func (g GlobalState) Ledgers() map[string]LedgerState {
-	active := make(map[string]LedgerState, len(g.ledgers))
-	for name, state := range g.ledgers {
-		lifecycle, exists := g.lifecycle.Get(name)
-		if exists && lifecycle.Deleted {
-			continue
-		}
-		active[name] = state
-	}
-
-	return active
+	return g.ledgers
 }
 
 func (s LedgerState) Types() Map[string, TypeState]                    { return s.types }

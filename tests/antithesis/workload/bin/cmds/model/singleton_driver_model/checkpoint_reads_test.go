@@ -64,17 +64,17 @@ func TestDeletedCheckpointReadAcceptsOnlyFrozenSuccessOrNotFound(t *testing.T) {
 	c.modelState = frozen
 	create := bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
 	c.validateBulkSuccess(create, checkpointCreateResponse(11, 1))
-	require.False(t, c.checkpointReadOutcomeMatches(1, 0, false, status.Error(codes.NotFound, "missing live checkpoint")))
+	require.False(t, c.checkpointReadOutcomeMatches(1, "L", 0, false, status.Error(codes.NotFound, "missing live checkpoint")))
 	del := bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: 1}}})
 	c.validateBulkSuccess(del, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 12, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}}}}}})
 	frozen = c.deletedCheckpointSnapshots[1].state
 	account := &commonpb.Account{Address: "acc:1", Volumes: []*commonpb.AccountVolume{{Asset: "USD", Volumes: &commonpb.VolumesWithBalance{Input: "5", Output: "0", Balance: "5"}}}}
-	require.True(t, c.checkpointReadOutcomeMatches(1, 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true), nil), "a replica may still serve the frozen checkpoint after deletion")
+	require.True(t, c.checkpointReadOutcomeMatches(1, "L", 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true), nil), "a replica may still serve the frozen checkpoint after deletion")
 	account.Volumes[0].Volumes.Input = "9"
 	account.Volumes[0].Volumes.Balance = "9"
-	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true), nil), "deletion must never permit newer business data")
-	require.True(t, c.checkpointReadOutcomeMatches(1, 0, false, status.Error(codes.NotFound, "deleted")))
-	require.False(t, c.checkpointReadOutcomeMatches(1, 0, true, status.Error(codes.Internal, "I/O failure")))
+	require.False(t, c.checkpointReadOutcomeMatches(1, "L", 0, checkpointAccountReadMatches(frozen, "L", "acc:1", account, true), nil), "deletion must never permit newer business data")
+	require.True(t, c.checkpointReadOutcomeMatches(1, "L", 0, false, status.Error(codes.NotFound, "deleted")))
+	require.False(t, c.checkpointReadOutcomeMatches(1, "L", 0, true, status.Error(codes.Internal, "I/O failure")))
 }
 
 func TestLiveCheckpointTransactionAbsenceMatchesFrozenState(t *testing.T) {
@@ -85,7 +85,11 @@ func TestLiveCheckpointTransactionAbsenceMatchesFrozenState(t *testing.T) {
 	c.validateBulkSuccess(create, checkpointCreateResponse(11, 1))
 	frozen := c.checkpoints[1].state
 	notFound := status.Error(codes.NotFound, "transaction not found")
-	require.True(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 2, nil, false), notFound), "NotFound also describes a transaction absent from a live frozen checkpoint")
-	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 1, nil, false), notFound), "a known frozen transaction cannot disappear while the checkpoint remains live")
-	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 2, nil, false), status.Error(codes.Internal, "I/O failure")), "absence does not excuse an unrelated error")
+	require.True(t, c.checkpointReadOutcomeMatches(1, "L", 0, checkpointTransactionReadMatches(frozen, "L", 2, nil, false), notFound), "NotFound also describes a transaction absent from a live frozen checkpoint")
+	require.False(t, c.checkpointReadOutcomeMatches(1, "L", 0, checkpointTransactionReadMatches(frozen, "L", 1, nil, false), notFound), "a known frozen transaction cannot disappear while the checkpoint remains live")
+	deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}))
+	require.True(t, deleted.OK)
+	c.modelState = deleted.State
+	require.True(t, c.checkpointReadOutcomeMatches(1, "L", 0, checkpointTransactionReadMatches(frozen, "L", 1, nil, false), notFound), "a deleted ledger makes its otherwise-live checkpoint unreadable")
+	require.False(t, c.checkpointReadOutcomeMatches(1, "L", 0, checkpointTransactionReadMatches(frozen, "L", 2, nil, false), status.Error(codes.Internal, "I/O failure")), "absence does not excuse an unrelated error")
 }

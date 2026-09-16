@@ -35,3 +35,10 @@ func TestGenerateLifecycleHonorsConfiguredLiveTarget(t *testing.T) {
 	require.NotNil(t, req.GetCreateLedger())
 	require.Equal(t, "model-5", req.GetCreateLedger().GetName())
 }
+
+func TestNextLedgerNameContinuesInitialSequence(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"model-run-0", "model-run-1", "model-run-2"}, nil)
+	require.Equal(t, "model-run-3", c.nextLedgerName())
+}

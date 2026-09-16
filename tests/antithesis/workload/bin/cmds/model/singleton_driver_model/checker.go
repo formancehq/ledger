@@ -169,7 +169,7 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		modelState = modelState.SeedInitialSchema(reqs)
 	}
 
-	prefix := strings.TrimSuffix(ledgerNames[0], fmt.Sprintf("-%d", len(ledgerNames)-1))
+	prefix := strings.TrimSuffix(ledgerNames[0], "-0")
 	c := &Checker{
 		ledgerNames:                ledgerNames,
 		ledgerPrefix:               prefix,

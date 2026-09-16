@@ -44,7 +44,7 @@ func TestGlobalState_LifecycleDeletion(t *testing.T) {
 	lc, exists := deleted.State.Lifecycle("L")
 	require.True(t, exists)
 	require.True(t, lc.Deleted)
-	require.Equal(t, 1, deleted.State.Ledger("L").Txs().Len(), "tombstone-backed metadata operations retain ledger state")
+	require.Zero(t, deleted.State.Ledger("L").Txs().Len())
 	require.Equal(t, before, created.State.Fingerprint())
 	require.Equal(t, 1, created.State.Ledger("L").Txs().Len())
 	rejected := deleted.State.Apply(bulkOf(oracletest.TxReq("world", "a:2", "USD", 1)))

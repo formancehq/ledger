@@ -230,24 +230,25 @@ func runWorker(
 		// field types), and the two list queries (filtered, paginated, ordered
 		// windows over accounts and transactions). Reads validate against the
 		// in-flight bulk set, exercising cross-node freshness without needing
-		// quiescence.
+		// quiescence. Account and transaction queries receive extra slots because
+		// together they must exercise every builtin and declared metadata index.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
 				runTransactionRead(ctx, client, c)
 			case 2:
 				runSchemaRead(ctx, client, c)
-			case 3:
+			case 3, 4:
 				runAccountQuery(ctx, client, c)
-			case 4:
+			case 5, 6, 7:
 				runTransactionQuery(ctx, client, c)
-			case 5:
+			case 8:
 				runReplay(ctx, client, c)
-			case 6:
+			case 9:
 				runLogQuery(ctx, client, c)
-			case 7:
+			case 10:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
 			default:

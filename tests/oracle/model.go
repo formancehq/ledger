@@ -867,6 +867,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
+	retired := map[string]struct{}{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -893,6 +894,9 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			orders = append(orders, oc)
 			if !oc.OK {
 				return ApplyResult{Reason: oc.Reason, State: g, Orders: orders}
+			}
+			if req.GetDeleteLedger() != nil {
+				retired[name] = struct{}{}
 			}
 
 			continue
@@ -988,6 +992,9 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		next.ledgers[name] = ls
+	}
+	for name := range retired {
+		delete(next.ledgers, name)
 	}
 
 	// Freeze the committed outcome so a later bulk with this key replays it. Only
