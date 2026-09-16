@@ -259,12 +259,19 @@ func runWorker(
 		if len(bulk.Requests) == 0 {
 			continue
 		}
+		checkpointCreate := isCheckpointCreate(bulk)
+		if checkpointCreate {
+			c.checkpointCreateMu.Lock()
+		}
 
 		c.mu.Lock()
 		// A pause committed while generating: back out without dispatching,
 		// so no bulk commits between the drain and the backup.
 		if c.paused {
 			c.mu.Unlock()
+			if checkpointCreate {
+				c.checkpointCreateMu.Unlock()
+			}
 			continue
 		}
 		// Occasionally tag this bulk with an idempotency key — reusing a committed
@@ -272,14 +279,14 @@ func runWorker(
 		// replayable original) — to exercise the server's dedup.
 		c.stampIdempotency(&bulk)
 		var predictedCheckpointID uint64
-		if len(bulk.Requests) == 1 && bulk.Requests[0].GetCreateQueryCheckpoint() != nil {
+		if checkpointCreate {
 			predictedCheckpointID = c.modelState.NextQueryCheckpointID()
 		}
 		ticket := c.registerInflight(bulk)
 		c.mu.Unlock()
 
 		var probeDone <-chan struct{}
-		if len(bulk.Requests) == 1 && bulk.Requests[0].GetCreateQueryCheckpoint() != nil {
+		if checkpointCreate {
 			start := make(chan struct{})
 			registered := make(chan struct{})
 			done := make(chan struct{})
@@ -347,12 +354,25 @@ func runWorker(
 			err:           err,
 			observeTicket: c.ticketSeq.Load(),
 		}
+		if checkpointCreate {
+			obs.processed = make(chan struct{})
+		}
 
 		// Block on a full channel — natural back-pressure.
 		select {
 		case <-ctx.Done():
+			if checkpointCreate {
+				c.checkpointCreateMu.Unlock()
+			}
 			return
 		case c.incoming <- obs:
+		}
+		if checkpointCreate {
+			select {
+			case <-ctx.Done():
+			case <-obs.processed:
+			}
+			c.checkpointCreateMu.Unlock()
 		}
 	}
 }

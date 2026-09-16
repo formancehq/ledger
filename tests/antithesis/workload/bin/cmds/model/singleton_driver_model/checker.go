@@ -20,6 +20,9 @@ import (
 // Expensive validation searches run on a snapshot taken under mu, not under it.
 type Checker struct {
 	mu sync.Mutex
+	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
+	// create transition until that transition has drained into modelState.
+	checkpointCreateMu sync.Mutex
 
 	// ledgerNames is the fleet the generator and reads draw from. Immutable.
 	ledgerNames []string
@@ -90,6 +93,11 @@ type observation struct {
 	resp          *servicepb.ApplyResponse
 	err           error
 	observeTicket uint64
+	processed     chan struct{}
+}
+
+func isCheckpointCreate(bulk oracle.Bulk) bool {
+	return len(bulk.Requests) == 1 && bulk.Requests[0].GetCreateQueryCheckpoint() != nil
 }
 
 // Buffered observation awaiting in-order replay. minSeq = the bulk's smallest

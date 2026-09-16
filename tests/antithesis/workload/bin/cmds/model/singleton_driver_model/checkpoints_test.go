@@ -1,6 +1,7 @@
 package main
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -8,6 +9,55 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCheckpointCreateGateSerializesPredictedIDProbes(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	create := bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
+	type dispatch struct {
+		ticket    uint64
+		predicted uint64
+		processed chan struct{}
+	}
+	dispatched := make(chan dispatch)
+	var workers sync.WaitGroup
+	workers.Add(2)
+	dispatchCreate := func() {
+		defer workers.Done()
+		c.checkpointCreateMu.Lock()
+		defer c.checkpointCreateMu.Unlock()
+
+		c.mu.Lock()
+		d := dispatch{
+			ticket:    c.registerInflight(create),
+			predicted: c.modelState.NextQueryCheckpointID(),
+			processed: make(chan struct{}),
+		}
+		c.mu.Unlock()
+		dispatched <- d
+		<-d.processed
+	}
+
+	go dispatchCreate()
+	go dispatchCreate()
+
+	first := <-dispatched
+	require.Equal(t, uint64(1), first.predicted)
+	c.handleObservation(observation{
+		ticket: first.ticket, bulk: create, resp: checkpointCreateResponse(1, 1),
+		observeTicket: first.ticket, processed: first.processed,
+	})
+
+	second := <-dispatched
+	require.Equal(t, uint64(2), second.predicted,
+		"the second probe must bind after the first create drains")
+	c.handleObservation(observation{
+		ticket: second.ticket, bulk: create, resp: checkpointCreateResponse(2, 2),
+		observeTicket: second.ticket, processed: second.processed,
+	})
+	workers.Wait()
+}
 
 func TestCheckpointCapturesCommitOrderInsteadOfResponseOrder(t *testing.T) {
 	t.Parallel()
