@@ -3,6 +3,7 @@ package dal
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -15,11 +16,29 @@ import (
 // *WriteSession deliberately does NOT implement this interface: hot-path
 // writers must not read from Pebble.
 //
-// *Store holds dbMu.RLock only for the duration of the Get call, which is safe
-// because Get is atomic and short-lived.
+// The returned io.Closer owns the Pebble resources backing the returned bytes,
+// which are only valid until it is closed. On an SST-backed lookup that
+// resource is a live *pebble.Iterator holding a file cache reference.
+//
+// *Store is the exception. It holds dbMu.RLock only for the duration of the
+// call, so it must not hand that resource back: the lock would already be
+// released while the reference is still outstanding, letting Close or
+// RestoreCheckpoint close the DB underneath it. Pebble then panics in
+// shard.Close with "element has outstanding references" (EN-2072). (*Store).Get
+// therefore copies the value and releases Pebble's closer before returning.
+//
+// Callers that need iterators, or a resource that must outlive the call, use
+// NewReadHandle()/NewDirectReadHandle() — those hold the lock for their whole
+// lifetime.
 type PebbleGetter interface {
 	Get(key []byte) ([]byte, io.Closer, error)
 }
+
+// noopCloser is returned by (*Store).Get, which owns no Pebble resource by the
+// time it returns. Callers may close it unconditionally.
+type noopCloser struct{}
+
+func (noopCloser) Close() error { return nil }
 
 // PebbleReader provides full read access (point lookups + iteration).
 // Implemented by *pebble.DB, *pebble.Snapshot, and *ReadHandle.
@@ -39,6 +58,13 @@ type PebbleReader interface {
 // ReadHandle provides read access to the store, optionally via a Pebble snapshot.
 // It holds dbMu.RLock for its lifetime to prevent RestoreCheckpoint/Close from
 // closing the DB while reads are in progress. The caller must call Close() when done.
+//
+// The handle does not track what it hands out: every iterator and every Get
+// closer obtained through it must be closed BEFORE Close(). Closing a snapshot
+// does not close iterators opened on it, so a child outliving the handle
+// outlives the lock too, and the DB can then be closed underneath it — which
+// panics inside Pebble (EN-2072). Holding the lock for the handle's lifetime
+// only protects children that respect that ordering.
 //
 // Two modes:
 //   - Snapshot mode (NewReadHandle): point-in-time consistency via *pebble.Snapshot.
@@ -110,6 +136,11 @@ func (h *ReadHandle) Close() error {
 
 // Get performs a raw key lookup on the underlying Pebble database.
 // This makes *Store implement PebbleGetter.
+//
+// The value is copied and Pebble's own closer released while dbMu.RLock is
+// still held, so the returned closer owns nothing and the bytes stay valid
+// after the DB is closed. See the PebbleGetter contract for why *Store, unlike
+// the other implementations, must not return Pebble's closer.
 func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
@@ -119,7 +150,21 @@ func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 		return nil, nil, ErrStoreClosed
 	}
 
-	return db.Get(key)
+	val, closer, err := db.Get(key)
+	if err != nil {
+		// Includes pebble.ErrNotFound, which callers match on; propagate
+		// unwrapped. Pebble returns no closer alongside an error.
+		return nil, nil, err
+	}
+
+	cp := make([]byte, len(val))
+	copy(cp, val)
+
+	if err := closer.Close(); err != nil {
+		return nil, nil, fmt.Errorf("closing point lookup: %w", err)
+	}
+
+	return cp, noopCloser{}, nil
 }
 
 // NewBoundedIter creates a Pebble iterator bounded by [lower, upper).

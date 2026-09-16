@@ -706,16 +706,27 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 }
 
 // closeDBSafe closes a Pebble DB, recovering from panics.
-// In Pebble v2.1.x, DB.Close can panic with "element has outstanding
-// references" in genericcache/shard.Close. The root cause is a race in
-// Pebble's internal collectTableStats goroutine: it uses
-// context.Background() (table_stats.go:96) and can hold FileCache refs
-// after DB.Close releases d.mu and before it calls fileCache.Close().
-// Fixed upstream (master only, not released in any v2.1.x tag as of v2.1.6):
-//   - https://github.com/cockroachdb/pebble/pull/5813
-//   - https://github.com/cockroachdb/pebble/pull/5854
+// In Pebble v2.1.x, DB.Close panics with "element has outstanding references"
+// in genericcache/shard.Close when a file cache reference is still held.
 //
-// Recovering here is safe because the old data is being replaced.
+// This is caused by a caller retaining a Pebble read resource past the lock
+// that protects the DB's lifetime, not by anything internal to Pebble. The
+// known instance was (*Store).Get handing back Pebble's closer — a live
+// *pebble.Iterator on an SST-backed lookup — after releasing dbMu.RLock
+// (EN-2072); see the PebbleGetter contract in reader.go.
+//
+// An earlier version of this comment blamed a race in Pebble's
+// collectTableStats goroutine. That explanation is wrong: DB.Close waits on
+// d.mu.tableStats.loading (db.go:1716) and workers gate on d.closed
+// (table_stats.go:78), so a stats worker can neither start after close nor
+// still be running when the file cache is closed. The upstream PRs it cited
+// (5813, 5854) fix unrelated problems — a shutdown hang and a leaked
+// range-deletion iterator holding block memory, not a file cache reference.
+//
+// This remains a containment net, not a fix: a recovered panic leaves the rest
+// of DB.Close unrun (objProvider.Close and the checks after it), and DB.Close
+// accumulates errors as it goes, so reaching the panic does not prove the
+// earlier steps succeeded. Fix the offending caller; do not rely on this.
 func closeDBSafe(db *pebble.DB) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1337,8 +1348,8 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		}
 
 		if closeErr := closeDBSafe(oldDB); closeErr != nil {
-			// Pebble v2.1.x can panic here due to an internal race in
-			// collectTableStats (see closeDBSafe). Log and continue — the
+			// Pebble v2.1.x panics here if a caller still holds a read
+			// resource on this DB (see closeDBSafe). Log and continue — the
 			// old data is stale and being replaced. The rename in step 3
 			// still works regardless of close cleanliness.
 			s.logger.WithFields(map[string]any{
