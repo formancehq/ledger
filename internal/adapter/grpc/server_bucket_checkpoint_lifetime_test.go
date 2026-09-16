@@ -47,7 +47,7 @@ func TestOpenCheckpointStoresPinsFilesUntilRelease(t *testing.T) {
 	require.NoError(t, readBatch.Commit())
 	readIndexDir := store.QueryCheckpointReadIndexDir(checkpointID)
 	require.NoError(t, liveReadStore.CreateCheckpoint(readIndexDir))
-	require.NoError(t, readstore.MarkCheckpointReady(readIndexDir))
+	require.NoError(t, dal.MarkCheckpointReady(readIndexDir))
 
 	server := &BucketServiceServerImpl{logger: logger, store: store}
 	mainCheckpoint, readCheckpoint, cleanup, err := server.openCheckpointStores(t.Context(), checkpointID)
