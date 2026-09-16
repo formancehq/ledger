@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"context"
+	"time"
 
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -11,6 +12,26 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+type queryProfileClockKey struct{}
+
+func queryProfileClockUnaryInterceptor() ggrpc.UnaryServerInterceptor {
+	return queryProfileClockUnaryInterceptorAt(time.Now)
+}
+
+func queryProfileClockUnaryInterceptorAt(now func() time.Time) ggrpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, _ *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
+		return handler(context.WithValue(ctx, queryProfileClockKey{}, now()), req)
+	}
+}
+
+func queryProfileClockStreamInterceptor() ggrpc.StreamServerInterceptor {
+	return func(srv any, stream ggrpc.ServerStream, _ *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
+		ctx := context.WithValue(stream.Context(), queryProfileClockKey{}, time.Now())
+
+		return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
+	}
+}
 
 func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {

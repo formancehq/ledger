@@ -34,6 +34,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
@@ -146,6 +147,26 @@ func TestAuthInterceptorAllowsFixedScopeAndEnrichesContext(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, server.barrierCalls.Load())
 	require.True(t, server.barrierHasScope.Load())
+}
+
+func TestQueryProfileClockIncludesInterceptorWork(t *testing.T) {
+	t.Parallel()
+
+	const interceptorDelay = time.Hour
+	var profile *query.QueryProfile
+
+	clock := queryProfileClockUnaryInterceptorAt(func() time.Time {
+		return time.Now().Add(-interceptorDelay)
+	})
+	_, err := clock(context.Background(), nil, &ggrpc.UnaryServerInfo{}, func(ctx context.Context, _ any) (any, error) {
+		_, profile = withTransportQueryProfile(ctx)
+		profile.Finish()
+
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.NotNil(t, profile)
+	require.GreaterOrEqual(t, profile.ServerDuration, interceptorDelay)
 }
 
 func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, servicepb.BucketServiceClient) {
