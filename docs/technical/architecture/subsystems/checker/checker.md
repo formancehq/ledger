@@ -153,6 +153,14 @@ flowchart TB
     P --> K
 ```
 
+`compareDefaultEnforcementModes` verifies the live
+`LedgerInfo.default_enforcement_mode` projection against the mode derived from
+`CreateLedger.default_enforcement_mode` and every subsequent audited
+`UpdateDefaultEnforcementMode` log. The pass skips soft-deleted tombstones, whose
+live projection was removed by the audited ledger deletion, and reports
+`DEFAULT_ENFORCEMENT_MODE_MISMATCH` when the stored policy differs. This is a
+governance-truth check: the field decides whether unmatched accounts are rejected.
+
 All non-chain passes are independent of each other (each replays the subset of orders it needs) and can be reordered without changing semantics — they share only the Pebble snapshot, the `expectedIdempotency` map, and the signing expectation the chain walk accumulates. `compareReverseMapOrphans` is the one pass whose *data* comes from outside that snapshot: it takes its own read-only snapshot of the peer readstore, and uses the main-store snapshot plus the replay-derived schema and live-ledger sets as its oracle.
 
 ## Error event shape
@@ -197,6 +205,7 @@ enum CheckStoreErrorType {
   CLUSTER_POLICY_MISMATCH     = 24;
   CLUSTER_POLICY_VERIFICATION_INCOMPLETE = 25;
   QUERY_CHECKPOINT_MISMATCH   = 26;
+  DEFAULT_ENFORCEMENT_MODE_MISMATCH = 27;
 }
 ```
 

@@ -329,9 +329,9 @@ func (s *replayStore) SetTransactionReference(ledgerName, reference string, txID
 	return s.db.Set(key, buf[:], pebble.NoSync)
 }
 
-// SetDefaultEnforcementMode is a no-op in the checker: the enforcement mode
-// lives on LedgerInfo, not in the checker's attribute merge store. Only the
-// restore replay's writer folds it onto the rebuilt LedgerInfo.
+// SetDefaultEnforcementMode is a no-op here because the enforcement mode lives
+// on LedgerInfo, not in the attribute merge store. Checker.Check folds the
+// update into its expectedEnforcementModes map and compares it separately.
 func (s *replayStore) SetDefaultEnforcementMode(_ string, _ commonpb.ChartEnforcementMode) error {
 	return nil
 }

@@ -244,6 +244,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
 		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
+		// Expected default account-type enforcement per ledger, derived from
+		// CreateLedger.default_enforcement_mode and later audited updates.
+		// Compared against LedgerInfo.DefaultEnforcementMode.
+		expectedEnforcementModes = make(map[string]commonpb.ChartEnforcementMode)
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, advanced per replayed log, then topped up with the
 		// chain-bound audit-order effects (mirror fill-gap advances, numscript
@@ -375,6 +379,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
 					expectedSchemas[name] = payload.CreateLedger.GetMetadataSchema().CloneVT()
+					expectedEnforcementModes[name] = payload.CreateLedger.GetDefaultEnforcementMode()
 					expectedBoundaries[name] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
@@ -383,6 +388,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
 					delete(expectedSchemas, name)
+					delete(expectedEnforcementModes, name)
 					delete(rawLedgerTypes, name)
 					delete(ledgerAccountTypes, name)
 
@@ -534,6 +540,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								}
 								delete(expectedIndexes, key)
 							}
+						case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
+							if update := d.UpdatedDefaultEnforcementMode; update != nil {
+								expectedEnforcementModes[ledgerName] = update.GetEnforcementMode()
+							}
 						}
 
 						checkReversionInvariants(ledgerName, seq, payload.Apply.GetLog().GetData(), ledgerKnownTxIDs, ledgerRevertedTxIDs, callback)
@@ -655,6 +665,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if err := c.compareAccountTypes(ctx, snap, rawLedgerTypes, callback); err != nil {
+		return err
+	}
+
+	if err := c.compareDefaultEnforcementModes(ctx, snap, expectedEnforcementModes, callback); err != nil {
 		return err
 	}
 
@@ -4200,6 +4214,38 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 			callback(errorEvent(
 				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 				fmt.Sprintf("ledger %q account types diverge from the audit-derived declarations", name),
+				0, name, "", "",
+			))
+		}
+	}
+
+	return nil
+}
+
+// compareDefaultEnforcementModes verifies the persisted policy that controls
+// whether unmatched accounts are rejected. The expectation is reconstructed
+// from the ledger's creation log and subsequent audited mode-update logs.
+func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.PebbleReader, expected map[string]commonpb.ChartEnforcementMode, callback func(*servicepb.CheckStoreEvent)) error {
+	ledgerCursor, err := query.ReadLedgers(ctx, reader)
+	if err != nil {
+		return fmt.Errorf("reading ledgers for default enforcement mode verification: %w", err)
+	}
+
+	ledgers, err := cursor.Collect(ledgerCursor)
+	if err != nil {
+		return fmt.Errorf("collecting ledgers for default enforcement mode verification: %w", err)
+	}
+
+	for _, info := range ledgers {
+		if info.GetDeletedAt() != nil {
+			continue
+		}
+
+		name := info.GetName()
+		if mode, ok := expected[name]; ok && mode != info.GetDefaultEnforcementMode() {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH,
+				fmt.Sprintf("ledger %q default enforcement mode diverges from the audit-derived policy", name),
 				0, name, "", "",
 			))
 		}

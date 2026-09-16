@@ -180,6 +180,11 @@ const (
 	// back point-in-time query reads and the FSM's live-count cap, so a tampered
 	// row changes which checkpoints exist. See EN-1501.
 	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH CheckStoreErrorType = 26
+	// Emitted when LedgerInfo.default_enforcement_mode differs from the policy
+	// re-derived from CreateLedger and UpdateDefaultEnforcementMode logs. This
+	// persisted field controls whether unmatched accounts are accepted, so a
+	// divergence can change write admission semantics.
+	CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH CheckStoreErrorType = 27
 )
 
 // Enum value maps for CheckStoreErrorType.
@@ -212,6 +217,7 @@ var (
 		24: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH",
 		25: "CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE",
 		26: "CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH",
+		27: "CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH",
 	}
 	CheckStoreErrorType_value = map[string]int32{
 		"CHECK_STORE_ERROR_TYPE_UNSPECIFIED":                            0,
@@ -241,6 +247,7 @@ var (
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH":                24,
 		"CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE": 25,
 		"CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH":              26,
+		"CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH":      27,
 	}
 )
 
@@ -9304,7 +9311,7 @@ const file_bucket_proto_rawDesc = "" +
 	"\x12entities_with_null\x18\x05 \x01(\x06R\x10entitiesWithNull\"\x10\n" +
 	"\x0eBarrierRequest\"4\n" +
 	"\x0fBarrierResponse\x12!\n" +
-	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xa9\n" +
+	"\fcommit_index\x18\x01 \x01(\x06R\vcommitIndex*\xe7\n" +
 	"\n" +
 	"\x13CheckStoreErrorType\x12&\n" +
 	"\"CHECK_STORE_ERROR_TYPE_UNSPECIFIED\x10\x00\x12(\n" +
@@ -9334,7 +9341,8 @@ const file_bucket_proto_rawDesc = "" +
 	"6CHECK_STORE_ERROR_TYPE_SIGNING_VERIFICATION_INCOMPLETE\x10\x17\x122\n" +
 	".CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH\x10\x18\x12A\n" +
 	"=CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE\x10\x19\x124\n" +
-	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a*W\n" +
+	"0CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH\x10\x1a\x12<\n" +
+	"8CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH\x10\x1b*W\n" +
 	"\x12PatternSegmentType\x12\x1e\n" +
 	"\x1aPATTERN_SEGMENT_TYPE_FIXED\x10\x00\x12!\n" +
 	"\x1dPATTERN_SEGMENT_TYPE_VARIABLE\x10\x01*\x9c\x01\n" +
