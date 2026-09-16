@@ -1891,6 +1891,132 @@ func TestResolveBalances(t *testing.T) {
 	}
 }
 
+// Bug 1: two DISTINCT resources resolving to the same ACCOUNT. The variable
+// $acc and the literal @src are separate resources, but both resolve to "src",
+// so registering balance requests under the account address dropped one.
+func TestBalanceVarsOnAliasedAccountResources(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		account $acc
+		monetary $a = balance($acc, USD)
+		monetary $b = balance(@src, USD)
+	}
+
+	send $a (
+		source = @world
+		destination = @dst1
+	)
+
+	send $b (
+		source = @world
+		destination = @dst2
+	)`)
+	tc.setVarsFromJSON(t, `{"acc": "src"}`)
+	tc.setBalance("src", "USD", 10)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst1",
+			},
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst2",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
+// Bug 2: two DISTINCT resources resolving to the same ASSET. The variable $ass
+// and the literal USD are separate resources naming one asset on one account.
+func TestBalanceVarsOnAliasedAssetResources(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		asset $ass
+		monetary $a = balance(@src, $ass)
+		monetary $b = balance(@src, USD)
+	}
+
+	send $a (
+		source = @world
+		destination = @dst1
+	)
+
+	send $b (
+		source = @world
+		destination = @dst2
+	)`)
+	tc.setVarsFromJSON(t, `{"ass": "USD"}`)
+	tc.setBalance("src", "USD", 10)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst1",
+			},
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst2",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
+// Bug 3: TWO ASSETS needed for the SAME account. Keying balance requests by
+// account address allowed only one asset per account to be requested at all.
+func TestBalanceVarsOnSameAccountDifferentAssets(t *testing.T) {
+	tc := NewTestCase()
+	tc.compile(t, `vars {
+		monetary $a = balance(@src, USD)
+		monetary $b = balance(@src, EUR)
+	}
+
+	send $a (
+		source = @world
+		destination = @dst1
+	)
+
+	send $b (
+		source = @world
+		destination = @dst2
+	)`)
+	tc.setBalance("src", "USD", 10)
+	tc.setBalance("src", "EUR", 20)
+	tc.expected = CaseResult{
+		Printed: []machine.Value{},
+		Postings: []Posting{
+			{
+				Asset:       "USD",
+				Amount:      machine.NewMonetaryInt(10),
+				Source:      "world",
+				Destination: "dst1",
+			},
+			{
+				Asset:       "EUR",
+				Amount:      machine.NewMonetaryInt(20),
+				Source:      "world",
+				Destination: "dst2",
+			},
+		},
+		Error: nil,
+	}
+	test(t, tc)
+}
+
 func TestMachine(t *testing.T) {
 	p, err := compiler.Compile(`
 		vars {
