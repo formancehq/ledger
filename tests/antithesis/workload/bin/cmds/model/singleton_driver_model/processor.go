@@ -87,6 +87,7 @@ func (c *Checker) handleObservation(obs observation) {
 	defer c.mu.Unlock()
 
 	c.removeInflight(obs.ticket)
+	defer c.tryDrain()
 
 	// Transient gRPC errors leave the model untouched — the bulk
 	// effectively didn't happen. Shutdown errors (ctx cancelled / deadline
@@ -94,6 +95,7 @@ func (c *Checker) handleObservation(obs observation) {
 	// unknown but we're tearing down, so there's nothing to validate.
 	if obs.err != nil && (internal.IsTransient(obs.err) || isShutdownError(obs.err)) {
 		dbg("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
+		markObservationProcessed(obs)
 		return
 	}
 
@@ -104,6 +106,7 @@ func (c *Checker) handleObservation(obs observation) {
 		dbg("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
 		markModelOutcomeVerified()
+		markObservationProcessed(obs)
 		return
 	}
 
@@ -112,11 +115,11 @@ func (c *Checker) handleObservation(obs observation) {
 		// Success with no committed log is impossible under the model.
 		c.validateEmptyCommit(obs.bulk)
 		markModelOutcomeVerified()
+		markObservationProcessed(obs)
 		return
 	}
 
 	c.insertPending(&pendingObservation{minSeq: minSeq, obs: obs})
-	c.tryDrain()
 }
 
 // Drains buffered observations in log-sequence order while safe: the head drains
@@ -136,6 +139,13 @@ func (c *Checker) tryDrain() {
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
 		markModelOutcomeVerified()
+		markObservationProcessed(head.obs)
+	}
+}
+
+func markObservationProcessed(obs observation) {
+	if obs.processed != nil {
+		close(obs.processed)
 	}
 }
 

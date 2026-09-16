@@ -37,6 +37,39 @@ import (
 // with different continuations (e.g. a duplicate-effect in-flight bulk landing
 // on the same state as a pending one) must be explored under each.
 func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState) bool) {
+	c.walkCandidateStates(maxTicket, visit, nil)
+}
+
+// checkpointCreationMatches checks a served predicted checkpoint against the
+// state immediately before the candidate create transition that assigned id.
+// Caller holds c.mu.
+func (c *Checker) checkpointCreationMatches(maxTicket, id uint64, match func(oracle.GlobalState) bool) bool {
+	if snapshot, ok := c.checkpoints[id]; ok && match(snapshot.state) {
+		return true
+	}
+	if snapshot, ok := c.deletedCheckpointSnapshots[id]; ok && match(snapshot.state) {
+		return true
+	}
+
+	matched := false
+	c.walkCandidateStates(maxTicket, func(oracle.GlobalState) bool { return matched }, func(before oracle.GlobalState, bulk oracle.Bulk, result oracle.ApplyResult) bool {
+		for i, request := range bulk.Requests {
+			if request.GetCreateQueryCheckpoint() != nil && i < len(result.Orders) && result.Orders[i].CheckpointID == id {
+				matched = match(before)
+
+				return matched
+			}
+		}
+
+		return false
+	})
+
+	return matched
+}
+
+// walkCandidateStates enumerates candidate states and optionally observes each
+// successful transition. Caller holds c.mu.
+func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.GlobalState) bool, transition func(oracle.GlobalState, oracle.Bulk, oracle.ApplyResult) bool) {
 	// Only operations dispatched no later than maxTicket (the observation's
 	// high-water) can precede it; one dispatched after the observation's response
 	// cannot have committed before it, so folding it would invent a state the
@@ -88,6 +121,9 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 		// Advance the pending prefix by one, in minSeq order.
 		if pIdx < len(pending) {
 			if res := base.Apply(pending[pIdx]); res.OK {
+				if transition != nil && transition(base, pending[pIdx], res) {
+					return true
+				}
 				if rec(res.State, pIdx+1, rem) {
 					return true
 				}
@@ -104,6 +140,9 @@ func (c *Checker) candidateBases(maxTicket uint64, visit func(oracle.GlobalState
 			if !res.OK {
 				// Could not have committed at this point — not a predecessor.
 				continue
+			}
+			if transition != nil && transition(base, inflight[idx], res) {
+				return true
 			}
 
 			if rec(res.State, pIdx, rem&^(1<<idx)) {

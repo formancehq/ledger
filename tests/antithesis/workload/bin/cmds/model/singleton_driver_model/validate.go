@@ -81,6 +81,10 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	}
 
 	logs := resp.GetLogs()
+	if !checkpointOrdersMatch(bulk, res.Orders, logs) {
+		assert.Unreachable("singleton_driver_model: checkpoint commit outside model", internal.Details{"kinds": requestKinds(bulk), "logSeqs": logSeqs(logs)})
+		return
+	}
 	if len(logs) != len(res.Orders) {
 		assert.Unreachable("singleton_driver_model: committed log count mismatch", internal.Details{"expected": len(res.Orders), "actual": len(logs)})
 		return
@@ -387,6 +391,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	// sequences it committed at) so runReplay can re-send it and check the server
 	// replays this same outcome.
 	c.rememberReplayable(bulk, resp.GetLogs())
+	c.recordCheckpoints(logs)
 }
 
 // learnTxStamps folds the server-stamped transaction dates from a committed
@@ -453,6 +458,8 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 		// exercised — if one stops firing, the generator has stopped emitting that
 		// shape and the branch is no longer tested.
 		switch reason {
+		case domain.ErrReasonCheckpointLimitReached:
+			noteCheckpointCoverage(checkpointLimitCoverage)
 		case domain.ErrReasonInsufficientFunds:
 			assert.Reachable("singleton_driver_model: insufficient-funds rejection exercised", internal.Details{})
 		case domain.ErrReasonTransactionReferenceConflict:

@@ -20,6 +20,9 @@ import (
 // Expensive validation searches run on a snapshot taken under mu, not under it.
 type Checker struct {
 	mu sync.Mutex
+	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
+	// create transition until that transition has drained into modelState.
+	checkpointCreateMu sync.Mutex
 
 	// ledgerNames is the fleet the generator and reads draw from. Immutable.
 	ledgerNames []string
@@ -50,6 +53,11 @@ type Checker struct {
 	// of the next bulk to validate, and the base candidateBases folds the
 	// in-flight set onto.
 	modelState oracle.GlobalState
+
+	// Frozen business states are published only as their creation drains.
+	checkpoints                map[uint64]checkpointSnapshot
+	deletedCheckpoints         []uint64
+	deletedCheckpointSnapshots map[uint64]checkpointSnapshot
 
 	// retypeObs tracks each open retype window's per-node closure progress —
 	// see retypeObservation. Keyed by retypeObsKey. Guarded by mu.
@@ -85,6 +93,11 @@ type observation struct {
 	resp          *servicepb.ApplyResponse
 	err           error
 	observeTicket uint64
+	processed     chan struct{}
+}
+
+func isCheckpointCreate(bulk oracle.Bulk) bool {
+	return len(bulk.Requests) == 1 && bulk.Requests[0].GetCreateQueryCheckpoint() != nil
 }
 
 // Buffered observation awaiting in-order replay. minSeq = the bulk's smallest
@@ -128,12 +141,14 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 	}
 
 	return &Checker{
-		ledgerNames: ledgerNames,
-		inflight:    map[uint64]oracle.Bulk{},
-		reads:       map[uint64]struct{}{},
-		incoming:    make(chan observation, incomingBuffer),
-		modelState:  modelState,
-		retypeObs:   map[string]*retypeObservation{},
+		ledgerNames:                ledgerNames,
+		inflight:                   map[uint64]oracle.Bulk{},
+		reads:                      map[uint64]struct{}{},
+		incoming:                   make(chan observation, incomingBuffer),
+		modelState:                 modelState,
+		checkpoints:                map[uint64]checkpointSnapshot{},
+		deletedCheckpointSnapshots: map[uint64]checkpointSnapshot{},
+		retypeObs:                  map[string]*retypeObservation{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}

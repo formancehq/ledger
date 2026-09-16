@@ -172,6 +172,9 @@ func sequencesEqual(a, b []uint64) bool {
 // stay separate because crossCheckCommit needs a distinct assert callsite per
 // field (Antithesis catalogues by callsite) while a replay diverges as a whole.
 func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*commonpb.Log) bool {
+	if !checkpointOrdersMatch(bulk, orders, logs) {
+		return false
+	}
 	if len(logs) != len(orders) || len(bulk.Requests) != len(orders) {
 		return false
 	}
