@@ -440,13 +440,8 @@ func (p *parseVisitor) VisitSetAccountMeta(ctx *parser.SetAccountMetaContext) *C
 }
 
 func (p *parseVisitor) VisitSaveFromAccount(c *parser.SaveFromAccountContext) *CompileError {
-	var (
-		typ     machine.Type
-		addr    *machine.Address
-		compErr *CompileError
-	)
 	if monAll := c.GetMonAll(); monAll != nil {
-		typ, addr, compErr = p.VisitExpr(monAll.GetAsset(), false)
+		typ, addr, compErr := p.VisitExpr(monAll.GetAsset(), false)
 		if compErr != nil {
 			return compErr
 		}
@@ -454,8 +449,13 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser.SaveFromAccountContext) *C
 			return LogicError(c, fmt.Errorf(
 				"save monetary all from account: the first expression should be of type 'asset' instead of '%s'", typ))
 		}
+		p.PushAddress(*addr)
 	} else if mon := c.GetMon(); mon != nil {
-		typ, addr, compErr = p.VisitExpr(mon, false)
+		// Push the monetary rather than taking its address. VisitExpr only
+		// emits an arithmetic operator on the push path, and the address it
+		// returns for an arithmetic expression is the left operand's — so
+		// taking the address here silently discarded the right operand.
+		typ, _, compErr := p.VisitExpr(mon, true)
 		if compErr != nil {
 			return compErr
 		}
@@ -464,9 +464,8 @@ func (p *parseVisitor) VisitSaveFromAccount(c *parser.SaveFromAccountContext) *C
 				"save monetary from account: the first expression should be of type 'monetary' instead of '%s'", typ))
 		}
 	}
-	p.PushAddress(*addr)
 
-	typ, addr, compErr = p.VisitExpr(c.GetAcc(), false)
+	typ, addr, compErr := p.VisitExpr(c.GetAcc(), false)
 	if compErr != nil {
 		return compErr
 	}
