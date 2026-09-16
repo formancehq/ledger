@@ -2316,6 +2316,20 @@ func TestSaveFromAccount(t *testing.T) {
 		test(t, tc)
 	})
 
+	t.Run("save negative monetary", func(t *testing.T) {
+		script := `
+			save [USD 10] - [USD 20] from @alice`
+		tc := NewTestCase()
+		tc.compile(t, script)
+		tc.setBalance("alice", "USD", 100)
+		tc.expected = CaseResult{
+			Printed:  []machine.Value{},
+			Postings: []Posting{},
+			Error:    &machine.ErrNegativeAmount{},
+		}
+		test(t, tc)
+	})
+
 	t.Run("save all and overdraft", func(t *testing.T) {
 		script := `
  			save [USD *] from @alice

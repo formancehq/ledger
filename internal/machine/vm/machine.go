@@ -447,6 +447,10 @@ func (m *Machine) tick() (bool, error) {
 			}
 
 		case machine.Monetary:
+			if v.Amount.Ltz() {
+				return true, machine.NewErrNegativeAmount(
+					"tried to save a negative amount: [%s %s]", string(v.Asset), v.Amount)
+			}
 			if balances, ok := m.Balances[a]; ok {
 				if balance, ok := balances[v.Asset]; ok {
 					balances[v.Asset] = balance.Sub(v.Amount)
