@@ -1752,6 +1752,29 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 	}
 }
 
+// cellHistoryExcluded preserves the historical exclusion contract: only
+// TRANSIENT cells are absent from account/source/destination transaction
+// mappings. Draining an EPHEMERAL cell removes current state but not the
+// transaction that performed the drain.
+func (s *LedgerState) cellHistoryExcluded(base *LedgerState, key VolumeKey, compiled []accounttype.CompiledType) bool {
+	vp, ok := s.volumes.Get(key)
+	if !ok {
+		return true
+	}
+
+	t := s.match(key.Address, compiled)
+	if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		return false
+	}
+
+	bv := base.vol(key)
+	if bv.Input.IsZero() && bv.Output.IsZero() {
+		return true
+	}
+
+	return vp.Input.Cmp(&vp.Output) == 0
+}
+
 // recordIndexedAddrs stamps every transaction this bulk appended (ids in
 // (firstNew-1, len(txs)]) with its account→tx index membership: for each
 // posting side, the (account, role) pair is indexed unless the posting's cell
@@ -1769,11 +1792,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 		rec.indexedAddrs = map[string]uint8{}
 
 		for _, p := range rec.postings {
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.cellHistoryExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
 			}
 
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.cellHistoryExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
 			}
 		}

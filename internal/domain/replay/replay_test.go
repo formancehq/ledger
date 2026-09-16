@@ -23,6 +23,10 @@ type writerStub struct {
 	purgedAccounts    []string
 }
 
+type livenessWriterStub struct{ writerStub }
+
+func (w *livenessWriterStub) AccountHasNonZeroVolume(string, string) (bool, error) { return false, nil }
+
 func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return nil }
 func (w *writerStub) GetVolume([]byte) (*raftcmdpb.VolumePair, error) { return nil, nil }
 func (w *writerStub) DeleteVolume([]byte) error                       { return nil }
@@ -112,6 +116,27 @@ func TestReplayLedgerLog_DefersExplicitAccountPurgeToProposalBoundary(t *testing
 
 	require.NoError(t, buffer.Flush(w, nil, nil))
 	require.Equal(t, []string{"ephemeral:1"}, w.purgedAccounts)
+}
+
+func TestReplayLedgerLogEmptyMetadataDoesNotCreatePurgeCandidate(t *testing.T) {
+	t.Parallel()
+
+	w := &livenessWriterStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"ephemeral": {Name: "ephemeral", Pattern: "ephemeral:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		}),
+	}
+	require.NoError(t, replay.ReplayLedgerLog(
+		"ledger", 1,
+		&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+			Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "ephemeral:1"}}},
+		}}},
+		nil, nil, w, map[string]map[string]*commonpb.AccountType{}, types, buffer,
+	))
+	require.NoError(t, buffer.Flush(w, types, nil))
+	require.Empty(t, w.purgedAccounts)
 }
 
 func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {

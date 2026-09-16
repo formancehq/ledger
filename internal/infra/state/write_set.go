@@ -341,12 +341,16 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		b.fsm.sentinelTracer.TraceVolumeUpdates(partResult.kept, partResult.transient, partResult.purged)
 	}
 
-	// Collect unique transient (account, asset) volumes per ledger for the
-	// AppliedProposal entry. Purged volumes are not aggregated here — the
-	// per-log subset is computed below via buildPurgedByLog and injected
-	// into each LedgerLog.purged_volumes.
-	if len(partResult.transient) > 0 {
-		b.transientVolumes = collectUniqueVolumes(partResult.transient)
+	// AppliedProposal carries every volume excluded from immutable history:
+	// steady-state transient cells plus grandfathered TRANSIENT rows deleted
+	// when they drain. The latter also appear in per-log PurgedVolumes for
+	// current-state removal; retaining them here distinguishes them from
+	// EPHEMERAL drains, whose transactions remain queryable.
+	if len(partResult.transient)+len(partResult.transientPurge) > 0 {
+		historyTransient := make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(partResult.transient)+len(partResult.transientPurge))
+		historyTransient = append(historyTransient, partResult.transient...)
+		historyTransient = append(historyTransient, partResult.transientPurge...)
+		b.transientVolumes = collectUniqueVolumes(historyTransient)
 	}
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
@@ -411,9 +415,12 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// Fresh slice each Merge: exposed via ApplyResult and read later by
 	// deduplicateVolumeUpdates, so it must not alias a reused buffer.
-	b.purgedVolumeKeys = make([]domain.VolumeKey, len(partResult.purged))
-	for i, purged := range partResult.purged {
-		b.purgedVolumeKeys[i] = purged.Key
+	b.purgedVolumeKeys = make([]domain.VolumeKey, 0, len(partResult.purged)+len(volumeDeletions))
+	for _, purged := range partResult.purged {
+		b.purgedVolumeKeys = append(b.purgedVolumeKeys, purged.Key)
+	}
+	for _, deletion := range volumeDeletions {
+		b.purgedVolumeKeys = append(b.purgedVolumeKeys, deletion.Key)
 	}
 
 	// Flush pending reversions to the authoritative in-memory bitset and

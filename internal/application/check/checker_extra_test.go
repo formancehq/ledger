@@ -54,8 +54,9 @@ func TestComparePurgedAccountProjections(t *testing.T) {
 	bob := domain.AccountKey{LedgerName: "ledger", Account: "bob"}
 	var events []*servicepb.CheckStoreEvent
 	comparePurgedAccountProjections(
-		map[domain.AccountKey]struct{}{alice: {}},
+		map[domain.AccountKey]uint64{alice: 42},
 		map[domain.AccountKey]struct{}{bob: {}},
+		map[string]uint64{"ledger": 42},
 		42,
 		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
 	)
@@ -65,7 +66,24 @@ func TestComparePurgedAccountProjections(t *testing.T) {
 	require.Contains(t, events[0].GetError().GetMessage()+events[1].GetError().GetMessage(), "bob")
 }
 
-func TestAccountPurgeProducesIndependentVolumeAndAccountProjections(t *testing.T) {
+func TestComparePurgedAccountProjectionsRejectsNonTerminalAnnotation(t *testing.T) {
+	t.Parallel()
+
+	account := domain.AccountKey{LedgerName: "ledger", Account: "alice"}
+	var events []*servicepb.CheckStoreEvent
+	comparePurgedAccountProjections(
+		map[domain.AccountKey]uint64{account: 41},
+		map[domain.AccountKey]struct{}{account: {}},
+		map[string]uint64{"ledger": 42},
+		42,
+		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
+	)
+
+	require.Len(t, events, 1)
+	require.Contains(t, events[0].GetError().GetMessage(), "terminal ledger log 42")
+}
+
+func TestAccountPurgeDoesNotBecomeVolumeExclusion(t *testing.T) {
 	t.Parallel()
 
 	rs := newTestReplayStore(t)
@@ -74,15 +92,9 @@ func TestAccountPurgeProducesIndependentVolumeAndAccountProjections(t *testing.T
 		Asset:      "USD",
 	}
 	require.NoError(t, rs.AddVolumeDelta(key.Bytes(), big.NewInt(1), big.NewInt(1)))
-	var collected []domain.VolumeKey
-	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(ledger, account, asset, color string) {
-		collected = append(collected, domain.VolumeKey{
-			AccountKey: domain.AccountKey{LedgerName: ledger, Account: account},
-			Asset:      asset,
-			Color:      color,
-		})
-	}))
-	require.Equal(t, []domain.VolumeKey{key}, collected)
+	collected := 0
+	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(_, _, _, _ string) { collected++ }))
+	require.Zero(t, collected)
 	require.Contains(t, rs.takePendingPurgedAccounts(), key.AccountKey)
 }
 

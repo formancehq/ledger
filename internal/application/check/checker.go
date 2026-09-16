@@ -292,7 +292,8 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// indirectly relies on, so a tampered cache cannot make a corrupted
 	// state look consistent.
 	stored := excludedVolumesSet{}
-	storedPurgedAccounts := make(map[domain.AccountKey]struct{})
+	storedPurgedAccounts := make(map[domain.AccountKey]uint64)
+	lastFreshLogByLedger := make(map[string]uint64)
 	addStored := func(ledger, account, asset, color string) {
 		set, exists := stored[ledger]
 		if !exists {
@@ -318,8 +319,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return err
 		}
 		pendingPurges := replay.takePendingPurgedAccounts()
-		comparePurgedAccountProjections(storedPurgedAccounts, pendingPurges, boundary, callback)
+		comparePurgedAccountProjections(storedPurgedAccounts, pendingPurges, lastFreshLogByLedger, boundary, callback)
 		clear(storedPurgedAccounts)
+		clear(lastFreshLogByLedger)
 
 		return nil
 	}
@@ -476,6 +478,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					}
 
 					if payload.Apply.GetLog() != nil && payload.Apply.GetLog().GetData() != nil {
+						lastFreshLogByLedger[ledgerName] = seq
 						verifySavedMetadataAgainstAuditedOrder(ledgerName, seq, payload.Apply.GetLog().GetData(), chainBound, callback)
 
 						// purged_accounts is an unhashed projection. Checker expectations
@@ -579,7 +582,13 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
 						}
 						for _, account := range payload.Apply.GetLog().GetPurgedAccounts() {
-							storedPurgedAccounts[domain.AccountKey{LedgerName: ledgerName, Account: account}] = struct{}{}
+							key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+							if prior, exists := storedPurgedAccounts[key]; exists {
+								callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+									fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
+									seq, ledgerName, account, ""))
+							}
+							storedPurgedAccounts[key] = seq
 						}
 					}
 				}
@@ -880,9 +889,16 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 	}
 }
 
-func comparePurgedAccountProjections(stored, derived map[domain.AccountKey]struct{}, boundary uint64, callback func(*servicepb.CheckStoreEvent)) {
-	for account := range stored {
+func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derived map[domain.AccountKey]struct{}, lastFreshLogByLedger map[string]uint64, boundary uint64, callback func(*servicepb.CheckStoreEvent)) {
+	for account, sequence := range stored {
 		if _, ok := derived[account]; ok {
+			if sequence == lastFreshLogByLedger[account.LedgerName] {
+				continue
+			}
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+				fmt.Sprintf("stored account-purge annotation for %q is on log %d instead of terminal ledger log %d at proposal boundary %d", account.Account, sequence, lastFreshLogByLedger[account.LedgerName], boundary),
+				sequence, account.LedgerName, account.Account, ""))
+
 			continue
 		}
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,

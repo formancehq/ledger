@@ -152,9 +152,10 @@ func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
 
 // volumePartitionResult holds the result of partitioning volume updates by persistence mode.
 type volumePartitionResult struct {
-	kept      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral + draining-transient
-	purged    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL or draining-TRANSIENT once back to zero balance
-	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // steady-state TRANSIENT — never written to Pebble
+	kept           []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral + draining-transient
+	purged         []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL or draining-TRANSIENT once back to zero balance
+	transient      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // steady-state TRANSIENT — never written to Pebble
+	transientPurge []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // grandfathered TRANSIENT rows deleted on drain
 }
 
 // partitionVolumes splits volume updates into kept, purged, and transient sets.
@@ -241,6 +242,7 @@ func (b *WriteSet) partitionVolumes(
 			if update.Old.IsDefined() && !isVolumePreloadZero(update.Old.Value()) {
 				if isVolumeZeroBalance(update.New) {
 					result.purged = append(result.purged, update)
+					result.transientPurge = append(result.transientPurge, update)
 				} else {
 					result.kept = append(result.kept, update)
 				}

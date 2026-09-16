@@ -369,6 +369,9 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	require.Len(t, result.purged, 2)
 	require.Equal(t, "staging:rebalanced", result.purged[0].Key.Account)
 	require.Equal(t, "staging:stranded", result.purged[1].Key.Account)
+	require.Len(t, result.transientPurge, 2)
+	require.Equal(t, "staging:rebalanced", result.transientPurge[0].Key.Account)
+	require.Equal(t, "staging:stranded", result.transientPurge[1].Key.Account)
 
 	require.Len(t, result.transient, 1)
 	require.Equal(t, "staging:steady", result.transient[0].Key.Account)

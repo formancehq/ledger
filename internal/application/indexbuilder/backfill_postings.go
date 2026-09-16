@@ -158,6 +158,14 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 			// Skip non-transaction logs (config mutations, metadata-only, etc.)
 			if parsed.LogType == 0 {
+				for _, account := range parsed.PurgedAccounts {
+					if err := b.purgeCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
+						_ = batch.Cancel()
+
+						return err
+					}
+				}
+
 				continue
 			}
 
@@ -176,6 +184,13 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 					kb, cfg, parsed.Ledger, parsed.TxID, p.Source, p.Destination, p.Asset, p.Color,
 					indexAny, indexSource, indexDestination, excludedVolumes, historyExcludedVolumes,
 				); err != nil {
+					_ = batch.Cancel()
+
+					return err
+				}
+			}
+			for _, account := range parsed.PurgedAccounts {
+				if err := b.purgeCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
 					_ = batch.Cancel()
 
 					return err

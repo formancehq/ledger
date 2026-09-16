@@ -1031,15 +1031,24 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// for CONTROL payloads without also changing their protobuf category
 	// annotation: an unreachable second implementation of the schema rewrite is
 	// what this replaced.
+	var err error
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
+		err = b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes, historyExcludedVolumes)
+		err = b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
+		err = b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
+		err = b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
+	}
+	if err != nil {
+		return err
+	}
+	for _, account := range ledgerLog.GetPurgedAccounts() {
+		if err := b.purgeCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
+			return err
+		}
 	}
 
 	return nil
