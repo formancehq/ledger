@@ -331,10 +331,8 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// log payload and updates whatever cross-order accumulator
 		// the framework needs.
 		sink.Absorb(order, log)
-		if assert.Enabled {
-			if ledgerPayload := payload.GetApply().GetLog().GetData(); ledgerPayload.GetCreatedTransaction() != nil || ledgerPayload.GetRevertedTransaction() != nil {
-				stagedTransactions++
-			}
+		if ledgerPayload := payload.GetApply().GetLog().GetData(); ledgerPayload.GetCreatedTransaction() != nil || ledgerPayload.GetRevertedTransaction() != nil {
+			stagedTransactions++
 		}
 
 		// Accumulate the derivations applyProposal previously rebuilt

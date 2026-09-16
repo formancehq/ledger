@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
@@ -346,59 +347,103 @@ func verifyVolumeDeltasMatchPostings(
 		actual[update.Key] = &delta{input: inputDelta, output: outputDelta}
 	}
 
-	// Compare expected vs actual
+	// Both scans range a map, so they collect every offender and report the
+	// lowest-sorting one rather than whichever the iteration reached first:
+	// the same divergent input must produce the same assertion details and the
+	// same error string on every replica and every replay, or cross-timeline
+	// triage cannot correlate them. Nothing is appended on the happy path.
+	var missing, mismatched []domain.VolumeKey
+
 	for key, exp := range expected {
 		act, ok := actual[key]
 		if !ok {
-			assert.Unreachable("posting has a volume update", map[string]any{
-				"ledger": key.LedgerName, "account": key.Account,
-				"asset": key.Asset, "color": key.Color,
-				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
-			})
+			missing = append(missing, key)
 
-			return fmt.Errorf(
-				"volume delta missing for %q/%s/%s: expected input_delta=%s output_delta=%s",
-				key.LedgerName, key.Account, key.Asset, exp.input.String(), exp.output.String(),
-			)
+			continue
 		}
 
 		if exp.input.Cmp(act.input) != 0 || exp.output.Cmp(act.output) != 0 {
-			assert.Unreachable("volume delta matches posting quantities", map[string]any{
-				"ledger": key.LedgerName, "account": key.Account,
-				"asset": key.Asset, "color": key.Color,
-				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
-				"actualInput": act.input.String(), "actualOutput": act.output.String(),
-			})
-
-			return fmt.Errorf(
-				"volume delta mismatch for %q/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
-				key.LedgerName, key.Account, key.Asset,
-				exp.input.String(), exp.output.String(),
-				act.input.String(), act.output.String(),
-			)
+			mismatched = append(mismatched, key)
 		}
+	}
+
+	if key, ok := lowestVolumeKey(missing); ok {
+		exp := expected[key]
+
+		assert.Unreachable("posting has a volume update", map[string]any{
+			"ledger": key.LedgerName, "account": key.Account,
+			"asset": key.Asset, "color": key.Color,
+			"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+			"offenders": len(missing),
+		})
+
+		return fmt.Errorf(
+			"volume delta missing for %q/%s/%s: expected input_delta=%s output_delta=%s (%d offending keys)",
+			key.LedgerName, key.Account, key.Asset, exp.input.String(), exp.output.String(), len(missing),
+		)
+	}
+
+	if key, ok := lowestVolumeKey(mismatched); ok {
+		exp, act := expected[key], actual[key]
+
+		assert.Unreachable("volume delta matches posting quantities", map[string]any{
+			"ledger": key.LedgerName, "account": key.Account,
+			"asset": key.Asset, "color": key.Color,
+			"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+			"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			"offenders": len(mismatched),
+		})
+
+		return fmt.Errorf(
+			"volume delta mismatch for %q/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s) (%d offending keys)",
+			key.LedgerName, key.Account, key.Asset,
+			exp.input.String(), exp.output.String(),
+			act.input.String(), act.output.String(), len(mismatched),
+		)
 	}
 
 	// A conserved but unrelated debit/credit pair must not escape the check.
 	// An unchanged touched key has no business delta and is legitimate.
+	var unexplained []domain.VolumeKey
+
 	for key, act := range actual {
 		if _, ok := expected[key]; ok || (act.input.Sign() == 0 && act.output.Sign() == 0) {
 			continue
 		}
 
+		unexplained = append(unexplained, key)
+	}
+
+	if key, ok := lowestVolumeKey(unexplained); ok {
+		act := actual[key]
+
 		assert.Unreachable("nonzero volume delta is explained by postings", map[string]any{
 			"ledger": key.LedgerName, "account": key.Account,
 			"asset": key.Asset, "color": key.Color,
 			"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			"offenders": len(unexplained),
 		})
 
 		return fmt.Errorf(
-			"unexpected volume delta for %q/%s/%s/%s: input_delta=%s output_delta=%s",
-			key.LedgerName, key.Account, key.Asset, key.Color, act.input.String(), act.output.String(),
+			"unexpected volume delta for %q/%s/%s/%s: input_delta=%s output_delta=%s (%d offending keys)",
+			key.LedgerName, key.Account, key.Asset, key.Color,
+			act.input.String(), act.output.String(), len(unexplained),
 		)
 	}
 
 	return nil
+}
+
+// lowestVolumeKey names one deterministic representative from a set of
+// offenders discovered through map iteration, using the same
+// (Account, Asset, Color, LedgerName) total order write_set.go picks its
+// storage-fault winner with — one ordering convention for volume keys.
+func lowestVolumeKey(keys []domain.VolumeKey) (domain.VolumeKey, bool) {
+	if len(keys) == 0 {
+		return domain.VolumeKey{}, false
+	}
+
+	return slices.MinFunc(keys, compareVolumeKeys), true
 }
 
 // collectLedgerNames extracts the unique ledger names touched by the given

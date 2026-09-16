@@ -84,6 +84,7 @@ jobs:
           path: |
             build/coverage/unit.out
             build/coverage/internal.out
+            build/coverage/antithesis.out
           retention-days: 7
           if-no-files-found: ignore
 

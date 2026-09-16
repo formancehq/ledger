@@ -401,10 +401,7 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 		}
 
 		paf.future.Resolve(state.ApplyResult{}, err)
-
-		if assert.Enabled {
-			resolved++
-		}
+		resolved++
 
 		// Coverage anchor for the leadership-lost error taxonomy: proves the
 		// below-term resolve path is actually exercised under fault injection
@@ -1320,10 +1317,8 @@ func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 			oldTermResolved := 0
 
 			for _, pf := range work.futures {
-				if assert.Enabled {
-					if work.maxTerm > 0 && pf.term < work.maxTerm {
-						oldTermResolved++
-					}
+				if work.maxTerm > 0 && pf.term < work.maxTerm {
+					oldTermResolved++
 				}
 
 				pf.future.Resolve(pf.result, pf.result.Error)

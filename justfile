@@ -87,11 +87,29 @@ test:
     go test -race ./... -timeout 20m
 
 # Compile every internal package with the Antithesis SDK armed and run the
-# assertion-emission contract tests. The SDK is pinned to v0.8.0-default-no-op,
-# which compiles to no-ops unless enable_antithesis_sdk is set, so the default
-# suite above cannot observe a single assertion emit.
+# assertion-emission contract tests. The SDK is pinned to the fork's
+# default-no-op build, which compiles to no-ops unless enable_antithesis_sdk is
+# set, so the default suite above cannot observe a single assertion emit.
+#
+# It carries a coverage profile because the guarded assertion branches are
+# reachable only in this shape: without it those lines are missing from every
+# uploaded profile and the patch-coverage gate fails on code this suite does
+# execute. coverage-merge folds antithesis.out in with the rest.
+#
+# It runs every test in the packages that hold guarded code, not just
+# TestAntithesis*: the emission tests do their work in a re-exec'd subprocess,
+# whose coverage never reaches this profile, so the guarded lines are only
+# counted when ordinary tests execute them in-process against an armed build.
 test-antithesis-assertions:
-    go test -race -tags enable_antithesis_sdk -run 'TestAntithesis' ./internal/... -timeout 15m
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p {{coverage_dir}}
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags enable_antithesis_sdk \
+        -coverprofile={{coverage_dir}}/antithesis.out -coverpkg={{coverage_pkgs}} \
+        ./internal/infra/state/... ./internal/infra/node/... \
+        ./internal/domain/processing/... ./internal/query/... \
+        ./internal/application/ctrl/... -timeout 20m
+    echo "Coverage profile: {{coverage_dir}}/antithesis.out"
 
 # Run unit tests with all optional features
 test-full:
@@ -233,7 +251,7 @@ coverage-merge:
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     profiles=()
-    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
+    for f in {{coverage_dir}}/unit.out {{coverage_dir}}/internal.out {{coverage_dir}}/antithesis.out {{coverage_dir}}/e2e.out {{coverage_dir}}/scenario.out {{coverage_dir}}/fuzz.out; do
         [ -f "$f" ] && profiles+=("$f")
     done
     if [ ${#profiles[@]} -eq 0 ]; then
@@ -257,7 +275,7 @@ coverage-html: coverage-merge
     echo "HTML report: {{coverage_dir}}/coverage.html"
 
 # Run all tests with coverage and merge
-coverage-all: test-coverage test-internal-coverage test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
+coverage-all: test-coverage test-internal-coverage test-antithesis-assertions test-e2e-coverage test-scenarios-coverage fuzz-check-coverage coverage-merge
 
 # Run Schemathesis API conformity and fuzzing tests
 test-schemathesis:

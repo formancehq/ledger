@@ -471,6 +471,8 @@ func TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier(t *testing.T) {
 			rs := newTestReadStore(t)
 			handle, err := store.NewReadHandle()
 			require.NoError(t, err)
+			// Read-only handle released in cleanup: a close error cannot
+			// invalidate what the assertions above already observed.
 			defer func() { _ = handle.Close() }()
 			horizon, err := query.ReadLastAppliedIndex(handle)
 			require.NoError(t, err)
@@ -483,6 +485,8 @@ func TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier(t *testing.T) {
 			snap, _, release, err := query.AlignedIndexSnapshot(ctx, rs, handle, func() {})
 			require.NoError(t, err)
 			defer release()
+			// Pebble snapshot released in cleanup; the test's claim is the
+			// successful return above, which a close error cannot undo.
 			defer func() { _ = snap.Close() }()
 		})
 	}
@@ -511,6 +515,8 @@ func TestAlignedIndexSnapshotAlignsAfterObservedWait(t *testing.T) {
 	rs := newTestReadStore(t)
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
+	// Read-only handle released in cleanup: a close error cannot invalidate
+	// what the assertions below already observed.
 	defer func() { _ = handle.Close() }()
 	setReadStoreProgress(t, rs, 2)
 	base, cancel := context.WithTimeout(t.Context(), 5*time.Second)
@@ -529,6 +535,8 @@ func TestAlignedIndexSnapshotAlignsAfterObservedWait(t *testing.T) {
 	<-finished
 	require.NoError(t, err)
 	defer release()
+	// Pebble snapshot released in cleanup; the test's claim is the certificate
+	// read below, which a close error cannot undo.
 	defer func() { _ = snap.Close() }()
 	certificate, err := rs.ReadRaftProgressFrom(snap)
 	require.NoError(t, err)

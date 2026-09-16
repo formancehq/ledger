@@ -1679,22 +1679,22 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	queryCheckpointCreated := buffer.QueryCheckpointCreated()
 	queryCheckpointDeleted := buffer.QueryCheckpointDeleted()
 
-	// Bookkeeping that exists only to feed the commit-milestone properties, so
-	// it is guarded with them: an unarmed build walks no logs here at all.
+	// Outcome facts for the commit-milestone properties. Deliberately NOT behind
+	// assert.Enabled: the walk costs a few nanoseconds against the ~540ns of the
+	// SDK call it feeds, and a field that is populated only in armed builds is a
+	// trap for the next caller who reads it for something real.
 	var (
 		createdTransactions int
 		revertedTransaction bool
 	)
 
-	if assert.Enabled {
-		for _, log := range createdLogs {
-			payload := log.GetPayload().GetApply().GetLog().GetData()
-			if payload.GetCreatedTransaction() != nil {
-				createdTransactions++
-			}
-			if payload.GetRevertedTransaction() != nil {
-				revertedTransaction = true
-			}
+	for _, log := range createdLogs {
+		payload := log.GetPayload().GetApply().GetLog().GetData()
+		if payload.GetCreatedTransaction() != nil {
+			createdTransactions++
+		}
+		if payload.GetRevertedTransaction() != nil {
+			revertedTransaction = true
 		}
 	}
 

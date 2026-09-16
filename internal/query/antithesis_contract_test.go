@@ -47,7 +47,7 @@ func TestAntithesisContractEmission(t *testing.T) {
 			require.NoError(t, err, "%s", logs)
 			file, err := os.Open(output)
 			require.NoError(t, err)
-			defer func() { _ = file.Close() }()
+			defer func() { require.NoError(t, file.Close()) }()
 			found := false
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
