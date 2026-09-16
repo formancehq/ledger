@@ -272,31 +272,52 @@ func TestZeroAmountPostingFromInsolventAccount(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. `save` silently drops monetary arithmetic
+// 4. `save` and monetary arithmetic
 // ---------------------------------------------------------------------------
 
-// VisitSaveFromAccount evaluates the expression with push=false and then
-// pushes the address VisitExpr returned, which for an add/sub is the address
-// of the LEFT operand. So `save A - B` saves A and the subtraction is lost.
-// (This is also why a negative `save` is unreachable: it degrades to its LHS.)
-func TestSaveDropsMonetaryArithmetic(t *testing.T) {
-	// alice has 100 and saves 100-60=40, so 60 should remain spendable.
-	_, err := run(t, `save [COIN 100] - [COIN 60] from @alice
-	send [COIN 50] (
-		source = @alice
-		destination = @bob
-	)`, map[string]int64{"alice": 100})
-	require.ErrorIs(t, err, &machine.ErrInsufficientFund{},
-		"save [COIN 100] - [COIN 60] saved 100 instead of 40")
-
-	// control: the same amount as a literal behaves correctly.
-	postings, err := run(t, `save [COIN 40] from @alice
-	send [COIN 50] (
+// VisitSaveFromAccount used to evaluate the expression with push=false and
+// push the address VisitExpr returned, which for an add/sub is the address of
+// the LEFT operand -- so `save A - B` saved A and the subtraction was lost.
+// Fixed in #2063: the monetary is pushed and evaluated instead.
+func TestSaveKeepsMonetaryArithmetic(t *testing.T) {
+	// alice has 100 and saves 100-60=40, so exactly 60 remains spendable.
+	postings, err := run(t, `save [COIN 100] - [COIN 60] from @alice
+	send [COIN 60] (
 		source = @alice
 		destination = @bob
 	)`, map[string]int64{"alice": 100})
 	require.NoError(t, err)
-	require.Equal(t, machine.NewMonetaryInt(50), postings[0].Amount)
+	require.Equal(t, machine.NewMonetaryInt(60), postings[0].Amount)
+
+	// one unit past what is left fails, which pins the saved amount to 40.
+	_, err = run(t, `save [COIN 100] - [COIN 60] from @alice
+	send [COIN 61] (
+		source = @alice
+		destination = @bob
+	)`, map[string]int64{"alice": 100})
+	require.ErrorIs(t, err, &machine.ErrInsufficientFund{},
+		"save [COIN 100] - [COIN 60] saved more than 40")
+
+	// control: the same amount as a literal behaves identically.
+	postings, err = run(t, `save [COIN 40] from @alice
+	send [COIN 60] (
+		source = @alice
+		destination = @bob
+	)`, map[string]int64{"alice": 100})
+	require.NoError(t, err)
+	require.Equal(t, machine.NewMonetaryInt(60), postings[0].Amount)
+}
+
+// Evaluating the expression also makes a negative `save` reachable -- it no
+// longer degrades to its left operand -- so OP_SAVE guards it explicitly (#2068).
+func TestNegativeSaveIsRejected(t *testing.T) {
+	_, err := run(t, `save `+negExpr+` from @alice
+	send [COIN 1] (
+		source = @alice
+		destination = @bob
+	)`, map[string]int64{"alice": 100})
+	require.ErrorIs(t, err, &machine.ErrNegativeAmount{})
+	require.ErrorContains(t, err, "tried to save a negative amount: [COIN -90]")
 }
 
 // ---------------------------------------------------------------------------
