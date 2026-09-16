@@ -994,12 +994,21 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		ls.recordAssetTouches(&base, cells)
 		ls.recordIndexedAddrs(&base, uint64(base.Txs().Len())+1)
 
-		purged := ls.purgeZeroBalance(cells, touchedAccounts[name])
+		purged, coveredPurged := ls.purgeZeroBalance(cells, touchedAccounts[name])
 
 		ann := ls.classifyVolumes(&base, cells, purged)
 		for _, ot := range orderTouches {
 			if ot.ledger == name {
 				ls.annotateLog(ot.logIdx, ot.cells, ann)
+			}
+		}
+		if len(coveredPurged) > 0 {
+			for _, orderTouche := range slices.Backward(orderTouches) {
+				if orderTouche.ledger == name {
+					ls.annotateCoveredPurges(orderTouche.logIdx, coveredPurged)
+
+					break
+				}
 			}
 		}
 
@@ -2078,8 +2087,9 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 
 // purgeZeroBalance drops touched EPHEMERAL/TRANSIENT cells that landed at a zero
 // balance, mirroring the server's post-commit write-set sweep (PR #151).
-func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccounts map[string]bool) map[VolumeKey]bool {
+func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccounts map[string]bool) (map[VolumeKey]bool, map[VolumeKey]bool) {
 	purged := map[VolumeKey]bool{}
+	coveredPurged := map[VolumeKey]bool{}
 	compiled := s.compiled()
 
 	for key := range touched {
@@ -2122,9 +2132,12 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 		}
 		for key := range s.volumes.All() {
 			if key.Address == address {
+				volume, _ := s.volumes.Get(key)
 				s.volumes = s.volumes.Delete(key)
 				if touched[key] {
 					purged[key] = true
+				} else if !volume.Input.IsZero() || !volume.Output.IsZero() {
+					coveredPurged[key] = true
 				}
 			}
 		}
@@ -2140,7 +2153,21 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 		}
 	}
 
-	return purged
+	return purged, coveredPurged
+}
+
+func (s *LedgerState) annotateCoveredPurges(idx int, covered map[VolumeKey]bool) {
+	rec := *s.logs.Get(idx)
+	parts := make([]string, 0, 2)
+	if rec.purged != "" {
+		parts = append(parts, strings.Split(rec.purged, ",")...)
+	}
+	if rendered := renderTouchedVolumes(covered); rendered != "" {
+		parts = append(parts, strings.Split(rendered, ",")...)
+	}
+	sort.Strings(parts)
+	rec.purged = strings.Join(parts, ",")
+	s.logs = s.logs.Set(idx, &rec)
 }
 
 func checkpointTerm(key string, id uint64) Digest {

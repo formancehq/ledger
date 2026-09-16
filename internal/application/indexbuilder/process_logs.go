@@ -654,6 +654,10 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger stri
 // purge immediately. A later log in the same batch can then recreate an index
 // row after this deletion.
 func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
+	if b.purgedCurrentAccounts == nil {
+		b.purgedCurrentAccounts = make(map[domain.AccountKey]struct{})
+	}
+	b.purgedCurrentAccounts[domain.AccountKey{LedgerName: ledger, Account: account}] = struct{}{}
 	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
 		if b.deletedAcctAsset == nil {
 			b.deletedAcctAsset = make(map[string]struct{})
@@ -1434,7 +1438,8 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	// ledger's logs have higher sequence), it wins at commit.
 	_, ledgerDeleted := b.deletedThisBatch[ledger]
 	_, exactDeleted := b.deletedAcctAsset[sk]
-	if !ledgerDeleted && !exactDeleted {
+	_, accountPurged := b.purgedCurrentAccounts[domain.AccountKey{LedgerName: ledger, Account: account}]
+	if !ledgerDeleted && !exactDeleted && !accountPurged {
 		exists, err := b.readstoreKeyExists(key)
 		if err != nil {
 			return fmt.Errorf("account-by-asset dedup get: %w", err)

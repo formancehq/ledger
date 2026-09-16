@@ -1,6 +1,7 @@
 package indexbuilder
 
 import (
+	"encoding/binary"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,8 @@ func TestPurgeCurrentAccountIndexesReconcilesSameBatchMembership(t *testing.T) {
 	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), ledger, "USD", 2, account)
 	value, closer, err := b.readStore.DB().Get(key)
 	require.NoError(t, err)
-	require.NotEmpty(t, value)
+	require.Len(t, value, 8)
+	require.Equal(t, uint64(3), binary.BigEndian.Uint64(value), "re-fund must refresh the membership stamp")
 	require.NoError(t, closer.Close())
 }
 
@@ -62,7 +64,8 @@ func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRef
 
 	value, closer, err := b.readStore.DB().Get(key)
 	require.NoError(t, err)
-	require.NotEmpty(t, value)
+	require.Len(t, value, 8)
+	require.Equal(t, uint64(3), binary.BigEndian.Uint64(value), "re-fund must refresh the membership stamp")
 	require.NoError(t, closer.Close())
 }
 

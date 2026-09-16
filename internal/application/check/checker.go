@@ -1560,6 +1560,36 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 			replayActiveAccounts[key.AccountKey] = struct{}{}
 		}
 	}
+	metadataIter, err := replay.newPrefixIter(replayPrefixMetadata)
+	if err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("failed to scan replay metadata for active accounts: %v", err), 0, "", "", ""))
+
+		return 1
+	}
+	for metadataIter.First(); metadataIter.Valid(); metadataIter.Next() {
+		value, valueErr := metadataIter.ValueAndErr()
+		if valueErr != nil {
+			_ = metadataIter.Close()
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("reading replay metadata for active accounts: %v", valueErr), 0, "", "", ""))
+
+			return 1
+		}
+		if len(value) == 0 || value[0] == metaFlagDeleted {
+			continue
+		}
+		var key domain.MetadataKey
+		if err := key.Unmarshal(metadataIter.Key()[1:]); err == nil {
+			replayActiveAccounts[key.AccountKey] = struct{}{}
+		}
+	}
+	if err := metadataIter.Close(); err != nil {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			fmt.Sprintf("closing replay metadata active-account scan: %v", err), 0, "", "", ""))
+
+		return 1
+	}
 
 	// Compare: expected = replayed state
 	for key := range allKeys {
