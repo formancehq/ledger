@@ -203,20 +203,21 @@ func pickCell(g oracle.GlobalState, ledgers []string) (ledger, addr, asset strin
 	return "", "", "", false
 }
 
-// accountVolumeSet extracts the account's full volume set as asset -> volumes,
-// so validation covers every returned cell — a ghost row under any asset is
-// caught, not just the probed one. The workload only ever exercises uncolored
-// postings, so ok=false marks a response shape no model state explains — a
-// colored bucket, or an unparseable amount — and the caller's validation fails
-// it outright rather than mistaking it for an empty reading.
-func accountVolumeSet(acct *commonpb.Account) (map[string]oracle.VolumePair, bool) {
+// accountVolumeSet extracts the account's full volume set as (asset, color) ->
+// volumes, so validation covers every returned cell — a ghost row under any
+// bucket is caught, not just the probed one. ok=false marks a response shape no
+// model state explains — a repeated bucket, or an unparseable amount — and the
+// caller's validation fails it outright rather than mistaking it for an empty
+// reading.
+func accountVolumeSet(acct *commonpb.Account) (map[assetColor]oracle.VolumePair, bool) {
 	if acct == nil {
 		return nil, true
 	}
 
-	out := make(map[string]oracle.VolumePair, len(acct.GetVolumes()))
+	out := make(map[assetColor]oracle.VolumePair, len(acct.GetVolumes()))
 	for _, entry := range acct.GetVolumes() {
-		if entry.GetColor() != "" {
+		key := assetColor{Asset: entry.GetAsset(), Color: entry.GetColor()}
+		if _, dup := out[key]; dup {
 			return nil, false
 		}
 
@@ -226,7 +227,7 @@ func accountVolumeSet(acct *commonpb.Account) (map[string]oracle.VolumePair, boo
 			return nil, false
 		}
 
-		out[entry.GetAsset()] = vp
+		out[key] = vp
 	}
 
 	return out, true

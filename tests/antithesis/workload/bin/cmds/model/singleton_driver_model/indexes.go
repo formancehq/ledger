@@ -355,34 +355,31 @@ func describeAccountContentDiff(ls oracle.LedgerState, addr string, serverAcct *
 		}
 	}
 
-	model := map[string]oracle.VolumePair{}
+	model := map[assetColor]oracle.VolumePair{}
 	for k, vp := range ls.Volumes().All() {
 		if k.Address == addr {
-			model[k.Asset] = vp
+			model[assetColor{Asset: k.Asset, Color: k.Color}] = vp
 		}
 	}
 
-	seen := map[string]bool{}
+	seen := map[assetColor]bool{}
 	for _, av := range serverAcct.GetVolumes() {
-		if av.GetColor() != "" {
-			continue
-		}
+		key := assetColor{Asset: av.GetAsset(), Color: av.GetColor()}
+		seen[key] = true
 
-		seen[av.GetAsset()] = true
-
-		vp, ok := model[av.GetAsset()]
+		vp, ok := model[key]
 		if !ok {
-			return fmt.Sprintf("%s volumes[%s] model=<absent> server=in:%s,out:%s", addr, av.GetAsset(), av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
+			return fmt.Sprintf("%s volumes[%s] model=<absent> server=in:%s,out:%s", addr, key, av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
 		}
 
 		if vp.Input.Dec() != av.GetVolumes().GetInput() || vp.Output.Dec() != av.GetVolumes().GetOutput() {
-			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=in:%s,out:%s", addr, av.GetAsset(), vp.Input.Dec(), vp.Output.Dec(), av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
+			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=in:%s,out:%s", addr, key, vp.Input.Dec(), vp.Output.Dec(), av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
 		}
 	}
 
-	for asset, vp := range model {
-		if !seen[asset] {
-			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=<absent>", addr, asset, vp.Input.Dec(), vp.Output.Dec())
+	for key, vp := range model {
+		if !seen[key] {
+			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=<absent>", addr, key, vp.Input.Dec(), vp.Output.Dec())
 		}
 	}
 
