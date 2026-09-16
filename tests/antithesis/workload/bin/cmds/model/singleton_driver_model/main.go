@@ -215,7 +215,7 @@ func runWorker(
 		// in-flight bulk set, exercising cross-node freshness without needing
 		// quiescence.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -230,21 +230,11 @@ func runWorker(
 				runReplay(ctx, client, c)
 			case 6:
 				runLogQuery(ctx, client, c)
+			case 7:
+				runSecondaryRead(ctx, client, c)
 			case 8:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
-			case 9:
-				runAggregateQuery(ctx, client, c)
-			case 10:
-				runAuditQuery(ctx, client, c)
-			case 11:
-				runLedgersList(ctx, client, c)
-			case 12:
-				runLedgerStats(ctx, client, c)
-			case 13:
-				runIndexIntrospection(ctx, client, c)
-			case 14:
-				runGetLog(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
@@ -386,6 +376,26 @@ func runWorker(
 			}
 			c.checkpointCreateMu.Unlock()
 		}
+	}
+}
+
+// runSecondaryRead dispatches one of the read surfaces that share a single
+// slot of the read mix, so the entity queries the coverage sondes depend on
+// keep their share of the worker's reads.
+func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+	case 0:
+		runAggregateQuery(ctx, client, c)
+	case 1:
+		runAuditQuery(ctx, client, c)
+	case 2:
+		runLedgersList(ctx, client, c)
+	case 3:
+		runLedgerStats(ctx, client, c)
+	case 4:
+		runIndexIntrospection(ctx, client, c)
+	default:
+		runGetLog(ctx, client, c)
 	}
 }
 
