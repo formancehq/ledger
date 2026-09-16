@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"sort"
 	"strconv"
@@ -10,7 +12,9 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/holiman/uint256"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -137,6 +141,7 @@ const (
 	pqErrNotFound
 	pqErrIndex
 	pqErrCompilation
+	pqErrAggregateTarget
 	pqErrOther
 )
 
@@ -152,6 +157,8 @@ func classifyPreparedExecError(err error) pqErrKind {
 		return pqErrIndex
 	case internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR"):
 		return pqErrCompilation
+	case status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "VALIDATION"):
+		return pqErrAggregateTarget
 	default:
 		return pqErrOther
 	}
@@ -192,7 +199,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 
 	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
 		snapshot.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		runAggregateTargetMisuse(ctx, client, c, ledger, name, params)
+		runAggregateTargetMisuse(ctx, client, c, ledger, name, params, complete)
 
 		return
 	}
@@ -239,13 +246,17 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 	}
 
 	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
+		_, aggregateResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Aggregate)
+		call.wrongResult = err == nil && !aggregateResult
 		c.validateExecuteAggregate(maxTicket, call, resp.GetAggregate())
 
 		return
 	}
 
 	cursor := resp.GetCursor()
-	c.validateExecuteList(maxTicket, call, "", cursor)
+	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
+	call.wrongResult = err == nil && !cursorResult
+	c.validateExecuteList(maxTicket, call, nil, cursor)
 
 	// One follow-on page, driven by the server's own cursor: the model's
 	// after-key is the last row of the page just validated, so the opaque
@@ -260,13 +271,14 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 // preparedCall carries one ExecutePreparedQuery invocation's inputs and outcome
 // through validation, keeping the validators' signatures readable.
 type preparedCall struct {
-	ledger   string
-	name     string
-	params   preparedParams
-	complete bool
-	pageSize int
-	errKind  pqErrKind
-	err      error
+	ledger      string
+	name        string
+	params      preparedParams
+	complete    bool
+	pageSize    int
+	errKind     pqErrKind
+	err         error
+	wrongResult bool
 }
 
 // runExecuteNextPage issues the follow-on page for prev and validates it with
@@ -278,7 +290,7 @@ func (c *Checker) runExecuteNextPage(
 	prev *commonpb.PreparedQueryCursor,
 ) {
 	after := lastPageKey(prev)
-	if after == "" {
+	if len(after) == 0 {
 		return
 	}
 
@@ -307,6 +319,8 @@ func (c *Checker) runExecuteNextPage(
 
 	call.errKind = classifyPreparedExecError(err)
 	call.err = err
+	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
+	call.wrongResult = err == nil && !cursorResult
 
 	c.validateExecuteList(maxTicket, call, after, resp.GetCursor())
 }
@@ -328,20 +342,27 @@ func (c *Checker) preparedQuerySnapshot(ledger, name string) (*commonpb.Prepared
 // lastPageKey renders the model-side after-key of a page: the last account
 // address, transaction id, or log id it returned. Empty when the page is empty
 // — there is nothing to page past.
-func lastPageKey(cur *commonpb.PreparedQueryCursor) string {
+func lastPageKey(cur *commonpb.PreparedQueryCursor) []byte {
 	if accts := cur.GetAccountData(); len(accts) > 0 {
-		return accts[len(accts)-1].GetAddress()
+		return []byte(accts[len(accts)-1].GetAddress())
 	}
 
 	if txs := cur.GetTransactionData(); len(txs) > 0 {
-		return strconv.FormatUint(txs[len(txs)-1].GetId(), 10)
+		return uint64EntityKey(txs[len(txs)-1].GetId())
 	}
 
 	if ids := serverLogIDs(cur.GetLogData()); len(ids) > 0 {
-		return strconv.FormatUint(ids[len(ids)-1], 10)
+		return uint64EntityKey(ids[len(ids)-1])
 	}
 
-	return ""
+	return nil
+}
+
+func uint64EntityKey(v uint64) []byte {
+	key := make([]byte, 8)
+	binary.BigEndian.PutUint64(key, v)
+
+	return key
 }
 
 // runAggregateTargetMisuse issues AGGREGATE_VOLUMES against a query whose
@@ -355,6 +376,7 @@ func runAggregateTargetMisuse(
 	c *Checker,
 	ledger, name string,
 	params preparedParams,
+	complete bool,
 ) {
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -373,36 +395,25 @@ func runAggregateTargetMisuse(
 
 	maxTicket := c.ticketSeq.Load()
 
+	if err != nil && (internal.IsTransient(err) || isShutdownError(err)) {
+		return
+	}
 	if err != nil {
-		if internal.IsTransient(err) || isShutdownError(err) {
-			return
-		}
-
 		dbg("PQAGGMISUSE rejected")
 		assert.Reachable("singleton_driver_model: aggregate on a non-accounts prepared query rejected", internal.Details{
 			"ledger": ledger,
 			"query":  name,
 		})
 
-		return
 	}
 
-	// A success is legal only if every candidate base disagrees with the
-	// snapshot that shaped the call — the query was concurrently recreated on
-	// the ACCOUNTS target between the snapshot and the call.
-	if c.matchesModel(maxTicket, "PQAGGMISUSE", func(base oracle.GlobalState) bool {
-		stored, ok := base.Ledger(ledger).PreparedQuery(name)
-
-		return ok && stored.GetTarget() == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	}) {
-		return
+	call := preparedCall{
+		ledger: ledger, name: name, params: params, complete: complete,
+		errKind: classifyPreparedExecError(err), err: err,
 	}
-
-	assert.Unreachable("singleton_driver_model: aggregate accepted on a non-accounts prepared query", internal.Details{
-		"ledger":  ledger,
-		"query":   name,
-		"volumes": describeAggregate(resp.GetAggregate()),
-	})
+	_, aggregateResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Aggregate)
+	call.wrongResult = err == nil && !aggregateResult
+	c.validateExecuteAggregate(maxTicket, call, resp.GetAggregate())
 }
 
 // --- LIST validation -----------------------------------------------------
@@ -414,8 +425,8 @@ func runAggregateTargetMisuse(
 //
 // after is the model-side cursor: "" for a first page, else the previous
 // page's last key (address, transaction id, or log id).
-func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after string, cur *commonpb.PreparedQueryCursor) {
-	if call.errKind == pqErrOther {
+func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) {
+	if call.errKind == pqErrOther || call.errKind == pqErrAggregateTarget {
 		assert.Unreachable("singleton_driver_model: prepared query execution returned unexpected error", internal.Details{
 			"ledger": call.ledger,
 			"query":  call.name,
@@ -439,7 +450,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		"query":        call.name,
 		"params":       describeParams(call.params),
 		"paramsFull":   call.complete,
-		"after":        after,
+		"after":        fmt.Sprintf("%x", after),
 		"pageSize":     call.pageSize,
 		"errKind":      int(call.errKind),
 		"error":        errorDetail(call.err),
@@ -453,7 +464,10 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 }
 
 // preparedListOutcomeLegal is the whole per-base verdict for a LIST page.
-func preparedListOutcomeLegal(ls oracle.LedgerState, call preparedCall, after string, cur *commonpb.PreparedQueryCursor) bool {
+func preparedListOutcomeLegal(ls oracle.LedgerState, call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) bool {
+	if call.wrongResult {
+		return false
+	}
 	stored, exists := ls.PreparedQuery(call.name)
 	if !exists {
 		// The only outcome an absent query can produce.
@@ -461,6 +475,9 @@ func preparedListOutcomeLegal(ls oracle.LedgerState, call preparedCall, after st
 	}
 
 	if call.errKind == pqErrNotFound {
+		return false
+	}
+	if call.errKind == pqErrAggregateTarget {
 		return false
 	}
 
@@ -535,28 +552,22 @@ func preparedWindowMatches(
 	call preparedCall,
 	target commonpb.QueryTarget,
 	bound *commonpb.QueryFilter,
-	after string,
+	after []byte,
 	cur *commonpb.PreparedQueryCursor,
 ) bool {
+	if cur.GetHasMore() != (cur.GetNext() != "") {
+		return false
+	}
+
 	switch target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		return preparedAccountPageMatches(ls, call, bound, after, cur)
+		return preparedAccountPageMatches(ls, call, bound, string(after), cur)
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		afterID, ok := parseAfterUint(after)
-		if !ok {
-			return false
-		}
-
 		return len(cur.GetAccountData()) == 0 && len(cur.GetLogData()) == 0 &&
-			txWindowMatches(ls, bound, afterID, call.pageSize, txAscending, cur.GetTransactionData())
+			preparedTransactionPageMatches(ls, call, bound, after, cur)
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		afterSeq, ok := parseAfterUint(after)
-		if !ok {
-			return false
-		}
-
 		return len(cur.GetAccountData()) == 0 && len(cur.GetTransactionData()) == 0 &&
-			preparedLogPageMatches(ls, call, bound, afterSeq, cur)
+			preparedLogPageMatches(ls, call, bound, after, cur)
 	default:
 		return false
 	}
@@ -606,17 +617,18 @@ func preparedLogPageMatches(
 	ls oracle.LedgerState,
 	call preparedCall,
 	bound *commonpb.QueryFilter,
-	afterSeq uint64,
+	after []byte,
 	cur *commonpb.PreparedQueryCursor,
 ) bool {
-	return preparedLogWindowMatches(ls, call, bound, afterSeq, serverLogRows(cur.GetLogData()), cur.GetHasMore())
+	return preparedLogWindowMatches(ls, call, bound, after, serverLogRows(cur.GetLogData()), cur.GetHasMore())
 }
 
 // preparedLogWindowMatches permits unknown-date rows to match or not, while
 // requiring every known match. The suffix must explain has_more on that same
 // page: a required row forces it, and any possible row can justify it.
-func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *commonpb.QueryFilter, afterSeq uint64, page []serverLogRow, hasMore bool) bool {
-	if !logWindowMatches(ls, call.ledger, bound, afterSeq, call.pageSize, page) {
+func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *commonpb.QueryFilter, after []byte, page []serverLogRow, hasMore bool) bool {
+	rows := preparedLogWindowRows(ls, call.ledger, bound, after)
+	if !logRowsMatch(call.ledger, rows, call.pageSize, page) {
 		return false
 	}
 
@@ -625,10 +637,10 @@ func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *c
 	}
 
 	if len(page) > 0 {
-		afterSeq = page[len(page)-1].id
+		after = uint64EntityKey(page[len(page)-1].id)
 	}
 
-	remaining := logWindowRows(ls, call.ledger, bound, afterSeq)
+	remaining := preparedLogWindowRows(ls, call.ledger, bound, after)
 	if hasMore {
 		return len(remaining) > 0
 	}
@@ -640,6 +652,55 @@ func preparedLogWindowMatches(ls oracle.LedgerState, call preparedCall, bound *c
 	}
 
 	return true
+}
+
+func preparedTransactionPageMatches(ls oracle.LedgerState, call preparedCall, bound *commonpb.QueryFilter, after []byte, cur *commonpb.PreparedQueryCursor) bool {
+	page := cur.GetTransactionData()
+	rows := preparedTransactionWindowRows(ls, bound, after)
+	if !txRowsMatch(ls, rows, call.pageSize, page) {
+		return false
+	}
+	if cur.GetHasMore() && len(page) != call.pageSize {
+		return false
+	}
+	if len(page) > 0 {
+		after = uint64EntityKey(page[len(page)-1].GetId())
+	}
+	remaining := preparedTransactionWindowRows(ls, bound, after)
+	if cur.GetHasMore() {
+		return len(remaining) > 0
+	}
+	for _, row := range remaining {
+		if row.required {
+			return false
+		}
+	}
+
+	return true
+}
+
+func preparedTransactionWindowRows(ls oracle.LedgerState, bound *commonpb.QueryFilter, after []byte) []txWindowRow {
+	rows := transactionWindowRows(ls, bound, 0, txAscending)
+	return filterPreparedRows(rows, after, func(row txWindowRow) []byte { return uint64EntityKey(row.id) })
+}
+
+func preparedLogWindowRows(ls oracle.LedgerState, ledger string, bound *commonpb.QueryFilter, after []byte) []logWindowRow {
+	rows := logWindowRows(ls, ledger, bound, 0)
+	return filterPreparedRows(rows, after, func(row logWindowRow) []byte { return uint64EntityKey(row.id) })
+}
+
+func filterPreparedRows[T any](rows []T, after []byte, key func(T) []byte) []T {
+	if after == nil {
+		return rows
+	}
+	kept := rows[:0]
+	for _, row := range rows {
+		if bytes.Compare(key(row), after) > 0 {
+			kept = append(kept, row)
+		}
+	}
+
+	return kept
 }
 
 // parseAfterUint reads the model-side cursor for the id-keyed targets; "" means
@@ -669,17 +730,6 @@ func parseAfterUint(after string) (uint64, bool) {
 // purged but the model kept (or the reverse) changes the bucket set while
 // leaving every total identical, and comparing sums alone would miss it.
 func (c *Checker) validateExecuteAggregate(maxTicket uint64, call preparedCall, agg *commonpb.AggregateResult) {
-	if call.errKind == pqErrOther {
-		assert.Unreachable("singleton_driver_model: prepared query aggregate returned unexpected error", internal.Details{
-			"ledger": call.ledger,
-			"query":  call.name,
-			"params": describeParams(call.params),
-			"error":  call.err.Error(),
-		})
-
-		return
-	}
-
 	if c.matchesModel(maxTicket, "PQAGG", func(base oracle.GlobalState) bool {
 		return preparedAggregateOutcomeLegal(base.Ledger(call.ledger), call, agg)
 	}) {
@@ -699,6 +749,9 @@ func (c *Checker) validateExecuteAggregate(maxTicket uint64, call preparedCall, 
 }
 
 func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg *commonpb.AggregateResult) bool {
+	if call.wrongResult {
+		return false
+	}
 	stored, exists := ls.PreparedQuery(call.name)
 	if !exists {
 		return call.errKind == pqErrNotFound
@@ -711,6 +764,9 @@ func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg
 	// The call was shaped for an ACCOUNTS-target query; a base holding another
 	// target explains only the rejection, which runAggregateTargetMisuse owns.
 	if stored.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		return call.errKind == pqErrAggregateTarget
+	}
+	if call.errKind == pqErrOther || call.errKind == pqErrAggregateTarget {
 		return false
 	}
 
@@ -726,9 +782,7 @@ func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg
 		})
 }
 
-// aggregateBucket is one (asset, color) total. The workload emits no colored
-// postings, so the model only ever produces the "" bucket — a colored bucket in
-// a server result is therefore a divergence, which comparing keyed sets catches.
+// aggregateBucket is one (asset, color) total.
 type aggregateBucket struct {
 	asset string
 	color string
@@ -800,7 +854,7 @@ func modelAggregate(ls oracle.LedgerState, bound *commonpb.QueryFilter) map[aggr
 			continue
 		}
 
-		bucket := aggregateBucket{asset: key.Asset}
+		bucket := aggregateBucket{asset: key.Asset, color: key.Color}
 
 		acc := out[bucket]
 		acc.Input.Add(&acc.Input, &pair.Input)
@@ -831,7 +885,7 @@ func describeAggregate(agg *commonpb.AggregateResult) string {
 // preparedPageDiag renders the page the server returned and the page the
 // COMMITTED model state predicts for it, so a finding names the divergence
 // instead of only reporting that one exists. Acquires c.mu.
-func (c *Checker) preparedPageDiag(call preparedCall, after string, cur *commonpb.PreparedQueryCursor) (string, string) {
+func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) (string, string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -849,15 +903,25 @@ func (c *Checker) preparedPageDiag(call preparedCall, after string, cur *commonp
 
 	switch stored.GetTarget() {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		return preparedServerRows(cur), strings.Join(preparedAccountProbe(ls, bound, after, call.pageSize), ",")
+		return preparedServerRows(cur), strings.Join(preparedAccountProbe(ls, bound, string(after), call.pageSize), ",")
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		afterID, _ := parseAfterUint(after)
-
-		return preparedServerRows(cur), joinUint64(transactionWindow(ls, bound, afterID, call.pageSize, txAscending))
+		rows := preparedTransactionWindowRows(ls, bound, after)
+		ids := make([]uint64, 0, len(rows))
+		for _, row := range rows {
+			if row.required && len(ids) < call.pageSize {
+				ids = append(ids, row.id)
+			}
+		}
+		return preparedServerRows(cur), joinUint64(ids)
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
-		afterSeq, _ := parseAfterUint(after)
-
-		return preparedServerRows(cur), joinUint64(logWindow(ls, call.ledger, bound, afterSeq, call.pageSize))
+		rows := preparedLogWindowRows(ls, call.ledger, bound, after)
+		ids := make([]uint64, 0, len(rows))
+		for _, row := range rows {
+			if row.required && len(ids) < call.pageSize {
+				ids = append(ids, row.id)
+			}
+		}
+		return preparedServerRows(cur), joinUint64(ids)
 	default:
 		return preparedServerRows(cur), "<non-executable target>"
 	}

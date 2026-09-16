@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -116,7 +117,7 @@ func TestSubstituteParamsRejectsUnresolvable(t *testing.T) {
 		{"missing string param", addrParam, preparedParams{}},
 		{"wrong type for string param", addrParam, preparedParams{"p0": uintParam(7)}},
 		{"missing uint param", uintParamFilter, preparedParams{}},
-		{"wrong type for uint param", uintParamFilter, preparedParams{"p0": stringParam("7")}},
+		{"wrong type for uint param", uintParamFilter, preparedParams{"p0": boolParam(true)}},
 		{"unrelated param supplied", addrParam, preparedParams{"other": stringParam("x")}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,6 +127,32 @@ func TestSubstituteParamsRejectsUnresolvable(t *testing.T) {
 			require.False(t, ok)
 		})
 	}
+}
+
+func TestSubstituteParamsCoercesNumericKindsLikeCompiler(t *testing.T) {
+	t.Parallel()
+
+	lo, hi := int64(0), int64(0)
+	ulo, uhi := uint64(0), uint64(0)
+	intFilter := filterFieldInt("k", &lo, &hi)
+	intFilter.GetField().GetIntCond().Min = nil
+	intFilter.GetField().GetIntCond().ParamMin = "p0"
+	uintFilter := filterFieldUint("k", &ulo, &uhi)
+	uintFilter.GetField().GetUintCond().Min = nil
+	uintFilter.GetField().GetUintCond().ParamMin = "p0"
+
+	boundInt, ok := substituteParams(intFilter, preparedParams{"p0": uintParam(42)})
+	require.True(t, ok)
+	require.Equal(t, int64(42), boundInt.GetField().GetIntCond().GetMin())
+
+	boundUint, ok := substituteParams(uintFilter, preparedParams{"p0": intParam(42)})
+	require.True(t, ok)
+	require.Equal(t, uint64(42), boundUint.GetField().GetUintCond().GetMin())
+
+	_, ok = substituteParams(uintFilter, preparedParams{"p0": intParam(-1)})
+	require.False(t, ok)
+	_, ok = substituteParams(intFilter, preparedParams{"p0": uintParam(math.MaxUint64)})
+	require.False(t, ok)
 }
 
 // TestSubstituteParamsResolvesEveryValueKind pins each ParameterValue arm

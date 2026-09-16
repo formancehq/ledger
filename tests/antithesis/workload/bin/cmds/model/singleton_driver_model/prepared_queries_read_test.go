@@ -5,6 +5,9 @@ import (
 
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -46,6 +49,16 @@ func TestModelAggregateFoldsMatchedAccountsOnly(t *testing.T) {
 	all := modelAggregate(ls, nil)
 	require.Equal(t, *uint256.NewInt(21), all[aggregateBucket{asset: "USD/2"}].Input)
 	require.Equal(t, *uint256.NewInt(21), all[aggregateBucket{asset: "USD/2"}].Output)
+}
+
+func TestModelAggregateKeepsColorBucketsSeparate(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t, oracletest.TxReqColoredL("L", "world", "keep:1", "USD/2", "A", 5))
+
+	require.Equal(t, map[aggregateBucket]oracle.VolumePair{
+		{asset: "USD/2", color: "A"}: {Input: *uint256.NewInt(5)},
+	}, modelAggregate(ls, filterAddrPrefix("keep:")))
 }
 
 // TestAggregateMatchesRejectsDivergence pins that the comparison is on the
@@ -99,6 +112,122 @@ func TestAggregateMatchesRejectsDuplicateBucket(t *testing.T) {
 
 	require.False(t, aggregateMatches(ls, filterAddrPrefix("keep:"),
 		aggResult(aggVolume("USD/2", 2, 0), aggVolume("USD/2", 2, 0))))
+}
+
+func TestAggregateTargetRejectionUsesCandidateDefinition(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t, createPreparedQueryReq("L", &commonpb.PreparedQuery{
+		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	}))
+	call := preparedCall{ledger: "L", name: "q", errKind: pqErrAggregateTarget}
+
+	require.True(t, preparedAggregateOutcomeLegal(gs.Ledger("L"), call, nil),
+		"a candidate where the query was recreated on a non-account target explains the rejection")
+}
+
+func TestClassifyAggregateTargetRejectionByCodeAndReason(t *testing.T) {
+	t.Parallel()
+
+	target, err := status.New(codes.InvalidArgument, "invalid aggregate target").WithDetails(
+		&errdetails.ErrorInfo{Domain: "ledger", Reason: "VALIDATION"})
+	require.NoError(t, err)
+	other, err := status.New(codes.NotFound, "ledger missing").WithDetails(
+		&errdetails.ErrorInfo{Domain: "ledger", Reason: "LEDGER_NOT_FOUND"})
+	require.NoError(t, err)
+
+	require.Equal(t, pqErrAggregateTarget, classifyPreparedExecError(target.Err()))
+	require.Equal(t, pqErrOther, classifyPreparedExecError(other.Err()))
+}
+
+func TestAggregateRecreationValidatesAccountsCandidateResult(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t,
+		oracletest.TxReq("world", "keep:1", "USD/2", 5),
+		createPreparedQueryReq("L", &commonpb.PreparedQuery{Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS}),
+	)
+	call := preparedCall{ledger: "L", name: "q"}
+
+	require.False(t, preparedAggregateOutcomeLegal(gs.Ledger("L"), call, aggResult()),
+		"a recreated accounts query still validates aggregate contents")
+	call.errKind = pqErrOther
+	require.False(t, preparedAggregateOutcomeLegal(gs.Ledger("L"), call, nil),
+		"an accounts candidate never explains an unexpected error")
+	call.errKind = pqErrAggregateTarget
+	require.False(t, preparedAggregateOutcomeLegal(gs.Ledger("L"), call, nil),
+		"an accounts candidate never explains a target-validation error")
+}
+
+func TestListRejectsAggregateTargetErrorForEmptyWindow(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t, createPreparedQueryReq("L", &commonpb.PreparedQuery{
+		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		Filter: filterAddrPrefix("missing:"),
+	}))
+	call := preparedCall{ledger: "L", name: "q", pageSize: 10, errKind: pqErrAggregateTarget}
+
+	require.False(t, preparedListOutcomeLegal(gs.Ledger("L"), call, nil, nil))
+}
+
+func TestPreparedOutcomesRejectWrongResponseArm(t *testing.T) {
+	t.Parallel()
+
+	gs := buildGlobal(t,
+		createPreparedQueryReq("L", &commonpb.PreparedQuery{
+			Name: "list", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Filter: filterAddrPrefix("missing:"),
+		}),
+		createPreparedQueryReq("L", &commonpb.PreparedQuery{
+			Name: "aggregate", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+			Filter: filterAddrPrefix("missing:"),
+		}),
+	)
+
+	require.False(t, preparedListOutcomeLegal(gs.Ledger("L"),
+		preparedCall{ledger: "L", name: "list", pageSize: 10, wrongResult: true}, nil, nil))
+	require.False(t, preparedAggregateOutcomeLegal(gs.Ledger("L"),
+		preparedCall{ledger: "L", name: "aggregate", wrongResult: true}, nil))
+}
+
+func TestPreparedPaginationPreservesRawCursorOrderingAcrossTargets(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "acc:1", "USD/2", 1),
+		oracletest.TxReq("world", "acc:2", "USD/2", 1),
+	)
+	call := preparedCall{ledger: "L", pageSize: 10}
+
+	require.True(t, preparedWindowMatches(ls, call,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, []byte("acc:1"),
+		&commonpb.PreparedQueryCursor{}),
+		"transaction keys sort before an account-address cursor")
+
+	require.Equal(t, []string{"acc:1", "acc:2", "world"},
+		preparedAccountProbe(ls, nil, string(uint64EntityKey(1)), 10),
+		"account keys sort after a big-endian transaction cursor")
+}
+
+func TestPreparedTransactionContinuationMustMatchRemainingRows(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "acc:1", "USD/2", 1),
+		oracletest.TxReq("world", "acc:2", "USD/2", 1),
+	)
+	call := preparedCall{ledger: "L", pageSize: 1}
+	first := []*commonpb.Transaction{serverTxFromRec(ls.Txs().Get(0))}
+
+	require.False(t, preparedWindowMatches(ls, call,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, nil,
+		&commonpb.PreparedQueryCursor{TransactionData: first}),
+		"clearing has_more must not hide known remaining transactions")
+	require.False(t, preparedWindowMatches(ls, call,
+		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, nil, nil,
+		&commonpb.PreparedQueryCursor{TransactionData: first, HasMore: true}),
+		"has_more requires a continuation cursor")
 }
 
 // TestRegistryMatches pins the listing comparison: names, targets and the
@@ -168,12 +297,12 @@ func TestPreparedLogsUseActiveDateIndex(t *testing.T) {
 
 	call := preparedCall{ledger: "L", name: "dates", pageSize: 10}
 
-	require.True(t, preparedListOutcomeLegal(gs.Ledger("L"), call, "", &commonpb.PreparedQueryCursor{}))
+	require.True(t, preparedListOutcomeLegal(gs.Ledger("L"), call, nil, &commonpb.PreparedQueryCursor{}))
 	require.Equal(t, neededLogIndexes(filter), preparedNeededIndexes(filter, commonpb.QueryTarget_QUERY_TARGET_LOGS))
 
 	call.errKind = pqErrIndex
 
-	require.False(t, preparedListOutcomeLegal(gs.Ledger("L"), call, "", nil))
+	require.False(t, preparedListOutcomeLegal(gs.Ledger("L"), call, nil, nil))
 }
 
 func TestPreparedLogPageUnknownDatesAndHasMore(t *testing.T) {
@@ -193,23 +322,23 @@ func TestPreparedLogPageUnknownDatesAndHasMore(t *testing.T) {
 	corrupt := servedRows(ls, "L", first)
 	corrupt[0].kind = "wrong-kind"
 
-	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, corrupt, true))
-	require.True(t, preparedLogWindowMatches(ls, call, filter, 0, page, true), "an unknown-date suffix can supply another page")
-	require.True(t, preparedLogWindowMatches(ls, call, filter, 0, page, false), "the same suffix can fail the date filter")
-	require.True(t, preparedLogWindowMatches(ls, call, filter, first, servedRows(ls, "L", second), false))
-	require.False(t, preparedLogWindowMatches(ls, call, filter, first, servedRows(ls, "L", second), true), "no remaining row can justify hasMore")
-	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, nil, true), "hasMore requires a full page")
-	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, servedRows(ls, "L", 999), false))
+	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, corrupt, true))
+	require.True(t, preparedLogWindowMatches(ls, call, filter, nil, page, true), "an unknown-date suffix can supply another page")
+	require.True(t, preparedLogWindowMatches(ls, call, filter, nil, page, false), "the same suffix can fail the date filter")
+	require.True(t, preparedLogWindowMatches(ls, call, filter, uint64EntityKey(first), servedRows(ls, "L", second), false))
+	require.False(t, preparedLogWindowMatches(ls, call, filter, uint64EntityKey(first), servedRows(ls, "L", second), true), "no remaining row can justify hasMore")
+	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, nil, true), "hasMore requires a full page")
+	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, servedRows(ls, "L", 999), false))
 
 	gs.LearnLogDate("L", second, &commonpb.Timestamp{Data: 5})
 	ls = gs.Ledger("L")
 
-	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, page, false), "a required suffix cannot be omitted")
-	require.True(t, preparedLogWindowMatches(ls, call, filter, 0, page, true))
+	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, page, false), "a required suffix cannot be omitted")
+	require.True(t, preparedLogWindowMatches(ls, call, filter, nil, page, true))
 
 	call.pageSize = 2
 
-	require.False(t, preparedLogWindowMatches(ls, call, filter, 0, page, false), "a short page must include required rows")
+	require.False(t, preparedLogWindowMatches(ls, call, filter, nil, page, false), "a short page must include required rows")
 }
 
 func TestPreparedLogPageRejectsMissingAndInventedRows(t *testing.T) {
@@ -219,12 +348,12 @@ func TestPreparedLogPageRejectsMissingAndInventedRows(t *testing.T) {
 
 	call := preparedCall{ledger: "L", pageSize: 10}
 
-	require.False(t, preparedLogPageMatches(ls, call, nil, 0, &commonpb.PreparedQueryCursor{}))
+	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &commonpb.PreparedQueryCursor{}))
 
 	invented := &commonpb.Log{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 		LedgerName: "L", Log: &commonpb.LedgerLog{Id: 999},
 	}}}}
 
-	require.False(t, preparedLogPageMatches(ls, call, nil, 0, &commonpb.PreparedQueryCursor{LogData: []*commonpb.Log{invented}}))
-	require.True(t, preparedLogPageMatches(ls, call, nil, ls.LogRows()[0].ID, &commonpb.PreparedQueryCursor{}))
+	require.False(t, preparedLogPageMatches(ls, call, nil, nil, &commonpb.PreparedQueryCursor{LogData: []*commonpb.Log{invented}}))
+	require.True(t, preparedLogPageMatches(ls, call, nil, uint64EntityKey(ls.LogRows()[0].ID), &commonpb.PreparedQueryCursor{}))
 }

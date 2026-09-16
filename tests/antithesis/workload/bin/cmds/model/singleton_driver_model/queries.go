@@ -522,6 +522,10 @@ func transactionWindowRows(ls oracle.LedgerState, filter *commonpb.QueryFilter, 
 // content-matching its model record), optional rows may, nothing else does, and
 // a required row may only be missing past a full (truncated) page.
 func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) bool {
+	return txRowsMatch(ls, transactionWindowRows(ls, filter, afterID, reverse), pageSize, serverTxs)
+}
+
+func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, serverTxs []*commonpb.Transaction) bool {
 	if len(serverTxs) > pageSize {
 		return false
 	}
@@ -529,7 +533,7 @@ func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterI
 	txs := ls.Txs()
 	j := 0
 
-	for _, row := range transactionWindowRows(ls, filter, afterID, reverse) {
+	for _, row := range rows {
 		if j == len(serverTxs) {
 			if len(serverTxs) == pageSize {
 				return true // full page — the remaining rows were truncated
