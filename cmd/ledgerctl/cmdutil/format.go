@@ -76,16 +76,23 @@ func ObfuscateDSN(dsn string) string {
 // ObfuscateClickHouseDSN replaces userinfo passwords and the ClickHouse
 // driver's supported password query parameter with "****".
 func ObfuscateClickHouseDSN(dsn string) string {
-	obfuscated := ObfuscateDSN(dsn)
-	parsed, err := url.Parse(obfuscated)
+	parsed, err := url.Parse(dsn)
 	if err != nil {
-		return obfuscated
+		return ObfuscateDSN(dsn)
+	}
+
+	if parsed.User != nil {
+		username := parsed.User.Username()
+		password, hasPassword := parsed.User.Password()
+		if hasPassword && password != "" {
+			parsed.User = url.UserPassword(username, "****")
+		}
 	}
 
 	query := parsed.Query()
 	passwords, ok := query["password"]
 	if !ok {
-		return obfuscated
+		return restoreObfuscationMask(parsed.String())
 	}
 
 	for index, password := range passwords {

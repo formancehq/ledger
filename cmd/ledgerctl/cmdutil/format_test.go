@@ -154,6 +154,11 @@ func TestObfuscateClickHouseDSN(t *testing.T) {
 			expected: "clickhouse://default:****@ch-host:9000/events?password=****",
 		},
 		{
+			name:     "unescaped at sign in query password",
+			input:    "clickhouse://ch-host:9000/events?password=prefix@secret",
+			expected: "clickhouse://ch-host:9000/events?password=****",
+		},
+		{
 			name:     "unrelated query parameter",
 			input:    "clickhouse://ch-host:9000/events?secure=true&token=public-routing-value",
 			expected: "clickhouse://ch-host:9000/events?secure=true&token=public-routing-value",

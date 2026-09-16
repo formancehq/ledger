@@ -43,7 +43,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 		natsNoSchemePass   = "nats-schemeless-password"
 		natsNoSchemeToken  = "nats-schemeless-token"
 		httpPassword       = "http-output-password"
-		clickHousePassword = "clickhouse-output-password"
+		clickHousePassword = "clickhouse-output-prefix@clickhouse-output-secret"
 	)
 
 	fixture := &eventsURLRedactionServer{
@@ -136,7 +136,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			}
 
 			output := executeEventsCommand(t, args)
-			for _, credential := range []string{natsPassword, natsToken, natsNoSchemePass, natsNoSchemeToken, httpPassword, clickHousePassword} {
+			for _, credential := range []string{natsPassword, natsToken, natsNoSchemePass, natsNoSchemeToken, httpPassword, "clickhouse-output-prefix", "clickhouse-output-secret"} {
 				assert.NotContains(t, output, credential)
 			}
 			for _, control := range listControls {
@@ -150,7 +150,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			if resultPath != "" {
 				result, err := os.ReadFile(resultPath)
 				require.NoError(t, err)
-				for _, credential := range []string{natsPassword, natsToken, natsNoSchemePass, natsNoSchemeToken, httpPassword, clickHousePassword} {
+				for _, credential := range []string{natsPassword, natsToken, natsNoSchemePass, natsNoSchemeToken, httpPassword, "clickhouse-output-prefix", "clickhouse-output-secret"} {
 					assert.NotContains(t, string(result), credential)
 				}
 				for _, control := range listControls {
@@ -161,10 +161,10 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	}
 
 	addCases := []struct {
-		name       string
-		flags      []string
-		credential string
-		controls   []string
+		name        string
+		flags       []string
+		credentials []string
+		controls    []string
 	}{
 		{
 			name: "NATS password",
@@ -172,8 +172,8 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-url", "nats://operator:" + natsPassword + "@one:4222",
 				"--nats-topic", "events",
 			},
-			credential: natsPassword,
-			controls:   []string{"stream", "operator", "one:4222", "events"},
+			credentials: []string{natsPassword},
+			controls:    []string{"stream", "operator", "one:4222", "events"},
 		},
 		{
 			name: "NATS token",
@@ -181,8 +181,8 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-url", "nats://" + natsToken + "@two:4222",
 				"--nats-topic", "events",
 			},
-			credential: natsToken,
-			controls:   []string{"stream", "two:4222", "events"},
+			credentials: []string{natsToken},
+			controls:    []string{"stream", "two:4222", "events"},
 		},
 		{
 			name: "scheme-less NATS password",
@@ -190,8 +190,8 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-url", "operator:" + natsNoSchemePass + "@three:4222",
 				"--nats-topic", "events",
 			},
-			credential: natsNoSchemePass,
-			controls:   []string{"stream", "operator", "three:4222", "events"},
+			credentials: []string{natsNoSchemePass},
+			controls:    []string{"stream", "operator", "three:4222", "events"},
 		},
 		{
 			name: "scheme-less NATS token",
@@ -199,24 +199,24 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-url", natsNoSchemeToken + "@four:4222",
 				"--nats-topic", "events",
 			},
-			credential: natsNoSchemeToken,
-			controls:   []string{"stream", "four:4222", "events"},
+			credentials: []string{natsNoSchemeToken},
+			controls:    []string{"stream", "four:4222", "events"},
 		},
 		{
 			name: "HTTP password",
 			flags: []string{
 				"--http-endpoint", "https://operator:" + httpPassword + "@hooks.example/events",
 			},
-			credential: httpPassword,
-			controls:   []string{"stream", "operator", "hooks.example"},
+			credentials: []string{httpPassword},
+			controls:    []string{"stream", "operator", "hooks.example"},
 		},
 		{
 			name: "ClickHouse query password",
 			flags: []string{
 				"--clickhouse-dsn", "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
 			},
-			credential: clickHousePassword,
-			controls:   []string{"stream", "db.example", "secure=true"},
+			credentials: []string{"clickhouse-output-prefix", "clickhouse-output-secret"},
+			controls:    []string{"stream", "db.example", "secure=true"},
 		},
 	}
 	for _, format := range []string{"table", "json", "yaml"} {
@@ -240,14 +240,18 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				}
 
 				output := executeEventsCommand(t, args)
-				assert.NotContains(t, output, addCase.credential)
+				for _, credential := range addCase.credentials {
+					assert.NotContains(t, output, credential)
+				}
 				for _, control := range addCase.controls {
 					assert.Contains(t, output, control)
 				}
 				if resultPath != "" {
 					result, err := os.ReadFile(resultPath)
 					require.NoError(t, err)
-					assert.NotContains(t, string(result), addCase.credential)
+					for _, credential := range addCase.credentials {
+						assert.NotContains(t, string(result), credential)
+					}
 					for _, control := range addCase.controls {
 						assert.Contains(t, string(result), control)
 					}
@@ -255,7 +259,9 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 
 				select {
 				case request := <-fixture.applyRequests:
-					assert.True(t, strings.Contains(request.String(), addCase.credential), "Apply must receive the original credential")
+					for _, credential := range addCase.credentials {
+						assert.Contains(t, request.String(), credential, "Apply must receive the original credential")
+					}
 				default:
 					t.Fatal("events add-sink did not call Apply")
 				}
