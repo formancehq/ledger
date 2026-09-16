@@ -3,6 +3,7 @@ package indexbuilder
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -92,9 +93,10 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 		}
 
 		var (
-			batchCount int
-			lastSeq    uint64
-			eof        bool
+			batchCount     int
+			lastSeq        uint64
+			eof            bool
+			purgedAccounts = make(map[string]struct{})
 		)
 
 		batch := b.readStore.NewBatch()
@@ -159,11 +161,12 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			// Skip non-transaction logs (config mutations, metadata-only, etc.)
 			if parsed.LogType == 0 {
 				for _, account := range parsed.PurgedAccounts {
-					if err := b.purgeCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
+					if err := b.purgeQueuedCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
 						_ = batch.Cancel()
 
 						return err
 					}
+					purgedAccounts[account] = struct{}{}
 				}
 
 				continue
@@ -190,12 +193,23 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 				}
 			}
 			for _, account := range parsed.PurgedAccounts {
-				if err := b.purgeCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
+				if err := b.purgeQueuedCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
 					_ = batch.Cancel()
 
 					return err
 				}
+				purgedAccounts[account] = struct{}{}
 			}
+		}
+		accounts := make([]string, 0, len(purgedAccounts))
+		for account := range purgedAccounts {
+			accounts = append(accounts, account)
+		}
+		sort.Strings(accounts)
+		if err := b.purgeCommittedAccountAssetIndexes(cfg, task.ledger, accounts...); err != nil {
+			_ = batch.Cancel()
+
+			return err
 		}
 
 		// AppliedProposal cursor errors set during excludedForLog must be

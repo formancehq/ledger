@@ -527,6 +527,17 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 	for _, ledgerLog := range lastLogByLedger {
 		sort.Strings(ledgerLog.GetPurgedAccounts())
+		sort.Slice(ledgerLog.GetPurgedVolumes(), func(i, j int) bool {
+			left, right := ledgerLog.GetPurgedVolumes()[i], ledgerLog.GetPurgedVolumes()[j]
+			if left.GetAccount() != right.GetAccount() {
+				return left.GetAccount() < right.GetAccount()
+			}
+			if left.GetAsset() != right.GetAsset() {
+				return left.GetAsset() < right.GetAsset()
+			}
+
+			return left.GetColor() < right.GetColor()
+		})
 	}
 
 	// === Phase 3: Pebble flush in monotone zone+sub order =====================
