@@ -139,6 +139,28 @@ func TestReplayLedgerLogEmptyMetadataDoesNotCreatePurgeCandidate(t *testing.T) {
 	require.Empty(t, w.purgedAccounts)
 }
 
+func TestReplayLedgerLogWorldMetadataCreatesPurgeCandidate(t *testing.T) {
+	t.Parallel()
+
+	w := &livenessWriterStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"world": {Name: "world", Pattern: "world", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		}),
+	}
+	require.NoError(t, replay.ReplayLedgerLog(
+		"ledger", 1,
+		&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+			Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "world"}}},
+			Metadata: map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("active")},
+		}}},
+		nil, nil, w, map[string]map[string]*commonpb.AccountType{}, types, buffer,
+	))
+	require.NoError(t, buffer.Flush(w, types, nil))
+	require.Equal(t, []string{"world"}, w.purgedAccounts)
+}
+
 func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {
 	t.Helper()
 

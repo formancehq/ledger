@@ -621,57 +621,59 @@ func (b *Builder) advanceCursors(lastSeq, appliedProposalSeq uint64, indexed int
 // purgeCurrentAccountIndexes removes projections describing current account
 // state while deliberately preserving immutable account-to-transaction history.
 func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
-	if b.deletedAcctAsset == nil {
-		b.deletedAcctAsset = make(map[string]struct{})
-	}
+	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
+		if b.deletedAcctAsset == nil {
+			b.deletedAcctAsset = make(map[string]struct{})
+		}
 
-	// has-asset is asset-first, so scan the bounded ledger keyspace and delete
-	// rows whose terminal entity is exactly this address.
-	prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
-	// Reconcile keys already queued in this write batch before consulting
-	// committed Pebble. Removing them from the dedup set also lets a later
-	// re-fund in the same batch recreate the membership after this delete.
-	for sk := range b.seenAcctAsset {
-		key := []byte(sk)
-		if bytes.HasPrefix(key, prefix) && accountByAssetKeyAccount(key[len(prefix):]) == account {
-			if err := b.wb.DeleteKey(key); err != nil {
-				return err
+		// has-asset is asset-first, so scan the bounded ledger keyspace and delete
+		// rows whose terminal entity is exactly this address.
+		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
+		// Reconcile keys already queued in this write batch before consulting
+		// committed Pebble. Removing them from the dedup set also lets a later
+		// re-fund in the same batch recreate the membership after this delete.
+		for sk := range b.seenAcctAsset {
+			key := []byte(sk)
+			if bytes.HasPrefix(key, prefix) && accountByAssetKeyAccount(key[len(prefix):]) == account {
+				if err := b.wb.DeleteKey(key); err != nil {
+					return err
+				}
+				b.deletedAcctAsset[sk] = struct{}{}
+				delete(b.seenAcctAsset, sk)
 			}
-			b.deletedAcctAsset[sk] = struct{}{}
-			delete(b.seenAcctAsset, sk)
 		}
-	}
-	upper := append([]byte(nil), prefix...)
-	upper[len(upper)-1]++
-	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
-	if err != nil {
-		return err
-	}
-	for iter.First(); iter.Valid(); iter.Next() {
-		rest := iter.Key()[len(prefix):]
-		indexedAccount := accountByAssetKeyAccount(rest)
-		if indexedAccount == "" {
-			_ = iter.Close()
-
-			return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+		if err != nil {
+			return err
 		}
-		if indexedAccount == account {
-			key := append([]byte(nil), iter.Key()...)
-			if err := b.wb.DeleteKey(key); err != nil {
+		for iter.First(); iter.Valid(); iter.Next() {
+			rest := iter.Key()[len(prefix):]
+			indexedAccount := accountByAssetKeyAccount(rest)
+			if indexedAccount == "" {
 				_ = iter.Close()
 
-				return err
+				return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
 			}
-			b.deletedAcctAsset[string(key)] = struct{}{}
-		}
-	}
-	if err := iter.Error(); err != nil {
-		_ = iter.Close()
+			if indexedAccount == account {
+				key := append([]byte(nil), iter.Key()...)
+				if err := b.wb.DeleteKey(key); err != nil {
+					_ = iter.Close()
 
-		return err
-	}
-	if err := iter.Close(); err != nil {
-		return err
+					return err
+				}
+				b.deletedAcctAsset[string(key)] = struct{}{}
+			}
+		}
+		if err := iter.Error(); err != nil {
+			_ = iter.Close()
+
+			return err
+		}
+		if err := iter.Close(); err != nil {
+			return err
+		}
 	}
 
 	if cfg == nil {
