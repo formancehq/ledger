@@ -441,10 +441,7 @@ func (impl *BucketServiceServerImpl) ListTransactions(req *servicepb.ListTransac
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
-	// Authentication and protobuf decoding finish in the interceptor/generated
-	// transport path before this handler starts. PrepareDuration begins here and
-	// includes handler validation before the controller enters query execution.
-	ctx, profile := query.WithProfile(ctx)
+	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
 	if req.GetLedger() == "" {
@@ -595,9 +592,9 @@ func (impl *BucketServiceServerImpl) ListAccounts(req *servicepb.ListAccountsReq
 		trace.WithAttributes(attribute.String("ledger", req.GetLedger())))
 	defer span.End()
 
-	// See ListTransactions: the profile begins with handler validation after
-	// transport decoding and authentication have completed.
-	ctx, profile := query.WithProfile(ctx)
+	// See ListTransactions: the profile adopts the pre-authentication clock
+	// carried by the public server's interceptor chain.
+	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
 	if req.GetLedger() == "" {
@@ -981,7 +978,7 @@ func (impl *BucketServiceServerImpl) ListPreparedQueries(ctx context.Context, re
 }
 
 func (impl *BucketServiceServerImpl) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
-	ctx, profile := query.WithProfile(ctx)
+	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
 	profile.EnterExecute()
@@ -1008,7 +1005,7 @@ func (impl *BucketServiceServerImpl) GetLedgerStats(ctx context.Context, req *se
 }
 
 func (impl *BucketServiceServerImpl) AggregateVolumes(ctx context.Context, req *servicepb.AggregateVolumesRequest) (*commonpb.AggregateResult, error) {
-	ctx, profile := query.WithProfile(ctx)
+	ctx, profile := withTransportQueryProfile(ctx)
 	defer impl.emitProfile(ctx, profile)
 
 	if req.GetLedger() == "" {
@@ -1209,6 +1206,14 @@ func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *q
 	if wantsProfile(ctx) {
 		_ = ggrpc.SetTrailer(ctx, profileToMetadata(profile))
 	}
+}
+
+func withTransportQueryProfile(ctx context.Context) (context.Context, *query.QueryProfile) {
+	if start, ok := ctx.Value(queryProfileClockKey{}).(time.Time); ok {
+		return query.WithProfileStartingAt(ctx, start)
+	}
+
+	return query.WithProfile(ctx)
 }
 
 func wantsProfile(ctx context.Context) bool {
