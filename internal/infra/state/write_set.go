@@ -510,6 +510,21 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		}
 		ledgerLog.PurgedAccounts = append(ledgerLog.PurgedAccounts, key.Account)
 	}
+	// Covered deletions are pre-existing balanced rows removed by an
+	// account-wide purge rather than proposal-touched volume updates. Emit them
+	// on the terminal ledger log so usage replay decrements CounterVolume and
+	// integrity replay can independently reproduce the same exclusions.
+	for _, deletion := range volumeDeletions {
+		ledgerLog := lastLogByLedger[deletion.Key.LedgerName]
+		if ledgerLog == nil {
+			return fmt.Errorf("invariant: covered volume deletion for account %q in ledger %q has no fresh ledger log", deletion.Key.Account, deletion.Key.LedgerName)
+		}
+		ledgerLog.PurgedVolumes = append(ledgerLog.PurgedVolumes, &commonpb.TouchedVolume{
+			Account: deletion.Key.Account,
+			Asset:   deletion.Key.Asset,
+			Color:   deletion.Key.Color,
+		})
+	}
 	for _, ledgerLog := range lastLogByLedger {
 		sort.Strings(ledgerLog.GetPurgedAccounts())
 	}

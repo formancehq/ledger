@@ -66,15 +66,15 @@ when target-specific gates project it back to the main pin:
 - transaction and log membership use `query.MainHorizonKeep`;
 - account metadata resolves event history at the pin and has-asset rows use
   first-touch stamps;
-- folded account membership applies an account-wide ephemeral purge to every
-  current has-asset and metadata index in the same batch as aligned progress,
-  while historical account-to-transaction mappings remain queryable;
+- folded account membership applies an account-wide ephemeral purge to current
+  has-asset membership in the same batch as aligned progress, while metadata
+  history and account-to-transaction mappings remain queryable at older pins;
 - schema and `IndexVersionState` come from their owning pinned views.
 
 Account-wide ephemeral purge is an explicit exception to projection-ahead
 reads. If the main handle is pinned before a purge while the aligned index
-snapshot is acquired after it, the physically deleted current has-asset and
-metadata membership cannot be reconstructed at the older main pin. Callers
+snapshot is acquired after it, the physically deleted current has-asset
+membership cannot be reconstructed at the older main pin. Callers
 that require that pre-purge membership must use a checkpoint whose main and
 index snapshots are aligned at the same applied horizon.
 

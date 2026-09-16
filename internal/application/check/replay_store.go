@@ -290,6 +290,24 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 		prefix = append(prefix, spec.separator)
 		upper := append([]byte(nil), prefix...)
 		upper[len(upper)-1]++
+		if collector != nil && spec.replayPrefix == replayPrefixVolume {
+			iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+			if err != nil {
+				return err
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				var key domain.VolumeKey
+				if err := key.Unmarshal(iter.Key()[1:]); err != nil {
+					_ = iter.Close()
+
+					return fmt.Errorf("unmarshaling replay volume during account purge: %w", err)
+				}
+				collector(ledger, account, key.Asset, key.Color)
+			}
+			if err := iter.Close(); err != nil {
+				return err
+			}
+		}
 		if err := s.db.DeleteRange(prefix, upper, pebble.NoSync); err != nil {
 			return err
 		}

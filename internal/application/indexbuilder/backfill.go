@@ -1454,6 +1454,7 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
 			}
 			if !isHistoryLog(log) {
+				b.wb.SetEventSequence(log.GetSequence())
 				for _, account := range ledgerLog.GetPurgedAccounts() {
 					if err := b.purgeCurrentAccountIndexes(cfg, task.ledger, account); err != nil {
 						_ = batch.Cancel()
