@@ -161,6 +161,22 @@ func TestReplayLedgerLogWorldMetadataCreatesPurgeCandidate(t *testing.T) {
 	require.Equal(t, []string{"world"}, w.purgedAccounts)
 }
 
+func TestPostingOnlyWorldCreatesPurgeCandidate(t *testing.T) {
+	t.Parallel()
+
+	w := &livenessWriterStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"world": {Name: "world", Pattern: "world", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		}),
+	}
+	postings := []*commonpb.Posting{{Source: "world", Destination: "alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}
+	buffer.Add("ledger", postings)
+	require.NoError(t, buffer.Flush(w, types, nil))
+	require.Equal(t, []string{"world"}, w.purgedAccounts)
+}
+
 func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {
 	t.Helper()
 

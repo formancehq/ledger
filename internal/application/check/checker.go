@@ -662,7 +662,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// on otherwise-purged accounts).
 
 	// Comparison passes: expected = replayed state.
-	c.comparePurgedAccountAbsence(ctx, snap, replay.replayDerivedPurgedAccounts(), callback)
+	c.comparePurgedAccountAbsence(ctx, snap, replay.replayDerivedPurgedAccounts(), replay.replayDerivedPurgedVolumes(), callback)
 	c.compareVolumes(ctx, snap, replay, excluded, callback)
 	c.compareMetadata(ctx, snap, replay, excluded, callback)
 	c.compareTransactions(ctx, snap, replay, callback)
@@ -743,6 +743,7 @@ func (c *Checker) comparePurgedAccountAbsence(
 	ctx context.Context,
 	reader dal.PebbleReader,
 	purged map[domain.AccountKey]struct{},
+	purgedVolumes map[domain.VolumeKey]struct{},
 	callback func(*servicepb.CheckStoreEvent),
 ) {
 	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
@@ -761,7 +762,9 @@ func (c *Checker) comparePurgedAccountAbsence(
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			continue
 		}
-		if _, ok := purged[key.AccountKey]; ok {
+		_, accountPurged := purged[key.AccountKey]
+		_, volumePurged := purgedVolumes[key]
+		if accountPurged || volumePurged {
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("volume row survives replay-derived account purge for %s/%s", key.Account, key.Asset),
 				0, key.LedgerName, key.Account, key.Asset))

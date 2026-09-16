@@ -260,6 +260,17 @@ func mirrorCreatedOrder(ledger, reference string) *raftcmdpb.Order {
 	}
 }
 
+func mirrorMetadataOrder(ledger, account string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+		Ledger: ledger,
+		Payload: &raftcmdpb.LedgerScopedOrder_MirrorIngest{MirrorIngest: &raftcmdpb.MirrorIngestOrder{Entry: &raftcmdpb.MirrorLogEntry{
+			Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
+				Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: account}}},
+			}},
+		}}},
+	}}}
+}
+
 // seedAuditItem is a single order in a synthetic audit entry: the order to
 // serialize, the log sequence it produced (0 → skipped/non-log-producing), and
 // the log to persist at that sequence (nil → no log row).
@@ -881,6 +892,21 @@ func TestProcessAuditEntries_Dispatch(t *testing.T) {
 					{order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}), logSeq: 10,
 						log: createdTxLog(10, ledger, ts, nil, []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
 					{order: metadataOrder(ledger, "hold:1"), logSeq: 11,
+						log: metadataPurgeLog(11, ledger, "hold:1", []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
+				},
+			}},
+			wantCursor:   1,
+			wantCounters: []wantCounter{{usagestore.CounterEphemeralEvicted, 1}},
+			zeroCounters: []byte{usagestore.CounterVolume},
+		},
+		{
+			name: "mirrored_metadata_account_purge_consumes_volume_annotations",
+			entries: []seedAuditEntry{{
+				seq: 1, success: true,
+				items: []seedAuditItem{
+					{order: createTxOrder(ledger, &raftcmdpb.CreateTransactionOrder{}), logSeq: 10,
+						log: createdTxLog(10, ledger, ts, nil, []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")}, nil, nil)},
+					{order: mirrorMetadataOrder(ledger, "hold:1"), logSeq: 11,
 						log: metadataPurgeLog(11, ledger, "hold:1", []*commonpb.TouchedVolume{touchedVolume("hold:1", "USD", "")})},
 				},
 			}},

@@ -54,6 +54,7 @@ type replayStore struct {
 	db                    *pebble.DB
 	tempDir               string
 	purgedAccounts        map[domain.AccountKey]struct{}
+	purgedVolumes         map[domain.VolumeKey]struct{}
 	pendingPurgedAccounts map[domain.AccountKey]struct{}
 }
 
@@ -79,6 +80,7 @@ func newReplayStore() (*replayStore, error) {
 		db:                    db,
 		tempDir:               dir,
 		purgedAccounts:        make(map[domain.AccountKey]struct{}),
+		purgedVolumes:         make(map[domain.VolumeKey]struct{}),
 		pendingPurgedAccounts: make(map[domain.AccountKey]struct{}),
 	}, nil
 }
@@ -136,6 +138,21 @@ func (s *replayStore) deleteLedgerData(ledgerName string) error {
 			return fmt.Errorf("deleting replay rows (prefix=%c) for ledger %q: %w", prefix, ledgerName, err)
 		}
 	}
+	for account := range s.purgedAccounts {
+		if account.LedgerName == ledgerName {
+			delete(s.purgedAccounts, account)
+		}
+	}
+	for volume := range s.purgedVolumes {
+		if volume.LedgerName == ledgerName {
+			delete(s.purgedVolumes, volume)
+		}
+	}
+	for account := range s.pendingPurgedAccounts {
+		if account.LedgerName == ledgerName {
+			delete(s.pendingPurgedAccounts, account)
+		}
+	}
 
 	return nil
 }
@@ -145,6 +162,7 @@ func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelt
 	var volumeKey domain.VolumeKey
 	if err := volumeKey.Unmarshal(canonicalKey); err == nil {
 		delete(s.purgedAccounts, volumeKey.AccountKey)
+		delete(s.purgedVolumes, volumeKey)
 	}
 
 	key := replayKey(replayPrefixVolume, canonicalKey)
@@ -193,6 +211,11 @@ func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 
 // deleteVolume removes a volume entry from the replay store.
 func (s *replayStore) DeleteVolume(canonicalKey []byte) error {
+	var volumeKey domain.VolumeKey
+	if err := volumeKey.Unmarshal(canonicalKey); err == nil {
+		s.purgedVolumes[volumeKey] = struct{}{}
+	}
+
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
 	return s.deleteKey(key)
@@ -303,6 +326,7 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 					return fmt.Errorf("unmarshaling replay volume during account purge: %w", err)
 				}
 				collector(ledger, account, key.Asset, key.Color)
+				s.purgedVolumes[key] = struct{}{}
 			}
 			if err := iter.Close(); err != nil {
 				return err
@@ -325,6 +349,10 @@ func (s *replayStore) takePendingPurgedAccounts() map[domain.AccountKey]struct{}
 
 func (s *replayStore) replayDerivedPurgedAccounts() map[domain.AccountKey]struct{} {
 	return s.purgedAccounts
+}
+
+func (s *replayStore) replayDerivedPurgedVolumes() map[domain.VolumeKey]struct{} {
+	return s.purgedVolumes
 }
 
 func (s *replayStore) AccountHasNonZeroVolume(ledger, account string) (bool, error) {
