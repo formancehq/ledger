@@ -122,13 +122,17 @@ Because registration is an upsert, a single signed batch can move keys around be
 | Earlier in the same batch | `revoke --cascade parent` |
 |---|---|
 | `child` revoked, then re-registered under `parent` | `child` **is** revoked — the re-registration put it back in the subtree |
-| `child` re-registered under a different parent | `child` **survives** — it left the subtree before the revoke ran |
-| `child` re-registered with no parent (becomes a root) | `child` **survives** |
+| `child` re-registered under a parent that is **outside** `parent`'s subtree | `child` **survives** — it left the subtree before the revoke ran |
+| `child` re-registered under a parent that is **inside** `parent`'s subtree | `child` **is** revoked — the cascade reaches it through its new parent |
 | `child` untouched | `child` **is** revoked |
 
 Submitting those operations as one batch or as several gives the same result. The batch boundary does not change who keeps a key.
 
-The first row is the one worth remembering operationally: revoking a key and immediately issuing a replacement for it in the same batch does **not** protect that replacement from a cascade of its parent later in that batch. If the intent is to retire `parent` but keep a re-issued `child`, revoke `child` and register it under a different parent (or as a root) before revoking `parent`, rather than relying on the revoke ordering alone.
+Rows two and three are the pair to be careful with: reassigning a key only saves it if the new parent is outside the subtree being revoked. With `root → parent`, `parent → sibling` and `parent → child`, re-registering `child` under `sibling` does **not** save it — `sibling` is itself revoked as a descendant of `parent`, and the cascade continues through it. Only a parent that the cascade never reaches takes the key out of range.
+
+The first row is the one worth remembering operationally: revoking a key and immediately issuing a replacement for it in the same batch does **not** protect that replacement from a cascade of its parent later in that batch.
+
+Note that the new parent is never chosen explicitly — it is always the key that signed the batch (see [Hierarchical Keys](#hierarchical-keys)). So "re-register `child` under a different parent" means submitting that registration in a batch signed by the intended new parent, and that signer must be outside the subtree about to be revoked. Registering a key with *no* parent is only possible for the unsigned bootstrap registration on a cluster that has no keys yet; once any key exists, every registration is signed and therefore parented.
 
 `cascaded_key_ids` on the revocation log lists exactly the keys the cascade removed, so the audit trail always shows which of these applied.
 

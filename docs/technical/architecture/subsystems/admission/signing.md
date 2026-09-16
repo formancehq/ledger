@@ -83,7 +83,9 @@ Which keys are descendants is decided by the **effective** parent relation: the 
 Two consequences inside a single signed batch, both following from "the last registration decides":
 
 - A key revoked earlier in the batch and then **re-registered** under the revoke target **is** cascaded. The registration supersedes the removal, so the key is back in the subtree when the cascade runs.
-- A key **reassigned** earlier in the batch — to another parent, or to root — is **not** cascaded from its old parent. It left the subtree before the cascade ran.
+- A key **reassigned** earlier in the batch is cascaded or not according to where its new parent sits. Reassignment removes the old edge, so the key is no longer reachable through it — but the walk is transitive, so a new parent that is *itself* inside the revoked subtree still carries the cascade to it. Only a new parent the cascade never reaches takes the key out of range.
+
+Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery and `RebuildDelta` both rebuild roots from parent-less persisted rows.
 
 A batch boundary does not change either answer: the same ordered operations produce the same surviving key set whether they are submitted as one signed batch or several. Deriving the cascade from an unordered view of the staged updates is what made those two disagree (EN-2011).
 

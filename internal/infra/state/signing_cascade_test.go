@@ -316,6 +316,9 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 			cascaded: nil,
 		},
 		{
+			// Admission only ever emits an empty ParentKeyId for the unsigned
+			// bootstrap registration, but recovery and RebuildDelta both rebuild
+			// roots from parent-less rows, so the FSM must resolve one the same way.
 			name: "a child re-registered as a root leaves the subtree",
 			orders: func(replacement []byte) []*raftcmdpb.Order {
 				return []*raftcmdpb.Order{
@@ -405,6 +408,42 @@ func TestSigningCascadeFollowsTheEffectiveParent(t *testing.T) {
 				"cascaded_key_ids is chain-hashed, so its contents and its order are both pinned")
 		})
 	}
+}
+
+// TestSigningCascadeReachesThroughAReassignedParent pins that reassignment only
+// saves a key when the new parent is outside the revoked subtree.
+//
+// Reassignment drops the old edge, so the key is no longer reached that way — but
+// the walk is transitive. With "sibling" itself a child of the revoke target,
+// moving "child" under "sibling" leaves it inside the subtree and the cascade
+// arrives through the new edge instead of the old one.
+func TestSigningCascadeReachesThroughAReassignedParent(t *testing.T) {
+	t.Parallel()
+
+	runner := newSigningBatchRunner(t)
+
+	parentPub, _ := signingKeypair(t)
+	siblingPub, siblingPriv := signingKeypair(t)
+	childPub, _ := signingKeypair(t)
+	replacementPub, replacementPriv := signingKeypair(t)
+
+	runner.commit(registerOrder("P", parentPub, ""))
+	runner.commit(registerOrder("sibling", siblingPub, "P"))
+	runner.commit(registerOrder("C", childPub, "P"))
+
+	payloads := runner.commit(
+		registerOrder("C", replacementPub, "sibling"),
+		revokeOrder("P", true),
+	)
+
+	require.Equal(t, []string{"sibling", "C"},
+		payloads[len(payloads)-1].GetRevokeSigningKey().GetCascadedKeyIds(),
+		"the cascade reaches the reassigned key through its new parent")
+
+	require.False(t, runner.authenticates("C", replacementPriv),
+		"a key moved to another key inside the revoked subtree does not escape the cascade")
+	require.False(t, runner.authenticates("sibling", siblingPriv))
+	require.Empty(t, runner.persistedKeyIDs())
 }
 
 // TestSigningCascadeTerminatesOnACycle pins termination against the graph
