@@ -198,6 +198,25 @@ func (c *Checker) ledgerNamesSnapshot() []string {
 	return append([]string(nil), c.ledgerNames...)
 }
 
+func (c *Checker) liveLedgerNamesSnapshot() []string {
+	c.mu.Lock()
+	state := c.modelState
+	c.mu.Unlock()
+
+	return liveLedgerNames(state, c.ledgerNamesSnapshot())
+}
+
+func liveLedgerNames(state oracle.GlobalState, names []string) []string {
+	live := make([]string, 0, len(names))
+	for _, name := range names {
+		if lifecycle, exists := state.Lifecycle(name); exists && !lifecycle.Deleted {
+			live = append(live, name)
+		}
+	}
+
+	return live
+}
+
 // retypeObservation drives one retype window's closure, two-phase per node so
 // the close can never race the fold: a poll proving the retype's own log
 // folded (last_indexed_sequence >= openSeq) arms the node, and only a LATER

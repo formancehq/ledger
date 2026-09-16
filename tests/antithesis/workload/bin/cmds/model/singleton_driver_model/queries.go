@@ -56,7 +56,7 @@ func queryPageSize() int {
 // page against the model's ordered window (see validateAccountQuery). Filters
 // cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 0)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genAccountFilter(c.sampleAccountFieldSeeds(ledger))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
@@ -172,7 +172,7 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 // streamed page against the model's ordered window (see validateTransactionQuery).
 // Filters cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 0)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
@@ -320,7 +320,10 @@ func drainStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 // address AND its whole volumes/metadata snapshot matching on that same base.
 func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account) {
 	if c.matchesModel(maxTicket, "AQUERY", func(base oracle.GlobalState) bool {
-		ls := base.Ledger(ledger)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
 		want := accountWindow(ls, filter, cursor, pageSize, reverse)
 		if len(want) != len(serverAccts) {
 			return false
@@ -369,7 +372,11 @@ func (c *Checker) modelAccountWindow(ledger string, filter *commonpb.QueryFilter
 // id (see txRecordMatches) on that same base.
 func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) {
 	if c.matchesModel(maxTicket, "TXQUERY", func(base oracle.GlobalState) bool {
-		return txWindowMatches(base.Ledger(ledger), filter, afterID, pageSize, reverse, serverTxs)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
+		return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 	}) {
 		return
 	}

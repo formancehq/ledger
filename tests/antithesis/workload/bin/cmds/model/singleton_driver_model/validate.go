@@ -30,7 +30,7 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 
 	c.crossCheckCommit(bulk, resp)
 	c.recordIndexCreates(bulk, resp)
-	for _, req := range bulk.Requests {
+	for i, req := range bulk.Requests {
 		switch {
 		case req.GetCreateLedger() != nil:
 			name := req.GetCreateLedger().GetName()
@@ -50,13 +50,33 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 			c.pendingDeleted[name] = struct{}{}
 		case req.GetPromoteLedger() != nil:
 			c.pendingPromoted[req.GetPromoteLedger().GetLedger()] = struct{}{}
-		case req.GetApply() != nil:
+		case req.GetApply() != nil && i < len(resp.GetLogs()) && isSuccessfulBusinessWrite(req, resp.GetLogs()[i]):
 			ledger := req.GetApply().GetLedger()
 			if _, pending := c.pendingPromoted[ledger]; pending {
 				emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": ledger}, coverageHit)
 				delete(c.pendingPromoted, ledger)
 			}
 		}
+	}
+}
+
+// isSuccessfulBusinessWrite reports whether a committed Apply proved that a
+// promoted ledger accepts ordinary business traffic. Mirror-safe configuration
+// actions and skipped orders do not establish that property.
+func isSuccessfulBusinessWrite(req *servicepb.Request, log *commonpb.Log) bool {
+	action := req.GetApply().GetAction()
+	if action == nil || log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
+		return false
+	}
+
+	switch action.GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction,
+		*servicepb.LedgerAction_RevertTransaction,
+		*servicepb.LedgerAction_AddMetadata,
+		*servicepb.LedgerAction_DeleteMetadata:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -428,7 +448,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			c.noteRetypeCommit(ledger, canonical, maxLogSequence(resp.GetLogs()))
 		}
 	}
-	learnTxStamps(c.modelState, bulk, logs)
+	learnTxStamps(&c.modelState, bulk, logs)
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server
@@ -443,7 +463,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 // original's reverted_at (the compensating transaction's timestamp). Runs in
 // the same critical section that advanced the state — the safety condition
 // LearnTxStamps documents.
-func learnTxStamps(gs oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log) {
+func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log) {
 	for i, req := range bulk.Requests {
 		if i >= len(logs) {
 			break
@@ -489,26 +509,6 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			matched = true
 
 			return true
-		}
-
-		// Maintenance is enforced by both a node-local admission interceptor and
-		// the replicated FSM gate. Around a toggle, an operation can therefore
-		// surface an earlier deterministic rejection (for example LEDGER_DELETED)
-		// from the admission path even though the committed candidate already has
-		// maintenance enabled. Evaluate that underlying rejection without the gate;
-		// a success is never accepted because the FSM still blocks the write.
-		if base.MaintenanceMode() {
-			disabled := base.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
-				Type: &servicepb.Request_SetMaintenanceMode{SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false}},
-			}}})
-			underlying := disabled.State.Apply(failedBulk)
-			if !underlying.OK && internal.HasErrorReason(reqErr, underlying.Reason) {
-				reason = underlying.Reason
-				matched = true
-
-				return true
-			}
-
 		}
 
 		return false
@@ -619,17 +619,25 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 	return matched
 }
 
+func liveLedgerState(base oracle.GlobalState, ledger string) (oracle.LedgerState, bool) {
+	lifecycle, exists := base.Lifecycle(ledger)
+	if !exists || lifecycle.Deleted {
+		return oracle.LedgerState{}, false
+	}
+
+	return base.Ledger(ledger), true
+}
+
 // validateAccountRead checks one GetAccount snapshot against the model: the read
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
 func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
-		lifecycle, exists := base.Lifecycle(ledger)
-		if !exists || lifecycle.Deleted {
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
 			return !found
 		}
-		ls := base.Ledger(ledger)
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
@@ -789,11 +797,11 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 // cross-routing bug class — is caught here for transactions.
 func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
-		lifecycle, exists := base.Lifecycle(ledger)
-		if !exists || lifecycle.Deleted {
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
 			return !found
 		}
-		txs := base.Ledger(ledger).Txs()
+		txs := ls.Txs()
 		if id == 0 || id > uint64(txs.Len()) {
 			return !found // no tx at this id in this base: consistent only with NotFound
 		}
@@ -827,11 +835,10 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // projection rather than just the per-op response echo.
 func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
-		_, exists := base.Lifecycle(ledger)
-		if !exists {
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
 			return false
 		}
-		ls := base.Ledger(ledger)
 
 		return fieldTypesMatch(ls.AccountFieldTypes(), acct) &&
 			fieldTypesMatch(ls.TransactionFieldTypes(), txn) &&

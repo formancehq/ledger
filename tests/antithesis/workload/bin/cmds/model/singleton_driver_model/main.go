@@ -224,16 +224,15 @@ func runWorker(
 			return
 		}
 
-		// 1-in-3: a read this iteration, split across the whole-ledger read
+		// 1-in-5: a read this iteration, split across the whole-ledger read
 		// (chart + ledger metadata), a single-account read, a transaction read
 		// (id + postings + reverted + metadata), a metadata-schema read (declared
 		// field types), and the two list queries (filtered, paginated, ordered
 		// windows over accounts and transactions). Reads validate against the
 		// in-flight bulk set, exercising cross-node freshness without needing
-		// quiescence. Transaction queries receive three slots because they must
-		// exercise seven builtin indexes plus declared metadata indexes.
-		if random.RandomChoice([]uint8{0, 1, 2}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10}) {
+		// quiescence.
+		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -242,13 +241,13 @@ func runWorker(
 				runSchemaRead(ctx, client, c)
 			case 3:
 				runAccountQuery(ctx, client, c)
-			case 4, 5, 6:
+			case 4:
 				runTransactionQuery(ctx, client, c)
-			case 7:
+			case 5:
 				runReplay(ctx, client, c)
-			case 8:
+			case 6:
 				runLogQuery(ctx, client, c)
-			case 9:
+			case 7:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
 			default:

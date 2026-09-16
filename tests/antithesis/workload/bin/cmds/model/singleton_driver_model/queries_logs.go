@@ -484,7 +484,7 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 
 // runLogQuery drives one ListLogs page and checks it against the model.
 func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, _ := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 0)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {
@@ -623,7 +623,11 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	}
 
 	matched := c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
-		return logOutcomeLegal(base.Ledger(ledger), ledger, filter, needed, errKind, page, afterSeq, pageSize)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
+		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize)
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,

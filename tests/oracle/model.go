@@ -2186,6 +2186,9 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
 			}
 		}
+		if lc.Deleted {
+			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
+		}
 		if lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 			return OrderResult{Reason: domain.ErrReasonLedgerNotInMirrorMode}, true
 		}

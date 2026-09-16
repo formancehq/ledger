@@ -83,7 +83,7 @@ func TestGlobalState_LifecyclePromotion(t *testing.T) {
 	require.True(t, promoted.State.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5))).OK)
 }
 
-func TestGlobalState_PromotesDeletedMirrorLedger(t *testing.T) {
+func TestGlobalState_RejectsPromotionOfDeletedMirrorLedger(t *testing.T) {
 	t.Parallel()
 
 	create := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_MIRROR)
@@ -95,11 +95,9 @@ func TestGlobalState_PromotesDeletedMirrorLedger(t *testing.T) {
 		PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "L"},
 	}}))
 
-	require.True(t, promoted.OK)
-	lifecycle, exists := promoted.State.Lifecycle("L")
-	require.True(t, exists)
-	require.True(t, lifecycle.Deleted)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, lifecycle.Mode)
+	require.False(t, promoted.OK)
+	require.Equal(t, domain.ErrReasonLedgerDeleted, promoted.Reason)
+	require.Equal(t, deleted.Fingerprint(), promoted.State.Fingerprint())
 }
 
 func TestGlobalState_LifecycleMaintenanceCommitOrder(t *testing.T) {

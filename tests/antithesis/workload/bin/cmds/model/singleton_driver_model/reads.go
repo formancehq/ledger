@@ -30,7 +30,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 
 	// Picking runs lock-free on the snapshot; registering the read first only
 	// holds the drain gate a little longer, never less.
-	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, c.ledgerNamesSnapshot())
+	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
 	if !ok {
 		return
 	}
@@ -272,7 +272,7 @@ func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, ab
 // ledger's whole snapshot (account types and ledger metadata, see
 // validateLedgerRead), or an absent ledger's mandatory NotFound.
 func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 2)
+	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -345,7 +345,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	ledger, id, absentLedger, ok := pickTransactionID(state, c.ledgerNamesSnapshot())
+	ledger, id, absentLedger, ok := pickTransactionID(state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
 	if !ok {
 		return
 	}
@@ -388,7 +388,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
 func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNamesSnapshot(), 3)
+	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 3)
 
 	c.mu.Lock()
 	readID := c.registerRead()

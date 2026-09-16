@@ -261,11 +261,10 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string)
 			}
 		}
 	}
-	active := activeLedgers(g, ledgers)
 	if len(deleted) > 0 && random.RandomChoice(indexPool(32)) == 0 {
 		return actions.CreateLedgerAction(random.RandomChoice(deleted), nil)
 	}
-	if len(active) < defaultLedgers || random.RandomChoice(indexPool(64)) == 0 {
+	if len(live) < defaultLedgers {
 		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
@@ -419,6 +418,16 @@ func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
 func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		if req := generateDrainTransaction(ledger, ls); req != nil {
+			return req
+		}
+	}
+
+	// Keep the bounded CI run deterministic enough to exercise the reference-
+	// conflict skip path even after lifecycle operations consume generation
+	// slots. The ordinary malformed branch below still emits unskipped conflicts.
+	if random.RandomChoice(indexPool(16)) == 0 {
+		if req := duplicateReferenceTransaction(ledger, ls); req != nil {
+			req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 			return req
 		}
 	}
