@@ -171,3 +171,39 @@ func TestClosingCursor_EmptyInner(t *testing.T) {
 	require.NoError(t, cursor.Close())
 	require.True(t, closer.closed)
 }
+
+// TestStoreGet_ResourceDoesNotOutliveTheReadLock pins EN-2072 bug 2.
+//
+// (*Store).Get releases dbMu.RLock when it returns, so it must not hand back
+// Pebble's closer. On an SST-backed lookup that closer is a live
+// *pebble.Iterator holding a file cache reference, and closing the DB while one
+// is outstanding panics inside Pebble with "element has outstanding
+// references" — observed in production shutdown via the fx stop hook.
+func TestStoreGet_ResourceDoesNotOutliveTheReadLock(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte("get-key"), []byte("get-val")))
+	require.NoError(t, batch.Commit())
+
+	// Force an SST. A memtable-backed lookup takes no file cache reference and
+	// would not exercise the defect.
+	require.NoError(t, s.Flush())
+
+	val, closer, err := s.Get([]byte("get-key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("get-val"), val)
+	require.NotNil(t, closer, "callers must always be able to Close the result")
+
+	// Deliberately leave the closer unreleased, as a caller preempted between
+	// Get returning and its deferred Close would.
+	require.NotPanics(t, func() {
+		require.NoError(t, s.Close())
+	}, "Store.Close must not panic while a Get closer is still unreleased")
+
+	// The returned bytes are a copy, so they outlive the database.
+	require.Equal(t, []byte("get-val"), val)
+	require.NoError(t, closer.Close())
+}
