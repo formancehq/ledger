@@ -801,6 +801,14 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 		proposeSpan.End()
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
+		if ctx.Err() != nil {
+			// Propose already queued the command. Cancellation only stops this
+			// caller's acceptance wait; the FSM can still apply it later. Keep
+			// lifecycle serialization until that definitive completion.
+			release := releaseLifecycle
+			releaseLifecycle = func() {}
+			releaseLifecycleWhenFSMCompletes(fsmFuture, release)
+		}
 
 		return nil, err
 	}
@@ -913,17 +921,15 @@ func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResul
 // uses this closed key set to decide and apply an account-wide EPHEMERAL purge
 // without scanning Pebble or bypassing the coverage gate.
 func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
-	compiledByLedger, err := a.accountLifecycleTypeSnapshots(orders)
-	if err != nil {
-		return nil, err
-	}
 	lockSet := make(map[int]struct{})
+	perOrderAccounts := make([]map[domain.AccountKey]struct{}, len(perOrder))
 
-	// Lock every touched ephemeral account (striped by canonical identity) until
-	// this Admit call observes FSM completion. A later admission for another
-	// asset of the same account then enumerates state only after the earlier
-	// proposal is durable, closing the snapshot/enumeration race.
-	for _, coverage := range perOrder {
+	// Lock every touched account before reading account-type snapshots. Type
+	// mutations take every stripe because a pattern can change the persistence
+	// class of any address in the ledger. This makes the type snapshot and the
+	// subsequent key enumeration one serialized lifecycle operation.
+	for orderIndex, coverage := range perOrder {
+		accounts := make(map[domain.AccountKey]struct{})
 		for attrCode, entries := range coverage.Attributes {
 			for _, coverageEntry := range entries {
 				var account domain.AccountKey
@@ -943,9 +949,21 @@ func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, per
 				default:
 					continue
 				}
-				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
-					lockSet[accountLifecycleLockIndex(account)] = struct{}{}
-				}
+				accounts[account] = struct{}{}
+				lockSet[accountLifecycleLockIndex(account)] = struct{}{}
+			}
+		}
+		perOrderAccounts[orderIndex] = accounts
+	}
+	for _, order := range orders {
+		apply := order.GetLedgerScoped().GetApply()
+		if apply == nil {
+			continue
+		}
+		switch apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+			for index := range a.ephemeralLifecycleLocks {
+				lockSet[index] = struct{}{}
 			}
 		}
 	}
@@ -968,33 +986,18 @@ func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, per
 			release()
 		}
 	}()
+	compiledByLedger, err := a.accountLifecycleTypeSnapshots(orders)
+	if err != nil {
+		return nil, err
+	}
 	handle, err := a.store.NewReadHandle()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = handle.Close() }()
 
-	for _, coverage := range perOrder {
-		accounts := make(map[domain.AccountKey]struct{})
-		for attrCode, entries := range coverage.Attributes {
-			for _, entry := range entries {
-				switch attrCode {
-				case dal.SubAttrVolume:
-					var key domain.VolumeKey
-					if err := key.Unmarshal(entry.Canonical); err != nil {
-						return nil, err
-					}
-					accounts[key.AccountKey] = struct{}{}
-				case dal.SubAttrMetadata:
-					var key domain.MetadataKey
-					if err := key.Unmarshal(entry.Canonical); err != nil {
-						return nil, err
-					}
-					accounts[key.AccountKey] = struct{}{}
-				}
-			}
-		}
-
+	for orderIndex, coverage := range perOrder {
+		accounts := perOrderAccounts[orderIndex]
 		for account := range accounts {
 			if !accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
 				continue

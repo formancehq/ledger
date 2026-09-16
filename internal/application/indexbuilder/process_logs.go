@@ -326,9 +326,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			cfg := b.ledgerConfig(ledgerName)
-			var excludedVolumes map[domain.AccountAssetKey]struct{}
+			var excludedVolumes, historyExcludedVolumes map[domain.AccountAssetKey]struct{}
 			if cfg.indexesPostingDerived() {
-				excludedVolumes = proposals.excludedForLog(lastSeq, ledgerName, ledgerLog)
+				excludedVolumes, historyExcludedVolumes = proposals.exclusionsForLog(lastSeq, ledgerName, ledgerLog)
 			}
 
 			b.wb.SetEventSequence(log.GetSequence())
@@ -365,7 +365,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				}
 			}
 
-			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedVolumes); err != nil {
+			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedVolumes, historyExcludedVolumes); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -621,9 +621,6 @@ func (b *Builder) advanceCursors(lastSeq, appliedProposalSeq uint64, indexed int
 // purgeCurrentAccountIndexes removes projections describing current account
 // state while deliberately preserving immutable account-to-transaction history.
 func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
-	if cfg == nil {
-		return nil
-	}
 	if b.deletedAcctAsset == nil {
 		b.deletedAcctAsset = make(map[string]struct{})
 	}
@@ -677,6 +674,9 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, acc
 		return err
 	}
 
+	if cfg == nil {
+		return nil
+	}
 	for canonical, index := range cfg.byCanonical {
 		metadata := index.GetId().GetMetadata()
 		if metadata == nil || metadata.GetTarget() != commonpb.TargetType_TARGET_TYPE_ACCOUNT {
@@ -762,12 +762,17 @@ func (b *Builder) indexPayload(
 	ledgerName string,
 	payload any,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExclusions ...map[domain.AccountAssetKey]struct{},
 ) error {
+	historyExcludedVolumes := excludedVolumes
+	if len(historyExclusions) > 0 {
+		historyExcludedVolumes = historyExclusions[0]
+	}
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
+		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
+		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -1002,7 +1007,7 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return nil
 	}
 
-	excludedVolumes := proposals.excludedForLog(log.GetSequence(), ledgerName, ledgerLog)
+	excludedVolumes, historyExcludedVolumes := proposals.exclusionsForLog(log.GetSequence(), ledgerName, ledgerLog)
 
 	b.wb.SetEventSequence(log.GetSequence())
 
@@ -1028,9 +1033,9 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// what this replaced.
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
+		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
+		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -1052,12 +1057,17 @@ func (b *Builder) indexCreatedTransaction(
 	ledger string,
 	ct *commonpb.CreatedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExclusions ...map[domain.AccountAssetKey]struct{},
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
 	}
 
 	txn := ct.GetTransaction()
+	historyExcludedVolumes := excludedVolumes
+	if len(historyExclusions) > 0 {
+		historyExcludedVolumes = historyExclusions[0]
+	}
 
 	wb := b.wb
 
@@ -1074,7 +1084,7 @@ func (b *Builder) indexCreatedTransaction(
 
 		if err := b.indexPostingAddressMappings(
 			kb, cfg, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(), posting.GetColor(),
-			indexAny, indexSource, indexDestination, excludedVolumes,
+			indexAny, indexSource, indexDestination, excludedVolumes, historyExcludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -1167,12 +1177,17 @@ func (b *Builder) indexRevertedTransaction(
 	ledger string,
 	rt *commonpb.RevertedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExclusions ...map[domain.AccountAssetKey]struct{},
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
 	}
 
 	revertTxn := rt.GetRevertTransaction()
+	historyExcludedVolumes := excludedVolumes
+	if len(historyExclusions) > 0 {
+		historyExcludedVolumes = historyExclusions[0]
+	}
 	wb := b.wb
 
 	// Account→tx mapping for revert postings (reuse builder's map)
@@ -1188,7 +1203,7 @@ func (b *Builder) indexRevertedTransaction(
 
 		if err := b.indexPostingAddressMappings(
 			kb, cfg, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(), posting.GetColor(),
-			indexAny, indexSource, indexDestination, excludedVolumes,
+			indexAny, indexSource, indexDestination, excludedVolumes, historyExcludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -1259,10 +1274,17 @@ func (b *Builder) indexPostingAddressMappings(
 	indexSource bool,
 	indexDestination bool,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExclusions ...map[domain.AccountAssetKey]struct{},
 ) error {
 	wb := b.wb
+	historyExcludedVolumes := excludedVolumes
+	if len(historyExclusions) > 0 {
+		historyExcludedVolumes = historyExclusions[0]
+	}
 	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
 	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
+	sourceHistoryExcluded := isExcluded(historyExcludedVolumes, source, asset, color)
+	destinationHistoryExcluded := isExcluded(historyExcludedVolumes, destination, asset, color)
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -1285,29 +1307,28 @@ func (b *Builder) indexPostingAddressMappings(
 	}
 
 	if indexAny {
-		if !sourceExcluded {
+		if !sourceHistoryExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, source, txID); err != nil {
 				return err
 			}
 		}
 
-		if !destinationExcluded {
+		if !destinationHistoryExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, destination, txID); err != nil {
 				return err
 			}
 		}
 	}
 
-	// Role-specific mappings skip transient and purged ephemeral volumes —
-	// matched per (account, asset) tuple so a multi-asset account keeps its
-	// mappings for the assets that survived this proposal.
-	if indexSource && !sourceExcluded {
+	// Historical mappings skip only TRANSIENT volumes. An EPHEMERAL purge
+	// removes current state, but the draining transaction remains queryable.
+	if indexSource && !sourceHistoryExcluded {
 		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
 			return err
 		}
 	}
 
-	if indexDestination && !destinationExcluded {
+	if indexDestination && !destinationHistoryExcluded {
 		if err := wb.WriteDestinationAccountTxMapping(kb, ledger, destination, txID); err != nil {
 			return err
 		}

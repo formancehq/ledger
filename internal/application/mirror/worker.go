@@ -401,6 +401,9 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	preloadStart := time.Now()
 
 	aggregate, perOrder := w.extractMirrorNeeds(cmd)
+	if err := w.expandAccountLifecycleCoverage(aggregate, perOrder); err != nil {
+		return false, fmt.Errorf("expanding mirror account lifecycle coverage: %w", err)
+	}
 
 	// Merge the source-head/status update into the data proposal to avoid a
 	// second Raft round-trip. The FSM processes TechnicalUpdates on any
@@ -814,4 +817,71 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 	}
 
 	return aggregate, perOrder
+}
+
+// expandAccountLifecycleCoverage closes the key set for accounts touched by
+// mirror orders. Mirror proposals bypass public admission, and account types
+// are resolved only inside the FSM, so mirror conservatively closes every
+// touched account. The FSM's account-wide EPHEMERAL purge decision then always
+// has every persisted volume and metadata key declared.
+func (w *Worker) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage) error {
+	handle, err := w.store.NewReadHandle()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = handle.Close() }()
+
+	for _, coverage := range perOrder {
+		accounts := make(map[domain.AccountKey]struct{})
+		for attrCode, entries := range coverage.Attributes {
+			for _, entry := range entries {
+				switch attrCode {
+				case dal.SubAttrVolume:
+					var key domain.VolumeKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return err
+					}
+					accounts[key.AccountKey] = struct{}{}
+				case dal.SubAttrMetadata:
+					var key domain.MetadataKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return err
+					}
+					accounts[key.AccountKey] = struct{}{}
+				}
+			}
+		}
+
+		for account := range accounts {
+			for _, spec := range []struct{ attrCode, separator byte }{
+				{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
+				{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},
+			} {
+				canonicalPrefix := append(domain.LedgerScopedPrefix(account.LedgerName), account.Account...)
+				canonicalPrefix = append(canonicalPrefix, spec.separator)
+				lower := append([]byte{dal.ZoneAttributes, spec.attrCode}, canonicalPrefix...)
+				upper := append([]byte(nil), lower...)
+				upper[len(upper)-1]++
+				iter, err := dal.NewBoundedIter(handle, lower, upper)
+				if err != nil {
+					return err
+				}
+				for iter.First(); iter.Valid(); iter.Next() {
+					canonical := append([]byte(nil), iter.Key()[2:]...)
+					coverage.Add(spec.attrCode, canonical)
+					aggregate.Add(spec.attrCode, append([]byte(nil), canonical...))
+				}
+				if err := iter.Error(); err != nil {
+					_ = iter.Close()
+
+					return err
+				}
+				if err := iter.Close(); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
 }

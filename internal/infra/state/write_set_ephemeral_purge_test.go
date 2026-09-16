@@ -576,6 +576,42 @@ func TestPrepareEphemeralAccountPurgeOnMetadataOnlyWrite(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
+func TestPrepareEphemeralAccountPurgeOnMetadataOnlyDelete(t *testing.T) {
+	t.Parallel()
+
+	machine, _, _ := newTestMachine(t)
+	ledger := &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{
+		"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+	}}
+	ledgerKey := domain.LedgerKey{Name: "test"}
+	_, _, err := machine.Registry.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledger)
+	require.NoError(t, err)
+
+	account := domain.AccountKey{LedgerName: "test", Account: "hold:1"}
+	deleted := domain.MetadataKey{AccountKey: account, Key: "deleted"}
+	remaining := domain.MetadataKey{AccountKey: account, Key: "remaining"}
+	_, _, err = machine.Registry.AccountMetadata.KeyStore().Put(deleted.Bytes(), commonpb.NewStringValue("one"))
+	require.NoError(t, err)
+	_, _, err = machine.Registry.AccountMetadata.KeyStore().Put(remaining.Bytes(), commonpb.NewStringValue("two"))
+	require.NoError(t, err)
+
+	buf := NewWriteSet(machine)
+	buf.Derived.AccountMetadata.Delete(deleted)
+	plans := []*raftcmdpb.AttributeCoverage{
+		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
+		declareCanonicalTestPlan(deleted.Bytes(), dal.SubAttrMetadata),
+		declareCanonicalTestPlan(remaining.Bytes(), dal.SubAttrMetadata),
+	}
+	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
+	require.NoError(t, err)
+	require.Nil(t, buf.ValidateTransientVolumes(scope))
+	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
+	require.Contains(t, buf.purgedAccounts, account)
+	require.NoError(t, buf.stagePurgedAccountRows())
+	_, err = buf.Derived.AccountMetadata.Get(remaining)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
 func TestWriteSetResetClearsEphemeralAccountPurgeState(t *testing.T) {
 	t.Parallel()
 

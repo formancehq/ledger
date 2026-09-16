@@ -262,7 +262,7 @@ func TestIndexLogEntryUsesReplayAuditSyncForExcludedAccounts(t *testing.T) {
 	)))
 }
 
-func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
+func TestIndexPostingAddressMappingsPreservesPurgedAccountHistory(t *testing.T) {
 	t.Parallel()
 
 	store, err := readstore.New(t.TempDir(), noopLogger{}, readstore.DefaultConfig())
@@ -291,22 +291,25 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 		{Account: "purged:dest", Asset: "USD"}:      {},
 		{Account: "shared:account", Asset: "USD"}:   {},
 	}
+	historyExcludedVolumes := map[domain.AccountAssetKey]struct{}{
+		{Account: "transient:source", Asset: "USD"}: {},
+	}
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 42, "transient:source", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, excludedVolumes, historyExcludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 43, "kept:source", "purged:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, excludedVolumes, historyExcludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 44, "shared:account", "kept:dest", "USD", "",
-		true, true, true, excludedVolumes,
+		true, true, true, excludedVolumes, historyExcludedVolumes,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 45, "shared:account", "kept:dest", "EUR", "",
-		true, true, true, excludedVolumes,
+		true, true, true, excludedVolumes, historyExcludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -328,18 +331,19 @@ func TestIndexPostingAddressMappingsSkipsExcludedAccounts(t *testing.T) {
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "kept:source", 43,
 	)))
-	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "purged:dest", 43,
 	)))
-	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixDestinationAccountTx, "test", "purged:dest", 43,
 	)))
 
-	// Multi-asset: shared:account USD (tx 44) is excluded, EUR (tx 45) is not.
-	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	// Multi-asset: both the purged USD cell and kept EUR cell remain in
+	// immutable transaction history.
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixAccountTx, "test", "shared:account", 44,
 	)))
-	assert.False(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
+	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(
 		dal.NewKeyBuilder(), readstore.PrefixSourceAccountTx, "test", "shared:account", 44,
 	)))
 	assert.True(t, readStoreKeyExists(t, store, readstore.AccountTxKey(

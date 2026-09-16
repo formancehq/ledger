@@ -51,9 +51,10 @@ const (
 // with large datasets and uses Pebble merge operators to avoid read-modify-write
 // during replay — all writes are append-only.
 type replayStore struct {
-	db             *pebble.DB
-	tempDir        string
-	purgedAccounts map[domain.AccountKey]struct{}
+	db                    *pebble.DB
+	tempDir               string
+	purgedAccounts        map[domain.AccountKey]struct{}
+	pendingPurgedAccounts map[domain.AccountKey]struct{}
 }
 
 func newReplayStore() (*replayStore, error) {
@@ -75,9 +76,10 @@ func newReplayStore() (*replayStore, error) {
 	}
 
 	return &replayStore{
-		db:             db,
-		tempDir:        dir,
-		purgedAccounts: make(map[domain.AccountKey]struct{}),
+		db:                    db,
+		tempDir:               dir,
+		purgedAccounts:        make(map[domain.AccountKey]struct{}),
+		pendingPurgedAccounts: make(map[domain.AccountKey]struct{}),
 	}, nil
 }
 
@@ -275,7 +277,9 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 }
 
 func (s *replayStore) PurgeAccount(ledger, account string, collector domainreplay.ExclusionCollector) error {
-	s.purgedAccounts[domain.AccountKey{LedgerName: ledger, Account: account}] = struct{}{}
+	accountKey := domain.AccountKey{LedgerName: ledger, Account: account}
+	s.purgedAccounts[accountKey] = struct{}{}
+	s.pendingPurgedAccounts[accountKey] = struct{}{}
 	for _, spec := range []struct{ replayPrefix, separator byte }{
 		{replayPrefixVolume, dal.CanonicalKeySepVolume},
 		{replayPrefixMetadata, dal.CanonicalKeySepMetadata},
@@ -286,35 +290,19 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 		prefix = append(prefix, spec.separator)
 		upper := append([]byte(nil), prefix...)
 		upper[len(upper)-1]++
-		if collector != nil && spec.replayPrefix == replayPrefixVolume {
-			iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
-			if err != nil {
-				return err
-			}
-			for iter.First(); iter.Valid(); iter.Next() {
-				var key domain.VolumeKey
-				if err := key.Unmarshal(iter.Key()[1:]); err != nil {
-					_ = iter.Close()
-
-					return fmt.Errorf("decoding purged replay volume key: %w", err)
-				}
-				collector(ledger, account, key.Asset, key.Color)
-			}
-			if err := iter.Error(); err != nil {
-				_ = iter.Close()
-
-				return err
-			}
-			if err := iter.Close(); err != nil {
-				return err
-			}
-		}
 		if err := s.db.DeleteRange(prefix, upper, pebble.NoSync); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (s *replayStore) takePendingPurgedAccounts() map[domain.AccountKey]struct{} {
+	pending := s.pendingPurgedAccounts
+	s.pendingPurgedAccounts = make(map[domain.AccountKey]struct{})
+
+	return pending
 }
 
 func (s *replayStore) replayDerivedPurgedAccounts() map[domain.AccountKey]struct{} {

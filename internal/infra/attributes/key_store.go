@@ -317,6 +317,12 @@ func (s *DerivedKeyStore[K, T]) DirtyValues() map[K]T {
 	return s.values
 }
 
+// DirtyDeletions returns the uncommitted local deletions queued during the
+// current batch. Callers must treat the returned map as read-only.
+func (s *DerivedKeyStore[K, T]) DirtyDeletions() map[K]struct{} {
+	return s.deletions
+}
+
 // Parent returns the read-side parent of this overlay. May be a *KeyStore
 // (recovery/sync) or a preload.View sub-reader (FSM hot path).
 func (s *DerivedKeyStore[K, T]) Parent() ParentReader[K, T] {

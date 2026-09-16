@@ -47,6 +47,57 @@ func TestApplyPostingsSinglePosting(t *testing.T) {
 	require.Equal(t, "0", dstPair.GetOutput().ToBigInt().String())
 }
 
+func TestComparePurgedAccountProjections(t *testing.T) {
+	t.Parallel()
+
+	alice := domain.AccountKey{LedgerName: "ledger", Account: "alice"}
+	bob := domain.AccountKey{LedgerName: "ledger", Account: "bob"}
+	var events []*servicepb.CheckStoreEvent
+	comparePurgedAccountProjections(
+		map[domain.AccountKey]struct{}{alice: {}},
+		map[domain.AccountKey]struct{}{bob: {}},
+		42,
+		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
+	)
+
+	require.Len(t, events, 2)
+	require.Contains(t, events[0].GetError().GetMessage()+events[1].GetError().GetMessage(), "alice")
+	require.Contains(t, events[0].GetError().GetMessage()+events[1].GetError().GetMessage(), "bob")
+}
+
+func TestAccountPurgeDoesNotBecomeVolumeExclusion(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	key := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "ephemeral"},
+		Asset:      "USD",
+	}
+	require.NoError(t, rs.AddVolumeDelta(key.Bytes(), big.NewInt(1), big.NewInt(1)))
+	collected := 0
+	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(_, _, _, _ string) { collected++ }))
+	require.Zero(t, collected)
+	require.Contains(t, rs.takePendingPurgedAccounts(), key.AccountKey)
+}
+
+func TestHistoricalExclusionDoesNotHideRefundedAccount(t *testing.T) {
+	t.Parallel()
+
+	volume := domain.VolumeKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "ephemeral"},
+		Asset:      "USD",
+	}
+	metadata := domain.MetadataKey{AccountKey: volume.AccountKey, Key: "status"}
+	excluded := excludedVolumesSet{
+		"ledger": {domain.AccountAssetKey{Account: "ephemeral", Asset: "USD"}: {}},
+	}
+
+	require.True(t, excluded.excludesCurrentVolume(volume, false))
+	require.False(t, excluded.excludesCurrentVolume(volume, true))
+	require.True(t, excluded.excludesCurrentMetadata(metadata, false))
+	require.False(t, excluded.excludesCurrentMetadata(metadata, true))
+}
+
 func TestApplyPostingsMultiplePostings(t *testing.T) {
 	t.Parallel()
 
