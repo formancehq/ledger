@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/logrusorgru/aurora"
 
@@ -501,6 +502,12 @@ func (m *Machine) ResolveBalances(ctx context.Context, store Store) error {
 	for resourceIndex, address := range m.UnresolvedResourceBalances {
 		monetary := m.Resources[resourceIndex].(machine.Monetary)
 		balancesQuery[address] = append(balancesQuery[address], string(monetary.Asset))
+	}
+
+	// several resources can alias the same account/asset pair, only query it once
+	for address, assets := range balancesQuery {
+		slices.Sort(assets)
+		balancesQuery[address] = slices.Compact(assets)
 	}
 
 	m.Balances = make(map[machine.AccountAddress]map[machine.Asset]*machine.MonetaryInt)
