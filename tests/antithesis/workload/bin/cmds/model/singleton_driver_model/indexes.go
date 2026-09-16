@@ -563,7 +563,7 @@ func (c *Checker) trackedIndexes() map[string]map[string]uint64 {
 	defer c.mu.Unlock()
 
 	out := map[string]map[string]uint64{}
-	for _, ledger := range c.ledgerNamesSnapshot() {
+	for _, ledger := range liveLedgerNames(c.modelState, c.ledgerNamesSnapshot()) {
 		for canon := range c.modelState.Ledger(ledger).Indexes().All() {
 			if out[ledger] == nil {
 				out[ledger] = map[string]uint64{}
