@@ -1074,11 +1074,11 @@ func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryF
 	}
 }
 
-// genChildren rolls the operands of an And/Or: usually two, sometimes one or
-// three, so the compiler's single-child pass-through and its n-ary merge both
-// run.
+// genChildren rolls the operands of an And/Or: usually two, sometimes none,
+// one or three, so the empty combinator (an And is the universe, an Or is
+// empty), the compiler's single-child pass-through and its n-ary merge all run.
 func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
-	n := int(random.RandomChoice([]uint8{1, 2, 2, 3}))
+	n := int(random.RandomChoice([]uint8{0, 1, 2, 2, 3}))
 	children := make([]*commonpb.QueryFilter, 0, n)
 	for range n {
 		children = append(children, gen(depth+1))
