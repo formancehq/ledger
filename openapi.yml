@@ -808,6 +808,8 @@ paths:
         selection via `filter=address ^= "users:"`). Requires `ledger:read`
         scope.
       operationId: listAccounts
+      tags:
+        - Accounts
       security:
         - BearerAuth: []
         - {}
