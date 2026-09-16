@@ -83,7 +83,7 @@ func TestComparePurgedAccountProjectionsRejectsNonTerminalAnnotation(t *testing.
 	require.Contains(t, events[0].GetError().GetMessage(), "terminal ledger log 42")
 }
 
-func TestAccountPurgeDoesNotBecomeVolumeExclusion(t *testing.T) {
+func TestAccountPurgeCollectsCoveredVolumeExclusion(t *testing.T) {
 	t.Parallel()
 
 	rs := newTestReplayStore(t)
@@ -94,7 +94,7 @@ func TestAccountPurgeDoesNotBecomeVolumeExclusion(t *testing.T) {
 	require.NoError(t, rs.AddVolumeDelta(key.Bytes(), big.NewInt(1), big.NewInt(1)))
 	collected := 0
 	require.NoError(t, rs.PurgeAccount("ledger", "ephemeral", func(_, _, _, _ string) { collected++ }))
-	require.Zero(t, collected)
+	require.Equal(t, 1, collected)
 	require.Contains(t, rs.takePendingPurgedAccounts(), key.AccountKey)
 }
 

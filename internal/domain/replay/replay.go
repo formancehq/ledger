@@ -402,7 +402,7 @@ func (b *EphemeralPurgeBuffer) Flush(
 			return err
 		}
 		for account := range accountsToPurge {
-			if err := w.PurgeAccount(ledger, account, nil); err != nil {
+			if err := w.PurgeAccount(ledger, account, collector); err != nil {
 				return fmt.Errorf("purging replay-derived ephemeral account %q: %w", account, err)
 			}
 		}

@@ -1775,6 +1775,10 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			}
 
 			replayEntries[string(canonicalKey)] = replayMeta{value: mv}
+			var key domain.MetadataKey
+			if err := key.Unmarshal(canonicalKey); err == nil {
+				activeAccounts[key.AccountKey] = struct{}{}
+			}
 		}
 	}
 
