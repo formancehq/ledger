@@ -346,6 +346,36 @@ func TestEphemeralPurgeBufferDerivesAccountWidePurgeAndAllowsRefund(t *testing.T
 	require.NotNil(t, volume, "later funding must create a fresh current incarnation")
 }
 
+func TestEphemeralPurgeBufferCollectsTouchedCellsBeforeAccountPurge(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"ephemeral": {
+				Name:        "ephemeral",
+				Pattern:     "ephemeral:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		}),
+	}
+	account := "ephemeral:1"
+	postings := []*commonpb.Posting{newPosting("world", account, "USD", 5), newPosting(account, "world", "USD", 5)}
+	require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+
+	buffer := domainreplay.NewEphemeralPurgeBuffer()
+	buffer.Add("ledger", postings)
+	var collected []domain.AccountAssetKey
+	require.NoError(t, buffer.Flush(rs, types, func(_, account, asset, color string) {
+		collected = append(collected, domain.AccountAssetKey{Account: account, Asset: asset, Color: color})
+	}))
+
+	require.Equal(t, []domain.AccountAssetKey{{Account: account, Asset: "USD"}}, collected)
+	volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, "USD", "").Bytes())
+	require.NoError(t, err)
+	require.Nil(t, volume)
+}
+
 // --- checkReversionInvariants tests ---
 
 func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
