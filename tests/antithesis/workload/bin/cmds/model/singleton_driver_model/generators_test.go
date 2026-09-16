@@ -100,7 +100,7 @@ func TestGenTransactionFilterFreeIDRangeShapes(t *testing.T) {
 	require.True(t, openMin && openMax && exclMin && exclMax && twoSided)
 }
 
-// And/Or carry one, two or three operands.
+// And/Or carry zero to three operands.
 func TestGenBooleanArity(t *testing.T) {
 	t.Parallel()
 
@@ -116,5 +116,5 @@ func TestGenBooleanArity(t *testing.T) {
 		}
 	}
 
-	require.Equal(t, map[int]bool{1: true, 2: true, 3: true}, seen)
+	require.Equal(t, map[int]bool{0: true, 1: true, 2: true, 3: true}, seen)
 }
