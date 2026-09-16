@@ -1215,6 +1215,54 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	require.Empty(t, errors, "ephemeral purge must use the proposal boundary, not each transaction log")
 }
 
+func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+
+	batch := engine.store.OpenWriteSession()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(5),
+		Output: commonpb.NewUint256FromUint64(5),
+	})
+	require.NoError(t, err)
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Key:        "stale",
+	}
+	_, err = engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var volumeMismatch, metadataMismatch bool
+	for _, checkErr := range errors {
+		if checkErr.GetAccount() != "orders:1" {
+			continue
+		}
+		switch checkErr.GetErrorType() {
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH:
+			volumeMismatch = true
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH:
+			metadataMismatch = true
+		}
+	}
+	require.True(t, volumeMismatch, "checker must reject a volume surviving an account-wide purge")
+	require.True(t, metadataMismatch, "checker must reject metadata surviving an account-wide purge")
+}
+
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
 func TestCheckerDetectsSequenceGap(t *testing.T) {
 	t.Parallel()

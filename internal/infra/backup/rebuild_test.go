@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"math/big"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -1121,27 +1122,70 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 	t.Cleanup(func() { _ = readHandle.Close() })
 
 	writer := &attributeReplayWriter{
-		store:           store,
-		batch:           store.OpenWriteSession(),
-		volume:          attrs.Volume,
-		metadata:        attrs.Metadata,
-		tx:              attrs.Transaction,
-		ledger:          attrs.Ledger,
-		references:      attrs.References,
-		boundary:        attrs.Boundary,
-		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
-		pendingTx:       make(map[string]*commonpb.TransactionState),
-		ledgerInfos:     make(map[string]*commonpb.LedgerInfo),
-		boundaries:      make(map[string]*raftcmdpb.LedgerBoundaries),
-		reversions:      make(map[string]*bitset.Bitset),
-		dirtyReversions: make(map[string]struct{}),
-		readHandle:      readHandle,
-		index:           attrs.Index,
-		pendingIndexes:  make(map[string]*commonpb.Index),
+		store:                  store,
+		batch:                  store.OpenWriteSession(),
+		volume:                 attrs.Volume,
+		metadata:               attrs.Metadata,
+		tx:                     attrs.Transaction,
+		ledger:                 attrs.Ledger,
+		references:             attrs.References,
+		boundary:               attrs.Boundary,
+		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
+		pendingMetadata:        make(map[string]*commonpb.MetadataValue),
+		pendingTx:              make(map[string]*commonpb.TransactionState),
+		purgedVolumePrefixes:   make(map[string]struct{}),
+		purgedMetadataPrefixes: make(map[string]struct{}),
+		ledgerInfos:            make(map[string]*commonpb.LedgerInfo),
+		boundaries:             make(map[string]*raftcmdpb.LedgerBoundaries),
+		reversions:             make(map[string]*bitset.Bitset),
+		dirtyReversions:        make(map[string]struct{}),
+		readHandle:             readHandle,
+		index:                  attrs.Index,
+		pendingIndexes:         make(map[string]*commonpb.Index),
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
 	return writer, attrs, store
+}
+
+func TestAttributeReplayWriterPurgeShadowsCheckpointRowsUntilRefund(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	volumeKey := domain.NewVolumeKey("ledger", "hold:1", "USD", "")
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "hold:1"},
+		Key:        "note",
+	}
+	movedMetadataKey := metadataKey
+	movedMetadataKey.Key = "moved"
+
+	seed := store.OpenWriteSession()
+	_, err := attrs.Volume.Set(seed, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(5),
+	})
+	require.NoError(t, err)
+	_, err = attrs.Metadata.Set(seed, metadataKey.Bytes(), commonpb.NewStringValue("checkpoint"))
+	require.NoError(t, err)
+	require.NoError(t, seed.Commit())
+
+	require.NoError(t, writer.PurgeAccount("ledger", "hold:1", nil))
+	volume, err := writer.GetVolume(volumeKey.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, volume, "range tombstone must shadow the checkpoint volume")
+	require.NoError(t, writer.MoveMetadata(metadataKey.Bytes(), movedMetadataKey.Bytes()))
+	require.NotContains(t, writer.pendingMetadata, string(movedMetadataKey.Bytes()),
+		"purged checkpoint metadata must not be resurrected by a same-batch read")
+
+	// A later refund is an exact pending value and therefore supersedes the
+	// prefix shadow without exposing the purged checkpoint value.
+	require.NoError(t, writer.AddVolumeDelta(volumeKey.Bytes(), big.NewInt(2), big.NewInt(0)))
+	volume, err = writer.GetVolume(volumeKey.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(2), volume.GetInput().ToBigInt())
+	require.NoError(t, writer.SetMetadata(metadataKey.Bytes(), commonpb.NewStringValue("fresh")))
+	require.NoError(t, writer.MoveMetadata(metadataKey.Bytes(), movedMetadataKey.Bytes()))
+	require.Equal(t, "fresh", writer.pendingMetadata[string(movedMetadataKey.Bytes())].GetStringValue())
 }
 
 func TestAttributeReplayWriterRejectsExhaustedBoundariesWithoutWrap(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -221,6 +222,59 @@ func TestSimulateEphemeralPurgeSkipsWorldAccount(t *testing.T) {
 
 	// Should not error — world is explicitly skipped
 	require.NoError(t, domainreplay.SimulateEphemeralPurge("ledger", postings, rs, ledgerAccountTypes, nil))
+}
+
+func TestEphemeralPurgeBufferDerivesAccountWidePurgeAndAllowsRefund(t *testing.T) {
+	t.Parallel()
+
+	rs := newTestReplayStore(t)
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"orders": {
+				Name:        "orders",
+				Pattern:     "orders:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		}),
+	}
+	account := "orders:1"
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: account},
+		Key:        "owner",
+	}.Bytes()
+	replayProposal := func(postings ...*commonpb.Posting) {
+		t.Helper()
+		buffer := domainreplay.NewEphemeralPurgeBuffer()
+		require.NoError(t, domainreplay.ApplyPostings("ledger", postings, rs))
+		buffer.Add("ledger", postings)
+		require.NoError(t, buffer.Flush(rs, types, nil))
+	}
+
+	replayProposal(
+		newPosting("world", account, "USD", 5),
+		newPosting("world", account, "EUR", 7),
+	)
+	require.NoError(t, rs.SetMetadata(metadataKey, commonpb.NewStringValue("old")))
+	replayProposal(
+		newPosting(account, "world", "USD", 5),
+		newPosting(account, "world", "EUR", 7),
+	)
+
+	for _, asset := range []string{"USD", "EUR"} {
+		volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, asset, "").Bytes())
+		require.NoError(t, err)
+		require.Nil(t, volume, "account-wide purge must remove every zero volume")
+	}
+	_, closer, err := rs.db.Get(replayKey(replayPrefixMetadata, metadataKey))
+	if closer != nil {
+		_ = closer.Close()
+	}
+	require.ErrorIs(t, err, pebble.ErrNotFound, "account-wide purge must remove metadata")
+
+	replayProposal(newPosting("world", account, "USD", 3))
+	volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, "USD", "").Bytes())
+	require.NoError(t, err)
+	require.NotNil(t, volume, "later funding must create a fresh current incarnation")
 }
 
 // --- checkReversionInvariants tests ---

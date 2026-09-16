@@ -118,6 +118,11 @@ type Builder struct {
 	// batch skips a redundant Get + Put. Reset per batch (initBatch) so it does
 	// not grow unbounded across a long backfill.
 	seenAcctAsset map[string]struct{}
+	// deletedAcctAsset holds exact account-by-asset keys deleted earlier in the
+	// in-flight batch. Committed Pebble still exposes those rows until commit,
+	// so a later re-fund must bypass the committed-state dedup read and queue a
+	// Put after the Delete.
+	deletedAcctAsset map[string]struct{}
 
 	// deletedThisBatch holds the names of ledgers whose read indexes were
 	// range-deleted earlier in the in-flight batch (DeleteLedger). The
@@ -731,6 +736,7 @@ func NewBuilder(
 func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})
+	b.deletedAcctAsset = make(map[string]struct{})
 	b.deletedThisBatch = make(map[string]struct{})
 }
 

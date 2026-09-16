@@ -36,3 +36,32 @@ func TestPurgeCurrentAccountIndexesReconcilesSameBatchMembership(t *testing.T) {
 	require.NotEmpty(t, value)
 	require.NoError(t, closer.Close())
 }
+
+func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRefund(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	const ledger, account = "ledger", "hold:1"
+	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), ledger, "USD", 2, account)
+
+	seed := b.readStore.NewBatch()
+	require.NoError(t, seed.Set(key, []byte{1}, nil))
+	require.NoError(t, seed.Commit())
+
+	batch := b.readStore.NewBatch()
+	b.initBatch(batch)
+	b.wb.SetEventSequence(2)
+	require.NoError(t, b.purgeCurrentAccountIndexes(&ledgerIndexConfig{}, ledger, account))
+
+	// Pebble still exposes the committed row until this batch commits. The
+	// refund must nevertheless enqueue a Put after the pending Delete.
+	b.wb.SetEventSequence(3)
+	require.NoError(t, b.writeAccountByAssetDedup(b.kb, ledger, account, "USD", 2))
+	require.NoError(t, batch.Commit())
+	b.wb.Reset()
+
+	value, closer, err := b.readStore.DB().Get(key)
+	require.NoError(t, err)
+	require.NotEmpty(t, value)
+	require.NoError(t, closer.Close())
+}

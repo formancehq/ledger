@@ -575,3 +575,20 @@ func TestPrepareEphemeralAccountPurgeOnMetadataOnlyWrite(t *testing.T) {
 	_, err = buf.Derived.AccountMetadata.Get(meta)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
+
+func TestWriteSetResetClearsEphemeralAccountPurgeState(t *testing.T) {
+	t.Parallel()
+
+	machine, _, _ := newTestMachine(t)
+	buf := NewWriteSet(machine)
+	account := domain.AccountKey{LedgerName: "test", Account: "hold:1"}
+	buf.purgedAccounts = map[domain.AccountKey]struct{}{account: {}}
+	buf.purgedAccountVolumeKeys = append(buf.purgedAccountVolumeKeys, domain.VolumeKey{AccountKey: account, Asset: "USD"})
+	buf.purgedAccountMetadataKeys = append(buf.purgedAccountMetadataKeys, domain.MetadataKey{AccountKey: account, Key: "note"})
+
+	buf.Reset(&commonpb.Timestamp{Data: 1})
+
+	require.Nil(t, buf.purgedAccounts)
+	require.Empty(t, buf.purgedAccountVolumeKeys)
+	require.Empty(t, buf.purgedAccountMetadataKeys)
+}
