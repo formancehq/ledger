@@ -55,10 +55,8 @@ func processRevokeSigningKey(order *raftcmdpb.RevokeSigningKeyOrder, ctx *Contex
 		// would wedge every replica at once and, the order being committed,
 		// replay on every restart.
 		//
-		// It also dedups `cascaded`, and hence RevokedSigningKeyLog.cascaded_key_ids:
-		// GetSigningKeyChildren appends the key of EVERY pending addition whose
-		// parent matches, so registering the same child twice under one parent in
-		// one proposal otherwise reports it twice.
+		// It also dedups `cascaded`, and hence RevokedSigningKeyLog.cascaded_key_ids,
+		// across the walk: a cyclic graph reaches the same key from several parents.
 		//
 		// Seeded with the revoke target so it can never appear in `cascaded` —
 		// RemoveSigningKey below already covers it, and an acyclic walk never

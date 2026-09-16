@@ -113,6 +113,27 @@ When `--cascade` is used, the revocation log includes a `cascaded_key_ids` field
 
 With `--cascade`, revoking a root key revokes the entire subtree under it. Other subtrees are unaffected.
 
+#### Which keys a cascade reaches
+
+A cascade removes every key that is a descendant of the target **at the moment the revoke is applied**, using each key's current parent — the one its most recent registration assigned.
+
+Because registration is an upsert, a single signed batch can move keys around before the revoke in that same batch runs. The rule is that the last registration wins:
+
+| Earlier in the same batch | `revoke --cascade parent` |
+|---|---|
+| `child` revoked, then re-registered under `parent` | `child` **is** revoked — the re-registration put it back in the subtree |
+| `child` re-registered under a different parent | `child` **survives** — it left the subtree before the revoke ran |
+| `child` re-registered with no parent (becomes a root) | `child` **survives** |
+| `child` untouched | `child` **is** revoked |
+
+Submitting those operations as one batch or as several gives the same result. The batch boundary does not change who keeps a key.
+
+The first row is the one worth remembering operationally: revoking a key and immediately issuing a replacement for it in the same batch does **not** protect that replacement from a cascade of its parent later in that batch. If the intent is to retire `parent` but keep a re-issued `child`, revoke `child` and register it under a different parent (or as a root) before revoking `parent`, rather than relying on the revoke ordering alone.
+
+`cascaded_key_ids` on the revocation log lists exactly the keys the cascade removed, so the audit trail always shows which of these applied.
+
+#### Cycles
+
 Nothing prevents a key from being re-registered under one of its own descendants, which makes the parent graph cyclic. A cascade over such a graph still terminates and revokes each key in the cycle exactly once — but a cycle is an operator mistake, not a supported topology: `signing keys list` shows the parent of every key, and the graph should be a forest.
 
 ### Listing Keys
