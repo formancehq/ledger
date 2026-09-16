@@ -1396,7 +1396,13 @@ func isStaleRaftProgress(st *status.Status) bool {
 func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {
 	clusterState, _ := query.ReadClusterState(store)
 
-	desiredCfg := cfg.BloomConfig
+	// Clone before mutating: cfg.BloomConfig is the process-wide fx-provided
+	// message, and LeaderReadyEvent can be dispatched concurrently (the
+	// observer dispatches inline, and a leadership gain spawns an unguarded
+	// goroutine per gain). Writing through the shared pointer races other
+	// deliveries and would let a concurrent write land between the vtproto
+	// SizeVT/MarshalToSizedBufferVT passes of the proposal below.
+	desiredCfg := cfg.BloomConfig.CloneVT()
 	desiredCfg.RotationThreshold = cfg.RaftConfig.RotationThreshold
 
 	if clusterState != nil {
