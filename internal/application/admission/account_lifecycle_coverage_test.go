@@ -117,6 +117,33 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 		"an ephemeral type introduced by the proposal must participate in coverage")
 }
 
+func TestAccountLifecycleTypeSnapshotsPreserveSkippedDuplicateAdd(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	admission, attrs := createTestAdmission(t, store)
+	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: testLedgerName}.Bytes())
+	require.NoError(t, err)
+	info.AccountTypes = map[string]*commonpb.AccountType{
+		"fallback": {Name: "fallback", Pattern: "users:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+	}
+	batch := store.OpenWriteSession()
+	_, err = attrs.Ledger.Set(batch, domain.LedgerKey{Name: testLedgerName}.Bytes(), info)
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	snapshots, err := admission.accountLifecycleTypeSnapshots([]*raftcmdpb.Order{
+		ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+			AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
+				Name: "fallback", Pattern: "users:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL,
+			}},
+		}}),
+	})
+	require.NoError(t, err)
+	require.True(t, accountMatchesEphemeralSnapshot("users:alice", snapshots[testLedgerName]),
+		"a duplicate add is skipped by apply and must not replace the effective type")
+}
+
 func ledgerApplyOrder(apply *raftcmdpb.LedgerApplyOrder) *raftcmdpb.Order {
 	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 		Ledger:  testLedgerName,

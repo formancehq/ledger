@@ -85,7 +85,7 @@ func ReplayLedgerLog(
 		}
 
 		for account, metadataMap := range p.CreatedTransaction.GetAccountMetadata() {
-			if ephemeralPurgeBuffer != nil {
+			if ephemeralPurgeBuffer != nil && metadataMap != nil && len(metadataMap.GetValues()) > 0 {
 				ephemeralPurgeBuffer.TouchAccount(ledger, account)
 			}
 			if metadataMap != nil {
@@ -148,7 +148,7 @@ func ReplayLedgerLog(
 
 		switch target := p.SavedMetadata.GetTarget().GetTarget().(type) {
 		case *commonpb.Target_Account:
-			if ephemeralPurgeBuffer != nil {
+			if ephemeralPurgeBuffer != nil && len(p.SavedMetadata.GetMetadata()) > 0 {
 				ephemeralPurgeBuffer.TouchAccount(ledger, target.Account.GetAddr())
 			}
 			if len(p.SavedMetadata.GetMetadata()) > 0 {

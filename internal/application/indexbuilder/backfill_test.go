@@ -354,6 +354,24 @@ func TestIndexPostingAddressMappingsPreservesPurgedAccountHistory(t *testing.T) 
 	)))
 }
 
+func TestExclusionsForLogPreserveEphemeralHistoryOnly(t *testing.T) {
+	t.Parallel()
+
+	log := &commonpb.LedgerLog{
+		PurgedVolumes: []*commonpb.TouchedVolume{
+			{Account: "ephemeral", Asset: "USD"},
+			{Account: "transient", Asset: "USD"},
+		},
+		PurgedAccounts: []string{"ephemeral"},
+	}
+	current, history := (*appliedProposalSync)(nil).exclusionsForLog(1, "ledger", log)
+
+	require.Contains(t, current, domain.AccountAssetKey{Account: "ephemeral", Asset: "USD"})
+	require.Contains(t, current, domain.AccountAssetKey{Account: "transient", Asset: "USD"})
+	require.NotContains(t, history, domain.AccountAssetKey{Account: "ephemeral", Asset: "USD"})
+	require.Contains(t, history, domain.AccountAssetKey{Account: "transient", Asset: "USD"})
+}
+
 // scanAccountByAsset returns the set of accounts recorded in the
 // account-by-asset index for (ledger, assetBase, precision).
 func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase string, precision uint8) map[string]struct{} {

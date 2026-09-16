@@ -1076,8 +1076,10 @@ func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (ma
 		switch data := ledgerOrder.GetApply().GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_AddAccountType:
 			if accountType := data.AddAccountType.GetAccountType(); accountType != nil {
-				types[accountType.GetName()] = accountType.CloneVT()
-				snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+				if _, exists := types[accountType.GetName()]; !exists {
+					types[accountType.GetName()] = accountType.CloneVT()
+					snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+				}
 			}
 		case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
 			delete(types, data.RemoveAccountType.GetName())
