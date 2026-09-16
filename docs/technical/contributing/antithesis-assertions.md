@@ -48,7 +48,7 @@ without it:
 |---|---|
 | `Dockerfile.antithesis` | The instrumented SUT. Unarmed, the generated `assert.AssertRaw` registrations do nothing, the catalog is empty, and the campaign reports no violations because no property was ever registered — a silent pass. |
 | `tests/antithesis/workload/Dockerfile` | The drivers that produce the campaign's `Sometimes` coverage. |
-| `tests/antithesis/run_model_test.sh` | The **driver only**. It reads the SDK's local JSON output and requires specific assertions, so an unarmed driver yields an empty stream. The server is left unarmed deliberately: it is never given `ANTITHESIS_SDK_LOCAL_OUTPUT`, so arming it would buy no signal and only cost throughput on a gate whose coverage sondes depend on completed work. |
+| `tests/antithesis/run_model_test.sh` | The **driver only**. It reads the SDK's local JSON output and requires specific assertions, so an unarmed driver yields an empty stream. The server is left unarmed deliberately: it is never given `ANTITHESIS_SDK_LOCAL_OUTPUT`, so arming it would buy no signal and only cost throughput on a gate whose coverage probes depend on completed work. |
 | `just test-antithesis-assertions` | The emission contract tests below. |
 
 Both images build the instrumentor from the fork at the same SHA as the
@@ -122,7 +122,7 @@ carried by its `PreparedBatch`. Post-commit reporting never consults the live
 WriteSet or FSM state, which may already belong to the next preparation. This
 bookkeeping is neither persisted nor added to protobuf messages.
 
-## A coverage sonde single-node runs often miss
+## A coverage probe single-node runs often miss
 
 `just test-model 180` (single node) intermittently reports
 `coverage index tx_builtin:TX_BUILTIN_INDEX_DESTINATION_ADDRESS served a
@@ -130,7 +130,7 @@ model-verified page` as never satisfied. Repeated runs of one unchanged commit
 give both PASS and FAIL, on either side of an unrelated change, so a single run
 — red or green — identifies nothing on its own.
 
-Satisfying a sonde is narrow. One query must do three things at once
+Satisfying a probe is narrow. One query must do three things at once
 (`coverage.go`, `coverageHits`): need that index — the address leaf must roll
 the `DESTINATION` role, one of three; come back non-empty; and pass oracle
 verification. The generator deliberately emits unmatchable filters, so empty
