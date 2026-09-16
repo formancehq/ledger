@@ -1248,6 +1248,47 @@ func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testi
 	require.True(t, metadataMismatch, "checker must reject metadata surviving an account-wide purge")
 }
 
+func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "EUR", 3),
+	))
+
+	batch := engine.store.OpenWriteSession()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var found bool
+	for _, checkErr := range errors {
+		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+			checkErr.GetAccount() == "orders:1" && checkErr.GetAsset() == "USD" {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "checker must reject a fabricated row for the previously purged USD cell: %v", errors)
+}
+
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
 func TestCheckerDetectsSequenceGap(t *testing.T) {
 	t.Parallel()

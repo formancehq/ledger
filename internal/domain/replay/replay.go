@@ -351,12 +351,8 @@ func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) 
 
 	pending.postings = append(pending.postings, postings...)
 	for _, posting := range postings {
-		if posting.GetSource() != "world" {
-			b.TouchAccount(ledger, posting.GetSource())
-		}
-		if posting.GetDestination() != "world" {
-			b.TouchAccount(ledger, posting.GetDestination())
-		}
+		b.TouchAccount(ledger, posting.GetSource())
+		b.TouchAccount(ledger, posting.GetDestination())
 	}
 }
 

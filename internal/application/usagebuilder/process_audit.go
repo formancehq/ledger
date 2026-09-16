@@ -376,6 +376,15 @@ func (b *Builder) dispatchMirrorIngest(
 			state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
 		}
 		applyVolumeAnnotations(ledger, ann, state, entry)
+	default:
+		// Mirrored metadata and account-type entries can trigger the same
+		// account-wide lifecycle purges as native apply orders. They carry no
+		// transaction counters, but their volume annotations still affect usage.
+		ann, err := b.readLog(ctx, handle, logSeq)
+		if err != nil {
+			return err
+		}
+		applyVolumeAnnotations(ledger, ann, state, entry)
 	}
 
 	return nil
