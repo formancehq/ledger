@@ -72,7 +72,9 @@ func accountTypesEqual(got, want map[string]*commonpb.AccountType) bool {
 		return false
 	}
 	for name, typ := range want {
-		if !got[name].EqualVT(typ) {
+		canonical := typ.CloneVT()
+		canonical.Name = name
+		if !got[name].EqualVT(canonical) {
 			return false
 		}
 	}

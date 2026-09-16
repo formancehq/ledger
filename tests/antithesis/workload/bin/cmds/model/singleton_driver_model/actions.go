@@ -136,9 +136,9 @@ func sourceAddress() string {
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Runs lock-free on a state
 // snapshot (a published GlobalState is never mutated — Apply forks first).
-func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string) oracle.Bulk {
+func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) oracle.Bulk {
 	active := activeLedgers(g, ledgers)
-	if req := generateLifecycle(g, ledgers, newLedger); req != nil {
+	if req := generateLifecycle(g, ledgers, newLedger, liveTarget); req != nil {
 		return oracle.Bulk{Requests: []*servicepb.Request{req}}
 	}
 	if len(active) == 0 {
@@ -249,7 +249,7 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 // generateLifecycle mixes administrative transitions into the same concurrent
 // stream as business writes. Creation is biased when deletions shrink the live
 // pool, providing the same bounded-state back-pressure as transaction creation.
-func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string) *servicepb.Request {
+func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) *servicepb.Request {
 	live := make([]string, 0, len(ledgers))
 	deleted := make([]string, 0, len(ledgers))
 	for _, name := range ledgers {
@@ -264,7 +264,7 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string)
 	if len(deleted) > 0 && random.RandomChoice(indexPool(32)) == 0 {
 		return actions.CreateLedgerAction(random.RandomChoice(deleted), nil)
 	}
-	if len(live) < defaultLedgers {
+	if len(live) < liveTarget {
 		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
 				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,

@@ -34,6 +34,7 @@ type Checker struct {
 	// reserved in the oracle but are filtered from generation and reads.
 	ledgerNames  []string
 	ledgerPrefix string
+	liveTarget   int
 	ledgerSeq    atomic.Uint64
 
 	// ticketSeq hands out a monotonic ticket per dispatched operation (bulk or
@@ -172,6 +173,7 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 	c := &Checker{
 		ledgerNames:                ledgerNames,
 		ledgerPrefix:               prefix,
+		liveTarget:                 len(ledgerNames),
 		inflight:                   map[uint64]oracle.Bulk{},
 		reads:                      map[uint64]struct{}{},
 		incoming:                   make(chan observation, incomingBuffer),

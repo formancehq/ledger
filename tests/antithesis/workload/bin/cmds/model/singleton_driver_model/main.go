@@ -272,7 +272,7 @@ func runWorker(
 		if percentChance(10) {
 			bulk = generateCheckpointBulk(state)
 		} else {
-			bulk = generateBulk(state, ledgers, c.nextLedgerName())
+			bulk = generateBulk(state, ledgers, c.nextLedgerName(), c.liveTarget)
 		}
 		if len(bulk.Requests) == 0 {
 			continue
