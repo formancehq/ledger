@@ -119,18 +119,35 @@ func ObfuscateURLPassword(value string) string {
 // "****" while preserving non-secret connection details. A username paired
 // with a password remains visible; sole userinfo is treated as a token.
 func ObfuscateURLUserinfo(value string) string {
-	parsed, err := url.Parse(value)
+	const defaultScheme = "nats://"
+
+	normalized := value
+	schemeLess := !strings.Contains(value, "://") && strings.Contains(value, "@")
+	if schemeLess {
+		normalized = defaultScheme + value
+	}
+
+	parsed, err := url.Parse(normalized)
 	if err != nil || parsed.User == nil {
 		return value
 	}
 
 	if _, hasPassword := parsed.User.Password(); !hasPassword {
 		parsed.User = url.User("****")
-
-		return restoreObfuscationMask(parsed.String())
+	} else {
+		username := parsed.User.Username()
+		password, _ := parsed.User.Password()
+		if password != "" {
+			parsed.User = url.UserPassword(username, "****")
+		}
 	}
 
-	return ObfuscateURLPassword(value)
+	obfuscated := restoreObfuscationMask(parsed.String())
+	if schemeLess {
+		return strings.TrimPrefix(obfuscated, defaultScheme)
+	}
+
+	return obfuscated
 }
 
 func obfuscateURLPassword(dsn string) string {

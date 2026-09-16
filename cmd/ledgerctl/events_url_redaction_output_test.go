@@ -40,6 +40,8 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	const (
 		natsPassword       = "nats-output-password"
 		natsToken          = "nats-output-token"
+		natsNoSchemePass   = "nats-schemeless-password"
+		natsNoSchemeToken  = "nats-schemeless-token"
 		httpPassword       = "http-output-password"
 		clickHousePassword = "clickhouse-output-password"
 	)
@@ -50,7 +52,8 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				{
 					Name: "stream",
 					Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{
-						Url:   "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222",
+						Url: "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222," +
+							"operator:" + natsNoSchemePass + "@three:4222," + natsNoSchemeToken + "@four:4222",
 						Topic: "events",
 					}},
 				},
@@ -95,7 +98,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 		applyRequests: make(chan *servicepb.ApplyRequest, 16),
 	}
 	listControls := []string{
-		"stream", "operator", "events", "one:4222", "two:4222",
+		"stream", "operator", "events", "one:4222", "two:4222", "three:4222", "four:4222",
 		"hooks.example", "db.example", "secure=true",
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -133,7 +136,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			}
 
 			output := executeEventsCommand(t, args)
-			for _, credential := range []string{natsPassword, natsToken, httpPassword, clickHousePassword} {
+			for _, credential := range []string{natsPassword, natsToken, natsNoSchemePass, natsNoSchemeToken, httpPassword, clickHousePassword} {
 				assert.NotContains(t, output, credential)
 			}
 			for _, control := range listControls {
@@ -147,7 +150,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			if resultPath != "" {
 				result, err := os.ReadFile(resultPath)
 				require.NoError(t, err)
-				for _, credential := range []string{natsPassword, natsToken, httpPassword, clickHousePassword} {
+				for _, credential := range []string{natsPassword, natsToken, natsNoSchemePass, natsNoSchemeToken, httpPassword, clickHousePassword} {
 					assert.NotContains(t, string(result), credential)
 				}
 				for _, control := range listControls {
@@ -180,6 +183,24 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 			},
 			credential: natsToken,
 			controls:   []string{"stream", "two:4222", "events"},
+		},
+		{
+			name: "scheme-less NATS password",
+			flags: []string{
+				"--nats-url", "operator:" + natsNoSchemePass + "@three:4222",
+				"--nats-topic", "events",
+			},
+			credential: natsNoSchemePass,
+			controls:   []string{"stream", "operator", "three:4222", "events"},
+		},
+		{
+			name: "scheme-less NATS token",
+			flags: []string{
+				"--nats-url", natsNoSchemeToken + "@four:4222",
+				"--nats-topic", "events",
+			},
+			credential: natsNoSchemeToken,
+			controls:   []string{"stream", "four:4222", "events"},
 		},
 		{
 			name: "HTTP password",

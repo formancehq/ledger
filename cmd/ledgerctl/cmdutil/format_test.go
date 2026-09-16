@@ -200,6 +200,16 @@ func TestObfuscateURLUserinfo(t *testing.T) {
 			expected: "nats://****@host:4222",
 		},
 		{
+			name:     "scheme-less username and password",
+			input:    "operator:secret@host:4222",
+			expected: "operator:****@host:4222",
+		},
+		{
+			name:     "scheme-less token-only userinfo",
+			input:    "secret-token@host:4222",
+			expected: "****@host:4222",
+		},
+		{
 			name:     "escaped password",
 			input:    "https://operator:p%40ss@example.com/hooks",
 			expected: "https://operator:****@example.com/hooks",
