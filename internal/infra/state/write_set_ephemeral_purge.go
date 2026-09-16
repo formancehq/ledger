@@ -61,6 +61,7 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 			continue
 		}
 		live := false
+		persistedVolumeKeys := make([]domain.VolumeKey, 0, len(volumeKeys[account]))
 		for _, key := range volumeKeys[account] {
 			volume, err := scope.Volumes().Get(key)
 			if errors.Is(err, domain.ErrNotFound) {
@@ -69,17 +70,24 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 			if err != nil {
 				return fmt.Errorf("reading covered volume for account purge: %w", err)
 			}
-			if !isVolumeZeroBalance(volume.Mutate()) {
+			pair := volume.Mutate()
+			if !isVolumeZeroBalance(pair) {
 				live = true
 
 				break
+			}
+			// A zero cache placeholder has no business volume to remove. Only a
+			// balanced cumulative pair with actual flow can correspond to the
+			// persisted row whose cardinality and projections must be decremented.
+			if !isVolumeEmpty(pair) {
+				persistedVolumeKeys = append(persistedVolumeKeys, key)
 			}
 		}
 		if live {
 			continue
 		}
 		b.purgedAccounts[account] = struct{}{}
-		b.purgedAccountVolumeKeys = append(b.purgedAccountVolumeKeys, volumeKeys[account]...)
+		b.purgedAccountVolumeKeys = append(b.purgedAccountVolumeKeys, persistedVolumeKeys...)
 		b.purgedAccountMetadataKeys = append(b.purgedAccountMetadataKeys, metadataKeys[account]...)
 	}
 
@@ -148,6 +156,14 @@ func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
 		in.GetV1() == out.GetV1() &&
 		in.GetV2() == out.GetV2() &&
 		in.GetV3() == out.GetV3()
+}
+
+func isVolumeEmpty(v *raftcmdpb.VolumePair) bool {
+	in := v.GetInput()
+	out := v.GetOutput()
+
+	return (in == nil || (in.GetV0() == 0 && in.GetV1() == 0 && in.GetV2() == 0 && in.GetV3() == 0)) &&
+		(out == nil || (out.GetV0() == 0 && out.GetV1() == 0 && out.GetV2() == 0 && out.GetV3() == 0))
 }
 
 // volumePartitionResult holds the result of partitioning volume updates by persistence mode.

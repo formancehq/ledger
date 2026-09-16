@@ -453,6 +453,20 @@ func TestZeroVolumeCache_Empty(t *testing.T) {
 	require.NoError(t, batch.Commit())
 }
 
+func TestIsVolumeEmptyDistinguishesBalancedFlowFromCachePlaceholder(t *testing.T) {
+	t.Parallel()
+
+	require.True(t, isVolumeEmpty(&raftcmdpb.VolumePair{}))
+	require.True(t, isVolumeEmpty(&raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	}))
+	require.False(t, isVolumeEmpty(&raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(10),
+		Output: commonpb.NewUint256FromUint64(10),
+	}))
+}
+
 func TestIsVolumeZeroBalance_Transient(t *testing.T) {
 	t.Parallel()
 

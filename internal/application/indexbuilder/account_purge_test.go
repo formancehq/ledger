@@ -65,3 +65,20 @@ func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRef
 	require.NotEmpty(t, value)
 	require.NoError(t, closer.Close())
 }
+
+func TestMarkLedgerDeletedInBatchPreservesOtherLedgerMemberships(t *testing.T) {
+	t.Parallel()
+
+	b := newTestBuilderWithStore(t)
+	b.seenAcctAsset = make(map[string]struct{})
+	b.deletedThisBatch = make(map[string]struct{})
+	ledgerAKey := readstore.AccountByAssetKey(dal.NewKeyBuilder(), "ledger-a", "USD", 2, "hold:1")
+	ledgerBKey := readstore.AccountByAssetKey(dal.NewKeyBuilder(), "ledger-b", "USD", 2, "hold:2")
+	b.seenAcctAsset[string(ledgerAKey)] = struct{}{}
+	b.seenAcctAsset[string(ledgerBKey)] = struct{}{}
+
+	b.markLedgerDeletedInBatch("ledger-b")
+
+	require.Contains(t, b.seenAcctAsset, string(ledgerAKey))
+	require.NotContains(t, b.seenAcctAsset, string(ledgerBKey))
+}
