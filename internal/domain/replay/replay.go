@@ -294,7 +294,7 @@ func (b *EphemeralPurgeBuffer) AddAccount(ledger, account string) {
 // TouchAccount records an account whose lifecycle must be evaluated at the
 // proposal boundary from audit-bound effects.
 func (b *EphemeralPurgeBuffer) TouchAccount(ledger, account string) {
-	if b == nil || account == "" || account == "world" {
+	if b == nil || account == "" {
 		return
 	}
 	pending := b.byLedger[ledger]
@@ -351,8 +351,12 @@ func (b *EphemeralPurgeBuffer) Add(ledger string, postings []*commonpb.Posting) 
 
 	pending.postings = append(pending.postings, postings...)
 	for _, posting := range postings {
-		b.TouchAccount(ledger, posting.GetSource())
-		b.TouchAccount(ledger, posting.GetDestination())
+		if posting.GetSource() != "world" {
+			b.TouchAccount(ledger, posting.GetSource())
+		}
+		if posting.GetDestination() != "world" {
+			b.TouchAccount(ledger, posting.GetDestination())
+		}
 	}
 }
 

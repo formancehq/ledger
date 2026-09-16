@@ -110,8 +110,9 @@ func TestHistoricalExclusionDoesNotHideRefundedAccount(t *testing.T) {
 		"ledger": {domain.AccountAssetKey{Account: "ephemeral", Asset: "USD"}: {}},
 	}
 
-	require.True(t, excluded.excludesCurrentVolume(volume, false))
-	require.False(t, excluded.excludesCurrentVolume(volume, true))
+	require.True(t, excluded.excludesCurrentVolume(volume, false, false))
+	require.False(t, excluded.excludesCurrentVolume(volume, true, true))
+	require.False(t, excluded.excludesCurrentVolume(volume, false, true), "a re-funded account must not hide an older absent cell")
 	require.True(t, excluded.excludesCurrentMetadata(metadata, false))
 	require.False(t, excluded.excludesCurrentMetadata(metadata, true))
 }

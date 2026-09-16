@@ -1030,11 +1030,13 @@ func requestAccountTouches(req *servicepb.Request) map[string]bool {
 	}
 	switch action := apply.GetAction().GetData().(type) {
 	case *servicepb.LedgerAction_CreateTransaction:
-		for account := range action.CreateTransaction.GetAccountMetadata() {
-			out[account] = true
+		for account, metadata := range action.CreateTransaction.GetAccountMetadata() {
+			if len(metadata.GetValues()) > 0 {
+				out[account] = true
+			}
 		}
 	case *servicepb.LedgerAction_AddMetadata:
-		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil {
+		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil && len(action.AddMetadata.GetMetadata()) > 0 {
 			out[account.GetAddr()] = true
 		}
 	case *servicepb.LedgerAction_DeleteMetadata:

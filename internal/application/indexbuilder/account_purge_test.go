@@ -20,7 +20,7 @@ func TestPurgeCurrentAccountIndexesReconcilesSameBatchMembership(t *testing.T) {
 	b.wb.SetEventSequence(1)
 	require.NoError(t, b.writeAccountByAssetDedup(b.kb, ledger, account, "USD", 2))
 	b.wb.SetEventSequence(2)
-	require.NoError(t, b.purgeCurrentAccountIndexes(nil, ledger, account))
+	require.NoError(t, b.purgeCurrentAccountIndexes(acctAssetConfig(), ledger, account))
 	require.Empty(t, b.seenAcctAsset, "purge must invalidate in-batch dedup state")
 
 	// A re-fund later in the same indexer batch must queue a Put after the
@@ -51,7 +51,7 @@ func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRef
 	batch := b.readStore.NewBatch()
 	b.initBatch(batch)
 	b.wb.SetEventSequence(2)
-	require.NoError(t, b.purgeCurrentAccountIndexes(&ledgerIndexConfig{}, ledger, account))
+	require.NoError(t, b.purgeCurrentAccountIndexes(acctAssetConfig(), ledger, account))
 
 	// Pebble still exposes the committed row until this batch commits. The
 	// refund must nevertheless enqueue a Put after the pending Delete.

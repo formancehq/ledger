@@ -1426,8 +1426,8 @@ func (c *Checker) compareNumscripts(
 // index builder and cannot be trusted by the integrity checker.
 type excludedVolumesSet map[string]map[domain.AccountAssetKey]struct{}
 
-func (e excludedVolumesSet) excludesCurrentVolume(key domain.VolumeKey, replayHasVolume bool) bool {
-	return !replayHasVolume && e.contains(key.LedgerName, key.Account, key.Asset, key.Color)
+func (e excludedVolumesSet) excludesCurrentVolume(key domain.VolumeKey, replayHasVolume, replayAccountIsActive bool) bool {
+	return !replayHasVolume && !replayAccountIsActive && e.contains(key.LedgerName, key.Account, key.Asset, key.Color)
 }
 
 func (e excludedVolumesSet) excludesCurrentMetadata(key domain.MetadataKey, replayAccountIsActive bool) bool {
@@ -1548,12 +1548,17 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 
 	// Collect all keys
 	allKeys := make(map[string]struct{})
+	replayActiveAccounts := make(map[domain.AccountKey]struct{})
 	for k := range liveVolumes {
 		allKeys[k] = struct{}{}
 	}
 
 	for k := range replayDeltas {
 		allKeys[k] = struct{}{}
+		var key domain.VolumeKey
+		if err := key.Unmarshal([]byte(k)); err == nil {
+			replayActiveAccounts[key.AccountKey] = struct{}{}
+		}
 	}
 
 	// Compare: expected = replayed state
@@ -1608,7 +1613,8 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		// not "align" this code to consult those proto records — it
 		// would reintroduce the tampering vector this design
 		// deliberately removes.
-		if excluded.excludesCurrentVolume(vk, replayDeltas[key] != nil) {
+		_, replayAccountIsActive := replayActiveAccounts[vk.AccountKey]
+		if excluded.excludesCurrentVolume(vk, replayDeltas[key] != nil, replayAccountIsActive) {
 			continue
 		}
 
