@@ -134,3 +134,107 @@ func TestObfuscateDSN(t *testing.T) {
 		})
 	}
 }
+
+func TestObfuscateClickHouseDSN(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "query password",
+			input:    "clickhouse://ch-host:9000/events?username=default&password=secret",
+			expected: "clickhouse://ch-host:9000/events?password=****&username=default",
+		},
+		{
+			name:     "userinfo and query password",
+			input:    "clickhouse://default:userinfo-secret@ch-host:9000/events?password=query-secret",
+			expected: "clickhouse://default:****@ch-host:9000/events?password=****",
+		},
+		{
+			name:     "unescaped at sign in query password",
+			input:    "clickhouse://ch-host:9000/events?password=prefix@secret",
+			expected: "clickhouse://ch-host:9000/events?password=****",
+		},
+		{
+			name:     "unrelated query parameter",
+			input:    "clickhouse://ch-host:9000/events?secure=true&token=public-routing-value",
+			expected: "clickhouse://ch-host:9000/events?secure=true&token=public-routing-value",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, ObfuscateClickHouseDSN(tt.input))
+		})
+	}
+}
+
+func TestObfuscateURLPassword(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t,
+		"https://operator:****@example.com/hooks",
+		ObfuscateURLPassword("https://operator:secret@example.com/hooks"),
+	)
+	assert.Equal(t,
+		"https://operator@example.com/hooks",
+		ObfuscateURLPassword("https://operator@example.com/hooks"),
+	)
+}
+
+func TestObfuscateURLUserinfo(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "username and password",
+			input:    "nats://operator:secret@host:4222",
+			expected: "nats://operator:****@host:4222",
+		},
+		{
+			name:     "token-only userinfo",
+			input:    "nats://secret-token@host:4222",
+			expected: "nats://****@host:4222",
+		},
+		{
+			name:     "scheme-less username and password",
+			input:    "operator:secret@host:4222",
+			expected: "operator:****@host:4222",
+		},
+		{
+			name:     "scheme-less token-only userinfo",
+			input:    "secret-token@host:4222",
+			expected: "****@host:4222",
+		},
+		{
+			name:     "escaped password",
+			input:    "https://operator:p%40ss@example.com/hooks",
+			expected: "https://operator:****@example.com/hooks",
+		},
+		{
+			name:     "at sign in path",
+			input:    "https://example.com/hooks@v2",
+			expected: "https://example.com/hooks@v2",
+		},
+		{
+			name:     "no credentials",
+			input:    "nats://host:4222",
+			expected: "nats://host:4222",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.expected, ObfuscateURLUserinfo(tt.input))
+		})
+	}
+}
