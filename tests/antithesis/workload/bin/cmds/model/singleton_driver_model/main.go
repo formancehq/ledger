@@ -239,7 +239,7 @@ func runWorker(
 		// transaction queries receive extra slots because together they must
 		// exercise every builtin and declared metadata index.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -261,18 +261,8 @@ func runWorker(
 			case 12:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node, c)
-			case 14:
-				runAggregateQuery(ctx, client, c)
-			case 15:
-				runAuditQuery(ctx, client, c)
-			case 16:
-				runLedgersList(ctx, client, c)
-			case 17:
-				runLedgerStats(ctx, client, c)
-			case 18:
-				runIndexIntrospection(ctx, client, c)
-			case 19:
-				runGetLog(ctx, client, c)
+			case 13, 14:
+				runSecondaryRead(ctx, client, c)
 			default:
 				runRead(ctx, client, c)
 			}
@@ -569,6 +559,26 @@ func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguous
 	return hadAmbiguousAttempt &&
 		bulkEnablesMaintenance(bulk) &&
 		internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
+}
+
+// runSecondaryRead dispatches one of the read surfaces that share a single
+// slot of the read mix, so the entity queries the coverage sondes depend on
+// keep their share of the worker's reads.
+func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+	case 0:
+		runAggregateQuery(ctx, client, c)
+	case 1:
+		runAuditQuery(ctx, client, c)
+	case 2:
+		runLedgersList(ctx, client, c)
+	case 3:
+		runLedgerStats(ctx, client, c)
+	case 4:
+		runIndexIntrospection(ctx, client, c)
+	default:
+		runGetLog(ctx, client, c)
+	}
 }
 
 // initialSchema generates a small, random metadata schema declared at ledger
