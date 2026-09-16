@@ -405,6 +405,12 @@ Request body includes `mode` (`"MIRROR"`) and a `mirrorSource` object specifying
 
 If `type` is omitted, defaults to `"http"`.
 
+**HTTP source validation:** Creation requires `baseUrl` to parse as an absolute
+HTTP(S) URL with a nonempty hostname. Invalid input returns HTTP 400 / gRPC
+`InvalidArgument` (`VALIDATION`), identifying `mirrorSource.http.baseUrl` without
+echoing credentials. Rejection occurs before Raft, audit/ledger persistence and
+worker startup, and does not probe the remote source.
+
 **Write guard:** All direct write operations (create transaction, save metadata, delete metadata, revert transaction) are rejected on mirror-mode ledgers with HTTP 409 (`LEDGER_IN_MIRROR_MODE`) or gRPC `FailedPrecondition`.
 
 **Sync progress:** `GET /v3/{ledgerName}` returns a `mirrorSyncProgress` object for mirror ledgers with:

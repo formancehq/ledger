@@ -38,6 +38,10 @@ type applyingMirrorProposer struct {
 	beforeApply func(*raftcmdpb.Proposal)
 }
 
+func (p *applyingMirrorProposer) InitialIndex() uint64 {
+	return 0
+}
+
 func (p *applyingMirrorProposer) Propose(ctx context.Context, proposal *node.Proposal) (*futures.Future[state.ApplyResult], error) {
 	cmd := &raftcmdpb.Proposal{}
 	require.NoError(p.t, cmd.UnmarshalVT(proposal.Data()))
