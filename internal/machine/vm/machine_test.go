@@ -2484,3 +2484,51 @@ func (s *mockStore) GetBalances(_ context.Context, query BalanceQuery) (Balances
 func (s *mockStore) GetAccount(ctx context.Context, address string) (*ledger.Account, error) {
 	panic("not implemented")
 }
+
+// `save <monetary expression> from @acc` used to save only the expression's
+// left-hand operand: VisitSaveFromAccount asked VisitExpr for an address
+// rather than pushing, and on that path the arithmetic operator is never
+// emitted and the address returned is the left operand's. The right operand
+// was silently discarded — no error, just the wrong amount reserved.
+//
+// `send` was never affected: it takes the address only to derive the asset,
+// then evaluates the expression properly with a push.
+func TestSaveMonetaryExpression(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		save string
+		// alice starts with 100; `send [COIN *]` then moves whatever is left
+		// unreserved.
+		wantSent int64
+	}{
+		{"subtraction", `save [COIN 50] - [COIN 40] from @alice`, 90},
+		{"addition", `save [COIN 90] + [COIN 5] from @alice`, 5},
+		{"plain monetary, unchanged", `save [COIN 50] from @alice`, 50},
+		{"save all, unchanged", `save [COIN *] from @alice`, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc2 := NewTestCase()
+			tc2.compile(t, tc.save+`
+
+send [COIN *] (
+	source = @alice
+	destination = @bob
+)`)
+			tc2.setBalance("alice", "COIN", 100)
+
+			// The send always emits a posting, zero-amount included.
+			postings := []Posting{{
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(tc.wantSent),
+				Source:      "alice",
+				Destination: "bob",
+			}}
+			tc2.expected = CaseResult{
+				Printed:  []machine.Value{},
+				Postings: postings,
+				Error:    nil,
+			}
+			test(t, tc2)
+		})
+	}
+}
