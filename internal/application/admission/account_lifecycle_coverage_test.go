@@ -1,6 +1,7 @@
 package admission
 
 import (
+	"context"
 	"testing"
 	stdtime "time"
 
@@ -40,11 +41,11 @@ func TestAccountTypeMutationSerializesAllLifecycleStripes(t *testing.T) {
 
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
-	admission.ephemeralLifecycleLocks[0].Lock()
+	require.NoError(t, admission.ephemeralLifecycleLocks[0].Acquire(t.Context(), 1))
 
 	done := make(chan func(), 1)
 	go func() {
-		release, err := admission.expandAccountLifecycleCoverage(plan.NewCoverage(), []*plan.Coverage{plan.NewCoverage()}, []*raftcmdpb.Order{
+		release, err := admission.expandAccountLifecycleCoverage(t.Context(), plan.NewCoverage(), []*plan.Coverage{plan.NewCoverage()}, []*raftcmdpb.Order{
 			ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
 				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
 					Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
@@ -62,13 +63,49 @@ func TestAccountTypeMutationSerializesAllLifecycleStripes(t *testing.T) {
 	case <-stdtime.After(20 * stdtime.Millisecond):
 	}
 
-	admission.ephemeralLifecycleLocks[0].Unlock()
+	admission.ephemeralLifecycleLocks[0].Release(1)
 	select {
 	case release := <-done:
 		release()
 	case <-stdtime.After(stdtime.Second):
 		t.Fatal("account-type mutation did not acquire lifecycle locks after release")
 	}
+}
+
+func TestAccountTypeMutationCancellationReleasesAcquiredLifecycleStripes(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	admission, _ := createTestAdmission(t, store)
+	require.NoError(t, admission.ephemeralLifecycleLocks[1].Acquire(t.Context(), 1))
+	t.Cleanup(func() { admission.ephemeralLifecycleLocks[1].Release(1) })
+
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		_, err := admission.expandAccountLifecycleCoverage(ctx, plan.NewCoverage(), []*plan.Coverage{plan.NewCoverage()}, []*raftcmdpb.Order{
+			ledgerApplyOrder(&raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
+				AddAccountType: &raftcmdpb.AddAccountTypeOrder{AccountType: &commonpb.AccountType{
+					Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				}},
+			}}),
+		})
+		done <- err
+	}()
+
+	require.Eventually(t, func() bool {
+		if admission.ephemeralLifecycleLocks[0].TryAcquire(1) {
+			admission.ephemeralLifecycleLocks[0].Release(1)
+
+			return false
+		}
+
+		return true
+	}, stdtime.Second, stdtime.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.True(t, admission.ephemeralLifecycleLocks[0].TryAcquire(1), "cancellation must release already acquired stripes")
+	admission.ephemeralLifecycleLocks[0].Release(1)
 }
 
 func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T) {

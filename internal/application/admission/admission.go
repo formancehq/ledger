@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"slices"
 	"sort"
-	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -18,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/sync/semaphore"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -106,7 +106,7 @@ type Admission struct {
 	ordersPreparationDurationHistogram  metric.Int64Histogram
 	scriptsDurationHistogram            metric.Int64Histogram
 	responseResolutionDurationHistogram metric.Int64Histogram
-	ephemeralLifecycleLocks             [64]sync.Mutex
+	ephemeralLifecycleLocks             [64]*semaphore.Weighted
 }
 
 // phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
@@ -174,6 +174,9 @@ func NewAdmission(
 		attrs:           attrs,
 		numscriptCache:  numscriptCache,
 		waitLeaderReady: waitLeaderReady,
+	}
+	for index := range a.ephemeralLifecycleLocks {
+		a.ephemeralLifecycleLocks[index] = semaphore.NewWeighted(1)
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -641,7 +644,7 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
-	releaseLifecycle, err := a.expandAccountLifecycleCoverage(needs, perOrder, orders)
+	releaseLifecycle, err := a.expandAccountLifecycleCoverage(ctx, needs, perOrder, orders)
 	if err != nil {
 		return nil, fmt.Errorf("expanding account lifecycle coverage: %w", err)
 	}
@@ -917,7 +920,7 @@ func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResul
 // key owned by an account already mentioned by an order's coverage. The FSM
 // uses this closed key set to decide and apply an account-wide EPHEMERAL purge
 // without scanning Pebble or bypassing the coverage gate.
-func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
+func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
 	lockSet := make(map[int]struct{})
 	perOrderAccounts := make([]map[domain.AccountKey]struct{}, len(perOrder))
 
@@ -969,12 +972,20 @@ func (a *Admission) expandAccountLifecycleCoverage(aggregate *plan.Coverage, per
 		lockIndexes = append(lockIndexes, index)
 	}
 	sort.Ints(lockIndexes)
+	acquired := 0
 	for _, index := range lockIndexes {
-		a.ephemeralLifecycleLocks[index].Lock()
+		if err := a.ephemeralLifecycleLocks[index].Acquire(ctx, 1); err != nil {
+			for _, acquiredIndex := range slices.Backward(lockIndexes[:acquired]) {
+				a.ephemeralLifecycleLocks[acquiredIndex].Release(1)
+			}
+
+			return nil, err
+		}
+		acquired++
 	}
 	release := func() {
 		for _, lockIndexe := range slices.Backward(lockIndexes) {
-			a.ephemeralLifecycleLocks[lockIndexe].Unlock()
+			a.ephemeralLifecycleLocks[lockIndexe].Release(1)
 		}
 	}
 	success := false

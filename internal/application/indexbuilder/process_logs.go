@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -142,6 +143,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			pendingCheckpointHorizon  uint64
 			pendingCheckpointRestored bool
 			pendingCheckpointDelete   uint64
+			purgedAccountsByLedger    = make(map[string]map[string]struct{})
 		)
 
 		noteCheckpointCreate := func(id, appliedIndex uint64) error {
@@ -371,11 +373,29 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				return cursor, err
 			}
 			for _, account := range ledgerLog.GetPurgedAccounts() {
-				if err := b.purgeCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
+				if err := b.purgeQueuedCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
 					_ = batch.Cancel()
 
 					return cursor, err
 				}
+				accounts := purgedAccountsByLedger[ledgerName]
+				if accounts == nil {
+					accounts = make(map[string]struct{})
+					purgedAccountsByLedger[ledgerName] = accounts
+				}
+				accounts[account] = struct{}{}
+			}
+		}
+		for ledgerName, accountSet := range purgedAccountsByLedger {
+			accounts := make([]string, 0, len(accountSet))
+			for account := range accountSet {
+				accounts = append(accounts, account)
+			}
+			sort.Strings(accounts)
+			if err := b.purgeCommittedAccountAssetIndexes(b.ledgerConfig(ledgerName), ledgerName, accounts...); err != nil {
+				_ = batch.Cancel()
+
+				return cursor, err
 			}
 		}
 
@@ -620,18 +640,25 @@ func (b *Builder) advanceCursors(lastSeq, appliedProposalSeq uint64, indexed int
 
 // purgeCurrentAccountIndexes removes projections describing current account
 // state while deliberately preserving immutable account-to-transaction history.
-func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
+func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger string, accounts ...string) error {
+	for _, account := range accounts {
+		if err := b.purgeQueuedCurrentAccountIndexes(cfg, ledger, account); err != nil {
+			return err
+		}
+	}
+
+	return b.purgeCommittedAccountAssetIndexes(cfg, ledger, accounts...)
+}
+
+// purgeQueuedCurrentAccountIndexes applies the ordered portion of an account
+// purge immediately. A later log in the same batch can then recreate an index
+// row after this deletion.
+func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
 	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
 		if b.deletedAcctAsset == nil {
 			b.deletedAcctAsset = make(map[string]struct{})
 		}
-
-		// has-asset is asset-first, so scan the bounded ledger keyspace and delete
-		// rows whose terminal entity is exactly this address.
 		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
-		// Reconcile keys already queued in this write batch before consulting
-		// committed Pebble. Removing them from the dedup set also lets a later
-		// re-fund in the same batch recreate the membership after this delete.
 		for sk := range b.seenAcctAsset {
 			key := []byte(sk)
 			if bytes.HasPrefix(key, prefix) && accountByAssetKeyAccount(key[len(prefix):]) == account {
@@ -642,40 +669,7 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, acc
 				delete(b.seenAcctAsset, sk)
 			}
 		}
-		upper := append([]byte(nil), prefix...)
-		upper[len(upper)-1]++
-		iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
-		if err != nil {
-			return err
-		}
-		for iter.First(); iter.Valid(); iter.Next() {
-			rest := iter.Key()[len(prefix):]
-			indexedAccount := accountByAssetKeyAccount(rest)
-			if indexedAccount == "" {
-				_ = iter.Close()
-
-				return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
-			}
-			if indexedAccount == account {
-				key := append([]byte(nil), iter.Key()...)
-				if err := b.wb.DeleteKey(key); err != nil {
-					_ = iter.Close()
-
-					return err
-				}
-				b.deletedAcctAsset[string(key)] = struct{}{}
-			}
-		}
-		if err := iter.Error(); err != nil {
-			_ = iter.Close()
-
-			return err
-		}
-		if err := iter.Close(); err != nil {
-			return err
-		}
 	}
-
 	if cfg == nil {
 		return nil
 	}
@@ -697,6 +691,65 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, acc
 			if err := b.wb.DeleteMetadataEntryWithPreviousV(b.kb, reverseKey, ledger, readstore.NamespaceAccount, metadata.GetKey(), version, old, []byte(account)); err != nil {
 				return err
 			}
+		}
+	}
+
+	return nil
+}
+
+// purgeCommittedAccountAssetIndexes scans the asset-first committed index once
+// for all purges accumulated in a fold batch. Rows recreated later in the same
+// batch remain in seenAcctAsset and must survive the committed-row cleanup.
+func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledger string, accounts ...string) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+	purgedAccounts := make(map[string]struct{}, len(accounts))
+	for _, account := range accounts {
+		purgedAccounts[account] = struct{}{}
+	}
+	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
+		if b.deletedAcctAsset == nil {
+			b.deletedAcctAsset = make(map[string]struct{})
+		}
+
+		// has-asset is asset-first, so scan the bounded ledger keyspace and delete
+		// rows whose terminal entity is exactly this address.
+		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+		if err != nil {
+			return err
+		}
+		for iter.First(); iter.Valid(); iter.Next() {
+			rest := iter.Key()[len(prefix):]
+			indexedAccount := accountByAssetKeyAccount(rest)
+			if indexedAccount == "" {
+				_ = iter.Close()
+
+				return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
+			}
+			if _, purged := purgedAccounts[indexedAccount]; purged {
+				key := append([]byte(nil), iter.Key()...)
+				if _, recreated := b.seenAcctAsset[string(key)]; recreated {
+					continue
+				}
+				if err := b.wb.DeleteKey(key); err != nil {
+					_ = iter.Close()
+
+					return err
+				}
+				b.deletedAcctAsset[string(key)] = struct{}{}
+			}
+		}
+		if err := iter.Error(); err != nil {
+			_ = iter.Close()
+
+			return err
+		}
+		if err := iter.Close(); err != nil {
+			return err
 		}
 	}
 
@@ -975,6 +1028,10 @@ func (b *Builder) backfillLogDateRow(cfg *ledgerIndexConfig, log *commonpb.Log) 
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
 func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync) error {
+	return b.indexLogEntryWithAccountPurge(cfg, log, proposals, true)
+}
+
+func (b *Builder) indexLogEntryWithAccountPurge(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync, purgeAccounts bool) error {
 	if log.GetPayload() == nil {
 		return nil
 	}
@@ -1047,9 +1104,11 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	if err != nil {
 		return err
 	}
-	for _, account := range ledgerLog.GetPurgedAccounts() {
-		if err := b.purgeCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
-			return err
+	if purgeAccounts {
+		for _, account := range ledgerLog.GetPurgedAccounts() {
+			if err := b.purgeCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
+				return err
+			}
 		}
 	}
 
