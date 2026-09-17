@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -303,6 +304,13 @@ func (s *AuditIndexSnapshot) AuditSeqsByStringPrefix(field byte, value string) (
 }
 
 func auditSeqsByStringPrefix(reader dal.PebbleReader, field byte, value string) ([]uint64, error) {
+	// NUL is used as the value terminator in AuditIndexStringKey. A prefix
+	// operand containing NUL shares a byte-prefix with shorter exact keys and
+	// would produce false-positive matches. Reject it explicitly.
+	if strings.ContainsRune(value, '\x00') {
+		return nil, fmt.Errorf("audit index prefix operand must not contain NUL")
+	}
+
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().
 		PutByte(PrefixInternal).

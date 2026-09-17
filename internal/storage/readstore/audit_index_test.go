@@ -196,6 +196,13 @@ func TestAuditSeqsByStringPrefixBoundariesAndReuse(t *testing.T) {
 	seqs, err = NewAuditIndexSnapshot(snapshot).AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "retry-a")
 	require.NoError(t, err)
 	require.Equal(t, []uint64{2, 7, 8}, seqs, "snapshot lookup uses the same bounded prefix access path")
+
+	// A NUL-bearing prefix would share a byte-prefix with a shorter exact key.
+	// Both the Store and the Snapshot surface must reject it.
+	_, err = s.AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "key\x00")
+	require.ErrorContains(t, err, "NUL", "Store must reject NUL in prefix operand")
+	_, err = NewAuditIndexSnapshot(snapshot).AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "key\x00")
+	require.ErrorContains(t, err, "NUL", "Snapshot must reject NUL in prefix operand")
 }
 
 // TestDropAuditIndexPreservesCursor guards the 0x05/0x06 sub-prefix adjacency:

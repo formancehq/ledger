@@ -27,6 +27,7 @@ func (f *fakeAuditIndex) AuditSeqsByStringPrefix(field byte, value string) ([]ui
 	if f.prefixErr != nil {
 		return nil, f.prefixErr
 	}
+
 	return f.byStringPrefix[string(field)+value], nil
 }
 
@@ -34,6 +35,7 @@ func (f *fakeAuditIndex) AuditSeqsByString(field byte, value string) ([]uint64, 
 	if f.stringErr != nil {
 		return nil, f.stringErr
 	}
+
 	return f.byString[string(field)+value], nil
 }
 

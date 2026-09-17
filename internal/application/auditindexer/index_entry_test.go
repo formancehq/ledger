@@ -109,6 +109,7 @@ func TestAppendEntryKeysPropagatesIdempotencyIndexWriteError(t *testing.T) {
 		if key[2] == readstore.AuditFieldIdempotencyKey {
 			return want
 		}
+
 		return nil
 	}, entry, nil)
 	require.ErrorIs(t, err, want)
