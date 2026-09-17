@@ -267,7 +267,9 @@ const (
 )
 
 // ErrSequenceExhausted rejects an allocation that would wrap an authoritative
-// uint64 counter to zero. Exhaustion is permanent for the affected ledger or
+// integer counter to zero. Applies to both uint64 sequence allocators (via
+// CheckedNextSequence) and the uint32 ledger-ID allocator (via
+// CheckedNextLedgerID). Exhaustion is permanent for the affected ledger or
 // cluster; retrying cannot create another unique identifier.
 type ErrSequenceExhausted struct {
 	Counter SequenceCounter

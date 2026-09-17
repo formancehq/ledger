@@ -984,7 +984,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Raft node already absent during removal | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
 | Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
-| Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
+| Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Metadata limit exceeded | `INVALID_ARGUMENT` | `METADATA_LIMIT_EXCEEDED` | `dimension`, `limit`, `actual` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |
