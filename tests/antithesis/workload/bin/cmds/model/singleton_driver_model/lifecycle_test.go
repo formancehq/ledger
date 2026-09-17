@@ -23,9 +23,12 @@ func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) 
 	t.Parallel()
 
 	c := NewChecker([]string{"L"}, nil)
+	c.mu.Lock()
+	recoveryID := c.registerRead()
+	c.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
-		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c)
+		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c, recoveryID)
 		close(done)
 	}()
 
@@ -35,6 +38,7 @@ func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) 
 		t.Fatal("recovery returned before its observation was processed")
 	default:
 	}
+	require.NotContains(t, c.reads, recoveryID)
 	require.Contains(t, c.inflight, obs.ticket)
 
 	c.mu.Lock()

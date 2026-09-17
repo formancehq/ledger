@@ -328,7 +328,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	var resp *servicepb.ApplyResponse
 	var err error
 	hadAmbiguousAttempt := false
-	maintenanceRecoveryScheduled := false
+	provisionalMaintenanceRecoveryScheduled := false
 	for {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
@@ -336,9 +336,9 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		}
 		if internal.IsMaintenanceAfterAmbiguousCommit(err) {
 			hadAmbiguousAttempt = true
-			if bulkEnablesMaintenance(bulk) && !maintenanceRecoveryScheduled {
+			if bulkEnablesMaintenance(bulk) && !provisionalMaintenanceRecoveryScheduled {
 				scheduleMaintenanceRecovery(ctx, client, c)
-				maintenanceRecoveryScheduled = true
+				provisionalMaintenanceRecoveryScheduled = true
 			}
 		}
 		if internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) && !hadAmbiguousAttempt {
@@ -372,7 +372,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	// Register the disable recovery before publishing the successful enable.
 	// The processor may otherwise make that enable visible to restore, which can
 	// begin draining while no recovery read protects the maintenance window.
-	if err == nil && bulkEnablesMaintenance(bulk) && !maintenanceRecoveryScheduled {
+	if err == nil && bulkEnablesMaintenance(bulk) {
 		scheduleMaintenanceRecovery(ctx, client, c)
 	}
 	select {
@@ -400,7 +400,12 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 
 	go func() {
 		defer c.recoveries.Done()
-		defer c.finishRead(recoveryID)
+		readRegistered := true
+		defer func() {
+			if readRegistered {
+				c.finishRead(recoveryID)
+			}
+		}()
 		for {
 			c.mu.Lock()
 			enableSeq := c.maintenanceEnableSeq
@@ -415,7 +420,8 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 				return
 			case <-time.After(delay):
 			}
-			dispatchMaintenanceRecovery(ctx, client, c)
+			dispatchMaintenanceRecovery(ctx, client, c, recoveryID)
+			readRegistered = false
 
 			c.mu.Lock()
 			if c.maintenanceEnableSeq == enableSeq {
@@ -423,16 +429,20 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 				c.mu.Unlock()
 				return
 			}
+			recoveryID = c.registerRead()
+			readRegistered = true
 			c.mu.Unlock()
 		}
 	}()
 }
 
 // dispatchMaintenanceRecovery bypasses the restore pause because the recovery
-// read registered before its delay keeps pauseAndDrain from completing. A fresh
-// key prevents deliberate conflict injection from turning a temporary
+// read registered before its delay keeps pauseAndDrain from completing. It
+// atomically replaces that read with the disable's in-flight ticket so restore
+// remains blocked without preventing the disable observation from draining. A
+// fresh key prevents deliberate conflict injection from turning a temporary
 // maintenance window into a permanent stall.
-func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID uint64) {
 	bulk := oracle.Bulk{
 		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
 		IdempotencyKey: idempotencyKey(),
@@ -440,6 +450,8 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 
 	c.mu.Lock()
 	ticket := c.registerInflight(bulk)
+	delete(c.reads, recoveryID)
+	c.tryDrain()
 	c.mu.Unlock()
 
 	req := applyRequest(bulk)
