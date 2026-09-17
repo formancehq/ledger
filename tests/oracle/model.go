@@ -816,7 +816,7 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 			ls = NewLedgerState()
 		}
 
-		ls.applyOne(req, map[VolumeKey]bool{})
+		ls.applyOne(req, map[VolumeKey]bool{}, uint64(ls.txs.Len()))
 		next.ledgers[name] = ls
 	}
 
@@ -880,6 +880,13 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 
 	var orderTouches []orderTouch
 
+	// Transaction count per ledger as it stood before this bulk, captured on
+	// first touch. The server records the same horizon (processApply stores the
+	// pre-batch NextTransactionId) so it can tell a revert target this batch
+	// creates — which admission could not observe, and which it therefore could
+	// not declare volume coverage for — from one that already existed.
+	batchInitialTxCount := map[string]uint64{}
+
 	for _, req := range bulk.Requests {
 		if oc, handled := next.applyCheckpoint(req); handled {
 			orders = append(orders, oc)
@@ -920,10 +927,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			touched[name] = cells
 		}
 
+		if _, seen := batchInitialTxCount[name]; !seen {
+			batchInitialTxCount[name] = uint64(ls.txs.Len())
+		}
+
 		orderCells := map[VolumeKey]bool{}
 
 		beforeOrder := ls
-		oc := ls.applyOne(req, orderCells)
+		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
 		if !oc.OK && slices.Contains(req.GetApply().GetSkippableReasons(), domain.ReasonCode(oc.Reason)) {
 			ls = beforeOrder
 			orderCells = map[VolumeKey]bool{}
@@ -1348,7 +1359,7 @@ func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeA
 
 // applyOne mutates the (already-forked) working state for one request and
 // returns its predicted outcome, recording touched volume cells.
-func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_SetDefaultEnforcementMode:
@@ -1409,7 +1420,7 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 		case *servicepb.LedgerAction_DeleteMetadata:
 			return s.applyDeleteMetadata(a.DeleteMetadata)
 		case *servicepb.LedgerAction_RevertTransaction:
-			return s.applyRevert(a.RevertTransaction, touched)
+			return s.applyRevert(a.RevertTransaction, touched, batchInitialTxCount)
 		default:
 			// The generator emits only the actions above; any other is unmodeled
 			// — fail loudly, the generator and model must stay in lockstep.
@@ -1491,7 +1502,11 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 // (swap source/destination), enforces the chart on them, applies the balance
 // floor unless force is set (see applyPostings), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
-func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyRevert(
+	rt *servicepb.RevertTransactionPayload,
+	touched map[VolumeKey]bool,
+	batchInitialTxCount uint64,
+) OrderResult {
 	id := rt.GetTransactionId()
 	if id == 0 || id > uint64(s.txs.Len()) {
 		// Unknown id (past the log frontier); the server rejects with
@@ -1499,6 +1514,17 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 		// in commit order this is unreachable, but a candidate-base ordering may
 		// not have applied the create yet.
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
+	}
+
+	if id > batchInitialTxCount {
+		// The target is created by an earlier order in this same batch. Admission
+		// resolves a revert's original postings from the local store only, and
+		// the bulk overlay does not carry transactions the batch itself creates,
+		// so it cannot declare the volume coverage apply needs. The server
+		// rejects the whole batch permanently rather than retryably: rejecting it
+		// un-creates the target, so an identical retry reproduces the same
+		// observation.
+		return OrderResult{Reason: domain.ErrReasonRevertTargetCreatedInBatch}
 	}
 
 	orig := s.txs.Get(int(id - 1))
