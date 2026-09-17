@@ -1,6 +1,7 @@
 package auditindexer
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -95,4 +96,22 @@ func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	for _, k := range keys {
 		require.NotEqual(t, readstore.AuditFieldCallerSubject, k[2])
 	}
+}
+
+func TestAppendEntryKeysPropagatesIdempotencyIndexWriteError(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("write failed")
+	entry := &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1,
+		Outcome:     &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Idempotency: &commonpb.Idempotency{Key: "retry-1"},
+	}
+	err := appendEntryKeys(dal.NewKeyBuilder(), func(key []byte) error {
+		if key[2] == readstore.AuditFieldIdempotencyKey {
+			return want
+		}
+		return nil
+	}, entry, nil)
+	require.ErrorIs(t, err, want)
 }

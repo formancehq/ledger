@@ -64,6 +64,12 @@ func TestParseAudit_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
 	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, prefix.GetAudit().GetField())
 	assert.Equal(t, "retry:", prefix.GetAudit().GetStringPrefix())
 	assert.Equal(t, `idempotency_key ^= "retry:"`, Format(prefix))
+
+	_, err = Parse(`idempotency_key ^= $prefix`, audit)
+	require.ErrorContains(t, err, "does not support parameters")
+
+	_, err = Parse(`ledger ^= main`, audit)
+	require.ErrorContains(t, err, "supports == and in only")
 }
 
 func TestParseAudit_TimestampRFC3339(t *testing.T) {
