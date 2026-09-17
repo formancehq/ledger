@@ -298,6 +298,7 @@ require (
 // the recovered last-entry term stops describing the real log, which is enough to
 // grant a vote that loses acknowledged writes. Branch wal-truncation-below-snapshot
 // of formancehq/etcd is tag v3.7.0 plus that single upstream commit; drop this
-// replace once the fix ships in an etcd release. See
+// replace once the fix ships in an etcd release. The version is named on purpose:
+// an unversioned replace would survive a later etcd bump silently. See
 // docs/technical/architecture/subsystems/storage/storage.md#replay-validity.
-replace go.etcd.io/etcd/server/v3 => github.com/formancehq/etcd/server/v3 v3.7.1-0.20260917125424-fa1be9f11f7b
+replace go.etcd.io/etcd/server/v3 v3.7.0 => github.com/formancehq/etcd/server/v3 v3.7.1-0.20260917125424-fa1be9f11f7b

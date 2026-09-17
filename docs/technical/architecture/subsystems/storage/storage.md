@@ -432,13 +432,23 @@ before index — so a replica whose log is missing committed entries can win an
 election and overwrite them. Treat the recovered last-entry term and index as
 consensus authority.
 
+Honouring the first rule also makes replay stricter in one direction: an
+overwrite below the snapshot boundary empties the recovered tail, so a following
+batch that does not resume at the next index has nowhere to land and startup
+fails instead of returning a log with a hole in it. Only `Append`'s defensive gap
+branch writes that shape — raft never produces it — and refusing to serve it is
+the intended outcome.
+
 Both rules are fixed upstream in
 [etcd-io/etcd#22443](https://github.com/etcd-io/etcd/pull/22443). Until that
 lands in an etcd release, `go.mod` pins a patched build through a `replace` on
 `go.etcd.io/etcd/server/v3`: the tag `v3.7.0` plus that single commit, on the
-`wal-truncation-below-snapshot` branch of `formancehq/etcd`. The same `replace`
-is mirrored in `tests/antithesis/workload/go.mod`, which builds this code through
-a local module replacement.
+`wal-truncation-below-snapshot` branch of `formancehq/etcd`. The `replace` names
+the version it substitutes (`go.etcd.io/etcd/server/v3 v3.7.0 => ...`), so a
+later etcd bump escapes it and the guard tests below fail loudly rather than
+silently keeping the fork. The same `replace` is mirrored in
+`tests/antithesis/workload/go.mod`, which builds this code through a local module
+replacement.
 
 **Removing the pin** requires an etcd release containing that commit; dropping it
 before then reintroduces the defect. `TestRecovery_DiscardsResurrected*` and

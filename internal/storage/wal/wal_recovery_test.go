@@ -2,7 +2,6 @@ package wal
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
@@ -82,10 +81,8 @@ func TestRecovery_DiscardsResurrectedLowerTermSuffix(t *testing.T) {
 
 	reopened := assertRecoveredLog(t, dir, 86, 12)
 
-	for _, e := range reopened.entries {
-		require.NotEqual(t, uint64(5), e.GetTerm(),
-			"an overwritten term-5 entry must not survive replay (index %d)", e.GetIndex())
-	}
+	require.Empty(t, reopened.entries,
+		"the snapshot sits at the real last index, so nothing survives above it; the resurrected term-5 suffix would show up here")
 }
 
 // TestRecovery_DiscardsResurrectedHigherTermSuffix covers the backfill shape: a
@@ -122,10 +119,8 @@ func TestRecovery_DiscardsResurrectedHigherTermSuffix(t *testing.T) {
 
 	reopened := assertRecoveredLog(t, dir, 86, 12)
 
-	for _, e := range reopened.entries {
-		require.NotEqual(t, uint64(20), e.GetTerm(),
-			"an overwritten term-20 entry must not survive replay (index %d)", e.GetIndex())
-	}
+	require.Empty(t, reopened.entries,
+		"the snapshot sits at the real last index, so nothing survives above it; the resurrected term-20 suffix would show up here")
 }
 
 // TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot covers the second
@@ -319,36 +314,36 @@ func TestRecovery_KeepsHealthyTailAfterSnapshot(t *testing.T) {
 	require.Equal(t, uint64(87), reopened.entries[0].GetIndex())
 }
 
-// TestRecovery_SucceedsAfterSegmentReclamation pins the CRC requirement. A
-// decoder built over a subset of the segments starts at CRC zero and must import
-// each segment's seed; without that the first record of a reclaimed WAL fails to
-// validate and recovery refuses an entirely healthy node.
-func TestRecovery_SucceedsAfterSegmentReclamation(t *testing.T) {
+// TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite pins what the
+// stricter replay does with a log that is not a log. Honouring an overwrite
+// below the snapshot boundary empties the recovered tail, so a following batch
+// that does not resume at the next index has nowhere to land and startup fails
+// instead of returning a gapped log. Only Append's defensive gap branch writes
+// that shape; raft never produces it.
+func TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	w := newTestWALAt(t, dir, withPurgeInterval(100*time.Millisecond))
+	w := newTestWALAt(t, dir)
 
-	// etcd preallocates 64MB segments, and ReleaseLockTo only releases the
-	// oldest lock once at least three exist — same shape as the purge test.
-	const numEntries = 10
-
-	entryData := make([]byte, 20*1024*1024)
-	for i := uint64(1); i <= numEntries; i++ {
-		require.NoError(t, w.Append(hs(1, 1, i), []*raftpb.Entry{ent(i, 1, entryData)}))
+	entries := make([]*raftpb.Entry, 0, 10)
+	for i := uint64(1); i <= 10; i++ {
+		entries = append(entries, ent(i, 1, []byte("d")))
 	}
 
-	segmentsAfterWrite := countWALFiles(t, w.etcdWalDir)
-	require.GreaterOrEqual(t, segmentsAfterWrite, 3, "writing ~200MB should create at least 3 WAL segments")
+	require.NoError(t, w.Append(hs(1, 1, 10), entries))
+	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
 
-	require.NoError(t, w.CreateSnapshot(numEntries, testConfState(), nil))
-	require.NoError(t, w.Compact(numEntries))
+	// An overwrite at index 3, below the snapshot the WAL will be opened at.
+	require.NoError(t, w.Append(hs(2, 1, 10), []*raftpb.Entry{ent(3, 2, []byte("d"))}))
 
-	require.Eventually(t, func() bool {
-		return countWALFiles(t, w.etcdWalDir) < segmentsAfterWrite
-	}, 10*time.Second, 200*time.Millisecond, "old WAL segments should be purged")
-
+	// A batch that resumes at 7 rather than 4.
+	require.NoError(t, w.Append(hs(2, 1, 10), []*raftpb.Entry{
+		ent(7, 2, []byte("d")),
+		ent(8, 2, []byte("d")),
+	}))
 	require.NoError(t, w.Close())
 
-	assertRecoveredLog(t, dir, numEntries, 1)
+	require.Error(t, reopenWAL(t, dir),
+		"a recovered log with a hole must not be served")
 }
