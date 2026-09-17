@@ -190,6 +190,12 @@ func TestAuditSeqsByStringPrefixBoundariesAndReuse(t *testing.T) {
 	seqs, err = s.AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "retry-\U0010ffff")
 	require.NoError(t, err)
 	require.Equal(t, []uint64{9}, seqs, "UTF-8 upper boundary remains inside the value-prefix range")
+
+	snapshot := s.NewSnapshot()
+	t.Cleanup(func() { _ = snapshot.Close() })
+	seqs, err = NewAuditIndexSnapshot(snapshot).AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "retry-a")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2, 7, 8}, seqs, "snapshot lookup uses the same bounded prefix access path")
 }
 
 // TestDropAuditIndexPreservesCursor guards the 0x05/0x06 sub-prefix adjacency:
