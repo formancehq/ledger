@@ -605,10 +605,10 @@ func rebuildDelta(
 		}
 	}
 
-	// Persist the allocator in the same final batch as the last replayed ledger
-	// projections. A successful rebuild therefore cannot expose a created ledger
-	// without also reserving its ID; on failure the staging restore is not
-	// activated and this batch is cancelled or fails atomically.
+	// Persist the allocator. The counter is written to whatever batch is current
+	// at the end of the loop (batches are flushed every 5000 logs); a successful
+	// rebuild therefore cannot expose a created ledger without also reserving its
+	// ID monotonically, and on failure the staging store is never activated.
 	if rebuildNextLedgerID {
 		if err := state.StoreNextLedgerID(batch, nextLedgerID); err != nil {
 			_ = batch.Cancel()

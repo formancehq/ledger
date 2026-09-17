@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"io"
@@ -22,16 +21,14 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func saveNextLedgerIDForBackupTest(t *testing.T, batch *dal.WriteSession, nextID uint32) {
 	t.Helper()
 
-	key := []byte{dal.ZoneGlobal, dal.SubGlobNextLedgerID}
-	value := make([]byte, 4)
-	binary.BigEndian.PutUint32(value, nextID)
-	require.NoError(t, batch.SetBytes(key, value))
+	require.NoError(t, state.StoreNextLedgerID(batch, nextID))
 }
 
 // crashSafetyState is the stateful backing behind the generated MockStorage used
