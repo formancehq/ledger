@@ -590,10 +590,14 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 	server := map[assetColor]struct{ in, out uint256.Int }{}
 	for _, av := range serverAcct.GetVolumes() {
 		var in, out uint256.Int
-		if err := in.SetFromDecimal(av.GetVolumes().GetInput().DecimalString()); err != nil {
+		vols := av.GetVolumes()
+		if vols == nil || vols.GetInput() == nil || vols.GetOutput() == nil {
 			return false
 		}
-		if err := out.SetFromDecimal(av.GetVolumes().GetOutput().DecimalString()); err != nil {
+		if err := in.SetFromDecimal(vols.GetInput().DecimalString()); err != nil {
+			return false
+		}
+		if err := out.SetFromDecimal(vols.GetOutput().DecimalString()); err != nil {
 			return false
 		}
 

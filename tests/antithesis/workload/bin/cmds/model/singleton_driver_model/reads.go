@@ -225,8 +225,12 @@ func accountVolumeSet(acct *commonpb.Account) (map[assetColor]oracle.VolumePair,
 		}
 
 		var vp oracle.VolumePair
-		if vp.Input.SetFromDecimal(entry.GetVolumes().GetInput().DecimalString()) != nil ||
-			vp.Output.SetFromDecimal(entry.GetVolumes().GetOutput().DecimalString()) != nil {
+		vols := entry.GetVolumes()
+		if vols == nil || vols.GetInput() == nil || vols.GetOutput() == nil {
+			return nil, false
+		}
+		if vp.Input.SetFromDecimal(vols.GetInput().DecimalString()) != nil ||
+			vp.Output.SetFromDecimal(vols.GetOutput().DecimalString()) != nil {
 			return nil, false
 		}
 
