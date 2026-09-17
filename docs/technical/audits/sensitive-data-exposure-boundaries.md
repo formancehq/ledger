@@ -130,7 +130,10 @@ controls. Inspect both generated and Helm CRDs for removal of literal credential
 fields. Reference changes must alter the Pod template without mutating the
 source Cluster. Secret content rotation requires an explicit Pod restart; the
 operator does not read these secrets or automatically roll on content changes.
-The focused oracle lives in `misc/operator/internal/controller/pyroscope_test.go`.
+The rendering and rollout oracle lives in
+`misc/operator/internal/controller/pyroscope_test.go`; the pruning oracle for
+both generated and Helm CRDs lives in
+`misc/operator/api/v1alpha1/pyroscope_test.go` (`TestPyroscopeCRDSecretBoundary`).
 
 ## Rejection and deduplication rules
 
