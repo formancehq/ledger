@@ -622,9 +622,11 @@ decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
   marshaller always omits them.
 - **Not filterable.** The generated per-target validity table sets
   `ConditionKindBuiltinUint: false` for `QUERY_TARGET_ACCOUNTS`
-  (`internal/proto/commonpb/common_queryfilter_validity.pb.go`), so no date
-  condition of any kind is valid on the accounts target. The names are not in
-  the DSL either — `first_usage` falls through `decodeMatch` to
+  (`internal/proto/commonpb/common_queryfilter_validity.pb.go`), so no
+  **builtin** date condition is valid on the accounts target. `ConditionKindField`
+  is `true` there, which is what the metadata-range replacement below rides on;
+  what is gone is a builtin date field to point a condition at. The names are
+  not in the DSL either — `first_usage` falls through `decodeMatch` to
   `parseMetadataKey` and 400s as `$match: unsupported field "first_usage"`.
 - **Not paginatable.** Account cursor pagination is by address.
 
@@ -646,9 +648,13 @@ account metadata covers the same use cases on the existing machinery, so the
 fields stay out.
 
 **Supported replacement — read side:** declare an account metadata key as
-`datetime` (`MetadataFieldTypeCommand.type`), which parses the RFC3339 value it
-is given into signed int64 epoch microseconds; create an account metadata index
-on that key, wait for READY, then range-filter it:
+`datetime` (`SetMetadataFieldTypeCommand.type` on the proto,
+`MetadataFieldTypeCommand` as the OpenAPI schema); create an account metadata
+index on that key; wait until that index reports `current_version > 0` with
+`pending_version == 0` — there is no `READY` status on the wire, readiness is
+per-replica version state, see
+[Index readiness and metadata schema retypes](#5-index-readiness-and-metadata-schema-retypes-en-1323)
+— then range-filter it:
 
 ```
 filter=metadata[first_usage] >= 1704067200000000
@@ -658,9 +664,15 @@ The operand is raw microseconds, not RFC3339: `metadataRangeToProto`
 (`internal/pkg/filterexpr/parser.go`) parses metadata range operands with
 `strconv.ParseInt` and rejects anything else with `range operators only support
 integer values`. The RFC3339 coercion of EN-1544 covers the builtin
-`date`/`timestamp` fields, which are not valid on the accounts target at all —
-declaring the field `datetime` governs how the stored *value* is read, not how
-the filter operand is written.
+`date`/`timestamp` fields, which are not valid on the accounts target at all.
+
+Declaring the field `datetime` is an **index and query contract**, not a storage
+conversion. `CoerceToDeclaredType` is called from the index builder
+(`internal/application/indexbuilder/schema_resolver.go`) to encode forward-index
+entries under the declared type; entity reads return the stored value verbatim
+and are explicitly not routed through it, so `GET .../accounts/{address}` gives
+back the RFC3339 string the client wrote. Write RFC3339, filter in microseconds,
+and expect RFC3339 back.
 
 This works on `GET /v3/{ledgerName}/accounts` and on
 `GET /v3/{ledgerName}/volumes` (which compiles its filter for the accounts
@@ -723,21 +735,28 @@ whole log. O(history), fine as a one-off. A transaction-only scan silently
 returns a later date for any account given metadata before its first posting,
 and misses metadata-only accounts entirely.
 
-**Scan the v2 log for the metadata arm, not the v3 log, on any ledger that was
-populated by mirroring.** That arm does not survive the mirror.
-`processMirrorSavedMetadata` is called without the source date
-(`processor_mirror.go` passes `entry.GetDate()` to the created- and
-reverted-transaction handlers only), and the emitted v3 log is stamped with the
-mirror's own apply time, so a January metadata save ingested in September
-reconstructs as September. The mirror entry itself is no better:
-`translateSavedMetadata` builds a `MirrorLogEntry` carrying `V2LogId` and the
-metadata and no `Date` at all, so the source date is not present in v3 in any
-form — `V2LogId` is the only handle, and it points back at the v2 log you would
-then have to read anyway. The transaction arm is safe either way: ingest
-*requires* a source date for created and reverted transactions and rejects the
-entry without one, and a mirrored transaction keeps its own v2 effective
-timestamp. This is the concrete argument for stamping the key from the v2 side
-before the source is decommissioned.
+**On a mirrored ledger the metadata arm is not in the emitted log — read the
+audit chain or the v2 log instead.** `processMirrorSavedMetadata` is called
+without the source date (`processor_mirror.go` passes `entry.GetDate()` to the
+created- and reverted-transaction handlers only) and the emitted v3 ledger log
+is stamped with the mirror's own apply time, so a January metadata save ingested
+in September reads as September *in the ledger log*.
+
+The date itself is retained, one level up. `TranslateBatch`
+(`internal/adapter/v2/translator.go`) assigns `entry.Date` from the v2 log for
+**every** translated entry kind, `SET_METADATA` included — the per-kind
+translators do not set it, which is why reading `translateSavedMetadata` alone
+is misleading — and the whole `MirrorIngest` order is persisted in
+`AuditItem.SerializedOrder`, whose bytes are the order's business-intent
+projection with only `OrderTechnical` stripped
+(`MarshalOrderBusinessIntent`). So an audit-order scan recovers the source date
+after the v2 source is gone; the v2 log is simply the cheaper read while it is
+still there.
+
+The transaction arm is unaffected: ingest *requires* a source date for created
+and reverted transactions and rejects the entry without one, and a mirrored
+transaction keeps its own v2 effective timestamp
+(`processMirrorCreatedTransaction` preserves `ct.GetTimestamp()`).
 
 Do **not** shortcut that through the `new_kept_volumes` log annotation. It
 records the cells a log *first materialized*, which is a different set: a
