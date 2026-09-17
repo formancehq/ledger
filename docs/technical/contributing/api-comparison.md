@@ -723,6 +723,22 @@ whole log. O(history), fine as a one-off. A transaction-only scan silently
 returns a later date for any account given metadata before its first posting,
 and misses metadata-only accounts entirely.
 
+**Scan the v2 log for the metadata arm, not the v3 log, on any ledger that was
+populated by mirroring.** That arm does not survive the mirror.
+`processMirrorSavedMetadata` is called without the source date
+(`processor_mirror.go` passes `entry.GetDate()` to the created- and
+reverted-transaction handlers only), and the emitted v3 log is stamped with the
+mirror's own apply time, so a January metadata save ingested in September
+reconstructs as September. The mirror entry itself is no better:
+`translateSavedMetadata` builds a `MirrorLogEntry` carrying `V2LogId` and the
+metadata and no `Date` at all, so the source date is not present in v3 in any
+form — `V2LogId` is the only handle, and it points back at the v2 log you would
+then have to read anyway. The transaction arm is safe either way: ingest
+*requires* a source date for created and reverted transactions and rejects the
+entry without one, and a mirrored transaction keeps its own v2 effective
+timestamp. This is the concrete argument for stamping the key from the v2 side
+before the source is decommissioned.
+
 Do **not** shortcut that through the `new_kept_volumes` log annotation. It
 records the cells a log *first materialized*, which is a different set: a
 backdated transaction against an already-materialized cell lowers v2's
