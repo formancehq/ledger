@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -62,7 +63,7 @@ func (c *checkpointStoreCache) acquire(id uint64, open openCheckpointFn) (*dal.S
 	if joined {
 		<-entry.done
 	} else {
-		entry.main, entry.readIdx, entry.err = open()
+		entry.main, entry.readIdx, entry.err = openSafe(open)
 		close(entry.done)
 	}
 
@@ -78,13 +79,34 @@ func (c *checkpointStoreCache) acquire(id uint64, open openCheckpointFn) (*dal.S
 	return entry.main, entry.readIdx, func() { c.release(id, entry) }, nil
 }
 
+// openSafe turns a panicking open into the entry's error, so the entry is
+// evicted and the next reader retries instead of every later reader waiting on
+// a done channel that is never closed. A panic here is already contained
+// per-request by the server's recovery interceptor; without this the first one
+// would strand the checkpoint until the process restarts.
+//
+// This remains a containment net, not a fix: a panic skips the open's own
+// unwinding, so whatever it had already opened is leaked.
+func openSafe(open openCheckpointFn) (main *dal.Store, readIdx *readstore.Store, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			main, readIdx = nil, nil
+			err = fmt.Errorf("panic opening checkpoint stores (recovered): %v", r)
+		}
+	}()
+
+	return open()
+}
+
 // release drops one reader's hold, closing both databases once the last one
 // leaves.
 //
 // The close runs under the cache mutex, and the entry is removed in the same
 // critical section. A reader arriving mid-close must take that mutex to see the
 // entry is gone, so its own open cannot start until Pebble has released the
-// directory lock.
+// directory lock. The cost is that a slow close delays acquisitions of every
+// other checkpoint; closing a read-only database is short, and the alternative
+// is a handoff window where the bug reappears.
 func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

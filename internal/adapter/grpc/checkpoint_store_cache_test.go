@@ -118,3 +118,40 @@ func TestCheckpointStoreCacheDoesNotCacheAFailedOpen(t *testing.T) {
 	require.NoError(t, err, "a later reader must be able to retry the open")
 	release()
 }
+
+// A panicking open must not strand the checkpoint. The entry is installed
+// before the open runs, so a panic that skipped closing done would leave every
+// later reader of that id waiting on it for the life of the process.
+func TestCheckpointStoreCacheSurvivesAPanickingOpen(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	var (
+		cache   checkpointStoreCache
+		opens   atomic.Int64
+		succeed = realOpener(t, impl, &opens)
+	)
+
+	_, _, _, err := cache.acquire(gateCheckpointID, func() (*dal.Store, *readstore.Store, error) {
+		panic("pebble exploded")
+	})
+	require.ErrorContains(t, err, "panic opening checkpoint stores")
+	require.Empty(t, cache.entries)
+
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		_, _, release, err := cache.acquire(gateCheckpointID, succeed)
+		require.NoError(t, err)
+		release()
+	}()
+
+	select {
+	case <-done:
+	case <-t.Context().Done():
+		t.Fatal("a reader after a panicking open must not block")
+	}
+}
