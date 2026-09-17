@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -91,6 +92,8 @@ func TestMirrorSafeRequestAllowsMaintenanceConfiguration(t *testing.T) {
 		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "region"),
 		oracletest.CreateIndexReq(nil),
 		oracletest.DropIndexReq(nil),
+		actions.SaveLedgerMetadataAction("L", map[string]string{"region": "eu"}),
+		actions.DeleteLedgerMetadataAction("L", "region"),
 	} {
 		require.True(t, mirrorSafeRequest(req), "%T must be mirror-safe", req.GetApply().GetAction().GetData())
 	}

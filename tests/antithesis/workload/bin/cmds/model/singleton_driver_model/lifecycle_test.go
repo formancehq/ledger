@@ -99,6 +99,18 @@ func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.
 	c.recoveries.Wait()
 }
 
+func TestScheduleMaintenanceRecoveryDoesNotRefreshActiveWindow(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	c.maintenanceRecoveryActive = true
+	c.maintenanceEnableSeq = 7
+
+	scheduleMaintenanceRecovery(t.Context(), immediateApplyClient{}, c)
+
+	require.Equal(t, uint64(7), c.maintenanceEnableSeq)
+}
+
 func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 	t.Parallel()
 

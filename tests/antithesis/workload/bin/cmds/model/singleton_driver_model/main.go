@@ -401,11 +401,11 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 
 func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
-	c.maintenanceEnableSeq++
 	if c.maintenanceRecoveryActive {
 		c.mu.Unlock()
 		return
 	}
+	c.maintenanceEnableSeq++
 	c.maintenanceRecoveryActive = true
 	recoveryID := c.registerRead()
 	c.recoveries.Add(1)

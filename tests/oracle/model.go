@@ -2251,6 +2251,8 @@ func mirrorSafeRequest(req *servicepb.Request) bool {
 		*servicepb.Request_RemoveMetadataFieldType,
 		*servicepb.Request_CreateIndex,
 		*servicepb.Request_DropIndex,
+		*servicepb.Request_SaveLedgerMetadata,
+		*servicepb.Request_DeleteLedgerMetadata,
 		*servicepb.Request_AddAccountType,
 		*servicepb.Request_RemoveAccountType,
 		*servicepb.Request_SetDefaultEnforcementMode:

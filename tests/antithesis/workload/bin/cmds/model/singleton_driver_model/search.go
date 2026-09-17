@@ -81,25 +81,35 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 	// high-water) can precede it; one dispatched after the observation's response
 	// cannot have committed before it, so folding it would invent a state the
 	// server was never in and could explain away a real divergence.
-	pending := make([]oracle.Bulk, 0, len(c.pending))
+	type candidateBulk struct {
+		ticket    uint64
+		bulk      oracle.Bulk
+		synthetic bool
+	}
+
+	pending := make([]candidateBulk, 0, len(c.pending))
 	for _, pe := range c.pending {
 		// pending is minSeq-ordered, so an entry dispatched after the observation
 		// committed after it — and so did every later (higher-minSeq) entry.
 		if pe.obs.ticket > maxTicket {
 			break
 		}
-		pending = append(pending, pe.obs.bulk)
+		pending = append(pending, candidateBulk{ticket: pe.obs.ticket, bulk: pe.obs.bulk})
 	}
 
-	inflight := make([]oracle.Bulk, 0, len(c.inflight)+1)
+	inflight := make([]candidateBulk, 0, len(c.inflight)+1)
 	for t, b := range c.inflight {
 		if t <= maxTicket {
-			inflight = append(inflight, b)
+			inflight = append(inflight, candidateBulk{ticket: t, bulk: b})
 		}
 	}
 	for ticket := range c.ambiguousEnables {
 		if ticket <= maxTicket {
-			inflight = append(inflight, oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}})
+			inflight = append(inflight, candidateBulk{
+				ticket:    ticket,
+				bulk:      oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}},
+				synthetic: true,
+			})
 			break
 		}
 	}
@@ -122,6 +132,18 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 	seen := map[dedupKey]bool{}
 
 	var rec func(base oracle.GlobalState, pIdx int, rem []byte) bool
+	remainingSyntheticBefore := func(rem []byte, ticket uint64) int {
+		for idx, candidate := range inflight {
+			if !candidate.synthetic || candidate.ticket >= ticket {
+				continue
+			}
+			if rem[idx/8]&(1<<(idx%8)) != 0 {
+				return idx
+			}
+		}
+
+		return -1
+	}
 
 	rec = func(base oracle.GlobalState, pIdx int, rem []byte) bool {
 		k := dedupKey{state: base.Fingerprint(), pIdx: pIdx, rem: string(rem)}
@@ -136,8 +158,19 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 
 		// Advance the pending prefix by one, in minSeq order.
 		if pIdx < len(pending) {
-			if res := base.Apply(pending[pIdx]); res.OK {
-				if transition != nil && transition(base, pending[pIdx], res) {
+			candidate := pending[pIdx]
+			if syntheticIdx := remainingSyntheticBefore(rem, candidate.ticket); bulkDisablesMaintenance(candidate.bulk) && syntheticIdx >= 0 {
+				// The ambiguous enable is optional, but if retained it committed
+				// before the recovery disable. The normal in-flight branch retains
+				// it; this branch explicitly omits it before applying the disable.
+				byteIdx, mask := syntheticIdx/8, byte(1<<(syntheticIdx%8))
+				rem[byteIdx] &^= mask
+				if res := base.Apply(candidate.bulk); res.OK && rec(res.State, pIdx+1, rem) {
+					return true
+				}
+				rem[byteIdx] |= mask
+			} else if res := base.Apply(candidate.bulk); res.OK {
+				if transition != nil && transition(base, candidate.bulk, res) {
 					return true
 				}
 				if rec(res.State, pIdx+1, rem) {
@@ -153,12 +186,26 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 				continue
 			}
 
-			res := base.Apply(inflight[idx])
+			candidate := inflight[idx]
+			if syntheticIdx := remainingSyntheticBefore(rem, candidate.ticket); bulkDisablesMaintenance(candidate.bulk) && syntheticIdx >= 0 {
+				syntheticByteIdx, syntheticMask := syntheticIdx/8, byte(1<<(syntheticIdx%8))
+				rem[syntheticByteIdx] &^= syntheticMask
+				rem[byteIdx] &^= mask
+				res := base.Apply(candidate.bulk)
+				if res.OK && rec(res.State, pIdx, rem) {
+					return true
+				}
+				rem[byteIdx] |= mask
+				rem[syntheticByteIdx] |= syntheticMask
+				continue
+			}
+
+			res := base.Apply(candidate.bulk)
 			if !res.OK {
 				// Could not have committed at this point — not a predecessor.
 				continue
 			}
-			if transition != nil && transition(base, inflight[idx], res) {
+			if transition != nil && transition(base, candidate.bulk, res) {
 				return true
 			}
 
