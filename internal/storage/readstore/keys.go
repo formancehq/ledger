@@ -61,13 +61,14 @@ const (
 
 // AuditField discriminates the indexed field within the audit-index keyspace.
 const (
-	AuditFieldOutcome       byte = 0x01 // 1 byte value: 0=failure, 1=success
-	AuditFieldLedger        byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
-	AuditFieldCallerSubject byte = 0x03 // string value
-	AuditFieldOrderType     byte = 0x04 // string token (match-any over items)
-	AuditFieldTimestamp     byte = 0x05 // BE uint64 raw HLC Timestamp.Data (unix microseconds) (range)
-	AuditFieldProposalID    byte = 0x06 // BE uint64 (range)
-	AuditFieldLogSeq        byte = 0x07 // BE uint64 (range, match-any over items)
+	AuditFieldOutcome        byte = 0x01 // 1 byte value: 0=failure, 1=success
+	AuditFieldLedger         byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
+	AuditFieldCallerSubject  byte = 0x03 // string value
+	AuditFieldOrderType      byte = 0x04 // string token (match-any over items)
+	AuditFieldTimestamp      byte = 0x05 // BE uint64 raw HLC Timestamp.Data (unix microseconds) (range)
+	AuditFieldProposalID     byte = 0x06 // BE uint64 (range)
+	AuditFieldLogSeq         byte = 0x07 // BE uint64 (range, match-any over items)
+	AuditFieldIdempotencyKey byte = 0x08 // string value (exact or prefix)
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.

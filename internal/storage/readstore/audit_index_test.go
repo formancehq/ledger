@@ -158,6 +158,40 @@ func TestAuditSeqsByStringNulDisambiguation(t *testing.T) {
 	require.Equal(t, []uint64{2}, seqs, "the exact longer value still matches itself")
 }
 
+func TestAuditSeqsByStringPrefixBoundariesAndReuse(t *testing.T) {
+	t.Parallel()
+
+	s := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+	batch := s.NewBatch()
+	for _, tc := range []struct {
+		value string
+		seq   uint64
+	}{
+		{"retry", 1},
+		{"retry-a", 2},
+		{"retry-a", 7}, // same key reused after the deduplication window expired
+		{"retry-a\x00tail", 8},
+		{"retry-\U0010ffff", 9},
+		{"retrz", 10},
+	} {
+		require.NoError(t, batch.SetBytes(AuditIndexStringKey(kb, AuditFieldIdempotencyKey, tc.value, tc.seq), nil))
+	}
+	require.NoError(t, batch.Commit())
+
+	seqs, err := s.AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "retry-")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2, 7, 8, 9}, seqs)
+
+	seqs, err = s.AuditSeqsByString(AuditFieldIdempotencyKey, "retry-a")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2, 7}, seqs, "exact match excludes a NUL-extended key and retains reuse")
+
+	seqs, err = s.AuditSeqsByStringPrefix(AuditFieldIdempotencyKey, "retry-\U0010ffff")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{9}, seqs, "UTF-8 upper boundary remains inside the value-prefix range")
+}
+
 // TestDropAuditIndexPreservesCursor guards the 0x05/0x06 sub-prefix adjacency:
 // DropAuditIndex must clear the index keys (0x05) without touching the progress
 // cursor (0x06), which it relies on the exclusive prefix upper bound to achieve.

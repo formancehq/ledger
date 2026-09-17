@@ -14,9 +14,14 @@ import (
 
 // fakeAuditIndex is a hand-configured AuditIndexReader for compiler tests.
 type fakeAuditIndex struct {
-	byString  map[string][]uint64 // key: string(field)+value
-	byOutcome map[bool][]uint64
-	byRange   func(field byte, lo, hi uint64) []uint64
+	byString       map[string][]uint64 // key: string(field)+value
+	byStringPrefix map[string][]uint64 // key: string(field)+value
+	byOutcome      map[bool][]uint64
+	byRange        func(field byte, lo, hi uint64) []uint64
+}
+
+func (f *fakeAuditIndex) AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error) {
+	return f.byStringPrefix[string(field)+value], nil
 }
 
 func (f *fakeAuditIndex) AuditSeqsByString(field byte, value string) ([]uint64, error) {
@@ -61,6 +66,37 @@ func auditUint(field commonpb.AuditField, lo, hi *uint64) *commonpb.QueryFilter 
 			},
 		},
 	}
+}
+
+func auditStringPrefix(field commonpb.AuditField, value string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+		Field: field, Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: value},
+	}}}
+}
+
+func TestCompileAuditFilter_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
+	t.Parallel()
+
+	idx := &fakeAuditIndex{
+		byString: map[string][]uint64{
+			string(readstore.AuditFieldIdempotencyKey) + "retry-1": {3, 9},
+		},
+		byStringPrefix: map[string][]uint64{
+			string(readstore.AuditFieldIdempotencyKey) + "retry-": {3, 7, 9},
+		},
+	}
+
+	seqs, _, _, narrowed, err := CompileAuditFilter(idx,
+		auditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-1"))
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Equal(t, []uint64{3, 9}, seqs, "an expired then reused key keeps every historical sequence")
+
+	seqs, _, _, narrowed, err = CompileAuditFilter(idx,
+		auditStringPrefix(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-"))
+	require.NoError(t, err)
+	require.True(t, narrowed, "prefix lookup must return index candidates, never request a global audit scan")
+	require.Equal(t, []uint64{3, 7, 9}, seqs)
 }
 
 func TestCompileAuditFilter_Nil(t *testing.T) {

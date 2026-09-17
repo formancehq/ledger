@@ -51,6 +51,21 @@ func TestParseAudit_CallerSubjectQuoted(t *testing.T) {
 	assert.Equal(t, "svc:payments", ac.GetStringCond().GetHardcoded())
 }
 
+func TestParseAudit_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
+	t.Parallel()
+
+	exact, err := Parse(`idempotency_key == "retry:1"`, audit)
+	require.NoError(t, err)
+	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, exact.GetAudit().GetField())
+	assert.Equal(t, "retry:1", exact.GetAudit().GetStringCond().GetHardcoded())
+
+	prefix, err := Parse(`idempotency_key ^= "retry:"`, audit)
+	require.NoError(t, err)
+	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, prefix.GetAudit().GetField())
+	assert.Equal(t, "retry:", prefix.GetAudit().GetStringPrefix())
+	assert.Equal(t, `idempotency_key ^= "retry:"`, Format(prefix))
+}
+
 func TestParseAudit_TimestampRFC3339(t *testing.T) {
 	t.Parallel()
 

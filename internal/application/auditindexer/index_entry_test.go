@@ -33,6 +33,7 @@ func TestAppendEntryKeys(t *testing.T) {
 		CallerSnapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Authenticated{
 			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
 		}},
+		Idempotency: &commonpb.Idempotency{Key: "retry-1"},
 	}
 	createTx := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -51,20 +52,24 @@ func TestAppendEntryKeys(t *testing.T) {
 
 	require.NoError(t, appendEntryKeys(dal.NewKeyBuilder(), emit, entry, items))
 
-	require.Len(t, keys, 8) // outcome + 2 ledgers + caller + order_type + timestamp + proposal_id + log_seq(100)
+	require.Len(t, keys, 9) // outcome + 2 ledgers + caller + order_type + timestamp + proposal_id + idempotency + log_seq(100)
 
 	for _, k := range keys {
 		require.Equal(t, readstore.PrefixInternal, k[0])
 		require.Equal(t, readstore.SubInternalAuditIndex, k[1])
 	}
 
-	var orderTypeKeys int
+	var orderTypeKeys, idempotencyKeys int
 	for _, k := range keys {
 		if k[2] == readstore.AuditFieldOrderType {
 			orderTypeKeys++
 		}
+		if k[2] == readstore.AuditFieldIdempotencyKey {
+			idempotencyKeys++
+		}
 	}
 	require.Equal(t, 1, orderTypeKeys)
+	require.Equal(t, 1, idempotencyKeys)
 }
 
 func TestAppendEntryKeysFailureNilCaller(t *testing.T) {

@@ -291,6 +291,29 @@ func auditSeqsByString(reader dal.PebbleReader, field byte, value string) ([]uin
 	return auditSeqsForPrefix(reader, lower, prefixUpperBound(lower), len(lower)+8)
 }
 
+// AuditSeqsByStringPrefix returns audit sequences whose indexed string value
+// starts with value. The range stops at the successor of the raw value prefix;
+// it never leaves the selected audit field and never scans the audit zone.
+func (s *Store) AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error) {
+	return auditSeqsByStringPrefix(s.db, field, value)
+}
+
+func (s *AuditIndexSnapshot) AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error) {
+	return auditSeqsByStringPrefix(s.reader, field, value)
+}
+
+func auditSeqsByStringPrefix(reader dal.PebbleReader, field byte, value string) ([]uint64, error) {
+	kb := dal.NewKeyBuilder()
+	lower := kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutBytes([]byte(value)).
+		Build()
+
+	return auditSeqsForPrefix(reader, lower, prefixUpperBound(lower), 0)
+}
+
 // AuditSeqsByOutcome returns audit sequences for success (true) or failure (false).
 func (s *Store) AuditSeqsByOutcome(success bool) ([]uint64, error) {
 	return auditSeqsByOutcome(s.db, success)
