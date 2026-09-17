@@ -336,12 +336,13 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		}
 		if internal.IsMaintenanceAfterAmbiguousCommit(err) {
 			hadAmbiguousAttempt = true
-			if bulkEnablesMaintenance(bulk) && !provisionalMaintenanceRecoveryScheduled {
-				scheduleMaintenanceRecovery(ctx, client, c)
-				provisionalMaintenanceRecoveryScheduled = true
-			}
 		}
-		if internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) && !hadAmbiguousAttempt {
+		maintenanceRejected := internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
+		if shouldScheduleMaintenanceRecovery(bulk, err, hadAmbiguousAttempt) && !provisionalMaintenanceRecoveryScheduled {
+			scheduleMaintenanceRecovery(ctx, client, c)
+			provisionalMaintenanceRecoveryScheduled = true
+		}
+		if maintenanceRejected {
 			break
 		}
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
@@ -503,6 +504,12 @@ func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 		}
 	}
 	return false
+}
+
+func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguousAttempt bool) bool {
+	return hadAmbiguousAttempt &&
+		bulkEnablesMaintenance(bulk) &&
+		internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 }
 
 // initialSchema generates a small, random metadata schema declared at ledger

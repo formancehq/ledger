@@ -5,10 +5,16 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 type immediateApplyClient struct {
@@ -17,6 +23,18 @@ type immediateApplyClient struct {
 
 func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
 	return &servicepb.ApplyResponse{}, nil
+}
+
+type scriptedApplyClient struct {
+	servicepb.BucketServiceClient
+	errors []error
+	calls  int
+}
+
+func (c *scriptedApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	err := c.errors[c.calls]
+	c.calls++
+	return nil, err
 }
 
 func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) {
@@ -47,6 +65,37 @@ func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) 
 	c.mu.Unlock()
 	<-done
 	require.NotContains(t, c.inflight, obs.ticket)
+}
+
+func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.T) {
+	t.Parallel()
+
+	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	require.NoError(t, err)
+	client := &scriptedApplyClient{errors: []error{
+		status.Error(codes.Canceled, "response lost"),
+		maintenanceStatus.Err(),
+	}}
+	c := NewChecker([]string{"L"}, nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	enable := oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}}
+	go func() {
+		dispatchBulk(ctx, client, nil, c, enable)
+		close(done)
+	}()
+
+	obs := <-c.incoming
+	require.Equal(t, 2, client.calls)
+	require.Equal(t, uint64(1), c.maintenanceEnableSeq)
+
+	c.mu.Lock()
+	c.removeInflight(obs.ticket)
+	markObservationProcessed(obs)
+	c.mu.Unlock()
+	cancel()
+	<-done
+	c.recoveries.Wait()
 }
 
 func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
