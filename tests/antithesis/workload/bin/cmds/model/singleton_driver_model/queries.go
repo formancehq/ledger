@@ -61,6 +61,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
 	_, _, bareAsset := hasAssetTarget(filter)
+	precisionOverflow := hasAssetPrecisionOverflow(filter)
 	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	pageSize := queryPageSize()
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
@@ -110,9 +111,17 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
 			return
 		}
+		if precisionOverflow && status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR") {
+			// Coverage: the one-byte precision cell is enforced at compile time.
+			assert.Reachable("singleton_driver_model: has-asset precision overflow rejected", internal.Details{"ledger": ledger})
+
+			return
+		}
 		if bareAsset {
 			// The account-by-asset index governs this filter's outcome; a not-ready
-			// error is legal while the index is absent or ambiguous.
+			// error is legal while the index is absent or ambiguous. The compiler
+			// checks readiness before the precision, so an overflow probe reaches
+			// here only through a not-ready error.
 			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, err)
 			return
 		}
@@ -134,6 +143,16 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		// The filter carries a condition invalid on this target; the server must
 		// reject it, not stream rows.
 		assert.Unreachable("singleton_driver_model: target-invalid account query returned results", internal.Details{
+			"ledger": ledger,
+			"filter": describeFilter(filter),
+			"rows":   len(accounts),
+		})
+
+		return
+	}
+
+	if precisionOverflow {
+		assert.Unreachable("singleton_driver_model: has-asset precision overflow returned results", internal.Details{
 			"ledger": ledger,
 			"filter": describeFilter(filter),
 			"rows":   len(accounts),
@@ -808,11 +827,19 @@ func genAccountFilterIndexed(seeds []fieldSeed, depth int) *commonpb.QueryFilter
 // a repeated And/Or field marshals as an empty condition the compiler rejects).
 func genAccountFilterFree(depth int) *commonpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
+		// The role only selects an index on the transactions target; accounts
+		// resolve the address the same way under any of the three.
+		role := random.RandomChoice([]commonpb.AddressRole{
+			commonpb.AddressRole_ADDRESS_ROLE_ANY,
+			commonpb.AddressRole_ADDRESS_ROLE_SOURCE,
+			commonpb.AddressRole_ADDRESS_ROLE_DESTINATION,
+		})
+
 		if random.RandomChoice([]uint8{0, 1}) == 0 {
-			return filterAddrPrefix(poolName() + ":")
+			return filterAddrPrefixRole(poolName()+":", role)
 		}
 
-		return filterAddrExact(poolAddress())
+		return filterAddrExactRole(poolAddress(), role)
 	}
 
 	return genBoolean(depth, genAccountFilterFree)
@@ -989,19 +1016,25 @@ func genDateLeaf(seeds txFilterSeeds) *commonpb.QueryFilter {
 	}
 
 	f := filterDateRange(field, a, b)
-	cond := f.GetBuiltinUint().GetCond()
+	rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+
+	return f
+}
+
+// rollOpenOrExclusive opens each side of a two-sided range one time in four
+// and otherwise makes it exclusive one time in four.
+func rollOpenOrExclusive(cond *commonpb.UintCondition) {
 	if oneIn(4) {
 		cond.Min = nil
 	} else {
 		cond.MinExclusive = oneIn(4)
 	}
+
 	if oneIn(4) {
 		cond.Max = nil
 	} else {
 		cond.MaxExclusive = oneIn(4)
 	}
-
-	return f
 }
 
 // genTransactionFilterFree rolls a non-nil index-free transactions filter: a
@@ -1016,25 +1049,42 @@ func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
 			return filterReverted(false)
 		default:
 			lo := internal.Rand().Uint64() % 256
-			return filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
+			f := filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
+			rollOpenOrExclusive(f.GetBuiltinUint().GetCond())
+
+			return f
 		}
 	}
 
 	return genBoolean(depth, genTransactionFilterFree)
 }
 
-// genBoolean wraps two (And/Or) or one (Not) recursively-generated children in a
-// boolean combinator. gen never returns nil, so no combinator carries a nil
-// child (which would marshal as an empty condition the compiler rejects).
+// genBoolean wraps one to three (And/Or) or one (Not) recursively-generated
+// children in a boolean combinator. gen never returns nil, so no combinator
+// carries a nil child (which would marshal as an empty condition the compiler
+// rejects).
 func genBoolean(depth int, gen func(int) *commonpb.QueryFilter) *commonpb.QueryFilter {
 	switch random.RandomChoice([]uint8{0, 1, 2}) {
 	case 0:
-		return filterAnd(gen(depth+1), gen(depth+1))
+		return filterAnd(genChildren(depth, gen)...)
 	case 1:
-		return filterOr(gen(depth+1), gen(depth+1))
+		return filterOr(genChildren(depth, gen)...)
 	default:
 		return filterNot(gen(depth + 1))
 	}
+}
+
+// genChildren rolls the operands of an And/Or: usually two, sometimes none,
+// one or three, so the empty combinator (an And is the universe, an Or is
+// empty), the compiler's single-child pass-through and its n-ary merge all run.
+func genChildren(depth int, gen func(int) *commonpb.QueryFilter) []*commonpb.QueryFilter {
+	n := int(random.RandomChoice([]uint8{0, 1, 2, 2, 3}))
+	children := make([]*commonpb.QueryFilter, 0, n)
+	for range n {
+		children = append(children, gen(depth+1))
+	}
+
+	return children
 }
 
 // --- Filter constructors ------------------------------------------------
@@ -1474,13 +1524,20 @@ func describeFilter(f *commonpb.QueryFilter) string {
 			case *commonpb.QueryFilter_Field:
 				return "field:" + x.Field.GetField().GetMetadata() + describeFieldCondition(x.Field)
 			case *commonpb.QueryFilter_AccountHasAsset:
-				return "hasAsset:" + x.AccountHasAsset.GetAssetBase()
+				return "hasAsset:" + x.AccountHasAsset.GetAssetBase() + "/" + strconv.FormatUint(uint64(x.AccountHasAsset.GetPrecision()), 10)
 			case *commonpb.QueryFilter_Ledger:
 				return "ledger=" + x.Ledger.GetCond().GetHardcoded()
 			case *commonpb.QueryFilter_LogId:
 				return "logId" + describeUintBounds(x.LogId.GetCond())
 			case *commonpb.QueryFilter_LogBuiltinUint:
 				return "logDate" + describeUintBounds(x.LogBuiltinUint.GetCond())
+			case *commonpb.QueryFilter_Audit:
+				field := "audit:" + strings.TrimPrefix(x.Audit.GetField().String(), "AUDIT_FIELD_")
+				if uc := x.Audit.GetUintCond(); uc != nil {
+					return field + describeUintBounds(uc)
+				}
+
+				return field + "=" + x.Audit.GetStringCond().GetHardcoded()
 			default:
 				return "?"
 			}
