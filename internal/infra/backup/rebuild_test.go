@@ -298,6 +298,61 @@ func TestRebuildDelta_PreparedQueryUpdateFailsThenRetries(t *testing.T) {
 	require.True(t, restored.GetFilter().EqualVT(newFilter))
 }
 
+func TestRebuildDelta_PreparedQueryUpdateAcrossBatchBoundary(t *testing.T) {
+	t.Parallel()
+
+	const ledger = "ledger"
+
+	store := newRebuildTestStore(t)
+	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{}}}
+	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{
+			CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
+				Ledger: ledger,
+				Query: &commonpb.PreparedQuery{
+					Name:   "q",
+					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Filter: oldFilter,
+				},
+			},
+		}},
+	}))
+	for seq := uint64(2); seq <= 5000; seq++ {
+		require.NoError(t, batch.SetProto(coldLogKey(seq), &commonpb.Log{
+			Sequence: seq,
+			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
+				RemovedEventsSink: &commonpb.RemovedEventsSinkLog{},
+			}},
+		}))
+	}
+	require.NoError(t, batch.SetProto(coldLogKey(5001), &commonpb.Log{
+		Sequence: 5001,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{
+			UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+				Ledger:         ledger,
+				Name:           "q",
+				PreviousFilter: oldFilter,
+				NewFilter:      newFilter,
+			},
+		}},
+	}))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	restored, err := query.ReadPreparedQuery(context.Background(), attributes.New().PreparedQuery, handle, ledger, "q")
+	require.NoError(t, err)
+	require.NotNil(t, restored)
+	require.True(t, restored.GetFilter().EqualVT(newFilter))
+}
+
 func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	t.Parallel()
 

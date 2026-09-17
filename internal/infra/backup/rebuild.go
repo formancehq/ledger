@@ -558,6 +558,7 @@ func rebuildDelta(
 			clear(writer.pendingVolumes)
 			clear(writer.pendingTx)
 			clear(writer.pendingIndexes)
+			clear(preparedQueries)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,
