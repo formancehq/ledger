@@ -2192,6 +2192,7 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
 			}
+			lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 		}
 		if lc.Deleted {
 			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
@@ -2214,6 +2215,7 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 			if _, implicit := g.ledgers[name]; !implicit {
 				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
 			}
+			lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
 		}
 		lc.Deleted = true
 		g.lifecycle = g.lifecycle.Set(name, lc)

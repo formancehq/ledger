@@ -29,6 +29,27 @@ func TestGlobalState_LifecycleCreation(t *testing.T) {
 	require.Empty(t, base.Ledgers())
 }
 
+func TestGlobalState_ImplicitLedgerLifecycleDefaultsToNormalMode(t *testing.T) {
+	t.Parallel()
+
+	base := NewGlobalState()
+	base.ledgers["L"] = NewLedgerState()
+	promoted := base.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_PromoteLedger{
+		PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "L"},
+	}}))
+	require.False(t, promoted.OK)
+	require.Equal(t, domain.ErrReasonLedgerNotInMirrorMode, promoted.Reason)
+
+	deleted := base.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, deleted.OK)
+	lifecycle, exists := deleted.State.Lifecycle("L")
+	require.True(t, exists)
+	require.True(t, lifecycle.Deleted)
+	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, lifecycle.Mode)
+}
+
 func TestGlobalState_LifecycleDeletion(t *testing.T) {
 	t.Parallel()
 	created := NewGlobalState().Apply(bulkOf(createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL), oracletest.TxReq("world", "a:1", "USD", 5)))

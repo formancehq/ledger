@@ -23,16 +23,13 @@ import (
 type Checker struct {
 	mu sync.Mutex
 	// dispatchMu orders write registration against a read's response frontier.
-	// Writers acquire mu before dispatchMu, so a writer delayed on model work
-	// cannot register after a read response and still enter that read's frontier.
+	// Reads hold it through the response frontier. Writers wait on it before
+	// taking mu, so a stalled read never blocks processor model work.
 	dispatchMu sync.Mutex
 	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
 	// create transition until that transition has drained into modelState.
 	checkpointCreateMu sync.Mutex
-	// cycleMu gives a restore or lifecycle episode exclusive ownership of the
-	// dispatch pause. Neither may resume workers while the other is active.
-	cycleMu  sync.Mutex
-	ledgerMu sync.RWMutex
+	ledgerMu           sync.RWMutex
 
 	// ledgerNames grows when a generated CreateLedger commits. Deleted names stay
 	// reserved in the oracle but are filtered from generation and reads.
