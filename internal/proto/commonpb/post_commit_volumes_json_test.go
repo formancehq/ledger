@@ -106,3 +106,22 @@ func TestPostCommitVolumes_MarshalJSON_AccountNamedVolumesByAccount(t *testing.T
 	require.Equal(t, "100", out["volumesByAccount"][0].Input)
 	require.Equal(t, "40", out["volumesByAccount"][0].Output)
 }
+
+// TestVolumeEntry_MarshalJSON_RejectsMissingVolumes verifies that a VolumeEntry
+// with no Volumes container — a nil field that would otherwise silently produce
+// valid-looking "0"/"0" output — returns an error instead of masking corruption.
+func TestVolumeEntry_MarshalJSON_RejectsMissingVolumes(t *testing.T) {
+	t.Parallel()
+
+	// Nil Volumes container.
+	_, err := json.Marshal(&VolumeEntry{Asset: "USD", Color: ""})
+	require.Error(t, err, "nil Volumes must return an error, not silent zero")
+
+	// Volumes container present but Input field absent (zero-valued expected).
+	_, err = json.Marshal(&VolumeEntry{Asset: "USD", Volumes: &Volumes{Output: MustBigUintFromDecimal("0")}})
+	require.Error(t, err, "missing Input must return an error")
+
+	// Volumes container present but Output field absent (zero-valued expected).
+	_, err = json.Marshal(&VolumeEntry{Asset: "USD", Volumes: &Volumes{Input: MustBigUintFromDecimal("0")}})
+	require.Error(t, err, "missing Output must return an error")
+}
