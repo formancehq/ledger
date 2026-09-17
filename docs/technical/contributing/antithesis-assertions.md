@@ -126,9 +126,13 @@ bookkeeping is neither persisted nor added to protobuf messages.
 
 `just test-model 180` (single node) intermittently reports
 `coverage index tx_builtin:TX_BUILTIN_INDEX_DESTINATION_ADDRESS served a
-model-verified page` as never satisfied. Repeated runs of one unchanged commit
-give both PASS and FAIL, on either side of an unrelated change, so a single run
-— red or green — identifies nothing on its own.
+model-verified page` as never satisfied. The runner prints that miss as a
+diagnostic and still exits PASS, so what varies between repeated runs of one
+unchanged commit is whether the `COVERAGE PROBES NOT SATISFIED IN THIS RUN`
+banner appears at all, on either side of an unrelated change. A single run —
+banner or no banner — identifies nothing on its own. The alternating PASS and
+FAIL first recorded here is the same instability, seen while the miss was
+still a hard gate.
 
 Satisfying a probe is narrow. One query must do three things at once
 (`coverage.go`, `coverageHits`): need that index — the address leaf must roll
