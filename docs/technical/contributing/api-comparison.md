@@ -850,8 +850,8 @@ Ledger v3 requires a concrete 16-byte member identity on every membership
 creation and discovery message. `ClusterService.AddLearnerRequest.instance_id`
 is required and contains the raw bytes from the target's persisted
 `INSTANCE_ID` marker. The inter-node `JoinAsLearnerRequest.instance_id` has the
-same contract, and `ClusterBootstrapService.GetPeers` returns each member's ID
-in `PeerInfo.instance_id`. Missing or incorrectly sized registration identities
+same contract, and `ClusterBootstrapService.GetPeers` returns each member's 16-byte WAL identity
+in `PeerInfo.instance_id` (distinct from the numeric `PeerInfo.id` node identifier). Missing or incorrectly sized registration identities
 are rejected with gRPC `InvalidArgument`. Peer discovery aborts startup when a
 returned member has an invalid identity, rather than retrying a malformed
 response. There is no identity-less compatibility path because v3 is unreleased.
