@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"bytes"
 	"errors"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -57,6 +58,21 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		// at least one posting; an empty set here is an inconsistent projection
 		// (invariant #7), not a revertable transaction.
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
+	}
+
+	// Admission declared this order's volume coverage from its own read of the
+	// target, taken from the local store with no read barrier. If what it saw
+	// differs from what apply just read through the gate, the declared coverage
+	// does not describe the volumes below and the order must not proceed —
+	// reaching applyPosting would trip the coverage gate, whose contract is that
+	// a miss means an admission bug rather than a stale view.
+	//
+	// This runs after the invariant checks above on purpose: an allocated
+	// transaction with no state, or with no postings, is a broken projection and
+	// must keep surfacing as such rather than being softened into a retryable
+	// mismatch.
+	if err := checkRevertTargetObservation(ledger, order.GetTransactionId(), originalPostings, ctx); err != nil {
+		return nil, err
 	}
 
 	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
@@ -168,4 +184,49 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 			},
 		},
 	}, nil
+}
+
+// checkRevertTargetObservation compares the transaction state apply just read
+// through the coverage gate with what admission observed when it declared this
+// order's volume coverage.
+//
+// Admission reads the target from the local store with no read barrier
+// (Admission.getTransactionPostings), so a target that is committed but not yet
+// applied on that node reads as absent and the order declares no volume keys.
+// Apply then finds the real postings and would read volumes the plan never
+// declared. Rejecting here keeps the coverage gate meaning what it documents: a
+// miss is an admission bug, not a stale view.
+//
+// The two mismatch causes need different answers, and the difference is whether
+// a re-admission could ever see what apply sees:
+//
+//   - the target existed before this batch → the observation was merely stale,
+//     so reject with the retryable ErrStaleInputsResolution and let the client
+//     re-admit against a view that now includes it;
+//   - the target is created by this batch → the whole batch is rejected, so the
+//     create never lands and re-admitting the identical batch reproduces the
+//     same observation forever. Reject permanently instead.
+//
+// An empty digest means admission bound nothing, which only happens for an order
+// built before this field existed; there is nothing to compare.
+func checkRevertTargetObservation(
+	ledger string,
+	transactionID uint64,
+	originalPostings []*commonpb.Posting,
+	ctx *Context,
+) domain.Describable {
+	expected := ctx.RevertTargetDigest
+	if len(expected) == 0 {
+		return nil
+	}
+
+	if bytes.Equal(expected, domain.RevertTargetDigest(originalPostings, true)) {
+		return nil
+	}
+
+	if initial, ok := ctx.batchInitialNextTxID[ledger]; ok && transactionID >= initial {
+		return &domain.ErrRevertTargetCreatedInBatch{TransactionID: transactionID}
+	}
+
+	return domain.ErrStaleInputsResolution
 }

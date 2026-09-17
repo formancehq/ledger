@@ -1434,10 +1434,16 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// The reversed postings touch the same accounts as the original;
 			// admission resolved them at order-build time into the overlay
 			// sidecar (the order itself carries only caller intent).
-			originalPostings := overlay.revertOriginalPostingsFor(
+			//
+			// When the target was observed absent there is nothing to declare.
+			// That observation is bound into the order's revert_target_digest,
+			// so if apply finds the transaction after all it rejects the order
+			// before reading an undeclared volume instead of tripping the
+			// coverage gate.
+			observation, _ := overlay.revertOriginalPostingsFor(
 				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
 			)
-			for _, posting := range originalPostings {
+			for _, posting := range observation.postings {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
 			}
@@ -1818,10 +1824,24 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// delta is the inverse of the original: source +amount, dest
 			// −amount relative to the original posting. The postings come from
 			// the sidecar admission filled at order-build time, not the order.
-			originalPostings := overlay.revertOriginalPostingsFor(
-				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
-			)
-			for _, posting := range originalPostings {
+			//
+			// A target admission observed as absent contributes nothing: apply
+			// will reject this order — as not-found, as a stale observation, or
+			// as a target this batch creates — so it neither moves balances nor
+			// marks the transaction reverted. Folding it as a zero-delta revert
+			// would leave the effect accumulator claiming a reversion that never
+			// happens, and mispredict a later order in the same batch.
+			revertTarget := domain.TransactionKey{
+				LedgerName: ledgerName,
+				ID:         applyData.RevertTransaction.GetTransactionId(),
+			}
+
+			observation, _ := overlay.revertOriginalPostingsFor(revertTarget)
+			if !observation.found {
+				continue
+			}
+
+			for _, posting := range observation.postings {
 				amount := posting.GetAmount().ToBigInt()
 				effects.addBalanceDelta(
 					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor()),
@@ -1836,7 +1856,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// Record the reverted tx so a later same-batch revert of it is
 			// predicted to skip (TRANSACTION_ALREADY_REVERTED), matching the
 			// FSM's mutated reversion bitset.
-			effects.recordReverted(domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()})
+			effects.recordReverted(revertTarget)
 
 			continue
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
@@ -2120,6 +2140,13 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		}
 
 		applyOrder.SkippableReasons = skippable
+
+		// Bind what the revert-target lookup above observed. The FSM re-derives
+		// this digest from the transaction state it already reads through the
+		// coverage gate; a mismatch means admission declared coverage against a
+		// view apply does not share, and the order is rejected before it can
+		// read an undeclared volume.
+		bindRevertTargetDigest(order, reqType.Apply.GetLedger(), applyOrder, overlay)
 
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.Apply.GetLedger(),
@@ -2497,7 +2524,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		// authority for the resulting business rejection (invariant #8) —
 		// processApply.loadBoundaries audits missing ledgers,
 		// processRevertTransaction's boundary check audits missing txs.
-		originalPostings, err := a.getTransactionPostings(apply.GetLedger(), txID)
+		originalPostings, found, err := a.getTransactionPostings(apply.GetLedger(), txID)
 		if err != nil {
 			return nil, fmt.Errorf("getting original transaction postings: %w", err)
 		}
@@ -2505,6 +2532,7 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 		overlay.recordRevertOriginalPostings(
 			domain.TransactionKey{LedgerName: apply.GetLedger(), ID: txID},
 			originalPostings,
+			found,
 		)
 
 		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
@@ -2617,21 +2645,25 @@ func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *se
 // audits ErrLedgerNotFound, processRevertTransaction's
 // `txID >= boundaries.GetNextTransactionId()` check audits
 // ErrTransactionNotFound.
-func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
+// The bool reports whether the transaction was present in the local store. It
+// is not redundant with a nil posting slice: an absent target and a present one
+// must stay distinguishable so the observation can be bound into the order's
+// revert_target_digest and checked at apply (see domain.RevertTargetDigest).
+func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, bool, error) {
 	canonical := domain.TransactionKey{LedgerName: ledgerName, ID: transactionID}.Bytes()
 
 	state, err := a.attrs.Transaction.Get(a.store, canonical)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, nil
+			return nil, false, nil
 		}
 
-		return nil, fmt.Errorf("reading transaction state: %w", err)
+		return nil, false, fmt.Errorf("reading transaction state: %w", err)
 	}
 
 	if state == nil {
-		return nil, nil
+		return nil, false, nil
 	}
 
-	return state.GetPostings(), nil
+	return state.GetPostings(), true, nil
 }

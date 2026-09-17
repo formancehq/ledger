@@ -1,0 +1,272 @@
+package processing
+
+import (
+	"errors"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+)
+
+// errReachedVolumes fails the first volume read so a test that expects the
+// observation check to let an order through stops there instead of executing a
+// whole revert. gomock's Finish is the real assertion: the expected volume read
+// only happens if the check passed.
+var errReachedVolumes = errors.New("reached the volume read")
+
+// These tests pin the apply-time check on admission's revert-target
+// observation. Admission reads the target from the local store with no read
+// barrier, so a target that is committed but not yet applied there reads as
+// absent and the order declares no volume coverage. Apply must reject before
+// touching a volume, so a coverage miss keeps meaning "admission bug" rather
+// than "stale view".
+//
+// The mock Scope is the oracle for "before any volume read": no volume
+// expectation is registered, so any Volumes() call fails the test.
+
+const staleTestLedger = "stale-ledger"
+
+// revertStaleFixture wires the reads processRevertTransaction performs before
+// the observation check: the reverted-bitset probe and the gated transaction
+// state. Volumes are deliberately left unexpected.
+func revertStaleFixture(t *testing.T, txID uint64, postings []*commonpb.Posting) (*MockScope, *raftcmdpb.LedgerBoundaries) {
+	t.Helper()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	scope := NewMockScope(ctrl)
+	txKey := domain.TransactionKey{LedgerName: staleTestLedger, ID: txID}
+
+	scope.EXPECT().GetReverted(txKey).Return(false, nil)
+	expectGetTransactionState(scope, txKey, (&commonpb.TransactionState{Postings: postings}).AsReader(), nil)
+
+	return scope, &raftcmdpb.LedgerBoundaries{NextTransactionId: txID + 1, NextLogId: 1}
+}
+
+func revertTestPostings() []*commonpb.Posting {
+	return []*commonpb.Posting{{
+		Source:      "world",
+		Destination: "users:001",
+		Amount:      commonpb.NewUint256FromUint64(646),
+		Asset:       "USD/2",
+	}}
+}
+
+// TestProcessRevertTransaction_StaleObservationIsRetryable covers the observed
+// Antithesis failure: the target was committed before this batch but not yet
+// applied on the admitting node, so re-admitting against a fresher view
+// converges.
+func TestProcessRevertTransaction_StaleObservationIsRetryable(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:      scope,
+			Boundaries: boundaries,
+			LedgerInfo: (&commonpb.LedgerInfo{}).AsReader(),
+			// Admission looked and saw nothing.
+			RevertTargetDigest: domain.RevertTargetDigest(nil, false),
+			// The target predates this batch, so a re-admission can see it.
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
+		},
+	)
+
+	require.Nil(t, payload)
+	require.ErrorIs(t, err, domain.ErrStaleInputsResolution,
+		"a stale admission view must be retryable so the client re-admits against fresh state")
+	require.Equal(t, txID+1, boundaries.GetNextTransactionId(),
+		"the rejection must not consume a transaction id")
+}
+
+// TestProcessRevertTransaction_TargetCreatedInBatchIsPermanent pins the case a
+// retryable classification would turn into an infinite re-admit loop: the batch
+// creates the target itself, so rejecting the batch un-creates it and every
+// retry reproduces the identical observation.
+func TestProcessRevertTransaction_TargetCreatedInBatchIsPermanent(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:              scope,
+			Boundaries:         boundaries,
+			LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest: domain.RevertTargetDigest(nil, false),
+			// The ledger's horizon before this batch was the target's own id,
+			// so the target is allocated by an earlier order in this batch.
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID},
+		},
+	)
+
+	require.Nil(t, payload)
+
+	var created *domain.ErrRevertTargetCreatedInBatch
+	require.ErrorAs(t, err, &created)
+	require.Equal(t, txID, created.TransactionID)
+	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
+		"a target this batch creates can never be resolved by re-admission")
+	require.Equal(t, domain.KindValidation, domain.Kind(err),
+		"the client must see a permanent rejection, not a retryable one")
+}
+
+// TestProcessRevertTransaction_MatchingObservationProceeds pins that the check
+// is inert when admission and apply agree.
+func TestProcessRevertTransaction_MatchingObservationProceeds(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	postings := revertTestPostings()
+	scope, boundaries := revertStaleFixture(t, txID, postings)
+
+	// Reaching the volume reads is the assertion: the check let the order
+	// through. Fail the order there so the test stays focused on the check.
+	expectGetVolume(scope, domain.NewVolumeKey(staleTestLedger, "users:001", "USD/2", ""), nil, errReachedVolumes)
+
+	_, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:                scope,
+			Boundaries:           boundaries,
+			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest:   domain.RevertTargetDigest(postings, true),
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
+		},
+	)
+
+	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)
+
+	var created *domain.ErrRevertTargetCreatedInBatch
+	require.NotErrorAs(t, err, &created)
+}
+
+// TestProcessRevertTransaction_NoDigestSkipsCheck pins that an order carrying no
+// bound observation is not rejected.
+func TestProcessRevertTransaction_NoDigestSkipsCheck(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+	expectGetVolume(scope, domain.NewVolumeKey(staleTestLedger, "users:001", "USD/2", ""), nil, errReachedVolumes)
+
+	_, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:                scope,
+			Boundaries:           boundaries,
+			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
+		},
+	)
+
+	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)
+}
+
+// TestProcessRevertTransaction_InconsistentStateNotSoftened pins the ordering
+// that keeps invariant #7 intact: a transaction allocated with no postings is a
+// broken projection and must keep surfacing as one, even though the bound
+// observation also disagrees with it.
+func TestProcessRevertTransaction_InconsistentStateNotSoftened(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	scope, boundaries := revertStaleFixture(t, txID, nil)
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:                scope,
+			Boundaries:           boundaries,
+			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest:   domain.RevertTargetDigest(revertTestPostings(), true),
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
+		},
+	)
+
+	require.Nil(t, payload)
+
+	var inconsistent *domain.ErrTransactionStateInconsistent
+	require.ErrorAs(t, err, &inconsistent,
+		"an empty posting set is an invariant violation, never a retryable mismatch")
+	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)
+}
+
+// TestProcessRevertTransaction_AlreadyRevertedBeatsObservationCheck pins that a
+// definitive business outcome is not reclassified by the new check.
+func TestProcessRevertTransaction_AlreadyRevertedBeatsObservationCheck(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	scope := NewMockScope(ctrl)
+	scope.EXPECT().
+		GetReverted(domain.TransactionKey{LedgerName: staleTestLedger, ID: txID}).
+		Return(true, nil)
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:                scope,
+			Boundaries:           &raftcmdpb.LedgerBoundaries{NextTransactionId: txID + 1},
+			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest:   domain.RevertTargetDigest(nil, false),
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID},
+		},
+	)
+
+	require.Nil(t, payload)
+
+	var reverted *domain.ErrTransactionAlreadyReverted
+	require.ErrorAs(t, err, &reverted)
+}
+
+// TestProcessRevertTransaction_NotFoundBeatsObservationCheck pins that a revert
+// of a transaction that never existed still audits as not-found.
+func TestProcessRevertTransaction_NotFoundBeatsObservationCheck(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: 999},
+		&Context{
+			Scope:                NewMockScope(ctrl),
+			Boundaries:           &raftcmdpb.LedgerBoundaries{NextTransactionId: 5},
+			LedgerInfo:           (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest:   domain.RevertTargetDigest(nil, false),
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: 5},
+		},
+	)
+
+	require.Nil(t, payload)
+
+	var notFound *domain.ErrTransactionNotFound
+	require.ErrorAs(t, err, &notFound)
+}
