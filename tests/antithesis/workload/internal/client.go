@@ -52,12 +52,10 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 	}
 
 	// The retry interceptors retry the transient set (IsTransient) to a definitive
-	// outcome; their loop budget is the bounded default unless retry-forever lifts
-	// it.
-	interceptorAttempts := retryMaxAttempts
-	if retryForever {
-		interceptorAttempts = maxAttempts
-	}
+	// outcome. The ordinary path keeps the previous effective 50-attempt budget
+	// (10 interceptor attempts, each with up to 5 service-config attempts), while
+	// retry-forever lifts it.
+	interceptorAttempts := maxAttempts
 
 	// Retry in the interceptor, where business-reason details are visible. A
 	// service-config UNAVAILABLE retry cannot distinguish maintenance rejection.

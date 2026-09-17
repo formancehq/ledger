@@ -152,6 +152,16 @@ func TestGlobalState_MaintenanceGatesBeforeValidation(t *testing.T) {
 	require.Equal(t, domain.ErrReasonValidation, NewGlobalState().Apply(emptyTransaction).Reason)
 }
 
+func TestGlobalState_MaintenanceAllowsEmptyBulk(t *testing.T) {
+	t.Parallel()
+
+	enabled := NewGlobalState().Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{
+		SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: true},
+	}})).State
+
+	require.True(t, enabled.Apply(Bulk{}).OK)
+}
+
 func TestGlobalState_LifecycleInitialConfiguration(t *testing.T) {
 	t.Parallel()
 	req := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_NORMAL)

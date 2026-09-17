@@ -2137,8 +2137,8 @@ func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
 	return lc, ok
 }
 
-// MaintenanceMode is the committed cluster setting. Admission, not FSM apply,
-// rejects new business requests while enabled; already-admitted requests can commit.
+// MaintenanceMode is the committed cluster setting. Admission and FSM apply
+// reject business requests while enabled.
 func (g GlobalState) MaintenanceMode() bool { return g.maintenance }
 
 func allMaintenanceRequests(requests []*servicepb.Request) bool {
@@ -2148,7 +2148,7 @@ func allMaintenanceRequests(requests []*servicepb.Request) bool {
 		}
 	}
 
-	return len(requests) > 0
+	return true
 }
 
 func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool) {

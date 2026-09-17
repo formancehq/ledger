@@ -142,7 +142,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		return oracle.Bulk{Requests: []*servicepb.Request{req}}
 	}
 	if len(active) == 0 {
-		return oracle.Bulk{Requests: []*servicepb.Request{actions.CreateLedgerAction(newLedger, nil)}}
+		return oracle.Bulk{}
 	}
 	picks := pickLedgers(active)
 
