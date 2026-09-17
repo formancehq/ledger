@@ -644,8 +644,9 @@ but it is still not a flag flip: accounts are addressed only as `VolumeKey` or
 an account-level date is a new attribute key shape — pulling in the FSM write
 path, checker prediction on a replay from genesis, backup/restore coverage, the
 antithesis oracle, and an index if it is to be filterable. Typed `datetime`
-account metadata covers the same use cases on the existing machinery, so the
-fields stay out.
+account metadata covers the *filtering* use cases on machinery that already
+exists, so the fields stay out. Date *ordering* is not replaced — see the read
+side below.
 
 **Supported replacement — read side:** declare an account metadata key as
 `datetime` (`SetMetadataFieldTypeCommand.type` on the proto,
@@ -676,7 +677,14 @@ and expect RFC3339 back.
 
 This works on `GET /v3/{ledgerName}/accounts` and on
 `GET /v3/{ledgerName}/volumes` (which compiles its filter for the accounts
-target). The two halves are covered separately:
+target).
+
+**It replaces date filtering, not date ordering.** `GET /v3/{ledgerName}/accounts`
+takes `pageSize` and `after` — an account *address* — so rows come back
+address-ordered and a metadata range only narrows that set. There is no sort
+parameter and no date-keyed cursor, so a v2 client that paginated accounts *in
+date order* has no server-side equivalent: it either sorts a filtered page
+client-side or accepts address order. The two halves are covered separately:
 `tests/e2e/business/accounts_test.go` for metadata range filtering on the
 accounts target (int64 `age`), and
 `tests/e2e/business/datetime_metadata_index_test.go` for the `datetime`
@@ -706,8 +714,20 @@ array of entries) with a per-address `reference` and the skip opt-in —
 ]
 ```
 
-The FSM arbitrates the reference in Raft order, so every later attempt is
-skipped rather than overwriting. The envelope matters: the unitary
+The FSM arbitrates the reference in Raft order, so a second attempt carrying the
+same reference is skipped rather than overwriting.
+
+**That is a per-reference guard, not a per-account one**, and the difference
+decides whether the stamped value is correct. Uniqueness is scoped to
+`(ledger, reference)` and binds nothing to the account, and the conflict check
+runs before any metadata write. So if another transaction touches the account
+first under a different reference, this request still succeeds afterwards and
+stamps a *later* date; and if the chosen reference was already used for
+something unrelated, the entry is skipped and the stamp never lands at all. The
+recipe is correct only where the application reserves the `open:<address>`
+namespace and makes this request the sole first-touch path for that account.
+
+The envelope matters: the unitary
 `POST /v3/{ledgerName}/transactions` deliberately does **not** expose
 `skippableReasons` (`internal/adapter/http/handlers_create_transaction.go`), so
 the same request there returns 409 on the second attempt instead of skipping.
@@ -717,8 +737,23 @@ at least one posting (`domain.ErrEmptyTransaction`), so this is clean where
 there is a real opening transaction and awkward where accounts appear
 implicitly.
 
-**Migration from the original ledger:** nothing in the mirror path carries
-`first_usage` across. Copying the v2 value into the typed `datetime` metadata
+**Migration from the original ledger — scope.** Everything below is about
+`first_usage`, which is the only one of the three with a reconstruction story
+worth writing down. The other two are straight cut-over copies into typed
+`datetime` keys of their own, and neither is recoverable afterwards in a way
+worth relying on:
+
+- `insertion_date` is stamped once, on insert, and never lowered
+  (`release/v2.4` sets it under `COALESCE(d.insertion_date, transaction_date())`
+  on the insert arm only). Copy it at cut-over or lose it — the v3 side has no
+  first-insert concept to derive it from.
+- `updated_at` is refreshed on every write that touches the account, so a
+  copy is a snapshot that starts going stale immediately. If a workflow needs
+  it live, it needs an application-maintained key stamped on each write, with
+  no once-only guard — which is the ordinary overwrite that
+  `SaveAccountMetadata` already does.
+
+**Nothing in the mirror path carries `first_usage` across.** Copying the v2 value into the typed `datetime` metadata
 key at cut-over is the only lossless option. Reconstruction after the fact is
 possible because history is permanent, but it has to reproduce what v2 actually
 means, and v2 lowers `first_usage` from **two** paths (`release/v2.4`):
