@@ -324,10 +324,18 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	var resp *servicepb.ApplyResponse
 	var err error
 	hadAmbiguousAttempt := false
+	maintenanceRecoveryScheduled := false
 	for {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
 			break
+		}
+		if internal.IsMaintenanceAfterAmbiguousCommit(err) {
+			hadAmbiguousAttempt = true
+			if bulkEnablesMaintenance(bulk) && !maintenanceRecoveryScheduled {
+				scheduleMaintenanceRecovery(ctx, client, c)
+				maintenanceRecoveryScheduled = true
+			}
 		}
 		if internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode) && !hadAmbiguousAttempt {
 			break
@@ -335,7 +343,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
 		}
-		hadAmbiguousAttempt = true
+		hadAmbiguousAttempt = hadAmbiguousAttempt || internal.IsAmbiguousCommit(err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(200 * time.Millisecond):
@@ -353,7 +361,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	// Register the disable recovery before publishing the successful enable.
 	// The processor may otherwise make that enable visible to restore, which can
 	// begin draining while no recovery read protects the maintenance window.
-	if err == nil && bulkEnablesMaintenance(bulk) {
+	if err == nil && bulkEnablesMaintenance(bulk) && !maintenanceRecoveryScheduled {
 		scheduleMaintenanceRecovery(ctx, client, c)
 	}
 	select {

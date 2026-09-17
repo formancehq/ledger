@@ -163,11 +163,19 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		var err error
+		hadAmbiguousAttempt := false
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if !retryableRPCErrorAfterAttempt(err, attempt > 0) {
+			if HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+				if hadAmbiguousAttempt {
+					return maintenanceAfterAmbiguousCommitError{err: err}
+				}
 				return err
 			}
+			if !retryableRPCError(err) {
+				return err
+			}
+			hadAmbiguousAttempt = hadAmbiguousAttempt || IsAmbiguousCommit(err)
 			select {
 			case <-ctx.Done():
 				return err
@@ -185,14 +193,29 @@ func retryableRPCError(err error) bool {
 	return IsTransient(err) && !HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 }
 
-// retryableRPCErrorAfterAttempt preserves an ambiguous earlier attempt when a
-// later retry reaches the maintenance gate. A first-attempt maintenance error
-// is definitive and must remain observable by the model driver.
-func retryableRPCErrorAfterAttempt(err error, hadRetry bool) bool {
-	if HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
-		return hadRetry
-	}
-	return retryableRPCError(err)
+type maintenanceAfterAmbiguousCommitError struct {
+	err error
+}
+
+func (e maintenanceAfterAmbiguousCommitError) Error() string {
+	return e.err.Error()
+}
+
+func (e maintenanceAfterAmbiguousCommitError) Unwrap() error {
+	return e.err
+}
+
+func (e maintenanceAfterAmbiguousCommitError) GRPCStatus() *status.Status {
+	return status.Convert(e.err)
+}
+
+// IsMaintenanceAfterAmbiguousCommit reports that an RPC may have committed and
+// a later attempt was rejected by the maintenance gate. Callers must preserve
+// the ambiguous request while arranging any recovery needed to leave
+// maintenance mode.
+func IsMaintenanceAfterAmbiguousCommit(err error) bool {
+	var target maintenanceAfterAmbiguousCommitError
+	return errors.As(err, &target)
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
