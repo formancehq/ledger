@@ -83,6 +83,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	// in flight, and the ordered window stays representable by a candidate
 	// base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListAccounts(readCtx, &servicepb.ListAccountsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
@@ -101,7 +102,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	// High-water at the read's completion: only bulks dispatched by now could be
 	// reflected in the page. Captured before validation so later dispatches
 	// aren't folded into this read's candidate states.
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 
 	if err != nil {
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
@@ -202,6 +203,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	// in flight, and the ordered window stays representable by a candidate
 	// base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
@@ -217,7 +219,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		txs, err = drainStream(stream)
 	}
 
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 
 	if err != nil {
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {

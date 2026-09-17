@@ -216,6 +216,50 @@ func TestProcessorPreservesAmbiguousBusinessBulkAsCandidate(t *testing.T) {
 	require.True(t, found)
 }
 
+func TestProcessorCoalescesAmbiguousMaintenanceEnables(t *testing.T) {
+	t.Parallel()
+
+	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	require.NoError(t, err)
+	c := NewChecker([]string{"L"}, nil)
+	enable := bulkOf(actions.SetMaintenanceModeAction(true))
+	for _, ticket := range []uint64{2, 1} {
+		c.inflight[ticket] = enable
+		c.handleObservation(observation{
+			ticket:          ticket,
+			bulk:            enable,
+			err:             maintenanceStatus.Err(),
+			ambiguousCommit: true,
+			observeTicket:   ticket,
+		})
+	}
+
+	require.Len(t, c.ambiguousBulks, 1)
+	retainedTicket, retained := c.ambiguousMaintenanceEnableTicket()
+	require.True(t, retained)
+	require.Equal(t, uint64(1), retainedTicket)
+}
+
+func TestResponseHighWaterExcludesWriterBlockedBeforeRegistration(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	responseFrontier := c.beginResponseFrontier()
+	registered := make(chan struct{})
+	go func() {
+		c.mu.Lock()
+		c.dispatchMu.Lock()
+		c.registerInflight(bulkOf(oracletest.AddTypeReq("later")))
+		c.dispatchMu.Unlock()
+		c.mu.Unlock()
+		close(registered)
+	}()
+
+	require.Zero(t, responseFrontier())
+	<-registered
+	require.Equal(t, uint64(1), c.ticketSeq.Load())
+}
+
 func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 	t.Parallel()
 

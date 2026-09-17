@@ -104,6 +104,12 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 		}
 	}
 	require.True(t, found, "maintenance rejection must carry the specific business reason")
+	info, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	require.NoError(t, err)
+	require.NotContains(t, info.GetMetadata(), "k", "maintenance-rejected metadata must not commit")
 	apply(actions.SetMaintenanceModeAction(false))
 	apply(actions.SaveLedgerMetadataAction("mirror", map[string]string{"k": "recovered"}))
+	info, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	require.NoError(t, err)
+	require.Equal(t, "recovered", info.GetMetadata()["k"].GetStringValue())
 }

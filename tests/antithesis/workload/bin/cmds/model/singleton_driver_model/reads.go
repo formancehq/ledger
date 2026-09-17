@@ -53,6 +53,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// property it cares about if the server-side default ever changes.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	responseFrontier := c.beginResponseFrontier()
 	acct, err := client.GetAccount(readCtx, &servicepb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: addr,
@@ -60,7 +61,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned. Captured before validation so later
 	// dispatches aren't folded into this read's candidate states.
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -280,10 +281,11 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	defer c.finishRead(readID)
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	info, err := client.GetLedger(readCtx, &servicepb.GetLedgerRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -358,10 +360,11 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	}
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -396,10 +399,11 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	defer c.finishRead(readID)
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.GetMetadataSchemaStatus(readCtx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return

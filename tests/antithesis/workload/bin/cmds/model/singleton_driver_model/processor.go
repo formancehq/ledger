@@ -36,11 +36,18 @@ func (c *Checker) registerRead() uint64 {
 	return t
 }
 
-func (c *Checker) responseHighWater() uint64 {
+// beginResponseFrontier prevents a write from registering between the read's
+// response and its ticket snapshot. The caller must start the RPC after this
+// call and invoke the returned closure immediately after the complete response
+// (including stream drain) is observed.
+func (c *Checker) beginResponseFrontier() func() uint64 {
 	c.dispatchMu.Lock()
-	defer c.dispatchMu.Unlock()
 
-	return c.ticketSeq.Load()
+	return func() uint64 {
+		defer c.dispatchMu.Unlock()
+
+		return c.ticketSeq.Load()
+	}
 }
 
 // finishRead drops an outstanding read and resumes any draining it held back.
@@ -99,7 +106,12 @@ func (c *Checker) handleObservation(obs observation) {
 		// whether that attempt committed. Keep the original bulk as an optional
 		// predecessor after its worker observation leaves inflight so validation
 		// can still serialize through either outcome.
-		c.ambiguousBulks[obs.ticket] = obs.bulk
+		if retainedTicket, retained := c.ambiguousMaintenanceEnableTicket(); !bulkEnablesMaintenance(obs.bulk) || !retained {
+			c.ambiguousBulks[obs.ticket] = obs.bulk
+		} else if obs.ticket < retainedTicket {
+			delete(c.ambiguousBulks, retainedTicket)
+			c.ambiguousBulks[obs.ticket] = obs.bulk
+		}
 	}
 	c.removeInflight(obs.ticket)
 	defer c.tryDrain()
@@ -138,6 +150,19 @@ func (c *Checker) handleObservation(obs observation) {
 	}
 
 	c.insertPending(&pendingObservation{minSeq: minSeq, obs: obs})
+}
+
+// Multiple optional maintenance enables are state-equivalent until the
+// recovery disable. Coalescing them keeps the candidate-search capacity bound
+// while preserving both possible maintenance states. Caller holds c.mu.
+func (c *Checker) ambiguousMaintenanceEnableTicket() (uint64, bool) {
+	for ticket, bulk := range c.ambiguousBulks {
+		if bulkEnablesMaintenance(bulk) {
+			return ticket, true
+		}
+	}
+
+	return 0, false
 }
 
 // Drains buffered observations in log-sequence order while safe: the head drains

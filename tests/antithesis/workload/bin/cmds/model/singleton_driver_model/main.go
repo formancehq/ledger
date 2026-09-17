@@ -300,11 +300,11 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		defer c.checkpointCreateMu.Unlock()
 	}
 
-	c.dispatchMu.Lock()
 	c.mu.Lock()
+	c.dispatchMu.Lock()
 	if c.paused {
-		c.mu.Unlock()
 		c.dispatchMu.Unlock()
+		c.mu.Unlock()
 		return
 	}
 	c.stampIdempotency(&bulk)
@@ -313,8 +313,8 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		predictedCheckpointID = c.modelState.NextQueryCheckpointID()
 	}
 	ticket := c.registerInflight(bulk)
-	c.mu.Unlock()
 	c.dispatchMu.Unlock()
+	c.mu.Unlock()
 
 	var probeDone <-chan struct{}
 	if checkpointCreate {
@@ -467,14 +467,14 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		IdempotencyKey: idempotencyKey(),
 	}
 
-	c.dispatchMu.Lock()
 	c.mu.Lock()
+	c.dispatchMu.Lock()
 	ticket := c.registerInflight(bulk)
 	c.maintenanceRecoveryTicket = ticket
 	delete(c.reads, recoveryID)
 	c.tryDrain()
-	c.mu.Unlock()
 	c.dispatchMu.Unlock()
+	c.mu.Unlock()
 
 	req := applyRequest(bulk)
 	var resp *servicepb.ApplyResponse

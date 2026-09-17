@@ -23,9 +23,8 @@ import (
 type Checker struct {
 	mu sync.Mutex
 	// dispatchMu orders write registration against a read's response frontier.
-	// A writer holds it while acquiring its ticket; a completed read holds it
-	// while capturing maxTicket, so a post-response write cannot become a
-	// candidate explanation for that response.
+	// Writers acquire mu before dispatchMu, so a writer delayed on model work
+	// cannot register after a read response and still enter that read's frontier.
 	dispatchMu sync.Mutex
 	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
 	// create transition until that transition has drained into modelState.

@@ -259,8 +259,9 @@ func runCheckpointListRead(ctx context.Context, bucket servicepb.BucketServiceCl
 		return
 	}
 	ledger := ledgerNames[0]
+	responseFrontier := c.beginResponseFrontier()
 	response, err := readCheckpointRegistry(ctx, bucket, client, ledger)
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -295,8 +296,9 @@ func runCheckpointScheduleRead(ctx context.Context, bucket servicepb.BucketServi
 		return
 	}
 	ledger := ledgerNames[0]
+	responseFrontier := c.beginResponseFrontier()
 	response, err := readCheckpointSchedule(ctx, bucket, client, ledger)
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return

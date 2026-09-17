@@ -490,6 +490,8 @@ A successful or ambiguously committed enable schedules a randomly delayed
 disable through the normal in-flight/processor path, preventing all workers from
 becoming stuck behind the gate. Enable generation is deliberately rarer than
 disable generation because every active window pauses useful business coverage.
+Concurrent ambiguous enables are coalesced into one state-equivalent optional
+predecessor so they cannot exceed the candidate-search capacity.
 Startup and shutdown also make a best-effort disable so an interrupted run
 cannot block the next invocation.
 

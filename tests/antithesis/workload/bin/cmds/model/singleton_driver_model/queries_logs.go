@@ -514,6 +514,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	// certified up to it (EN-1946), so the window stays representable by a
 	// candidate base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListLogs(readCtx, &servicepb.ListLogsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
@@ -528,7 +529,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		logs, err = drainStream(stream)
 	}
 
-	maxTicket := c.responseHighWater()
+	maxTicket := responseFrontier()
 	if status.Code(err) == codes.NotFound {
 		c.validateLedgerNotFound(maxTicket, ledger, "ListLogs")
 		return
