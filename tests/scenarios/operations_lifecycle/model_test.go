@@ -77,7 +77,17 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	apply(actions.DeleteLedgerAction("L"))
 
 	apply(&servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
+	mirrorAccountsBefore, err := actions.ListAccountsFiltered(sc.Ctx(), sc.Client, "mirror", 100, "", nil)
+	require.NoError(t, err)
+	mirrorTransactionsBefore, err := actions.ListTransactionsFiltered(sc.Ctx(), sc.Client, "mirror", 100, 0, nil)
+	require.NoError(t, err)
 	apply(oracletest.TxReqL("mirror", "world", "cash:1", "USD/2", 1))
+	mirrorAccountsAfter, err := actions.ListAccountsFiltered(sc.Ctx(), sc.Client, "mirror", 100, "", nil)
+	require.NoError(t, err)
+	mirrorTransactionsAfter, err := actions.ListTransactionsFiltered(sc.Ctx(), sc.Client, "mirror", 100, 0, nil)
+	require.NoError(t, err)
+	require.Equal(t, mirrorAccountsBefore, mirrorAccountsAfter)
+	require.Equal(t, mirrorTransactionsBefore, mirrorTransactionsAfter)
 	promote := &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "mirror"}}}
 	apply(promote)
 	apply(promote)
