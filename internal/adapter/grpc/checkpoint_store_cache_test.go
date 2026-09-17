@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -271,4 +272,35 @@ func rebuildReadIndexCheckpointWithSSTs(t *testing.T, path string) {
 	ssts, err := filepath.Glob(filepath.Join(path, "*.sst"))
 	require.NoError(t, err)
 	require.NotEmpty(t, ssts, "the checkpoint must contain an SST for the reference to exist")
+}
+
+// The stores are shared, so a defensive second cleanup must not drop a hold the
+// caller does not have and close them under the checkpoint's other readers.
+func TestCheckpointStoreCacheReleaseIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	var (
+		cache checkpointStoreCache
+		opens atomic.Int64
+		open  = realOpener(t, impl, &opens)
+	)
+
+	_, _, releaseFirst, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
+	require.NoError(t, err)
+
+	main, _, releaseSecond, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
+	require.NoError(t, err)
+
+	releaseFirst()
+	releaseFirst()
+
+	value, closer, err := main.Get([]byte("any-key"))
+	require.ErrorIs(t, err, pebble.ErrNotFound, "the shared stores must still be open for the remaining reader")
+	require.Nil(t, value)
+	require.Nil(t, closer)
+
+	releaseSecond()
+	require.Empty(t, cache.entries)
 }

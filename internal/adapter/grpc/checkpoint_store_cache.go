@@ -141,7 +141,13 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 		return nil, nil, nil, entry.err
 	}
 
-	return entry.main, entry.readIdx, func() { c.release(id, entry) }, nil
+	// One hold, one release: a second call would drop a hold this reader does
+	// not have and close the stores under the checkpoint's other readers.
+	var once sync.Once
+
+	return entry.main, entry.readIdx, func() {
+		once.Do(func() { c.release(id, entry) })
+	}, nil
 }
 
 // openSafe turns a panicking open into the entry's error, so the entry is
