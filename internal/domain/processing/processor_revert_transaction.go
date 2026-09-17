@@ -207,8 +207,12 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 //     create never lands and re-admitting the identical batch reproduces the
 //     same observation forever. Reject permanently instead.
 //
-// An empty digest means admission bound nothing, which only happens for an order
-// built before this field existed; there is nothing to compare.
+// A revert order with no digest is not tolerated. Admission is the only producer
+// of one (mirror reverts have their own handler), and it binds the observation
+// unconditionally, so an empty digest is a malformed proposal rather than an
+// older wire format — v3 is unreleased and carries no compatibility fallbacks.
+// Accepting it would silently disable the check and let the stale-target path
+// reach applyPosting again.
 func checkRevertTargetObservation(
 	ledger string,
 	transactionID uint64,
@@ -217,7 +221,9 @@ func checkRevertTargetObservation(
 ) domain.Describable {
 	expected := ctx.RevertTargetDigest
 	if len(expected) == 0 {
-		return nil
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: "revert order carries no target observation digest",
+		}
 	}
 
 	if bytes.Equal(expected, domain.RevertTargetDigest(originalPostings, true)) {

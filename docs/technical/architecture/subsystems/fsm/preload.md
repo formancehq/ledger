@@ -96,7 +96,9 @@ Most declarations come from the request itself, so they are correct by construct
 
 An observation can be wrong by the time apply runs. Admission reads the local store with no read barrier, so a target that is committed but not yet applied on that node reads as absent and the order declares nothing, while apply reads the real postings and touches undeclared volumes. The producer must therefore bind what it observed — for reverts, `OrderTechnical.revert_target_digest` — and the apply path must re-derive it from state it is *already* authorized to read and reject a mismatch before performing the dependent reads.
 
-Re-deriving from an already-declared key is what keeps this from widening the read horizon: a revert's `TransactionState` is declared unconditionally by `addTransactionTargetNeeds`, so the comparison needs no new coverage. The same rule applies to Numscript, whose resolved inputs are bound in `OrderTechnical.inputs_resolution_hash`.
+Re-deriving from an already-declared key is what keeps this from widening the read horizon: a revert's `TransactionState` is declared unconditionally by `addTransactionTargetNeeds`, so the comparison needs no new coverage and always runs before the volume reads.
+
+Numscript binds its resolved inputs the same way, in `OrderTechnical.inputs_resolution_hash`, but does **not** satisfy the ordering half of the rule. Its re-resolution can derive an account from changed metadata and read it before the hash comparison happens, so that read reaches the coverage gate and is deliberately kept fatal — `processor_transaction_numscript.go` documents why softening it would spin the client against a missing declaration. A fixed, always-declared key like the revert target has no such window, which is what lets its check run first.
 
 Rejecting on mismatch is not the same as tolerating an under-declaration. A coverage miss must stay what [coverage-gate.md](coverage-gate.md) says it is — an admission bug — so the observation check runs *before* the gate can fire for this cause, and never in place of it.
 
