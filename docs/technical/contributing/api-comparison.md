@@ -963,6 +963,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Transaction reference conflict | `ALREADY_EXISTS` | `TRANSACTION_REFERENCE_CONFLICT` | `ledger`, `reference` |
 | Transaction not found | `NOT_FOUND` | `TRANSACTION_NOT_FOUND` | `transactionId` |
 | Transaction already reverted | `FAILED_PRECONDITION` | `TRANSACTION_ALREADY_REVERTED` | `transactionId` |
+| Revert target created in the same batch | `INVALID_ARGUMENT` | `REVERT_TARGET_CREATED_IN_BATCH` | `transactionId` |
 | Transaction state inconsistent | `INTERNAL` | `TRANSACTION_STATE_INCONSISTENT` | `transactionId`, `operation` |
 | Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
 | Volume overflow | `FAILED_PRECONDITION` | `VOLUME_OVERFLOW` | `account`, `asset`, `side`, `amount`, `current` |

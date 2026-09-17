@@ -101,8 +101,12 @@ A mismatch is classified by whether a re-admission could ever converge:
 
 | Target | Outcome | Why |
 |---|---|---|
-| Existed before this batch | `STALE_INPUTS_RESOLUTION` (`Unavailable`, retryable, not frozen) | Re-admission reads a view that now includes it |
-| Created by this batch | `REVERT_TARGET_CREATED_IN_BATCH` (`Validation`, permanent, frozen) | The batch is rejected, so the create never lands and every retry reproduces the same observation |
+| Existed before this batch | `STALE_INPUTS_RESOLUTION` (`Unavailable`, retryable, never frozen) | Re-admission reads a view that now includes it |
+| Created by this batch | `REVERT_TARGET_CREATED_IN_BATCH` (`Validation`, permanent, freezable) | The batch is rejected, so the create never lands and every retry reproduces the same observation |
+
+Freezable is not the same as frozen: `recordIdempotencyFailure` retains an outcome
+only when the batch carried an idempotency key. An unkeyed batch is rejected just
+as permanently, but leaves nothing behind to replay.
 
 The same-batch case is decided from the ledger's `NextTransactionId` as it stood
 before the batch, captured by `processApply` on the first order touching that

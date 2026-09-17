@@ -157,17 +157,21 @@ func TestProcessRevertTransaction_MatchingObservationProceeds(t *testing.T) {
 	require.NotErrorAs(t, err, &created)
 }
 
-// TestProcessRevertTransaction_NoDigestSkipsCheck pins that an order carrying no
-// bound observation is not rejected.
-func TestProcessRevertTransaction_NoDigestSkipsCheck(t *testing.T) {
+// TestProcessRevertTransaction_NoDigestIsRejected pins that an order carrying no
+// bound observation is refused rather than tolerated.
+//
+// Admission binds the digest on every revert order it emits, so an empty one is
+// a malformed proposal. Treating it as "nothing to check" would be a fallback
+// for an older v3 wire format — which the repository does not carry, v3 being
+// unreleased — and would silently restore the very path this check closes.
+func TestProcessRevertTransaction_NoDigestIsRejected(t *testing.T) {
 	t.Parallel()
 
 	const txID uint64 = 300
 
 	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
-	expectGetVolume(scope, domain.NewVolumeKey(staleTestLedger, "users:001", "USD/2", ""), nil, errReachedVolumes)
 
-	_, err := processRevertTransaction(
+	payload, err := processRevertTransaction(
 		staleTestLedger,
 		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
 		&Context{
@@ -178,7 +182,11 @@ func TestProcessRevertTransaction_NoDigestSkipsCheck(t *testing.T) {
 		},
 	)
 
-	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)
+	require.Nil(t, payload)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid,
+		"a revert order with no bound observation is malformed, not exempt from the check")
 }
 
 // TestProcessRevertTransaction_InconsistentStateNotSoftened pins the ordering

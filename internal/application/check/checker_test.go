@@ -931,6 +931,21 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 // revertTransactionOrder builds a revert order carrying only caller intent.
 // The FSM sources the original postings from the target's stored
 // TransactionState, so the transaction must have been created earlier.
+//
+// Technical carries the digest of what admission observed of that target, which
+// apply re-derives and requires; the engine reads its own stored state here for
+// the same reason admission reads the store.
+func (e *testEngine) revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
+	order := revertTransactionOrder(ledger, txID)
+
+	stored := e.transactionStates[string(domain.TransactionKey{LedgerName: ledger, ID: txID}.Bytes())]
+	order.Technical = &raftcmdpb.OrderTechnical{
+		RevertTargetDigest: domain.RevertTargetDigest(stored.GetPostings(), stored != nil),
+	}
+
+	return order
+}
+
 func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -1134,7 +1149,7 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 8: Revert a transaction ---
 	// Revert the first user:alice USD transfer (tx ID 4 in trading ledger, 0-indexed tx=3 -> 4th tx)
 	// The postings were: bank -> user:alice 1000 USD
-	engine.processAndCommit(revertTransactionOrder("trading", 4))
+	engine.processAndCommit(engine.revertTransactionOrder("trading", 4))
 
 	// --- Step 9: More transactions after revert ---
 	engine.processAndCommit(createTransactionOrder("trading", false,
@@ -1370,10 +1385,10 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 	}))
 
 	// Revert the user:alpha -> user:beta transfer (tx ID 11: 4 funding + 5 distribution + 1 multi + 1 alpha->beta)
-	engine.processAndCommit(revertTransactionOrder("main", 11))
+	engine.processAndCommit(engine.revertTransactionOrder("main", 11))
 
 	// Revert the escrow -> beneficiary:1 transfer
-	engine.processAndCommit(revertTransactionOrder("secondary", 2))
+	engine.processAndCommit(engine.revertTransactionOrder("secondary", 2))
 
 	// More transactions after reverts
 	engine.processAndCommit(createTransactionOrder("main", false,

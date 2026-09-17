@@ -22,14 +22,21 @@ func TestProcessRevertTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
 	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: math.MaxUint64}
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
 	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
-	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{Postings: []*commonpb.Posting{{
+
+	targetPostings := []*commonpb.Posting{{
 		Source: "world", Destination: "users:001", Amount: commonpb.NewUint256FromUint64(1), Asset: "USD",
-	}}}).AsReader(), nil)
+	}}
+	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{Postings: targetPostings}).AsReader(), nil)
 
 	payload, err := processRevertTransaction(
 		"test-ledger",
 		&raftcmdpb.RevertTransactionOrder{TransactionId: 3},
-		&Context{Scope: mockStore, Boundaries: boundaries, LedgerInfo: (&commonpb.LedgerInfo{}).AsReader()},
+		&Context{
+			Scope:              mockStore,
+			Boundaries:         boundaries,
+			LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest: domain.RevertTargetDigest(targetPostings, true),
+		},
 	)
 	require.Nil(t, payload)
 	var exhausted *domain.ErrSequenceExhausted
@@ -107,6 +114,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	})
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -204,6 +212,7 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -281,6 +290,7 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	}).AsReader(), nil)
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -324,6 +334,7 @@ func TestProcessRevertTransaction_NotFound(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -366,6 +377,7 @@ func TestProcessRevertTransaction_NextTransactionIDNotFound(t *testing.T) {
 	// lookup after the boundary check makes gomock fail the test.
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -413,6 +425,7 @@ func TestProcessRevertTransaction_StateMissingIsInconsistent(t *testing.T) {
 	expectGetTransactionState(mockStore, txKey, nil, domain.ErrNotFound)
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -456,6 +469,7 @@ func TestProcessRevertTransaction_AlreadyReverted(t *testing.T) {
 	mockStore.EXPECT().GetReverted(txKey).Return(true, nil)
 
 	order := &raftcmdpb.Order{
+		Technical: revertOrderTechnical(),
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: "test-ledger",
@@ -501,4 +515,23 @@ func TestProcessRevertTransaction_EmptyPostingsIsInconsistent(t *testing.T) {
 	require.Equal(t, uint64(3), inconsistent.TransactionID)
 	require.Equal(t, "revert", inconsistent.Operation)
 	require.Equal(t, uint64(5), boundaries.GetNextTransactionId())
+}
+
+// revertTestTargetPostings is the target state these fixtures serve. Admission
+// binds a digest of what it observed on every revert order, and apply rejects an
+// order that carries none, so the fixtures stamp the matching digest rather than
+// rely on a tolerated empty field.
+func revertTestTargetPostings() []*commonpb.Posting {
+	return []*commonpb.Posting{{
+		Source:      "bank",
+		Destination: "users:123",
+		Amount:      commonpb.NewUint256FromUint64(100),
+		Asset:       "USD",
+	}}
+}
+
+func revertOrderTechnical() *raftcmdpb.OrderTechnical {
+	return &raftcmdpb.OrderTechnical{
+		RevertTargetDigest: domain.RevertTargetDigest(revertTestTargetPostings(), true),
+	}
 }
