@@ -2731,8 +2731,10 @@ ledgerctl cluster add-learner <node-id> <raft-address> <service-address> <instan
 **Example:**
 
 ```bash
-# Read the target's binary INSTANCE_ID marker as hexadecimal
-INSTANCE_ID_HEX=$(od -An -tx1 /var/lib/ledger/wal/INSTANCE_ID | tr -d ' \n')
+# Read the INSTANCE_ID from the target node's configured --wal-dir (default: ./wal).
+# When running under the Formance Operator, the mount path is /data/raft by default.
+WAL_DIR=${WAL_DIR:-./wal}
+INSTANCE_ID_HEX=$(od -An -tx1 "$WAL_DIR/INSTANCE_ID" | tr -d ' \n')
 
 # Add node 4 as a learner
 ledgerctl cluster add-learner 4 node-4:7777 node-4:8888 "$INSTANCE_ID_HEX"
