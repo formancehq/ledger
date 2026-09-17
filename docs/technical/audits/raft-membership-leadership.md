@@ -161,6 +161,33 @@ authority gates. General checkpoint/restore content correctness belongs to
 `persistence-restore-replay`; filesystem containment belongs to
 `filesystem-confinement-contracts`.
 
+### WAL replay validity
+
+The preceding section asks whether recovery loses entries committed after the
+snapshot. Ask the inverse as well: whether replay *restores* entries a later
+record had already replaced.
+
+The WAL is append-only, so both versions of an overwritten index remain on disk
+and only replay decides which survives. A dependency that applies an entry
+record's truncation effect only above the snapshot boundary reconstructs a log no
+Raft node could hold, and the node's last-entry term then stops describing its
+real log — enough to grant a vote it must refuse, so a replica missing committed
+entries can win an election and overwrite them. Treat the recovered last-entry
+term and index as consensus authority, not as storage detail.
+
+Exercise at least: a truncating append written at or below the selected snapshot
+index; a backfill replicating older committed entries at their original term, so
+the resurrected suffix carries a *higher* term than the snapshot; an
+`ApplySnapshot` that clears the entry cache in memory without recording the
+truncation; a guard snapshot record persisted before `HardState` advanced; and a
+raw record pass that does not import each segment's CRC seed.
+
+Evidence must distinguish a genuine fault from ordinary history. Discarding
+entries is not itself a defect — an overwrite of an uncommitted tail removes
+indices that later fall inside the committed range, and those versions were never
+committed. A term comparison against the snapshot is not a sufficient oracle; the
+recovered log must be compared against what the physical records imply.
+
 ## Ownership and deduplication
 
 One finding represents one root cause and required correction, even when it

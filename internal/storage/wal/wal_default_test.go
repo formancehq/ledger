@@ -1742,28 +1742,32 @@ func TestAppend_StaleEntriesBeforeCachedWindowDoesNotLeakLock(t *testing.T) {
 //
 // The fix drops the stale entries but falls through to the HardState
 // update path. We assert that the new commit survives:
-//  1. Prime the window with entries 3..5 and HardState commit=5.
+//  1. Prime the window with entries 3..10 and HardState commit=5.
 //  2. Issue an Append carrying stale entries 1..2 AND HardState commit=10.
 //  3. Reload the WAL from disk and assert InitialState reports commit=10.
+//
+// The window reaches index 10 so the piggy-backed commit stays within the log.
+// raft never emits a commit beyond its last index, and etcd's WAL writes entries
+// before the HardState record, so a durable commit ahead of the log is
+// unreachable — and recovery now refuses to start on it rather than serving a
+// log that is missing acknowledged entries.
 func TestAppend_StaleEntriesPiggybackedHardStateIsPersisted(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	// Seed a snapshot at index 2 so writing entries 3..5 is legal and
+	// Seed a snapshot at index 2 so writing entries 3..10 is legal and
 	// "stale" entries at index 1..2 fall before the cached window.
 	cs := &raftpb.ConfState{Voters: []uint64{1}}
 	require.NoError(t, w.CreateSnapshot(2, cs, nil))
 
-	require.NoError(t, w.Append(
-		hs(1, 1, 5),
-		[]*raftpb.Entry{
-			ent(3, 1, []byte("c")),
-			ent(4, 1, []byte("d")),
-			ent(5, 1, []byte("e")),
-		},
-	))
+	primed := make([]*raftpb.Entry, 0, 8)
+	for i := uint64(3); i <= 10; i++ {
+		primed = append(primed, ent(i, 1, []byte("d")))
+	}
+
+	require.NoError(t, w.Append(hs(1, 1, 5), primed))
 
 	// Stale entries (1..2) + a piggy-backed Commit=10. The stale branch
 	// must drop the entries but still flush the new HardState.

@@ -407,6 +407,46 @@ The system can recover completely from:
 2. **Complete WAL**: If no snapshot, complete replay of the WAL
 3. **Store**: Reconstruction of balances from the logs
 
+#### Replay validity
+
+The WAL is append-only, so an entry that a later leader overwrote is still
+physically present and only replay decides which version survives. etcd's
+`ReadAll` applies an entry record's suffix-truncation effect only when that
+entry's index is greater than the snapshot the WAL was opened at. A truncating
+overwrite written at or below the snapshot index is therefore skipped together
+with the truncation it implies, and the physically earlier entries it replaced
+survive replay.
+
+That tail is not a log any Raft node could hold. The node's last-entry term then
+no longer describes its real log, which is enough for it to grant a vote it must
+refuse — raft compares last-entry term before index — so a replica whose log is
+missing committed entries can win an election and overwrite them.
+
+`DefaultWAL.New` therefore does not trust `ReadAll` alone. It replays the
+retained segments in physical record order and applies every record's effect
+unconditionally:
+
+- an entry record at index `i` drops every reconstructed entry at index `>= i`
+  before appending;
+- a snapshot record drops the compacted prefix, and when the reconstruction
+  holds a conflicting entry at the snapshot's own index it drops the whole log —
+  the truncation `ApplySnapshot` performs in memory but never records on disk;
+- only snapshot records at or below the final durable commit are applied.
+  `ApplySnapshot` persists a guard record *before* advancing `HardState`, so a
+  crash in between leaves a record that does not yet describe durable state;
+  honouring it would delete committed entries.
+
+Each segment's records are checksummed from that segment's own seed, so any pass
+over the raw records must import the seed at every `CrcType` record or a healthy
+multi-segment WAL fails to validate.
+
+Recovery fails closed — it refuses to start rather than serving a log it cannot
+justify — when the reconstruction does not reach the durable commit index, does
+not resume at the snapshot boundary, or is not contiguous. Discarding entries is
+not by itself a fault: an ordinary overwrite of an uncommitted tail removes
+indices that later fall inside the committed range, and those versions were
+never committed.
+
 ### ACID Guarantees
 
 - **Atomicity**: Complete transactions or nothing

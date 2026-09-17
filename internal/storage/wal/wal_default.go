@@ -83,6 +83,7 @@ type DefaultWAL struct {
 	// Metrics
 	appendSaveHistogram      metric.Int64Histogram
 	appendBatchSizeHistogram metric.Int64Histogram
+	recoveryRepairCounter    metric.Int64Counter
 }
 
 // walDirPopulated reports whether the etcd WAL directory at walDir holds any
@@ -169,6 +170,19 @@ func walDirPopulated(walDir string) (bool, error) {
 			if len(snap.GetConfState().GetVoters()) > 0 {
 				populated = true
 			}
+
+		case wal.CrcType:
+			// Each segment's records are checksummed from that segment's seed,
+			// and the decoder validates every non-CRC record against its running
+			// sum, so the seed must be imported at each boundary. Without this a
+			// multi-segment WAL fails at the second boundary and the caller
+			// reports a healthy directory as torn or corrupt.
+			crc := decoder.LastCRC()
+			if crc != 0 && rec.Validate(crc) != nil {
+				return false, fmt.Errorf("validating WAL CRC record for verification: %w", wal.ErrCRCMismatch)
+			}
+
+			decoder.UpdateCRC(rec.GetCrc())
 		}
 	}
 
@@ -180,6 +194,320 @@ func walDirPopulated(walDir string) (bool, error) {
 	}
 
 	return populated, nil
+}
+
+// walRecord is one entry or snapshot record, kept in physical order so the
+// reconstruction below can apply their effects in the order they were written.
+type walRecord struct {
+	entry *raftpb.Entry
+	snap  *walpb.Snapshot
+}
+
+// reconstructEntries replays the retained WAL segments in physical record order
+// and returns the logical entry log they imply for a WAL opened at
+// selectedSnapIndex, together with the final durable commit index.
+//
+// This exists because etcd's ReadAll applies an entry record's suffix-truncation
+// effect only when that entry's index is greater than the snapshot the WAL was
+// opened at. A truncating overwrite written at or below the snapshot index is
+// therefore skipped together with the truncation it implies, and the physically
+// earlier entries it replaced survive replay — leaving a tail no valid Raft log
+// can contain. The node's last-entry term then regresses, which is enough for it
+// to grant a vote it must refuse (raft compares last-entry term before index),
+// so a replica whose log is missing committed entries can win an election and
+// overwrite them.
+//
+// Replaying every record with the truncation applied unconditionally
+// reconstructs the log etcd's own in-memory storage would hold:
+//
+//   - an entry record at index i drops every reconstructed entry at index >= i
+//     before appending — ReadAll's ents[:offset] without its snapshot-relative
+//     guard;
+//   - a snapshot record at I/T drops the compacted prefix (index <= I) and, when
+//     the reconstruction holds a conflicting entry at I, the whole log. That
+//     second effect is what ApplySnapshot performs in memory (it clears the
+//     entry cache) but never records on disk;
+//   - only snapshot records ValidSnapshotEntries would accept — index at or
+//     below the final durable commit — are applied. ApplySnapshot writes a guard
+//     record *before* advancing HardState, so a crash in between leaves a record
+//     that does not yet describe the node's state; honouring it would delete
+//     committed entries and refuse an otherwise recoverable startup.
+//
+// Completeness: this reads the same segments ReadAll reads, and segments are
+// reclaimed oldest-first, so any truncating record ReadAll could have observed
+// is visible here too — a reclaimed truncating record took the entries it
+// truncated with it.
+func reconstructEntries(walDir string, selectedSnapIndex uint64) ([]*raftpb.Entry, error) {
+	// etcd names segments %016x-%016x.wal, so a lexical sort is chronological.
+	names, err := filepath.Glob(filepath.Join(walDir, "*.wal"))
+	if err != nil {
+		return nil, fmt.Errorf("listing WAL segments for reconstruction: %w", err)
+	}
+	slices.Sort(names)
+
+	readers := make([]fileutil.FileReader, 0, len(names))
+
+	var files []*os.File
+
+	defer func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
+	}()
+
+	for _, name := range names {
+		f, openErr := os.OpenFile(name, os.O_RDONLY, 0)
+		if openErr != nil {
+			return nil, fmt.Errorf("opening WAL segment %q for reconstruction: %w", name, openErr)
+		}
+
+		files = append(files, f)
+		readers = append(readers, fileutil.NewFileReader(f))
+	}
+
+	decoder := wal.NewDecoder(readers...)
+
+	var (
+		records []walRecord
+		commit  uint64
+	)
+
+	rec := &walpb.Record{}
+	for err = decoder.Decode(rec); err == nil; err = decoder.Decode(rec) {
+		switch rec.GetType() {
+		case wal.EntryType:
+			var entry raftpb.Entry
+			if uErr := proto.Unmarshal(rec.GetData(), &entry); uErr != nil {
+				return nil, fmt.Errorf("decoding WAL entry record for reconstruction: %w", uErr)
+			}
+
+			records = append(records, walRecord{entry: &entry})
+
+		case wal.StateType:
+			var hs raftpb.HardState
+			if uErr := proto.Unmarshal(rec.GetData(), &hs); uErr != nil {
+				return nil, fmt.Errorf("decoding WAL HardState record for reconstruction: %w", uErr)
+			}
+
+			commit = hs.GetCommit()
+
+		case wal.SnapshotType:
+			var snap walpb.Snapshot
+			if uErr := proto.Unmarshal(rec.GetData(), &snap); uErr != nil {
+				return nil, fmt.Errorf("decoding WAL snapshot record for reconstruction: %w", uErr)
+			}
+
+			records = append(records, walRecord{snap: &snap})
+
+		case wal.CrcType:
+			// Mirror ReadAll/ValidSnapshotEntries: a decoder built over a subset
+			// of the segments starts at CRC zero and must import each segment's
+			// seed, or the first record of a reclaimed WAL fails to validate.
+			crc := decoder.LastCRC()
+			if crc != 0 && rec.Validate(crc) != nil {
+				return nil, fmt.Errorf("validating WAL CRC record for reconstruction: %w", wal.ErrCRCMismatch)
+			}
+
+			decoder.UpdateCRC(rec.GetCrc())
+		}
+	}
+
+	// A torn tail is tolerated exactly as ValidSnapshotEntries tolerates it: the
+	// incomplete record was never committed, and New's repair path owns it.
+	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return nil, fmt.Errorf("reading WAL for reconstruction (possibly torn or corrupt): %w", err)
+	}
+
+	return resolveWALRecords(records, selectedSnapIndex, commit), nil
+}
+
+// resolveWALRecords folds physically-ordered records into the logical log. Split
+// from the decode pass so the fold is unit-testable without a WAL on disk, and
+// because snapshot-record validity depends on the final commit index, which is
+// only known once the whole stream has been read.
+func resolveWALRecords(records []walRecord, selectedSnapIndex, commit uint64) []*raftpb.Entry {
+	var entries []*raftpb.Entry
+
+	for _, r := range records {
+		switch {
+		case r.entry != nil:
+			idx := r.entry.GetIndex()
+			// Drop the suffix this record replaces, then append. Unlike ReadAll
+			// this is unconditional: the truncation is a property of the record,
+			// not of the snapshot the WAL happens to be opened at.
+			keep := 0
+
+			for keep < len(entries) && entries[keep].GetIndex() < idx {
+				keep++
+			}
+
+			entries = append(entries[:keep], r.entry)
+
+		case r.snap != nil:
+			if r.snap.GetIndex() > commit {
+				// Guard record written before HardState advanced. It does not
+				// describe durable state, so it has no effect — the same
+				// judgement ValidSnapshotEntries makes.
+				continue
+			}
+
+			// A snapshot conflicts with the reconstructed log when the log holds
+			// a different entry at the snapshot's index. The snapshot wins: the
+			// entire reconstructed log is obsolete, which is what ApplySnapshot
+			// does in memory.
+			conflicting := false
+
+			for _, e := range entries {
+				if e.GetIndex() == r.snap.GetIndex() && e.GetTerm() != r.snap.GetTerm() {
+					conflicting = true
+
+					break
+				}
+			}
+
+			if conflicting {
+				entries = nil
+
+				continue
+			}
+
+			// Otherwise the snapshot only advances the compacted prefix; entries
+			// beyond it stay available for follower catch-up.
+			keep := 0
+			for keep < len(entries) && entries[keep].GetIndex() <= r.snap.GetIndex() {
+				keep++
+			}
+
+			entries = entries[keep:]
+		}
+	}
+
+	// The caller opened the WAL at selectedSnapIndex, so anything at or below it
+	// belongs to the compacted prefix.
+	keep := 0
+	for keep < len(entries) && entries[keep].GetIndex() <= selectedSnapIndex {
+		keep++
+	}
+
+	return entries[keep:]
+}
+
+// repairRecoveredEntries replaces the slice ReadAll returned with the log the
+// physical WAL records actually imply, and refuses to start when the result
+// cannot describe this node's durable state.
+//
+// See reconstructEntries for why ReadAll's output is not trustworthy on its own.
+// The reconstruction is authoritative; the comparison against ReadAll exists so
+// an occurrence is visible in logs and metrics rather than silently corrected.
+func (s *DefaultWAL) repairRecoveredEntries() error {
+	snapIndex := s.snapshot.GetMetadata().GetIndex()
+	snapTerm := s.snapshot.GetMetadata().GetTerm()
+
+	reconstructed, err := reconstructEntries(s.etcdWalDir, snapIndex)
+	if err != nil {
+		return err
+	}
+
+	if !sameEntryIdentities(s.entries, reconstructed) {
+		discarded := len(s.entries) - len(reconstructed)
+
+		assert.Reachable("WAL replay resurrected entries the physical log had overwritten", map[string]any{
+			"snapshotIndex":        snapIndex,
+			"snapshotTerm":         snapTerm,
+			"readAllEntries":       len(s.entries),
+			"reconstructedEntries": len(reconstructed),
+		})
+
+		s.logger.Errorf("========================================")
+		s.logger.Errorf("WAL REPLAY INCONSISTENT: etcd ReadAll returned %d entries, the physical records imply %d",
+			len(s.entries), len(reconstructed))
+		s.logger.Errorf("Snapshot is index=%d term=%d; replaying overwrite records below that index restores the real log",
+			snapIndex, snapTerm)
+		s.logger.Errorf("Discarding the resurrected suffix — those entries were overwritten before this snapshot was taken")
+		s.logger.Errorf("========================================")
+
+		if s.recoveryRepairCounter != nil && discarded > 0 {
+			s.recoveryRepairCounter.Add(context.Background(), int64(discarded))
+		}
+
+		s.entries = reconstructed
+	}
+
+	// Anything the durable HardState says is committed must survive recovery.
+	// A reconstruction that cannot produce it is not a log this node may serve
+	// from, and no local repair can invent the missing entries (invariant #7).
+	commit := s.hardState.GetCommit()
+
+	lastIndex := snapIndex
+	if len(s.entries) > 0 {
+		lastIndex = s.entries[len(s.entries)-1].GetIndex()
+	}
+
+	if commit > lastIndex {
+		assert.Unreachable("recovered WAL does not reach the durable commit index", map[string]any{
+			"commit":        commit,
+			"lastIndex":     lastIndex,
+			"snapshotIndex": snapIndex,
+		})
+
+		return fmt.Errorf(
+			"recovered WAL ends at index %d but HardState commits through %d; "+
+				"refusing to start with acknowledged entries missing from the log "+
+				"(manual intervention required)",
+			lastIndex, commit,
+		)
+	}
+
+	// Contiguity from the compacted boundary is what makes the log addressable
+	// at all: Entries/Term index into this slice relative to the snapshot.
+	if len(s.entries) > 0 && s.entries[0].GetIndex() != snapIndex+1 {
+		assert.Unreachable("recovered WAL does not resume at the snapshot boundary", map[string]any{
+			"firstIndex":    s.entries[0].GetIndex(),
+			"snapshotIndex": snapIndex,
+		})
+
+		return fmt.Errorf(
+			"recovered WAL resumes at index %d but the snapshot boundary is %d; "+
+				"refusing to start with a gap between the compacted prefix and the log "+
+				"(manual intervention required)",
+			s.entries[0].GetIndex(), snapIndex,
+		)
+	}
+
+	for i := 1; i < len(s.entries); i++ {
+		if s.entries[i].GetIndex() != s.entries[i-1].GetIndex()+1 {
+			assert.Unreachable("recovered WAL has a gap between consecutive entries", map[string]any{
+				"previousIndex": s.entries[i-1].GetIndex(),
+				"index":         s.entries[i].GetIndex(),
+			})
+
+			return fmt.Errorf(
+				"recovered WAL jumps from index %d to %d; "+
+					"refusing to start with a non-contiguous log (manual intervention required)",
+				s.entries[i-1].GetIndex(), s.entries[i].GetIndex(),
+			)
+		}
+	}
+
+	return nil
+}
+
+// sameEntryIdentities reports whether two recovered logs agree on every entry's
+// index and term. Payloads are not compared: a divergence in identity is what
+// distinguishes a resurrected suffix, and the payloads are byte-identical
+// whenever the identities are.
+func sameEntryIdentities(a, b []*raftpb.Entry) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i].GetIndex() != b[i].GetIndex() || a[i].GetTerm() != b[i].GetTerm() {
+			return false
+		}
+	}
+
+	return true
 }
 
 // New creates a new DefaultWAL instance.
@@ -228,6 +556,15 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating append batch size histogram: %w", err)
+	}
+
+	s.recoveryRepairCounter, err = meter.Int64Counter(
+		"wal.recovery.repaired_entries",
+		metric.WithDescription("Entries discarded at startup because WAL replay resurrected an overwritten suffix"),
+		metric.WithUnit("1"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating recovery repair counter: %w", err)
 	}
 
 	type zapProvider interface {
@@ -461,6 +798,11 @@ func New(dataDir string, logger logging.Logger, meter metric.Meter, opts ...Opti
 	if s.hardState == nil {
 		s.hardState = &raftpb.HardState{}
 	}
+
+	if err := s.repairRecoveredEntries(); err != nil {
+		return nil, err
+	}
+
 	// etcd WAL replay starts immediately after the latest durable full
 	// snapshot. That snapshot is therefore the compacted-prefix boundary after
 	// a restart. Compact advances the boundary independently for the remainder

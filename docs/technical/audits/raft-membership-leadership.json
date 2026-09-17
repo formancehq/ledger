@@ -75,7 +75,8 @@
     "Raft transport authentication, stream replacement, disconnect/reconnect, duplicate delivery, and forwarding must preserve message and request identity across terms; transport retries may redeliver Raft messages but must not manufacture a second logical proposal or a false acknowledgement.",
     "ReadIndex certification requires the active leader and a quorum of the current voter configuration, and the certified index must be applied before the read proceeds. Only an explicitly stale read may bypass that certificate; projection semantics after the barrier belong to read-consistency-projections.",
     "Snapshot send/install must bind compatible Raft metadata, ConfState, FSM snapshot, spool/catch-up state, and peer identity. The receiver must drain conflicting apply work and remain non-serving until installation and subsequent synchronization establish a coherent applied and durable horizon.",
-    "Committed entry ordering and membership outcomes must survive leader crash, transfer, restart, retained-log catch-up, and snapshot catch-up without loss, double durable effect, or configuration regression. Pure deterministic FSM/cache correctness after the consensus boundary belongs to fsm-determinism-cache-coverage."
+    "Committed entry ordering and membership outcomes must survive leader crash, transfer, restart, retained-log catch-up, and snapshot catch-up without loss, double durable effect, or configuration regression. Pure deterministic FSM/cache correctness after the consensus boundary belongs to fsm-determinism-cache-coverage.",
+    "WAL replay must reconstruct the log the physical records imply, honouring every overwrite and snapshot truncation regardless of the snapshot the WAL is opened at. A recovered log must never resurrect entries a later record replaced, and a node whose recovered log cannot reach its durable commit index, resume at the snapshot boundary, or stay contiguous must fail closed rather than vote or serve from it."
   ],
   "adversarial_questions": [
     "At each transition from follower or candidate to leader, what exact index is drained/applied before leader-only admission, learner promotion, forwarding ownership, and leadership notifications become effective, and can a concurrent step-down reopen a stale path?",
@@ -89,7 +90,8 @@
     "Can simultaneous transport connections, stale streams, protocol/authentication rejection, reconnect queues, duplicate messages, or unreachable notifications cross terms or peer incarnations and affect the wrong active connection or Raft node?",
     "When a committed ConfChangeUpdateNode refreshes an existing peer address, do Pebble, the membership cache, and the operational Raft and service connection pools converge before the next Raft tick without recreating the peer identity or send loop?",
     "Can a follower-to-leader forwarded request loop, fall back locally without a valid leader/barrier, lose cancellation or committed-outcome metadata, or be executed twice because transport identity is confused with logical proposal identity?",
-    "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown."
+    "Which immediate leadership observers update routing and membership authority synchronously, and can their failure expose stale authority? Deep goroutine ownership, cancellation, shutdown joins, and event/mirror/backup worker generations belong to concurrency-lifecycle-shutdown.",
+    "Can WAL replay resurrect entries that a later overwrite or an installed snapshot had already replaced, so the node's last-entry term or index no longer describes its real log? Consider a truncating append written at or below the selected snapshot index, a backfill that replicates older committed entries at their original term, an ApplySnapshot that clears the entry cache without recording the truncation, a guard snapshot record persisted before HardState advanced, and a raw record pass that does not import each segment's CRC seed. Does the resulting last-entry term let this node grant a vote it must refuse?"
   ],
   "dynamic_checks_to_consider": [
     "just test-model-cluster 300",
@@ -102,6 +104,7 @@
     "block a follower beyond retained-log range, force real MsgSnap catch-up, transfer or restart during install, and prove it cannot campaign or serve until applied and durable indexes pass the installed snapshot and replay horizon",
     "replace and reconnect authenticated Raft streams while delaying and duplicating messages, then verify term/peer-incarnation routing and exactly one logical proposal outcome",
     "commit ConfChangeUpdateNode for an existing Match=0 learner at a new endpoint, inject one optional-TLS probe failure before recovery, then prove Pebble, cache, and the retried live Raft dial target use that endpoint while ConfState and peer identity remain unchanged",
-    "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState"
+    "differentially compare uninterrupted execution with leader crash, transfer, restart, retained-log replay, and snapshot catch-up using the same admitted operations and final ConfState",
+    "go test -race ./internal/storage/wal/"
   ]
 }
