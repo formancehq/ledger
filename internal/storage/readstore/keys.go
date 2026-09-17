@@ -56,11 +56,6 @@ const (
 	// EMPTY/NON_EMPTY history classification for the current incarnation.
 	// Layout: [0xFE][0x09][ledgerName padded 64B] -> state byte.
 	SubInternalLedgerHistory byte = 0x09
-	// SubInternalLedgerLifecycle stores the current projected ledger
-	// incarnation and whether it is still active. Unlike the builder-owned
-	// history tracker, its tombstone survives DeleteLedger so an older main
-	// snapshot cannot be paired with a newer, erased LOGS universe.
-	SubInternalLedgerLifecycle byte = 0x0A
 )
 
 // AuditField discriminates the indexed field within the audit-index keyspace.
@@ -676,17 +671,6 @@ func LedgerHistoryStateKey(kb *dal.KeyBuilder, ledgerName string) []byte {
 // LedgerHistoryStatePrefix returns the global prefix used at indexbuilder boot.
 func LedgerHistoryStatePrefix() []byte {
 	return []byte{PrefixInternal, SubInternalLedgerHistory}
-}
-
-// LedgerLifecycleKey builds the projection lifecycle key for one ledger.
-//
-//	[0xFE][0x0A][ledgerName padded 64B]
-func LedgerLifecycleKey(kb *dal.KeyBuilder, ledgerName string) []byte {
-	return kb.Reset().
-		PutByte(PrefixInternal).
-		PutByte(SubInternalLedgerLifecycle).
-		PutLedgerNameFixed(ledgerName).
-		Consume()
 }
 
 // AppliedProposalProgressKey returns the full key for the AppliedProposal
