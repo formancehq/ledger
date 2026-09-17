@@ -46,7 +46,7 @@ func TestCheckpointStoreCacheSharesOneOpenAcrossReaders(t *testing.T) {
 
 	for range cap(releases) {
 		wg.Go(func() {
-			main, readIdx, release, err := cache.acquire(t.Context(), gateCheckpointID, open)
+			main, readIdx, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
 			require.NoError(t, err)
 			require.NotNil(t, main)
 			require.NotNil(t, readIdx)
@@ -78,11 +78,11 @@ func TestCheckpointStoreCacheReopensAfterLastRelease(t *testing.T) {
 		open  = realOpener(t, impl, &opens)
 	)
 
-	_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, open)
+	_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
 	require.NoError(t, err)
 	release()
 
-	_, _, release, err = cache.acquire(t.Context(), gateCheckpointID, open)
+	_, _, release, err = cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
 	require.NoError(t, err, "the previous open must have been closed")
 	release()
 
@@ -102,13 +102,13 @@ func TestCheckpointStoreCacheDoesNotCacheAFailedOpen(t *testing.T) {
 		openFails = errors.New("open failed")
 	)
 
-	_, _, _, err := cache.acquire(t.Context(), gateCheckpointID, func() (*dal.Store, *readstore.Store, error) {
+	_, _, _, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), func() (*dal.Store, *readstore.Store, error) {
 		return nil, nil, openFails
 	})
 	require.ErrorIs(t, err, openFails)
 	require.Empty(t, cache.entries, "a failed open must leave nothing behind to serve")
 
-	_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, succeed)
+	_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), succeed)
 	require.NoError(t, err, "a later reader must be able to retry the open")
 	release()
 }
@@ -127,7 +127,7 @@ func TestCheckpointStoreCacheSurvivesAPanickingOpen(t *testing.T) {
 		succeed = realOpener(t, impl, &opens)
 	)
 
-	_, _, _, err := cache.acquire(t.Context(), gateCheckpointID, func() (*dal.Store, *readstore.Store, error) {
+	_, _, _, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), func() (*dal.Store, *readstore.Store, error) {
 		panic("pebble exploded")
 	})
 	require.ErrorContains(t, err, "panic opening checkpoint stores")
@@ -138,7 +138,7 @@ func TestCheckpointStoreCacheSurvivesAPanickingOpen(t *testing.T) {
 	go func() {
 		defer close(done)
 
-		_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, succeed)
+		_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), succeed)
 		require.NoError(t, err)
 		release()
 	}()
@@ -169,7 +169,7 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, func() (*dal.Store, *readstore.Store, error) {
+		_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), func() (*dal.Store, *readstore.Store, error) {
 			close(opening)
 			<-unblock
 
@@ -184,7 +184,7 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	_, _, release, err := cache.acquire(ctx, gateCheckpointID, succeed)
+	_, _, release, err := cache.acquire(ctx, gateCheckpointID, testLogger(), succeed)
 	require.ErrorIs(t, err, context.Canceled, "a cancelled joiner must not wait for the open")
 	require.Nil(t, release)
 

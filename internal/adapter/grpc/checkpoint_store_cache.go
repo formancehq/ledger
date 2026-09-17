@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"sync"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -87,7 +88,7 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 //
 // A reader waiting on another reader's open honors ctx, so one slow open does
 // not hold the others past their deadlines.
-func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, open openCheckpointFn) (*dal.Store, *readstore.Store, func(), error) {
+func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger logging.Logger, open openCheckpointFn) (*dal.Store, *readstore.Store, func(), error) {
 	c.mu.Lock()
 	if c.entries == nil {
 		c.entries = make(map[uint64]*checkpointStoreEntry)
@@ -113,7 +114,7 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, open open
 			return nil, nil, nil, ctx.Err()
 		}
 	} else {
-		entry.main, entry.readIdx, entry.err = openSafe(open)
+		entry.main, entry.readIdx, entry.err = openSafe(open, logger)
 		close(entry.done)
 	}
 
@@ -139,9 +140,16 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, open open
 //
 // open unwinds its own partial state on the way out, so the panic does not
 // leave a handle holding the directory lock.
-func openSafe(open openCheckpointFn) (main *dal.Store, readIdx *readstore.Store, err error) {
+//
+// The stack is logged here rather than carried in the error: the error is served
+// to every reader sharing this open and is sanitized before it reaches a client,
+// so the node log is the only place it would be readable, and logging it once
+// keeps one panic from printing the same stack per waiting reader.
+func openSafe(open openCheckpointFn, logger logging.Logger) (main *dal.Store, readIdx *readstore.Store, err error) {
 	defer func() {
 		if r := recover(); r != nil {
+			logger.Errorf("Panic opening checkpoint stores: %v\n%s", r, debug.Stack())
+
 			main, readIdx = nil, nil
 			err = fmt.Errorf("panic opening checkpoint stores (recovered): %v", r)
 		}

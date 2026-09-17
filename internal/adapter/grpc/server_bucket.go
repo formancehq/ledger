@@ -387,7 +387,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// fail. The lease above stays per-reader, so a reader arriving after a
 	// committed deletion is still turned away rather than served from an open
 	// held by an earlier one.
-	mainStore, readIdx, closeStores, err := impl.checkpointStores.acquire(ctx, checkpointID, func() (*dal.Store, *readstore.Store, error) {
+	mainStore, readIdx, closeStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
 		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
 	})
 	if err != nil {
