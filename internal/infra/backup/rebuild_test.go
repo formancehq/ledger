@@ -864,7 +864,7 @@ func TestRebuildDelta_RejectsExhaustedLedgerIDWithoutCommit(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	err := RebuildDelta(context.Background(), testLogger(), store, 0, 0)
-	require.ErrorContains(t, err, "ledger ID space exhausted")
+	require.ErrorContains(t, err, "ledgerId exhausted")
 
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)

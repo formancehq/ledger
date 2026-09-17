@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"maps"
-	"math"
 	"math/big"
 	"strings"
 
@@ -240,12 +239,13 @@ func rebuildDelta(
 			// MirrorSource, AccountTypes, and DefaultEnforcementMode, all part of
 			// the stored projection. ToLedgerInfo copies every creation-time field.
 			info := p.CreateLedger.ToLedgerInfo()
-			if info.GetId() == math.MaxUint32 {
+			advancedLedgerID, exhausted := domain.CheckedNextLedgerID(info.GetId())
+			if exhausted != nil {
 				_ = batch.Cancel()
 
-				return fmt.Errorf("replaying ledger creation at log %d: ledger ID space exhausted", seq)
+				return fmt.Errorf("replaying ledger creation at log %d: %w", seq, exhausted)
 			}
-			nextLedgerID = max(nextLedgerID, info.GetId()+1)
+			nextLedgerID = max(nextLedgerID, advancedLedgerID)
 			rebuildNextLedgerID = true
 
 			if err := writer.saveLedgerInfo(info); err != nil {
