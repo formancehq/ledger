@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 
@@ -265,12 +266,28 @@ func reconstructEntries(walDir string, selectedSnapIndex uint64) ([]*raftpb.Entr
 		readers = append(readers, fileutil.NewFileReader(f))
 	}
 
-	decoder := wal.NewDecoder(readers...)
+	// Two streaming passes rather than one buffered one. A snapshot record's
+	// validity depends on the FINAL durable commit, which is only known once the
+	// whole stream has been read — but buffering every entry to learn it would
+	// hold the entire physical WAL in memory, including the pre-snapshot prefix
+	// and every overwritten payload the result discards, on top of the recovered
+	// log itself. The first pass therefore decodes only HardState records and
+	// never unmarshals an entry; the second folds with the commit already known.
+	commit, err := scanDurableCommit(readers)
+	if err != nil {
+		return nil, err
+	}
 
-	var (
-		records []walRecord
-		commit  uint64
-	)
+	for i, f := range files {
+		if _, seekErr := f.Seek(0, io.SeekStart); seekErr != nil {
+			return nil, fmt.Errorf("rewinding WAL segment %q for reconstruction: %w", names[i], seekErr)
+		}
+
+		readers[i] = fileutil.NewFileReader(f)
+	}
+
+	fold := &walFold{commit: commit}
+	decoder := wal.NewDecoder(readers...)
 
 	rec := &walpb.Record{}
 	for err = decoder.Decode(rec); err == nil; err = decoder.Decode(rec) {
@@ -281,15 +298,7 @@ func reconstructEntries(walDir string, selectedSnapIndex uint64) ([]*raftpb.Entr
 				return nil, fmt.Errorf("decoding WAL entry record for reconstruction: %w", uErr)
 			}
 
-			records = append(records, walRecord{entry: &entry})
-
-		case wal.StateType:
-			var hs raftpb.HardState
-			if uErr := proto.Unmarshal(rec.GetData(), &hs); uErr != nil {
-				return nil, fmt.Errorf("decoding WAL HardState record for reconstruction: %w", uErr)
-			}
-
-			commit = hs.GetCommit()
+			fold.addEntry(&entry)
 
 		case wal.SnapshotType:
 			var snap walpb.Snapshot
@@ -297,18 +306,12 @@ func reconstructEntries(walDir string, selectedSnapIndex uint64) ([]*raftpb.Entr
 				return nil, fmt.Errorf("decoding WAL snapshot record for reconstruction: %w", uErr)
 			}
 
-			records = append(records, walRecord{snap: &snap})
+			fold.addSnapshot(&snap)
 
 		case wal.CrcType:
-			// Mirror ReadAll/ValidSnapshotEntries: a decoder built over a subset
-			// of the segments starts at CRC zero and must import each segment's
-			// seed, or the first record of a reclaimed WAL fails to validate.
-			crc := decoder.LastCRC()
-			if crc != 0 && rec.Validate(crc) != nil {
-				return nil, fmt.Errorf("validating WAL CRC record for reconstruction: %w", wal.ErrCRCMismatch)
+			if crcErr := importCRCSeed(decoder, rec); crcErr != nil {
+				return nil, crcErr
 			}
-
-			decoder.UpdateCRC(rec.GetCrc())
 		}
 	}
 
@@ -318,78 +321,169 @@ func reconstructEntries(walDir string, selectedSnapIndex uint64) ([]*raftpb.Entr
 		return nil, fmt.Errorf("reading WAL for reconstruction (possibly torn or corrupt): %w", err)
 	}
 
-	return resolveWALRecords(records, selectedSnapIndex, commit), nil
+	return fold.result(selectedSnapIndex), nil
 }
 
-// resolveWALRecords folds physically-ordered records into the logical log. Split
-// from the decode pass so the fold is unit-testable without a WAL on disk, and
-// because snapshot-record validity depends on the final commit index, which is
-// only known once the whole stream has been read.
+// importCRCSeed mirrors ReadAll/ValidSnapshotEntries: a decoder built over a
+// subset of the segments starts at CRC zero and must import each segment's seed,
+// or the first record of a reclaimed WAL fails to validate.
+func importCRCSeed(decoder wal.Decoder, rec *walpb.Record) error {
+	crc := decoder.LastCRC()
+	if crc != 0 && rec.Validate(crc) != nil {
+		return fmt.Errorf("validating WAL CRC record for reconstruction: %w", wal.ErrCRCMismatch)
+	}
+
+	decoder.UpdateCRC(rec.GetCrc())
+
+	return nil
+}
+
+// scanDurableCommit reads the last durable HardState commit index. It decodes no
+// entry payloads, so it costs a sequential read rather than the memory the
+// entries themselves would take.
+func scanDurableCommit(readers []fileutil.FileReader) (uint64, error) {
+	decoder := wal.NewDecoder(readers...)
+
+	var (
+		commit uint64
+		err    error
+	)
+
+	rec := &walpb.Record{}
+	for err = decoder.Decode(rec); err == nil; err = decoder.Decode(rec) {
+		switch rec.GetType() {
+		case wal.StateType:
+			var hs raftpb.HardState
+			if uErr := proto.Unmarshal(rec.GetData(), &hs); uErr != nil {
+				return 0, fmt.Errorf("decoding WAL HardState record for reconstruction: %w", uErr)
+			}
+
+			commit = hs.GetCommit()
+
+		case wal.CrcType:
+			if crcErr := importCRCSeed(decoder, rec); crcErr != nil {
+				return 0, crcErr
+			}
+		}
+	}
+
+	if !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return 0, fmt.Errorf("reading WAL commit index for reconstruction (possibly torn or corrupt): %w", err)
+	}
+
+	return commit, nil
+}
+
+// walFold folds physically-ordered WAL records into the logical log they imply.
+// It is a type rather than a loop so the decode pass can stream into it without
+// retaining the whole physical WAL, and so the fold stays unit-testable without
+// a WAL on disk.
+//
+// Indices in the reconstruction are contiguous and ascending by construction, so
+// every lookup is either the sequential-append fast path or a binary search. A
+// linear rescan per record would make an ordinary recovery quadratic in the size
+// of the retained tail, which is time spent inside New before the node starts.
+type walFold struct {
+	entries []*raftpb.Entry
+	commit  uint64
+}
+
+// addEntry applies one entry record: drop the suffix it replaces, then append.
+// Unlike ReadAll this truncation is unconditional — it is a property of the
+// record, not of the snapshot the WAL happens to be opened at.
+func (f *walFold) addEntry(entry *raftpb.Entry) {
+	f.entries = append(f.truncateTo(entry.GetIndex()), entry)
+}
+
+// addSnapshot applies one snapshot record.
+func (f *walFold) addSnapshot(snap *walpb.Snapshot) {
+	if snap.GetIndex() > f.commit {
+		// Guard record written before HardState advanced. It does not describe
+		// durable state, so it has no effect — the same judgement
+		// ValidSnapshotEntries makes.
+		return
+	}
+
+	// A snapshot conflicts with the reconstruction when the log holds a
+	// different entry at the snapshot's own index. The snapshot wins and the
+	// whole reconstructed log is obsolete, which is what ApplySnapshot does in
+	// memory but never records on disk.
+	if at := f.entryAt(snap.GetIndex()); at != nil && at.GetTerm() != snap.GetTerm() {
+		f.entries = nil
+
+		return
+	}
+
+	// Otherwise the snapshot only advances the compacted prefix; entries beyond
+	// it stay available for follower catch-up.
+	f.dropThrough(snap.GetIndex())
+}
+
+// result returns the log relative to the snapshot the WAL was opened at, so
+// anything at or below it belongs to the compacted prefix.
+func (f *walFold) result(selectedSnapIndex uint64) []*raftpb.Entry {
+	f.dropThrough(selectedSnapIndex)
+
+	return f.entries
+}
+
+// truncateTo returns the reconstruction with every entry at index >= idx
+// removed. The sequential-append case answers without searching at all.
+func (f *walFold) truncateTo(idx uint64) []*raftpb.Entry {
+	if len(f.entries) == 0 || f.entries[len(f.entries)-1].GetIndex() < idx {
+		return f.entries
+	}
+
+	keep := sort.Search(len(f.entries), func(i int) bool {
+		return f.entries[i].GetIndex() >= idx
+	})
+
+	return f.entries[:keep]
+}
+
+// dropThrough removes the prefix at or below idx.
+func (f *walFold) dropThrough(idx uint64) {
+	if len(f.entries) == 0 || f.entries[0].GetIndex() > idx {
+		return
+	}
+
+	drop := sort.Search(len(f.entries), func(i int) bool {
+		return f.entries[i].GetIndex() > idx
+	})
+
+	f.entries = f.entries[drop:]
+}
+
+// entryAt returns the reconstructed entry at idx, or nil when the log does not
+// hold that index. It searches rather than indexing by offset: an entry record
+// that skips an index leaves a gap, which repairRecoveredEntries rejects later
+// but which must not corrupt the arithmetic here first.
+func (f *walFold) entryAt(idx uint64) *raftpb.Entry {
+	at := sort.Search(len(f.entries), func(i int) bool {
+		return f.entries[i].GetIndex() >= idx
+	})
+	if at == len(f.entries) || f.entries[at].GetIndex() != idx {
+		return nil
+	}
+
+	return f.entries[at]
+}
+
+// resolveWALRecords folds a slice of records in one call. Production streams
+// into walFold directly; this keeps the fold testable from literals.
 func resolveWALRecords(records []walRecord, selectedSnapIndex, commit uint64) []*raftpb.Entry {
-	var entries []*raftpb.Entry
+	fold := &walFold{commit: commit}
 
 	for _, r := range records {
 		switch {
 		case r.entry != nil:
-			idx := r.entry.GetIndex()
-			// Drop the suffix this record replaces, then append. Unlike ReadAll
-			// this is unconditional: the truncation is a property of the record,
-			// not of the snapshot the WAL happens to be opened at.
-			keep := 0
-
-			for keep < len(entries) && entries[keep].GetIndex() < idx {
-				keep++
-			}
-
-			entries = append(entries[:keep], r.entry)
-
+			fold.addEntry(r.entry)
 		case r.snap != nil:
-			if r.snap.GetIndex() > commit {
-				// Guard record written before HardState advanced. It does not
-				// describe durable state, so it has no effect — the same
-				// judgement ValidSnapshotEntries makes.
-				continue
-			}
-
-			// A snapshot conflicts with the reconstructed log when the log holds
-			// a different entry at the snapshot's index. The snapshot wins: the
-			// entire reconstructed log is obsolete, which is what ApplySnapshot
-			// does in memory.
-			conflicting := false
-
-			for _, e := range entries {
-				if e.GetIndex() == r.snap.GetIndex() && e.GetTerm() != r.snap.GetTerm() {
-					conflicting = true
-
-					break
-				}
-			}
-
-			if conflicting {
-				entries = nil
-
-				continue
-			}
-
-			// Otherwise the snapshot only advances the compacted prefix; entries
-			// beyond it stay available for follower catch-up.
-			keep := 0
-			for keep < len(entries) && entries[keep].GetIndex() <= r.snap.GetIndex() {
-				keep++
-			}
-
-			entries = entries[keep:]
+			fold.addSnapshot(r.snap)
 		}
 	}
 
-	// The caller opened the WAL at selectedSnapIndex, so anything at or below it
-	// belongs to the compacted prefix.
-	keep := 0
-	for keep < len(entries) && entries[keep].GetIndex() <= selectedSnapIndex {
-		keep++
-	}
-
-	return entries[keep:]
+	return fold.result(selectedSnapIndex)
 }
 
 // repairRecoveredEntries replaces the slice ReadAll returned with the log the

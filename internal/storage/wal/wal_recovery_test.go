@@ -337,3 +337,51 @@ func TestResolveWALRecords(t *testing.T) {
 		})
 	}
 }
+
+// TestResolveWALRecords_LargeSequentialTailIsLinear guards the fold against a
+// quadratic rescan. A normal recovered tail is monotonically indexed, so each
+// record must append without scanning the prefix; a per-record linear scan makes
+// recovery N(N-1)/2 comparisons inside New, before the node can start. At this
+// size the quadratic form is billions of comparisons and the test times out
+// rather than merely running slowly.
+func TestResolveWALRecords_LargeSequentialTailIsLinear(t *testing.T) {
+	t.Parallel()
+
+	const n = 200_000
+
+	records := make([]walRecord, 0, n)
+	for i := uint64(1); i <= n; i++ {
+		records = append(records, walRecord{entry: ent(i, 1, nil)})
+	}
+
+	got := resolveWALRecords(records, 0, n)
+
+	require.Len(t, got, n)
+	require.Equal(t, uint64(1), got[0].GetIndex())
+	require.Equal(t, uint64(n), got[len(got)-1].GetIndex())
+}
+
+// TestResolveWALRecords_RepeatedOverwritesStayCorrect pins that the search path
+// the fast path falls back to still truncates exactly, including an overwrite
+// that lands at the very first retained index.
+func TestResolveWALRecords_RepeatedOverwritesStayCorrect(t *testing.T) {
+	t.Parallel()
+
+	records := []walRecord{
+		{entry: ent(1, 1, nil)},
+		{entry: ent(2, 1, nil)},
+		{entry: ent(3, 1, nil)},
+		{entry: ent(4, 1, nil)},
+		// A leader at term 2 replaces from index 2.
+		{entry: ent(2, 2, nil)},
+		{entry: ent(3, 2, nil)},
+		// A leader at term 3 replaces the whole retained range.
+		{entry: ent(1, 3, nil)},
+	}
+
+	got := resolveWALRecords(records, 0, 1)
+
+	require.Len(t, got, 1)
+	require.Equal(t, uint64(1), got[0].GetIndex())
+	require.Equal(t, uint64(3), got[0].GetTerm())
+}
