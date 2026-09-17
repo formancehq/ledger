@@ -1,7 +1,6 @@
 package v1
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -19,8 +18,7 @@ func addTransactionMetadata(w http.ResponseWriter, r *http.Request) {
 	l := common.LedgerFromContext(r.Context())
 
 	var m metadata.Metadata
-	if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
-		api.BadRequest(w, common.ErrValidation, errors.New("invalid metadata format"))
+	if !common.DecodeBody(w, r, &m) {
 		return
 	}
 

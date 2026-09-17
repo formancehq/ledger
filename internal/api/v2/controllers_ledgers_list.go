@@ -31,7 +31,7 @@ func listLedgers(b system.Controller, paginationConfig storagecommon.PaginationC
 			},
 		)
 		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
+			common.HandleRequestParsingErrors(w, err)
 			return
 		}
 
