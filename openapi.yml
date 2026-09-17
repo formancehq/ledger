@@ -3976,13 +3976,16 @@ components:
             color = "".
         input:
           type: string
-          description: Total amount received (as big integer string)
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Total amount received as a canonical non-negative decimal integer string
         output:
           type: string
-          description: Total amount sent (as big integer string)
+          pattern: '^(0|[1-9][0-9]*)$'
+          description: Total amount sent as a canonical non-negative decimal integer string
         balance:
           type: string
-          description: Net balance (input - output, as big integer string)
+          pattern: '^(0|-?[1-9][0-9]*)$'
+          description: Net balance (input - output) as a canonical signed decimal integer string
 
     GroupedAggregateResult:
       type: object
