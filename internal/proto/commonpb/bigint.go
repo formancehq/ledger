@@ -101,6 +101,8 @@ func (u *BigUint) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	value, _ := new(big.Int).SetString(decimal, 10)
+	// SetString cannot fail: decodeCanonicalDecimal has already validated the
+	// decimal string, so the blank identifier for the bool return is safe.
 	encoded, err := NewBigUint(value)
 	if err != nil {
 		return err
@@ -115,6 +117,8 @@ func NewSignedBigInt(value *big.Int) *SignedBigInt {
 	if value == nil || value.Sign() == 0 {
 		return &SignedBigInt{}
 	}
+	// Abs() always returns a non-negative value, so NewBigUint cannot return an
+	// error here; the blank identifier for the error return is intentional.
 	magnitude, _ := NewBigUint(new(big.Int).Abs(value))
 
 	return &SignedBigInt{Negative: value.Sign() < 0, Magnitude: magnitude}
@@ -157,6 +161,8 @@ func (s *SignedBigInt) ToBigInt() (*big.Int, error) {
 	if s == nil {
 		return new(big.Int), nil
 	}
+	// GetMagnitude().ToBigInt() cannot fail here: Validate() has already
+	// confirmed the magnitude is well-formed, so the error return is discarded.
 	value, _ := s.GetMagnitude().ToBigInt()
 	if s.GetNegative() {
 		value.Neg(value)
@@ -197,6 +203,8 @@ func (s *SignedBigInt) UnmarshalJSON(data []byte) error {
 	if err != nil {
 		return err
 	}
+	// SetString cannot fail: decodeCanonicalDecimal has already validated the
+	// decimal string, so the blank identifier for the bool return is safe.
 	value, _ := new(big.Int).SetString(decimal, 10)
 	encoded := NewSignedBigInt(value)
 	s.Reset()
