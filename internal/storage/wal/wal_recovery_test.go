@@ -186,6 +186,47 @@ func TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall(t *testing.T) {
 	require.Equal(t, uint64(6), reopened.entries[0].GetIndex())
 }
 
+// TestRecovery_KeepsEntriesWhenCommitOvertakesAGuardRecord is the sharper form
+// of the case above. An interrupted install leaves a guard record behind; the
+// node then recovers and keeps committing, so the commit index advances past
+// that record's index. Any rule that decides a snapshot record's validity from
+// the final durable commit would accept the stale guard retroactively and delete
+// committed entries — which is why only the selected snapshot has an effect.
+func TestRecovery_KeepsEntriesWhenCommitOvertakesAGuardRecord(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	first := make([]*raftpb.Entry, 0, 10)
+	for i := uint64(1); i <= 10; i++ {
+		first = append(first, ent(i, 1, []byte("d")))
+	}
+
+	require.NoError(t, w.Append(hs(1, 1, 7), first))
+	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
+
+	// The guard record an interrupted ApplySnapshot left at index 9.
+	require.NoError(t, w.wal.SaveSnapshot(&walpb.Snapshot{
+		Index:     new(uint64(9)),
+		Term:      new(uint64(2)),
+		ConfState: testConfState(),
+	}))
+
+	// The node carries on and commits well past that index.
+	later := make([]*raftpb.Entry, 0, 10)
+	for i := uint64(11); i <= 20; i++ {
+		later = append(later, ent(i, 1, []byte("d")))
+	}
+
+	require.NoError(t, w.Append(hs(1, 1, 20), later))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 20, 1)
+	require.Len(t, reopened.entries, 15, "entries 6..20 must survive a guard record the commit index later overtook")
+	require.Equal(t, uint64(6), reopened.entries[0].GetIndex())
+}
+
 // TestRecovery_KeepsOverwriteBelowFinalCommit pins that an ordinary overwrite of
 // uncommitted entries is not mistaken for corruption. Indices 2 and 3 are
 // replaced before the commit index reaches them, so the discarded versions sit
@@ -235,6 +276,35 @@ func TestRecovery_KeepsHealthyTailAfterSnapshot(t *testing.T) {
 	reopened := assertRecoveredLog(t, dir, 88, 12)
 	require.Len(t, reopened.entries, 2, "entries 87 and 88 must remain available")
 	require.Equal(t, uint64(87), reopened.entries[0].GetIndex())
+}
+
+// TestRecovery_FailsClosedOnUnreachableCommit pins the condition that matters
+// most: a log that cannot produce what HardState says is committed. No local
+// repair can invent the missing entries, so the node must refuse to serve from
+// it rather than start and answer reads (invariant #7).
+func TestRecovery_FailsClosedOnUnreachableCommit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	require.NoError(t, w.Append(hs(1, 1, 3), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
+	}))
+	require.NoError(t, w.CreateSnapshot(3, testConfState(), nil))
+
+	// A HardState claiming a commit the log never reaches. raft does not emit
+	// one and etcd writes entries before state, so this is not a state a healthy
+	// node produces — which is exactly why recovery must not serve from it.
+	require.NoError(t, w.wal.Save(hs(1, 1, 9), nil))
+	require.NoError(t, w.Close())
+
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HardState commits through 9")
+	require.Contains(t, err.Error(), "manual intervention required")
 }
 
 // TestRecovery_SucceedsAfterSegmentReclamation pins the CRC requirement. A
@@ -291,42 +361,52 @@ func TestResolveWALRecords(t *testing.T) {
 		name      string
 		records   []walRecord
 		snapIndex uint64
-		commit    uint64
+		snapTerm  uint64
 		want      []want
 	}{
 		{
 			name:      "overwrite truncates the replaced suffix",
 			records:   []walRecord{entryRec(1, 1), entryRec(2, 1), entryRec(3, 1), entryRec(2, 2)},
 			snapIndex: 0,
-			commit:    2,
 			want:      []want{{1, 1}, {2, 2}},
 		},
 		{
-			name:      "snapshot drops only the compacted prefix when it agrees",
-			records:   []walRecord{entryRec(1, 1), entryRec(2, 1), entryRec(3, 1), snapRec(2, 1)},
+			name:      "the selected snapshot drops only the compacted prefix when it agrees",
+			records:   []walRecord{entryRec(1, 1), entryRec(2, 1), entryRec(3, 1)},
 			snapIndex: 2,
-			commit:    3,
+			snapTerm:  1,
 			want:      []want{{3, 1}},
 		},
 		{
-			name:      "snapshot conflicting at its index invalidates the whole log",
-			records:   []walRecord{entryRec(1, 1), entryRec(2, 5), entryRec(3, 5), snapRec(2, 9)},
+			name:      "a selected snapshot conflicting at its index invalidates the whole log",
+			records:   []walRecord{entryRec(1, 1), entryRec(2, 5), entryRec(3, 5)},
 			snapIndex: 2,
-			commit:    3,
+			snapTerm:  9,
 			want:      nil,
 		},
 		{
-			name:      "snapshot beyond the durable commit has no effect",
-			records:   []walRecord{entryRec(1, 1), entryRec(2, 1), entryRec(3, 1), snapRec(3, 9)},
+			name: "an overwrite below the boundary clears a stale conflict",
+			// The term-5 entry at the boundary is replaced by a term-9 one, so
+			// the snapshot agrees with the log after all.
+			records:   []walRecord{entryRec(1, 5), entryRec(2, 5), entryRec(1, 9), entryRec(2, 9), entryRec(3, 9)},
+			snapIndex: 2,
+			snapTerm:  9,
+			want:      []want{{3, 9}},
+		},
+		{
+			name: "snapshot records have no effect of their own",
+			// Only the snapshot the caller selected is authoritative. A record
+			// left by an interrupted install must not truncate anything, however
+			// far the commit index later advances.
+			records:   []walRecord{entryRec(1, 1), entryRec(2, 1), entryRec(3, 1), snapRec(2, 9), snapRec(3, 9)},
 			snapIndex: 0,
-			commit:    2,
 			want:      []want{{1, 1}, {2, 1}, {3, 1}},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := resolveWALRecords(tc.records, tc.snapIndex, tc.commit)
+			got := resolveWALRecords(tc.records, tc.snapIndex, tc.snapTerm)
 
 			require.Len(t, got, len(tc.want))
 
