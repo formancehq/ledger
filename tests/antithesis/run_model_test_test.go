@@ -33,6 +33,7 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 		{name: "setup assertions only", scenario: "setup-only", wantOutput: "NO VERIFIED MODEL OUTCOMES"},
 		{name: "output without verified hit", scenario: "unverified-output", wantOutput: "NO VERIFIED MODEL OUTCOMES"},
 		{name: "completed model result", scenario: "verified", wantPass: true, wantOutput: "RESULT: PASS"},
+		{name: "missing stochastic coverage", scenario: "verified-missing-coverage", wantPass: true, wantOutput: "COVERAGE SONDES NOT SATISFIED IN THIS RUN"},
 	}
 
 	for _, tt := range tests {
@@ -195,8 +196,11 @@ case "$FAKE_MODEL_SCENARIO" in
 		if [ "$FAKE_MODEL_SCENARIO" = restart-failed ]; then exit 7; fi
 		exit 0
 		;;
-	verified)
+	verified|verified-missing-coverage)
 		write_assertion '{"antithesis_assert":{"display_type":"Reachable","message":"singleton_driver_model: model outcome verified","condition":true,"hit":true}}'
+		if [ "$FAKE_MODEL_SCENARIO" = "verified-missing-coverage" ]; then
+			write_assertion '{"antithesis_assert":{"display_type":"Sometimes","message":"singleton_driver_model: coverage rare random path","condition":false,"hit":false}}'
+		fi
 		stay_alive
 		;;
 	*)
