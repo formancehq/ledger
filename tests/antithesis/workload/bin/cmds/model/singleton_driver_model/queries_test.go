@@ -13,16 +13,18 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-// buildLedger applies reqs as one committed bulk on an empty-chart ledger "L"
-// and returns its state. An empty chart disables account-type enforcement, so
-// transactions to arbitrary addresses commit and populate volumes.
+// buildLedger commits reqs on an empty-chart ledger "L" and returns its state.
+// An empty chart disables account-type enforcement, so transactions to
+// arbitrary addresses commit and populate volumes.
+//
+// Each request is its own bulk. Grouping them into one would let a fixture
+// revert a transaction the same bulk creates, which the server rejects —
+// admission cannot declare the volume coverage that revert needs, because the
+// target is not in the local store when it builds the order.
 func buildLedger(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
 	t.Helper()
 
-	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
-	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
-
-	return res.State.Ledger("L")
+	return buildGlobal(t, reqs...).Ledger("L")
 }
 
 const (
@@ -259,13 +261,21 @@ func stamp(v uint64) *commonpb.Timestamp { return &commonpb.Timestamp{Data: v} }
 
 // buildGlobal applies reqs as one bulk and returns the global state, for tests
 // that need LearnTxStamps on top of the applied records.
+// buildGlobal commits reqs one bulk per request — see buildLedger for why they
+// are not grouped — and returns the resulting global state.
 func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	t.Helper()
 
-	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
-	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
+	state := oracle.NewGlobalState()
 
-	return res.State
+	for i, req := range reqs {
+		res := state.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+		require.True(t, res.OK, "setup request %d rejected: %s", i, res.Reason)
+
+		state = res.State
+	}
+
+	return state
 }
 
 // serverTxFromRec builds the wire transaction the server would return for a
