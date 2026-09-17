@@ -13,6 +13,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
+// acquireResult carries one goroutine's acquire outcome back to the test
+// goroutine, which is the only one that may assert on it.
+type acquireResult struct {
+	main    *dal.Store
+	readIdx *readstore.Store
+	release func()
+	err     error
+}
+
 // realOpener opens the fixture checkpoint through the same helper the handler
 // uses, counting how many times it runs. The opens are genuine, so a test that
 // reaches a second one while the first is still open fails the way production
@@ -36,29 +45,33 @@ func TestCheckpointStoreCacheSharesOneOpenAcrossReaders(t *testing.T) {
 
 	impl := newCheckpointGateFixture(t)
 
+	const readers = 8
+
 	var (
-		cache    checkpointStoreCache
-		opens    atomic.Int64
-		open     = realOpener(t, impl, &opens)
-		wg       sync.WaitGroup
-		releases = make(chan func(), 8)
+		cache   checkpointStoreCache
+		opens   atomic.Int64
+		open    = realOpener(t, impl, &opens)
+		wg      sync.WaitGroup
+		results = make([]acquireResult, readers)
 	)
 
-	for range cap(releases) {
+	// Results are collected rather than asserted in the goroutines: require's
+	// FailNow is a runtime.Goexit, which testify does not support off the test
+	// goroutine, and it would skip the releases below.
+	for i := range results {
 		wg.Go(func() {
 			main, readIdx, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
-			require.NoError(t, err)
-			require.NotNil(t, main)
-			require.NotNil(t, readIdx)
-			releases <- release
+			results[i] = acquireResult{main: main, readIdx: readIdx, release: release, err: err}
 		})
 	}
 
 	wg.Wait()
-	close(releases)
 
-	for release := range releases {
-		release()
+	for _, result := range results {
+		require.NoError(t, result.err)
+		require.NotNil(t, result.main)
+		require.NotNil(t, result.readIdx)
+		result.release()
 	}
 
 	require.Equal(t, int64(1), opens.Load(), "concurrent readers of one checkpoint must share a single open")
@@ -133,21 +146,19 @@ func TestCheckpointStoreCacheSurvivesAPanickingOpen(t *testing.T) {
 	require.ErrorContains(t, err, "panic opening checkpoint stores")
 	require.Empty(t, cache.entries)
 
-	done := make(chan struct{})
+	var (
+		wg     sync.WaitGroup
+		result acquireResult
+	)
 
-	go func() {
-		defer close(done)
+	wg.Go(func() {
+		result.main, result.readIdx, result.release, result.err = cache.acquire(t.Context(), gateCheckpointID, testLogger(), succeed)
+	})
 
-		_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), succeed)
-		require.NoError(t, err)
-		release()
-	}()
+	wg.Wait() // a reader after a panicking open must not block
 
-	select {
-	case <-done:
-	case <-t.Context().Done():
-		t.Fatal("a reader after a panicking open must not block")
-	}
+	require.NoError(t, result.err)
+	result.release()
 }
 
 // A reader waiting on someone else's open must still honor its own deadline:
@@ -158,25 +169,25 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 	impl := newCheckpointGateFixture(t)
 
 	var (
-		cache    checkpointStoreCache
-		opens    atomic.Int64
-		succeed  = realOpener(t, impl, &opens)
-		opening  = make(chan struct{})
-		unblock  = make(chan struct{})
-		released = make(chan func(), 1)
+		cache   checkpointStoreCache
+		opens   atomic.Int64
+		succeed = realOpener(t, impl, &opens)
+		opening = make(chan struct{})
+		unblock = make(chan struct{})
 	)
 
-	var wg sync.WaitGroup
+	var (
+		wg     sync.WaitGroup
+		opener acquireResult
+	)
 
 	wg.Go(func() {
-		_, _, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), func() (*dal.Store, *readstore.Store, error) {
+		opener.main, opener.readIdx, opener.release, opener.err = cache.acquire(t.Context(), gateCheckpointID, testLogger(), func() (*dal.Store, *readstore.Store, error) {
 			close(opening)
 			<-unblock
 
 			return succeed()
 		})
-		require.NoError(t, err)
-		released <- release
 	})
 
 	<-opening
@@ -190,7 +201,8 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 
 	close(unblock)
 	wg.Wait()
-	(<-released)()
+	require.NoError(t, opener.err)
+	opener.release()
 
 	require.Equal(t, int64(1), opens.Load(), "the cancelled joiner must not have started its own open")
 	require.Empty(t, cache.entries, "the cancelled joiner's ref must have been dropped")

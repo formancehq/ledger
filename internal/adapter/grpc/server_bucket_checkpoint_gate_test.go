@@ -151,7 +151,11 @@ func TestOpenCheckpointStoresServesConcurrentReaders(t *testing.T) {
 		release = make(chan struct{})
 	)
 
-	for range readers {
+	// Outcomes are recorded and asserted on the test goroutine: require's FailNow
+	// is a runtime.Goexit, which testify does not support off it.
+	bothStores := make([]bool, readers)
+
+	for i := range readers {
 		wg.Go(func() {
 			<-release
 
@@ -164,9 +168,9 @@ func TestOpenCheckpointStoresServesConcurrentReaders(t *testing.T) {
 				return
 			}
 
-			require.NotNil(t, main)
-			require.NotNil(t, readIndex)
-			cleanup()
+			defer cleanup()
+
+			bothStores[i] = main != nil && readIndex != nil
 		})
 	}
 
@@ -174,6 +178,9 @@ func TestOpenCheckpointStoresServesConcurrentReaders(t *testing.T) {
 	wg.Wait()
 
 	require.Empty(t, failed, "concurrent readers of one frozen checkpoint must all be served")
+	for i, served := range bothStores {
+		require.True(t, served, "reader %d must receive both stores", i)
+	}
 }
 
 // The read index opens second, so its failure has to unwind the main store the
