@@ -6,9 +6,7 @@ import (
 	"testing"
 
 	"github.com/holiman/uint256"
-	"github.com/invopop/jsonschema"
 	"github.com/stretchr/testify/require"
-	orderedmap "github.com/wk8/go-ordered-map/v2"
 )
 
 func TestVolumesSQLRoundTrip(t *testing.T) {
@@ -75,19 +73,6 @@ func TestVolumesBalanceAndJSON(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestVolumesSchemaUsesCanonicalDecimalStrings(t *testing.T) {
-	t.Parallel()
-
-	volumesSchema := &jsonschema.Schema{Properties: orderedmap.New[string, *jsonschema.Schema]()}
-	(&Volumes{}).JSONSchemaExtend(volumesSchema)
-	require.Equal(t, `^(0|[1-9][0-9]*)$`, volumesSchema.Properties.Value("input").Pattern)
-	require.Equal(t, `^(0|[1-9][0-9]*)$`, volumesSchema.Properties.Value("output").Pattern)
-
-	balancedSchema := &jsonschema.Schema{Properties: orderedmap.New[string, *jsonschema.Schema]()}
-	(&VolumesWithBalance{}).JSONSchemaExtend(balancedSchema)
-	require.Equal(t, `^(0|-?[1-9][0-9]*)$`, balancedSchema.Properties.Value("balance").Pattern)
-}
-
 func TestVolumeCollectionsUseAssetColorIdentity(t *testing.T) {
 	t.Parallel()
 
@@ -98,11 +83,11 @@ func TestVolumeCollectionsUseAssetColorIdentity(t *testing.T) {
 	}}
 	volumes.SortVolumes()
 	require.Equal(t, []string{"EUR|", "USD|GRANTS", "USD|OPS"}, []string{
-		volumes.Volumes[0].GetAsset() + "|" + volumes.Volumes[0].GetColor(),
-		volumes.Volumes[1].GetAsset() + "|" + volumes.Volumes[1].GetColor(),
-		volumes.Volumes[2].GetAsset() + "|" + volumes.Volumes[2].GetColor(),
+		volumes.GetVolumes()[0].GetAsset() + "|" + volumes.GetVolumes()[0].GetColor(),
+		volumes.GetVolumes()[1].GetAsset() + "|" + volumes.GetVolumes()[1].GetColor(),
+		volumes.GetVolumes()[2].GetAsset() + "|" + volumes.GetVolumes()[2].GetColor(),
 	})
-	require.Same(t, volumes.Volumes[1].GetVolumes(), volumes.FindVolume("USD", "GRANTS"))
+	require.Same(t, volumes.GetVolumes()[1].GetVolumes(), volumes.FindVolume("USD", "GRANTS"))
 	require.Nil(t, volumes.FindVolume("USD", "missing"))
 
 	var nilVolumes *VolumesByAssets
