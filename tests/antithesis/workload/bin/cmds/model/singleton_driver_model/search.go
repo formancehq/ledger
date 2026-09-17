@@ -2,6 +2,12 @@ package main
 
 import "github.com/formancehq/ledger/v3/tests/oracle"
 
+// Candidate enumeration is exponential in independently committable in-flight
+// bulks. Workers are capped one below this limit so the separately dispatched
+// maintenance recovery can always be represented without making a read or
+// failure validation effectively non-terminating while it holds c.mu.
+const maxCandidateInflight = defaultWorkers + 1
+
 // candidateBases enumerates the distinct committed states the server could be in
 // relative to a not-yet-linearized observation (a failure or a read): modelState
 // folded with the in-flight/pending bulks in some commit-consistent order. Only
@@ -86,10 +92,12 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 			inflight = append(inflight, b)
 		}
 	}
+	if len(inflight) > maxCandidateInflight {
+		panic("candidate search exceeded its bounded in-flight set")
+	}
 
-	// Use a dynamically sized bitset: maintenance and node restarts can keep more
-	// than 64 requests in flight even with a small fixed worker pool. Encoding it
-	// as a string keeps the dedup key comparable without imposing a hard limit.
+	// Keep the remaining-set representation dynamic so the bound is independent
+	// of the machine word size and explicit above.
 	allRem := make([]byte, (len(inflight)+7)/8)
 	for idx := range inflight {
 		allRem[idx/8] |= 1 << (idx % 8)

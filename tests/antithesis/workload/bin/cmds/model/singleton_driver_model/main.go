@@ -85,6 +85,10 @@ func main() {
 
 	numLedgers := envInt("MODEL_LEDGERS", defaultLedgers)
 	numWorkers := envInt("MODEL_WORKERS", defaultWorkers)
+	if numWorkers > maxWorkers {
+		log.Printf("warning: MODEL_WORKERS=%d exceeds the safe maximum %d, using %d", numWorkers, maxWorkers, maxWorkers)
+		numWorkers = maxWorkers
+	}
 
 	client, conn, err := internal.NewClient()
 	if err != nil {
@@ -354,9 +358,16 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	if probeDone != nil {
 		<-probeDone
 	}
-	obs := observation{ticket: ticket, bulk: bulk, resp: resp, err: err, observeTicket: c.ticketSeq.Load()}
-	if checkpointCreate {
-		obs.processed = make(chan struct{})
+	// Keep each worker to one registered write at a time. Besides applying
+	// backpressure when the processor falls behind, this makes maxWorkers a real
+	// bound on the candidate search's independently committable bulks.
+	obs := observation{
+		ticket:        ticket,
+		bulk:          bulk,
+		resp:          resp,
+		err:           err,
+		observeTicket: c.ticketSeq.Load(),
+		processed:     make(chan struct{}),
 	}
 	// Register the disable recovery before publishing the successful enable.
 	// The processor may otherwise make that enable visible to restore, which can
@@ -369,11 +380,9 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		return
 	case c.incoming <- obs:
 	}
-	if checkpointCreate {
-		select {
-		case <-ctx.Done():
-		case <-obs.processed:
-		}
+	select {
+	case <-ctx.Done():
+	case <-obs.processed:
 	}
 }
 

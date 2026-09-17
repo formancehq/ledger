@@ -134,21 +134,36 @@ func TestModelFailure_NoSelfExplanation(t *testing.T) {
 	require.True(t, alreadyExistsExplained(collectBases(withAdd)))
 }
 
-func TestCandidateBasesSupportsMoreThan64InflightBulks(t *testing.T) {
+func TestCandidateBasesRejectsIntractableInflightSet(t *testing.T) {
 	t.Parallel()
 
 	c := NewChecker([]string{"L"}, nil)
-	for ticket := uint64(1); ticket <= 65; ticket++ {
-		// Removing an absent type cannot be folded, so the search stays small
-		// while exercising the dynamic remaining-set representation.
-		c.inflight[ticket] = bulkOf(oracletest.RemoveTypeReq("absent"))
+	for ticket := uint64(1); ticket <= maxCandidateInflight+1; ticket++ {
+		// Every bulk is independently committable. Without the explicit bound,
+		// exhausting this search requires exploring every subset.
+		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
+	}
+
+	require.PanicsWithValue(t, "candidate search exceeded its bounded in-flight set", func() {
+		c.candidateBases(maxCandidateInflight+1, func(oracle.GlobalState) bool { return false })
+	})
+}
+
+func TestCandidateBasesCompletesAtInflightBound(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	for ticket := uint64(1); ticket <= maxCandidateInflight; ticket++ {
+		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
 	}
 
 	visited := 0
-	c.candidateBases(65, func(oracle.GlobalState) bool {
+	c.candidateBases(maxCandidateInflight, func(oracle.GlobalState) bool {
 		visited++
 
 		return false
 	})
-	require.Equal(t, 1, visited)
+	// Distinct insertion orders produce distinct fingerprints, so this is the
+	// full sum of partial permutations: sum(8!/(8-k)!, k=0..8).
+	require.Equal(t, 109601, visited)
 }

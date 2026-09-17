@@ -15,7 +15,10 @@ import (
 // node local server.
 const (
 	defaultLedgers = 4
-	defaultWorkers = 8
+	defaultWorkers = 7
+	// Leave one candidate-search slot for the independently dispatched
+	// maintenance recovery. The search is exponential in outstanding writes.
+	maxWorkers = maxCandidateInflight - 1
 )
 
 // --- Address space ------------------------------------------------------
