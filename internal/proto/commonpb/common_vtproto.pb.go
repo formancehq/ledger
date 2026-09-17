@@ -3619,6 +3619,15 @@ func (m *AuditCondition_UintCond) CloneVT() isAuditCondition_Condition {
 	return r
 }
 
+func (m *AuditCondition_StringPrefix) CloneVT() isAuditCondition_Condition {
+	if m == nil {
+		return (*AuditCondition_StringPrefix)(nil)
+	}
+	r := new(AuditCondition_StringPrefix)
+	r.StringPrefix = m.StringPrefix
+	return r
+}
+
 func (m *LedgerCondition) CloneVT() *LedgerCondition {
 	if m == nil {
 		return (*LedgerCondition)(nil)
@@ -10620,6 +10629,23 @@ func (this *AuditCondition_UintCond) EqualVT(thatIface isAuditCondition_Conditio
 		if !p.EqualVT(q) {
 			return false
 		}
+	}
+	return true
+}
+
+func (this *AuditCondition_StringPrefix) EqualVT(thatIface isAuditCondition_Condition) bool {
+	that, ok := thatIface.(*AuditCondition_StringPrefix)
+	if !ok {
+		return false
+	}
+	if this == that {
+		return true
+	}
+	if this == nil && that != nil || this != nil && that == nil {
+		return false
+	}
+	if this.StringPrefix != that.StringPrefix {
+		return false
 	}
 	return true
 }
@@ -20722,6 +20748,20 @@ func (m *AuditCondition_UintCond) MarshalToSizedBufferVT(dAtA []byte) (int, erro
 	}
 	return len(dAtA) - i, nil
 }
+func (m *AuditCondition_StringPrefix) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *AuditCondition_StringPrefix) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i -= len(m.StringPrefix)
+	copy(dAtA[i:], m.StringPrefix)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.StringPrefix)))
+	i--
+	dAtA[i] = 0x22
+	return len(dAtA) - i, nil
+}
 func (m *LedgerCondition) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -26514,6 +26554,16 @@ func (m *AuditCondition_UintCond) SizeVT() (n int) {
 		l = m.UintCond.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	return n
+}
+func (m *AuditCondition_StringPrefix) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.StringPrefix)
+	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	return n
 }
 func (m *LedgerCondition) SizeVT() (n int) {
@@ -48066,6 +48116,38 @@ func (m *AuditCondition) UnmarshalVT(dAtA []byte) error {
 				}
 				m.Condition = &AuditCondition_UintCond{UintCond: v}
 			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StringPrefix", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Condition = &AuditCondition_StringPrefix{StringPrefix: string(dAtA[iNdEx:postIndex])}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex

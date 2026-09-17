@@ -261,6 +261,24 @@ native cursor, and Raft certificate `H` atomically. If the bounded snapshot has
 no native work, a standalone certificate write records `H`. `NotifyProgress()`
 wakes readers waiting for either certificate.
 
+### Audit secondary index
+
+The audit index is a rebuildable, per-replica read-store projection. String
+keys use `[0xFE][0x05][field][value\x00][audit sequence BE8]`; exact lookup
+includes the terminator and an exact-length check, while a value-prefix lookup
+uses the raw value prefix and its exclusive byte successor. Both access paths
+stay inside one field subspace and return audit sequences, so indexed filters
+never fall back to a full audit-zone predicate scan.
+
+`idempotency_key` is projected from the hash-bound
+`AuditEntry.idempotency.key`. The expiring main-store deduplication row is not
+an index source: after its TTL expires, a later proposal may legitimately reuse
+the same key, and every matching audit sequence remains searchable. Rebuild
+drops the local index and replays the authoritative audit zone, including after
+checkpoint plus incremental-delta restore. Until that rebuild reaches and
+certifies the fixed main-store horizon, dependent reads fail explicitly rather
+than reporting a false absence.
+
 ## Backfill — Atomic Switch
 
 Two distinct backfill paths share the same atomic-switch primitive:
