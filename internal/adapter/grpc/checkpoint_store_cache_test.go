@@ -3,6 +3,9 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -206,4 +209,66 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 
 	require.Equal(t, int64(1), opens.Load(), "the cancelled joiner must not have started its own open")
 	require.Empty(t, cache.entries, "the cancelled joiner's ref must have been dropped")
+}
+
+// pebble.DB.Close panics with "element has outstanding references" when a file
+// cache reference on it is still held, so the two closes must not share a
+// failure path: a panic out of the read index's close would otherwise skip the
+// main store's and leave its directory locked against every later reader.
+func TestCheckpointStoreCacheClosesMainStoreWhenReadIndexCloseFails(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	mainPath := impl.store.QueryCheckpointMainDir(gateCheckpointID)
+	readIndexPath := impl.store.QueryCheckpointReadIndexDir(gateCheckpointID)
+
+	// The panic needs a reference into an SST, so the read index's checkpoint is
+	// rebuilt here from flushed data; the fixture's fits in a memtable.
+	require.NoError(t, os.RemoveAll(readIndexPath))
+	rebuildReadIndexCheckpointWithSSTs(t, readIndexPath)
+
+	var cache checkpointStoreCache
+
+	_, readIdx, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), func() (*dal.Store, *readstore.Store, error) {
+		return openCheckpointDirs(mainPath, readIndexPath, testLogger())
+	})
+	require.NoError(t, err)
+
+	iter, err := readIdx.DB().NewIter(nil)
+	require.NoError(t, err)
+	require.True(t, iter.First(), "the iterator must hold an SST-backed reference")
+
+	release()
+
+	reopened, err := dal.OpenReadOnly(mainPath, testLogger())
+	require.NoError(t, err, "the main store must close even when the read index's close panics")
+	require.NoError(t, reopened.Close())
+	require.NoError(t, iter.Close())
+}
+
+// rebuildReadIndexCheckpointWithSSTs materializes a read-index checkpoint at
+// path whose data sits in an SST rather than a memtable.
+func rebuildReadIndexCheckpointWithSSTs(t *testing.T, path string) {
+	t.Helper()
+
+	const keys = 20_000
+
+	live, err := readstore.New(t.TempDir(), testLogger(), readstore.DefaultConfig())
+	require.NoError(t, err)
+
+	batch := live.NewBatch()
+	for i := range keys {
+		require.NoError(t, batch.SetBytes(fmt.Appendf(nil, "bench/%08d", i), make([]byte, 256)))
+	}
+	require.NoError(t, batch.Commit())
+	require.NoError(t, live.DB().Flush())
+
+	require.NoError(t, live.CreateCheckpoint(path))
+	require.NoError(t, dal.MarkCheckpointReady(path))
+	require.NoError(t, live.Close())
+
+	ssts, err := filepath.Glob(filepath.Join(path, "*.sst"))
+	require.NoError(t, err)
+	require.NotEmpty(t, ssts, "the checkpoint must contain an SST for the reference to exist")
 }

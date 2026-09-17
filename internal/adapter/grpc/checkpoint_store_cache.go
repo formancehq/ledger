@@ -45,6 +45,8 @@ type checkpointStoreEntry struct {
 	readIdx *readstore.Store
 	err     error
 
+	logger logging.Logger
+
 	refs int
 }
 
@@ -89,6 +91,10 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 // A reader waiting on another reader's open honors ctx, so one slow open does
 // not hold the others past their deadlines.
 func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger logging.Logger, open openCheckpointFn) (*dal.Store, *readstore.Store, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
 	c.mu.Lock()
 	if c.entries == nil {
 		c.entries = make(map[uint64]*checkpointStoreEntry)
@@ -96,7 +102,7 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 
 	entry, joined := c.entries[id]
 	if !joined {
-		entry = &checkpointStoreEntry{done: make(chan struct{})}
+		entry = &checkpointStoreEntry{done: make(chan struct{}), logger: logger}
 		c.entries[id] = entry
 	}
 	entry.refs++
@@ -119,11 +125,13 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 	}
 
 	if entry.err != nil {
-		// The entry leaves the cache once the last reader holding it has seen
-		// the error, and the reader after that opens again. A reader that joins
-		// before then is served the same error rather than repeating the open:
-		// the readiness markers are checked before the open, so a failure here
-		// is damage, which a second open would hit identically.
+		// The entry leaves the cache once the last reader holding it has
+		// released, and the reader after that opens again. A reader already
+		// waiting when the open failed is served the same error: the readiness
+		// markers are checked before the open, so the expected failure here is
+		// damage, which a second open would hit identically. A transient cause
+		// (a descriptor or space limit) is not distinguished, and costs those
+		// waiting readers an error each until the entry clears.
 		c.release(id, entry)
 
 		return nil, nil, nil, entry.err
@@ -184,7 +192,24 @@ func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 		return
 	}
 
-	// Best-effort: read-only close failures are non-actionable at request end.
-	_ = entry.readIdx.Close()
-	_ = entry.main.Close()
+	// Isolated from each other: pebble.DB.Close panics when a read resource on
+	// it is still referenced, and a panic out of the first close would skip the
+	// second, leaving that directory locked against every later reader.
+	closeSafe(entry.logger, "checkpoint read index", entry.readIdx.Close)
+	closeSafe(entry.logger, "checkpoint main store", entry.main.Close)
+}
+
+// closeSafe closes one store, containing a panic out of Pebble's Close.
+// Close failures are not actionable at request end, so they are logged rather
+// than returned.
+func closeSafe(logger logging.Logger, what string, closeStore func() error) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Errorf("Panic closing %s: %v\n%s", what, r, debug.Stack())
+		}
+	}()
+
+	if err := closeStore(); err != nil {
+		logger.WithField("error", err).Errorf("Failed to close %s", what)
+	}
 }
