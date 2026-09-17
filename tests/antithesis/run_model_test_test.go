@@ -1,6 +1,7 @@
 package antithesis_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"os/exec"
@@ -68,10 +69,7 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error) 
 	}
 	readyReader, readyWriter, err := os.Pipe()
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		require.NoError(t, readyReader.Close())
-		require.NoError(t, readyWriter.Close())
-	})
+	t.Cleanup(func() { _ = readyReader.Close() })
 	date, err := exec.LookPath("date")
 	require.NoError(t, err)
 	seq, err := exec.LookPath("seq")
@@ -105,16 +103,29 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error) 
 	// The clock waits for scenario evidence before the two-second run starts.
 	cmd.ExtraFiles = []*os.File{readyReader, readyWriter}
 	configureModelFixtureProcess(cmd)
-	combined, err := cmd.CombinedOutput()
-	require.NoError(t, ctx.Err(), string(combined))
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	// Prime the clock pipe so the first date call (for deadline calculation)
+	// does not block before the driver starts. The driver adds another token
+	// when it signals readiness; date reads one and rewrites one each call.
+	_, err = readyWriter.Write([]byte{1})
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+	// Close the parent's copy of the write end so child processes can observe
+	// EOF on the read end once all child writers exit.
+	require.NoError(t, readyWriter.Close())
+	err = cmd.Wait()
+	require.NoError(t, ctx.Err(), buf.String())
+	combined := buf.String()
 
 	workDirs, globErr := filepath.Glob(filepath.Join(tempDir, "model-test.*"))
 	require.NoError(t, globErr)
-	require.Len(t, workDirs, 1, string(combined))
+	require.Len(t, workDirs, 1, combined)
 	driverLogPath := filepath.Join(workDirs[0], "driver.log")
-	require.FileExists(t, driverLogPath, string(combined))
+	require.FileExists(t, driverLogPath, combined)
 	driverLog, readErr := os.ReadFile(driverLogPath)
-	require.NoError(t, readErr, string(combined))
+	require.NoError(t, readErr, combined)
 
-	return string(combined), strings.TrimSpace(string(driverLog)), err
+	return combined, strings.TrimSpace(string(driverLog)), err
 }
