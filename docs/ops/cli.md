@@ -3887,7 +3887,7 @@ The cluster policy is a Raft-replicated record of settings that must apply ident
 | `--metadata-max-key-bytes` | uint64 | `256` | Maximum metadata key size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
 | `--metadata-max-value-bytes` | uint64 | `16384` | Maximum metadata value size in bytes. Must be greater than zero and not exceed `--metadata-max-entity-bytes`. |
 | `--metadata-max-entity-bytes` | uint64 | `65536` | Maximum total metadata bytes one command may carry for a single entity. Must be greater than zero and not exceed `--metadata-max-command-bytes`. |
-| `--metadata-max-command-bytes` | uint64 | `262144` | Maximum total metadata bytes one command may carry across every entity it touches. Must be greater than zero. |
+| `--metadata-max-command-bytes` | uint64 | `1048576` | Maximum total metadata bytes one command may carry across every entity it touches. Must be greater than zero. |
 
 To change a policy value, raise `--cluster-policy-revision` so the new policy supersedes the applied one:
 

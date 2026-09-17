@@ -676,6 +676,36 @@ func (in *ClusterSpec) DeepCopyInto(out *ClusterSpec) {
 		*out = new(bool)
 		**out = **in
 	}
+	if in.ClusterPolicyRevision != nil {
+		in, out := &in.ClusterPolicyRevision, &out.ClusterPolicyRevision
+		*out = new(int64)
+		**out = **in
+	}
+	if in.MetadataMaxEntries != nil {
+		in, out := &in.MetadataMaxEntries, &out.MetadataMaxEntries
+		*out = new(int64)
+		**out = **in
+	}
+	if in.MetadataMaxKeyBytes != nil {
+		in, out := &in.MetadataMaxKeyBytes, &out.MetadataMaxKeyBytes
+		*out = new(int64)
+		**out = **in
+	}
+	if in.MetadataMaxValueBytes != nil {
+		in, out := &in.MetadataMaxValueBytes, &out.MetadataMaxValueBytes
+		*out = new(int64)
+		**out = **in
+	}
+	if in.MetadataMaxEntityBytes != nil {
+		in, out := &in.MetadataMaxEntityBytes, &out.MetadataMaxEntityBytes
+		*out = new(int64)
+		**out = **in
+	}
+	if in.MetadataMaxCommandBytes != nil {
+		in, out := &in.MetadataMaxCommandBytes, &out.MetadataMaxCommandBytes
+		*out = new(int64)
+		**out = **in
+	}
 	if in.Snapshot != nil {
 		in, out := &in.Snapshot, &out.Snapshot
 		*out = new(SnapshotConfig)

@@ -199,6 +199,55 @@ type ClusterSpec struct {
 	// +optional
 	UnsafeSkipConfigValidation *bool `json:"unsafeSkipConfigValidation,omitempty"`
 
+	// ClusterPolicyRevision is the monotonic revision number the leader must
+	// propose to replace the committed cluster policy. Bump this whenever you
+	// change any metadata-limit field, idempotencyTTL, hashAlgorithm, or
+	// queryCheckpointLimit. The leader proposes the policy only when this
+	// exceeds the applied revision; setting a new value without bumping the
+	// revision logs a divergence error and changes nothing.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	ClusterPolicyRevision *int64 `json:"clusterPolicyRevision,omitempty"`
+
+	// MetadataMaxEntries is the maximum number of metadata entries one command
+	// may carry for a single entity (transaction, account, or ledger). This is
+	// replicated in the cluster policy; changing it requires bumping
+	// clusterPolicyRevision. Default: 128.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MetadataMaxEntries *int64 `json:"metadataMaxEntries,omitempty"`
+
+	// MetadataMaxKeyBytes is the maximum metadata key size in bytes. Must not
+	// exceed metadataMaxEntityBytes. Replicated in the cluster policy; requires
+	// bumping clusterPolicyRevision. Default: 256.
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MetadataMaxKeyBytes *int64 `json:"metadataMaxKeyBytes,omitempty"`
+
+	// MetadataMaxValueBytes is the maximum metadata value size in bytes. Must
+	// not exceed metadataMaxEntityBytes. Replicated in the cluster policy;
+	// requires bumping clusterPolicyRevision. Default: 16384 (16 KiB).
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MetadataMaxValueBytes *int64 `json:"metadataMaxValueBytes,omitempty"`
+
+	// MetadataMaxEntityBytes is the maximum total metadata bytes one command
+	// may carry for a single entity. Must not exceed metadataMaxCommandBytes.
+	// Replicated in the cluster policy; requires bumping clusterPolicyRevision.
+	// Default: 65536 (64 KiB).
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MetadataMaxEntityBytes *int64 `json:"metadataMaxEntityBytes,omitempty"`
+
+	// MetadataMaxCommandBytes is the maximum total metadata bytes one command
+	// may carry across all entities it touches. Bounds what a single accepted
+	// write can replicate through Raft. Must be >= metadataMaxEntityBytes.
+	// Replicated in the cluster policy; requires bumping clusterPolicyRevision.
+	// Default: 1048576 (1 MiB).
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MetadataMaxCommandBytes *int64 `json:"metadataMaxCommandBytes,omitempty"`
+
 	// Snapshot sync configuration for Raft snapshot transfers.
 	// +optional
 	Snapshot *SnapshotConfig `json:"snapshot,omitempty"`

@@ -184,6 +184,16 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	envs = appendIfStr(envs, "HASH_ALGORITHM", spec.HashAlgorithm)
 	envs = appendIfBool(envs, "UNSAFE_SKIP_CONFIG_VALIDATION", spec.UnsafeSkipConfigValidation)
 
+	// Cluster policy fields: metadata size limits and revision.
+	// Each field maps directly to its CLI flag via the uppercase-with-underscores
+	// convention: --cluster-policy-revision -> CLUSTER_POLICY_REVISION, etc.
+	envs = appendIfInt64(envs, "CLUSTER_POLICY_REVISION", spec.ClusterPolicyRevision)
+	envs = appendIfInt64(envs, "METADATA_MAX_ENTRIES", spec.MetadataMaxEntries)
+	envs = appendIfInt64(envs, "METADATA_MAX_KEY_BYTES", spec.MetadataMaxKeyBytes)
+	envs = appendIfInt64(envs, "METADATA_MAX_VALUE_BYTES", spec.MetadataMaxValueBytes)
+	envs = appendIfInt64(envs, "METADATA_MAX_ENTITY_BYTES", spec.MetadataMaxEntityBytes)
+	envs = appendIfInt64(envs, "METADATA_MAX_COMMAND_BYTES", spec.MetadataMaxCommandBytes)
+
 	// Snapshot sync
 	if spec.Snapshot != nil {
 		envs = appendIfStr(envs, "SNAPSHOT_SESSION_TTL", spec.Snapshot.SessionTTL)
