@@ -63,6 +63,27 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    rejects later acquisitions immediately, but physical removal of both
    directories waits for every already-acquired reader to close; this preserves
    lazy Pebble SST opens for the reader's full lifetime.
+8. **One open serves every concurrent reader of a checkpoint.** Pebble takes a
+   directory lock on open and keeps the held paths in a process-global table, so
+   a second open of a directory this process already holds fails with `lock held
+   by current process`; `ReadOnly` does not exempt it, because the lock exists to
+   keep writers from corrupting each other. A checkpoint is frozen and every one
+   of these opens is read-only, so there is no writer to exclude:
+   `checkpointStoreCache` (`internal/adapter/grpc/checkpoint_store_cache.go`)
+   holds one open per checkpoint id, refcounted, and the last reader to leave
+   closes both databases. A cache at rest holds no handles, so nothing has to be
+   drained at shutdown. Three properties it depends on:
+   - **The lease of step 7 stays per-reader.** Taking it once per shared open
+     would let a reader arriving after a committed deletion be served from an
+     open held by an earlier one; per-reader keeps such a reader refused at
+     acquisition, as that step describes.
+   - **The close runs in the same critical section that removes the entry.**
+     Removing it first would let a reader arriving mid-close install a fresh
+     entry and open the directory while Pebble still held its lock. The cost is
+     that a slow close briefly delays acquisitions of other checkpoints.
+   - **Readers waiting on another reader's open honor their context**, and the
+     open unwinds its own partial state on a panic as well as on an error — a
+     handle left open would hold the directory lock against every later reader.
 
 ## Readiness and Error Contract
 
@@ -132,7 +153,7 @@ Both halves materialize asynchronously and **per-replica** (steps 4 and 6), by d
 - **A read on a node that has not yet materialized the checkpoint returns a typed, retryable error.** Checkpoint reads are served locally on whichever node receives the request (no leader routing). On a node where either half is still unmaterialized — the applier has not finished the main store, or the builder has not yet crossed the checkpoint log — `openCheckpointStores` finds a missing `.ready` marker but sees the checkpoint in the replicated `QueryCheckpointState` registry, and returns `ErrCheckpointNotReady` — reason `CHECKPOINT_NOT_READY`, mapped to gRPC `Unavailable`. This mirrors the per-replica `INDEX_BUILDING → Unavailable` pattern for metadata indexes: clients retry until that node materializes the checkpoint inline. The read never returns partial state.
 - **A read for a checkpoint id that does not exist returns `NotFound`.** If there is no `.ready` marker *and* no `QueryCheckpointState` entry for the id, `openCheckpointStores` returns `NotFound` (permanent) so clients stop retrying — distinct from the retryable `Unavailable` above. A deletion committed before the read is refused at lease acquisition and resolves the same way; a deletion committed after it cannot unlink under the open (see step 7), so a read-only open that fails with both markers present is damage, never a race.
 - **Transient live materialization failures are retried before later mutations.** The projection batch commits before filesystem materialization; the native cursor commits only after it. If materialization fails, the builder retains the checkpoint id and audit horizon in memory and retries that side effect at the start of the next `processLogs` call, before re-reading from the cursor still parked at the checkpoint log. It does not replay the committed batch, which could duplicate lifecycle mutations. Later logs, backfills, and event GC remain behind this retry boundary so the frozen readstore still represents the original checkpoint horizon.
-- **A damaged directory fails permanently instead of retrying forever.** Both markers present means each half was complete when it was published, so a read-only open that then fails is damage, not lag: the error surfaces as-is and reaches the client as a sanitized permanent `Unknown` carrying a correlation ID (the node log holds the cause), never the retryable `Unavailable` that `actions.GRPCRetryPolicy` would retry 50 times. Recovery is the same delete-and-recreate as the cases below.
+- **A damaged directory fails permanently instead of retrying forever.** Both markers present means each half was complete when it was published, so a read-only open that then fails is damage, not lag: the error surfaces as-is and reaches the client as a sanitized permanent `Unknown` carrying a correlation ID (the node log holds the cause), never the retryable `Unavailable` that `actions.GRPCRetryPolicy` would retry 50 times. Recovery is the same delete-and-recreate as the cases below. Because the readiness markers are checked before the open, a failure past that gate is damage rather than lag, and a second open would hit it identically: readers already sharing the failed open are served that same error, and the entry leaves the cache once the last of them releases (step 8).
 - **A crash inside a materialization is finished on restart; nothing else degrades to wrong data.** There is no historical reconstruction — each half instead keeps its recovery source intact until it is marked: the live main store stays at `H` while the Applier is gated, and the read index's cursor stays before the checkpoint log (steps 4 and 6). A replica that dies at any point of either materialization reopens, rebuilds the missing half from that source, and serves the checkpoint. Reads meanwhile return the retryable `Unavailable`. Two cases stay `Unavailable` on a replica for good, because that replica never had the source: one that never applied the creation entry (it joined through a later snapshot, or had to resync from the leader after the crash), and one whose audit projection is disabled or failed (the builder moves past the log without materializing). For those the operator/client deletes and recreates the checkpoint (the `AcquireCheckpoint` client helper does so on timeout); deleting it makes reads return `NotFound`.
 
 The `.ready` markers and the checkpoint directories are rebuildable filesystem lifecycle state (a projection of the audit log), not a persisted Pebble projection, so they are outside the checker's scope.
