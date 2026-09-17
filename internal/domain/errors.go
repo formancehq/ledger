@@ -253,6 +253,7 @@ const (
 	ErrReasonCheckpointNotFound            = "CHECKPOINT_NOT_FOUND"
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
+	ErrReasonRevertTargetCreatedInBatch    = "REVERT_TARGET_CREATED_IN_BATCH"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -650,6 +651,30 @@ func (e *ErrTransactionAlreadyReverted) Error() string {
 }
 func (*ErrTransactionAlreadyReverted) Reason() string { return ErrReasonTransactionAlreadyReverted }
 func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
+	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+}
+
+// ErrRevertTargetCreatedInBatch — a revert targeted a transaction created by an
+// earlier order in the same atomic batch.
+//
+// Admission resolves a revert's original postings from the local store only, and
+// the bulk overlay does not carry transactions the batch itself creates, so it
+// cannot declare the volume coverage apply needs. The rejection is permanent
+// rather than retryable on purpose: the whole batch is rejected, so the create
+// never lands and re-admitting the identical batch reproduces the same
+// observation. Classifying it as stale would spin the client forever.
+type ErrRevertTargetCreatedInBatch struct {
+	TransactionID uint64
+}
+
+func (e *ErrRevertTargetCreatedInBatch) Error() string {
+	return fmt.Sprintf(
+		"transaction %d is created by this batch and cannot be reverted in it; submit the revert separately",
+		e.TransactionID,
+	)
+}
+func (*ErrRevertTargetCreatedInBatch) Reason() string { return ErrReasonRevertTargetCreatedInBatch }
+func (e *ErrRevertTargetCreatedInBatch) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
 

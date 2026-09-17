@@ -1,9 +1,12 @@
 package admission
 
 import (
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
 // numscriptEntryKey identifies a specific numscript version.
@@ -75,12 +78,64 @@ type bulkOverlay struct {
 	numscriptEntries *overlay[numscriptEntryKey, string]
 	numscriptLatest  *overlay[numscriptNameKey, string]
 	sinks            *overlay[string, *commonpb.SinkConfig]
-	// Original postings of each revert target, resolved once at order-build
-	// time from the transaction attribute and reused
-	// by the preload and intra-bulk effect passes. They stay off the wire
-	// order: the FSM re-derives them from the coverage-gated TransactionState,
-	// and only caller intent is bound into the audit chain.
-	revertOriginalPostings map[domain.TransactionKey][]*commonpb.Posting
+	// What admission observed of each revert target, resolved once at
+	// order-build time from the transaction attribute and reused by the preload
+	// and intra-bulk effect passes. The postings stay off the wire order: the
+	// FSM re-derives them from the coverage-gated TransactionState, and only
+	// caller intent is bound into the audit chain. The observation itself is
+	// bound, as a digest, so apply can tell a stale admission view from an
+	// under-declaration.
+	revertOriginalPostings map[domain.TransactionKey]revertTargetObservation
+}
+
+// revertTargetObservation is what admission saw when it looked up a revert
+// target in the local store. found=false records that it looked and found
+// nothing, which is different from never having looked.
+type revertTargetObservation struct {
+	postings []*commonpb.Posting
+	found    bool
+}
+
+// bindRevertTargetDigest stamps a revert order's technical sub-message with a
+// digest of what admission observed of its target.
+//
+// It is a no-op for every other order type, so a non-revert order keeps an empty
+// digest and the FSM skips the check. OrderTechnical is excluded wholesale from
+// the idempotency and business-intent hashes, so writing here cannot change the
+// order's logical identity.
+func bindRevertTargetDigest(
+	order *raftcmdpb.Order,
+	ledgerName string,
+	applyOrder *raftcmdpb.LedgerApplyOrder,
+	overlay *bulkOverlay,
+) {
+	revert, ok := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
+	if !ok {
+		return
+	}
+
+	observation, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{
+		LedgerName: ledgerName,
+		ID:         revert.RevertTransaction.GetTransactionId(),
+	})
+	if !recorded {
+		// Unreachable by construction: convertApplyRequest records an
+		// observation for every revert it builds. Leaving the digest empty here
+		// would silently disable the apply-time check, so say so loudly rather
+		// than binding a digest for a lookup that never happened.
+		assert.Unreachable("revert order reached digest binding without a recorded target observation", map[string]any{
+			"ledger":        ledgerName,
+			"transactionId": revert.RevertTransaction.GetTransactionId(),
+		})
+
+		return
+	}
+
+	if order.GetTechnical() == nil {
+		order.Technical = &raftcmdpb.OrderTechnical{}
+	}
+
+	order.Technical.RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found)
 }
 
 func newBulkOverlay() *bulkOverlay {
@@ -88,20 +143,35 @@ func newBulkOverlay() *bulkOverlay {
 		numscriptEntries:       newOverlay[numscriptEntryKey, string](),
 		numscriptLatest:        newOverlay[numscriptNameKey, string](),
 		sinks:                  newOverlay[string, *commonpb.SinkConfig](),
-		revertOriginalPostings: make(map[domain.TransactionKey][]*commonpb.Posting),
+		revertOriginalPostings: make(map[domain.TransactionKey]revertTargetObservation),
 	}
 }
 
-// recordRevertOriginalPostings stores the postings admission resolved for a
-// revert target so later passes read them without re-fetching.
-func (o *bulkOverlay) recordRevertOriginalPostings(key domain.TransactionKey, postings []*commonpb.Posting) {
-	o.revertOriginalPostings[key] = postings
+// recordRevertOriginalPostings stores what admission observed of a revert
+// target so later passes read it without re-fetching. found is false when the
+// transaction was not in the local store — an observation in its own right, not
+// an absence of one.
+func (o *bulkOverlay) recordRevertOriginalPostings(
+	key domain.TransactionKey,
+	postings []*commonpb.Posting,
+	found bool,
+) {
+	o.revertOriginalPostings[key] = revertTargetObservation{postings: postings, found: found}
 }
 
-// revertOriginalPostingsFor returns the postings recorded for a revert target,
-// or nil if none were resolved (missing tx — the FSM audits the rejection).
-func (o *bulkOverlay) revertOriginalPostingsFor(key domain.TransactionKey) []*commonpb.Posting {
-	return o.revertOriginalPostings[key]
+// revertOriginalPostingsFor returns the postings recorded for a revert target
+// and whether admission resolved that target at all.
+//
+// The two conditions must stay distinguishable. Nil postings with ok=true is an
+// observation — admission looked and the transaction was not in the local store
+// (a missing tx, or one committed but not yet applied here) — and it is bound
+// into the order's revert_target_digest so apply can reject a stale view before
+// it reads an undeclared volume. ok=false means no revert order referenced this
+// key, which carries no observation at all.
+func (o *bulkOverlay) revertOriginalPostingsFor(key domain.TransactionKey) (revertTargetObservation, bool) {
+	observation, ok := o.revertOriginalPostings[key]
+
+	return observation, ok
 }
 
 // recordNumscriptSave records an immutable save in the overlay and advances the

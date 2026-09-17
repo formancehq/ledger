@@ -1310,6 +1310,15 @@ enum ErrorReason {
   // per-command bytes). Permanent (Kind=Validation): the caller must send less
   // metadata, so a retry of the same payload cannot succeed. See EN-1829.
   ERROR_REASON_METADATA_LIMIT_EXCEEDED = 69;
+  // ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH: a revert targeted a
+  // transaction created by an earlier order in the same atomic batch. Admission
+  // resolves a revert's original postings from the local store only, and the
+  // overlay does not carry transactions the batch itself creates, so it cannot
+  // declare the volume coverage that apply needs. Permanent
+  // (Kind=Validation): the whole batch is rejected, so the create never lands
+  // and re-admitting the identical batch reproduces the same observation.
+  // Submit the revert in a later batch.
+  ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

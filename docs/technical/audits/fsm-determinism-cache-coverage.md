@@ -63,6 +63,32 @@ Idempotency coverage uses its documented dedicated channel rather than an
 attribute slot. Non-cache committed state can have another scoped contract; do
 not force it into this matrix, but verify that its access remains deterministic.
 
+### Declarations derived from a read, not from the request
+
+Step 1 is correct by construction only when the producer declares keys it can
+name from the request. Some declarations instead come from an **observation** of
+state: a revert's volume keys are knowable only from the stored target
+transaction, and Numscript's from resolved balances and metadata. Those
+observations can be wrong by apply time — admission reads the local store with no
+read barrier, so a target committed but not yet applied there reads as absent and
+the order declares no volume keys at all.
+
+A fixture where the producer's read view already matches apply cannot expose
+this. Exercise the divergence directly: make the dependency absent at admission
+and present at apply. The chain to prove is that the producer binds its
+observation into the proposal, the handler re-derives it from a key it is
+*already* authorized to read, and the mismatch is rejected before the dependent
+reads — not that the gate catches it afterwards. Reaching the gate for this cause
+is itself the finding, because the gate's documented meaning is an admission bug.
+
+Classification is part of the contract, and getting it wrong is a real defect in
+both directions. A mismatch a re-admission could resolve must be retryable; one
+it can never resolve — a target the same batch creates, so that rejecting the
+batch un-creates it — must be permanent, or the client re-admits forever. And a
+proposal whose observation *matches* must still reach the gate if it reads an
+undeclared key: the observation check must not become a way to soften a genuine
+under-declaration.
+
 ## Cache-horizon and preload proof
 
 For a preload/cache hypothesis, establish the complete timeline:

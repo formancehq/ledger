@@ -783,6 +783,15 @@ const (
 	// per-command bytes). Permanent (Kind=Validation): the caller must send less
 	// metadata, so a retry of the same payload cannot succeed. See EN-1829.
 	ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED ErrorReason = 69
+	// ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH: a revert targeted a
+	// transaction created by an earlier order in the same atomic batch. Admission
+	// resolves a revert's original postings from the local store only, and the
+	// overlay does not carry transactions the batch itself creates, so it cannot
+	// declare the volume coverage that apply needs. Permanent
+	// (Kind=Validation): the whole batch is rejected, so the create never lands
+	// and re-admitting the identical batch reproduces the same observation.
+	// Submit the revert in a later batch.
+	ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH ErrorReason = 70
 )
 
 // Enum value maps for ErrorReason.
@@ -858,6 +867,7 @@ var (
 		67: "ERROR_REASON_SEQUENCE_EXHAUSTED",
 		68: "ERROR_REASON_INDEX_ALREADY_EXISTS",
 		69: "ERROR_REASON_METADATA_LIMIT_EXCEEDED",
+		70: "ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -930,6 +940,7 @@ var (
 		"ERROR_REASON_SEQUENCE_EXHAUSTED":               67,
 		"ERROR_REASON_INDEX_ALREADY_EXISTS":             68,
 		"ERROR_REASON_METADATA_LIMIT_EXCEEDED":          69,
+		"ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH":   70,
 	}
 )
 
@@ -13606,7 +13617,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x87\x16\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xb8\x16\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13678,7 +13689,8 @@ const file_common_proto_rawDesc = "" +
 	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10B\x12#\n" +
 	"\x1fERROR_REASON_SEQUENCE_EXHAUSTED\x10C\x12%\n" +
 	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D\x12(\n" +
-	"$ERROR_REASON_METADATA_LIMIT_EXCEEDED\x10E*Q\n" +
+	"$ERROR_REASON_METADATA_LIMIT_EXCEEDED\x10E\x12/\n" +
+	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

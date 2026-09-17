@@ -70,6 +70,16 @@ message OrderTechnical {
   // coverage is empty). See EN-1406. Generic on purpose: any future
   // "preload could not be built" cause reuses this flag.
   bool preload_unavailable = 3;
+  // revert_target_digest binds what admission observed of a revert's target
+  // transaction when it derived that order's volume coverage. Admission reads
+  // the target's postings from the local store with no read barrier, so a
+  // target that is committed but not yet applied locally reads as absent and no
+  // volume key is declared — apply then reads volumes the plan never declared
+  // and the coverage gate rejects a legitimate revert. The FSM re-derives this
+  // digest from the transaction state it already reads through the gate and
+  // rejects a mismatch with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable)
+  // before it can touch a volume. Empty for every non-revert order.
+  bytes revert_target_digest = 4;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a

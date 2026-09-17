@@ -199,6 +199,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 					Asset:       "USD",
 				},
 			},
+			true,
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -260,6 +261,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 					Asset:       "USD",
 				},
 			},
+			true,
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -392,11 +394,13 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		// The audit-bound order carries only caller intent; the resolved
 		// postings live in the sidecar for the preload pass (invariant #9).
-		sidecar := overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 1})
-		require.Len(t, sidecar, 1,
+		sidecar, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 1})
+		require.True(t, recorded)
+		require.True(t, sidecar.found, "the target was present in the store")
+		require.Len(t, sidecar.postings, 1,
 			"admission reads TxState.Postings into the sidecar to declare volume coverage")
-		require.Equal(t, "world", sidecar[0].GetSource())
-		require.Equal(t, "user:alice", sidecar[0].GetDestination())
+		require.Equal(t, "world", sidecar.postings[0].GetSource())
+		require.Equal(t, "user:alice", sidecar.postings[0].GetDestination())
 	})
 
 	t.Run("passes revert of non-existent transaction through to FSM (audited)", func(t *testing.T) {
@@ -418,10 +422,11 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		// A revert on a non-existent transaction must NOT fail-fast at
 		// admission: invariant #8 requires business decisions to be
 		// hash-chained in the audit, and only the FSM apply writes audit
-		// entries. Admission emits the order and records nil postings in the
-		// sidecar; the FSM's processRevertTransaction returns
-		// ErrTransactionNotFound (via `txID >= boundaries.GetNextTransactionId()`)
-		// BEFORE touching volumes — that error lands in the audit chain.
+		// entries. Admission emits the order and records an explicit
+		// absent observation in the sidecar; the FSM's
+		// processRevertTransaction returns ErrTransactionNotFound (via
+		// `txID >= boundaries.GetNextTransactionId()`) BEFORE touching volumes
+		// — that error lands in the audit chain.
 		overlay := newBulkOverlay()
 		order, err := admission.convertApplyRequest(t.Context(), applyRequest, overlay)
 		require.NoError(t, err)
@@ -429,7 +434,13 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		_, ok := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
 		require.True(t, ok)
-		require.Empty(t, overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 999}),
+
+		sidecar, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 999})
+		require.True(t, recorded,
+			"admission must record that it looked, so the absence can be bound into the order")
+		require.False(t, sidecar.found,
+			"the source tx is absent from the local store")
+		require.Empty(t, sidecar.postings,
 			"admission must pass through with nil postings when the source tx is absent")
 	})
 
@@ -659,6 +670,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 					Asset:       "USD",
 				},
 			},
+			true,
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -863,6 +875,68 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		revertOrder := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction).RevertTransaction
 		require.Equal(t, uint64(42), revertOrder.GetTransactionId())
 		require.True(t, revertOrder.GetForce())
+	})
+
+	t.Run("binds the absent observation of a target missing from the local store", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		// Transaction 42 is not in this node's store. Admission cannot tell a
+		// transaction that never existed from one committed but not yet applied
+		// here, so it declares no volume coverage and binds what it saw. The FSM
+		// re-derives the digest from the state it reads through the coverage
+		// gate and rejects the order before reading an undeclared volume.
+		request := &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: testLedgerName,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_RevertTransaction{
+							RevertTransaction: &servicepb.RevertTransactionPayload{TransactionId: 42},
+						},
+					},
+				},
+			},
+		}
+
+		order, err := admission.requestToOrder(t.Context(), request, nil, newBulkOverlay())
+		require.NoError(t, err)
+
+		require.Equal(t, domain.RevertTargetDigest(nil, false), order.GetTechnical().GetRevertTargetDigest(),
+			"an absent target must be bound as absent, not left empty")
+		require.NotEmpty(t, order.GetTechnical().GetRevertTargetDigest(),
+			"an empty digest disables the apply-time check entirely")
+	})
+
+	t.Run("leaves the digest empty for a non-revert order", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		admission, _ := createTestAdmission(t, store)
+
+		request := &servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: testLedgerName,
+					Action: &servicepb.LedgerAction{
+						Data: &servicepb.LedgerAction_CreateTransaction{
+							CreateTransaction: &servicepb.CreateTransactionPayload{
+								Postings: []*commonpb.Posting{{
+									Source:      "world",
+									Destination: "user:alice",
+									Amount:      commonpb.NewUint256FromUint64(100),
+									Asset:       "USD",
+								}},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		order, err := admission.requestToOrder(t.Context(), request, nil, newBulkOverlay())
+		require.NoError(t, err)
+		require.Empty(t, order.GetTechnical().GetRevertTargetDigest())
 	})
 }
 
