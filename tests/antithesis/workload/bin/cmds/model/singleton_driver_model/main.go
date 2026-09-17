@@ -347,7 +347,11 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
 		}
-		hadAmbiguousAttempt = hadAmbiguousAttempt || internal.IsAmbiguousCommit(err)
+		// A transport cancellation while the driver context remains live can
+		// arrive after the server committed the request. Preserve that ambiguity
+		// so a maintenance rejection on the retry schedules recovery instead of
+		// being treated as a definitive failure.
+		hadAmbiguousAttempt = hadAmbiguousAttempt || internal.IsAmbiguousCommit(err) || internal.IsCanceled(err)
 		select {
 		case <-ctx.Done():
 		case <-time.After(200 * time.Millisecond):
