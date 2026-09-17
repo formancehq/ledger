@@ -1,13 +1,49 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+type immediateApplyClient struct {
+	servicepb.BucketServiceClient
+}
+
+func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	return &servicepb.ApplyResponse{}, nil
+}
+
+func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	done := make(chan struct{})
+	go func() {
+		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c)
+		close(done)
+	}()
+
+	obs := <-c.incoming
+	select {
+	case <-done:
+		t.Fatal("recovery returned before its observation was processed")
+	default:
+	}
+	require.Contains(t, c.inflight, obs.ticket)
+
+	c.mu.Lock()
+	c.removeInflight(obs.ticket)
+	markObservationProcessed(obs)
+	c.mu.Unlock()
+	<-done
+	require.NotContains(t, c.inflight, obs.ticket)
+}
 
 func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 	t.Parallel()

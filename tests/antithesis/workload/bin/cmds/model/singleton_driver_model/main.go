@@ -457,11 +457,26 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		}
 	}
 	dumpBatch(ticket, req, resp, err)
-	obs := observation{ticket: ticket, bulk: bulk, resp: resp, err: err, observeTicket: c.ticketSeq.Load()}
+	obs := observation{
+		ticket:        ticket,
+		bulk:          bulk,
+		resp:          resp,
+		err:           err,
+		observeTicket: c.ticketSeq.Load(),
+		processed:     make(chan struct{}),
+	}
 	select {
 	case <-ctx.Done():
 		return
 	case c.incoming <- obs:
+	}
+	// Keep the recovery coalesced until its observation leaves c.inflight and
+	// has been validated. Clearing maintenanceRecoveryActive any earlier lets a
+	// concurrent enable schedule a second recovery on top of every worker bulk,
+	// exceeding the candidate-search bound.
+	select {
+	case <-ctx.Done():
+	case <-obs.processed:
 	}
 }
 
