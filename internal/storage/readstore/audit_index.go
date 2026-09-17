@@ -308,7 +308,7 @@ func auditSeqsByStringPrefix(reader dal.PebbleReader, field byte, value string) 
 	// operand containing NUL shares a byte-prefix with shorter exact keys and
 	// would produce false-positive matches. Reject it explicitly.
 	if strings.ContainsRune(value, '\x00') {
-		return nil, fmt.Errorf("audit index prefix operand must not contain NUL")
+		return nil, errors.New("audit index prefix operand must not contain NUL")
 	}
 
 	kb := dal.NewKeyBuilder()
