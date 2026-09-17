@@ -52,7 +52,7 @@ func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) 
 	c.mu.Unlock()
 	done := make(chan struct{})
 	go func() {
-		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c, recoveryID)
+		dispatchMaintenanceRecovery(t.Context(), immediateApplyClient{}, c, recoveryID, 1)
 		close(done)
 	}()
 
@@ -238,6 +238,21 @@ func TestProcessorCoalescesAmbiguousMaintenanceEnables(t *testing.T) {
 	retainedTicket, retained := c.ambiguousMaintenanceEnableTicket()
 	require.True(t, retained)
 	require.Equal(t, uint64(1), retainedTicket)
+}
+
+func TestAmbiguousEnableClearsOnlyAfterScheduledRecoveryGeneration(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	c.ambiguousBulks[1] = bulkOf(actions.SetMaintenanceModeAction(true))
+	c.ambiguousEnableClearSeq = 2
+
+	c.clearAmbiguousMaintenanceEnable(1)
+	require.Contains(t, c.ambiguousBulks, uint64(1))
+
+	c.clearAmbiguousMaintenanceEnable(2)
+	require.NotContains(t, c.ambiguousBulks, uint64(1))
+	require.Zero(t, c.ambiguousEnableClearSeq)
 }
 
 func TestResponseHighWaterExcludesWriterBlockedBeforeRegistration(t *testing.T) {

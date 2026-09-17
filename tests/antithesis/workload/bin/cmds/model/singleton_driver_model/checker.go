@@ -110,6 +110,7 @@ type Checker struct {
 	maintenanceRecoveryActive bool
 	maintenanceRecoveryTicket uint64
 	ambiguousBulks            map[uint64]oracle.Bulk
+	ambiguousEnableClearSeq   uint64
 	recoveries                sync.WaitGroup
 }
 
@@ -122,6 +123,7 @@ type observation struct {
 	resp            *servicepb.ApplyResponse
 	err             error
 	ambiguousCommit bool
+	recoverySeq     uint64
 	observeTicket   uint64
 	processed       chan struct{}
 }

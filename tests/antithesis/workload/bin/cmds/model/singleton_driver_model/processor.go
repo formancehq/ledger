@@ -112,6 +112,9 @@ func (c *Checker) handleObservation(obs observation) {
 			delete(c.ambiguousBulks, retainedTicket)
 			c.ambiguousBulks[obs.ticket] = obs.bulk
 		}
+		if bulkEnablesMaintenance(obs.bulk) && obs.recoverySeq > c.ambiguousEnableClearSeq {
+			c.ambiguousEnableClearSeq = obs.recoverySeq
+		}
 	}
 	c.removeInflight(obs.ticket)
 	defer c.tryDrain()
@@ -182,16 +185,26 @@ func (c *Checker) tryDrain() {
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
 		if bulkDisablesMaintenance(head.obs.bulk) {
-			for ticket, bulk := range c.ambiguousBulks {
-				// A committed disable subsumes an optional earlier enable, but it
-				// does not subsume an ambiguously committed business effect.
-				if ticket <= head.obs.ticket && bulkEnablesMaintenance(bulk) {
-					delete(c.ambiguousBulks, ticket)
-				}
-			}
+			c.clearAmbiguousMaintenanceEnable(head.obs.recoverySeq)
 		}
 		markModelOutcomeVerified()
 		markObservationProcessed(head.obs)
+	}
+}
+
+// clearAmbiguousMaintenanceEnable removes the optional enable only after the
+// recovery generation scheduled for that ambiguity has committed. Dispatch
+// ticket order alone cannot establish the Raft commit order. Caller holds c.mu.
+func (c *Checker) clearAmbiguousMaintenanceEnable(recoverySeq uint64) {
+	if c.ambiguousEnableClearSeq == 0 || recoverySeq < c.ambiguousEnableClearSeq {
+		return
+	}
+	for ticket, bulk := range c.ambiguousBulks {
+		if bulkEnablesMaintenance(bulk) {
+			delete(c.ambiguousBulks, ticket)
+			c.ambiguousEnableClearSeq = 0
+			return
+		}
 	}
 }
 

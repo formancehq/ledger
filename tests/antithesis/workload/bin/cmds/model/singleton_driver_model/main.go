@@ -336,6 +336,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	var err error
 	hadAmbiguousAttempt := false
 	provisionalMaintenanceRecoveryScheduled := false
+	var provisionalMaintenanceRecoverySeq uint64
 	for {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
@@ -346,7 +347,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		}
 		maintenanceRejected := internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 		if shouldScheduleMaintenanceRecovery(bulk, err, hadAmbiguousAttempt) && !provisionalMaintenanceRecoveryScheduled {
-			scheduleMaintenanceRecovery(ctx, client, c)
+			provisionalMaintenanceRecoverySeq = scheduleMaintenanceRecovery(ctx, client, c)
 			provisionalMaintenanceRecoveryScheduled = true
 		}
 		if maintenanceRejected {
@@ -381,6 +382,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		resp:            resp,
 		err:             err,
 		ambiguousCommit: hadAmbiguousAttempt && internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode),
+		recoverySeq:     provisionalMaintenanceRecoverySeq,
 		observeTicket:   c.ticketSeq.Load(),
 		processed:       make(chan struct{}),
 	}
@@ -401,16 +403,18 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 }
 
-func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) uint64 {
 	c.mu.Lock()
 	if c.maintenanceRecoveryActive {
 		if c.maintenanceRecoveryTicket != 0 {
 			c.maintenanceEnableSeq++
 		}
+		recoverySeq := c.maintenanceEnableSeq
 		c.mu.Unlock()
-		return
+		return recoverySeq
 	}
 	c.maintenanceEnableSeq++
+	recoverySeq := c.maintenanceEnableSeq
 	c.maintenanceRecoveryActive = true
 	recoveryID := c.registerRead()
 	c.recoveries.Add(1)
@@ -439,7 +443,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 				return
 			case <-time.After(delay):
 			}
-			dispatchMaintenanceRecovery(ctx, client, c, recoveryID)
+			dispatchMaintenanceRecovery(ctx, client, c, recoveryID, enableSeq)
 			readRegistered = false
 
 			c.mu.Lock()
@@ -453,6 +457,8 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 			c.mu.Unlock()
 		}
 	}()
+
+	return recoverySeq
 }
 
 // dispatchMaintenanceRecovery bypasses the restore pause because the recovery
@@ -461,7 +467,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 // remains blocked without preventing the disable observation from draining. A
 // fresh key prevents deliberate conflict injection from turning a temporary
 // maintenance window into a permanent stall.
-func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID uint64) {
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
 	bulk := oracle.Bulk{
 		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
 		IdempotencyKey: idempotencyKey(),
@@ -496,6 +502,7 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		bulk:          bulk,
 		resp:          resp,
 		err:           err,
+		recoverySeq:   recoverySeq,
 		observeTicket: c.ticketSeq.Load(),
 		processed:     make(chan struct{}),
 	}
