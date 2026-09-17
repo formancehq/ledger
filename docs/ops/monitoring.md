@@ -173,12 +173,17 @@ Gating occurs when the node performs a maintenance task (snapshot install, check
 
 ### WAL Metrics
 
-The Write-Ahead Log (WAL) metrics track the performance of the WAL append operations.
+The Write-Ahead Log (WAL) metrics track WAL append performance and the integrity of the log a node recovers at startup.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `wal.append.save.duration` | Histogram | µs | Time spent saving entries to the WAL on disk. This is the actual disk I/O time. |
 | `wal.append.batch_size` | Histogram | 1 | Number of entries appended at once. Higher values indicate efficient batching under load. |
+| `wal.recovery.repaired_entries` | Counter | 1 | Entries discarded at startup because replay resurrected a suffix a later record had overwritten. Emitted once per affected restart, alongside an error-level log. |
+
+`wal.recovery.repaired_entries` is expected to stay at zero. A non-zero value means a node started from a log that replay had reconstructed incorrectly — the condition described under [replay validity](../technical/architecture/subsystems/storage/storage.md#replay-validity) — and that the recovery repaired it. It is not an error the node recovers from silently: alert on any increase, and capture the surrounding WAL directory before restarting that node again, because the same physical records reproduce it.
+
+Counters reach Prometheus with the OTel suffix convention, so this one is scraped as `wal_recovery_repaired_entries_total`.
 
 ### Snapshot Metrics
 

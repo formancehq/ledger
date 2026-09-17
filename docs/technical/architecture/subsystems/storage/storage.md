@@ -423,18 +423,25 @@ refuse — raft compares last-entry term before index — so a replica whose log
 missing committed entries can win an election and overwrite them.
 
 `DefaultWAL.New` therefore does not trust `ReadAll` alone. It replays the
-retained segments in physical record order and applies every record's effect
-unconditionally:
+retained segments in physical record order:
 
-- an entry record at index `i` drops every reconstructed entry at index `>= i`
-  before appending;
-- a snapshot record drops the compacted prefix, and when the reconstruction
-  holds a conflicting entry at the snapshot's own index it drops the whole log —
-  the truncation `ApplySnapshot` performs in memory but never records on disk;
-- only snapshot records at or below the final durable commit are applied.
-  `ApplySnapshot` persists a guard record *before* advancing `HardState`, so a
-  crash in between leaves a record that does not yet describe durable state;
-  honouring it would delete committed entries.
+- an entry record at index `i` drops every reconstructed entry at index `>= i`,
+  whether or not that entry is retained afterwards. This is `ReadAll`'s
+  truncation without its snapshot-relative guard, and it is the effect the defect
+  above loses. Only entries above the snapshot boundary are kept, so the
+  reconstruction costs the recovered tail rather than the physical WAL;
+- the snapshot the node selected at startup — the one with a matching snap file —
+  applies at its own record position. When the log held a different entry at that
+  snapshot's index, the log that preceded it is obsolete and is dropped: the
+  truncation `ApplySnapshot` performs in memory but never records on disk. Entries
+  appended *after* the install survive it. The conflict also applies when the
+  record itself was reclaimed, since the snapshot is durable either way.
+
+Every other snapshot record is ignored. `ApplySnapshot` persists a guard record
+*before* advancing `HardState`, so an interrupted install leaves one describing
+no durable state. Deciding such a record's validity from the commit index would
+accept it retroactively as soon as later commits overtake its index, and delete
+committed entries.
 
 Each segment's records are checksummed from that segment's own seed, so any pass
 over the raw records must import the seed at every `CrcType` record or a healthy

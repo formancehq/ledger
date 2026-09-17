@@ -5131,6 +5131,105 @@
                ],
                "title": "FSM batch commit duration (p50, p99)",
                "type": "timeseries"
+            },
+            {
+               "datasource": {
+                  "type": "prometheus",
+                  "uid": "${datasource}"
+               },
+               "description": "Entries discarded at startup because WAL replay resurrected a suffix that a later record had already overwritten.\n\nThis must stay at zero. A non-zero value means the node started from a log replay had reconstructed incorrectly, and recovery repaired it — the last-entry term would otherwise have stopped describing the node's real log, which is enough for it to grant a vote it must refuse.\n\nAlert on any increase. Capture the node's WAL directory before restarting it again: the same physical records reproduce the condition.\n",
+               "fieldConfig": {
+                  "defaults": {
+                     "color": {
+                        "mode": "palette-classic"
+                     },
+                     "custom": {
+                        "axisBorderShow": false,
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "barWidthFactor": 0.59999999999999998,
+                        "drawStyle": "bars",
+                        "fillOpacity": 80,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                           "legend": false,
+                           "tooltip": false,
+                           "viz": false
+                        },
+                        "insertNulls": false,
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                           "type": "linear"
+                        },
+                        "showPoints": "never",
+                        "showValues": false,
+                        "spanNulls": false,
+                        "stacking": {
+                           "group": "A",
+                           "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                           "mode": "off"
+                        }
+                     },
+                     "mappings": [ ],
+                     "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                           {
+                              "color": "green",
+                              "value": 0
+                           },
+                           {
+                              "color": "red",
+                              "value": 80
+                           }
+                        ]
+                     },
+                     "unit": "short"
+                  },
+                  "overrides": [ ]
+               },
+               "gridPos": {
+                  "h": 7,
+                  "w": 24,
+                  "x": 0,
+                  "y": 76
+               },
+               "id": 55,
+               "options": {
+                  "legend": {
+                     "calcs": [ ],
+                     "displayMode": "list",
+                     "placement": "bottom",
+                     "showLegend": true
+                  },
+                  "tooltip": {
+                     "hideZeros": false,
+                     "mode": "single",
+                     "sort": "none"
+                  }
+               },
+               "targets": [
+                  {
+                     "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                     },
+                     "editorMode": "code",
+                     "expr": "sum(rate(wal.recovery.repaired_entries_total{service.cluster=~\"$cluster\", service.node_id=~\"$node\"}[$__rate_interval])) by (service.node_id)",
+                     "legendFormat": "Node {{service.node_id}}",
+                     "range": true,
+                     "refId": "A"
+                  }
+               ],
+               "title": "WAL recovery repaired entries",
+               "type": "timeseries"
             }
          ],
          "title": "Ready Loop",
@@ -5144,7 +5243,7 @@
             "x": 0,
             "y": 164
          },
-         "id": 55,
+         "id": 56,
          "panels": [
             {
                "datasource": {
@@ -5215,7 +5314,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 56,
+               "id": 57,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5313,7 +5412,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 57,
+               "id": 58,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5445,7 +5544,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 58,
+               "id": 59,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5577,7 +5676,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 59,
+               "id": 60,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5675,7 +5774,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 60,
+               "id": 61,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5795,7 +5894,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 61,
+               "id": 62,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5916,7 +6015,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 62,
+               "id": 63,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -5980,7 +6079,7 @@
             "x": 0,
             "y": 165
          },
-         "id": 63,
+         "id": 64,
          "panels": [
             {
                "datasource": {
@@ -6050,7 +6149,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 64,
+               "id": 65,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6149,7 +6248,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 65,
+               "id": 66,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6281,7 +6380,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 66,
+               "id": 67,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6379,7 +6478,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 67,
+               "id": 68,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6478,7 +6577,7 @@
                   "x": 8,
                   "y": 8
                },
-               "id": 68,
+               "id": 69,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6609,7 +6708,7 @@
                   "x": 16,
                   "y": 8
                },
-               "id": 69,
+               "id": 70,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6707,7 +6806,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 70,
+               "id": 71,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6805,7 +6904,7 @@
                   "x": 8,
                   "y": 16
                },
-               "id": 71,
+               "id": 72,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -6904,7 +7003,7 @@
                   "x": 16,
                   "y": 16
                },
-               "id": 72,
+               "id": 73,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7036,7 +7135,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 73,
+               "id": 74,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7146,7 +7245,7 @@
                   "x": 8,
                   "y": 24
                },
-               "id": 74,
+               "id": 75,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7244,7 +7343,7 @@
                   "x": 16,
                   "y": 24
                },
-               "id": 75,
+               "id": 76,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7364,7 +7463,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 76,
+               "id": 77,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7463,7 +7562,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 77,
+               "id": 78,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7527,7 +7626,7 @@
             "x": 0,
             "y": 166
          },
-         "id": 78,
+         "id": 79,
          "panels": [
             {
                "datasource": {
@@ -7598,7 +7697,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 79,
+               "id": 80,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7697,7 +7796,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 80,
+               "id": 81,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7796,7 +7895,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 81,
+               "id": 82,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7872,7 +7971,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 82,
+               "id": 83,
                "options": {
                   "colorMode": "value",
                   "graphMode": "area",
@@ -7919,7 +8018,7 @@
             "x": 0,
             "y": 167
          },
-         "id": 83,
+         "id": 84,
          "panels": [
             {
                "datasource": {
@@ -7990,7 +8089,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 84,
+               "id": 85,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8089,7 +8188,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 85,
+               "id": 86,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8188,7 +8287,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 86,
+               "id": 87,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8241,7 +8340,7 @@
             "x": 0,
             "y": 168
          },
-         "id": 87,
+         "id": 88,
          "panels": [
             {
                "datasource": {
@@ -8312,7 +8411,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 88,
+               "id": 89,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8411,7 +8510,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 89,
+               "id": 90,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8510,7 +8609,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 90,
+               "id": 91,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8609,7 +8708,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 91,
+               "id": 92,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8708,7 +8807,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 92,
+               "id": 93,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8807,7 +8906,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 93,
+               "id": 94,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8849,7 +8948,7 @@
             "x": 0,
             "y": 169
          },
-         "id": 94,
+         "id": 95,
          "panels": [
             {
                "datasource": {
@@ -8920,7 +9019,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 95,
+               "id": 96,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9041,7 +9140,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 96,
+               "id": 97,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9140,7 +9239,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 97,
+               "id": 98,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9239,7 +9338,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 98,
+               "id": 99,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9338,7 +9437,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 99,
+               "id": 100,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9448,7 +9547,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 100,
+               "id": 101,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9569,7 +9668,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 101,
+               "id": 102,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9690,7 +9789,7 @@
                   "x": 12,
                   "y": 24
                },
-               "id": 102,
+               "id": 103,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9811,7 +9910,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 103,
+               "id": 104,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9908,7 +10007,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 104,
+               "id": 105,
                "options": {
                   "bucketOffset": 0,
                   "combine": false,
@@ -10007,7 +10106,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 105,
+               "id": 106,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10117,7 +10216,7 @@
                   "x": 12,
                   "y": 40
                },
-               "id": 106,
+               "id": 107,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10238,7 +10337,7 @@
                   "x": 0,
                   "y": 48
                },
-               "id": 107,
+               "id": 108,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10359,7 +10458,7 @@
                   "x": 12,
                   "y": 48
                },
-               "id": 108,
+               "id": 109,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10458,7 +10557,7 @@
                   "x": 0,
                   "y": 56
                },
-               "id": 109,
+               "id": 110,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10579,7 +10678,7 @@
                   "x": 12,
                   "y": 56
                },
-               "id": 110,
+               "id": 111,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10700,7 +10799,7 @@
                   "x": 0,
                   "y": 64
                },
-               "id": 111,
+               "id": 112,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10821,7 +10920,7 @@
                   "x": 0,
                   "y": 72
                },
-               "id": 112,
+               "id": 113,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10885,7 +10984,7 @@
             "x": 0,
             "y": 170
          },
-         "id": 113,
+         "id": 114,
          "panels": [
             {
                "datasource": {
@@ -10956,7 +11055,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 114,
+               "id": 115,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11077,7 +11176,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 115,
+               "id": 116,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11141,7 +11240,7 @@
             "x": 0,
             "y": 171
          },
-         "id": 116,
+         "id": 117,
          "panels": [
             {
                "datasource": {
@@ -11212,7 +11311,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 117,
+               "id": 118,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11311,7 +11410,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 118,
+               "id": 119,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11410,7 +11509,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 119,
+               "id": 120,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11531,7 +11630,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 120,
+               "id": 121,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11674,7 +11773,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 121,
+               "id": 122,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11727,7 +11826,7 @@
             "x": 0,
             "y": 172
          },
-         "id": 122,
+         "id": 123,
          "panels": [
             {
                "datasource": {
@@ -11798,7 +11897,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 123,
+               "id": 124,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11851,7 +11950,7 @@
             "x": 0,
             "y": 173
          },
-         "id": 124,
+         "id": 125,
          "panels": [
             {
                "datasource": {
@@ -11888,7 +11987,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 125,
+               "id": 126,
                "options": {
                   "minVizHeight": 75,
                   "minVizWidth": 75,
@@ -11989,7 +12088,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 126,
+               "id": 127,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12088,7 +12187,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 127,
+               "id": 128,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12141,7 +12240,7 @@
             "x": 0,
             "y": 174
          },
-         "id": 128,
+         "id": 129,
          "panels": [
             {
                "datasource": {
@@ -12155,7 +12254,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 129,
+               "id": 130,
                "options": { },
                "targets": [
                   {
@@ -12185,7 +12284,7 @@
                   "x": 0,
                   "y": 20
                },
-               "id": 130,
+               "id": 131,
                "options": { },
                "targets": [
                   {
@@ -12215,7 +12314,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 131,
+               "id": 132,
                "options": { },
                "targets": [
                   {
@@ -12245,7 +12344,7 @@
                   "x": 0,
                   "y": 60
                },
-               "id": 132,
+               "id": 133,
                "options": { },
                "targets": [
                   {

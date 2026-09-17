@@ -303,8 +303,23 @@ panels.row('Ready Loop', 2, [
       Time spent in PebbleDB batch.Commit() during ApplyEntries (p50 and p99).
       
       Measures the final I/O cost of committing all accumulated writes to PebbleDB.
-      
+
       Spikes correlate with large batches, PebbleDB compaction pressure, or disk I/O latency.
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
+  ),
+
+  panels.timeseries(
+    'WAL recovery repaired entries',
+    { h: 7, w: 8, x: 0, y: 164 },
+    [
+      { expr: queries.sumRate('wal.recovery.repaired_entries_total', by=['service.node_id']), legendFormat: 'Node {{service.node_id}}' },
+    ], unit='short',
+    description=|||
+      Entries discarded at startup because WAL replay resurrected a suffix that a later record had already overwritten.
+
+      This must stay at zero. A non-zero value means the node started from a log replay had reconstructed incorrectly, and recovery repaired it — the last-entry term would otherwise have stopped describing the node's real log, which is enough for it to grant a vote it must refuse.
+
+      Alert on any increase. Capture the node's WAL directory before restarting it again: the same physical records reproduce the condition.
+   |||, opts={ drawStyle: 'bars', fillOpacity: 80 },
   ),
 ])

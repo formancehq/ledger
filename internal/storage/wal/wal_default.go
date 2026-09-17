@@ -282,6 +282,14 @@ func reconstructEntries(walDir string, selectedSnapIndex, selectedSnapTerm uint6
 
 			fold.addEntry(&entry)
 
+		case wal.SnapshotType:
+			var snap walpb.Snapshot
+			if uErr := proto.Unmarshal(rec.GetData(), &snap); uErr != nil {
+				return nil, fmt.Errorf("decoding WAL snapshot record for reconstruction: %w", uErr)
+			}
+
+			fold.addSnapshot(&snap)
+
 		case wal.CrcType:
 			if crcErr := importCRCSeed(decoder, rec); crcErr != nil {
 				return nil, crcErr
@@ -312,9 +320,9 @@ func importCRCSeed(decoder wal.Decoder, rec *walpb.Record) error {
 	return nil
 }
 
-// walFold folds physically-ordered WAL entry records into the logical log they
-// imply, relative to the snapshot the WAL was opened at. It is a type rather
-// than a loop so the decode pass can stream into it, and so the fold stays
+// walFold folds physically-ordered WAL records into the logical log they imply,
+// relative to the snapshot the WAL was opened at. It is a type rather than a
+// loop so the decode pass can stream into it, and so the fold stays
 // unit-testable without a WAL on disk.
 //
 // Only entries above the snapshot boundary are retained, but every record's
@@ -363,12 +371,40 @@ func (f *walFold) addEntry(entry *raftpb.Entry) {
 	}
 }
 
-// result applies the selected snapshot and returns the recovered log.
+// addSnapshot applies a snapshot record, but only the one the caller selected —
+// matched on both index and term.
 //
-// A snapshot whose own index holds a different entry in the log conflicts with
-// it: the snapshot wins and the whole reconstruction is obsolete, which is what
-// ApplySnapshot does in memory but never records on disk. Otherwise the entries
-// already exclude the compacted prefix.
+// Every other snapshot record is ignored. ApplySnapshot writes a guard record
+// before advancing HardState, so an interrupted install leaves one that
+// describes no durable state; deciding validity from the commit index would
+// accept it retroactively once later commits overtake it, and delete committed
+// entries. The selected snapshot earned its authority by having a matching snap
+// file on disk.
+//
+// It applies at its physical position, not at the end of the stream. A received
+// snapshot invalidates the log that preceded it, never the entries the node
+// legitimately appended and committed afterwards — collapsing that distinction
+// turns an ordinary install-then-catch-up into a permanent boot failure.
+func (f *walFold) addSnapshot(snap *walpb.Snapshot) {
+	if snap.GetIndex() != f.snapIndex || snap.GetTerm() != f.snapTerm {
+		return
+	}
+
+	// A different entry at the snapshot's own index means the log it sits in is
+	// obsolete, which is what ApplySnapshot does in memory (it clears the entry
+	// cache) but never records on disk.
+	if f.boundaryKnown && f.boundaryTerm != f.snapTerm {
+		f.entries = nil
+	}
+
+	// From here the snapshot IS the boundary, so nothing earlier can conflict
+	// with it again.
+	f.boundaryKnown = false
+}
+
+// result returns the recovered log. A conflict the selected snapshot never
+// arrived to resolve still invalidates it: the snapshot is durable whether or
+// not its record survived reclamation.
 func (f *walFold) result() []*raftpb.Entry {
 	if f.boundaryKnown && f.boundaryTerm != f.snapTerm {
 		return nil
@@ -379,6 +415,11 @@ func (f *walFold) result() []*raftpb.Entry {
 
 // truncateTo returns the reconstruction with every entry at index >= idx
 // removed. The sequential-append case answers without searching at all.
+//
+// Discarded slots are cleared rather than left beyond the new length: the result
+// becomes the node's live entry cache, and a reslice alone would keep every
+// overwritten payload reachable through the backing array for the process
+// lifetime.
 func (f *walFold) truncateTo(idx uint64) []*raftpb.Entry {
 	if len(f.entries) == 0 || f.entries[len(f.entries)-1].GetIndex() < idx {
 		return f.entries
@@ -387,6 +428,8 @@ func (f *walFold) truncateTo(idx uint64) []*raftpb.Entry {
 	keep := sort.Search(len(f.entries), func(i int) bool {
 		return f.entries[i].GetIndex() >= idx
 	})
+
+	clear(f.entries[keep:])
 
 	return f.entries[:keep]
 }
@@ -397,8 +440,11 @@ func resolveWALRecords(records []walRecord, selectedSnapIndex, selectedSnapTerm 
 	fold := newWALFold(selectedSnapIndex, selectedSnapTerm)
 
 	for _, r := range records {
-		if r.entry != nil {
+		switch {
+		case r.entry != nil:
 			fold.addEntry(r.entry)
+		case r.snap != nil:
+			fold.addSnapshot(r.snap)
 		}
 	}
 

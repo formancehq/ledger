@@ -153,6 +153,43 @@ func TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot(t *testing.T) {
 		"an installed snapshot conflicting at its own index invalidates the whole cached suffix")
 }
 
+// TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot pins that the
+// selected snapshot clears only the log that preceded it. A received snapshot
+// conflicting with the local boundary invalidates what came before, not what the
+// node legitimately appended and committed afterwards.
+func TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	local := make([]*raftpb.Entry, 0, 50)
+	for i := uint64(1); i <= 50; i++ {
+		local = append(local, ent(i, 1, []byte("term1")))
+	}
+
+	require.NoError(t, w.Append(hs(1, 1, 40), local))
+
+	// A received snapshot conflicting at index 50 (term 2, not 1).
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(50, 2, testConfState()),
+	}))
+
+	// The node then catches up normally and commits through 60.
+	caught := make([]*raftpb.Entry, 0, 10)
+	for i := uint64(51); i <= 60; i++ {
+		caught = append(caught, ent(i, 2, []byte("term2")))
+	}
+
+	require.NoError(t, w.Append(hs(2, 1, 60), caught))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 60, 2)
+	require.Len(t, reopened.entries, 10,
+		"entries appended after the snapshot was installed must survive it")
+	require.Equal(t, uint64(51), reopened.entries[0].GetIndex())
+}
+
 // TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall pins the opposite
 // hazard. ApplySnapshot persists a guard snapshot record *before* advancing
 // HardState, so a crash in between leaves a record that does not describe
@@ -394,13 +431,35 @@ func TestResolveWALRecords(t *testing.T) {
 			want:      []want{{3, 9}},
 		},
 		{
-			name: "snapshot records have no effect of their own",
+			name: "a snapshot record that is not the selected one has no effect",
 			// Only the snapshot the caller selected is authoritative. A record
 			// left by an interrupted install must not truncate anything, however
 			// far the commit index later advances.
 			records:   []walRecord{entryRec(1, 1), entryRec(2, 1), entryRec(3, 1), snapRec(2, 9), snapRec(3, 9)},
 			snapIndex: 0,
 			want:      []want{{1, 1}, {2, 1}, {3, 1}},
+		},
+		{
+			name: "the selected snapshot clears only the log that preceded it",
+			// An install conflicting at index 3 invalidates 1..3, but the node
+			// then caught up and those entries must survive.
+			records: []walRecord{
+				entryRec(1, 1), entryRec(2, 1), entryRec(3, 1),
+				snapRec(3, 9),
+				entryRec(4, 9), entryRec(5, 9),
+			},
+			snapIndex: 3,
+			snapTerm:  9,
+			want:      []want{{4, 9}, {5, 9}},
+		},
+		{
+			name: "a conflict whose snapshot record was reclaimed still invalidates the log",
+			// The snapshot is durable whether or not its record survived
+			// segment reclamation.
+			records:   []walRecord{entryRec(3, 1), entryRec(4, 1)},
+			snapIndex: 3,
+			snapTerm:  9,
+			want:      nil,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
