@@ -169,7 +169,9 @@ post-checkpoint delta raises it to at least `created_id + 1`, even if a later lo
 deletes that ledger. The rebuilt ledger rows and allocator are committed through
 the replay write sessions before restore finalization. If replay fails, the
 partially rebuilt staging store is never activated; no allocator value from that
-failed attempt is served by a running node.
+failed attempt is served by a running node. Live creation and replay both reject
+`MaxUint32` before allocation, because accepting it would wrap the persisted
+next-ID counter to zero and allow an identifier to be reused.
 
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
