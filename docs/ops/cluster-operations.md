@@ -389,7 +389,7 @@ fi
 
 - **Pod management policy**: `Parallel` (all pods start simultaneously)
 - **Pod-0**: bootstraps the cluster
-- **Other pods**: join via pod-0 with 60s retry (waiting for pod-0 to be ready)
+- **Other pods**: join via pod-0 with exponential-backoff retry until the pod context is cancelled (no hard time cap; the loop waits for pod-0 to be reachable)
 - **Auto-promotion**: controlled by `config.raft.learnerPromotionThreshold` in the Ledger CR spec
 - **Node IDs**: `POD_INDEX + 1` (Pod 0 = Node 1, Pod 1 = Node 2, etc.)
 
