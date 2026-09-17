@@ -207,14 +207,22 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 
 	c.mu.Lock()
 	matches := c.checkpointCreationMatches(maxTicket, checkpointID, func(state oracle.GlobalState) bool {
-		ls := state.Ledger(ledger)
-
-		return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
+		return predictedCheckpointLedgerMatches(state, ledger, info)
 	})
 	c.mu.Unlock()
 	if !matches {
 		assert.Unreachable("singleton_driver_model: predicted checkpoint read outside creation model", internal.Details{"checkpoint": checkpointID, "ledger": ledger})
 	}
+}
+
+func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, info *commonpb.LedgerInfo) bool {
+	lifecycle, exists := state.Lifecycle(ledger)
+	if !exists || lifecycle.Deleted {
+		return false
+	}
+	ls := state.Ledger(ledger)
+
+	return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
 }
 
 // pickCheckpointReadTarget samples uniformly from every retained snapshot.

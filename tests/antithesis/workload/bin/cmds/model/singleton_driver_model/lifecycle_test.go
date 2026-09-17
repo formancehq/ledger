@@ -98,6 +98,33 @@ func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.
 	c.recoveries.Wait()
 }
 
+func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
+	t.Parallel()
+
+	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	require.NoError(t, err)
+	c := NewChecker([]string{"L"}, nil)
+	enable := oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}}
+	ticket := c.registerInflight(enable)
+
+	c.handleObservation(observation{
+		ticket:          ticket,
+		bulk:            enable,
+		err:             maintenanceStatus.Err(),
+		ambiguousCommit: true,
+		observeTicket:   ticket,
+	})
+
+	require.NotContains(t, c.inflight, ticket)
+	require.Contains(t, c.ambiguousEnables, ticket)
+	found := false
+	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
+		found = found || state.MaintenanceMode()
+		return found
+	})
+	require.True(t, found)
+}
+
 func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 	t.Parallel()
 

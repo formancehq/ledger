@@ -87,6 +87,13 @@ func (c *Checker) handleObservation(obs observation) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if obs.ambiguousCommit && bulkEnablesMaintenance(obs.bulk) {
+		// A maintenance rejection after an ambiguous enable proves that an enable
+		// may have committed. Keep one equivalent optional predecessor after the
+		// worker observation leaves inflight so later failures and reads can still
+		// serialize through the maintenance window.
+		c.ambiguousEnables[obs.ticket] = struct{}{}
+	}
 	c.removeInflight(obs.ticket)
 	defer c.tryDrain()
 
@@ -142,6 +149,13 @@ func (c *Checker) tryDrain() {
 
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
+		if bulkDisablesMaintenance(head.obs.bulk) {
+			for ticket := range c.ambiguousEnables {
+				if ticket <= head.obs.ticket {
+					delete(c.ambiguousEnables, ticket)
+				}
+			}
+		}
 		markModelOutcomeVerified()
 		markObservationProcessed(head.obs)
 	}

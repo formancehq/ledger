@@ -367,12 +367,13 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	// backpressure when the processor falls behind, this makes maxWorkers a real
 	// bound on the candidate search's independently committable bulks.
 	obs := observation{
-		ticket:        ticket,
-		bulk:          bulk,
-		resp:          resp,
-		err:           err,
-		observeTicket: c.ticketSeq.Load(),
-		processed:     make(chan struct{}),
+		ticket:          ticket,
+		bulk:            bulk,
+		resp:            resp,
+		err:             err,
+		ambiguousCommit: internal.IsMaintenanceAfterAmbiguousCommit(err),
+		observeTicket:   c.ticketSeq.Load(),
+		processed:       make(chan struct{}),
 	}
 	// Register the disable recovery before publishing the successful enable.
 	// The processor may otherwise make that enable visible to restore, which can
@@ -500,6 +501,15 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 	for _, req := range bulk.Requests {
 		if toggle := req.GetSetMaintenanceMode(); toggle != nil && toggle.GetEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+func bulkDisablesMaintenance(bulk oracle.Bulk) bool {
+	for _, req := range bulk.Requests {
+		if toggle := req.GetSetMaintenanceMode(); toggle != nil && !toggle.GetEnabled() {
 			return true
 		}
 	}

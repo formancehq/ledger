@@ -1,11 +1,16 @@
 package main
 
-import "github.com/formancehq/ledger/v3/tests/oracle"
+import (
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+)
 
 // Candidate enumeration is exponential in independently committable in-flight
 // bulks. Workers are capped one below this limit so the separately dispatched
 // maintenance recovery can always be represented without making a read or
-// failure validation effectively non-terminating while it holds c.mu.
+// failure validation effectively non-terminating while it holds c.mu. A single
+// coalesced ambiguous maintenance enable may add one equivalent branch.
 const maxCandidateInflight = defaultWorkers + 1
 
 // candidateBases enumerates the distinct committed states the server could be in
@@ -86,7 +91,7 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 		pending = append(pending, pe.obs.bulk)
 	}
 
-	inflight := make([]oracle.Bulk, 0, len(c.inflight))
+	inflight := make([]oracle.Bulk, 0, len(c.inflight)+1)
 	for t, b := range c.inflight {
 		if t <= maxTicket {
 			inflight = append(inflight, b)
@@ -94,6 +99,12 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 	}
 	if len(inflight) > maxCandidateInflight {
 		panic("candidate search exceeded its bounded in-flight set")
+	}
+	for ticket := range c.ambiguousEnables {
+		if ticket <= maxTicket {
+			inflight = append(inflight, oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}})
+			break
+		}
 	}
 
 	// Keep the remaining-set representation dynamic so the bound is independent

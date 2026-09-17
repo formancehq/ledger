@@ -481,9 +481,11 @@ Because deletion permanently reserves a name, committed creations grow the
 Maintenance mode is a global admission gate modeled in `GlobalState.Apply`.
 The workload retry predicate surfaces a first-attempt `MAINTENANCE_MODE`
 rejection even though the transport code is `Unavailable`. When maintenance is
-observed after an ambiguous transport attempt, the same idempotency-keyed request
-keeps retrying until the server returns its committed outcome or accepts it after
-maintenance. A successful enable schedules a randomly delayed disable through
+observed after an ambiguous transport attempt, the retry stops and the driver
+submits that rejection for model validation while preserving the request as a
+possibly committed predecessor. It also schedules recovery rather than retrying
+through maintenance. A successful or ambiguously committed enable schedules a
+randomly delayed disable through
 the normal in-flight/processor path, preventing all workers from becoming stuck
 behind the gate. Startup and shutdown also make a best-effort disable so an
 interrupted run cannot block the next invocation.
