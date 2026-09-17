@@ -450,7 +450,7 @@ readinessProbe:
 The operator supports comprehensive OpenTelemetry integration via the CR spec:
 
 ```yaml
-config:
+spec:
   monitoring:
     serviceName: "ledger"
     
