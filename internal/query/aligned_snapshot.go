@@ -8,27 +8,10 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
-
-// ValidateLedgerProjection requires the fixed projection snapshot to represent
-// the same live ledger incarnation as the fixed main snapshot. Alignment alone
-// permits a newer projection that has already folded DeleteLedger (or a
-// same-name recreation), whose empty LOGS keyspace cannot answer the older pin.
-func ValidateLedgerProjection(reader dal.PebbleGetter, info *commonpb.LedgerInfo) error {
-	lifecycle, ok, err := readstore.ReadLedgerLifecycle(reader, dal.NewKeyBuilder(), info.GetName())
-	if err != nil {
-		return err
-	}
-	if !ok || !lifecycle.Active || lifecycle.ID != info.GetId() {
-		return &domain.ErrLedgerNotFound{Name: info.GetName()}
-	}
-
-	return nil
-}
 
 type readBarrierHorizonKey struct{}
 

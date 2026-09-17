@@ -101,14 +101,6 @@ the exact log range.
 
 The generated `LedgerLogCategoryOf` table classifies every ledger-local payload. `CreateLedger` writes `EMPTY`; the first `HISTORY` payload writes `NON_EMPTY`; CONTROL payloads do not change it; and `DeleteLedger` removes the incarnation's tracker and local config/version/tasks. Unknown payload classes, duplicate creates without a delete, missing tracker state, and unknown persisted state bytes fail loudly.
 
-The same fold also maintains a query-facing lifecycle record independently of
-that builder tracker. `CreateLedger` writes `(ledger ID, ACTIVE)`, and
-`DeleteLedger` writes an inactive tombstone atomically with the ledger-scoped
-range deletions. The tombstone deliberately survives cleanup, and a same-name
-recreation overwrites it with the new numeric ID. LOGS readers use this record
-to reject a projection snapshot from a different ledger incarnation instead of
-turning an older pinned, non-empty universe into an empty success.
-
 At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pending = 0`) with no task or cursor. `NON_EMPTY` follows the normal backfill path. The decision therefore survives arbitrary proposal boundaries and restart. For `log_date`, which indexes CONTROL too, the live fold pre-populates date rows while `EMPTY`; the first HISTORY deletes those speculative rows if the date index is not active. If the incarnation stays `EMPTY` and never declares `log_date`, the speculative rows remain by design so a later direct promotion can include every earlier CONTROL log; they are bounded by that incarnation's CONTROL-log count and disappear on first HISTORY or deletion.
 
 ## Handlers
@@ -193,7 +185,6 @@ Internal sub-prefixes (`0xFE` + 1 B):
 | `0x03` | Backfill cursors (per index) | `BackfillCursorKey` |
 | `0x04` | Per-replica `IndexVersionState` (per index) | `IndexVersionStateKey` |
 | `0x09` | Per-ledger `EMPTY`/`NON_EMPTY` history tracker | `LedgerHistoryStateKey` |
-| `0x0A` | Query-facing ledger incarnation and active/deleted state | `LedgerLifecycleKey` |
 
 ### The versioned metadata-index key
 

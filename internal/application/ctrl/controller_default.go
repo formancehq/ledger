@@ -1668,12 +1668,6 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	defer releaseLease()
 	defer func() { _ = snap.Close() }()
-	if err := query.ValidateLedgerProjection(snap, ledgerInfo); err != nil {
-		releaseHold()
-		_ = handle.Close()
-
-		return nil, err
-	}
 
 	kb := dal.NewKeyBuilder()
 

@@ -144,11 +144,6 @@ func Execute(
 
 	defer releaseLease()
 	defer func() { _ = indexSnap.Close() }()
-	if pq.GetTarget() == commonpb.QueryTarget_QUERY_TARGET_LOGS {
-		if err := ValidateLedgerProjection(indexSnap, ledgerInfo); err != nil {
-			return nil, err
-		}
-	}
 
 	kb := dal.NewKeyBuilder()
 

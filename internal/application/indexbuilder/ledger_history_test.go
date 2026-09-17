@@ -875,11 +875,11 @@ func TestDeleteRecreateResetsLedgerHistoryIncarnation(t *testing.T) {
 			const ledger = "reused-name"
 			id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 			logs := []*commonpb.Log{
-				{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger, Id: 11}}}},
+				{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}}}},
 				ledgerPayloadLog(2, ledger, 1, &commonpb.LedgerLogPayload_OrderSkipped{OrderSkipped: &commonpb.OrderSkippedLog{}}, 20),
 				ledgerPayloadLog(3, ledger, 2, &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}}, 30),
 				{Sequence: 4, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{DeleteLedger: &commonpb.DeletedLedgerLog{Name: ledger}}}},
-				{Sequence: 5, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger, Id: 12}}}},
+				{Sequence: 5, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger}}}},
 				ledgerPayloadLog(6, ledger, 1, &commonpb.LedgerLogPayload_AddedAccountType{AddedAccountType: &commonpb.AddedAccountTypeLog{}}, 60),
 				ledgerPayloadLog(7, ledger, 2, &commonpb.LedgerLogPayload_CreateIndex{CreateIndex: &commonpb.CreatedIndexLog{Id: id}}, 70),
 			}
@@ -898,12 +898,6 @@ func TestDeleteRecreateResetsLedgerHistoryIncarnation(t *testing.T) {
 				_, exists := b.historyStateFor(ledger)
 				assert.False(t, exists)
 				assert.Empty(t, b.backfillTasks)
-				snap := b.readStore.NewSnapshot()
-				lifecycle, ok, lifecycleErr := readstore.ReadLedgerLifecycle(snap, dal.NewKeyBuilder(), ledger)
-				require.NoError(t, lifecycleErr)
-				require.True(t, ok)
-				assert.Equal(t, readstore.LedgerLifecycle{Active: false}, lifecycle)
-				require.NoError(t, snap.Close())
 				for _, log := range logs[4:] {
 					writeLogToFSM(t, b, log)
 				}
@@ -919,12 +913,6 @@ func TestDeleteRecreateResetsLedgerHistoryIncarnation(t *testing.T) {
 			current, pending := b.versionFor(ledger, indexes.Canonical(id))
 			assert.NotZero(t, current)
 			assert.Zero(t, pending)
-			snap := b.readStore.NewSnapshot()
-			lifecycle, ok, lifecycleErr := readstore.ReadLedgerLifecycle(snap, dal.NewKeyBuilder(), ledger)
-			require.NoError(t, lifecycleErr)
-			require.True(t, ok)
-			assert.Equal(t, readstore.LedgerLifecycle{ID: 12, Active: true}, lifecycle)
-			require.NoError(t, snap.Close())
 		})
 	}
 }
