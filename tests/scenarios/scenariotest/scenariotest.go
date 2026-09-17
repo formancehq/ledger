@@ -196,7 +196,7 @@ func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.Bu
 	require.NotNil(t, vol, "account %s has no volumes for asset %s (uncolored)", address, asset)
 
 	balance, err := vol.GetBalance().ToBigInt()
-	require.NoError(t, err, "invalid balance %q for account %s asset %s", vol.GetBalance(), address, asset)
+	require.NoError(t, err, "invalid balance %q for account %s asset %s", vol.GetBalance().DecimalString(), address, asset)
 	require.True(t, balance.Sign() > 0,
 		"account %s asset %s: expected positive balance, got %s", address, asset, balance.String())
 }
@@ -217,7 +217,7 @@ func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb
 			vol := entry.GetVolumes()
 			balance, err := vol.GetBalance().ToBigInt()
 			require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
-				vol.GetBalance(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
+				vol.GetBalance().DecimalString(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 
 			k := bucket{asset: entry.GetAsset(), color: entry.GetColor()}
 			if sums[k] == nil {
@@ -255,7 +255,7 @@ func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client servic
 
 	balance, err := vol.GetBalance().ToBigInt()
 	require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
-		vol.GetBalance(), address, asset, color)
+		vol.GetBalance().DecimalString(), address, asset, color)
 
 	require.Equal(t, 0, expected.Cmp(balance),
 		"account %s asset %s color %q: expected balance %s, got %s",
@@ -284,7 +284,7 @@ func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb
 			vol := entry.GetVolumes()
 			balance, err := vol.GetBalance().ToBigInt()
 			require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
-				vol.GetBalance(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
+				vol.GetBalance().DecimalString(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 			require.True(t, balance.Sign() >= 0,
 				"negative balance on account %s asset %s color %q: %s",
 				acct.GetAddress(), entry.GetAsset(), entry.GetColor(), balance.String())
