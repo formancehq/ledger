@@ -88,6 +88,7 @@ func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.
 	obs := <-c.incoming
 	require.Equal(t, 2, client.calls)
 	require.Equal(t, uint64(1), c.maintenanceEnableSeq)
+	require.True(t, obs.ambiguousCommit)
 
 	c.mu.Lock()
 	c.removeInflight(obs.ticket)

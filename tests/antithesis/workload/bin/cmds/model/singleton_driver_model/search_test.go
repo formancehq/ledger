@@ -149,6 +149,20 @@ func TestCandidateBasesRejectsIntractableInflightSet(t *testing.T) {
 	})
 }
 
+func TestCandidateBasesCountsAmbiguousEnableInInflightBound(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	for ticket := uint64(1); ticket <= maxCandidateInflight; ticket++ {
+		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
+	}
+	c.ambiguousEnables[maxCandidateInflight+1] = struct{}{}
+
+	require.PanicsWithValue(t, "candidate search exceeded its bounded in-flight set", func() {
+		c.candidateBases(maxCandidateInflight+1, func(oracle.GlobalState) bool { return false })
+	})
+}
+
 func TestCandidateBasesCompletesAtInflightBound(t *testing.T) {
 	t.Parallel()
 

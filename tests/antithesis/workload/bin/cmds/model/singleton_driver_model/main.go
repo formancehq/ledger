@@ -371,7 +371,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		bulk:            bulk,
 		resp:            resp,
 		err:             err,
-		ambiguousCommit: internal.IsMaintenanceAfterAmbiguousCommit(err),
+		ambiguousCommit: hadAmbiguousAttempt && internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode),
 		observeTicket:   c.ticketSeq.Load(),
 		processed:       make(chan struct{}),
 	}

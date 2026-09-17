@@ -7,11 +7,11 @@ import (
 )
 
 // Candidate enumeration is exponential in independently committable in-flight
-// bulks. Workers are capped one below this limit so the separately dispatched
-// maintenance recovery can always be represented without making a read or
-// failure validation effectively non-terminating while it holds c.mu. A single
-// coalesced ambiguous maintenance enable may add one equivalent branch.
-const maxCandidateInflight = defaultWorkers + 1
+// bulks. Workers are capped two below this limit so the separately dispatched
+// maintenance recovery and one coalesced ambiguous maintenance enable can both
+// be represented without making a read or failure validation effectively
+// non-terminating while it holds c.mu.
+const maxCandidateInflight = 8
 
 // candidateBases enumerates the distinct committed states the server could be in
 // relative to a not-yet-linearized observation (a failure or a read): modelState
@@ -97,14 +97,14 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 			inflight = append(inflight, b)
 		}
 	}
-	if len(inflight) > maxCandidateInflight {
-		panic("candidate search exceeded its bounded in-flight set")
-	}
 	for ticket := range c.ambiguousEnables {
 		if ticket <= maxTicket {
 			inflight = append(inflight, oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}})
 			break
 		}
+	}
+	if len(inflight) > maxCandidateInflight {
+		panic("candidate search exceeded its bounded in-flight set")
 	}
 
 	// Keep the remaining-set representation dynamic so the bound is independent
