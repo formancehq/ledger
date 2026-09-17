@@ -51,7 +51,25 @@ func rebuildDelta(
 	fromAuditSeq uint64,
 	deleteQueryCheckpointSchedule func(*dal.WriteSession) error,
 ) error {
+	return rebuildDeltaWithHooks(ctx, logger, store, fromLogSeq, fromAuditSeq, deleteQueryCheckpointSchedule, nil)
+}
+
+// rebuildDeltaWithHooks is the internal entry point with injectable hooks for
+// testability. Pass nil for deleteSinkConfig to use the default attribute deletion.
+func rebuildDeltaWithHooks(
+	ctx context.Context,
+	logger logging.Logger,
+	store *dal.Store,
+	fromLogSeq uint64,
+	fromAuditSeq uint64,
+	deleteQueryCheckpointSchedule func(*dal.WriteSession) error,
+	deleteSinkConfig func(*dal.WriteSession, []byte) error,
+) error {
 	attrs := attributes.New()
+	if deleteSinkConfig == nil {
+		deleteSinkConfig = attrs.SinkConfig.Delete
+	}
+
 	batch := store.OpenWriteSession()
 
 	writer := &attributeReplayWriter{
@@ -347,6 +365,16 @@ func rebuildDelta(
 				}
 			}
 
+		case *commonpb.LogPayload_RemovedEventsSink:
+			if p.RemovedEventsSink != nil {
+				key := domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()}
+				if err := deleteSinkConfig(batch, key.Bytes()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("deleting events sink at log %d: %w", seq, err)
+				}
+			}
+
 		case *commonpb.LogPayload_SavedLedgerMetadata:
 			if p.SavedLedgerMetadata != nil {
 				for key, value := range p.SavedLedgerMetadata.GetMetadata() {
@@ -469,7 +497,6 @@ func rebuildDelta(
 			}
 
 		// Log types with no persistent state to rebuild:
-		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
 			// The checkpoint is the fold seed: a deletion in the exported delta
