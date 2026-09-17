@@ -1192,6 +1192,17 @@ spec:
                 x-kubernetes-validations:
                 - message: clusterID is immutable once set
                   rule: oldSelf == '' || self == oldSelf
+              clusterPolicyRevision:
+                description: |-
+                  ClusterPolicyRevision is the monotonic revision number the leader must
+                  propose to replace the committed cluster policy. Bump this whenever you
+                  change any metadata-limit field, idempotencyTTL, hashAlgorithm, or
+                  queryCheckpointLimit. The leader proposes the policy only when this
+                  exceeds the applied revision; setting a new value without bumping the
+                  revision logs a divergence error and changes nothing.
+                format: int64
+                minimum: 1
+                type: integer
               dataDir:
                 default: /data/app
                 description: DataDir is the application data directory.
@@ -1830,6 +1841,50 @@ spec:
                   ExecutionPlan may carry. Admission rejects proposals beyond this
                   (0 = unlimited). Default: 4096.
                 format: int32
+                type: integer
+              metadataMaxCommandBytes:
+                description: |-
+                  MetadataMaxCommandBytes is the maximum total metadata bytes one command
+                  may carry across all entities it touches. Bounds what a single accepted
+                  write can replicate through Raft. Must be >= metadataMaxEntityBytes.
+                  Replicated in the cluster policy; requires bumping clusterPolicyRevision.
+                  Default: 1048576 (1 MiB).
+                format: int64
+                minimum: 1
+                type: integer
+              metadataMaxEntityBytes:
+                description: |-
+                  MetadataMaxEntityBytes is the maximum total metadata bytes one command
+                  may carry for a single entity. Must not exceed metadataMaxCommandBytes.
+                  Replicated in the cluster policy; requires bumping clusterPolicyRevision.
+                  Default: 65536 (64 KiB).
+                format: int64
+                minimum: 1
+                type: integer
+              metadataMaxEntries:
+                description: |-
+                  MetadataMaxEntries is the maximum number of metadata entries one command
+                  may carry for a single entity (transaction, account, or ledger). This is
+                  replicated in the cluster policy; changing it requires bumping
+                  clusterPolicyRevision. Default: 128.
+                format: int64
+                minimum: 1
+                type: integer
+              metadataMaxKeyBytes:
+                description: |-
+                  MetadataMaxKeyBytes is the maximum metadata key size in bytes. Must not
+                  exceed metadataMaxEntityBytes. Replicated in the cluster policy; requires
+                  bumping clusterPolicyRevision. Default: 256.
+                format: int64
+                minimum: 1
+                type: integer
+              metadataMaxValueBytes:
+                description: |-
+                  MetadataMaxValueBytes is the maximum metadata value size in bytes. Must
+                  not exceed metadataMaxEntityBytes. Replicated in the cluster policy;
+                  requires bumping clusterPolicyRevision. Default: 16384 (16 KiB).
+                format: int64
+                minimum: 1
                 type: integer
               metricsNaming:
                 description: |-

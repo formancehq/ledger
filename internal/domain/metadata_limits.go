@@ -27,15 +27,21 @@ const (
 //
 // 128 entries with 256-byte keys leaves a metadata map an operator can still
 // inspect; 16 KiB per value admits a JSON blob or a signature without admitting
-// a document; 64 KiB per entity and 256 KiB per command bound what one accepted
+// a document; 64 KiB per entity and 1 MiB per command bound what one accepted
 // write can replicate through Raft into the audit chain, the FSM cache, and the
 // read-side projections.
+//
+// The command ceiling was raised from 256 KiB to 1 MiB (EN-2069/EN-2105):
+// 256 KiB only allowed 4 entities at the 64 KiB per-entity maximum, which
+// connector workloads routinely exceeded in valid bulk commands. 1 MiB allows
+// up to 16 entities at their per-entity maximum, restoring meaningful fan-out
+// headroom without removing the bound.
 const (
 	DefaultMetadataMaxEntriesPerEntity = 128
 	DefaultMetadataMaxKeyBytes         = 256
 	DefaultMetadataMaxValueBytes       = 16 << 10
 	DefaultMetadataMaxEntityBytes      = 64 << 10
-	DefaultMetadataMaxCommandBytes     = 256 << 10
+	DefaultMetadataMaxCommandBytes     = 1 << 20
 )
 
 // Measured widths of the non-string MetadataValue variants. The scalar variants
