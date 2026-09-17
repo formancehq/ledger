@@ -332,8 +332,11 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in
-// read-only mode. The caller must invoke cleanup after its last access; cleanup
-// closes both stores before releasing their shared filesystem lease.
+// read-only mode. The caller must invoke cleanup exactly once after its last
+// access — the stores are shared with the checkpoint's other readers, and a
+// second call would drop a hold this reader does not have, closing them under
+// the others. It drops this reader's hold, closing both stores if it was the
+// last, and then releases its filesystem lease.
 func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, checkpointID uint64) (*dal.Store, *readstore.Store, func(), error) {
 	release, acquired := impl.store.AcquireQueryCheckpoint(checkpointID)
 	if !acquired {
@@ -387,7 +390,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// fail. The lease above stays per-reader, so a reader arriving after a
 	// committed deletion is still turned away rather than served from an open
 	// held by an earlier one.
-	mainStore, readIdx, closeStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
+	mainStore, readIdx, releaseStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
 		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
 	})
 	if err != nil {
@@ -396,7 +399,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 
 	keepLease = true
 	cleanup := func() {
-		closeStores()
+		releaseStores()
 		release()
 	}
 

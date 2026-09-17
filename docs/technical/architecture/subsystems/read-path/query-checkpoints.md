@@ -82,8 +82,10 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
      entry and open the directory while Pebble still held its lock. The cost is
      that a slow close briefly delays acquisitions of other checkpoints.
    - **Readers waiting on another reader's open honor their context**, and the
-     open unwinds its own partial state on a panic as well as on an error — a
-     handle left open would hold the directory lock against every later reader.
+     open unwinds any handle it has taken on a panic as well as on an error — one
+     left open would hold the directory lock against every later reader. A panic
+     inside `pebble.Open` itself is outside that reach: it returns no handle to
+     close, so that directory stays locked until the process restarts.
 
 ## Readiness and Error Contract
 

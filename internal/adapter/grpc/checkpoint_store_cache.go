@@ -30,9 +30,11 @@ type checkpointStoreCache struct {
 	entries map[uint64]*checkpointStoreEntry
 }
 
-// openCheckpointFn opens both halves of one checkpoint. It owns unwinding its
-// own partial state, on a panic as well as on an error: a handle left open
-// keeps Pebble's directory lock and locks out every later reader.
+// openCheckpointFn opens both halves of one checkpoint. It owns unwinding any
+// handle it has taken, on a panic as well as on an error: one left open keeps
+// Pebble's directory lock and locks out every later reader. A panic inside an
+// open itself, before it returns a handle, is outside that reach — nothing has
+// been handed over to close, and the directory stays locked until restart.
 type openCheckpointFn func() (*dal.Store, *readstore.Store, error)
 
 type checkpointStoreEntry struct {
@@ -65,6 +67,8 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 	// Unwinds the main store on the read index's failure and on a panic out of
 	// it. Leaking it would leave Pebble holding the main directory's lock, so
 	// later readers would fail on a directory that is not damaged at all.
+	// A panic inside dal.OpenReadOnly above is not covered: it returns no handle
+	// to close.
 	handedOver := false
 	defer func() {
 		if !handedOver {
@@ -146,8 +150,9 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 // already contained per-request by the server's recovery interceptor; without
 // this the first one would strand the checkpoint until the process restarts.
 //
-// open unwinds its own partial state on the way out, so the panic does not
-// leave a handle holding the directory lock.
+// open unwinds the handles it has taken on the way out, so the panic does not
+// leave one holding the directory lock; a panic inside an open itself is outside
+// that reach (see openCheckpointFn).
 //
 // The stack is logged here rather than carried in the error: the error is served
 // to every reader sharing this open and is sanitized before it reaches a client,

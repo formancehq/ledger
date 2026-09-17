@@ -13,6 +13,11 @@ import (
 // The returned Store implements PebbleReader and can be passed to free functions in state/ and events/.
 // The caller must call Close() when done.
 //
+// The returned Store is safe for concurrent readers: Pebble supports concurrent
+// reads, and a read-only store has neither writers nor RestoreCheckpoint to swap
+// its DB out. One open can therefore serve any number of readers, which is what
+// keeps callers off Pebble's process-global directory lock.
+//
 // Memory profile: tuned for short-lived secondary opens (e.g. reading a few
 // well-known keys from a backup checkpoint while the primary store still
 // holds its full working set). MaxOpenFiles is capped at 32 so Pebble does
