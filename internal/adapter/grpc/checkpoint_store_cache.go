@@ -1,8 +1,11 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
 	"sync"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -27,7 +30,8 @@ type checkpointStoreCache struct {
 }
 
 // openCheckpointFn opens both halves of one checkpoint. It owns unwinding its
-// own partial state: a failure must leave nothing open.
+// own partial state, on a panic as well as on an error: a handle left open
+// keeps Pebble's directory lock and locks out every later reader.
 type openCheckpointFn func() (*dal.Store, *readstore.Store, error)
 
 type checkpointStoreEntry struct {
@@ -43,10 +47,47 @@ type checkpointStoreEntry struct {
 	refs int
 }
 
+// openCheckpointDirs opens a checkpoint's main store and read index read-only.
+// Both handles come back or neither does.
+func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (*dal.Store, *readstore.Store, error) {
+	mainStore, err := dal.OpenReadOnly(mainPath, logger)
+	if err != nil {
+		// Both markers are present and the caller's lease keeps a committed
+		// deletion from unlinking under this open, so the directory the marker
+		// vouched for is damaged rather than late; the error surfaces as-is,
+		// like the read index's below.
+		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
+	}
+
+	// Unwinds the main store on the read index's failure and on a panic out of
+	// it. Leaking it would leave Pebble holding the main directory's lock, so
+	// later readers would fail on a directory that is not damaged at all.
+	handedOver := false
+	defer func() {
+		if !handedOver {
+			// Best-effort: this read-only store is only being unwound after a
+			// failed open.
+			_ = mainStore.Close()
+		}
+	}()
+
+	readIdx, err := readstore.OpenReadOnly(readIndexPath, logger)
+	if err != nil {
+		return nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
+	}
+
+	handedOver = true
+
+	return mainStore, readIdx, nil
+}
+
 // acquire returns the checkpoint's shared stores, opening them through open if
 // this is the first reader. The returned release must be called exactly once
 // after the caller's last access; it is not returned when err is non-nil.
-func (c *checkpointStoreCache) acquire(id uint64, open openCheckpointFn) (*dal.Store, *readstore.Store, func(), error) {
+//
+// A reader waiting on another reader's open honors ctx, so one slow open does
+// not hold the others past their deadlines.
+func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, open openCheckpointFn) (*dal.Store, *readstore.Store, func(), error) {
 	c.mu.Lock()
 	if c.entries == nil {
 		c.entries = make(map[uint64]*checkpointStoreEntry)
@@ -61,16 +102,27 @@ func (c *checkpointStoreCache) acquire(id uint64, open openCheckpointFn) (*dal.S
 	c.mu.Unlock()
 
 	if joined {
-		<-entry.done
+		select {
+		case <-entry.done:
+		case <-ctx.Done():
+			// The opener holds a ref of its own for as long as its open runs,
+			// so dropping this one can never strand the entry at zero refs with
+			// handles still being opened.
+			c.release(id, entry)
+
+			return nil, nil, nil, ctx.Err()
+		}
 	} else {
 		entry.main, entry.readIdx, entry.err = openSafe(open)
 		close(entry.done)
 	}
 
 	if entry.err != nil {
-		// Every reader that reached a failed entry unwinds through the same
-		// path, so the entry leaves the cache once the last of them has seen
-		// the error and the next reader retries the open.
+		// The entry leaves the cache once the last reader holding it has seen
+		// the error, and the reader after that opens again. A reader that joins
+		// before then is served the same error rather than repeating the open:
+		// the readiness markers are checked before the open, so a failure here
+		// is damage, which a second open would hit identically.
 		c.release(id, entry)
 
 		return nil, nil, nil, entry.err
@@ -80,13 +132,13 @@ func (c *checkpointStoreCache) acquire(id uint64, open openCheckpointFn) (*dal.S
 }
 
 // openSafe turns a panicking open into the entry's error, so the entry is
-// evicted and the next reader retries instead of every later reader waiting on
-// a done channel that is never closed. A panic here is already contained
-// per-request by the server's recovery interceptor; without this the first one
-// would strand the checkpoint until the process restarts.
+// evicted and a later reader opens again instead of every reader of this
+// checkpoint waiting on a done channel that is never closed. A panic here is
+// already contained per-request by the server's recovery interceptor; without
+// this the first one would strand the checkpoint until the process restarts.
 //
-// This remains a containment net, not a fix: a panic skips the open's own
-// unwinding, so whatever it had already opened is leaked.
+// open unwinds its own partial state on the way out, so the panic does not
+// leave a handle holding the directory lock.
 func openSafe(open openCheckpointFn) (main *dal.Store, readIdx *readstore.Store, err error) {
 	defer func() {
 		if r := recover(); r != nil {

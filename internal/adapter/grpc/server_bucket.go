@@ -387,25 +387,8 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// fail. The lease above stays per-reader, so a reader arriving after a
 	// committed deletion is still turned away rather than served from an open
 	// held by an earlier one.
-	mainStore, readIdx, closeStores, err := impl.checkpointStores.acquire(checkpointID, func() (*dal.Store, *readstore.Store, error) {
-		mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
-		if err != nil {
-			// Both markers are present and the lease taken above keeps a committed
-			// deletion from unlinking under this open, so the directory the marker
-			// vouched for is damaged rather than late; the error surfaces as-is,
-			// like the read index's below.
-			return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
-		}
-
-		readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
-		if err != nil {
-			// Best-effort: this read-only store is only being unwound after open failed.
-			_ = mainStore.Close()
-
-			return nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
-		}
-
-		return mainStore, readIdx, nil
+	mainStore, readIdx, closeStores, err := impl.checkpointStores.acquire(ctx, checkpointID, func() (*dal.Store, *readstore.Store, error) {
+		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
 	})
 	if err != nil {
 		return nil, nil, nil, err
