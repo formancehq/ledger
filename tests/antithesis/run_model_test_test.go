@@ -84,7 +84,8 @@ func runModelTestFixture(t *testing.T, scenario string) (string, string, error) 
 	// This is a deadlock guard for startup, reporting and cleanup, not a
 	// performance assertion. Concurrent repository validations can delay real
 	// shell utilities beyond 15 seconds even after scenario evidence is ready.
-	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	// Allow three minutes so a slow CI builder can still compile and start up.
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "bash", runner, "2")
 	cmd.Env = append(modelFixtureEnvironment(os.Environ()),
