@@ -22,6 +22,11 @@ import (
 // Expensive validation searches run on a snapshot taken under mu, not under it.
 type Checker struct {
 	mu sync.Mutex
+	// dispatchMu orders write registration against a read's response frontier.
+	// A writer holds it while acquiring its ticket; a completed read holds it
+	// while capturing maxTicket, so a post-response write cannot become a
+	// candidate explanation for that response.
+	dispatchMu sync.Mutex
 	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
 	// create transition until that transition has drained into modelState.
 	checkpointCreateMu sync.Mutex
@@ -32,10 +37,11 @@ type Checker struct {
 
 	// ledgerNames grows when a generated CreateLedger commits. Deleted names stay
 	// reserved in the oracle but are filtered from generation and reads.
-	ledgerNames  []string
-	ledgerPrefix string
-	liveTarget   int
-	ledgerSeq    atomic.Uint64
+	ledgerNames          []string
+	ledgerPrefix         string
+	liveTarget           int
+	ledgerSeq            atomic.Uint64
+	pendingLedgerCreates int
 
 	// ticketSeq hands out a monotonic ticket per dispatched operation (bulk or
 	// read) — the dispatch order the drain gate compares against. It is atomic
@@ -209,6 +215,44 @@ func (c *Checker) liveLedgerNamesSnapshot() []string {
 	c.mu.Unlock()
 
 	return liveLedgerNames(state, c.ledgerNamesSnapshot())
+}
+
+// reserveLedgerCreate keeps concurrent workers from all replacing the same
+// deleted ledger. The reservation remains held until dispatchBulk's observation
+// has been processed, at which point a success is already reflected in
+// modelState and a failure no longer consumes capacity.
+func (c *Checker) reserveLedgerCreate(bulk oracle.Bulk) bool {
+	creates := false
+	for _, req := range bulk.Requests {
+		if req.GetCreateLedger() != nil {
+			creates = true
+			break
+		}
+	}
+	if !creates {
+		return true
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(liveLedgerNames(c.modelState, c.ledgerNamesSnapshot()))+c.pendingLedgerCreates >= c.liveTarget {
+		return false
+	}
+	c.pendingLedgerCreates++
+
+	return true
+}
+
+func (c *Checker) releaseLedgerCreate(bulk oracle.Bulk) {
+	for _, req := range bulk.Requests {
+		if req.GetCreateLedger() == nil {
+			continue
+		}
+		c.mu.Lock()
+		c.pendingLedgerCreates--
+		c.mu.Unlock()
+		return
+	}
 }
 
 func liveLedgerNames(state oracle.GlobalState, names []string) []string {

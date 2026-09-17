@@ -36,6 +36,13 @@ func (c *Checker) registerRead() uint64 {
 	return t
 }
 
+func (c *Checker) responseHighWater() uint64 {
+	c.dispatchMu.Lock()
+	defer c.dispatchMu.Unlock()
+
+	return c.ticketSeq.Load()
+}
+
 // finishRead drops an outstanding read and resumes any draining it held back.
 func (c *Checker) finishRead(ticket uint64) {
 	c.mu.Lock()

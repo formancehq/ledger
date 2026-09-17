@@ -60,7 +60,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned. Captured before validation so later
 	// dispatches aren't folded into this read's candidate states.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -283,7 +283,7 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	info, err := client.GetLedger(readCtx, &servicepb.GetLedgerRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -361,7 +361,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -399,7 +399,7 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	resp, err := client.GetMetadataSchemaStatus(readCtx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return

@@ -153,6 +153,23 @@ func TestGenerateLifecycleHonorsConfiguredLiveTarget(t *testing.T) {
 	require.Equal(t, "model-5", req.GetCreateLedger().GetName())
 }
 
+func TestReserveLedgerCreateCountsOutstandingCreates(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"model-0"}, nil)
+	c.liveTarget = 2
+	createOne := oracle.Bulk{Requests: []*servicepb.Request{{Type: &servicepb.Request_CreateLedger{
+		CreateLedger: &servicepb.CreateLedgerRequest{Name: "model-1"},
+	}}}}
+	createTwo := oracle.Bulk{Requests: []*servicepb.Request{{Type: &servicepb.Request_CreateLedger{
+		CreateLedger: &servicepb.CreateLedgerRequest{Name: "model-2"},
+	}}}}
+
+	require.True(t, c.reserveLedgerCreate(createOne))
+	require.False(t, c.reserveLedgerCreate(createTwo), "the outstanding create must consume the remaining live slot")
+	c.releaseLedgerCreate(createOne)
+}
+
 func TestNextLedgerNameContinuesInitialSequence(t *testing.T) {
 	t.Parallel()
 

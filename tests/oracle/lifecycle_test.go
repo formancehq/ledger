@@ -83,6 +83,19 @@ func TestGlobalState_LifecyclePromotion(t *testing.T) {
 	require.True(t, promoted.State.Apply(bulkOf(oracletest.TxReq("world", "a:1", "USD", 5))).OK)
 }
 
+func TestMirrorSafeRequestAllowsMaintenanceConfiguration(t *testing.T) {
+	t.Parallel()
+
+	for _, req := range []*servicepb.Request{
+		oracletest.SetFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "region", commonpb.MetadataType_METADATA_TYPE_STRING),
+		oracletest.RemoveFieldTypeReq(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "region"),
+		oracletest.CreateIndexReq(nil),
+		oracletest.DropIndexReq(nil),
+	} {
+		require.True(t, mirrorSafeRequest(req), "%T must be mirror-safe", req.GetApply().GetAction().GetData())
+	}
+}
+
 func TestGlobalState_RejectsPromotionOfDeletedMirrorLedger(t *testing.T) {
 	t.Parallel()
 

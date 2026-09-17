@@ -528,7 +528,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		logs, err = drainStream(stream)
 	}
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 	if status.Code(err) == codes.NotFound {
 		c.validateLedgerNotFound(maxTicket, ledger, "ListLogs")
 		return

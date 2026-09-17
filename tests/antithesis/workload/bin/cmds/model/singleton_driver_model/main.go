@@ -282,6 +282,9 @@ func runWorker(
 		if len(bulk.Requests) == 0 {
 			continue
 		}
+		if !c.reserveLedgerCreate(bulk) {
+			continue
+		}
 		dispatchBulk(ctx, client, checkpointNodes, c, bulk)
 	}
 }
@@ -290,15 +293,18 @@ func runWorker(
 // processor path. Maintenance enable schedules a modeled disable independently,
 // so a write-blocked worker fleet cannot stall the run permanently.
 func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
+	defer c.releaseLedgerCreate(bulk)
 	checkpointCreate := isCheckpointCreate(bulk)
 	if checkpointCreate {
 		c.checkpointCreateMu.Lock()
 		defer c.checkpointCreateMu.Unlock()
 	}
 
+	c.dispatchMu.Lock()
 	c.mu.Lock()
 	if c.paused {
 		c.mu.Unlock()
+		c.dispatchMu.Unlock()
 		return
 	}
 	c.stampIdempotency(&bulk)
@@ -308,6 +314,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 	ticket := c.registerInflight(bulk)
 	c.mu.Unlock()
+	c.dispatchMu.Unlock()
 
 	var probeDone <-chan struct{}
 	if checkpointCreate {
@@ -454,11 +461,13 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		IdempotencyKey: idempotencyKey(),
 	}
 
+	c.dispatchMu.Lock()
 	c.mu.Lock()
 	ticket := c.registerInflight(bulk)
 	delete(c.reads, recoveryID)
 	c.tryDrain()
 	c.mu.Unlock()
+	c.dispatchMu.Unlock()
 
 	req := applyRequest(bulk)
 	var resp *servicepb.ApplyResponse

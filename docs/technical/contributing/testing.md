@@ -580,7 +580,7 @@ Common tunables (full list in the script header):
 
 | Variable | Meaning |
 |----------|---------|
-| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. Workers are capped at 7 because candidate-state search is exponential in outstanding writes; one additional slot is reserved for maintenance recovery. |
+| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. Workers are capped at 6 because candidate-state search is exponential in outstanding writes; two additional slots are reserved for maintenance recovery and one retained ambiguous enable. |
 | `MODEL_DEBUG` | Enable driver debug logging. |
 | `MODEL_FAIL_FAST` | Stop on first finding (default); `0` runs the full duration. |
 | `MODEL_DUMP_BATCHES` | Log every submitted bulk (`[batch-dump]` lines) for deterministic offline replay through `tests/oracle/cmd/replay`. |

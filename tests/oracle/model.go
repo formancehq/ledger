@@ -2246,7 +2246,14 @@ func (g GlobalState) SeedQueryCheckpoints(ids []uint64, nextID uint64) GlobalSta
 }
 
 func mirrorSafeRequest(req *servicepb.Request) bool {
-	if req.GetApply() == nil {
+	switch req.GetType().(type) {
+	case *servicepb.Request_SetMetadataFieldType,
+		*servicepb.Request_RemoveMetadataFieldType,
+		*servicepb.Request_CreateIndex,
+		*servicepb.Request_DropIndex,
+		*servicepb.Request_AddAccountType,
+		*servicepb.Request_RemoveAccountType,
+		*servicepb.Request_SetDefaultEnforcementMode:
 		return true
 	}
 

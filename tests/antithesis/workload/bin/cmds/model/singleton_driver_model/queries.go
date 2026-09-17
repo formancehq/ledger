@@ -101,7 +101,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	// High-water at the read's completion: only bulks dispatched by now could be
 	// reflected in the page. Captured before validation so later dispatches
 	// aren't folded into this read's candidate states.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 
 	if err != nil {
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
@@ -217,7 +217,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		txs, err = drainStream(stream)
 	}
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := c.responseHighWater()
 
 	if err != nil {
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
