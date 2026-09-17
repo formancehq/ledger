@@ -284,16 +284,23 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 		}
 		return nil
 	case 1:
-		if len(live) == 0 {
+		mirrors := make([]string, 0, len(live))
+		for _, name := range live {
+			if lc, ok := g.Lifecycle(name); ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+				mirrors = append(mirrors, name)
+			}
+		}
+		if len(mirrors) == 0 {
 			return nil
 		}
-		name := random.RandomChoice(live)
-		lc, ok := g.Lifecycle(name)
-		if ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
-			return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: name}}}
-		}
-		return nil
+		return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: random.RandomChoice(mirrors)}}}
 	default:
+		// Enables stop every business worker for the recovery window, so generate
+		// them much less often than disables. An active maintenance window still
+		// gets the full toggle probability and closes promptly.
+		if !g.MaintenanceMode() && random.RandomChoice(indexPool(8)) != 0 {
+			return nil
+		}
 		return actions.SetMaintenanceModeAction(!g.MaintenanceMode())
 	}
 }

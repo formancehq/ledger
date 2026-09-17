@@ -94,12 +94,12 @@ func (c *Checker) handleObservation(obs observation) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if obs.ambiguousCommit && bulkEnablesMaintenance(obs.bulk) {
-		// A maintenance rejection after an ambiguous enable proves that an enable
-		// may have committed. Keep one equivalent optional predecessor after the
-		// worker observation leaves inflight so later failures and reads can still
-		// serialize through the maintenance window.
-		c.ambiguousEnables[obs.ticket] = struct{}{}
+	if obs.ambiguousCommit {
+		// A maintenance rejection after an ambiguous attempt does not determine
+		// whether that attempt committed. Keep the original bulk as an optional
+		// predecessor after its worker observation leaves inflight so validation
+		// can still serialize through either outcome.
+		c.ambiguousBulks[obs.ticket] = obs.bulk
 	}
 	c.removeInflight(obs.ticket)
 	defer c.tryDrain()
@@ -157,9 +157,11 @@ func (c *Checker) tryDrain() {
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
 		if bulkDisablesMaintenance(head.obs.bulk) {
-			for ticket := range c.ambiguousEnables {
-				if ticket <= head.obs.ticket {
-					delete(c.ambiguousEnables, ticket)
+			for ticket, bulk := range c.ambiguousBulks {
+				// A committed disable subsumes an optional earlier enable, but it
+				// does not subsume an ambiguously committed business effect.
+				if ticket <= head.obs.ticket && bulkEnablesMaintenance(bulk) {
+					delete(c.ambiguousBulks, ticket)
 				}
 			}
 		}

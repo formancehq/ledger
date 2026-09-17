@@ -37,11 +37,12 @@ type Checker struct {
 
 	// ledgerNames grows when a generated CreateLedger commits. Deleted names stay
 	// reserved in the oracle but are filtered from generation and reads.
-	ledgerNames          []string
-	ledgerPrefix         string
-	liveTarget           int
-	ledgerSeq            atomic.Uint64
-	pendingLedgerCreates int
+	ledgerNames           []string
+	ledgerPrefix          string
+	liveTarget            int
+	ledgerSeq             atomic.Uint64
+	pendingLedgerCreates  int
+	reservedLedgerCreates map[string]uint64
 
 	// ticketSeq hands out a monotonic ticket per dispatched operation (bulk or
 	// read) — the dispatch order the drain gate compares against. It is atomic
@@ -108,7 +109,8 @@ type Checker struct {
 	// create an unbounded fleet of delayed disable RPCs. Guarded by mu.
 	maintenanceEnableSeq      uint64
 	maintenanceRecoveryActive bool
-	ambiguousEnables          map[uint64]struct{}
+	maintenanceRecoveryTicket uint64
+	ambiguousBulks            map[uint64]oracle.Bulk
 	recoveries                sync.WaitGroup
 }
 
@@ -191,7 +193,8 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		retypeObs:                  map[string]*retypeObservation{},
 		pendingDeleted:             map[string]struct{}{},
 		pendingPromoted:            map[string]struct{}{},
-		ambiguousEnables:           map[uint64]struct{}{},
+		ambiguousBulks:             map[uint64]oracle.Bulk{},
+		reservedLedgerCreates:      map[string]uint64{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}
@@ -222,34 +225,45 @@ func (c *Checker) liveLedgerNamesSnapshot() []string {
 // has been processed, at which point a success is already reflected in
 // modelState and a failure no longer consumes capacity.
 func (c *Checker) reserveLedgerCreate(bulk oracle.Bulk) bool {
-	creates := false
+	var name string
 	for _, req := range bulk.Requests {
 		if req.GetCreateLedger() != nil {
-			creates = true
+			name = req.GetCreateLedger().GetName()
 			break
 		}
 	}
-	if !creates {
+	if name == "" {
 		return true
 	}
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if lifecycle, exists := c.modelState.Lifecycle(name); exists && lifecycle.Deleted {
+		return true
+	}
 	if len(liveLedgerNames(c.modelState, c.ledgerNamesSnapshot()))+c.pendingLedgerCreates >= c.liveTarget {
 		return false
 	}
 	c.pendingLedgerCreates++
+	c.reservedLedgerCreates[name]++
 
 	return true
 }
 
 func (c *Checker) releaseLedgerCreate(bulk oracle.Bulk) {
 	for _, req := range bulk.Requests {
-		if req.GetCreateLedger() == nil {
+		name := req.GetCreateLedger().GetName()
+		if name == "" {
 			continue
 		}
 		c.mu.Lock()
-		c.pendingLedgerCreates--
+		if c.reservedLedgerCreates[name] > 0 {
+			c.pendingLedgerCreates--
+			c.reservedLedgerCreates[name]--
+			if c.reservedLedgerCreates[name] == 0 {
+				delete(c.reservedLedgerCreates, name)
+			}
+		}
 		c.mu.Unlock()
 		return
 	}

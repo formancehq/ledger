@@ -1,10 +1,6 @@
 package main
 
-import (
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-)
+import "github.com/formancehq/ledger/v3/tests/oracle"
 
 // Candidate enumeration is exponential in independently committable in-flight
 // bulks. Workers are capped two below this limit so the separately dispatched
@@ -82,9 +78,9 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 	// cannot have committed before it, so folding it would invent a state the
 	// server was never in and could explain away a real divergence.
 	type candidateBulk struct {
-		ticket    uint64
-		bulk      oracle.Bulk
-		synthetic bool
+		ticket   uint64
+		bulk     oracle.Bulk
+		retained bool
 	}
 
 	pending := make([]candidateBulk, 0, len(c.pending))
@@ -97,20 +93,19 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 		pending = append(pending, candidateBulk{ticket: pe.obs.ticket, bulk: pe.obs.bulk})
 	}
 
-	inflight := make([]candidateBulk, 0, len(c.inflight)+1)
+	inflight := make([]candidateBulk, 0, len(c.inflight)+len(c.ambiguousBulks))
 	for t, b := range c.inflight {
 		if t <= maxTicket {
 			inflight = append(inflight, candidateBulk{ticket: t, bulk: b})
 		}
 	}
-	for ticket := range c.ambiguousEnables {
+	for ticket, bulk := range c.ambiguousBulks {
 		if ticket <= maxTicket {
 			inflight = append(inflight, candidateBulk{
-				ticket:    ticket,
-				bulk:      oracle.Bulk{Requests: []*servicepb.Request{actions.SetMaintenanceModeAction(true)}},
-				synthetic: true,
+				ticket:   ticket,
+				bulk:     bulk,
+				retained: true,
 			})
-			break
 		}
 	}
 	if len(inflight) > maxCandidateInflight {
@@ -132,17 +127,28 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 	seen := map[dedupKey]bool{}
 
 	var rec func(base oracle.GlobalState, pIdx int, rem []byte) bool
-	remainingSyntheticBefore := func(rem []byte, ticket uint64) int {
+	remainingRetainedBefore := func(rem []byte, ticket uint64) []int {
+		indices := make([]int, 0, len(c.ambiguousBulks))
 		for idx, candidate := range inflight {
-			if !candidate.synthetic || candidate.ticket >= ticket {
+			if !candidate.retained || candidate.ticket >= ticket {
 				continue
 			}
 			if rem[idx/8]&(1<<(idx%8)) != 0 {
-				return idx
+				indices = append(indices, idx)
 			}
 		}
 
-		return -1
+		return indices
+	}
+	setRemaining := func(rem []byte, indices []int, present bool) {
+		for _, idx := range indices {
+			byteIdx, mask := idx/8, byte(1<<(idx%8))
+			if present {
+				rem[byteIdx] |= mask
+			} else {
+				rem[byteIdx] &^= mask
+			}
+		}
 	}
 
 	rec = func(base oracle.GlobalState, pIdx int, rem []byte) bool {
@@ -159,16 +165,16 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 		// Advance the pending prefix by one, in minSeq order.
 		if pIdx < len(pending) {
 			candidate := pending[pIdx]
-			if syntheticIdx := remainingSyntheticBefore(rem, candidate.ticket); bulkDisablesMaintenance(candidate.bulk) && syntheticIdx >= 0 {
-				// The ambiguous enable is optional, but if retained it committed
+			if retained := remainingRetainedBefore(rem, candidate.ticket); bulkDisablesMaintenance(candidate.bulk) && len(retained) > 0 {
+				// The ambiguous predecessor is optional, but if retained it committed
 				// before the recovery disable. The normal in-flight branch retains
-				// it; this branch explicitly omits it before applying the disable.
-				byteIdx, mask := syntheticIdx/8, byte(1<<(syntheticIdx%8))
-				rem[byteIdx] &^= mask
+				// it; this branch explicitly omits all of them before applying the
+				// disable.
+				setRemaining(rem, retained, false)
 				if res := base.Apply(candidate.bulk); res.OK && rec(res.State, pIdx+1, rem) {
 					return true
 				}
-				rem[byteIdx] |= mask
+				setRemaining(rem, retained, true)
 			} else if res := base.Apply(candidate.bulk); res.OK {
 				if transition != nil && transition(base, candidate.bulk, res) {
 					return true
@@ -187,16 +193,15 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 			}
 
 			candidate := inflight[idx]
-			if syntheticIdx := remainingSyntheticBefore(rem, candidate.ticket); bulkDisablesMaintenance(candidate.bulk) && syntheticIdx >= 0 {
-				syntheticByteIdx, syntheticMask := syntheticIdx/8, byte(1<<(syntheticIdx%8))
-				rem[syntheticByteIdx] &^= syntheticMask
+			if retained := remainingRetainedBefore(rem, candidate.ticket); bulkDisablesMaintenance(candidate.bulk) && len(retained) > 0 {
+				setRemaining(rem, retained, false)
 				rem[byteIdx] &^= mask
 				res := base.Apply(candidate.bulk)
 				if res.OK && rec(res.State, pIdx, rem) {
 					return true
 				}
 				rem[byteIdx] |= mask
-				rem[syntheticByteIdx] |= syntheticMask
+				setRemaining(rem, retained, true)
 				continue
 			}
 

@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
 type immediateApplyClient struct {
@@ -27,14 +28,19 @@ func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...g
 
 type scriptedApplyClient struct {
 	servicepb.BucketServiceClient
-	errors []error
-	calls  int
+	responses []*servicepb.ApplyResponse
+	errors    []error
+	calls     int
 }
 
 func (c *scriptedApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	response := (*servicepb.ApplyResponse)(nil)
+	if c.calls < len(c.responses) {
+		response = c.responses[c.calls]
+	}
 	err := c.errors[c.calls]
 	c.calls++
-	return nil, err
+	return response, err
 }
 
 func TestDispatchMaintenanceRecoveryWaitsForObservationProcessing(t *testing.T) {
@@ -111,6 +117,51 @@ func TestScheduleMaintenanceRecoveryDoesNotRefreshActiveWindow(t *testing.T) {
 	require.Equal(t, uint64(7), c.maintenanceEnableSeq)
 }
 
+func TestScheduleMaintenanceRecoveryQueuesFollowUpAfterDisableDispatch(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	c.maintenanceRecoveryActive = true
+	c.maintenanceRecoveryTicket = 8
+	c.maintenanceEnableSeq = 7
+
+	scheduleMaintenanceRecovery(t.Context(), immediateApplyClient{}, c)
+
+	require.Equal(t, uint64(8), c.maintenanceEnableSeq)
+}
+
+func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
+	t.Parallel()
+
+	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	require.NoError(t, err)
+	client := &scriptedApplyClient{
+		responses: []*servicepb.ApplyResponse{nil, nil, {}},
+		errors: []error{
+			status.Error(codes.Canceled, "response lost"),
+			maintenanceStatus.Err(),
+			nil,
+		},
+	}
+	c := NewChecker([]string{"L"}, nil)
+	bulk := bulkOf(&servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: "L"}}})
+	done := make(chan struct{})
+	go func() {
+		dispatchBulk(t.Context(), client, nil, c, bulk)
+		close(done)
+	}()
+
+	obs := <-c.incoming
+	require.Equal(t, 3, client.calls)
+	require.NoError(t, obs.err)
+	require.False(t, obs.ambiguousCommit)
+	c.mu.Lock()
+	c.removeInflight(obs.ticket)
+	markObservationProcessed(obs)
+	c.mu.Unlock()
+	<-done
+}
+
 func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 	t.Parallel()
 
@@ -129,10 +180,37 @@ func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 	})
 
 	require.NotContains(t, c.inflight, ticket)
-	require.Contains(t, c.ambiguousEnables, ticket)
+	require.Contains(t, c.ambiguousBulks, ticket)
 	found := false
 	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
 		found = found || state.MaintenanceMode()
+		return found
+	})
+	require.True(t, found)
+}
+
+func TestProcessorPreservesAmbiguousBusinessBulkAsCandidate(t *testing.T) {
+	t.Parallel()
+
+	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
+	require.NoError(t, err)
+	c := NewChecker([]string{"L"}, nil)
+	bulk := bulkOf(oracletest.AddTypeReq("retained"))
+	ticket := c.registerInflight(bulk)
+
+	c.handleObservation(observation{
+		ticket:          ticket,
+		bulk:            bulk,
+		err:             maintenanceStatus.Err(),
+		ambiguousCommit: true,
+		observeTicket:   ticket,
+	})
+
+	require.Equal(t, bulk, c.ambiguousBulks[ticket])
+	found := false
+	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
+		result := state.Apply(bulk)
+		found = !result.OK && result.Reason == domain.ErrReasonAccountTypeAlreadyExists
 		return found
 	})
 	require.True(t, found)
@@ -180,6 +258,26 @@ func TestReserveLedgerCreateCountsOutstandingCreates(t *testing.T) {
 	require.True(t, c.reserveLedgerCreate(createOne))
 	require.False(t, c.reserveLedgerCreate(createTwo), "the outstanding create must consume the remaining live slot")
 	c.releaseLedgerCreate(createOne)
+}
+
+func TestReserveLedgerCreateExemptsTombstoneProbe(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"model-0"}, nil)
+	deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "model-0"},
+	}}))
+	require.True(t, deleted.OK)
+	c.modelState = deleted.State
+	c.liveTarget = 0
+	probe := bulkOf(&servicepb.Request{Type: &servicepb.Request_CreateLedger{
+		CreateLedger: &servicepb.CreateLedgerRequest{Name: "model-0"},
+	}})
+
+	require.True(t, c.reserveLedgerCreate(probe))
+	require.Zero(t, c.pendingLedgerCreates)
+	c.releaseLedgerCreate(probe)
+	require.Zero(t, c.pendingLedgerCreates)
 }
 
 func TestNextLedgerNameContinuesInitialSequence(t *testing.T) {

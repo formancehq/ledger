@@ -350,7 +350,9 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 			provisionalMaintenanceRecoveryScheduled = true
 		}
 		if maintenanceRejected {
-			break
+			if !hadAmbiguousAttempt || bulkEnablesMaintenance(bulk) {
+				break
+			}
 		}
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
@@ -402,6 +404,9 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	if c.maintenanceRecoveryActive {
+		if c.maintenanceRecoveryTicket != 0 {
+			c.maintenanceEnableSeq++
+		}
 		c.mu.Unlock()
 		return
 	}
@@ -421,6 +426,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		}()
 		for {
 			c.mu.Lock()
+			c.maintenanceRecoveryTicket = 0
 			enableSeq := c.maintenanceEnableSeq
 			c.mu.Unlock()
 
@@ -464,6 +470,7 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 	c.dispatchMu.Lock()
 	c.mu.Lock()
 	ticket := c.registerInflight(bulk)
+	c.maintenanceRecoveryTicket = ticket
 	delete(c.reads, recoveryID)
 	c.tryDrain()
 	c.mu.Unlock()
