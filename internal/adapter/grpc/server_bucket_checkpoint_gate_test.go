@@ -175,3 +175,28 @@ func TestOpenCheckpointStoresServesConcurrentReaders(t *testing.T) {
 
 	require.Empty(t, failed, "concurrent readers of one frozen checkpoint must all be served")
 }
+
+// The read index opens second, so its failure has to unwind the main store the
+// same call already opened. Leaking it would leave Pebble holding the directory
+// lock, and the next reader of this checkpoint would fail to open a directory
+// that is not damaged at all.
+func TestOpenCheckpointStoresUnwindsMainStoreWhenReadIndexIsDamaged(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	manifests, err := filepath.Glob(filepath.Join(impl.store.QueryCheckpointReadIndexDir(gateCheckpointID), "MANIFEST-*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifests)
+	require.NoError(t, os.Truncate(manifests[0], 0))
+
+	main, readIndex, cleanup, err := impl.openCheckpointStores(context.Background(), gateCheckpointID)
+	require.Nil(t, main)
+	require.Nil(t, readIndex)
+	require.Nil(t, cleanup)
+	require.ErrorContains(t, err, "opening checkpoint read index")
+
+	reopened, err := dal.OpenReadOnly(impl.store.QueryCheckpointMainDir(gateCheckpointID), testLogger())
+	require.NoError(t, err, "the main store opened by the failed call must have been closed")
+	require.NoError(t, reopened.Close())
+}
