@@ -51,11 +51,15 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		maxAttempts = 1000000
 	}
 
-	// The retry interceptors retry the transient set (IsTransient) to a definitive
-	// outcome. The ordinary path keeps the previous effective 50-attempt budget
-	// (10 interceptor attempts, each with up to 5 service-config attempts), while
-	// retry-forever lifts it.
-	interceptorAttempts := maxAttempts
+	// Unary RPCs keep the previous effective 50-attempt budget (10 interceptor
+	// attempts, each formerly wrapping up to 5 service-config attempts). Streams
+	// never had service-config retries, so their ordinary budget remains 10.
+	// Retry-forever lifts both budgets.
+	unaryInterceptorAttempts := maxAttempts
+	streamInterceptorAttempts := retryMaxAttempts
+	if retryForever {
+		streamInterceptorAttempts = maxAttempts
+	}
 
 	// Retry in the interceptor, where business-reason details are visible. A
 	// service-config UNAVAILABLE retry cannot distinguish maintenance rejection.
@@ -78,11 +82,11 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		// map is complete.
 		opts = append(opts,
 			grpc.WithChainUnaryInterceptor(
-				retryUnaryInterceptor(interceptorAttempts),
+				retryUnaryInterceptor(unaryInterceptorAttempts),
 				classifyUnaryInterceptor(),
 			),
 			grpc.WithChainStreamInterceptor(
-				retryStreamInterceptor(interceptorAttempts),
+				retryStreamInterceptor(streamInterceptorAttempts),
 				classifyStreamInterceptor(),
 			),
 		)
