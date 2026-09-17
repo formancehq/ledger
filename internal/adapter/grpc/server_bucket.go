@@ -66,6 +66,7 @@ type BucketServiceServerImpl struct {
 	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
+	checkpointStores      checkpointStoreCache
 }
 
 func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
@@ -380,27 +381,39 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 		return nil, nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
-	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
+	// Concurrent readers of one checkpoint share a single open of its two
+	// directories: Pebble's directory lock is process-wide and taken even for a
+	// read-only open, so a second simultaneous open of the same checkpoint would
+	// fail. The lease above stays per-reader, so a reader arriving after a
+	// committed deletion is still turned away rather than served from an open
+	// held by an earlier one.
+	mainStore, readIdx, closeStores, err := impl.checkpointStores.acquire(checkpointID, func() (*dal.Store, *readstore.Store, error) {
+		mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
+		if err != nil {
+			// Both markers are present and the lease taken above keeps a committed
+			// deletion from unlinking under this open, so the directory the marker
+			// vouched for is damaged rather than late; the error surfaces as-is,
+			// like the read index's below.
+			return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
+		}
+
+		readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
+		if err != nil {
+			// Best-effort: this read-only store is only being unwound after open failed.
+			_ = mainStore.Close()
+
+			return nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
+		}
+
+		return mainStore, readIdx, nil
+	})
 	if err != nil {
-		// Both markers are present and the lease taken above keeps a committed
-		// deletion from unlinking under this open, so the directory the marker
-		// vouched for is damaged rather than late; the error surfaces as-is,
-		// like the read index's below.
-		return nil, nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
+		return nil, nil, nil, err
 	}
 
-	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
-	if err != nil {
-		// Best-effort: this read-only store is only being unwound after open failed.
-		_ = mainStore.Close()
-
-		return nil, nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
-	}
 	keepLease = true
 	cleanup := func() {
-		// Best-effort: read-only close failures are non-actionable at request end.
-		_ = readIdx.Close()
-		_ = mainStore.Close()
+		closeStores()
 		release()
 	}
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -130,4 +131,47 @@ func TestOpenCheckpointStoresSurfacesDamagedMainStore(t *testing.T) {
 	var notFound *commonpb.NotFoundError
 	require.False(t, errors.As(err, &notFound), "the checkpoint exists; only this replica's copy is damaged")
 	require.Equal(t, codes.Unknown, status.Code(convertToGRPCError(err, testLogger())))
+}
+
+// A checkpoint is frozen and every one of these opens is read-only, so any
+// number of concurrent reads of one checkpoint must be served. The lease taken
+// by openCheckpointStores guards the directory against deletion; it is not
+// mutual exclusion over the open, and pebble's directory lock is per-process.
+func TestOpenCheckpointStoresServesConcurrentReaders(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	const readers = 8
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		failed  []error
+		release = make(chan struct{})
+	)
+
+	for range readers {
+		wg.Go(func() {
+			<-release
+
+			main, readIndex, cleanup, err := impl.openCheckpointStores(context.Background(), gateCheckpointID)
+			if err != nil {
+				mu.Lock()
+				failed = append(failed, err)
+				mu.Unlock()
+
+				return
+			}
+
+			require.NotNil(t, main)
+			require.NotNil(t, readIndex)
+			cleanup()
+		})
+	}
+
+	close(release)
+	wg.Wait()
+
+	require.Empty(t, failed, "concurrent readers of one frozen checkpoint must all be served")
 }
