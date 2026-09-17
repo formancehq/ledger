@@ -527,7 +527,8 @@ default. A successful run also requires at least one
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
 
-It also requires every coverage sonde to have been satisfied (see below).
+It reports coverage sondes that were not satisfied in the sampled trajectory
+without turning those stochastic gaps into correctness failures (see below).
 
 The local runner's shell-fixture tests use a logical clock. Time remains before
 its deadline until the fake driver has written the scenario's assertions and
@@ -555,20 +556,21 @@ Common tunables (full list in the script header):
 A green run proves nothing about a query path it never took. `coverage.go`
 registers one `Sometimes` per index the oracle models — the nine the generator
 churns, plus one per entity target for the metadata-field indexes and one for
-the retype window — and the runner fails when any of them was never satisfied.
+the retype window — and the runner reports any that were never satisfied.
 A sonde is satisfied only by a page that the index was needed for AND that the
 oracle verified; a refusal the model predicted proves the lifecycle gate, not
 that the index can answer.
 
 They are `Sometimes` rather than `Reachable` because a `Reachable` hard-wires
 its condition to true and so never produces a failing evaluation for
-Antithesis to steer on. On the platform this gate is redundant: the run
-branches and biases toward unsatisfied sondes, so a reachable path is reached.
-Locally there is one linear trajectory and no guidance, which is what the gate
-covers. Apply sondes additionally require each skipped reason followed by a successful
-order, both mode setters in both modes, and a rejected invalid skip opt-in. A
-selected request does not satisfy a sonde: the observed outcome must pass oracle
-validation. Coverage remains a required gate for local model runs.
+Antithesis to steer on. On the platform, the run branches and biases toward
+unsatisfied sondes, making Antithesis the authoritative exhaustive-coverage
+environment. Locally there is one short linear trajectory and no guidance, so
+missing sondes remain visible as diagnostics rather than making CI depend on
+random generator choices. Apply sondes additionally require each skipped reason
+followed by a successful order, both mode setters in both modes, and a rejected
+invalid skip opt-in. A selected request does not satisfy a sonde: the observed
+outcome must pass oracle validation.
 
 Sonde names are data-driven, so the instrumentor cannot catalogue them; they
 are registered through `assert.AssertRaw`, as `internal/block/block.go` does.
