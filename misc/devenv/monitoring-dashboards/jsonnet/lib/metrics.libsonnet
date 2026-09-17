@@ -191,5 +191,6 @@
   wal:: {
     append_save_duration: 'wal.append.save.duration',
     append_batch_size: 'wal.append.batch_size',
+    recovery_repaired_entries: 'wal.recovery.repaired_entries',
   },
 }
