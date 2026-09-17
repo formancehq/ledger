@@ -278,6 +278,13 @@ func (m *Machine) tick() (bool, error) {
 			Amount: a.Amount.Sub(b.Amount),
 		})
 
+	case program.OP_MONETARY_CLAMP_ZERO:
+		mon := pop[machine.Monetary](m)
+		if mon.Amount.Ltz() {
+			mon.Amount = machine.Zero
+		}
+		m.pushValue(mon)
+
 	case program.OP_MAKE_ALLOTMENT:
 		n := pop[machine.Number](m)
 		portions := make([]machine.Portion, n.Uint64())

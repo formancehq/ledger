@@ -60,6 +60,7 @@ func (p *parseVisitor) VisitDestinationRecursive(c parser.IDestinationContext) *
 			if ty != machine.TypeMonetary {
 				return LogicError(c, errors.New("wrong type: expected monetary as max"))
 			}
+			p.AppendInstruction(program.OP_MONETARY_CLAMP_ZERO)
 			// <kept_acc: funding> <funding> <max: monetary>
 			p.AppendInstruction(program.OP_TAKE_MAX)
 			err := p.Bump(2)

@@ -202,6 +202,7 @@ func (p *parseVisitor) VisitSource(c parser.ISourceContext, pushAsset func(), is
 		if ty != machine.TypeMonetary {
 			return nil, nil, nil, LogicError(c, errors.New("wrong type: expected monetary as max"))
 		}
+		p.AppendInstruction(program.OP_MONETARY_CLAMP_ZERO)
 		for k, v := range accounts {
 			neededAccounts[k] = v
 		}

@@ -120,7 +120,9 @@ func TestNegativeMonetaryCanBeBuiltBySubtraction(t *testing.T) {
 // 2. a negative send: the error depends on the opcode the source compiles to
 // ---------------------------------------------------------------------------
 
-// Sources that compile to OP_TAKE_MAX are guarded (machine.go, OP_TAKE_MAX).
+// Sources whose *send amount* reaches OP_TAKE_MAX are guarded (machine.go,
+// OP_TAKE_MAX). A `max` clause is not one of them: it is clamped instead, see
+// machine_negative_max_test.go.
 func TestNegativeSendGuardedPaths(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
@@ -135,17 +137,6 @@ func TestNegativeSendGuardedPaths(t *testing.T) {
 			source = @alice allowing unbounded overdraft
 			destination = @bob
 		)`, nil},
-		{"max <negative> from", `send [COIN 100] (
-			source = max ` + negExpr + ` from @alice
-			destination = @bob
-		)`, map[string]int64{"alice": 1000}},
-		{"destination max <negative>", `send [COIN 100] (
-			source = @alice
-			destination = {
-				max ` + negExpr + ` to @bob
-				remaining to @charlie
-			}
-		)`, map[string]int64{"alice": 1000}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := run(t, tt.src, tt.balances)

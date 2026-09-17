@@ -404,6 +404,7 @@ func TestDestinationInOrder(t *testing.T) {
 				program.OP_FUNDING_SUM, // [COIN @a 50], [COIN 50] <- start of DestinationInOrder
 				program.OP_TAKE,
 				program.OP_APUSH, 05, 00,
+				program.OP_MONETARY_CLAMP_ZERO,
 				program.OP_TAKE_MAX,
 				program.OP_APUSH, 06, 00,
 				program.OP_BUMP,

@@ -26,6 +26,7 @@ const (
 	OP_TX_META          //
 	OP_ACCOUNT_META     //
 	OP_SAVE
+	OP_MONETARY_CLAMP_ZERO // <monetary> => <monetary>   // a negative amount becomes zero
 )
 
 func OpcodeName(op byte) string {
@@ -80,6 +81,8 @@ func OpcodeName(op byte) string {
 		return "OP_ACCOUNT_META"
 	case OP_SAVE:
 		return "OP_SAVE"
+	case OP_MONETARY_CLAMP_ZERO:
+		return "OP_MONETARY_CLAMP_ZERO"
 	default:
 		return "Unknown opcode"
 	}
