@@ -318,3 +318,13 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gotest.tools/gotestsum v1.8.2 // indirect
 )
+
+// etcd v3.7.0 + etcd-io/etcd#22443 only: ReadAll replays the truncation an entry
+// record implies only above the snapshot the WAL was opened at, so a truncating
+// overwrite at or below the snapshot index resurrects the entries it replaced and
+// the recovered last-entry term stops describing the real log, which is enough to
+// grant a vote that loses acknowledged writes. Branch wal-truncation-below-snapshot
+// of formancehq/etcd is tag v3.7.0 plus that single upstream commit; drop this
+// replace once the fix ships in an etcd release. See
+// docs/technical/architecture/subsystems/storage/storage.md#replay-validity.
+replace go.etcd.io/etcd/server/v3 => github.com/formancehq/etcd/server/v3 v3.7.1-0.20260917125424-fa1be9f11f7b

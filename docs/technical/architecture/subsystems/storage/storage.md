@@ -407,6 +407,44 @@ The system can recover completely from:
 2. **Complete WAL**: If no snapshot, complete replay of the WAL
 3. **Store**: Reconstruction of balances from the logs
 
+#### Replay validity
+
+The WAL is append-only, so an entry that a later leader overwrote is still
+physically present and only replay decides which version survives. An entry
+record at index `i` means Raft truncated its log to `[.., i-1]` before appending
+it, so every record read earlier with an index `>= i` is stale — and that
+truncation is a property of the record, independent of the snapshot the WAL was
+opened at. An installed snapshot carries the same meaning: `ApplySnapshot`
+replaces the log in memory and persists only a snapshot record, so when the
+entry at the snapshot index does not carry the snapshot term, the entries read
+before it are obsolete too.
+
+etcd v3.7.0 applies the first rule only to records above the opening snapshot
+(`ents = append(ents[:offset], e)` under `e.Index > w.start.Index`) and does not
+apply the second at all. A truncating overwrite written at or below the snapshot
+index is therefore skipped together with the truncation it implies, and the
+physically earlier entries it replaced come back after a restart.
+
+That tail is not a log any Raft node could hold, and the damage is not confined
+to storage: the node's last-entry term no longer describes its real log, which is
+enough for it to grant a vote it must refuse — raft compares last-entry term
+before index — so a replica whose log is missing committed entries can win an
+election and overwrite them. Treat the recovered last-entry term and index as
+consensus authority.
+
+Both rules are fixed upstream in
+[etcd-io/etcd#22443](https://github.com/etcd-io/etcd/pull/22443). Until that
+lands in an etcd release, `go.mod` pins a patched build through a `replace` on
+`go.etcd.io/etcd/server/v3`: the tag `v3.7.0` plus that single commit, on the
+`wal-truncation-below-snapshot` branch of `formancehq/etcd`. The same `replace`
+is mirrored in `tests/antithesis/workload/go.mod`, which builds this code through
+a local module replacement.
+
+**Removing the pin** requires an etcd release containing that commit; dropping it
+before then reintroduces the defect. `TestRecovery_DiscardsResurrected*` and
+`TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot` in
+`internal/storage/wal/` fail without it and are the guard.
+
 ### ACID Guarantees
 
 - **Atomicity**: Complete transactions or nothing
