@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -570,4 +571,25 @@ func TestComputeLedgerSpecHash_IgnoresIndexes(t *testing.T) {
 	// And the input spec must not be mutated by hashing (shallow copy nils the
 	// pointer on the copy, not the original).
 	require.NotNil(t, withIndexes.Indexes)
+}
+
+func TestIsIdempotencyConflict(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{name: "exact", msg: "idempotency key conflict: key 'k' used with different request content", want: true},
+		{name: "wrapped", msg: "exec failed: exit status 1 (stderr: idempotency key conflict: key 'op-k')", want: true},
+		{name: "already_exists", msg: "ledger already exists: my-ledger", want: false},
+		{name: "create_failed", msg: "exec failed: connection refused", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			got := isIdempotencyConflict(errors.New(tt.msg))
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

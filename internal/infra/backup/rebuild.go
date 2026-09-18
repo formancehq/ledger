@@ -80,6 +80,11 @@ func rebuildDelta(
 	// Greatest semver seen per (ledger, name) — the write session is not
 	// readable, so track the latest pointer's target in memory during replay.
 	numscriptGreatest := make(map[string]string)
+	// Prepared-query updates carry only the replacement filter, so seed their
+	// target from the checkpoint and track pending mutations in replay order.
+	// The write session is intentionally not readable: this overlay also makes
+	// create→update→delete sequences within one delta deterministic.
+	preparedQueries := make(map[string]*commonpb.PreparedQuery)
 
 	rawLedgerTypes := make(map[string]map[string]*commonpb.AccountType)
 	ledgerAccountTypes := make(map[string][]accounttype.CompiledType)
@@ -416,16 +421,48 @@ func rebuildDelta(
 
 		case *commonpb.LogPayload_CreatedPreparedQuery:
 			if p.CreatedPreparedQuery != nil && p.CreatedPreparedQuery.GetQuery() != nil {
-				if err := state.SavePreparedQuery(batch, p.CreatedPreparedQuery.GetLedger(), p.CreatedPreparedQuery.GetQuery()); err != nil {
+				created := p.CreatedPreparedQuery
+				if err := state.SavePreparedQuery(batch, created.GetLedger(), created.GetQuery()); err != nil {
 					_ = batch.Cancel()
 
 					return fmt.Errorf("saving prepared query at log %d: %w", seq, err)
 				}
+
+				key := string(domain.PreparedQueryKey{LedgerName: created.GetLedger(), Name: created.GetQuery().GetName()}.Bytes())
+				preparedQueries[key] = created.GetQuery()
 			}
 
 		case *commonpb.LogPayload_UpdatedPreparedQuery:
-			// Updated queries contain previous_filter and new_filter, not a full PreparedQuery.
-			// The query state is not critical for restore — it can be re-created.
+			if updated := p.UpdatedPreparedQuery; updated != nil {
+				keyBytes := domain.PreparedQueryKey{LedgerName: updated.GetLedger(), Name: updated.GetName()}.Bytes()
+				key := string(keyBytes)
+				_, loaded := preparedQueries[key]
+				if !loaded {
+					existing, err := attrs.PreparedQuery.Get(readHandle, keyBytes)
+					if err != nil {
+						_ = batch.Cancel()
+
+						return fmt.Errorf("reading prepared query at log %d: %w", seq, err)
+					}
+					preparedQueries[key] = existing
+				}
+
+				existing := preparedQueries[key]
+				if existing == nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("updating missing prepared query %q in ledger %q at log %d", updated.GetName(), updated.GetLedger(), seq)
+				}
+
+				replacement := existing.CloneVT()
+				replacement.Filter = updated.GetNewFilter()
+				if err := state.SavePreparedQuery(batch, updated.GetLedger(), replacement); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("updating prepared query at log %d: %w", seq, err)
+				}
+				preparedQueries[key] = replacement
+			}
 
 		case *commonpb.LogPayload_SetQueryCheckpointSchedule:
 			if p.SetQueryCheckpointSchedule != nil {
@@ -471,6 +508,16 @@ func rebuildDelta(
 		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
+			if deleted := p.DeletedPreparedQuery; deleted != nil {
+				if err := state.DeletePreparedQuery(batch, deleted.GetLedger(), deleted.GetName()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("deleting prepared query at log %d: %w", seq, err)
+				}
+
+				key := string(domain.PreparedQueryKey{LedgerName: deleted.GetLedger(), Name: deleted.GetName()}.Bytes())
+				preparedQueries[key] = nil
+			}
 		case *commonpb.LogPayload_DeleteQueryCheckpointSchedule:
 			// The checkpoint is the fold seed: a deletion in the exported delta
 			// must tombstone its schedule row just as live apply does. The delete
@@ -511,6 +558,7 @@ func rebuildDelta(
 			clear(writer.pendingVolumes)
 			clear(writer.pendingTx)
 			clear(writer.pendingIndexes)
+			clear(preparedQueries)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,

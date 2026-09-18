@@ -1419,3 +1419,49 @@ func ledgerPayloadLog(sequence uint64, ledger string, ledgerLogID uint64, payloa
 		}},
 	}
 }
+
+// EN-2070: a replica may fold the entire provisioning batch and subsequent
+// mirror history together. Batch-final NON_EMPTY must not force the earlier
+// initial indexes through backfill. Never run the backfill worker in this test:
+// readiness therefore proves the EMPTY fast path, not fast catch-up.
+func TestInitialIndexesBeforeHistoryInSameFoldSkipBackfill(t *testing.T) {
+	t.Parallel()
+	b := newTestBuilderWithStore(t)
+	b.batchSize = DefaultBatchSize
+	b.notifications = signal.NewNotifications()
+	const ledger = "atomic-initial-indexes"
+	ids := []*commonpb.IndexID{
+		indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE),
+		indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET),
+		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "external:id"),
+	}
+	writeLogToFSM(t, b, &commonpb.Log{Sequence: 1, Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreateLedger{
+		CreateLedger: &commonpb.CreatedLedgerLog{Name: ledger},
+	}}})
+	for i, id := range ids {
+		seq := uint64(i + 2)
+		writeLogToFSM(t, b, ledgerPayloadLog(seq, ledger, seq-1, &commonpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &commonpb.CreatedIndexLog{Id: id},
+		}, seq*10))
+	}
+	// A skipped mirror source log is HISTORY even without a transaction payload.
+	writeLogToFSM(t, b, ledgerPayloadLog(5, ledger, 4, &commonpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &commonpb.OrderSkippedLog{},
+	}, 50))
+	writeAppliedProposalToFSM(t, b, 1, 1, 4)
+	writeAppliedProposalToFSM(t, b, 2, 5, 5)
+	cursor, err := b.processLogs(t.Context(), 0, time.Time{})
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), cursor)
+	history, exists := b.historyStateFor(ledger)
+	require.True(t, exists)
+	require.Equal(t, ledgerHistoryNonEmpty, history)
+	require.Empty(t, b.backfillTasks)
+	for _, id := range ids {
+		current, pending := b.versionFor(ledger, indexes.Canonical(id))
+		require.Equal(t, uint32(1), current)
+		require.Zero(t, pending)
+		_, hasCursor := b.readStore.ReadBackfillProgress(backfillBBKey(ledger, id))
+		require.False(t, hasCursor)
+	}
+}

@@ -92,6 +92,34 @@ The prefix encodes **how Antithesis schedules the binary**:
 | `eventually_` | Runs at the **end** of the workload, after writers have quiesced. | Cross-checks that only make sense after the system has had time to converge (balance audits, cross-node identity). |
 | `first_` | Runs **before** the parallel pool starts. | One-shot setup (e.g. `first_default_ledger`). |
 
+## Balance cross-check quiescence
+
+`eventually_correct` establishes an initial horizon with two consecutive Raft
+barriers. Each successful `Barrier` appends one no-op entry, so an idle pair has
+indices `Q`, `Q+1`. If a list/get balance comparison differs, requalification
+starts from the preceding horizon: `Q+1` accounts for the recheck's own barrier
+and permits reporting the mismatch. Any additional entry requires a complete
+re-read after quiescence. That entry may be a late write, another check's barrier,
+or an ambiguously retried RPC; the index jump alone does not identify its cause.
+
+A failed or expired requalification is inconclusive. Each quiescence search and
+each full comparison has a budget of 20 attempts; exhaustion stops the check
+without asserting a balance divergence or successful comparison. The budgets
+count workload calls, while the client's existing RPC retries remain bounded by
+the singleton context. They do not change the server's Barrier contract.
+
+`quiescence_test.go` starts a real local server and captures SDK observations in
+isolated subprocesses. It proves idle barrier increments, persistent divergence
+injected only into an observed response, a real late transaction followed by
+convergence, ambiguous barrier completion, unavailable/expired requalification,
+and the full-comparison bound under continued writes. The injected observation
+is a test of the workload oracle, not evidence of an engine corruption.
+
+```sh
+cd tests/antithesis/workload
+GOMAXPROCS=2 GOFLAGS=-p=2 go test -race ./bin/cmds/main/eventually_correct -run TestQuiescenceAgainstServer -count=1
+```
+
 ## Driver-side conventions
 
 These conventions are what every driver in this tree should follow. They exist
@@ -193,6 +221,58 @@ extra business log, alongside an unkeyed create-then-skip control. Run it with:
 go -C tests/antithesis/workload test ./bin/cmds/main/parallel_driver_reference_conflict_skip
 ```
 
+### Backup destination contention and recovery
+
+Full and incremental backups share a replicated destination slot. A committed
+Start with a lost acknowledgment, or a lost terminal Fail/Complete proposal,
+can leave that slot RUNNING after the local executor has exited. The next RPC
+then correctly returns `FailedPrecondition` with
+`backup: destination already has a running job`. This protects the shared
+manifest; a short busy observation does not prove a deadlock. The leader's
+orphan cleanup normally scans every 30 seconds and skips live executors.
+
+Both backup drivers use `internal.RetryBackup` for all four stages: standalone
+full, pre-incremental full, first incremental and second incremental. It matches
+that exact busy suffix and status code, then waits using the existing bounded
+backoff. A two-minute window starts at the first busy result and bounds starting
+further retries. Admitted RPCs retain the caller's deadline, so a healthy large
+backup is not cut short by the contention budget. Caller cancellation ends the
+wait. Transport retry classification remains unchanged; job-ID collision,
+unrelated preconditions and server failures are not turned into busy outcomes.
+Drivers tolerate cancellation only when the caller context has ended and the
+returned error represents that cancellation. A concurrent caller cancellation
+does not make an `Unknown` or `Internal` server response inconclusive, and a
+remote `Canceled` response with a live caller remains an unexpected error.
+
+The `backup recovery after destination busy succeeds` Sometimes property records
+false on contention and true only after an actual successful retry. Its details
+identify the stage and stage-attempt count (an RPC's automatic transport retries
+can add more wire attempts). Exhaustion retains the last busy error and is logged
+as inconclusive: it is neither a completed backup nor proof of engine liveness
+failure under continuing faults. This reach claim does not prove every busy
+episode recovered. The existing backup result and sequence invariants still run
+only after successful RPCs.
+
+Local regressions separate the two seams: workload tests commit and reload Start,
+lose its acknowledgment, cross the real client retry interceptor, receive a real
+busy rejection and recover after the cleanup cadence using a simulated clock.
+Application tests drive the real Orchestrator and Cleanup through lost Fail,
+lost Complete and lost Start acknowledgments, including one failed cleanup
+proposal before recovery. They verify attempts, durable history, executor/slot
+and temporary-checkpoint cleanup, and exact restored history/projections from a
+full checkpoint plus non-empty incremental exports. A committed Complete with
+only its acknowledgment lost is a separate control: its slot is already free.
+These are deterministic proposal-seam tests, not a replay of Raft elections or
+network faults. Driver subprocess tests also inspect actual SDK assertions to
+verify that concurrent caller cancellation cannot hide server errors in any of
+the four stages. Run them with:
+
+```bash
+go test -race ./internal/application/backup -run TestBackupRecovery -count=1
+go -C tests/antithesis/workload test -race ./internal -run TestRetryBackup -count=1
+go -C tests/antithesis/workload test -race ./bin/cmds/main/singleton_driver_backup ./bin/cmds/main/singleton_driver_incremental_backup -count=1
+```
+
 ### Lifecycle & context
 
 - Parallel drivers should go through `internal.RunDriver(name, fn)` — it sets up
@@ -210,6 +290,29 @@ go -C tests/antithesis/workload test ./bin/cmds/main/parallel_driver_reference_c
   `ownedLedgerPrefixes`; `TestOwnedLedgerPrefixes_NoOverlap` pins the
   no-shared-prefix invariant so a typo like `"lrec"` (which does not
   match `lrecreate-N`) is caught at test time, not in a chaos run.
+
+### Parallel query-checkpoint capacity and ownership
+
+`parallel_driver_query_checkpoints` shares the retained-checkpoint pool with
+other invocations. A create returning exactly gRPC `FailedPrecondition` with
+`CHECKPOINT_LIMIT_REACHED` is an expected capacity observation, not a completed
+lifecycle or a transient retry. Other preconditions and permanent errors remain
+findings. The product limit and global error classifiers are unchanged.
+The capacity predicate is sampled after every create with `Sometimes`, so
+Antithesis can explore saturation without counting it as lifecycle completion.
+
+After an acknowledged create, the invocation owns only that returned ID. An
+early exit during list/info verification attempts to delete it with a fresh
+30-second cleanup budget, even if the driver context has expired. It never
+reclaims IDs discovered in a list. Cleanup failures are logged, and unexpected
+errors also produce an SDK finding. Before normal deletion the fallback is
+disarmed, so a failed or ambiguous delete response does not start a second
+logical delete. Persistent faults can still leave checkpoints behind, and an
+ambiguous create without an acknowledged ID cannot be reclaimed by this driver.
+
+The local regression runs the actual driver with SDK JSON capture against a
+real node: ten creates and the next rejection, release/recreate, competing
+owners of the last slot, and failed-read cleanup while preserving other IDs.
 
 ### Transaction validation
 
@@ -239,6 +342,16 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for
   client-construction failures, since they are infrastructure errors, not
   findings.
+- A forbidden branch uses `Unreachable`, not `Always(false)`: `Always` also
+  requires an evaluation, so a correct run would report the failure-only site
+  as missed. Sentinel survival and list/get balance consistency retain separate
+  required `Reachable` observations for successful reads and nonempty matching
+  pairs. Empty results and transient errors do not satisfy that success coverage.
+  Other classified Sentinel errors are evaluated by the global RPC classifier
+  and intentionally produce neither survival nor success observations:
+  an unsuccessful read does not establish whether the transaction survived.
+  Their regression tests capture real SDK JSON in isolated subprocesses because
+  the SDK initializes its output at startup and deduplicates observations by name.
 - Stream errors deserve classification, not blanket swallow: `if err != nil
   && !IsTransient(err) { assert.Unreachable(...) }` before skipping is the
   minimum bar. Otherwise an `InvalidArgument` on a `Recv()` is undistinguishable

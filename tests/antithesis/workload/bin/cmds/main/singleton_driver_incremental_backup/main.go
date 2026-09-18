@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -33,8 +34,10 @@ func main() {
 	}
 	defer conn.Close()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	run(ctx, clusterpb.NewClusterServiceClient(conn))
+}
 
+func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 	// 0. Establish a full checkpoint first. An incremental backup is only
 	//    meaningful layered on a full checkpoint (EN-888): the checkpoint carries
 	//    the Global-zone persisted config, last-applied index, and timestamp that
@@ -42,9 +45,11 @@ func main() {
 	//    checkpoint-less destination with FailedPrecondition. Antithesis schedules
 	//    drivers randomly, so this driver cannot assume the full-backup driver ran
 	//    first — it takes its own full backup to guarantee the precondition holds.
-	if _, err := client.Backup(ctx, &clusterpb.BackupRequest{Storage: s3Storage()}); err != nil {
-		if internal.IsTransient(err) {
-			log.Printf("Backup (pre-incremental) transient error: %v", err)
+	if _, err := internal.RetryBackup(ctx, "Backup (pre-incremental)", func(ctx context.Context) (*clusterpb.BackupResponse, error) {
+		return client.Backup(ctx, &clusterpb.BackupRequest{Storage: s3Storage()})
+	}); err != nil {
+		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
+			log.Printf("Backup (pre-incremental) inconclusive error after retries: %v", err)
 			return
 		}
 
@@ -55,12 +60,12 @@ func main() {
 	}
 
 	// 1. Run an incremental backup (exports log/audit entries since last export).
-	resp, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-		Storage: s3Storage(),
+	resp, err := internal.RetryBackup(ctx, "IncrementalBackup", func(ctx context.Context) (*clusterpb.IncrementalBackupResponse, error) {
+		return client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: s3Storage()})
 	})
 	if err != nil {
-		if internal.IsTransient(err) {
-			log.Printf("IncrementalBackup transient error: %v", err)
+		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
+			log.Printf("IncrementalBackup inconclusive error after retries: %v", err)
 			return
 		}
 
@@ -97,12 +102,13 @@ func main() {
 
 	// 2. Run a second incremental backup immediately.
 	//    Should succeed with fewer or zero new entries.
-	resp2, err := client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
-		Storage: s3Storage(),
+	resp2, err := internal.RetryBackup(ctx, "second IncrementalBackup", func(ctx context.Context) (*clusterpb.IncrementalBackupResponse, error) {
+		return client.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{Storage: s3Storage()})
 	})
 	if err != nil {
-		if internal.IsTransient(err) || internal.IsExternalServiceError(err) ||
-			internal.IsNoFullCheckpoint(err) {
+		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsExternalServiceError(err) ||
+			internal.IsNoFullCheckpoint(err) || internal.IsBackupInProgress(err) {
+			log.Printf("second IncrementalBackup inconclusive error after retries: %v", err)
 			return
 		}
 

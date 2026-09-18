@@ -252,6 +252,92 @@ func TestWriteSetSigningKeyOperations(t *testing.T) {
 	require.Contains(t, children, "child-2")
 }
 
+// TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder pins the read against the
+// order Merge replays. The pending slice mixes additions and removals and a key
+// ID may appear in it several times; only the last entry for that key describes
+// what the proposal commits.
+func TestWriteSetSigningKeyChildrenFoldsUpdatesInOrder(t *testing.T) {
+	t.Parallel()
+
+	_, machine, _ := newTestBuffer(t)
+
+	machine.keyStore.AddPublicKey("parent", []byte("pub-parent"), "")
+	machine.keyStore.AddPublicKey("other", []byte("pub-other"), "")
+	machine.keyStore.AddPublicKey("child", []byte("pub-child"), "parent")
+
+	t.Run("a re-registration supersedes an earlier removal", func(t *testing.T) {
+		t.Parallel()
+
+		buf := NewWriteSet(machine)
+		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+
+		buf.RemoveSigningKey("child")
+		buf.AddSigningKey("child", []byte("pub-child-v2"), "parent")
+
+		require.Equal(t, []string{"child"}, buf.GetSigningKeyChildren("parent"),
+			"the removal is not the last word on the key, so the cascade must still see it")
+	})
+
+	t.Run("a removal with no re-registration stands", func(t *testing.T) {
+		t.Parallel()
+
+		buf := NewWriteSet(machine)
+		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+
+		buf.AddSigningKey("child", []byte("pub-child-v2"), "parent")
+		buf.RemoveSigningKey("child")
+
+		require.Empty(t, buf.GetSigningKeyChildren("parent"))
+	})
+
+	t.Run("only the last registration decides the parent", func(t *testing.T) {
+		t.Parallel()
+
+		buf := NewWriteSet(machine)
+		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+
+		buf.AddSigningKey("child", []byte("pub-child-v2"), "other")
+
+		require.Empty(t, buf.GetSigningKeyChildren("parent"),
+			"the reassignment moved the key out of the old parent's subtree")
+		require.Equal(t, []string{"child"}, buf.GetSigningKeyChildren("other"))
+	})
+
+	t.Run("a key is reported once however often it was staged", func(t *testing.T) {
+		t.Parallel()
+
+		buf := NewWriteSet(machine)
+		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+
+		buf.AddSigningKey("fresh", []byte("pub-fresh"), "parent")
+		buf.AddSigningKey("fresh", []byte("pub-fresh"), "parent")
+		buf.AddSigningKey("fresh", []byte("pub-fresh"), "parent")
+
+		require.Equal(t, []string{"child", "fresh"}, buf.GetSigningKeyChildren("parent"),
+			"cascaded_key_ids is chain-hashed, so duplicates would diverge the audit payload")
+	})
+
+	t.Run("the result is stable across calls", func(t *testing.T) {
+		t.Parallel()
+
+		buf := NewWriteSet(machine)
+		buf.Reset(&commonpb.Timestamp{Data: 1700000000})
+
+		buf.AddSigningKey("zeta", []byte("pub-zeta"), "parent")
+		buf.AddSigningKey("alpha", []byte("pub-alpha"), "parent")
+
+		// Committed children come back sorted and the pending ones follow in slice
+		// order, so the sequence is fixed by the applied proposal rather than by map
+		// iteration — the same order on every replica (invariant #2).
+		first := buf.GetSigningKeyChildren("parent")
+		require.Equal(t, []string{"child", "zeta", "alpha"}, first)
+
+		for range 8 {
+			require.Equal(t, first, buf.GetSigningKeyChildren("parent"))
+		}
+	})
+}
+
 // TestWriteSetSigningKeyChildrenAfterReregistrationAsRoot pins what the cascade
 // sees once a key has been re-registered as a root in an EARLIER proposal.
 //

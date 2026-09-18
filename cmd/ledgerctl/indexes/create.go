@@ -96,41 +96,18 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	var indexDesc string
 
-	switch indexType {
-	case "address":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS)
-		indexDesc = "address (any role)"
-	case "source-address":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS)
-		indexDesc = "source-address"
-	case "destination-address":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS)
-		indexDesc = "destination-address"
-	case "metadata":
+	if indexType == "metadata" {
 		target, key, err := resolveMetadataIndexFlags(cmd)
 		if err != nil {
 			return err
 		}
-
 		req.Id = metadataIndexID(target, key)
 		indexDesc = fmt.Sprintf("metadata %s.%s", cmdutil.TargetTypeString(target), key)
-	case "reference":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-		indexDesc = "reference"
-	case "timestamp":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
-		indexDesc = "timestamp"
-	case "inserted-at":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT)
-		indexDesc = "inserted-at"
-	case "reverted-at":
-		req.Id = txBuiltinIndexID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT)
-		indexDesc = "reverted-at"
-	case "account-asset":
-		req.Id = accountBuiltinIndexID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
-		indexDesc = "account has-asset"
-	default:
-		return fmt.Errorf("invalid index type %q: must be address, source-address, destination-address, metadata, reference, timestamp, inserted-at, reverted-at, log-ledger, or account-asset", indexType)
+	} else {
+		req.Id, indexDesc, err = builtinIndex(indexType)
+		if err != nil {
+			return err
+		}
 	}
 
 	ctx, cancel := cmdutil.GetContext(cmd)
