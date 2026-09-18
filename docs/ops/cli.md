@@ -2392,6 +2392,7 @@ they are valid on `audit list` alone:
 | `caller_subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
 | `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
 | `idempotency_key` | string | `==`, `^=`, `in` | Batch idempotency key. Prefix matching is index-backed; a reused key returns every historical audit entry. |
+| | | | String values must be quoted (single or double). Keys containing both `"` and `'` cannot be expressed in the textual DSL; use gRPC `AuditCondition.string_prefix` directly for such keys. |
 
 Unsupported conditions are rejected with `InvalidArgument` rather than silently
 ignored: `not`, `!=` (both need a complement the index cannot serve), and any
