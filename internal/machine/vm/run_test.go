@@ -503,7 +503,8 @@ func TestConvertScriptV1(t *testing.T) {
 				Vars: tc.inputVars,
 			}
 
-			converted := script.ToCore()
+			converted, err := script.ToCore()
+			require.NoError(t, err)
 			require.Equal(t, tc.expected, converted.Vars)
 		})
 	}
