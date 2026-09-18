@@ -16,9 +16,16 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func saveNextLedgerIDForBackupTest(t *testing.T, batch *dal.WriteSession, nextID uint32) {
+	t.Helper()
+
+	require.NoError(t, state.StoreNextLedgerID(batch, nextID))
+}
 
 // crashSafetyState is the stateful backing behind the generated MockStorage used
 // by the crash-safety tests. The MockStorage (see storage_generated_test.go)
@@ -453,6 +460,7 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		b := src.OpenWriteSession()
 		require.NoError(t, b.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
 		require.NoError(t, b.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		saveNextLedgerIDForBackupTest(t, b, uint32(seq+1))
 		require.NoError(t, b.Commit())
 	}
 
@@ -492,6 +500,7 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 	seedBatch := dst.OpenWriteSession()
 	require.NoError(t, seedBatch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger-0", 1)))
 	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	saveNextLedgerIDForBackupTest(t, seedBatch, 2)
 	require.NoError(t, seedBatch.Commit())
 
 	require.NoError(t, ApplyExportsAndRebuild(ctx, logging.Testing(), storage, dst, manifest))
@@ -507,6 +516,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 	require.NotNil(t, restoredLastLog)
 	require.Equal(t, seq, restoredLastLog.GetSequence(),
 		"restored store must hold every log across the full + all incrementals")
+	restoredNextLedgerID, err := query.ReadNextLedgerID(handle)
+	require.NoError(t, err)
+	require.Equal(t, uint32(seq+1), restoredNextLedgerID,
+		"the next creation after restore must not reuse a post-checkpoint ledger ID")
 
 	for _, name := range incrementalLedgers {
 		info, err := query.GetLedgerByName(ctx, handle, name)

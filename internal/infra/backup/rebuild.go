@@ -94,6 +94,17 @@ func rebuildDelta(
 
 	writer.readHandle = readHandle
 
+	// The checkpoint counter is the fold seed. Every post-checkpoint ledger
+	// creation advances it monotonically below, including creations whose ledger
+	// is later deleted in the same delta.
+	nextLedgerID, err := query.ReadNextLedgerID(readHandle)
+	if err != nil {
+		_ = batch.Cancel()
+
+		return fmt.Errorf("seeding next ledger ID: %w", err)
+	}
+	rebuildNextLedgerID := false
+
 	// Seed ledger account types from state already in the store. On an
 	// incremental rebuild the AddAccountType logs precede fromLogSeq, so
 	// without this the replayed entries would skip ephemeral-purge simulation
@@ -228,6 +239,14 @@ func rebuildDelta(
 			// MirrorSource, AccountTypes, and DefaultEnforcementMode, all part of
 			// the stored projection. ToLedgerInfo copies every creation-time field.
 			info := p.CreateLedger.ToLedgerInfo()
+			advancedLedgerID, exhausted := domain.CheckedNextLedgerID(info.GetId())
+			if exhausted != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("replaying ledger creation at log %d: %w", seq, exhausted)
+			}
+			nextLedgerID = max(nextLedgerID, advancedLedgerID)
+			rebuildNextLedgerID = true
 
 			if err := writer.saveLedgerInfo(info); err != nil {
 				_ = batch.Cancel()
@@ -535,6 +554,18 @@ func rebuildDelta(
 			_ = batch.Cancel()
 
 			return fmt.Errorf("restoring next query checkpoint ID: %w", err)
+		}
+	}
+
+	// Persist the allocator. The counter is written to whatever batch is current
+	// at the end of the loop (batches are flushed every 5000 logs); a successful
+	// rebuild therefore cannot expose a created ledger without also reserving its
+	// ID monotonically, and on failure the staging store is never activated.
+	if rebuildNextLedgerID {
+		if err := state.StoreNextLedgerID(batch, nextLedgerID); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("restoring next ledger ID: %w", err)
 		}
 	}
 
