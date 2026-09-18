@@ -21,7 +21,8 @@ import (
 // schedules. Setup resets the schedule, frees one slot when the registry is at
 // capacity, then creates a probe checkpoint. Its assigned ID gives the next-ID
 // frontier in constant RPC count, even after arbitrarily long prior runs.
-func setupQueryCheckpoints(ctx context.Context, bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient, c *Checker) bool {
+func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *Checker) bool {
+	bucket := node.Bucket
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	scheduleLog, err := applyCheckpointSetup(ctx, bucket, &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}})
 	if err != nil {
@@ -31,7 +32,7 @@ func setupQueryCheckpoints(ctx context.Context, bucket servicepb.BucketServiceCl
 		return checkpointSetupFailure(fmt.Errorf("checkpoint schedule reset returned the wrong log"))
 	}
 
-	listed, err := readCheckpointRegistry(ctx, bucket, cluster, c.ledgerNames[0])
+	listed, err := readCheckpointRegistry(ctx, node)
 	if err != nil {
 		return checkpointSetupFailure(err)
 	}

@@ -51,8 +51,25 @@ against live candidate states.
 The driver exercises account and transaction point reads and index-free first
 pages against retained snapshots, even while live writes continue. Listing and
 schedule reads must match a possible ordering of in-flight lifecycle writes.
-These node-local metadata APIs are preceded by a linearizable ledger read over
-the same pinned node connection, establishing a lower bound for comparison.
+Before these node-local metadata reads, the harness obtains a fixed Raft index
+from `BucketService.Barrier`, then polls the pinned node's explicit `NodeId`
+until its `LastPersistedIndex` reaches that index (or passes it) and sync is
+normal. The leader's topology verifies the advertised address/ID association
+and resolves IDs left unknown by initial best-effort dialing; its progress is
+never used as local evidence. Follower state need not contain a topology list.
+The explicit response must identify the expected node and carry durable progress;
+an unresolved identity, malformed response, or deadline cannot authorize a read.
+A successful routed `GetLedger` is insufficient: it may run on the leader while
+the original node still lags. Raft `Commit`/`Applied` and a default
+`GetClusterState{NodeId:0}` response do not prove local Pebble progress.
+The registry/schedule read then uses the same pinned connection. Candidate
+states and the existing read-drain gate remain unchanged. The response-frontier
+lock covers discovery, the fence, and the metadata response, so writes cannot
+register between that response and its ticket snapshot. Registry and schedule
+reads are global: they remain valid when all live ledgers have been deleted and
+do not excuse metadata errors using ledger lifecycle states. Frozen checkpoint
+reads retain their lifecycle checks. Barrier no-ops add no business logs. Setup
+uses the same fence before seeding the registry.
 Deleted-checkpoint reads accept gRPC `NotFound` or a success matching the original
 frozen snapshot: a replica may lag deletion, and committed deletion precedes
 filesystem cleanup. Successful reads never count as deleted-read coverage;

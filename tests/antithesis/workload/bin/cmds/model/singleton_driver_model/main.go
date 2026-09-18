@@ -140,14 +140,14 @@ func main() {
 		return
 	}
 	defer checkpointNodes.Close()
-	checkpointSetupNode, err := waitForCheckpointSetupNode(ctx, checkpointNodes, names[0])
+	checkpointSetupNode, err := waitForCheckpointSetupNode(ctx, checkpointNodes)
 	if err != nil {
 		if ctx.Err() == nil {
 			assert.Unreachable("singleton_driver_model: no checkpoint setup node available", internal.Details{"error": err.Error()})
 		}
 		return
 	}
-	if !setupQueryCheckpoints(ctx, checkpointSetupNode.Bucket, checkpointSetupNode.Cluster, checker) {
+	if !setupQueryCheckpoints(ctx, checkpointSetupNode, checker) {
 		return
 	}
 
@@ -254,7 +254,7 @@ func runWorker(
 				runLogQuery(ctx, client, c)
 			case 10:
 				node := random.RandomChoice(checkpointNodes)
-				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
+				runCheckpointRead(ctx, node, c)
 			default:
 				runRead(ctx, client, c)
 			}
