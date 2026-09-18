@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1622,6 +1623,103 @@ func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
 			for _, keyID := range tt.wantAbsent {
 				_, ok := keys[keyID]
 				require.False(t, ok, "revoked key %q must NOT be resurrected by the rebuild", keyID)
+			}
+		})
+	}
+}
+
+// TestRebuildDelta_RestoresACascadeOverAReregisteredChild is the restore half of
+// EN-2011.
+//
+// The shape that makes it dangerous: the checkpoint is taken while P and C are
+// both live, so it carries C's row verbatim, and the batch that revokes them
+// travels only in the post-checkpoint delta. The restored cluster must reach the
+// same signing authority the live apply did, or a cascade-revoked key comes back
+// usable on the other side of a restore.
+//
+// RebuildDelta replays the logs in sequence and deletes cascaded_key_ids verbatim,
+// so this also pins that the FSM records C there: an empty list restores a live key.
+func TestRebuildDelta_RestoresACascadeOverAReregisteredChild(t *testing.T) {
+	t.Parallel()
+
+	parentPub := bytes.Repeat([]byte{0x11}, 32)
+	childPub := bytes.Repeat([]byte{0x22}, 32)
+	replacementPub := bytes.Repeat([]byte{0x33}, 32)
+
+	for _, tt := range []struct {
+		name string
+		// delta is the post-checkpoint log stream, one batch's worth of logs.
+		delta       []*commonpb.Log
+		wantPresent []string
+		wantAbsent  []string
+	}{
+		{
+			// The reported sequence. C ends the batch under P, so the cascade names
+			// it and the restore must delete the row the checkpoint carried.
+			name: "revoked then re-registered under the revoked parent",
+			delta: []*commonpb.Log{
+				revokeSigningKeyLog(3, "C", nil),
+				registerSigningKeyLog(4, "C", replacementPub, "P"),
+				revokeSigningKeyLog(5, "P", []string{"C"}),
+			},
+			wantAbsent: []string{"P", "C"},
+		},
+		{
+			// The same three logs with C re-registered as a root: it is outside the
+			// revoked subtree, the cascade names nobody, and the restore must keep
+			// the replacement row rather than dropping it with its old parent.
+			name: "revoked then re-registered as a root",
+			delta: []*commonpb.Log{
+				revokeSigningKeyLog(3, "C", nil),
+				registerSigningKeyLog(4, "C", replacementPub, ""),
+				revokeSigningKeyLog(5, "P", nil),
+			},
+			wantPresent: []string{"C"},
+			wantAbsent:  []string{"P"},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			store := newRebuildTestStore(t)
+
+			// The checkpoint: signing-key rows copied verbatim from the source
+			// cluster, exactly as writeBaselineAttributes hands them over.
+			batch := store.OpenWriteSession()
+			require.NoError(t, state.SaveSigningKey(batch, "P", parentPub, ""))
+			require.NoError(t, state.SaveSigningKey(batch, "C", childPub, "P"))
+
+			for _, log := range tt.delta {
+				require.NoError(t, batch.SetProto(coldLogKey(log.GetSequence()), log))
+			}
+
+			require.NoError(t, batch.Commit())
+
+			require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 0, 0))
+
+			handle, err := store.NewDirectReadHandle()
+			require.NoError(t, err)
+
+			defer func() { _ = handle.Close() }()
+
+			keys, malformed, err := query.ReadSigningKeys(handle)
+			require.NoError(t, err)
+			require.Empty(t, malformed)
+
+			for _, keyID := range tt.wantPresent {
+				require.Contains(t, keys, keyID, "key %q must survive the restore", keyID)
+			}
+
+			for _, keyID := range tt.wantAbsent {
+				require.NotContains(t, keys, keyID,
+					"revoked key %q must not be resurrected by the restore", keyID)
+			}
+
+			if slices.Contains(tt.wantPresent, "C") {
+				require.Equal(t, replacementPub, keys["C"].PublicKey,
+					"a surviving key keeps the public key its last registration assigned")
+				require.Empty(t, keys["C"].ParentKeyID,
+					"and the parent that registration assigned")
 			}
 		})
 	}
