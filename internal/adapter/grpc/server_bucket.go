@@ -66,6 +66,7 @@ type BucketServiceServerImpl struct {
 	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
+	checkpointStores      checkpointStoreCache
 }
 
 func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, authCfg internalauth.AuthConfig, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
@@ -331,8 +332,10 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 }
 
 // openCheckpointStores opens the checkpoint's main store and read index in
-// read-only mode. The caller must invoke cleanup after its last access; cleanup
-// closes both stores before releasing their shared filesystem lease.
+// read-only mode. The caller must invoke cleanup after its last access: it
+// drops this reader's hold, closing both stores if it was the last, and then
+// releases its filesystem lease. The stores are shared with the checkpoint's
+// other readers, so cleanup ignores every call after the first.
 func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, checkpointID uint64) (*dal.Store, *readstore.Store, func(), error) {
 	release, acquired := impl.store.AcquireQueryCheckpoint(checkpointID)
 	if !acquired {
@@ -380,27 +383,19 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 		return nil, nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
-	mainStore, err := dal.OpenReadOnly(mainPath, impl.logger)
+	// One open of the checkpoint's two directories is shared by its concurrent
+	// readers; see checkpointStoreCache. The lease above stays per-reader so that
+	// a reader arriving after a committed deletion is refused at acquisition.
+	mainStore, readIdx, releaseStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
+		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
+	})
 	if err != nil {
-		// Both markers are present and the lease taken above keeps a committed
-		// deletion from unlinking under this open, so the directory the marker
-		// vouched for is damaged rather than late; the error surfaces as-is,
-		// like the read index's below.
-		return nil, nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
+		return nil, nil, nil, err
 	}
 
-	readIdx, err := readstore.OpenReadOnly(readIndexPath, impl.logger)
-	if err != nil {
-		// Best-effort: this read-only store is only being unwound after open failed.
-		_ = mainStore.Close()
-
-		return nil, nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
-	}
 	keepLease = true
 	cleanup := func() {
-		// Best-effort: read-only close failures are non-actionable at request end.
-		_ = readIdx.Close()
-		_ = mainStore.Close()
+		releaseStores()
 		release()
 	}
 
