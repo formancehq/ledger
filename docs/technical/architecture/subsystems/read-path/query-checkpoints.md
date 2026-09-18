@@ -148,6 +148,16 @@ The live-id set is deterministic FSM state (`FSMState.LiveQueryCheckpointIDs`), 
 
 Because enforcement sits after the idempotency gate, a keyed retry replays the first apply's frozen outcome: a create that filled the cap replays its original success, and a create that hit the limit replays that rejection (`ErrCheckpointLimitReached` is a definitive, freezable outcome) even after a slot later frees — one outcome per idempotency key.
 
+The `pkg/actions.CreateQueryCheckpoint` and `DeleteQueryCheckpoint` helpers assign
+a fresh key to each invocation so automatic transport retries after a lost
+commit response preserve that invocation's identity, within the configured
+idempotency retention window. Independent invocations remain independent:
+creates allocate different IDs, and a second delete of the same ID still fails.
+A replay returns the historical outcome without renewing the creation readiness
+guarantee. Callers that retry after a helper has returned an ambiguous error must
+instead retain their own key/request, using `WithIdempotencyKey` with
+`CreateQueryCheckpointAction` or `DeleteQueryCheckpointAction`.
+
 ## Automatic Checkpoint Creation (Cron Scheduler)
 
 Checkpoint creation can be automated via a cron schedule. The schedule is a runtime-modifiable configuration stored in Raft.
