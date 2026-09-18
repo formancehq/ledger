@@ -285,8 +285,12 @@ type OrderTechnical struct {
 	// volume key is declared — apply then reads volumes the plan never declared
 	// and the coverage gate rejects a legitimate revert. The FSM re-derives this
 	// digest from the transaction state it already reads through the gate and
-	// rejects a mismatch with ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable)
-	// before it can touch a volume. Empty for every non-revert order.
+	// rejects a mismatch before it can touch a volume — with
+	// ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) when the target predates
+	// the batch, ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH (permanent) when the
+	// batch creates it. The comparison runs after the handler's existing target
+	// checks, so a target that is unknown or already reverted keeps returning
+	// those reasons. Empty for every non-revert order.
 	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache

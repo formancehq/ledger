@@ -81,7 +81,7 @@ A stale admission observation is not one, and must never reach the gate. When a 
 
 Left alone that trips the gate, which would report a legitimate revert as a server defect. The producer therefore binds its observation (`OrderTechnical.revert_target_digest`) and the handler re-derives it, from state it is already authorized to read, *before* performing the dependent reads: `processRevertTransaction` compares digests before building the reversed postings. See [preload.md](preload.md#coverage-derived-from-a-read-must-bind-that-read) and the [revert-target observation](../admission/README.md#revert-target-observation).
 
-The mismatch is classified by whether re-admission can converge — `STALE_INPUTS_RESOLUTION` when the target predates the batch, `REVERT_TARGET_CREATED_IN_BATCH` when the batch creates it. Neither is a softened coverage miss: an order whose digest *matches* and still reads an undeclared key reaches the gate and stays fatal.
+A mismatch that reaches that comparison is classified by whether re-admission can converge — `STALE_INPUTS_RESOLUTION` when the target predates the batch, `REVERT_TARGET_CREATED_IN_BATCH` when the batch creates it. The comparison sits behind the handler's existing checks on the target, so an unknown, already-reverted or inconsistent target keeps its own reason; see [the revert-target observation](../admission/README.md#revert-target-observation). Neither classification is a softened coverage miss: an order whose digest *matches* and still reads an undeclared key reaches the gate and stays fatal.
 
 ## How a violation surfaces
 
