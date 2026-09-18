@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -36,37 +36,12 @@ func main() {
 		}
 
 		// 2. Verify it appears in ListNumscripts.
-		stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{
-			Ledger: ledger,
-		})
+		found, err := numscriptIsListed(ctx, client, ledger, scriptName)
 		if err != nil {
 			internal.LogCleanupError("list numscripts after save", err)
-			return
-		}
-
-		var (
-			found     bool
-			streamErr bool
-		)
-
-		for {
-			info, err := stream.Recv()
-			if err == io.EOF {
-				break
-			}
-
-			if err != nil {
-				streamErr = true
-
-				break
-			}
-
-			if info.GetName() == scriptName {
-				found = true
-			}
-		}
-
-		if !streamErr {
+			assert.AlwaysOrUnreachable(internal.IsTolerated(err), "ListNumscripts should not return unexpected error",
+				details.With(internal.Details{"error": err}))
+		} else {
 			assert.AlwaysOrUnreachable(found, "saved numscript should appear in ListNumscripts", details)
 		}
 
@@ -117,6 +92,21 @@ func main() {
 			"latest pointer should be the greatest saved semver",
 			details.With(internal.Details{"expected": version2, "actual": versions.GetLatestVersion()}))
 	})
+}
+
+// numscriptIsListed only returns a definitive result after every page succeeds.
+// The routed client follows x-next-cursor using the server's default page size.
+func numscriptIsListed(ctx context.Context, client servicepb.BucketServiceClient, ledger, name string) (bool, error) {
+	scripts, err := ledgergrpc.NewLedgerGrpcClient(client).ListNumscripts(ctx, ledger)
+	if err != nil {
+		return false, err
+	}
+	for _, script := range scripts {
+		if script.GetName() == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 const transferScript = `

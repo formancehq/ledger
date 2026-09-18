@@ -322,6 +322,13 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for
   client-construction failures, since they are infrastructure errors, not
   findings.
+- A streaming list EOF completes one page, not necessarily the whole list.
+  Presence/absence checks must follow `x-next-cursor` trailers until pagination
+  completes. The Numscript lifecycle driver uses the routed client's
+  `ListNumscripts` helper and keeps the default page size; its regression tests
+  exercise more than 100 names through the production handler and real gRPC
+  trailers. A failure on any page remains an error, even if the target was
+  already seen.
 - A forbidden branch uses `Unreachable`, not `Always(false)`: `Always` also
   requires an evaluation, so a correct run would report the failure-only site
   as missed. Sentinel survival and list/get balance consistency retain separate
