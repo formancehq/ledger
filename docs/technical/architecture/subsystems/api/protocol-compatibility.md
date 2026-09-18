@@ -175,6 +175,15 @@ answering `TRANSACTION_NOT_FOUND` or `TRANSACTION_ALREADY_REVERTED` as it did on
 revision 10, because those checks run first. See
 [the revert-target observation](../admission/README.md#revert-target-observation).
 
+## Prepared-query execution errors (revision 12)
+
+Revision 12 classifies invalid prepared-query execution requests as
+`InvalidArgument` without structured error information. In particular,
+aggregate requests for non-account targets and requests with an unsupported
+query mode no longer surface as sanitized `Unknown` failures. A revision-11
+client can interpret those status codes differently for retry and operation
+handling, so clients and servers must use the matching revision.
+
 ## Maintaining the revision
 
 The author of a service contract change must determine whether an existing
