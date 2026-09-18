@@ -866,7 +866,7 @@ func (b *Builder) loop(ctx context.Context) {
 	// Boot init: rebuild the index-config cache and seed cursors. Any
 	// transient Pebble/read-store failure here must NOT advance the
 	// persisted cursor against an incomplete config, so retry with
-	// backoff until it succeeds or shutdown is requested. initIndexConfig
+	// backoff until it succeeds or shutdown is requested. Config initialization
 	// resets its own state, so re-running it on retry is idempotent.
 	var (
 		cursor           uint64
@@ -1053,14 +1053,15 @@ func (b *Builder) failHistoryReplay(err error) {
 	b.readStore.SetReadProjectionFailed()
 }
 
-// bootInit runs the index builder's boot prologue as a single retryable unit:
-// restore the indexed cursor, ledger history and active index versions from
-// one read-store snapshot, then seed the last-known Pebble sequence. It returns
-// the recovered cursor and pebbleLast, or an error if any required read failed
-// — the caller (loop) retries with backoff so a transient failure never
-// advances the cursor against an incomplete config. ReadAppliedProposalProgress
-// and query.ReadLastSequence stay best-effort (they tolerate failure today);
-// only initIndexConfig, LastIndexedSequence, and NewDirectReadHandle are fatal.
+// bootInit restores the indexed cursor, ledger history and active index versions
+// from one read-store snapshot, then seeds the last-known Pebble sequence. It
+// returns the recovered cursor and pebbleLast, or an error when a required
+// snapshot, cursor, history, config or read-handle operation fails. The caller
+// (loop) retries transient failures with backoff without advancing the cursor
+// against an incomplete config. History-replay invariants are terminal: loop
+// calls failHistoryReplay to mark the read projection failed and stops the
+// builder. ReadAppliedProposalProgress and query.ReadLastSequence remain
+// best-effort.
 func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
 	snapshot := b.readStore.NewSnapshot()
 	closeSnapshot := func(operationErr error) error {
