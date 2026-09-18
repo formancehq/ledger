@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"slices"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1605,7 +1606,7 @@ func TestRebuildDelta_RestoresACascadeOverAReregisteredChild(t *testing.T) {
 					"revoked key %q must not be resurrected by the restore", keyID)
 			}
 
-			if len(tt.wantPresent) > 0 {
+			if slices.Contains(tt.wantPresent, "C") {
 				require.Equal(t, replacementPub, keys["C"].PublicKey,
 					"a surviving key keeps the public key its last registration assigned")
 				require.Empty(t, keys["C"].ParentKeyID,
