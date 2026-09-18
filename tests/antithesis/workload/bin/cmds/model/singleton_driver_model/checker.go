@@ -119,7 +119,7 @@ type observation struct {
 	bulk            oracle.Bulk
 	resp            *servicepb.ApplyResponse
 	err             error
-	ambiguousCommit bool
+	ambiguousEnable bool
 	recoverySeq     uint64
 	observeTicket   uint64
 	processed       chan struct{}
@@ -270,12 +270,36 @@ func (c *Checker) releaseLedgerCreate(bulk oracle.Bulk) {
 func liveLedgerNames(state oracle.GlobalState, names []string) []string {
 	live := make([]string, 0, len(names))
 	for _, name := range names {
-		if lifecycle, exists := state.Lifecycle(name); exists && !lifecycle.Deleted {
+		if ledgerIsLive(state, name) {
 			live = append(live, name)
 		}
 	}
 
 	return live
+}
+
+func ledgerIsLive(state oracle.GlobalState, name string) bool {
+	lifecycle, exists := state.Lifecycle(name)
+
+	return exists && !lifecycle.Deleted
+}
+
+func partitionLifecycleLedgers(state oracle.GlobalState, names []string) (live, deleted []string) {
+	live = make([]string, 0, len(names))
+	deleted = make([]string, 0, len(names))
+	for _, name := range names {
+		lifecycle, exists := state.Lifecycle(name)
+		if !exists {
+			continue
+		}
+		if lifecycle.Deleted {
+			deleted = append(deleted, name)
+		} else {
+			live = append(live, name)
+		}
+	}
+
+	return live, deleted
 }
 
 // retypeObservation drives one retype window's closure, two-phase per node so

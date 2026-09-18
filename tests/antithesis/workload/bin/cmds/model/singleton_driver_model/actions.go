@@ -237,9 +237,10 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 }
 
 func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
-	out := make([]string, 0, len(ledgers))
-	for _, name := range ledgers {
-		if lc, ok := g.Lifecycle(name); !ok || (!lc.Deleted && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR) {
+	live := liveLedgerNames(g, ledgers)
+	out := make([]string, 0, len(live))
+	for _, name := range live {
+		if lc, ok := g.Lifecycle(name); ok && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
 			out = append(out, name)
 		}
 	}
@@ -250,17 +251,7 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 // stream as business writes. Creation is biased when deletions shrink the live
 // pool, providing the same bounded-state back-pressure as transaction creation.
 func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) *servicepb.Request {
-	live := make([]string, 0, len(ledgers))
-	deleted := make([]string, 0, len(ledgers))
-	for _, name := range ledgers {
-		if lc, ok := g.Lifecycle(name); ok {
-			if lc.Deleted {
-				deleted = append(deleted, name)
-			} else {
-				live = append(live, name)
-			}
-		}
-	}
+	live, deleted := partitionLifecycleLedgers(g, ledgers)
 	if len(deleted) > 0 && random.RandomChoice(indexPool(32)) == 0 {
 		return actions.CreateLedgerAction(random.RandomChoice(deleted), nil)
 	}

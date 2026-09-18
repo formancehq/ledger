@@ -101,18 +101,18 @@ func (c *Checker) handleObservation(obs observation) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if obs.ambiguousCommit {
-		// A maintenance rejection after an ambiguous attempt does not determine
-		// whether that attempt committed. Keep the original bulk as an optional
-		// predecessor after its worker observation leaves inflight so validation
-		// can still serialize through either outcome.
-		if retainedTicket, retained := c.ambiguousMaintenanceEnableTicket(); !bulkEnablesMaintenance(obs.bulk) || !retained {
+	if obs.ambiguousEnable {
+		// A maintenance rejection after an ambiguous enable does not determine
+		// whether that enable committed. Keep it as an optional predecessor after
+		// its worker observation leaves inflight so validation can serialize
+		// through either outcome. Ordinary bulks retry through recovery instead.
+		if retainedTicket, retained := c.ambiguousMaintenanceEnableTicket(); !retained {
 			c.ambiguousBulks[obs.ticket] = obs.bulk
 		} else if obs.ticket < retainedTicket {
 			delete(c.ambiguousBulks, retainedTicket)
 			c.ambiguousBulks[obs.ticket] = obs.bulk
 		}
-		if bulkEnablesMaintenance(obs.bulk) && obs.recoverySeq > c.ambiguousEnableClearSeq {
+		if obs.recoverySeq > c.ambiguousEnableClearSeq {
 			c.ambiguousEnableClearSeq = obs.recoverySeq
 		}
 	}

@@ -94,7 +94,7 @@ func TestAmbiguousEnableSchedulesRecoveryOnLaterMaintenanceRejection(t *testing.
 	obs := <-c.incoming
 	require.Equal(t, 2, client.calls)
 	require.Equal(t, uint64(1), c.maintenanceEnableSeq)
-	require.True(t, obs.ambiguousCommit)
+	require.True(t, obs.ambiguousEnable)
 
 	c.mu.Lock()
 	c.removeInflight(obs.ticket)
@@ -154,7 +154,7 @@ func TestAmbiguousBusinessBulkRetriesThroughMaintenanceRecovery(t *testing.T) {
 	obs := <-c.incoming
 	require.Equal(t, 3, client.calls)
 	require.NoError(t, obs.err)
-	require.False(t, obs.ambiguousCommit)
+	require.False(t, obs.ambiguousEnable)
 	c.mu.Lock()
 	c.removeInflight(obs.ticket)
 	markObservationProcessed(obs)
@@ -175,7 +175,7 @@ func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 		ticket:          ticket,
 		bulk:            enable,
 		err:             maintenanceStatus.Err(),
-		ambiguousCommit: true,
+		ambiguousEnable: true,
 		observeTicket:   ticket,
 	})
 
@@ -184,33 +184,6 @@ func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 	found := false
 	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
 		found = found || state.MaintenanceMode()
-		return found
-	})
-	require.True(t, found)
-}
-
-func TestProcessorPreservesAmbiguousBusinessBulkAsCandidate(t *testing.T) {
-	t.Parallel()
-
-	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
-	require.NoError(t, err)
-	c := NewChecker([]string{"L"}, nil)
-	bulk := bulkOf(oracletest.AddTypeReq("retained"))
-	ticket := c.registerInflight(bulk)
-
-	c.handleObservation(observation{
-		ticket:          ticket,
-		bulk:            bulk,
-		err:             maintenanceStatus.Err(),
-		ambiguousCommit: true,
-		observeTicket:   ticket,
-	})
-
-	require.Equal(t, bulk, c.ambiguousBulks[ticket])
-	found := false
-	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
-		result := state.Apply(bulk)
-		found = !result.OK && result.Reason == domain.ErrReasonAccountTypeAlreadyExists
 		return found
 	})
 	require.True(t, found)
@@ -229,7 +202,7 @@ func TestProcessorCoalescesAmbiguousMaintenanceEnables(t *testing.T) {
 			ticket:          ticket,
 			bulk:            enable,
 			err:             maintenanceStatus.Err(),
-			ambiguousCommit: true,
+			ambiguousEnable: true,
 			observeTicket:   ticket,
 		})
 	}

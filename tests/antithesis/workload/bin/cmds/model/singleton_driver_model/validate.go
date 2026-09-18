@@ -620,8 +620,7 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 }
 
 func liveLedgerState(base oracle.GlobalState, ledger string) (oracle.LedgerState, bool) {
-	lifecycle, exists := base.Lifecycle(ledger)
-	if !exists || lifecycle.Deleted {
+	if !ledgerIsLive(base, ledger) {
 		return oracle.LedgerState{}, false
 	}
 
