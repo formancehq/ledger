@@ -189,17 +189,16 @@ func TestExtractNeededVolumes(t *testing.T) {
 		// The postings live in the overlay sidecar (admission resolves them at
 		// order-build time), not on the wire order.
 		overlay := newBulkOverlay()
-		overlay.recordRevertOriginalPostings(
+		overlay.recordRevertTarget(
 			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
-			[]*commonpb.Posting{
+			observedRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
 					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
-			},
-			true,
+			}, true),
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -245,9 +244,9 @@ func TestExtractNeededVolumes(t *testing.T) {
 		admission, _ := createTestAdmission(t, store)
 
 		overlay := newBulkOverlay()
-		overlay.recordRevertOriginalPostings(
+		overlay.recordRevertTarget(
 			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
-			[]*commonpb.Posting{
+			observedRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
@@ -260,8 +259,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 					Amount:      commonpb.NewUint256FromUint64(50),
 					Asset:       "USD",
 				},
-			},
-			true,
+			}, true),
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -394,9 +392,9 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 
 		// The audit-bound order carries only caller intent; the resolved
 		// postings live in the sidecar for the preload pass (invariant #9).
-		sidecar, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 1})
-		require.True(t, recorded)
-		require.True(t, sidecar.found, "the target was present in the store")
+		sidecar := overlay.revertTarget(testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1})
+		require.True(t, sidecar.observed())
+		require.True(t, sidecar.found(), "the target was present in the store")
 		require.Len(t, sidecar.postings, 1,
 			"admission reads TxState.Postings into the sidecar to declare volume coverage")
 		require.Equal(t, "world", sidecar.postings[0].GetSource())
@@ -435,10 +433,10 @@ func TestConvertApplyRequest_RevertTransaction(t *testing.T) {
 		_, ok := order.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
 		require.True(t, ok)
 
-		sidecar, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{LedgerName: testLedgerName, ID: 999})
-		require.True(t, recorded,
+		sidecar := overlay.revertTarget(testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 999})
+		require.True(t, sidecar.observed(),
 			"admission must record that it looked, so the absence can be bound into the order")
-		require.False(t, sidecar.found,
+		require.False(t, sidecar.found(),
 			"the source tx is absent from the local store")
 		require.Empty(t, sidecar.postings,
 			"admission must pass through with nil postings when the source tx is absent")
@@ -660,17 +658,16 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 
 		// force=true on revert still preloads all volumes
 		overlay := newBulkOverlay()
-		overlay.recordRevertOriginalPostings(
+		overlay.recordRevertTarget(
 			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
-			[]*commonpb.Posting{
+			observedRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
 					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
-			},
-			true,
+			}, true),
 		)
 
 		orders := []*raftcmdpb.Order{

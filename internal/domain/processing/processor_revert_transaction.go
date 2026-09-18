@@ -191,7 +191,7 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 // order's volume coverage.
 //
 // Admission reads the target from the local store with no read barrier
-// (Admission.getTransactionPostings), so a target that is committed but not yet
+// (Admission.observeRevertTarget), so a target that is committed but not yet
 // applied on that node reads as absent and the order declares no volume keys.
 // Apply then finds the real postings and would read volumes the plan never
 // declared. Rejecting here keeps the coverage gate meaning what it documents: a
