@@ -188,11 +188,10 @@ func WithProfile(ctx context.Context) (context.Context, *QueryProfile) {
 // instant, for transports where the first instrumentable point sits above the
 // handler.
 //
-// HTTP needs it: authentication runs in a router-wide middleware, so a profile
-// created in the handler would exclude it, while the gRPC handlers call
-// WithProfile before internalauth.Authenticate and include it. Same field name,
-// different span — so the HTTP router stamps the instant just before
-// authenticating and hands it here.
+// HTTP needs it because authentication runs in a router-wide middleware. gRPC
+// needs it when authentication runs in an interceptor above the read handler.
+// Both transports stamp the instant just before authenticating and hand it
+// here, keeping the profile fields comparable.
 func WithProfileStartingAt(ctx context.Context, start time.Time) (context.Context, *QueryProfile) {
 	p := &QueryProfile{requestStart: start}
 

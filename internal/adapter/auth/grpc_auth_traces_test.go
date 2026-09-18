@@ -58,3 +58,23 @@ func TestAuthFailureExportsChildrenBeforeParentError(t *testing.T) {
 	require.Equal(t, "exception", errorSpan.Events[0].Name)
 	require.Contains(t, errorSpan.Events[0].Attributes, attribute.String("exception.message", failure.Error()))
 }
+
+func TestAuthorizeGRPCRecordsScopeDenialOnActiveSpan(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+
+	previousTracer := authTracer
+	authTracer = provider.Tracer("auth-test")
+	t.Cleanup(func() { authTracer = previousTracer })
+
+	ctx := withAuthenticationState(t.Context(), true, false, nil)
+	err := AuthorizeGRPC(ctx, ScopeLedgersRead)
+	require.Error(t, err)
+
+	spans := exporter.GetSpans()
+	require.Len(t, spans, 1)
+	require.Equal(t, "auth.authorize", spans[0].Name)
+	require.Equal(t, codes.Error, spans[0].Status.Code)
+	require.Contains(t, spans[0].Attributes, attribute.String("auth.failure.reason", "missing_token"))
+}
