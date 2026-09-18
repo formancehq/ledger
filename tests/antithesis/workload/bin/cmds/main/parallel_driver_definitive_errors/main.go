@@ -14,9 +14,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"math"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -60,38 +58,14 @@ func referenceFilterCheck(
 	client servicepb.BucketServiceClient,
 	ledger, ref string,
 ) (bool, uint64, bool) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger: ledger,
-		Options: &commonpb.ListOptions{
-			PageSize: 10,
-			Filter:   actions.ReferenceFilter(ref),
-		},
-	})
+	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(ref))
 	if err != nil {
 		return false, 0, false
 	}
-
-	var (
-		found   bool
-		foundID uint64
-	)
-
-	for {
-		tx, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			// Mid-stream failure: the read is inconclusive, never a violation.
-			return false, 0, false
-		}
-
-		found = true
-		foundID = tx.GetId()
+	if len(ids) == 0 {
+		return false, 0, true
 	}
-
-	return found, foundID, true
+	return true, ids[0], true
 }
 
 func main() {
@@ -104,7 +78,7 @@ func main() {
 		// interleaving where another driver credits the source).
 		run := r.Uint64()
 		ledger := internal.PrefixDefinitiveErrors.WithSeed(run)
-		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
 			return
 		}
 
@@ -215,20 +189,24 @@ func main() {
 			return
 		}
 
-		for _, rej := range rejected {
-			found, foundID, conclusive := referenceFilterCheck(ctx, client, ledger, rej.reference)
-			if !conclusive {
-				continue
-			}
-
-			assert.Always(!found,
-				"definitively rejected write never appears in the ledger",
-				details.With(internal.Details{
-					"reference": rej.reference,
-					"code":      rej.code.String(),
-					"error":     rej.errMsg,
-					"foundTxId": foundID,
-				}))
-		}
+		assertRejectedWritesAbsent(ctx, client, ledger, rejected, details)
 	})
+}
+
+func assertRejectedWritesAbsent(ctx context.Context, client servicepb.BucketServiceClient, ledger string, rejected []rejection, details internal.Details) {
+	for _, rej := range rejected {
+		found, foundID, conclusive := referenceFilterCheck(ctx, client, ledger, rej.reference)
+		if !conclusive {
+			continue
+		}
+
+		assert.Always(!found,
+			"definitively rejected write never appears in the ledger",
+			details.With(internal.Details{
+				"reference": rej.reference,
+				"code":      rej.code.String(),
+				"error":     rej.errMsg,
+				"foundTxId": foundID,
+			}))
+	}
 }
