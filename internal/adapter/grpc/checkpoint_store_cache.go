@@ -33,8 +33,8 @@ type checkpointStoreCache struct {
 // openCheckpointFn opens both halves of one checkpoint. It owns unwinding any
 // handle it has taken, on a panic as well as on an error: one left open keeps
 // Pebble's directory lock and locks out every later reader. A panic inside an
-// open itself, before it returns a handle, is outside that reach — nothing has
-// been handed over to close, and the directory stays locked until restart.
+// open itself, before it returns a handle, is unwound by Pebble: the pinned
+// implementation defers releasing its directory lock before propagating a panic.
 type openCheckpointFn func() (*dal.Store, *readstore.Store, error)
 
 type checkpointStoreEntry struct {
@@ -157,8 +157,8 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 // this the first one would strand the checkpoint until the process restarts.
 //
 // open unwinds the handles it has taken on the way out, so the panic does not
-// leave one holding the directory lock; a panic inside an open itself is outside
-// that reach (see openCheckpointFn).
+// leave one holding the directory lock. Pebble itself unwinds an open-time panic
+// before returning control here (see openCheckpointFn).
 //
 // The stack is logged here rather than carried in the error: the error is served
 // to every reader sharing this open and is sanitized before it reaches a client,
