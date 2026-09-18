@@ -230,10 +230,10 @@ require (
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	github.com/zitadel/oidc/v3 v3.45.3 // indirect
 	github.com/zitadel/schema v1.3.2 // indirect
-	go.etcd.io/etcd/api/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/pkg/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/server/v3 v3.7.0 // indirect
+	go.etcd.io/etcd/api/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/server/v3 v3.7.1 // indirect
 	go.etcd.io/raft/v3 v3.7.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.16.0 // indirect
@@ -292,13 +292,13 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-// etcd v3.7.0 + etcd-io/etcd#22443 only: ReadAll replays the truncation an entry
+// etcd v3.7.1 + etcd-io/etcd#22443 only: ReadAll replays the truncation an entry
 // record implies only above the snapshot the WAL was opened at, so a truncating
 // overwrite at or below the snapshot index resurrects the entries it replaced and
 // the recovered last-entry term stops describing the real log, which is enough to
 // grant a vote that loses acknowledged writes. Branch wal-truncation-below-snapshot
-// of formancehq/etcd is tag v3.7.0 plus that single upstream commit; drop this
+// of formancehq/etcd is tag v3.7.1 plus that single upstream commit; drop this
 // replace once the fix ships in an etcd release. The version is named on purpose:
 // an unversioned replace would survive a later etcd bump silently. See
 // docs/technical/architecture/subsystems/storage/storage.md#replay-validity.
-replace go.etcd.io/etcd/server/v3 v3.7.0 => github.com/formancehq/etcd/server/v3 v3.7.1-0.20260917125424-fa1be9f11f7b
+replace go.etcd.io/etcd/server/v3 v3.7.1 => github.com/formancehq/etcd/server/v3 v3.7.2-0.20260918095251-b5dd36e4493c

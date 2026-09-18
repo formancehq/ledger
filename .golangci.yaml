@@ -90,7 +90,7 @@ linters:
       replace-local: true
       replace-allow-list:
       - github.com/expr-lang/expr
-      # Temporary: etcd v3.7.0 + etcd-io/etcd#22443, which fixes WAL replay
+      # Temporary: etcd v3.7.1 + etcd-io/etcd#22443, which fixes WAL replay
       # resurrecting entries a later record replaced. Remove this entry together
       # with the replace in go.mod once the fix ships in an etcd release. See
       # docs/technical/architecture/subsystems/storage/storage.md#replay-validity

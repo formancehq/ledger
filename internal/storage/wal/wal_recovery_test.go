@@ -11,7 +11,7 @@ import (
 // These tests pin the WAL recovery contract through the whole stack, etcd's
 // ReadAll included.
 //
-// etcd v3.7.0 replays the truncation a record implies only above the snapshot
+// etcd v3.7.1 replays the truncation a record implies only above the snapshot
 // the WAL was opened at, so a truncating overwrite written at or below the
 // snapshot index is skipped together with its truncation and the physically
 // earlier entries it replaced come back. The node's last-entry term then no

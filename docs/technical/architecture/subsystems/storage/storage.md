@@ -419,7 +419,7 @@ replaces the log in memory and persists only a snapshot record, so when the
 entry at the snapshot index does not carry the snapshot term, the entries read
 before it are obsolete too.
 
-etcd v3.7.0 applies the first rule only to records above the opening snapshot
+etcd v3.7.1 applies the first rule only to records above the opening snapshot
 (`ents = append(ents[:offset], e)` under `e.Index > w.start.Index`) and does not
 apply the second at all. A truncating overwrite written at or below the snapshot
 index is therefore skipped together with the truncation it implies, and the
@@ -442,9 +442,9 @@ the intended outcome.
 Both rules are fixed upstream in
 [etcd-io/etcd#22443](https://github.com/etcd-io/etcd/pull/22443). Until that
 lands in an etcd release, `go.mod` pins a patched build through a `replace` on
-`go.etcd.io/etcd/server/v3`: the tag `v3.7.0` plus that single commit, on the
+`go.etcd.io/etcd/server/v3`: the tag `v3.7.1` plus that single commit, on the
 `wal-truncation-below-snapshot` branch of `formancehq/etcd`. The `replace` names
-the version it substitutes (`go.etcd.io/etcd/server/v3 v3.7.0 => ...`), so a
+the version it substitutes (`go.etcd.io/etcd/server/v3 v3.7.1 => ...`), so a
 later etcd bump escapes it and the guard tests below fail loudly rather than
 silently keeping the fork. The same `replace` is mirrored in
 `tests/antithesis/workload/go.mod`, which builds this code through a local module
