@@ -32,12 +32,54 @@ import (
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_reference_conflict_skip", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
-		ref := fmt.Sprintf("skipref-%d", internal.Rand().Uint64())
-		details := internal.Details{"ledger": ledger, "reference": ref}
+	internal.RunDriver("parallel_driver_reference_conflict_skip", run)
+}
 
-		// 1. Prime the reference with a first successful transaction.
-		firstReq := servicepb.UnsignedApplyRequest("", &servicepb.Request{
+func run(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	ref := fmt.Sprintf("skipref-%d", internal.Rand().Uint64())
+	// The client retries ambiguous failures. Each logical step needs its own
+	// stable key so a lost response replays the committed outcome. Sharing one
+	// key across steps would conflate the intentional duplicate with the claim.
+	keyPrefix := fmt.Sprintf("skipref:%s:%s", ledger, ref)
+	details := internal.Details{"ledger": ledger, "reference": ref, "idempotencyKey": keyPrefix + ":first"}
+
+	// 1. Prime the reference with a first successful transaction.
+	firstReq := servicepb.UnsignedApplyRequest(keyPrefix+":first", &servicepb.Request{
+		Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{
+				Ledger: ledger,
+				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+					CreateTransaction: &servicepb.CreateTransactionPayload{
+						Postings:  internal.RandomPostings(),
+						Reference: ref,
+						Force:     true,
+					},
+				}},
+			},
+		},
+	})
+
+	firstResp, err := client.Apply(ctx, firstReq)
+	assert.Sometimes(internal.IsTolerated(err),
+		"skip-tolerant first-claim should be able to create a transaction with a reference",
+		details.With(internal.Details{"error": err}))
+	if err != nil {
+		return
+	}
+
+	firstTx := internal.CheckCreatedTransaction(firstResp, details)
+	if firstTx == nil {
+		return
+	}
+
+	details["firstTxId"] = firstTx.Transaction.Id
+	details["idempotencyKey"] = keyPrefix + ":duplicate"
+
+	// 2. Replay with the SAME reference AND skippable_reasons opt-in — the
+	// FSM must convert the reference-conflict failure into an
+	// OrderSkipped log carrying the first tx id in its context.
+	skipReq := servicepb.UnsignedApplyRequest(keyPrefix+":duplicate", actions.WithSkippableReasons(
+		&servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: ledger,
@@ -50,153 +92,121 @@ func main() {
 					}},
 				},
 			},
-		})
+		},
+		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	))
 
-		firstResp, err := client.Apply(ctx, firstReq)
-		assert.Sometimes(internal.IsTolerated(err),
-			"skip-tolerant first-claim should be able to create a transaction with a reference",
+	skipResp, err := client.Apply(ctx, skipReq)
+	if !internal.IsTolerated(err) {
+		// A business error here means the skip conversion failed to fire
+		// even though skippable_reasons opted in and the reference IS
+		// already claimed — that is the exact bug this driver guards.
+		assert.Unreachable("skip-tolerant duplicate reference must not return a business error",
 			details.With(internal.Details{"error": err}))
-		if err != nil {
-			return
-		}
 
-		firstTx := internal.CheckCreatedTransaction(firstResp, details)
-		if firstTx == nil {
-			return
-		}
+		return
+	}
+	if err != nil {
+		return
+	}
 
-		details["firstTxId"] = firstTx.Transaction.Id
+	if len(skipResp.GetLogs()) == 0 {
+		assert.Unreachable("skip-tolerant duplicate reference must return exactly one log",
+			details.With(internal.Details{"logs": len(skipResp.GetLogs())}))
 
-		// 2. Replay with the SAME reference AND skippable_reasons opt-in — the
-		// FSM must convert the reference-conflict failure into an
-		// OrderSkipped log carrying the first tx id in its context.
-		skipReq := servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
-			&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:  internal.RandomPostings(),
-								Reference: ref,
-								Force:     true,
-							},
-						}},
-					},
+		return
+	}
+
+	skipLog := skipResp.Logs[0].GetPayload().GetApply().GetLog()
+	if skipLog == nil {
+		assert.Unreachable("skip-tolerant duplicate reference must return an Apply log",
+			details)
+
+		return
+	}
+
+	skipped := skipLog.GetData().GetOrderSkipped()
+	assert.AlwaysOrUnreachable(skipped != nil,
+		"skip-tolerant duplicate reference must land as an OrderSkipped log",
+		details.With(internal.Details{"payload_type": fmt.Sprintf("%T", skipLog.GetData().GetPayload())}))
+	if skipped == nil {
+		return
+	}
+
+	reason := skipped.GetReason()
+	assert.AlwaysOrUnreachable(reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+		"OrderSkipped reason must be TRANSACTION_REFERENCE_CONFLICT",
+		details.With(internal.Details{"reason": reason.String()}))
+
+	gotRef := skipped.GetContext()["reference"]
+	assert.AlwaysOrUnreachable(gotRef == ref,
+		"OrderSkipped.context.reference must match the requested reference",
+		details.With(internal.Details{"context_reference": gotRef}))
+
+	gotLedger := skipped.GetContext()["ledger"]
+	assert.AlwaysOrUnreachable(gotLedger == ledger,
+		"OrderSkipped.context.ledger must match the target ledger",
+		details.With(internal.Details{"context_ledger": gotLedger}))
+
+	gotExistingID := skipped.GetContext()["existingTransactionId"]
+	expectedExistingID := strconv.FormatUint(firstTx.Transaction.Id, 10)
+	assert.AlwaysOrUnreachable(gotExistingID == expectedExistingID,
+		"OrderSkipped.context.existingTransactionId must point to the first tx",
+		details.With(internal.Details{"context_existingTransactionId": gotExistingID, "expected": expectedExistingID}))
+
+	assert.Reachable("reference-conflict skip path exercised", details)
+
+	// 3. Same skippable_reasons opt-in on a FRESH reference must NOT fire
+	// the skip — the FSM has to produce a normal CreatedTransaction. A
+	// bug that fires the skip unconditionally would otherwise mask the
+	// first-claim path here.
+	// This driver's private prefix and the newly committed transaction ID make
+	// the reference unique within this ledger, rather than only probably fresh.
+	freshRef := fmt.Sprintf("skipref-fresh-tx-%d", firstTx.Transaction.Id)
+	freshDetails := internal.Details{"ledger": ledger, "reference": freshRef, "idempotencyKey": keyPrefix + ":fresh"}
+
+	freshReq := servicepb.UnsignedApplyRequest(keyPrefix+":fresh", actions.WithSkippableReasons(
+		&servicepb.Request{
+			Type: &servicepb.Request_Apply{
+				Apply: &servicepb.LedgerApplyRequest{
+					Ledger: ledger,
+					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+						CreateTransaction: &servicepb.CreateTransactionPayload{
+							Postings:  internal.RandomPostings(),
+							Reference: freshRef,
+							Force:     true,
+						},
+					}},
 				},
 			},
-			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-		))
+		},
+		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
+	))
 
-		skipResp, err := client.Apply(ctx, skipReq)
-		if !internal.IsTolerated(err) {
-			// A business error here means the skip conversion failed to fire
-			// even though skippable_reasons opted in and the reference IS
-			// already claimed — that is the exact bug this driver guards.
-			assert.Unreachable("skip-tolerant duplicate reference must not return a business error",
-				details.With(internal.Details{"error": err}))
+	freshResp, err := client.Apply(ctx, freshReq)
+	assert.Sometimes(internal.IsTolerated(err),
+		"skip-tolerant first-claim on a fresh reference should be able to create a transaction",
+		freshDetails.With(internal.Details{"error": err}))
+	if err != nil {
+		return
+	}
 
-			return
+	if freshTx := internal.CheckCreatedTransaction(freshResp, freshDetails); freshTx != nil {
+		assert.Reachable("skip-tolerant first-claim on a fresh reference landed as CreatedTransaction", freshDetails)
+
+		return
+	}
+
+	// With a stable key, an ambiguous committed attempt must replay its original
+	// CreatedTransaction. An OrderSkipped here is still an invariant failure.
+	if len(freshResp.GetLogs()) > 0 {
+		if skipped := freshResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped(); skipped != nil {
+			assert.Unreachable("skip-tolerant first-claim on a fresh reference must NOT fire the skip",
+				freshDetails.With(internal.Details{
+					"skipReason":  skipped.GetReason().String(),
+					"skipContext": skipped.GetContext(),
+					"logSequence": freshResp.Logs[0].GetSequence(),
+				}))
 		}
-		if err != nil {
-			return
-		}
-
-		if len(skipResp.GetLogs()) == 0 {
-			assert.Unreachable("skip-tolerant duplicate reference must return exactly one log",
-				details.With(internal.Details{"logs": len(skipResp.GetLogs())}))
-
-			return
-		}
-
-		skipLog := skipResp.Logs[0].GetPayload().GetApply().GetLog()
-		if skipLog == nil {
-			assert.Unreachable("skip-tolerant duplicate reference must return an Apply log",
-				details)
-
-			return
-		}
-
-		skipped := skipLog.GetData().GetOrderSkipped()
-		assert.AlwaysOrUnreachable(skipped != nil,
-			"skip-tolerant duplicate reference must land as an OrderSkipped log",
-			details.With(internal.Details{"payload_type": fmt.Sprintf("%T", skipLog.GetData().GetPayload())}))
-		if skipped == nil {
-			return
-		}
-
-		reason := skipped.GetReason()
-		assert.AlwaysOrUnreachable(reason == commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-			"OrderSkipped reason must be TRANSACTION_REFERENCE_CONFLICT",
-			details.With(internal.Details{"reason": reason.String()}))
-
-		gotRef := skipped.GetContext()["reference"]
-		assert.AlwaysOrUnreachable(gotRef == ref,
-			"OrderSkipped.context.reference must match the requested reference",
-			details.With(internal.Details{"context_reference": gotRef}))
-
-		gotLedger := skipped.GetContext()["ledger"]
-		assert.AlwaysOrUnreachable(gotLedger == ledger,
-			"OrderSkipped.context.ledger must match the target ledger",
-			details.With(internal.Details{"context_ledger": gotLedger}))
-
-		gotExistingID := skipped.GetContext()["existingTransactionId"]
-		expectedExistingID := strconv.FormatUint(firstTx.Transaction.Id, 10)
-		assert.AlwaysOrUnreachable(gotExistingID == expectedExistingID,
-			"OrderSkipped.context.existingTransactionId must point to the first tx",
-			details.With(internal.Details{"context_existingTransactionId": gotExistingID, "expected": expectedExistingID}))
-
-		assert.Reachable("reference-conflict skip path exercised", details)
-
-		// 3. Same skippable_reasons opt-in on a FRESH reference must NOT fire
-		// the skip — the FSM has to produce a normal CreatedTransaction. A
-		// bug that fires the skip unconditionally would otherwise mask the
-		// first-claim path here.
-		freshRef := fmt.Sprintf("skipref-fresh-%d", internal.Rand().Uint64())
-		freshDetails := internal.Details{"ledger": ledger, "reference": freshRef}
-
-		freshReq := servicepb.UnsignedApplyRequest("", actions.WithSkippableReasons(
-			&servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
-						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
-								Postings:  internal.RandomPostings(),
-								Reference: freshRef,
-								Force:     true,
-							},
-						}},
-					},
-				},
-			},
-			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
-		))
-
-		freshResp, err := client.Apply(ctx, freshReq)
-		assert.Sometimes(internal.IsTolerated(err),
-			"skip-tolerant first-claim on a fresh reference should be able to create a transaction",
-			freshDetails.With(internal.Details{"error": err}))
-		if err != nil {
-			return
-		}
-
-		if freshTx := internal.CheckCreatedTransaction(freshResp, freshDetails); freshTx != nil {
-			assert.Reachable("skip-tolerant first-claim on a fresh reference landed as CreatedTransaction", freshDetails)
-
-			return
-		}
-
-		// Fresh reference produced neither a CreatedTransaction nor a
-		// tolerated error — inspect whether the FSM incorrectly fired the
-		// skip. Only flag if we can conclusively identify an OrderSkipped;
-		// an ambiguous transient path leaves the response empty and stays
-		// silent.
-		if len(freshResp.GetLogs()) > 0 {
-			if freshResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
-				assert.Unreachable("skip-tolerant first-claim on a fresh reference must NOT fire the skip",
-					freshDetails)
-			}
-		}
-	})
+	}
 }
