@@ -59,7 +59,7 @@ type KafkaSink struct {
 }
 
 // NewKafkaSink creates a new Kafka sink.
-func NewKafkaSink(cfg KafkaSinkConfig) (result *KafkaSink, retErr error) {
+func NewKafkaSink(cfg KafkaSinkConfig) (_ *KafkaSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer(nil, cfg.SASLPassword)
 	defer sanitizer.sanitizeReturned(&retErr)
 	saramaCfg := sarama.NewConfig()
