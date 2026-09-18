@@ -14,6 +14,7 @@ ledger run \
   --tls-key-file /etc/ledger/tls.key \
   --auth-enabled \
   --auth-issuer https://auth.example.com \
+  --auth-audience urn:formance:ledger:production-eu \
   --auth-service ledger
 ```
 
@@ -29,14 +30,39 @@ ledger run \
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--auth-enabled` | bool | `false` | Enable JWT authentication and scope-based authorization. Requires `--tls-mode=required` — rejected with `--tls-mode=disabled` or `--tls-mode=optional` |
+| `--auth-audience` | string | `""` | Required with OIDC issuer: deployment identifier shared by all nodes and matched exactly against OIDC JWT `aud` |
 | `--auth-issuer` | string | `""` | OIDC issuer URL (used for discovery and token validation) |
 | `--auth-service` | string | `""` | Service name prefix for scopes (e.g., `ledger` for `ledger:read`) |
 
-When `--auth-enabled` is set:
+When authentication is enabled with an OIDC issuer:
 1. The server performs OIDC discovery at `<issuer>/.well-known/openid-configuration`
 2. Downloads the JWKS (JSON Web Key Set) from the discovered `jwks_uri`
-3. Validates JWT signatures, issuer, and expiration on every request
+3. Validates JWT signatures, issuer, expiration, and deployment audience on every request
 4. Enforces scope-based authorization on all endpoints
+
+## Deployment audience
+
+Configure `--auth-audience` (or `AUTH_AUDIENCE`) explicitly, for example
+`urn:formance:ledger:production-eu`, and configure the issuer to include that
+identifier in access tokens. Every node in the deployment must use the same
+value. Distinct deployments should use distinct audiences. The value is not a
+ledger name, node address, cluster ID, or scope prefix; `--auth-service` remains
+independent.
+
+OIDC tokens must include this exact, case-sensitive value as
+an `aud` string or a member of an `aud` array. Missing, empty or mismatched
+values return HTTP 401 / gRPC `Unauthenticated`, even with recognized scopes
+or god mode. Invalid presented tokens never fall back to anonymous scopes.
+The server refuses OIDC-enabled startup without a nonblank expected audience.
+Static Ed25519 authentication does not require or validate an audience, including
+when OIDC is also enabled. Use keys dedicated to one deployment and to
+authentication JWTs. Reusing keys across deployments allows tokens to be reused
+wherever the key is trusted, subject to scopes and expiry.
+
+`ledgerctl auth generate-token` and `ledgerctl auth login` need no audience.
+Configure the issuer and deployment together and mint replacement tokens before
+using this revision. Audience checks only gate API admission; committed Raft
+entries and restored business state never re-evaluate this setting.
 
 ## Scopes
 
@@ -66,6 +92,7 @@ ledger:ClusterRead      ledger:ClusterWrite
 
 The server enforces the following rules at startup:
 
+- `--auth-issuer` requires a nonblank `--auth-audience` when authentication is enabled.
 - `--auth-enabled` requires at least one of `--auth-issuer` (OIDC) or
   `--auth-ed25519-keys` (Ed25519 key file). The server refuses to start
   without a credential source.
@@ -83,7 +110,7 @@ The server enforces the following rules at startup:
   **gRPC service transport** only — `--tls-mode` does not govern the HTTP
   REST-compat listener, which remains plaintext and must be protected by
   separate HTTPS termination (ingress/proxy) when authentication is enabled.
-- Setting auth-related flags (`--auth-issuer`, `--auth-ed25519-keys`,
+- Setting auth-related flags (`--auth-audience`, `--auth-issuer`, `--auth-ed25519-keys`,
   `--auth-scope-mapping-file`) without `--auth-enabled` is rejected to
   prevent operators from believing authentication is active when it is not.
 
@@ -106,6 +133,7 @@ The writes-only configuration is:
 
 ```bash
 ledger run --auth-enabled --auth-issuer https://auth.example.com \
+  --auth-audience urn:formance:ledger:production-eu \
   --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key \
   --auth-anonymous-scopes "*:read"
 ```
@@ -154,7 +182,7 @@ Authorization: Bearer <token>
 
 For machine-to-machine deployments without an OIDC provider, the server supports Ed25519 key-based authentication. Clients sign JWT tokens (EdDSA, RFC 8037) with their private key, and the server verifies with configured public keys.
 
-Both OIDC and Ed25519 modes can coexist. When `--auth-ed25519-keys` is configured, a composite key set routes EdDSA tokens to the static key set and others to the OIDC key set.
+Both OIDC and static Ed25519 modes can coexist. Tokens verified by the configured static keys use the static-key contract. Tokens verified by the OIDC provider require issuer and audience validation, including when that provider signs with Ed25519.
 
 ### Server Setup
 
@@ -181,10 +209,12 @@ ledgerctl auth generate-key ./keys
 3. Start the server with Ed25519 authentication:
 
 ```bash
-ledger run --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test
+ledger run --auth-enabled \
+  --auth-ed25519-keys auth-keys.json --bootstrap --node-id 1 --cluster-id test \
+  --tls-mode required --tls-cert-file /etc/ledger/tls.crt --tls-key-file /etc/ledger/tls.key
 ```
 
-Setting `--auth-ed25519-keys` automatically enables `--auth-enabled` unless `--auth-enabled=false` is explicitly set.
+Set `--auth-enabled` explicitly with the key file and required TLS configuration.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -268,7 +298,7 @@ For OIDC tokens, the god claim is trusted if present in the JWT issued by the co
 
 - Keep seed files (`seed.hex`) secret and with `0600` permissions
 - Public key files (`pubkey.hex`) can be safely distributed
-- Tokens are self-signed (no OIDC issuer); the issuer claim is not checked for EdDSA tokens
+- Tokens verified by dedicated static keys are self-signed (no OIDC issuer); issuer and audience checks still apply to EdDSA tokens verified by OIDC keys
 - Token expiration is always enforced
 - Rotate keys by adding new entries to `auth-keys.json` and removing old ones
 

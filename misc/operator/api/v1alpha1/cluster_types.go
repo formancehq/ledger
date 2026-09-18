@@ -378,6 +378,12 @@ type AuthorizationConfig struct {
 	// +optional
 	Enabled *bool `json:"enabled,omitempty"`
 
+	// Audience is the explicit OIDC JWT audience for this deployment, shared by all nodes.
+	// Required when authentication is enabled with an OIDC issuer.
+	// Static Ed25519 JWTs use dedicated deployment keys and do not validate audience.
+	// +optional
+	Audience string `json:"audience,omitempty"`
+
 	// Issuer is the OIDC token issuer URL (for backward compatibility).
 	// +optional
 	Issuer string `json:"issuer,omitempty"`

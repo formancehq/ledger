@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -21,6 +22,7 @@ import (
 type AuthFlagConfig struct {
 	Enabled          bool
 	Issuer           string
+	Audience         string // OIDC resource-server identifier shared by every deployment node
 	Service          string
 	Ed25519KeysFile  string
 	ScopeMappingFile string // path to JSON file mapping virtual scopes to granular scopes
@@ -406,6 +408,10 @@ func (c Config) validateAuthConfig() error {
 			return errors.New("--auth-enabled requires either --auth-issuer (OIDC) or --auth-ed25519-keys (Ed25519)")
 		}
 
+		if auth.Issuer != "" && strings.TrimSpace(auth.Audience) == "" {
+			return errors.New("--auth-issuer requires a non-empty --auth-audience (the deployment's resource-server identifier)")
+		}
+
 		// Reject auth without full TLS — bearer JWT/Ed25519 tokens would be
 		// exposed to plaintext interception otherwise. Unlike the --cluster-secret
 		// guard in Validate() (which permits `optional` because the operator drives
@@ -422,6 +428,9 @@ func (c Config) validateAuthConfig() error {
 
 	// Auth is disabled — warn about credentials that will be ignored.
 	var unused []string
+	if auth.Audience != "" {
+		unused = append(unused, "--auth-audience")
+	}
 	if auth.Issuer != "" {
 		unused = append(unused, "--auth-issuer")
 	}
