@@ -109,7 +109,7 @@ func (s sinkErrorSanitizer) addURL(pairs map[string]string, raw string) {
 // pairs with malformed percent escapes, such as nested proxy URLs from drivers.
 func rawQueryValues(rawQuery, key string) []string {
 	var results []string
-	for _, part := range strings.Split(rawQuery, "&") {
+	for part := range strings.SplitSeq(rawQuery, "&") {
 		if k, v, ok := strings.Cut(part, "="); ok && k == key && v != "" {
 			results = append(results, v)
 		}
