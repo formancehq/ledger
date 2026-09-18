@@ -847,8 +847,11 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	// These facts belong to this prepared batch. The next preparation may
 	// already have changed the live FSM, and only a successful commit counts.
-	// Guarded: the walk and its details maps exist only for these properties,
-	// and this runs on every commit.
+	//
+	// Guarded, unlike the counters it reads: nothing here escapes the guard, so
+	// there is no value another caller could find silently zero, and an unarmed
+	// build skips a walk and a map allocation on every commit. See the
+	// contributing guide's rule on what belongs inside a guard.
 	if assert.Enabled {
 		for _, result := range pb.Result.Results {
 			if result.Error != nil || result.Replayed {

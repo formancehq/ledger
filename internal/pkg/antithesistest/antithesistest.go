@@ -18,6 +18,7 @@ package antithesistest
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -44,6 +45,17 @@ const Armed = assert.Enabled
 // UnarmedSkip is the reason to pass to Skip when Armed is false.
 const UnarmedSkip = "requires -tags enable_antithesis_sdk: the no-op SDK writes no local output"
 
+// executedNamedTest reports whether the child actually ran the named test to
+// completion. `go test` exits 0 when -test.run matches nothing, and a skip is
+// also a pass, so exit status alone cannot distinguish "the property was not
+// emitted" from "the test never ran" — and the second silently satisfies every
+// expectation of no emission, which is the drift this package exists to catch.
+// The -test.v pass marker is the positive proof; subtests print theirs
+// indented, hence the contains rather than a prefix match.
+func executedNamedTest(logs []byte, run string) bool {
+	return bytes.Contains(logs, []byte("--- PASS: "+run+" "))
+}
+
 // Emitted runs one test in a fresh copy of the calling test binary and reports
 // whether it emitted property with that condition.
 //
@@ -60,12 +72,20 @@ func Emitted(ctx context.Context, dir, run, property string, condition bool) (fo
 
 	output := filepath.Join(dir, "assertions.jsonl")
 	pattern := "^" + strings.ReplaceAll(regexp.QuoteMeta(run), "/", "$/^") + "$"
-	cmd := exec.CommandContext(ctx, executable, "-test.run="+pattern, "-test.count=1")
+	cmd := exec.CommandContext(ctx, executable, "-test.run="+pattern, "-test.count=1", "-test.v")
 	cmd.Env = append(os.Environ(), "ANTITHESIS_SDK_LOCAL_OUTPUT="+output)
 
 	logs, err := cmd.CombinedOutput()
 	if err != nil {
 		return false, fmt.Errorf("running %s: %w\n%s", run, err, logs)
+	}
+
+	if !executedNamedTest(logs, run) {
+		return false, fmt.Errorf(
+			"%s did not run: `go test` exits 0 when -test.run matches nothing and when the test skips, "+
+				"so a renamed or skipped test would silently satisfy an expectation of no emission\n%s",
+			run, logs,
+		)
 	}
 
 	file, err := os.Open(output)

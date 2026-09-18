@@ -40,17 +40,29 @@ Guard by call frequency: wrap the SDK call on a per-request, per-proposal or
 per-order path. Leave cold invariant branches unguarded — a guard buys nothing
 there and reads worse.
 
-Guard the SDK call, not the bookkeeping that feeds it, even when that
-bookkeeping exists only for the property. What the guard eliminates is the
-~540 ns and 6 allocations of the call itself, including the details map an
-unarmed build would otherwise still build; the bookkeeping beside it is noise
-by comparison — the eight-element `createdLogs` walk in `applyProposal`
-benchmarks at 4.6 ns and zero allocations, and `resolved++` is one increment.
-So a guard around the bookkeeping buys under 1% of the win and creates a
-genuine hazard: a variable that is correct in an armed build and silently zero
-in production, waiting for whoever first reads it for a metric. The
-commit-outcome counters, `stagedTransactions`, `resolved` and
-`oldTermResolved` are all deliberately unconditional for this reason.
+Guard the SDK call. What the guard eliminates is the ~540 ns and 6 allocations
+of the call itself, including the details map an unarmed build would otherwise
+still build.
+
+For the work that feeds it, the line is drawn by **what can read the result**,
+not by whether the work exists only for the property.
+
+A value that outlives the guard stays unconditional: a struct field, a return
+value, anything another function can reach. Guarding those buys almost nothing
+and creates a real hazard — a variable that is correct in an armed build and
+silently zero in production, waiting for whoever first reads it for a metric.
+The `createdLogs` walk behind the commit-outcome counters benchmarks at 4.6 ns
+and zero allocations against the ~540 ns it feeds, under 1% of the win. So
+`OrdersResult.CreatedTransactions`, `RevertedTransaction`, `stagedTransactions`,
+`resolved` and `oldTermResolved` are all deliberately unconditional.
+
+A computation that cannot escape the guard belongs inside it: nothing outside
+can observe it, so there is no zero to mistake for a real value. `runCommitter`
+walks the batch's results and builds a details map per result purely to feed
+two `Sometimes` calls three lines below; the whole walk sits inside
+`if assert.Enabled`, and an unarmed build does not allocate a map per commit.
+The test is whether deleting the guard's body would change anything but the
+assertions.
 
 Five builds set `enable_antithesis_sdk`, and each would be silently useless
 without it:
@@ -192,9 +204,16 @@ an `if assert.Enabled` outside the recipe's trees fails
 
 `TestAntithesisStateEmission` and each affected package's
 `TestAntithesisContractEmission` run deliberately corrupt fixtures in isolated
-test subprocesses. They set `ANTITHESIS_SDK_LOCAL_OUTPUT` before SDK
-initialization and check the unique property, `hit`, and `condition` in its
-JSON records. These fixtures are not drivers in the workload binary. Separate
+test subprocesses through `internal/pkg/antithesistest.Emitted`. It sets
+`ANTITHESIS_SDK_LOCAL_OUTPUT` before SDK initialization and checks the unique
+property, `hit`, and `condition` in its JSON records.
+
+It also requires the child's `--- PASS` marker for the test it named. `go test`
+exits 0 when `-test.run` matches nothing and a skip is also a pass, so exit
+status alone cannot tell "the property was not emitted" from "the test never
+ran" — and the second silently satisfies every row that expects no emission,
+which is precisely the drift these tables exist to catch. A renamed or skipped
+target now fails instead of passing quietly. These fixtures are not drivers in the workload binary. Separate
 integration tests read committed business projections after transfer/revert
 rollback and successful idempotency replay. The unexpected-balanced-pair
 regression must fail if the reverse delta check is removed.
