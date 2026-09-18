@@ -29,6 +29,7 @@ import (
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	httpcompat "github.com/formancehq/ledger/v3/internal/adapter/http"
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
@@ -498,8 +499,9 @@ func Module() fx.Option {
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"mirror"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"index"`)),
 			fx.Annotate(signal.NewNotifications, fx.ResultTags(`name:"usage"`)),
-			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config) *mirror.Manager {
-				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize)
+			accountlifecycle.NewSerializer,
+			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config, lifecycleSerializer *accountlifecycle.Serializer) *mirror.Manager {
+				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize, lifecycleSerializer)
 			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
@@ -566,6 +568,7 @@ func Module() fx.Option {
 				attrs *attributes.Attributes,
 				rs *readstore.Store,
 				authCfg internalauth.AuthConfig,
+				lifecycleSerializer *accountlifecycle.Serializer,
 			) ctrl.Admission {
 				var opts []func(*admission.Admission)
 				if cfg.AdmissionMetrics {
@@ -576,6 +579,7 @@ func Module() fx.Option {
 					opts = append(opts, admission.WithAuthEnabled())
 				}
 				opts = append(opts, admission.WithAuditProjectionState(rs.AuditProjectionState))
+				opts = append(opts, admission.WithLifecycleSerializer(lifecycleSerializer))
 
 				return admission.NewAdmission(
 					store,

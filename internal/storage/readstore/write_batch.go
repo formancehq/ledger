@@ -170,6 +170,10 @@ func (wb *WriteBatch) del(key []byte) error {
 	return nil
 }
 
+// DeleteKey removes one exact secondary-projection row through the counted
+// batch wrapper so progress cannot advance without committing the deletion.
+func (wb *WriteBatch) DeleteKey(key []byte) error { return wb.del(key) }
+
 // DeleteReverseMapRange queues a reverse-map range tombstone and mirrors it in
 // the batch overlay. Exact rows written before the tombstone become deleted;
 // rows written afterwards overwrite that exact overlay entry, matching Pebble's
@@ -347,6 +351,19 @@ func (wb *WriteBatch) DeleteMetadataEntryWithPreviousV(
 	oldEncodedValue, entityID []byte,
 ) error {
 	if oldEncodedValue != nil {
+		seq, err := wb.eventSequence()
+		if err != nil {
+			return err
+		}
+		// A terminal account purge can delete metadata that the same ledger log
+		// just added. Remove those same-sequence ADD events before appending DEL;
+		// otherwise the event-key op ordering makes ADD win at that pin.
+		if err := wb.del(MetadataIndexEventKeyV(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, seq, MetadataEventAdd)); err != nil {
+			return err
+		}
+		if err := wb.del(EntityExistsEventKeyV(kb, ledgerName, ns, metadataKey, version, isNullEncoded(oldEncodedValue), entityID, seq, MetadataEventAdd)); err != nil {
+			return err
+		}
 		if err := wb.appendMetadataIndexEvent(kb, ledgerName, ns, metadataKey, version, oldEncodedValue, entityID, MetadataEventDel); err != nil {
 			return err
 		}

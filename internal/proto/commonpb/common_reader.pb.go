@@ -5487,6 +5487,7 @@ type LedgerLogReader interface {
 	GetPurgedVolumes() TouchedVolumeListReader
 	GetNewKeptVolumes() TouchedVolumeListReader
 	GetEphemeralVolumes() TouchedVolumeListReader
+	GetPurgedAccounts() []string
 	Mutate() *LedgerLog
 }
 
@@ -5522,6 +5523,10 @@ func (r *ledgerLogReadonly) GetNewKeptVolumes() TouchedVolumeListReader {
 
 func (r *ledgerLogReadonly) GetEphemeralVolumes() TouchedVolumeListReader {
 	return NewTouchedVolumeListReader((*LedgerLog)(r).GetEphemeralVolumes())
+}
+
+func (r *ledgerLogReadonly) GetPurgedAccounts() []string {
+	return slices.Clone((*LedgerLog)(r).GetPurgedAccounts())
 }
 
 func (r *ledgerLogReadonly) Mutate() *LedgerLog {

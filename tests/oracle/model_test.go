@@ -791,3 +791,26 @@ func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
 		removed.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason,
 		"the index died with its declaration, so this is a fresh creation again")
 }
+
+func TestGlobalState_AccountTypeTransitionPurgesMetadataOnlyEphemeralAccount(t *testing.T) {
+	t.Parallel()
+
+	addType := func(name, pattern string, persistence commonpb.AccountTypePersistence) *servicepb.Request {
+		return &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+			Ledger: "L", AccountType: &commonpb.AccountType{Name: name, Pattern: pattern, Persistence: persistence},
+		}}}
+	}
+	seeded := NewGlobalState().Apply(bulkOf(
+		addType("fallback", "users:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+		addType("specific", "users:alice", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+		oracletest.AddAccountMetaReq("users:alice", "note", commonpb.NewStringValue("value")),
+	))
+	require.True(t, seeded.OK)
+	seededLedger := seeded.State.Ledger("L")
+	require.Contains(t, seededLedger.AccountMetadata("users:alice"), "note")
+
+	reclassified := seeded.State.Apply(bulkOf(oracletest.RemoveTypeReq("specific")))
+	require.True(t, reclassified.OK)
+	reclassifiedLedger := reclassified.State.Ledger("L")
+	require.Empty(t, reclassifiedLedger.AccountMetadata("users:alice"))
+}

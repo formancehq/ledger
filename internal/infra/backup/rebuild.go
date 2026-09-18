@@ -55,22 +55,25 @@ func rebuildDelta(
 	batch := store.OpenWriteSession()
 
 	writer := &attributeReplayWriter{
-		store:           store,
-		batch:           batch,
-		volume:          attrs.Volume,
-		metadata:        attrs.Metadata,
-		tx:              attrs.Transaction,
-		ledger:          attrs.Ledger,
-		references:      attrs.References,
-		boundary:        attrs.Boundary,
-		index:           attrs.Index,
-		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
-		pendingTx:       make(map[string]*commonpb.TransactionState),
-		pendingIndexes:  make(map[string]*commonpb.Index),
-		ledgerInfos:     make(map[string]*commonpb.LedgerInfo),
-		boundaries:      make(map[string]*raftcmdpb.LedgerBoundaries),
-		reversions:      make(map[string]*bitset.Bitset),
-		dirtyReversions: make(map[string]struct{}),
+		store:                  store,
+		batch:                  batch,
+		volume:                 attrs.Volume,
+		metadata:               attrs.Metadata,
+		tx:                     attrs.Transaction,
+		ledger:                 attrs.Ledger,
+		references:             attrs.References,
+		boundary:               attrs.Boundary,
+		index:                  attrs.Index,
+		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
+		pendingMetadata:        make(map[string]*commonpb.MetadataValue),
+		pendingTx:              make(map[string]*commonpb.TransactionState),
+		pendingIndexes:         make(map[string]*commonpb.Index),
+		purgedVolumePrefixes:   make(map[string]struct{}),
+		purgedMetadataPrefixes: make(map[string]struct{}),
+		ledgerInfos:            make(map[string]*commonpb.LedgerInfo),
+		boundaries:             make(map[string]*raftcmdpb.LedgerBoundaries),
+		reversions:             make(map[string]*bitset.Bitset),
+		dirtyReversions:        make(map[string]struct{}),
 	}
 
 	sinkConfig := attrs.SinkConfig
@@ -212,7 +215,7 @@ func rebuildDelta(
 
 			ledgerName := p.Apply.GetLedgerName()
 
-			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), p.Apply.GetLog().GetPurgedAccounts(), p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -556,9 +559,12 @@ func rebuildDelta(
 			batch = store.OpenWriteSession()
 			writer.batch = batch
 			clear(writer.pendingVolumes)
+			clear(writer.pendingMetadata)
 			clear(writer.pendingTx)
 			clear(writer.pendingIndexes)
 			clear(preparedQueries)
+			clear(writer.purgedVolumePrefixes)
+			clear(writer.purgedMetadataPrefixes)
 
 			logger.WithFields(map[string]any{
 				"logsProcessed": count,
@@ -937,17 +943,24 @@ func (w *attributeReplayWriter) RemoveAccountType(ledger string, name string) er
 // overlays make in-batch state visible to same-batch reads; both maps are
 // cleared on every batch commit alongside the batch itself.
 type attributeReplayWriter struct {
-	store          *dal.Store
-	batch          *dal.WriteSession
-	volume         *attributes.Attribute[*raftcmdpb.VolumePair]
-	metadata       *attributes.Attribute[*commonpb.MetadataValue]
-	tx             *attributes.Attribute[*commonpb.TransactionState]
-	ledger         *attributes.Attribute[*commonpb.LedgerInfo]
-	references     *attributes.Attribute[*commonpb.TransactionReferenceValue]
-	boundary       *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
-	index          *attributes.Attribute[*commonpb.Index]
-	pendingVolumes map[string]*raftcmdpb.VolumePair
-	pendingTx      map[string]*commonpb.TransactionState
+	store           *dal.Store
+	batch           *dal.WriteSession
+	volume          *attributes.Attribute[*raftcmdpb.VolumePair]
+	metadata        *attributes.Attribute[*commonpb.MetadataValue]
+	tx              *attributes.Attribute[*commonpb.TransactionState]
+	ledger          *attributes.Attribute[*commonpb.LedgerInfo]
+	references      *attributes.Attribute[*commonpb.TransactionReferenceValue]
+	boundary        *attributes.Attribute[*raftcmdpb.LedgerBoundaries]
+	index           *attributes.Attribute[*commonpb.Index]
+	pendingVolumes  map[string]*raftcmdpb.VolumePair
+	pendingMetadata map[string]*commonpb.MetadataValue
+	pendingTx       map[string]*commonpb.TransactionState
+	// Purge range tombstones are invisible to reads through the non-indexed
+	// write batch. These canonical prefixes shadow checkpoint rows until the
+	// batch commits; exact pending entries take precedence when the account is
+	// re-funded later in the same replay window.
+	purgedVolumePrefixes   map[string]struct{}
+	purgedMetadataPrefixes map[string]struct{}
 
 	// Index registry rows touched by the replay window, keyed by the
 	// canonical IndexKey bytes. w.batch is non-indexed, so same-window reads
@@ -1417,6 +1430,9 @@ func (w *attributeReplayWriter) GetVolume(canonicalKey []byte) (*raftcmdpb.Volum
 	if pair, ok := w.pendingVolumes[string(canonicalKey)]; ok {
 		return pair, nil
 	}
+	if hasCanonicalPrefix(w.purgedVolumePrefixes, canonicalKey) {
+		return nil, nil
+	}
 
 	return w.volume.Get(w.store, canonicalKey)
 }
@@ -1452,16 +1468,80 @@ func (w *attributeReplayWriter) MoveVolume(oldKey, newKey []byte) error {
 
 func (w *attributeReplayWriter) SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error {
 	_, err := w.metadata.Set(w.batch, canonicalKey, value)
+	if err == nil {
+		w.pendingMetadata[string(canonicalKey)] = value
+	}
 
 	return err
 }
 
 func (w *attributeReplayWriter) DeleteMetadata(canonicalKey []byte) error {
-	return w.metadata.Delete(w.batch, canonicalKey)
+	err := w.metadata.Delete(w.batch, canonicalKey)
+	if err == nil {
+		w.pendingMetadata[string(canonicalKey)] = nil
+	}
+
+	return err
+}
+
+func (w *attributeReplayWriter) getMetadata(canonicalKey []byte) (*commonpb.MetadataValue, error) {
+	if value, ok := w.pendingMetadata[string(canonicalKey)]; ok {
+		return value, nil
+	}
+	if hasCanonicalPrefix(w.purgedMetadataPrefixes, canonicalKey) {
+		return nil, nil
+	}
+
+	return w.metadata.Get(w.store, canonicalKey)
+}
+
+func hasCanonicalPrefix(prefixes map[string]struct{}, canonicalKey []byte) bool {
+	for prefix := range prefixes {
+		if strings.HasPrefix(string(canonicalKey), prefix) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (w *attributeReplayWriter) PurgeAccount(ledger, account string, _ replay.ExclusionCollector) error {
+	for _, spec := range []struct{ attrCode, separator byte }{
+		{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
+		{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},
+	} {
+		prefix := []byte{dal.ZoneAttributes, spec.attrCode}
+		canonicalPrefix := domain.LedgerScopedPrefix(ledger)
+		canonicalPrefix = append(canonicalPrefix, account...)
+		canonicalPrefix = append(canonicalPrefix, spec.separator)
+		prefix = append(prefix, canonicalPrefix...)
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		if err := w.batch.DeleteRangeNoSync(prefix, upper); err != nil {
+			return err
+		}
+		if spec.attrCode == dal.SubAttrVolume {
+			w.purgedVolumePrefixes[string(canonicalPrefix)] = struct{}{}
+			for key := range w.pendingVolumes {
+				if strings.HasPrefix(key, string(canonicalPrefix)) {
+					w.pendingVolumes[key] = nil
+				}
+			}
+		} else {
+			w.purgedMetadataPrefixes[string(canonicalPrefix)] = struct{}{}
+			for key := range w.pendingMetadata {
+				if strings.HasPrefix(key, string(canonicalPrefix)) {
+					w.pendingMetadata[key] = nil
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
-	oldVal, err := w.metadata.Get(w.store, oldKey)
+	oldVal, err := w.getMetadata(oldKey)
 	if err != nil {
 		return err
 	}
@@ -1470,11 +1550,11 @@ func (w *attributeReplayWriter) MoveMetadata(oldKey, newKey []byte) error {
 		return nil
 	}
 
-	if _, err := w.metadata.Set(w.batch, newKey, oldVal); err != nil {
+	if err := w.SetMetadata(newKey, oldVal); err != nil {
 		return err
 	}
 
-	return w.metadata.Delete(w.batch, oldKey)
+	return w.DeleteMetadata(oldKey)
 }
 
 // getTx returns the in-batch state if present, otherwise the committed state.

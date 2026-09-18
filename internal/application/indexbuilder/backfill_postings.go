@@ -3,6 +3,7 @@ package indexbuilder
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -92,9 +93,10 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 		}
 
 		var (
-			batchCount int
-			lastSeq    uint64
-			eof        bool
+			batchCount     int
+			lastSeq        uint64
+			eof            bool
+			purgedAccounts = make(map[string]struct{})
 		)
 
 		batch := b.readStore.NewBatch()
@@ -158,11 +160,20 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 			// Skip non-transaction logs (config mutations, metadata-only, etc.)
 			if parsed.LogType == 0 {
+				for _, account := range parsed.PurgedAccounts {
+					if err := b.purgeQueuedCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
+						_ = batch.Cancel()
+
+						return err
+					}
+					purgedAccounts[account] = struct{}{}
+				}
+
 				continue
 			}
 
 			kb := b.kb
-			excludedVolumes := proposals.excludedForLog(parsed.Sequence, parsed.Ledger, &parsed)
+			excludedVolumes, historyExcludedVolumes := proposals.exclusionsForLog(parsed.Sequence, parsed.Ledger, &parsed)
 
 			// Stamp the account-by-asset rows with the source log's own
 			// sequence — the same value the live fold writes for this log,
@@ -174,13 +185,31 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 				p := &parsed.Postings[i]
 				if err := b.indexPostingAddressMappings(
 					kb, cfg, parsed.Ledger, parsed.TxID, p.Source, p.Destination, p.Asset, p.Color,
-					indexAny, indexSource, indexDestination, excludedVolumes,
+					indexAny, indexSource, indexDestination, excludedVolumes, historyExcludedVolumes,
 				); err != nil {
 					_ = batch.Cancel()
 
 					return err
 				}
 			}
+			for _, account := range parsed.PurgedAccounts {
+				if err := b.purgeQueuedCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
+					_ = batch.Cancel()
+
+					return err
+				}
+				purgedAccounts[account] = struct{}{}
+			}
+		}
+		accounts := make([]string, 0, len(purgedAccounts))
+		for account := range purgedAccounts {
+			accounts = append(accounts, account)
+		}
+		sort.Strings(accounts)
+		if err := b.purgeCommittedAccountAssetIndexes(cfg, task.ledger, accounts...); err != nil {
+			_ = batch.Cancel()
+
+			return err
 		}
 
 		// AppliedProposal cursor errors set during excludedForLog must be

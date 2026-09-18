@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"sort"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -1380,9 +1381,10 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 		}
 
 		var (
-			batchCount int
-			lastSeq    uint64
-			eof        bool
+			batchCount     int
+			lastSeq        uint64
+			eof            bool
+			purgedAccounts = make(map[string]struct{})
 		)
 
 		batch := b.readStore.NewBatch()
@@ -1454,14 +1456,42 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
 			}
 			if !isHistoryLog(log) {
+				b.wb.SetEventSequence(log.GetSequence())
+				for _, account := range ledgerLog.GetPurgedAccounts() {
+					if err := b.purgeQueuedCurrentAccountIndexes(cfg, task.ledger, account); err != nil {
+						_ = batch.Cancel()
+
+						return err
+					}
+					purgedAccounts[account] = struct{}{}
+				}
+
 				continue
 			}
 
-			if err := b.indexLogEntry(cfg, log, proposals); err != nil {
+			if err := b.indexLogEntryWithAccountPurge(cfg, log, proposals, false); err != nil {
 				_ = batch.Cancel()
 
 				return err
 			}
+			for _, account := range ledgerLog.GetPurgedAccounts() {
+				if err := b.purgeQueuedCurrentAccountIndexes(cfg, task.ledger, account); err != nil {
+					_ = batch.Cancel()
+
+					return err
+				}
+				purgedAccounts[account] = struct{}{}
+			}
+		}
+		accounts := make([]string, 0, len(purgedAccounts))
+		for account := range purgedAccounts {
+			accounts = append(accounts, account)
+		}
+		sort.Strings(accounts)
+		if err := b.purgeCommittedAccountAssetIndexes(cfg, task.ledger, accounts...); err != nil {
+			_ = batch.Cancel()
+
+			return err
 		}
 
 		// AppliedProposal cursor errors set during indexLogEntry must be

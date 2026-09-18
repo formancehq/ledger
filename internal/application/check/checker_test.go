@@ -875,6 +875,21 @@ func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.Acco
 	}
 }
 
+func removeAccountTypeOrder(ledger, name string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+						RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: name},
+					}},
+				},
+			},
+		},
+	}
+}
+
 func deleteLedgerOrder(name string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -1198,6 +1213,139 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	require.Empty(t, errors, "ephemeral purge must use the proposal boundary, not each transaction log")
+}
+
+func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+
+	batch := engine.store.OpenWriteSession()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(5),
+		Output: commonpb.NewUint256FromUint64(5),
+	})
+	require.NoError(t, err)
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Key:        "stale",
+	}
+	_, err = engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var volumeMismatch, metadataMismatch bool
+	for _, checkErr := range errors {
+		if checkErr.GetAccount() != "orders:1" {
+			continue
+		}
+		switch checkErr.GetErrorType() {
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH:
+			volumeMismatch = true
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH:
+			metadataMismatch = true
+		}
+	}
+	require.True(t, volumeMismatch, "checker must reject a volume surviving an account-wide purge")
+	require.True(t, metadataMismatch, "checker must reject metadata surviving an account-wide purge")
+}
+
+func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "EUR", 3),
+	))
+
+	batch := engine.store.OpenWriteSession()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var found bool
+	for _, checkErr := range errors {
+		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+			checkErr.GetAccount() == "orders:1" && checkErr.GetAsset() == "USD" {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "checker must reject a fabricated row for the previously purged USD cell: %v", errors)
+}
+
+func TestCheckerRejectsMetadataSurvivingDeletionAfterAccountRecreation(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+	engine.processAndCommit(removeAccountTypeOrder("ledger", "orders"))
+	engine.processAndCommit(saveAccountMetadataOrder("ledger", "orders:1", map[string]string{
+		"status": "recreated",
+	}))
+	engine.processAndCommit(deleteAccountMetadataOrder("ledger", "orders:1", "status"))
+
+	batch := engine.store.OpenWriteSession()
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Key:        "status",
+	}
+	_, err := engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var found bool
+	for _, checkErr := range errors {
+		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH &&
+			checkErr.GetAccount() == "orders:1" &&
+			strings.Contains(checkErr.GetMessage(), "unexpected metadata for orders:1/status") {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "checker must reject metadata surviving a deletion in the recreated account: %v", errors)
 }
 
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.

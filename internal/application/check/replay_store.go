@@ -14,6 +14,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -50,8 +51,11 @@ const (
 // with large datasets and uses Pebble merge operators to avoid read-modify-write
 // during replay — all writes are append-only.
 type replayStore struct {
-	db      *pebble.DB
-	tempDir string
+	db                    *pebble.DB
+	tempDir               string
+	purgedAccounts        map[domain.AccountKey]struct{}
+	purgedVolumes         map[domain.VolumeKey]struct{}
+	pendingPurgedAccounts map[domain.AccountKey]struct{}
 }
 
 func newReplayStore() (*replayStore, error) {
@@ -72,7 +76,13 @@ func newReplayStore() (*replayStore, error) {
 		return nil, fmt.Errorf("opening temp pebble: %w", err)
 	}
 
-	return &replayStore{db: db, tempDir: dir}, nil
+	return &replayStore{
+		db:                    db,
+		tempDir:               dir,
+		purgedAccounts:        make(map[domain.AccountKey]struct{}),
+		purgedVolumes:         make(map[domain.VolumeKey]struct{}),
+		pendingPurgedAccounts: make(map[domain.AccountKey]struct{}),
+	}, nil
 }
 
 func (s *replayStore) Close() error {
@@ -128,12 +138,33 @@ func (s *replayStore) deleteLedgerData(ledgerName string) error {
 			return fmt.Errorf("deleting replay rows (prefix=%c) for ledger %q: %w", prefix, ledgerName, err)
 		}
 	}
+	for account := range s.purgedAccounts {
+		if account.LedgerName == ledgerName {
+			delete(s.purgedAccounts, account)
+		}
+	}
+	for volume := range s.purgedVolumes {
+		if volume.LedgerName == ledgerName {
+			delete(s.purgedVolumes, volume)
+		}
+	}
+	for account := range s.pendingPurgedAccounts {
+		if account.LedgerName == ledgerName {
+			delete(s.pendingPurgedAccounts, account)
+		}
+	}
 
 	return nil
 }
 
 // addVolumeDelta merges a volume delta without reading existing state.
 func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelta *big.Int) error {
+	var volumeKey domain.VolumeKey
+	if err := volumeKey.Unmarshal(canonicalKey); err == nil {
+		delete(s.purgedAccounts, volumeKey.AccountKey)
+		delete(s.purgedVolumes, volumeKey)
+	}
+
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
 	var u256Input, u256Output uint256.Int
@@ -180,6 +211,11 @@ func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 
 // deleteVolume removes a volume entry from the replay store.
 func (s *replayStore) DeleteVolume(canonicalKey []byte) error {
+	var volumeKey domain.VolumeKey
+	if err := volumeKey.Unmarshal(canonicalKey); err == nil {
+		s.purgedVolumes[volumeKey] = struct{}{}
+	}
+
 	key := replayKey(replayPrefixVolume, canonicalKey)
 
 	return s.deleteKey(key)
@@ -237,6 +273,11 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 // so the compare pass can flag a live row whose type diverges from the log
 // (e.g. a bool stored as its string rendering).
 func (s *replayStore) SetMetadata(canonicalKey []byte, value *commonpb.MetadataValue) error {
+	var metadataKey domain.MetadataKey
+	if err := metadataKey.Unmarshal(canonicalKey); err == nil {
+		delete(s.purgedAccounts, metadataKey.AccountKey)
+	}
+
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
 	encoded, err := value.MarshalVT()
@@ -256,6 +297,92 @@ func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
 	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
+}
+
+func (s *replayStore) PurgeAccount(ledger, account string, collector domainreplay.ExclusionCollector) error {
+	accountKey := domain.AccountKey{LedgerName: ledger, Account: account}
+	s.purgedAccounts[accountKey] = struct{}{}
+	s.pendingPurgedAccounts[accountKey] = struct{}{}
+	for _, spec := range []struct{ replayPrefix, separator byte }{
+		{replayPrefixVolume, dal.CanonicalKeySepVolume},
+		{replayPrefixMetadata, dal.CanonicalKeySepMetadata},
+	} {
+		prefix := []byte{spec.replayPrefix}
+		prefix = append(prefix, domain.LedgerScopedPrefix(ledger)...)
+		prefix = append(prefix, account...)
+		prefix = append(prefix, spec.separator)
+		upper := append([]byte(nil), prefix...)
+		upper[len(upper)-1]++
+		if collector != nil && spec.replayPrefix == replayPrefixVolume {
+			iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+			if err != nil {
+				return err
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				var key domain.VolumeKey
+				if err := key.Unmarshal(iter.Key()[1:]); err != nil {
+					_ = iter.Close()
+
+					return fmt.Errorf("unmarshaling replay volume during account purge: %w", err)
+				}
+				collector(ledger, account, key.Asset, key.Color)
+				s.purgedVolumes[key] = struct{}{}
+			}
+			if err := iter.Close(); err != nil {
+				return err
+			}
+		}
+		if err := s.db.DeleteRange(prefix, upper, pebble.NoSync); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (s *replayStore) takePendingPurgedAccounts() map[domain.AccountKey]struct{} {
+	pending := s.pendingPurgedAccounts
+	s.pendingPurgedAccounts = make(map[domain.AccountKey]struct{})
+
+	return pending
+}
+
+func (s *replayStore) replayDerivedPurgedAccounts() map[domain.AccountKey]struct{} {
+	return s.purgedAccounts
+}
+
+func (s *replayStore) replayDerivedPurgedVolumes() map[domain.VolumeKey]struct{} {
+	return s.purgedVolumes
+}
+
+func (s *replayStore) AccountHasNonZeroVolume(ledger, account string) (bool, error) {
+	prefix := []byte{replayPrefixVolume}
+	prefix = append(prefix, domain.LedgerScopedPrefix(ledger)...)
+	prefix = append(prefix, account...)
+	prefix = append(prefix, dal.CanonicalKeySepVolume)
+	upper := append([]byte(nil), prefix...)
+	upper[len(upper)-1]++
+
+	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = iter.Close() }()
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		pair := &raftcmdpb.VolumePair{}
+		if err := pair.UnmarshalVT(iter.Value()); err != nil {
+			return false, fmt.Errorf("unmarshaling replay volume for account liveness: %w", err)
+		}
+		if pair.GetInput().ToBigInt().Cmp(pair.GetOutput().ToBigInt()) != 0 {
+			return true, nil
+		}
+	}
+	if err := iter.Error(); err != nil {
+		return false, err
+	}
+
+	return false, nil
 }
 
 // CreateTransaction records a transaction creation op via merge (no read).

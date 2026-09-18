@@ -74,6 +74,7 @@ func resetLedgerLog(ll *commonpb.LedgerLog) {
 	ll.PurgedVolumes = ll.GetPurgedVolumes()[:0]
 	ll.NewKeptVolumes = ll.GetNewKeptVolumes()[:0]
 	ll.EphemeralVolumes = ll.GetEphemeralVolumes()[:0]
+	ll.PurgedAccounts = ll.GetPurgedAccounts()[:0]
 	// Preserve ll.Date (always present in apply logs).
 	// Preserve ll.Data (always present).
 
