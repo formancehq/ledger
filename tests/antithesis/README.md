@@ -118,12 +118,20 @@ The workload uses a layered predicate set (`internal/client.go`):
   "should be able to X", details)`. Using `IsTransient` directly here would
   flip the per-driver Sometimes to "never true" when ctx cancellation
   dominates a chaotic run.
-- `IsAmbiguousCommit(err)` — detects the `DeadlineExceeded` category only.
-  A false result is not proof of non-commit: `Unavailable` can also follow
-  a committed write whose response was lost during peer-connection closure.
+- `IsAmbiguousCommit(err)` — detects `DeadlineExceeded` and the exact bare
+  `Unavailable: grpc: the client connection is closing` category. A later
+  maintenance rejection must preserve that possible earlier commit. Other
+  `Unavailable` messages, `Canceled`, `Unknown`, and structured lookalikes are
+  not added to this category. A false result is still not proof of non-commit.
   Retried writes need the original idempotency key and payload. Neither code
   establishes a definitive business rejection; verify the resulting state or
   recover the keyed outcome before asserting non-execution.
+- `NewGRPCConn` performs application retries in interceptors, with no native
+  service-config retry policy. `internal/client_transport_test.go` tests this
+  real factory after a committed response is lost, including default, forever,
+  disabled-retry, and maintenance/recovery cases. The original native retry
+  control remains separate. `client_transport_controls_test.go` verifies caller
+  cancellation and terminal server statuses through the same factory.
 - `IsClassified(err)` — `nil | IsTransient | IsCanceled | <business code>`
   (deliberately excludes `Aborted`). Business codes are `NotFound`,
   `AlreadyExists`, `InvalidArgument`, generic `FailedPrecondition`;
@@ -143,8 +151,9 @@ classify interceptor surface it (as "Always(IsClassified)" Details
 `code=Aborted`) is intentional — if it shows up under chaos, that is a
 finding worth triaging.
 
-`IsUnavailable(err)` is deliberately narrow — it backs the gRPC service
-config's retryable-codes list. Using it as a Sometimes tolerance predicate
+`IsUnavailable(err)` is deliberately narrow — it recognizes only that wire
+code; the factory's retry decision also inspects business reasons. Using it
+as a Sometimes tolerance predicate
 masks `DeadlineExceeded` / `ExternalServiceError`
 and silently shorts the driver — exactly the bug the audit in
 `refactor(antithesis): chaos error classification + workload cleanup`
@@ -236,7 +245,7 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   bounded by the driver's context deadline.
 - Hand-roll a retry loop that classifies errors itself — let the gRPC
   interceptors in `internal/client.go` handle transients. Drivers only see
-  errors that survived `retryMaxAttempts` retries.
+  errors that survived the configured unary or stream retry budget.
 - Swallow an error with `if err != nil { continue }` — at least log via
   `LogCleanupError` (for cleanup paths) or `assert.Reachable("X skipped due
   to error", …)` so the path stays visible in the trace.

@@ -580,12 +580,15 @@ existing handling; `Unknown` is not made retryable. Forwarding does not retry.
 This is an interrupted outcome, not a definitive business rejection:
 `Unavailable` can arrive **after a write has committed** when its response is
 lost. A client retry must retain the original idempotency key and payload.
-Without a key, replaying the request may execute it again. The regression
-`TestConn_LostCommittedResponseRetriesWithStableKey` commits against a real
-Ledger node, closes the peer connection before response delivery, and verifies
-that native gRPC retry returns the original outcome with a single transaction
-and balance effect. This transport result alone does not prove a maintenance
-rejection or a failed second revert.
+Without a key, replaying the request may execute it again. The regressions in
+`tests/antithesis/workload/internal/client_transport_test.go` commit against a
+real Ledger node and close the peer connection before response delivery. They
+retain the native gRPC retry control and separately exercise the actual
+`NewGRPCConn` interceptor configuration, returning the original outcome with
+a single transaction and balance effect. The factory also preserves ambiguity
+when a later attempt hits the real maintenance gate; after disabling maintenance,
+the same key and payload recover the original result. This transport result
+alone does not prove a maintenance rejection or a failed second revert.
 
 | Code | Condition |
 |------|-----------|

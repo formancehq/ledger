@@ -1,4 +1,4 @@
-package grpcerr_test
+package internal_test
 
 import (
 	"context"
@@ -22,6 +22,7 @@ import (
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -29,6 +30,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // The backend is a real single-node Ledger (admission, Raft, FSM and Pebble).
@@ -100,8 +102,38 @@ func serveApplyProxy(t *testing.T, handler servicepb.BucketServiceServer) string
 	return listener.Addr().String()
 }
 
+// Keep the original native retry trigger as a separate control; it is not the
+// retry configuration used by NewGRPCConn after EN-1627.
 func TestConn_LostCommittedResponseRetriesWithStableKey(t *testing.T) {
 	t.Parallel()
+	testLostCommittedResponse(t, "native")
+}
+
+func TestNewGRPCConn_LostCommittedResponse(t *testing.T) {
+	// NewGRPCConn reads process environment: these cases cannot run in parallel.
+	for _, mode := range []string{"default", "forever", "disabled", "maintenance"} {
+		t.Run(mode, func(t *testing.T) {
+			testLostCommittedResponse(t, mode)
+		})
+	}
+}
+
+func workloadTestConn(t *testing.T, addr, mode string) (*grpc.ClientConn, error) {
+	t.Helper()
+	t.Setenv("LEDGER_GRPC_ADDR", addr)
+	t.Setenv("LEDGER_NO_RETRY", "")
+	t.Setenv("LEDGER_RETRY_FOREVER", "")
+	if mode == "disabled" {
+		t.Setenv("LEDGER_NO_RETRY", "1")
+	}
+	if mode == "forever" {
+		t.Setenv("LEDGER_RETRY_FOREVER", "1")
+	}
+	return internal.NewGRPCConn()
+}
+
+func testLostCommittedResponse(t *testing.T, mode string) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	t.Cleanup(cancel)
 	lease := testserver.AllocateNodeLease()
@@ -130,14 +162,19 @@ func TestConn_LostCommittedResponseRetriesWithStableKey(t *testing.T) {
 	_, err = leader.Apply(ctx, actions.WithIdempotencyKey("setup", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 
-	loss := &lostApplyResponseServer{client: leader, committed: make(chan *servicepb.ApplyResponse, 1), requests: make(chan *servicepb.ApplyRequest, 2)}
+	loss := &lostApplyResponseServer{client: leader, committed: make(chan *servicepb.ApplyResponse, 1), requests: make(chan *servicepb.ApplyRequest, 4)}
 	peerAddr := serveApplyProxy(t, loss)
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
 	t.Cleanup(func() { require.NoError(t, pool.Close()) })
 	require.NoError(t, pool.AddPeer(1, peerAddr))
-	forwarder := &forwardingApplyServer{pool: pool, interrupted: make(chan error, 1)}
+	forwarder := &forwardingApplyServer{pool: pool, interrupted: make(chan error, 4)}
 	followerAddr := serveApplyProxy(t, forwarder)
-	callerConn, err := grpc.NewClient(followerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultServiceConfig(`{"methodConfig":[{"name":[{"service":"ledger.BucketService","method":"Apply"}],"retryPolicy":{"MaxAttempts":2,"InitialBackoff":"0.001s","MaxBackoff":"0.001s","BackoffMultiplier":1,"RetryableStatusCodes":["UNAVAILABLE"]}}]}`))
+	var callerConn *grpc.ClientConn
+	if mode == "native" {
+		callerConn, err = grpc.NewClient(followerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithDefaultServiceConfig(`{"methodConfig":[{"name":[{"service":"ledger.BucketService","method":"Apply"}],"retryPolicy":{"MaxAttempts":2,"InitialBackoff":"0.001s","MaxBackoff":"0.001s","BackoffMultiplier":1,"RetryableStatusCodes":["UNAVAILABLE"]}}]}`))
+	} else {
+		callerConn, err = workloadTestConn(t, followerAddr, mode)
+	}
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, callerConn.Close()) })
 	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{commonpb.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
@@ -158,6 +195,12 @@ func TestConn_LostCommittedResponseRetriesWithStableKey(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("write did not commit", ctx.Err())
 	}
+	if mode == "maintenance" {
+		// Make the real admission gate reject the retry after the transaction
+		// committed and before the first response can reach the caller.
+		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("enable-maintenance", actions.SetMaintenanceModeAction(true)))
+		require.NoError(t, err)
+	}
 	oldConn := pool.GetConnection(1)
 	require.NoError(t, pool.RestartConnection(1))
 	require.NotSame(t, oldConn, pool.GetConnection(1))
@@ -167,15 +210,34 @@ func TestConn_LostCommittedResponseRetriesWithStableKey(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("retry did not finish", ctx.Err())
 	}
-	require.NoError(t, ctx.Err(), "caller remains live through both attempts")
-	require.NoError(t, outcome.err)
-	require.Equal(t, int32(2), loss.attempts.Load())
+	require.NoError(t, ctx.Err(), "caller remains live through recovery")
 	interrupted := <-forwarder.interrupted
 	require.Equal(t, codes.Unavailable, status.Code(interrupted))
 	require.Equal(t, "grpc: the client connection is closing", status.Convert(interrupted).Message())
-	t.Logf("commit preceded response loss: interruption=%v; attempts=%d", interrupted, loss.attempts.Load())
-	require.True(t, proto.Equal(request, <-loss.requests))
-	require.True(t, proto.Equal(request, <-loss.requests), "native gRPC retry must retain the original payload and key")
+	wantAttempts := int32(2)
+	switch mode {
+	case "disabled":
+		require.Equal(t, int32(1), loss.attempts.Load(), "LEDGER_NO_RETRY must prevent automatic replay")
+		require.Equal(t, codes.Unavailable, status.Code(outcome.err))
+		// The caller can still explicitly recover the same keyed outcome.
+		outcome.response, outcome.err = servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+	case "maintenance":
+		require.Equal(t, int32(2), loss.attempts.Load(), "maintenance must escape the retry loop")
+		require.True(t, internal.HasErrorReason(outcome.err, domain.ErrReasonMaintenanceMode))
+		require.True(t, internal.IsMaintenanceAfterAmbiguousCommit(outcome.err), "a real committed write must not become a definitive rejection")
+		maintenance := <-forwarder.interrupted
+		require.True(t, proto.Equal(status.Convert(maintenance).Proto(), status.Convert(outcome.err).Proto()), "ambiguity wrapper must preserve the structured maintenance status")
+		_, err = leader.Apply(ctx, actions.WithIdempotencyKey("disable-maintenance", actions.SetMaintenanceModeAction(false)))
+		require.NoError(t, err)
+		outcome.response, outcome.err = servicepb.NewBucketServiceClient(callerConn).Apply(ctx, request, grpc.Trailer(&outcome.trailers))
+		wantAttempts = 3
+	}
+	require.NoError(t, outcome.err)
+	require.Equal(t, wantAttempts, loss.attempts.Load())
+	t.Logf("mode=%s; commit preceded response loss: interruption=%v; attempts=%d", mode, interrupted, loss.attempts.Load())
+	for range wantAttempts {
+		require.True(t, proto.Equal(request, <-loss.requests), "every attempt must retain the original payload and key")
+	}
 	require.True(t, proto.Equal(committed, outcome.response), "retry returns the original durable outcome")
 	require.Equal(t, []string{"true"}, outcome.trailers.Get("ledger-apply-replayed"))
 	transactions, err := actions.ListAllTransactions(ctx, leader, "L")

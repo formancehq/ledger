@@ -45,10 +45,14 @@ only when the local connection is shut down and the caller context is live.
 Check actual pool removal/replacement, caller cancellation, a peer-authored
 lookalike on a live connection, and structured/unknown statuses separately.
 `internal/adapter/grpcerr/conn_cancellation_test.go` provides these controls.
-`conn_commit_test.go` adds a real Ledger commit before response loss and a
-native gRPC retry with the same key/payload. Its single-effect check establishes
-the keyed recovery case, not non-commit or safe unkeyed replay; those identities
-remain owned by `idempotency-retries-partial-failures`.
+`tests/antithesis/workload/internal/client_transport_test.go` adds a real Ledger
+commit before response loss, preserving the native retry control and separately
+testing the current `NewGRPCConn` factory. Its maintenance case retains ambiguity
+and recovers with the same key/payload after the gate is disabled. The companion
+`client_transport_controls_test.go` checks terminal statuses and cancellation
+through that factory. These checks establish keyed recovery, not non-commit or
+safe unkeyed replay; those identities remain owned by
+`idempotency-retries-partial-failures`.
 
 The broad adapter and CLI globs locate request builders, shared encoders and
 existing tests. They do not authorize auditing every subsystem reachable from

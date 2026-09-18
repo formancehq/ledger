@@ -30,20 +30,20 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		target = "localhost:15100"
 	}
 
-	// LEDGER_NO_RETRY disables the automatic UNAVAILABLE retry entirely (both the
-	// service-config policy and the interceptors). Useful for isolating whether a
+	// LEDGER_NO_RETRY disables automatic application retries in the interceptors.
+	// Useful for isolating whether a
 	// divergence is caused by retried (and thus possibly double-applied, when the
 	// request is non-idempotent) Apply calls.
 	retryDisabled := os.Getenv("LEDGER_NO_RETRY") != ""
 
-	// LEDGER_RETRY_FOREVER raises the retry budget to ~infinite (off by default —
-	// master keeps MaxAttempts 50, which grpc-go silently caps to 5 because no
-	// WithMaxCallAttempts is set). The model-based driver sets it so the
+	// LEDGER_RETRY_FOREVER raises the interceptor retry budgets to ~infinite.
+	// The model-based driver sets it so the
 	// "ambiguous commit" class of errors becomes eventually-definitive: combined
 	// with the idempotency key on every Request, a retry that lands after the
-	// cluster recovers hits the server's idempotency cache and returns the cached
-	// log reference, so the validator never has to model "may have committed".
-	// MaxBackoff caps each interval at 2s, so 1M attempts is ~23 days of budget.
+	// cluster recovers hits the server's idempotency cache and returns the recorded
+	// outcome. A later maintenance refusal still surfaces with its ambiguity
+	// marker so the driver can arrange recovery instead of assuming non-commit.
+	// retryMaxDelay caps each interval at 5s.
 	retryForever := os.Getenv("LEDGER_RETRY_FOREVER") != ""
 
 	maxAttempts := 50
@@ -51,32 +51,19 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		maxAttempts = 1000000
 	}
 
-	// The retry interceptors retry the transient set (IsTransient) to a definitive
-	// outcome; their loop budget is the bounded default unless retry-forever lifts
-	// it.
-	interceptorAttempts := retryMaxAttempts
+	// Unary RPCs keep the previous effective 50-attempt budget (10 interceptor
+	// attempts, each formerly wrapping up to 5 service-config attempts). Streams
+	// never had service-config retries, so their ordinary budget remains 10.
+	// Retry-forever lifts both budgets.
+	unaryInterceptorAttempts := maxAttempts
+	streamInterceptorAttempts := retryMaxAttempts
 	if retryForever {
-		interceptorAttempts = maxAttempts
+		streamInterceptorAttempts = maxAttempts
 	}
 
-	// Service-config retry covers the raw UNAVAILABLE code; the interceptors also
-	// handle deadline and external-service classifications below.
-	methodConfig := ""
-	if !retryDisabled {
-		methodConfig = fmt.Sprintf(`,
-		"methodConfig": [{
-			"name": [{}],
-			"retryPolicy": {
-				"MaxAttempts": %d,
-				"InitialBackoff": "0.2s",
-				"MaxBackoff": "2s",
-				"BackoffMultiplier": 1.5,
-				"RetryableStatusCodes": ["UNAVAILABLE"]
-			}
-		}]`, maxAttempts)
-	}
-	// Round-robin load balancing always applies; only the retry policy is toggled.
-	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]` + methodConfig + `}`
+	// Retry in the interceptor, where business-reason details are visible. A
+	// service-config UNAVAILABLE retry cannot distinguish maintenance rejection.
+	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]}`
 
 	addrs := strings.Split(target, ",")
 	opts := []grpc.DialOption{
@@ -89,25 +76,24 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		// MUST use the Chain* dial options: WithUnaryInterceptor (singular)
 		// stores ONE interceptor per dial and a second call overwrites the
 		// first silently. Order inside the chain matters: gRPC applies
-		// interceptors left-to-right (retry runs first, classify wraps the
-		// final post-retry error). The classify interceptor stays here even
+		// interceptors left-to-right (retry owns the loop and classify sees each
+		// invoked attempt before retry decides what to do). It stays here even
 		// in retry-on mode because it asserts the workload's classification
 		// map is complete.
 		opts = append(opts,
 			grpc.WithChainUnaryInterceptor(
-				retryUnaryInterceptor(interceptorAttempts),
+				retryUnaryInterceptor(unaryInterceptorAttempts),
 				classifyUnaryInterceptor(),
 			),
 			grpc.WithChainStreamInterceptor(
-				retryStreamInterceptor(interceptorAttempts),
+				retryStreamInterceptor(streamInterceptorAttempts),
 				classifyStreamInterceptor(),
 			),
 		)
 
 		if retryForever {
-			// grpc-go's WithMaxCallAttempts default is 5 — the service-config
-			// MaxAttempts is silently capped to that otherwise. Only lifted in
-			// retry-forever mode so the default path matches master exactly.
+			// Retain the transport cap setting, although application retries are
+			// owned by the interceptors and no service-config retry is installed.
 			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
 		}
 	} else {
@@ -177,11 +163,19 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		var err error
+		hadAmbiguousAttempt := false
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if !IsTransient(err) {
+			if HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+				if hadAmbiguousAttempt {
+					return maintenanceAfterAmbiguousCommitError{err: err}
+				}
 				return err
 			}
+			if !retryableRPCError(err) {
+				return err
+			}
+			hadAmbiguousAttempt = hadAmbiguousAttempt || IsAmbiguousCommit(err)
 			select {
 			case <-ctx.Done():
 				return err
@@ -190,6 +184,38 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		}
 		return err
 	}
+}
+
+// retryableRPCError keeps maintenance as a definitive model outcome even though
+// its transport code is Unavailable. Every other transient retains the existing
+// retry behavior.
+func retryableRPCError(err error) bool {
+	return IsTransient(err) && !HasErrorReason(err, domain.ErrReasonMaintenanceMode)
+}
+
+type maintenanceAfterAmbiguousCommitError struct {
+	err error
+}
+
+func (e maintenanceAfterAmbiguousCommitError) Error() string {
+	return e.err.Error()
+}
+
+func (e maintenanceAfterAmbiguousCommitError) Unwrap() error {
+	return e.err
+}
+
+func (e maintenanceAfterAmbiguousCommitError) GRPCStatus() *status.Status {
+	return status.Convert(e.err)
+}
+
+// IsMaintenanceAfterAmbiguousCommit reports that an RPC may have committed and
+// a later attempt was rejected by the maintenance gate. Callers must preserve
+// the ambiguous request while arranging any recovery needed to leave
+// maintenance mode.
+func IsMaintenanceAfterAmbiguousCommit(err error) bool {
+	var target maintenanceAfterAmbiguousCommitError
+	return errors.As(err, &target)
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
@@ -264,7 +290,7 @@ func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
 		)
 		for attempt := range maxAttempts {
 			stream, err = streamer(ctx, desc, cc, method, opts...)
-			if !IsTransient(err) {
+			if !retryableRPCError(err) {
 				return stream, err
 			}
 			select {
@@ -332,18 +358,23 @@ func IsCanceled(err error) bool {
 	return ok && st.Code() == codes.Canceled
 }
 
-// IsAmbiguousCommit identifies the DeadlineExceeded ambiguity category. It is
-// not an exhaustive non-commit test: Unavailable can also follow a committed
-// write when a forwarding connection closes before the response is delivered.
-// Every retried write needs its original idempotency key and payload, including
-// when this predicate returns false.
+// IsAmbiguousCommit identifies deadline expiry and the exact bare Unavailable
+// status emitted when a forwarding connection closes. Either can follow a
+// committed write whose response was lost, including before a later maintenance
+// rejection. The wire status identifies a potentially ambiguous outcome, not
+// proof of its physical origin or of a commit. This is not an exhaustive
+// non-commit test; every retried write still needs its original key and payload.
 //
 // IsAmbiguousCommit is a STRICT SUBSET of IsTransient — every member is
 // already retried by the interceptors. The separation exists so drivers
 // asserting on post-commit state can decide whether to verify
 // read-after-write even on the "error" branch.
 func IsAmbiguousCommit(err error) bool {
-	return IsDeadlineExceeded(err)
+	if IsDeadlineExceeded(err) {
+		return true
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.Unavailable && st.Message() == "grpc: the client connection is closing" && len(st.Proto().Details) == 0
 }
 
 // IsWritesBlockedDiskFull returns true for the write gate's disk-pressure
