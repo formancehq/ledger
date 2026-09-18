@@ -237,7 +237,10 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 // unconditionally, so an empty digest is a malformed proposal rather than an
 // older wire format — v3 is unreleased and carries no compatibility fallbacks.
 // Accepting it would silently disable the check and let the stale-target path
-// reach applyPosting again.
+// reach applyPosting again. A missing batch transaction-id horizon is refused
+// the same way, for the same reason: without it the two causes cannot be told
+// apart, and defaulting to the retryable one would re-create the re-admit loop
+// this classification exists to prevent.
 func checkRevertTargetObservation(
 	ledger string,
 	transactionID uint64,
@@ -255,7 +258,19 @@ func checkRevertTargetObservation(
 		return nil
 	}
 
-	if initial, ok := ctx.batchInitialNextTxID[ledger]; ok && transactionID >= initial {
+	initial, ok := ctx.batchInitialNextTxID[ledger]
+	if !ok {
+		// processApply records the horizon for every ledger it touches before
+		// dispatching, so a revert cannot reach here without one. Falling
+		// through to the retryable answer would be the worst available failure:
+		// a target this batch creates would be classified as merely stale, and
+		// the client would re-admit an identical batch forever (invariant #7).
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: "revert apply reached the observation check with no recorded batch transaction-id horizon",
+		}
+	}
+
+	if transactionID >= initial {
 		return &domain.ErrRevertTargetCreatedInBatch{TransactionID: transactionID}
 	}
 
