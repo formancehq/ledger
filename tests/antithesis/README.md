@@ -219,6 +219,13 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for
   client-construction failures, since they are infrastructure errors, not
   findings.
+- A streaming list EOF completes one page, not necessarily the whole list.
+  Presence/absence checks must follow `x-next-cursor` trailers until pagination
+  completes. The Numscript lifecycle driver uses the routed client's
+  `ListNumscripts` helper and keeps the default page size; its regression tests
+  exercise more than 100 names through the production handler and real gRPC
+  trailers. A failure on any page remains an error, even if the target was
+  already seen.
 - Stream errors deserve classification, not blanket swallow: `if err != nil
   && !IsTransient(err) { assert.Unreachable(...) }` before skipping is the
   minimum bar. Otherwise an `InvalidArgument` on a `Recv()` is undistinguishable
