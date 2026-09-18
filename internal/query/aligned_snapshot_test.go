@@ -142,7 +142,7 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 			setReadStoreProgress(t, rs, lastAppliedIndex)
 		}()
 
-		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, func() {})
+		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, "l", func() {})
 		require.NoError(t, err)
 		defer release()
 		defer func() { _ = snap.Close() }()
@@ -159,7 +159,7 @@ func TestAlignedIndexSnapshot(t *testing.T) {
 	t.Run("already aligned", func(t *testing.T) {
 		setReadStoreProgress(t, rs, lastAppliedIndex+4)
 
-		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, func() {})
+		snap, mainSeq, release, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, "l", func() {})
 		require.NoError(t, err)
 		defer release()
 		defer func() { _ = snap.Close() }()
@@ -190,7 +190,7 @@ func TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, func() {})
+	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
 
 	require.ErrorIs(t, err, context.DeadlineExceeded, "the caller's deadline is what ends the wait")
 	require.Less(t, time.Since(start), time.Second, "it must not outlive the caller's deadline")
@@ -213,7 +213,7 @@ func TestAlignedIndexSnapshotRejectsMainSnapshotBehindReadBarrier(t *testing.T) 
 	setReadStoreProgress(t, rs, horizon+1)
 
 	ctx := query.WithReadBarrierHorizon(t.Context(), horizon+1)
-	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, func() {})
+	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
 	require.ErrorContains(t, err, "behind ReadIndex horizon",
 		"a projection certificate must not hide a main snapshot older than R")
 }
@@ -246,7 +246,7 @@ func TestAlignedIndexSnapshotFrozenProjectionMustCoverMainHorizon(t *testing.T) 
 			require.NoError(t, err)
 			defer func() { _ = frozen.Close() }()
 
-			snap, _, release, err := query.AlignedIndexSnapshot(t.Context(), frozen, handle, func() {})
+			snap, _, release, err := query.AlignedIndexSnapshot(t.Context(), frozen, handle, "l", func() {})
 			if progress < horizon {
 				require.ErrorContains(t, err, "frozen read projection")
 
@@ -332,7 +332,7 @@ func TestOpenQueryHandle_PinSurvivesAConcurrentSweep(t *testing.T) {
 	require.Equal(t, uint64(0), rs.Leases().BeginGC(lastSeq+1_000),
 		"the reservation pins the floor at its pre-handle value")
 
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, func() {})
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, "l", func() {})
 	require.NoError(t, err, "a handle from OpenQueryHandle must always be admissible")
 
 	defer releaseLease()
@@ -417,7 +417,7 @@ func TestAlignedIndexSnapshot_ReleasesTheReservationOnceThePinExists(t *testing.
 	require.NoError(t, err)
 	setReadStoreProgress(t, rs, lastSeq)
 
-	snap, _, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, releaseHold)
+	snap, _, releaseLease, err := query.AlignedIndexSnapshot(t.Context(), rs, handle, "l", releaseHold)
 	require.NoError(t, err)
 
 	defer releaseLease()
