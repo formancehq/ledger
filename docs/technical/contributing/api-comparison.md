@@ -78,11 +78,12 @@ for client setup, restore behavior, failure limitations, and revision changes.
 | Remove account type | ✅ | ❌ | Remove a type from a ledger |
 | **Accounts (Read)** |
 | Get account | ✅ | ✅ | Includes volumes per asset |
-| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination |
+| List accounts | ✅ | ✅ | Supports rich boolean filter (metadata equality/range/existence, address) with schema validation and cursor pagination. No date filtering or date ordering — see [account date fields](#6--account-date-fields-first_usage-insertion_date-updated_at) |
 | Get account balances | ⚠️ | ✅ | Included in account volumes |
 | Get account volumes | ✅ | ✅ | Returns input/output/balance per asset |
 | Analyze accounts | ✅ | ❌ | Suggest Chart of Accounts from address patterns |
 | Aggregate volumes | ✅ | ✅ | Per-asset aggregated volumes for filtered accounts (direct RPC, no prepared query needed) |
+| Account date fields (`firstUsage`/`insertionDate`/`updatedAt`) | ❌ | ✅ | Intentionally removed — not returned, not filterable, not paginatable. Replacement: typed `datetime` account metadata + index ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | **Logs** |
 | List logs | ✅ | ✅ | gRPC stream, supports `--filter 'ledger == "foo"'` for per-ledger listing (opt-in index) |
 | **Import/Export** |
@@ -608,6 +609,223 @@ These endpoints are documented in Section 3 (Metadata Management) above.
 **To implement:**
 - `PATCH /v3/{ledgerName}` or `PUT /v3/{ledgerName}/config`
 
+### 6. ❌ Account date fields (`first_usage`, `insertion_date`, `updated_at`)
+
+**Description:** the original ledger carries three date fields on every account —
+`firstUsage`, `insertionDate`, `updatedAt` (`internal/account.go:21-23` on
+`release/v2.4`) — and declares all three filterable and paginatable
+(`internal/queries/resources.go:23-30`, `NewDateField().Paginated()`). They back
+cohort queries ("accounts created this month"), dormancy sweeps, and
+date-ordered account pagination.
+
+**Current status:** absent on every axis, and intentionally so (closed as a
+decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
+
+- **Not in the response.** The `Account` schema is `address` / `metadata` /
+  `volumes` only (`openapi.yml`). The fields survive on the internal proto
+  (`misc/proto/common.proto`, `Account.first_usage` / `insertion_date` /
+  `updated_at`) but nothing in the write path stamps them, so the JSON
+  marshaller always omits them.
+- **Not filterable.** The generated per-target validity table sets
+  `ConditionKindBuiltinUint: false` for `QUERY_TARGET_ACCOUNTS`
+  (`internal/proto/commonpb/common_queryfilter_validity.pb.go`), so no
+  **builtin** date condition is valid on the accounts target. `ConditionKindField`
+  is `true` there, which is what the metadata-range replacement below rides on;
+  what is gone is a builtin date field to point a condition at. The names are
+  not in the DSL either — `first_usage` falls through `decodeMatch` to
+  `parseMetadataKey` and 400s as `$match: unsupported field "first_usage"`.
+- **Not paginatable.** Account cursor pagination is by address.
+
+**Why it is removed rather than pending:** the original ledger maintains
+`first_usage` with a read-modify-write upsert — its `UpsertAccounts` statement
+reads the stored row and lowers the value whenever the incoming write carries an
+earlier one (`internal/storage/ledger/accounts.go:170` on `release/v2.4`; the
+statement and its aliases are v2 Postgres and have no counterpart in this
+codebase). v3's admission
+path deliberately stopped injecting prior values into the preload — the same
+change that disabled `MetadataCount`
+(`internal/application/ctrl/controller_default.go:552-555`). A first-touch
+stamp would not strictly need that upsert (the FSM already distinguishes new
+from pre-existing cells via `isNewVolumeUpdate`, off the preloaded prior value),
+but it is still not a flag flip: accounts are addressed only as `VolumeKey` or
+`MetadataKey`, both *embedding* `AccountKey` rather than being keyed by it, so
+an account-level date is a new attribute key shape — pulling in the FSM write
+path, checker prediction on a replay from genesis, backup/restore coverage, the
+antithesis oracle, and an index if it is to be filterable. Typed `datetime`
+account metadata covers the *filtering* use cases on machinery that already
+exists, so the fields stay out. Date *ordering* is not replaced — see the read
+side below.
+
+**Supported replacement — read side:** declare an account metadata key as
+`datetime` (`SetMetadataFieldTypeCommand.type` on the proto,
+`MetadataFieldTypeCommand` as the OpenAPI schema); create an account metadata
+index on that key; wait until that index reports `current_version > 0` with
+`pending_version == 0` — there is no `READY` status on the wire, readiness is
+per-replica version state, see
+[Index readiness and metadata schema retypes](#5-index-readiness-and-metadata-schema-retypes-en-1323)
+— then range-filter it:
+
+```
+filter=metadata[first_usage] >= 1704067200000000
+```
+
+The operand is raw microseconds, not RFC3339: `metadataRangeToProto`
+(`internal/pkg/filterexpr/parser.go`) parses metadata range operands with
+`strconv.ParseInt` and rejects anything else with `range operators only support
+integer values`. The RFC3339 coercion of EN-1544 covers the builtin
+`date`/`timestamp` fields, which are not valid on the accounts target at all.
+
+Declaring the field `datetime` is an **index and query contract**, not a storage
+conversion. `CoerceToDeclaredType` is called from the index builder
+(`internal/application/indexbuilder/schema_resolver.go`) to encode forward-index
+entries under the declared type; entity reads return the stored value verbatim
+and are explicitly not routed through it, so `GET .../accounts/{address}` gives
+back the RFC3339 string the client wrote. Write RFC3339, filter in microseconds,
+and expect RFC3339 back.
+
+This works on `GET /v3/{ledgerName}/accounts` and on
+`GET /v3/{ledgerName}/volumes` (which compiles its filter for the accounts
+target).
+
+**It replaces date filtering, not date ordering.** `GET /v3/{ledgerName}/accounts`
+takes `pageSize` and `after` — an account *address* — so rows come back
+address-ordered and a metadata range only narrows that set. There is no sort
+parameter and no date-keyed cursor, so a v2 client that paginated accounts *in
+date order* has no server-side equivalent: it either sorts a filtered page
+client-side or accepts address order. The two halves are covered separately:
+`tests/e2e/business/accounts_test.go` for metadata range filtering on the
+accounts target (int64 `age`), and
+`tests/e2e/business/datetime_metadata_index_test.go` for the `datetime`
+declaration, RFC3339 values in and integer-micro bounds out (transactions
+target).
+
+**Supported replacement — write side:** there is no set-if-absent.
+`SaveAccountMetadata` is a blind overwrite, admission does not preload old
+values, and Numscript's `set_account_meta` has no conditional form — so a rule
+that stamps the key on every transaction yields *last* usage, not first. To
+stamp exactly once without a client-side read, send the opening transaction
+through the **bulk** endpoint (`POST /v3/{ledgerName}/bulk`, body = a JSON
+array of entries) with a per-address `reference` and the skip opt-in —
+`skippableReasons` sits on the entry, not inside `data`:
+
+```json
+[
+  {
+    "action": "CREATE_TRANSACTION",
+    "skippableReasons": ["TRANSACTION_REFERENCE_CONFLICT"],
+    "data": {
+      "reference": "open:users:alice",
+      "postings": [{ "source": "world", "destination": "users:alice", "asset": "USD/2", "amount": 100 }],
+      "accountMetadata": { "users:alice": { "first_usage": "2024-01-01T00:00:00Z" } }
+    }
+  }
+]
+```
+
+The FSM arbitrates the reference in Raft order, so a second attempt carrying the
+same reference is skipped rather than overwriting.
+
+**That is a per-reference guard, not a per-account one**, and the difference
+decides whether the stamped value is correct. Uniqueness is scoped to
+`(ledger, reference)` and binds nothing to the account, and the conflict check
+runs before any metadata write. So if another transaction touches the account
+first under a different reference, this request still succeeds afterwards and
+stamps a *later* date; and if the chosen reference was already used for
+something unrelated, the entry is skipped and the stamp never lands at all. The
+recipe is correct only where the application reserves the `open:<address>`
+namespace and makes this request the sole first-touch path for that account.
+
+The envelope matters: the unitary
+`POST /v3/{ledgerName}/transactions` deliberately does **not** expose
+`skippableReasons` (`internal/adapter/http/handlers_create_transaction.go`), so
+the same request there returns 409 on the second attempt instead of skipping.
+gRPC callers set `LedgerApplyRequest.skippable_reasons` directly; the HTTP bulk
+handler hoists the per-entry list onto that field. The transaction must produce
+at least one posting (`domain.ErrEmptyTransaction`), so this is clean where
+there is a real opening transaction and awkward where accounts appear
+implicitly.
+
+**Migration from the original ledger — scope.** Everything below is about
+`first_usage`, which is the only one of the three with a reconstruction story
+worth writing down. The other two are straight cut-over copies into typed
+`datetime` keys of their own, and neither is recoverable afterwards in a way
+worth relying on:
+
+- `insertion_date` is stamped once, on insert, and never lowered — on
+  `release/v2.4` only the insert arm sets it, to the incoming value or to
+  `transaction_date()` when none is supplied. Copy it at cut-over or lose it;
+  the v3 side has no first-insert concept to derive it from.
+- `updated_at` moves only when the account row is actually rewritten. The
+  update arm runs only when the incoming row carries an earlier `first_usage`
+  than the stored one, or brings metadata the stored row does not already
+  contain — so a later posting that changes no metadata and supplies no earlier
+  date leaves the row, and the timestamp, untouched. It
+  is *not* a last-touched marker. An application key stamped on every write is
+  the closest v3 equivalent, but it is a different semantic: it moves where v2
+  would have stood still.
+
+**Nothing in the mirror path carries `first_usage` across.** Copying the v2
+value into the typed `datetime` metadata key at cut-over is the only lossless
+option. Reconstruction after the fact is possible because history is permanent,
+but it has to reproduce what v2 actually does, and v2 writes the field in two
+distinct ways (`release/v2.4`):
+
+- **Established on insert.** Whichever write first creates the account row sets
+  `first_usage` to the incoming value, or to the database's `transaction_date()`
+  when the write supplies none. A transaction supplies its effective date; a
+  plain `SaveAccountMetadata` supplies nothing and takes `transaction_date()`,
+  so a metadata-only account does have a `first_usage` with no transaction
+  behind it.
+- **Lowered afterwards only by a write that supplies an earlier value.** Two
+  callers supply one:
+  `upsertTransactionAccounts` (the transaction's effective date) and, on the
+  import path only, `importLog` → `UpdateAccountsMetadata` (the log date).
+
+A normal `SaveAccountMetadata` is **not** in that second group: it calls
+`UpsertAccounts` with the date fields unset, `LEAST` ignores the NULL, and the
+update arm's "incoming date is earlier" test is never true for it. So an
+ordinary metadata save on an account that already exists does not move
+`first_usage` at all.
+
+The reconstruction that follows from this: take the minimum transaction
+effective date over every transaction touching the address; where the account
+has no transaction, fall back to the date of the log that first created it —
+the closest recoverable proxy for the `transaction_date()` that v2 stamped; and
+on a ledger populated by `Import`, also take the log dates of the replayed
+metadata entries, which is the one case where a metadata save really can lower
+the value. A transaction-only scan misses metadata-only accounts entirely.
+
+**On a mirrored ledger the metadata arm is not in the emitted log — read the
+audit chain or the v2 log instead.** `processMirrorSavedMetadata` is called
+without the source date (`processor_mirror.go` passes `entry.GetDate()` to the
+created- and reverted-transaction handlers only) and the emitted v3 ledger log
+is stamped with the mirror's own apply time, so a January metadata save ingested
+in September reads as September *in the ledger log*.
+
+The date itself is retained, one level up. `TranslateBatch`
+(`internal/adapter/v2/translator.go`) assigns `entry.Date` from the v2 log for
+**every** translated entry kind, `SET_METADATA` included — the per-kind
+translators do not set it, which is why reading `translateSavedMetadata` alone
+is misleading — and the whole `MirrorIngest` order is persisted in
+`AuditItem.SerializedOrder`, whose bytes are the order's business-intent
+projection with only `OrderTechnical` stripped
+(`MarshalOrderBusinessIntent`). So an audit-order scan recovers the source date
+after the v2 source is gone; the v2 log is simply the cheaper read while it is
+still there.
+
+The transaction arm is unaffected: ingest *requires* a source date for created
+and reverted transactions and rejects the entry without one, and a mirrored
+transaction keeps its own v2 effective timestamp
+(`processMirrorCreatedTransaction` preserves `ct.GetTimestamp()`).
+
+Do **not** shortcut that through the `new_kept_volumes` log annotation. It
+records the cells a log *first materialized*, which is a different set: a
+backdated transaction against an already-materialized cell lowers v2's
+`first_usage` but produces no new-kept entry, and a cell created and drained
+within a single log is recorded as `ephemeral_volumes` instead, so an account
+whose only activity is a pass-through never appears at all. The annotation is
+also keyed per `(account, asset, color)` while `first_usage` is per address.
+
 ---
 
 ## Intentionally Removed Features
@@ -762,7 +980,7 @@ Read endpoints comparison with the original ledger:
 |----------|-----|----------|-------|
 | `GET /v3/{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
 | `GET /v3/{ledgerName}/transactions` | ⚠️ | ✅ | List transactions (gRPC stream only, no HTTP handler) |
-| `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination) |
+| `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination). No `first_usage` / `insertion_date` / `updated_at` filter or ordering ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |

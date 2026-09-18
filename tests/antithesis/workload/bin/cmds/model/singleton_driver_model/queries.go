@@ -586,9 +586,13 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 	}
 
 	// assembleAccount fills address, metadata and volumes and nothing else, so
-	// these three carry no value the model could be held to. Pinned as absent:
-	// once the server starts stamping them, the oracle must learn to predict
-	// them rather than keep waving whatever arrives through.
+	// these three carry no value the model could be held to. Their absence is
+	// a settled decision, not a gap awaiting a fix (ledger#2025, documented in
+	// docs/technical/contributing/api-comparison.md under Missing Features):
+	// the replacement is typed `datetime` account metadata, which the oracle
+	// already predicts through metadataMatches. Pinned as absent so a
+	// regression that starts stamping them fails here rather than being waved
+	// through.
 	if serverAcct.GetFirstUsage() != nil || serverAcct.GetInsertionDate() != nil ||
 		serverAcct.GetUpdatedAt() != nil {
 		return false
