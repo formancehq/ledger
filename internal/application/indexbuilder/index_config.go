@@ -17,7 +17,8 @@ import (
 
 // ledgerIndexConfig caches which indexes are enabled for a ledger.
 // Keyed by IndexID canonical form (indexes.Canonical) for O(1) lookup; the
-// stored value is the Index entry itself (identity + audit metadata).
+// stored Index carries the identity needed by the fold. Boot reconstructs it
+// without importing newer audit metadata from the main-store registry.
 type ledgerIndexConfig struct {
 	byCanonical map[string]*commonpb.Index
 }
@@ -29,21 +30,12 @@ func newLedgerIndexConfig() *ledgerIndexConfig {
 	}
 }
 
-// initIndexConfig populates the in-memory index config cache from the
-// bucket-scoped Index registry. Three steps:
-//
-//  1. ReadAllIndexVersionStates seeds the per-replica version cache so
-//     loadIndexRegistry's backfill-scheduling decision can consult
-//     CurrentVersion (a non-zero CurrentVersion means the local replica
-//     already built v_current; any in-flight retype is owned by
-//     scheduleResumedRewrites instead of a from-scratch backfill).
-//  2. ReadLedgers seeds an empty ledgerIndexConfig per active ledger so
-//     handle{Created,Dropped}IndexLog can target the right cache
-//     without racing the registry scan.
-//  3. A streaming scan of SubAttrIndex enumerates Index entries; each
-//     is routed by Index.Ledger into the matching ledgerIndexConfig
-//     and spawns a backfill task unless step 1 indicated the local
-//     replica already finished a prior build (rewrite path).
+// initIndexConfig restores the fold configuration from the read-store history
+// and version states at its persisted cursor. The main registry may already
+// contain later drops or ledger deletions: those take effect only when replay
+// reaches their logs, or earlier logs would be folded without their indexes.
+// Main-store declarations without a local version remain replay obligations;
+// they cannot activate an index before its CreatedIndexLog is folded.
 //
 // Bucket-scoped entries (Index.Ledger == "") land in b.bucketIndexConfig
 // and are reserved for audit-style indexes (see #436); they aren't tied
@@ -60,14 +52,13 @@ func (b *Builder) initIndexConfig(ctx context.Context) (err error) {
 		return fmt.Errorf("reading ledger history state: %w", err)
 	}
 
-	return b.initIndexConfigAfterHistory(ctx)
+	return b.initIndexConfigAfterHistory(ctx, snapshot)
 }
 
-// initIndexConfigAfterHistory rebuilds registry-derived state after the caller
-// has loaded a coherent ledger-history snapshot. bootInit uses this split so it
-// can pin the history tracker and indexbuilder cursor before reading the main
-// registry, avoiding a boot-time guess about whether an index needs backfill.
-func (b *Builder) initIndexConfigAfterHistory(ctx context.Context) error {
+// initIndexConfigAfterHistory uses the same read-store snapshot as the caller's
+// history tracker and cursor. Main-store inventory is read separately and only
+// supplies replay expectations and bucket-scoped declarations.
+func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.PebbleReader) error {
 	// Reset builder-local init state so every attempt (including a retry
 	// after a partial failure) starts from a clean slate. backfillTasks
 	// and schemaRewriteTasks are slices appended to by
@@ -81,18 +72,17 @@ func (b *Builder) initIndexConfigAfterHistory(ctx context.Context) error {
 	b.schemaRewriteTasks = nil
 	b.indexVersions = nil
 	b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
+	b.pendingLedgerDeletes = make(map[string]struct{})
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.pebbleStore.NewReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for index config: %w", err)
 	}
 
 	defer func() { _ = handle.Close() }()
 
-	// Restore the per-replica forward-encoding versions from the read
-	// store. Done before the ledger scan so loadIndexRegistry can
-	// consult the cache when deciding whether to schedule a backfill.
-	versionEntries, err := b.readStore.ReadAllIndexVersionStates()
+	// Version states and ledger history must describe the same fold position.
+	versionEntries, err := b.readStore.ReadAllIndexVersionStatesFrom(reader)
 	if err != nil {
 		return fmt.Errorf("reading index version state: %w", err)
 	}
@@ -151,10 +141,17 @@ func (b *Builder) initIndexConfigAfterHistory(ctx context.Context) error {
 	return nil
 }
 
-// seedLedgerIndexConfig enumerates every (non-deleted) ledger and seeds an
-// empty ledgerIndexConfig per ledger. loadIndexRegistry then fills the cfg
-// maps from the registry's actual entries.
+// seedLedgerIndexConfig retains every ledger alive at the fold cursor. A ledger
+// already absent from main must still receive its intervening history before
+// DeleteLedger removes its configuration. Track that required deletion so a
+// corrupt history tracker cannot be accepted merely because it seeded a cfg.
+// Ledgers only present in main are empty placeholders until CreatedLedger replay.
 func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHandle) error {
+	for ledger := range b.ledgerHistory {
+		b.getOrCreateLedgerConfig(ledger)
+		b.pendingLedgerDeletes[ledger] = struct{}{}
+	}
+
 	cursor, err := query.ReadLedgers(ctx, handle)
 	if err != nil {
 		return fmt.Errorf("reading ledgers: %w", err)
@@ -176,29 +173,53 @@ func (b *Builder) seedLedgerIndexConfig(ctx context.Context, handle *dal.ReadHan
 			continue
 		}
 
-		b.indexConfig[info.GetName()] = newLedgerIndexConfig()
+		b.getOrCreateLedgerConfig(info.GetName())
+		delete(b.pendingLedgerDeletes, info.GetName())
 	}
 
 	return nil
 }
 
-// loadIndexRegistry streams the SubAttrIndex zone and dispatches each entry
-// to the matching ledgerIndexConfig (by Index.Ledger), then schedules a
-// backfill for every per-ledger entry that needs one. Bucket-scoped entries
-// (LedgerID == 0, Index.Ledger empty) are kept aside in bucketIndexConfig.
-//
-// Backfill scheduling cross-checks the local IndexVersionState cache, which
-// every index kind (builtin tx/account/log and metadata) maintains
-// identically — CreateIndex allocates pending=HighWater+1 and completeBackfill
-// promotes that single-use version to current:
-//   - CurrentVersion == 0: this replica has never built the index; a backfill
-//     IS needed to populate v_pending.
-//   - CurrentVersion != 0: this replica already finished the backfill; any
-//     in-flight retype is owned by scheduleResumedRewrites (a rewrite task,
-//     NOT a backfill from cursor 0). Re-scheduling would re-run a completed
-//     backfill and trip the pending==0 invariant in completeBackfill, so it
-//     is skipped.
+// restoreIndexConfigFromVersions restores indexes active at the fold cursor,
+// independently of the newer main registry. Tombstones retain only their
+// allocation high-water mark. Initial builds resume historical backfill;
+// served versions with pending work are owned by scheduleResumedRewrites.
+func (b *Builder) restoreIndexConfigFromVersions() error {
+	for ledger, versions := range b.indexVersions {
+		for canonical, version := range versions {
+			if version.Tombstoned() {
+				continue
+			}
+			if _, exists := b.historyStateFor(ledger); !exists {
+				return historyReplayInvariantf("active IndexVersionState for %q/%s has no ledger history state", ledger, canonical)
+			}
+			id, err := indexes.ParseCanonical(canonical)
+			if err != nil {
+				return historyReplayInvariantf("invalid IndexVersionState identity for %q/%s: %v", ledger, canonical, err)
+			}
+			if !indexes.Supported(id) {
+				return historyReplayInvariantf("unsupported IndexVersionState identity for %q/%s", ledger, canonical)
+			}
+
+			cfg := b.getOrCreateLedgerConfig(ledger)
+			cfg.byCanonical[canonical] = &commonpb.Index{Ledger: ledger, Id: id}
+			if version.CurrentVersion == 0 {
+				b.scheduleBackfillForIndex(ledger, id)
+			}
+		}
+	}
+
+	return nil
+}
+
+// loadIndexRegistry restores active local indexes, then streams SubAttrIndex
+// only to collect unresolved CreateIndex replay obligations and bucket-scoped
+// entries. Registry absence cannot remove an index restored at the fold cursor.
 func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
+	if err := b.restoreIndexConfigFromVersions(); err != nil {
+		return err
+	}
+
 	iter, err := b.attrs.Index.NewStreamingIter(handle, nil)
 	if err != nil {
 		return fmt.Errorf("opening index registry iterator: %w", err)
@@ -230,7 +251,7 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 			continue
 		}
 
-		cfg, ok := b.indexConfig[ledgerName]
+		_, ok := b.indexConfig[ledgerName]
 		if !ok {
 			// The ledger entry that owned this index was deleted but the
 			// SubAttrIndex range wasn't purged in lock-step. Drop the entry
@@ -245,34 +266,7 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 		}
 
 		canonical := indexes.Canonical(idx.GetId())
-		state, stateExists := b.versionStateFor(ledgerName, canonical)
-		if stateExists && (state.CurrentVersion != 0 || state.PendingVersion != 0) {
-			if _, historyExists := b.historyStateFor(ledgerName); !historyExists {
-				return historyReplayInvariantf("active IndexVersionState for %q/%s has no ledger history state", ledgerName, canonical)
-			}
-		}
-
-		// Every index kind (builtin tx/account/log and metadata) records a
-		// per-replica IndexVersionState: handleCreatedIndexLog allocates
-		// pending=HighWater+1 and completeBackfill promotes it to current.
-		// A non-zero current_version therefore means
-		// this replica already finished the backfill; a metadata retype in
-		// flight is owned by scheduleResumedRewrites. Re-scheduling here
-		// would re-run a completed backfill and trip the pending==0 invariant in
-		// completeBackfill, stranding the task in a BUILDING logging loop. A
-		// backfill is only needed while current_version == 0 (never built
-		// locally); a drop+recreate tombstones the version state (current
-		// and pending both zero, only the high-water kept), so a genuine
-		// rebuild still re-enters this branch with current == 0.
-		if state.CurrentVersion != 0 {
-			cfg.byCanonical[canonical] = idx
-
-			continue
-		}
-		if state.PendingVersion != 0 {
-			cfg.byCanonical[canonical] = idx
-			b.scheduleBackfillForIndex(ledgerName, idx.GetId())
-
+		if state, exists := b.versionStateFor(ledgerName, canonical); exists && !state.Tombstoned() {
 			continue
 		}
 
@@ -289,6 +283,10 @@ func (b *Builder) loadIndexRegistry(handle *dal.ReadHandle) error {
 }
 
 func (b *Builder) validateHistoryReplayState() error {
+	for ledger := range b.pendingLedgerDeletes {
+		return historyReplayInvariantf("ledger history state for inactive ledger %q survived catch-up without DeleteLedger replay", ledger)
+	}
+
 	for ledger, indexesByCanonical := range b.unresolvedIndexes {
 		for canonical := range indexesByCanonical {
 			return historyReplayInvariantf("index registry entry %q/%s was not resolved by CreatedIndex replay", ledger, canonical)

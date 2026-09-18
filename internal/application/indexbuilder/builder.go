@@ -70,6 +70,11 @@ type Builder struct {
 	// corresponding CreatedIndexLog and can decide EMPTY versus NON_EMPTY.
 	unresolvedIndexes map[string]map[string]*commonpb.Index
 
+	// pendingLedgerDeletes records ledgers alive at the recovered fold cursor
+	// but already absent from main. Their configs remain active until replay
+	// folds DeleteLedger; a missing delete is an invariant failure at catch-up.
+	pendingLedgerDeletes map[string]struct{}
+
 	// Active schema rewrite tasks for deferred SetMetadataFieldType processing.
 	schemaRewriteTasks []*schemaRewriteTask
 
@@ -1049,8 +1054,8 @@ func (b *Builder) failHistoryReplay(err error) {
 }
 
 // bootInit runs the index builder's boot prologue as a single retryable unit:
-// rebuild the index-config cache from Pebble/the read store, then read the
-// persisted indexed cursor and seed the last-known Pebble sequence. It returns
+// restore the indexed cursor, ledger history and active index versions from
+// one read-store snapshot, then seed the last-known Pebble sequence. It returns
 // the recovered cursor and pebbleLast, or an error if any required read failed
 // — the caller (loop) retries with backoff so a transient failure never
 // advances the cursor against an incomplete config. ReadAppliedProposalProgress
@@ -1073,15 +1078,15 @@ func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint6
 	if err := b.loadLedgerHistory(snapshot); err != nil {
 		return 0, 0, closeSnapshot(fmt.Errorf("reading ledger history state: %w", err))
 	}
-	if err := closeSnapshot(nil); err != nil {
-		return 0, 0, err
-	}
 	if cursor == 0 && len(b.ledgerHistory) != 0 {
-		return 0, 0, historyReplayInvariantf("ledger history state exists while indexbuilder cursor is zero")
+		return 0, 0, closeSnapshot(historyReplayInvariantf("ledger history state exists while indexbuilder cursor is zero"))
 	}
 
-	if err := b.initIndexConfigAfterHistory(ctx); err != nil {
-		return 0, 0, fmt.Errorf("initializing index config: %w", err)
+	if err := b.initIndexConfigAfterHistory(ctx, snapshot); err != nil {
+		return 0, 0, closeSnapshot(fmt.Errorf("initializing index config: %w", err))
+	}
+	if err := closeSnapshot(nil); err != nil {
+		return 0, 0, err
 	}
 
 	// Recover AppliedProposal sync progress (best-effort: a corrupt cursor

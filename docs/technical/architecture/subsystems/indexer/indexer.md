@@ -41,13 +41,21 @@ metadata-only event does not rescan entity existence.
 
 On `Start()`, the builder runs a boot prologue (`bootInit`) that rebuilds the in-memory index-config cache and seeds the progress cursors as a single **retryable unit**:
 
-1. Pins one read-store snapshot and reads the main progress cursor together with every durable per-ledger `EMPTY`/`NON_EMPTY` history byte (`SubInternalLedgerHistory`).
-2. Rebuilds the index-config cache (`initIndexConfig`): reads `IndexVersionState`, seeds active ledgers, and loads the `SubAttrIndex` registry. Current versions are live; pending versions resume historical backfills; a registry row with neither stays unresolved until replay reaches its `CreatedIndexLog` and can consult the tracker. A served entry with both current and pending resumes its reverse-map schema rewrite. Init resets its builder-local state, so retry cannot duplicate tasks.
+1. Pins one read-store snapshot and reads the main progress cursor, every durable per-ledger `EMPTY`/`NON_EMPTY` history byte (`SubInternalLedgerHistory`), and all `IndexVersionState` entries from that same view.
+2. Rebuilds the index-config cache (`initIndexConfig`) at that recovered cursor. Ledger history seeds the historical ledgers; active version identities restore their dispatch entries, even when a newer main-store snapshot already contains their drop or ledger deletion. Current versions are live; pending-only versions resume historical backfills; current plus pending resumes a reverse-map schema rewrite with the persisted type binding and task cursor. Tombstones retain their version allocation high-water mark without activating an index. The main snapshot supplies bucket-scoped declarations and replay obligations: a registry row without a local active version must be resolved by its `CreatedIndexLog`, and a historical ledger already absent from main must reach `DeleteLedger`. Init resets its builder-local state, so retry cannot duplicate tasks.
 3. Reads AppliedProposal progress and the last-known Pebble sequence — see [Progress Cursors](#progress-cursors).
 
 `bootInit` is wrapped in `worker.RetryWithBackoff` (100 ms → 10 s). A transient Pebble / read-store failure at boot must **not** advance the persisted cursor against an incomplete config, so boot retries until it succeeds or shutdown is requested. Durable tracker corruption and history/config invariant violations are terminal instead: the retry loop stops, the read projection is marked failed, gRPC health becomes `NOT_SERVING`, and projection waiters return `ErrReadProjectionFailed`. The config rebuild, `LastIndexedSequence`, and the Pebble read-handle open otherwise remain retryable; the AppliedProposal-progress and last-sequence reads stay best-effort. After the retry returns, a `ctx.Err()` check distinguishes "init succeeded" from "shutdown requested" so the loop never processes logs against a failed init.
 
-Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping locally unbuilt indexes from the dispatch set so partially built keyspaces do not receive ordinary live writes before backfill resumes. At the first clean EOF it validates that every registry row was resolved and every active ledger has a coherent history byte.
+Only once boot init succeeds does the builder perform an **initial catch-up pass** with a larger batch size, stripping locally unbuilt indexes from the dispatch set so partially built keyspaces do not receive ordinary live writes before backfill resumes. At the first clean EOF it validates that every registry row was resolved, every expected ledger deletion was replayed, and every active ledger has a coherent history byte.
+
+The main registry must not decide which historical logs receive index writes.
+In particular, a live read can pin main before an index drop while startup
+later observes the dropped registry. Replay can publish a query-checkpoint's
+intermediate Raft certificate and then wait for audit catch-up before folding
+the drop. That certificate must already cover the pre-drop index rows. Restoring
+dispatch from the durable read-store cursor preserves this completeness without
+changing the reader's fixed horizon or readiness checks.
 
 ## `processLogs` — Two-Pass Commit
 
@@ -89,7 +97,7 @@ flowchart TB
   no-op, progress-only, range-delete-only and switch-only batches therefore do
   not publish event work that was not committed.
 
-The tracker, index config, version cache, and task lists mutate optimistically so
+The tracker, index config, version cache, task lists, and expected ledger deletions mutate optimistically so
 later logs in the same fold see one coherent state. Their durable tracker,
 `IndexVersionState`, task cursor, and main-progress writes share that fold's
 Pebble batch. An undo journal is discarded only after commit; any handler,

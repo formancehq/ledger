@@ -883,10 +883,16 @@ func (s *Store) DeleteIndexVersionState(ledgerName string, canonicalID string) e
 // state. Used at boot to rebuild the in-memory map of versions and to
 // detect orphan keyspaces for GC.
 func (s *Store) ReadAllIndexVersionStates() ([]IndexVersionStateEntry, error) {
+	return s.ReadAllIndexVersionStatesFrom(s.db)
+}
+
+// ReadAllIndexVersionStatesFrom reads versions through the caller's snapshot,
+// so boot can restore them at the same position as its cursor and ledger history.
+func (s *Store) ReadAllIndexVersionStatesFrom(reader dal.PebbleReader) ([]IndexVersionStateEntry, error) {
 	prefix := IndexVersionStatePrefix()
 	upper := IncrementBytes(prefix)
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -932,7 +938,7 @@ func (s *Store) ReadAllIndexVersionStates() ([]IndexVersionStateEntry, error) {
 		})
 	}
 
-	return out, nil
+	return out, iter.Error()
 }
 
 // ReadAllBackfillProgress returns all backfill cursors for startup recovery.

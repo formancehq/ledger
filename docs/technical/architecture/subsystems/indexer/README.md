@@ -14,7 +14,7 @@ version at that pin, and ignores membership events committed after it.
 | Document | Description |
 |----------|-------------|
 | [indexes.md](indexes.md) | Strict index creation, index definition (`commonpb.Index`), durable EMPTY/NON_EMPTY ledger-history classification, per-replica `IndexVersionState`, on-demand statistics, and checker coverage. |
-| [indexer.md](indexer.md) | Indexer pipeline: builder loop, atomic tracker/version/task/cursor commits, boot recovery, handlers, event-GC scheduling, read-store and field/version-first reverse-map key layouts, atomic switch, schema rewrite. |
+| [indexer.md](indexer.md) | Indexer pipeline: builder loop, atomic tracker/version/task/cursor commits, boot configuration restored at the durable replay cursor, handlers, event-GC scheduling, read-store and field/version-first reverse-map key layouts, atomic switch, schema rewrite. |
 
 ## Related
 

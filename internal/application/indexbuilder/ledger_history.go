@@ -143,6 +143,7 @@ func (b *Builder) dropLedgerBuilderState(ledger string) {
 	priorConfig, hadConfig := b.indexConfig[ledger]
 	priorVersions, hadVersions := b.indexVersions[ledger]
 	priorUnresolved, hadUnresolved := b.unresolvedIndexes[ledger]
+	_, hadPendingDelete := b.pendingLedgerDeletes[ledger]
 	priorBackfills := slices.Clone(b.backfillTasks)
 	priorRewrites := slices.Clone(b.schemaRewriteTasks)
 	priorNextBackfill := b.nextBackfillIdx
@@ -162,6 +163,11 @@ func (b *Builder) dropLedgerBuilderState(ledger string) {
 		} else {
 			delete(b.unresolvedIndexes, ledger)
 		}
+		if hadPendingDelete {
+			b.pendingLedgerDeletes[ledger] = struct{}{}
+		} else {
+			delete(b.pendingLedgerDeletes, ledger)
+		}
 		b.backfillTasks = priorBackfills
 		b.schemaRewriteTasks = priorRewrites
 		b.nextBackfillIdx = priorNextBackfill
@@ -170,6 +176,7 @@ func (b *Builder) dropLedgerBuilderState(ledger string) {
 	delete(b.indexConfig, ledger)
 	delete(b.indexVersions, ledger)
 	delete(b.unresolvedIndexes, ledger)
+	delete(b.pendingLedgerDeletes, ledger)
 	b.backfillTasks = slices.DeleteFunc(b.backfillTasks, func(task *backfillTask) bool {
 		return task.ledger == ledger
 	})
