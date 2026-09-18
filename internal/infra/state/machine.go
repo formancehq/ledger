@@ -809,11 +809,20 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		}
 
 		if assert.Enabled {
-			assert.Sometimes(true, "nonempty sentinel verification completed", map[string]any{
-				"raftIndex":     pb.lastAppliedIndex,
-				"volumeUpdates": len(pb.sentinelUpdates),
-				"ledgers":       len(pb.sentinelLedgerNames),
-			})
+			// Stated rather than positional: line 780 returns early when both
+			// sets are empty, so a constant true would hold only for as long
+			// as this block stays under that guard. Spelling the condition out
+			// means a refactor that moves or widens the block reports a false
+			// Sometimes instead of silently certifying an empty verification.
+			assert.Sometimes(
+				len(pb.sentinelUpdates)+len(pb.sentinelLedgerNames) > 0,
+				"nonempty sentinel verification completed",
+				map[string]any{
+					"raftIndex":     pb.lastAppliedIndex,
+					"volumeUpdates": len(pb.sentinelUpdates),
+					"ledgers":       len(pb.sentinelLedgerNames),
+				},
+			)
 		}
 
 		return nil

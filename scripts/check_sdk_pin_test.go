@@ -94,6 +94,21 @@ func TestSDKPinRejectsDrift(t *testing.T) {
 			// Both sides are named, so the reader does not have to guess which
 			// file is the stale one.
 			require.Contains(t, findings[0].message, tc.file)
+
+			// And triage follows the location, so the file the case edited
+			// must be one of the places reported, not just one of the places
+			// mentioned.
+			var reported []string
+			for _, item := range findings {
+				reported = append(reported, item.path)
+			}
+
+			require.Contains(t, reported, tc.file)
+			require.Subset(t,
+				[]string{rootGoMod, workloadGoMod, rootDockerfile, workloadDocker},
+				reported,
+				"only the files that state a pin may be reported",
+			)
 		})
 	}
 }

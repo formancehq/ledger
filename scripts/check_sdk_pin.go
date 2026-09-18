@@ -143,10 +143,28 @@ func sdkPinAgreement(subject string, primary, secondary map[string][]string) []f
 		stated = append(stated, fmt.Sprintf("%s (%s)", value, strings.Join(paths, ", ")))
 	}
 
-	return []finding{sdkPinFinding(rootGoMod, fmt.Sprintf(
+	message := fmt.Sprintf(
 		"the %s is stated %d ways and they must agree: %s",
 		subject, len(merged), strings.Join(stated, " vs "),
-	))}
+	)
+
+	// One finding per file that states one of the values: the message names
+	// every side, but triage follows the location, and anchoring a Dockerfile
+	// drift at go.mod:1 sends the reader to the wrong file.
+	var paths []string
+
+	for _, statedIn := range merged {
+		paths = append(paths, statedIn...)
+	}
+
+	sort.Strings(paths)
+
+	findings := make([]finding, 0, len(paths))
+	for _, path := range paths {
+		findings = append(findings, sdkPinFinding(path, message))
+	}
+
+	return findings
 }
 
 func sdkPinFinding(path, message string) finding {

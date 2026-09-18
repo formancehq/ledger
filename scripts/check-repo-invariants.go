@@ -53,42 +53,27 @@ func main() {
 		}
 	}
 
+	// One guard for every whole-repository check: a second block invites the
+	// next check to be added to only one of them and skip its gate here.
 	if !fuzzInventoryOnly {
-		strictFindings, err := checkStrictSometimes(files)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking STRICT_SOMETIMES: %v\n", err)
-			failed = true
-		}
+		for _, check := range []struct {
+			subject string
+			run     func() ([]finding, error)
+		}{
+			{"STRICT_SOMETIMES", func() ([]finding, error) { return checkStrictSometimes(files) }},
+			{"armed coverage", func() ([]finding, error) { return checkArmedCoverage(files) }},
+			{"the SDK pin", checkSDKPin},
+		} {
+			checkFindings, err := check.run()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "check-repo-invariants: checking %s: %v\n", check.subject, err)
+				failed = true
+			}
 
-		for _, item := range strictFindings {
-			printFinding(item)
-			failed = true
-		}
-	}
-
-	if !fuzzInventoryOnly {
-		armedFindings, err := checkArmedCoverage(files)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking armed coverage: %v\n", err)
-			failed = true
-		}
-
-		for _, item := range armedFindings {
-			printFinding(item)
-			failed = true
-		}
-	}
-
-	if !fuzzInventoryOnly {
-		sdkFindings, err := checkSDKPin()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking the SDK pin: %v\n", err)
-			failed = true
-		}
-
-		for _, item := range sdkFindings {
-			printFinding(item)
-			failed = true
+			for _, item := range checkFindings {
+				printFinding(item)
+				failed = true
+			}
 		}
 	}
 

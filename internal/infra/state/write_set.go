@@ -79,7 +79,10 @@ type WriteSet struct {
 	// deletedLedgers holds ledger names scheduled for data cleanup during Merge.
 	deletedLedgers []string
 
-	// allVolumeUpdates includes kept + purged updates (for delta/posting cross-check).
+	// allVolumeUpdates holds the pre-purge logical updates — kept + purged +
+	// transient — for the delta/posting cross-check, which needs the purged
+	// ephemeral entries and the transient ones too. Keep in step with
+	// AllVolumeUpdates and the sentinel section of deterministic-fsm.md.
 	allVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 
 	// keptVolumeUpdates excludes ephemeral purged entries (for post-commit Pebble verification).

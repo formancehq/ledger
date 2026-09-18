@@ -103,6 +103,11 @@ func Emitted(ctx context.Context, dir, run, property string, condition bool) (fo
 	}()
 
 	scanner := bufio.NewScanner(file)
+	// One JSONL record carries a whole details map, which can exceed the
+	// scanner's default 64 KiB token. That would end the scan with
+	// "token too long" and report a read error where the caller expects a
+	// verdict, so the limit is raised to something a details map cannot reach.
+	scanner.Buffer(nil, 1<<20)
 
 	for scanner.Scan() {
 		var event struct {
