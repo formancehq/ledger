@@ -457,6 +457,12 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 //     a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT (EN-1406 P1-3). It is a
 //     preload/staleness hint, not logical identity.
 //   - preload_unavailable: an admission-forwarding marker, never logical identity.
+//   - revert_target_digest: what admission observed of the revert target when it
+//     derived that order's volume coverage. The same revert re-admitted against a
+//     node that has since applied the target binds a different digest, so hashing
+//     it would turn a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT. It is a
+//     staleness binding, not logical identity — the caller's intent is the
+//     transaction id, which lives on the business payload.
 //
 // out is marshalled into buf[:0] (grown as needed) and returned; reuse it as buf
 // on the next call to amortize allocations. Pass nil to allocate a fresh slice
