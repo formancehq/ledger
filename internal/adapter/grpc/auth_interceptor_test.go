@@ -155,7 +155,7 @@ func TestQueryProfileClockIncludesInterceptorWork(t *testing.T) {
 	const interceptorDelay = time.Hour
 	var profile *query.QueryProfile
 
-	clock := queryProfileClockUnaryInterceptorAt(func() time.Time {
+	clock := queryProfileClockUnaryInterceptorAt(noopLogger{}, time.Second, func() time.Time {
 		return time.Now().Add(-interceptorDelay)
 	})
 	_, err := clock(context.Background(), nil, &ggrpc.UnaryServerInfo{}, func(ctx context.Context, _ any) (any, error) {
@@ -167,6 +167,28 @@ func TestQueryProfileClockIncludesInterceptorWork(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, profile)
 	require.GreaterOrEqual(t, profile.ServerDuration, interceptorDelay)
+}
+
+func TestProfiledRPCAuthDenialsEmitRequestedProfileThroughServerChain(t *testing.T) {
+	t.Parallel()
+
+	_, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, anonymousAuthConfig())
+	ctx := metadata.NewOutgoingContext(context.Background(), metadata.Pairs(metadataKeyQueryProfile, "true"))
+
+	t.Run("unary", func(t *testing.T) {
+		var trailer metadata.MD
+		_, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{}, ggrpc.Trailer(&trailer))
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+		require.NotEmpty(t, trailer.Get(metadataKeyQueryProfileResult))
+	})
+
+	t.Run("stream", func(t *testing.T) {
+		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{})
+		require.NoError(t, err)
+		_, err = stream.Recv()
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+		require.NotEmpty(t, stream.Trailer().Get(metadataKeyQueryProfileResult))
+	})
 }
 
 func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, servicepb.BucketServiceClient) {
