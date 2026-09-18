@@ -792,9 +792,9 @@ func (w *Worker) extractMirrorNeeds(cmd *raftcmdpb.Proposal) (*plan.Coverage, []
 		if dm := mi.GetEntry().GetDeletedMetadata(); dm != nil {
 			switch target := dm.GetTarget().GetTarget().(type) {
 			case *commonpb.Target_Account:
-				// Same Del coverage as the admission-side
+				// Same tombstone coverage as the admission-side
 				// MirrorIngest.DeletedMetadata path (see admission.go) —
-				// AttributeCache.Del lazy-fabricates the Gen0 tombstone
+				// KeyStore.Tombstone lazy-fabricates the Gen0 tombstone
 				// from Gen1's tag if a race occurred.
 				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
 					AccountKey: domain.AccountKey{LedgerName: w.ledgerName, Account: target.Account.GetAddr()},

@@ -431,7 +431,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// keeps ephemeral-heavy workloads from paying 2× bytes on the log
 	// payload — see EN-1422.
 	ephemeralSet, drainingSet := splitPurged(partResult.purged)
-	newKeptSet := makeNewKeptKeySet(partResult.kept)
+	newKeptSet := makeNewKeptKeySet(partResult.newKept)
 
 	slots := b.volumes.Slots()
 	b.purgedByLog = buildTouchedByLog(slots, drainingSet)
@@ -486,8 +486,8 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// ZoneAttributes (0x01) + ZoneCache (0x02), sub-prefix monotone.
 
 	// SubAttrVolume (0x01): kept go through mergeSimpleWithCache + bloom;
-	// purged go through applyEphemeralPurge (attribute Delete + cache zero);
-	// transient go through zeroVolumeCache (cache zero, no Pebble attribute
+	// purged go through applyEphemeralPurge (attribute Delete + cache tombstone);
+	// transient go through tombstoneVolumeCache (cache absence, no Pebble attribute
 	// write).
 	if err := mergeSimpleWithCache(b.attrs.Volume, batch, genByte, dal.SubAttrVolume, partResult.kept); err != nil {
 		return fmt.Errorf("failed merging volume attributes: %w", err)
@@ -502,15 +502,15 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	}
 
 	// Transient volumes are NOT written to 0xF1 (attributes). The in-memory
-	// KeyStore and 0xFF cache are overwritten with {0, 0} — matching the
-	// documented "never persisted, must be zero at end of batch" semantic.
+	// KeyStore and 0xFF cache are tombstoned — reads synthesize {0, 0}, matching
+	// the documented "never persisted, must be zero at end of batch" semantic.
 	// Writing the cumulative update.New here would silently accumulate across
 	// batches: the next GetVolume would return the prior cumulative value,
 	// causing PCVs on re-touched transient cells to drift. A populated cache
 	// entry (rather than a delete) is still required for any co-batched
 	// proposal admitted with CacheHit.
-	if err := b.zeroVolumeCache(batch, genByte, partResult.transient); err != nil {
-		return fmt.Errorf("failed zeroing transient volumes in cache: %w", err)
+	if err := b.tombstoneVolumeCache(batch, genByte, partResult.transient); err != nil {
+		return fmt.Errorf("failed tombstoning transient volumes in cache: %w", err)
 	}
 
 	// SubAttrMetadata (0x02)

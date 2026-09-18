@@ -60,10 +60,10 @@ The three sets partition every volume update the log touched into DISJOINT categ
 
 | Category | Prior value | Post-commit state | Field |
 |----------|-------------|-------------------|-------|
-| Draining | non-zero in Pebble | evicted (zero balance) | `purged_volumes` |
-| New + kept | undefined or zero placeholder | persisted | `new_kept_volumes` |
-| Pure ephemeral | undefined or zero placeholder | evicted (zero balance) | `ephemeral_volumes` |
-| Normal update | defined + non-zero | still persisted (updated value) | (none — no annotation needed) |
+| Draining | defined in Pebble | evicted (zero balance) | `purged_volumes` |
+| New + kept | undefined/tombstoned | persisted | `new_kept_volumes` |
+| Pure ephemeral | undefined/tombstoned | evicted (zero balance) | `ephemeral_volumes` |
+| Normal update | defined, including `{0, 0}` | still persisted (updated value) | (none — no annotation needed) |
 | Transient | any | never persisted | (none — carried on `AppliedProposal.TransientVolumes` at batch level) |
 
 ### Why disjoint (and not overlapping)
@@ -78,16 +78,16 @@ The disjoint encoding pays exactly `len(ephemeral)` per log instead of `2 × len
 
 1. `partitionVolumes(volumeUpdates)` (existing) yields `partResult.{kept, purged, transient}`.
 2. `splitPurged(partResult.purged)` (new, in `write_set_new_volumes.go`) partitions `purged` further into:
-   - **ephemeral**: `!Old.IsDefined() || isVolumePreloadZero(Old.Value())` — the key had no prior state, was touched, immediately purged.
-   - **draining**: `Old.IsDefined() && !isVolumePreloadZero(Old.Value())` — had a prior persisted value, at zero balance now, evicted.
-3. `makeNewKeptKeySet(partResult.kept)` (new) yields the subset of `kept` where `Old` was undefined / zero-placeholder — i.e. new persistent volumes.
+   - **ephemeral**: `!Old.IsDefined()` — the key had no prior persisted state, was touched, immediately purged.
+   - **draining**: `Old.IsDefined()` — it had a prior persisted value, reached zero balance, and was evicted.
+3. `partitionVolumes` classifies `newKept` using the same defined-versus-tombstoned distinction. `makeNewKeptKeySet(partResult.newKept)` turns that classification into the annotation set.
 4. `buildTouchedByLog(volumes.Slots(), setX)` (new, generalised from the previous `buildPurgedByLog`) intersects the per-order touched-volume tracking with each of the three sets to produce the per-log annotation lists. Deduplication + deterministic sort by (account, asset) keeps the log payload byte-identical across nodes.
 
 The three lists are injected into each `LedgerLog` inside the same `createdLogs` build loop that also injects `purged_volumes`. Note the audit hash chain does **not** cover `LedgerLog` content — it binds the audit header plus each item's order index, log sequence, and serialized order (see [Checker consumer](#checker-consumer) for what this means for tamper detection of the derived counters).
 
 ### The preload contract this depends on
 
-The classification "new vs existing" is decided by the preloaded prior value at merge time — specifically `Update.Old.IsDefined()` combined with the zero-placeholder check. This is safe **because volume preload is structurally required by the FSM**: balance checks, Uint256 arithmetic and numscript resolution all read the current volume value, so admission has to preload every touched key. That contract is documented as invariant #6 in AGENTS.md.
+The classification "new vs existing" is decided by the preloaded prior value at merge time. `Update.Old.IsDefined()` distinguishes a persisted row, including a legitimate `{0, 0}` row, from a fresh or deliberately purged cell. Purge/transient paths retain a cache tombstone rather than a live zero value: admission still sees a cache hit, while FSM reads normalize the tombstone to `ErrNotFound` and `readVolumeOrZero` synthesizes the zero balance. This distinction survives account-type changes and cache snapshot/restore without adding a parallel persistence signal. It is safe **because volume and ledger-type preloads are structurally required by the FSM**; the contract is documented as invariants #6 and #9 in AGENTS.md.
 
 The comparable metadata preload was removed opportunistically once the indexer no longer needed it — the corresponding `MetadataCount` counter had to be dropped (see the EN-1420 commit) because `Old.IsDefined()` no longer distinguished "new key" from "overwrite" on the metadata merge. The volume analog holds because the FSM cannot function without those old values.
 
