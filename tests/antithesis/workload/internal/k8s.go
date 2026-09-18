@@ -133,14 +133,14 @@ func WaitForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceCl
 	return converged
 }
 
-func pollForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, expected int64, timeout time.Duration) bool {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterServiceClient, expected int64, timeout time.Duration) bool {
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
 	for {
 		select {
 		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
+			if parentCtx.Err() == nil && ctx.Err() == context.DeadlineExceeded {
 				log.Printf("scaling: timed out waiting for %d voters", expected)
 			}
 			return false
