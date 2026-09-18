@@ -59,8 +59,9 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 	if err != nil {
 		// Both markers are present and the caller's lease keeps a committed
 		// deletion from unlinking under this open, so the directory the marker
-		// vouched for is damaged rather than late; the error surfaces as-is,
-		// like the read index's below.
+		// vouched for is not late. Damage is the expected cause past that gate,
+		// though a resource limit reaches here too; either way the error
+		// surfaces as-is, like the read index's below.
 		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
 
