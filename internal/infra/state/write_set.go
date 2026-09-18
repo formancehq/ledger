@@ -372,6 +372,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 					"ledger":    u.Key.LedgerName,
 					"account":   u.Key.Account,
 					"asset":     u.Key.Asset,
+					"color":     u.Key.Color,
 					"oldInput":  oldIn,
 					"oldOutput": oldOut,
 					"newInput":  u.New.GetInput().ToBigInt().String(),
@@ -384,6 +385,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 					"ledger":  u.Key.LedgerName,
 					"account": u.Key.Account,
 					"asset":   u.Key.Asset,
+					"color":   u.Key.Color,
 					"input":   u.New.GetInput().ToBigInt().String(),
 					"output":  u.New.GetOutput().ToBigInt().String(),
 				}).Errorf("TRANSIENT VOLUME at invariant violation")

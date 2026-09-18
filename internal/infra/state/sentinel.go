@@ -22,6 +22,11 @@ import (
 
 // ErrVolumeCachePebbleDivergence is returned when the cache volume does not
 // match what was persisted to Pebble, indicating a cache/storage inconsistency.
+//
+// Like every sentinel failure and diagnostic it names the full
+// (ledger, account, asset, color) identity: color is part of what makes a
+// volume key unique, so leaving it out merges two distinct offenders into one
+// indistinguishable message.
 type ErrVolumeCachePebbleDivergence struct {
 	Key          domain.VolumeKey
 	CacheInput   string
@@ -33,8 +38,8 @@ type ErrVolumeCachePebbleDivergence struct {
 
 func (e *ErrVolumeCachePebbleDivergence) Error() string {
 	return fmt.Sprintf(
-		"cache/pebble volume divergence for %q/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
-		e.Key.LedgerName, e.Key.Account, e.Key.Asset, e.RaftIndex,
+		"cache/pebble volume divergence for %q/%s/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
+		e.Key.LedgerName, e.Key.Account, e.Key.Asset, e.Key.Color, e.RaftIndex,
 		e.CacheInput, e.CacheOutput, e.PebbleInput, e.PebbleOutput,
 	)
 }
@@ -131,13 +136,15 @@ func verifyPostCommitVolumes(
 				"ledger":       update.Key.LedgerName,
 				"account":      update.Key.Account,
 				"asset":        update.Key.Asset,
+				"color":        update.Key.Color,
 				"raftIndex":    raftIndex,
 				"canonicalKey": hex.EncodeToString(update.CanonicalKey),
 				"id":           fmt.Sprintf("%x", update.ID),
 			}).Errorf("SENTINEL DIAG: volume missing from pebble after commit")
 
-			return fmt.Errorf("volume missing from pebble after commit for %q/%s/%s at raft index %d (canonicalKey=%x)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset, raftIndex, update.CanonicalKey)
+			return fmt.Errorf("volume missing from pebble after commit for %q/%s/%s/%s at raft index %d (canonicalKey=%x)",
+				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
+				raftIndex, update.CanonicalKey)
 		}
 
 		// Compare Pebble value with the expected value from Merge
@@ -230,8 +237,8 @@ func verifyVolumeUpdateMonotonicity(
 			})
 
 			return fmt.Errorf(
-				"volume input decreased for %q/%s/%s: old=%s, new=%s (stale base value suspected)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
+				"volume input decreased for %q/%s/%s/%s: old=%s, new=%s (stale base value suspected)",
+				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
 				oldInput.String(), newInput.String(),
 			)
 		}
@@ -247,8 +254,8 @@ func verifyVolumeUpdateMonotonicity(
 			})
 
 			return fmt.Errorf(
-				"volume output decreased for %q/%s/%s: old=%s, new=%s (stale base value suspected)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
+				"volume output decreased for %q/%s/%s/%s: old=%s, new=%s (stale base value suspected)",
+				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
 				oldOutput.String(), newOutput.String(),
 			)
 		}
@@ -596,6 +603,7 @@ func dumpPerAccountVolumes(
 			"ledger":       ledgerName,
 			"account":      vk.Account,
 			"asset":        vk.Asset,
+			"color":        vk.Color,
 			"input":        inputVal.String(),
 			"output":       outputVal.String(),
 			"canonicalKey": hex.EncodeToString(entry.CanonicalKey),

@@ -140,6 +140,53 @@ type OrdersResult struct {
 	// CreatedLogs. Both are 0 when CreatedLogs is empty.
 	MinLogSequence uint64
 	MaxLogSequence uint64
+
+	// CreatedTransactions / RevertedTransaction describe what the batch
+	// actually did, for the commit-milestone properties applyProposal
+	// reports. They are accumulated in the pass that produces the logs,
+	// for the same reason as the fields above: applyProposal used to walk
+	// CreatedLogs a second time to rebuild them, testing the same payload
+	// kinds this loop has already looked at. One walk, one definition of
+	// what a transaction-bearing log is.
+	CreatedTransactions int
+	RevertedTransaction bool
+}
+
+// recordCreatedLog appends a created log and updates every derivation
+// applyProposal would otherwise rebuild by walking CreatedLogs a second time.
+// It reports whether the log carries a transaction effect, which the caller
+// counts as staged work for the rejection property.
+//
+// Every append to CreatedLogs goes through here. The skip path appends a log
+// whose payload is an OrderSkipped variant, so it contributes nothing to the
+// counters today — but that is a property of the oneof, not something the
+// caller should have to know, and the second walk this replaces was immune to
+// the question by construction.
+func (r *OrdersResult) recordCreatedLog(log *commonpb.Log) bool {
+	r.CreatedLogs = append(r.CreatedLogs, log)
+
+	sequence := log.GetSequence()
+	if r.MinLogSequence == 0 || sequence < r.MinLogSequence {
+		r.MinLogSequence = sequence
+	}
+
+	if sequence > r.MaxLogSequence {
+		r.MaxLogSequence = sequence
+	}
+
+	data := log.GetPayload().GetApply().GetLog().GetData()
+	created := data.GetCreatedTransaction() != nil
+	reverted := data.GetRevertedTransaction() != nil
+
+	if created {
+		r.CreatedTransactions++
+	}
+
+	if reverted {
+		r.RevertedTransaction = true
+	}
+
+	return created || reverted
 }
 
 // ProcessOrders processes a list of orders and returns the resulting logs
@@ -259,12 +306,9 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 				}
 
 				sink.Absorb(order, skipLog)
-				result.CreatedLogs = append(result.CreatedLogs, skipLog)
-				if result.MinLogSequence == 0 || nextSequenceID < result.MinLogSequence {
-					result.MinLogSequence = nextSequenceID
-				}
-				if nextSequenceID > result.MaxLogSequence {
-					result.MaxLogSequence = nextSequenceID
+
+				if result.recordCreatedLog(skipLog) {
+					stagedTransactions++
 				}
 
 				continue
@@ -331,19 +375,12 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 		// log payload and updates whatever cross-order accumulator
 		// the framework needs.
 		sink.Absorb(order, log)
-		if ledgerPayload := payload.GetApply().GetLog().GetData(); ledgerPayload.GetCreatedTransaction() != nil || ledgerPayload.GetRevertedTransaction() != nil {
-			stagedTransactions++
-		}
 
 		// Accumulate the derivations applyProposal previously rebuilt
 		// by walking the log slice again (createdLogs filter +
-		// extractLogSequenceRange).
-		result.CreatedLogs = append(result.CreatedLogs, log)
-		if result.MinLogSequence == 0 || nextSequenceID < result.MinLogSequence {
-			result.MinLogSequence = nextSequenceID
-		}
-		if nextSequenceID > result.MaxLogSequence {
-			result.MaxLogSequence = nextSequenceID
+		// extractLogSequenceRange + the outcome counters).
+		if result.recordCreatedLog(log) {
+			stagedTransactions++
 		}
 	}
 

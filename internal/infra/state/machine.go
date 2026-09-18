@@ -1679,25 +1679,6 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	queryCheckpointCreated := buffer.QueryCheckpointCreated()
 	queryCheckpointDeleted := buffer.QueryCheckpointDeleted()
 
-	// Outcome facts for the commit-milestone properties. Deliberately NOT behind
-	// assert.Enabled: the walk costs a few nanoseconds against the ~540ns of the
-	// SDK call it feeds, and a field that is populated only in armed builds is a
-	// trap for the next caller who reads it for something real.
-	var (
-		createdTransactions int
-		revertedTransaction bool
-	)
-
-	for _, log := range createdLogs {
-		payload := log.GetPayload().GetApply().GetLog().GetData()
-		if payload.GetCreatedTransaction() != nil {
-			createdTransactions++
-		}
-		if payload.GetRevertedTransaction() != nil {
-			revertedTransaction = true
-		}
-	}
-
 	return &ApplyResult{
 		ProposalID:             proposal.GetId(),
 		Logs:                   logs,
@@ -1710,8 +1691,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		purgedVolumeKeys:       buffer.PurgedVolumeKeys(),
 		createdLogs:            createdLogs,
 		ledgerNames:            ledgerNames,
-		createdTransactions:    createdTransactions,
-		revertedTransaction:    revertedTransaction,
+		// Outcome facts for the commit-milestone properties, accumulated by
+		// the pass that produced the logs rather than rebuilt by a second
+		// walk over them here. Deliberately NOT behind assert.Enabled: a
+		// field populated only in armed builds is a trap for the next caller
+		// who reads it for something real, and the cost is nothing beside
+		// the ~540ns SDK call it feeds.
+		createdTransactions: ordersResult.CreatedTransactions,
+		revertedTransaction: ordersResult.RevertedTransaction,
 	}, nil
 }
 
