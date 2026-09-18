@@ -81,6 +81,21 @@ observation into the proposal, the handler re-derives it from a key it is
 reads — not that the gate catches it afterwards. Reaching the gate for this cause
 is itself the finding, because the gate's documented meaning is an admission bug.
 
+The ordering half of that chain holds only where the observation keys on a
+dependency the plan declares unconditionally, as a revert's target state does.
+Numscript is the documented exception and is not a finding on its own: its
+re-resolution can derive an account from changed metadata and perform the gated
+read before the inputs hash is compared, so that miss is deliberately left fatal
+— see [preload.md](../architecture/subsystems/fsm/preload.md#coverage-derived-from-a-read-must-bind-that-read).
+What *is* a finding is widening that exception, softening it into a retryable
+outcome, or introducing a new read-derived declaration that carries neither the
+binding nor the ordering.
+
+The comparison also sits behind, not in front of, the handler's existing checks
+on the same dependency. A revert whose target is unknown, already reverted, or
+backed by an inconsistent projection keeps returning those reasons; a stale
+observation must not repaint a terminal verdict as a retryable mismatch.
+
 Classification is part of the contract, and getting it wrong is a real defect in
 both directions. A mismatch a re-admission could resolve must be retryable; one
 it can never resolve — a target the same batch creates, so that rejecting the
