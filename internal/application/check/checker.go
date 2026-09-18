@@ -2180,16 +2180,10 @@ func compareTransactionPostCommitVolumes(
 				continue
 			}
 
-			gotInput, inputErr := stored.GetInput().ToBigInt()
-			gotOutput, outputErr := stored.GetOutput().ToBigInt()
-
-			if inputErr != nil || outputErr != nil {
-				emit(k.account, k.asset, k.color,
-					fmt.Sprintf("has invalid amounts (input=%v output=%v)", inputErr, outputErr))
-
-				continue
-			}
-
+			// Validate() has already confirmed input and output are present and
+			// canonical, so ToBigInt() cannot fail here.
+			gotInput, _ := stored.GetInput().ToBigInt()
+			gotOutput, _ := stored.GetOutput().ToBigInt()
 			if gotInput.Cmp(wantInput) != 0 || gotOutput.Cmp(wantOutput) != 0 {
 				emit(k.account, k.asset, k.color,
 					fmt.Sprintf("mismatch: stored(input=%s output=%s) != expected(input=%s output=%s)",

@@ -258,7 +258,10 @@ var _ = Describe("Reversions", Ordered, func() {
 				Address: "account-1",
 			})
 			Expect(err).To(Succeed())
-			Expect(account1After.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
+			account1AfterVol := account1After.FindVolume("USD", "")
+			Expect(account1AfterVol).NotTo(BeNil(), "expected USD entry on account-1 after reversion")
+			Expect(account1AfterVol.GetBalance()).NotTo(BeNil(), "balance field must be present after reversion")
+			Expect(account1AfterVol.GetBalance().DecimalString()).To(Equal("0"))
 		})
 
 		It("Should restore balances for multi-posting transaction", func() {

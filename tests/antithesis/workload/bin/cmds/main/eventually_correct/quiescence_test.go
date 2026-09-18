@@ -200,7 +200,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 			if strings.HasSuffix(method, "/GetAccount") && (scenario == "divergence" || scenario == "unavailable" || scenario == "expired" || (scenario == "ambiguous_barrier" && lists.Load() == 1)) {
 				account := reply.(*commonpb.Account)
 				require.NotEmpty(t, account.Volumes)
-				account.Volumes[0].Volumes.Balance = "999"
+				account.Volumes[0].Volumes.Balance = commonpb.MustSignedBigIntFromDecimal("999")
 			}
 			return nil
 		}))
@@ -210,7 +210,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 	// Server state remains correct even when its observed response was changed.
 	account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "L", Address: "users:0"})
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprint(10+writes.Load()), account.FindVolume("USD", "").GetBalance())
+	require.Equal(t, fmt.Sprint(10+writes.Load()), account.FindVolume("USD", "").GetBalance().DecimalString())
 	result, err := json.Marshal(struct {
 		Lists    int64
 		Barriers int64

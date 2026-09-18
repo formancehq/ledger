@@ -18,7 +18,9 @@ func (v *Volumes) Value() (driver.Value, error) {
 	if v == nil {
 		return nil, nil
 	}
-
+	if err := v.Validate(); err != nil {
+		return nil, fmt.Errorf("Volumes.Value: %w", err)
+	}
 	input, err := v.GetInput().Dec()
 	if err != nil {
 		return nil, err
@@ -80,19 +82,25 @@ func (v *Volumes) Validate() error {
 	return nil
 }
 
+// canonicalUnsignedSchema and canonicalSignedSchema are the shared JSON schema
+// constraints for all typed amount fields. Centralising them means a pattern
+// change propagates to every volume-bearing schema without drift.
+var (
+	canonicalUnsignedSchema = &jsonschema.Schema{Type: "string", Pattern: `^(0|[1-9][0-9]*)$`}
+	canonicalSignedSchema   = &jsonschema.Schema{Type: "string", Pattern: `^(0|-?[1-9][0-9]*)$`}
+)
+
 // JSONSchemaExtend extends the JSON schema for Volumes.
 func (*Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {
-	unsigned := &jsonschema.Schema{Type: "string", Pattern: `^(0|[1-9][0-9]*)$`}
-	schema.Properties.Set("input", unsigned)
-	schema.Properties.Set("output", unsigned)
-	schema.Properties.Set("balance", &jsonschema.Schema{Type: "string", Pattern: `^(0|-?[1-9][0-9]*)$`})
+	schema.Properties.Set("input", canonicalUnsignedSchema)
+	schema.Properties.Set("output", canonicalUnsignedSchema)
+	schema.Properties.Set("balance", canonicalSignedSchema)
 }
 
 func (*VolumesWithBalance) JSONSchemaExtend(schema *jsonschema.Schema) {
-	unsigned := &jsonschema.Schema{Type: "string", Pattern: `^(0|[1-9][0-9]*)$`}
-	schema.Properties.Set("input", unsigned)
-	schema.Properties.Set("output", unsigned)
-	schema.Properties.Set("balance", &jsonschema.Schema{Type: "string", Pattern: `^(0|-?[1-9][0-9]*)$`})
+	schema.Properties.Set("input", canonicalUnsignedSchema)
+	schema.Properties.Set("output", canonicalUnsignedSchema)
+	schema.Properties.Set("balance", canonicalSignedSchema)
 }
 
 // Balance calculates the balance (input - output).
@@ -127,11 +135,14 @@ func (v *Volumes) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 
-	return json.Marshal(VolumesWithBalance{
+	vwb := &VolumesWithBalance{
 		Input:   v.GetInput(),
 		Output:  v.GetOutput(),
 		Balance: NewSignedBigInt(balance),
-	})
+	}
+	// Marshal via pointer so VolumesWithBalance.MarshalJSON (pointer receiver)
+	// runs, calling Validate() and producing the canonical decimal-string shape.
+	return json.Marshal(vwb)
 }
 
 func (v *VolumesWithBalance) Validate() error {
@@ -180,16 +191,28 @@ func (v *VolumesWithBalance) MarshalJSON() ([]byte, error) {
 }
 
 func parseCanonicalBigUint(decimal string) (*BigUint, error) {
-	var value BigUint
-	quoted, err := json.Marshal(decimal)
+	// Validate canonical form: non-empty, no leading zeros (except "0" itself),
+	// no sign, all digits. This mirrors decodeCanonicalDecimal for unsigned integers.
+	if decimal == "" ||
+		(strings.HasPrefix(decimal, "0") && len(decimal) > 1) ||
+		strings.HasPrefix(decimal, "+") ||
+		strings.HasPrefix(decimal, "-") {
+		return nil, fmt.Errorf("invalid non-canonical integer %q", decimal)
+	}
+	for _, ch := range decimal {
+		if ch < '0' || ch > '9' {
+			return nil, fmt.Errorf("invalid integer %q", decimal)
+		}
+	}
+	value, ok := new(big.Int).SetString(decimal, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid integer %q", decimal)
+	}
+	encoded, err := NewBigUint(value)
 	if err != nil {
 		return nil, err
 	}
-	if err := value.UnmarshalJSON(quoted); err != nil {
-		return nil, err
-	}
-
-	return &value, nil
+	return encoded, nil
 }
 
 // AssetColored is implemented by every volume-bearing message keyed by an
