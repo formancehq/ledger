@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -58,6 +59,19 @@ type sdkAssertion struct {
 	Condition   bool           `json:"condition"`
 	Hit         bool           `json:"hit"`
 	Details     map[string]any `json:"details"`
+}
+
+// What this driver owes the campaign is the assertion stream itself, so these
+// tests read the SDK's local output back. The no-op SDK never opens
+// ANTITHESIS_SDK_LOCAL_OUTPUT, leaving nothing to read, so they are meaningful
+// only in an armed build; CI runs this module with the tag. The guard keeps the
+// positive `assert.Enabled` form the instrumentor recognises.
+func requireArmedSDK(t *testing.T) {
+	t.Helper()
+	if assert.Enabled {
+		return
+	}
+	t.Skip("requires -tags enable_antithesis_sdk: the no-op SDK writes no local output")
 }
 
 func runCheckpointDriver(t *testing.T, address string, extraEnv ...string) []sdkAssertion {
@@ -168,6 +182,7 @@ func listCheckpointIDs(t *testing.T, ctx context.Context, cluster clusterpb.Clus
 
 func TestQueryCheckpointDriverCapacityAgainstServer(t *testing.T) {
 	t.Parallel()
+	requireArmedSDK(t)
 	ctx, address, client, cluster := checkpointTestServer(t)
 	ids := make([]uint64, 0, 10)
 	for range 10 {

@@ -41,7 +41,7 @@ bookkeeping that exists only to feed such a property (the commit-outcome
 counters, for instance). Leave cold invariant branches unguarded — a guard buys
 nothing there and reads worse.
 
-Four builds set `enable_antithesis_sdk`, and each would be silently useless
+Five builds set `enable_antithesis_sdk`, and each would be silently useless
 without it:
 
 | Build | Why it must be armed |
@@ -50,6 +50,7 @@ without it:
 | `tests/antithesis/workload/Dockerfile` | The drivers that produce the campaign's `Sometimes` coverage. |
 | `tests/antithesis/run_model_test.sh` | The **driver only**. It reads the SDK's local JSON output and requires specific assertions, so an unarmed driver yields an empty stream. The server is left unarmed deliberately: it is never given `ANTITHESIS_SDK_LOCAL_OUTPUT`, so arming it would buy no signal and only cost throughput on a gate whose coverage probes depend on completed work. |
 | `just test-antithesis-assertions` | The emission contract tests below. |
+| `Tests-Antithesis-Workload` (CI) | The workload module's own tests. Several of them re-exec a driver with `ANTITHESIS_SDK_LOCAL_OUTPUT` and decide the case from the assertions it emitted, which is exactly what the no-op SDK does not write. They skip in an unarmed build rather than fail on the missing file, so the tag is what makes them run at all. |
 
 Both images build the instrumentor from the fork at the same SHA as the
 `replace`, because `go install pkg@version` ignores `replace` and so cannot

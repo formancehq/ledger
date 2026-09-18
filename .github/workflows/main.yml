@@ -186,7 +186,8 @@ jobs:
         uses: ./.github/actions/default
       - name: Run deterministic model workload tests with race detection
         run: >
-          nix develop --command go -C tests/antithesis/workload test -race ./...
+          nix develop --command go -C tests/antithesis/workload test -race
+          -tags enable_antithesis_sdk ./...
 
   Tests-Model:
     runs-on: namespace-profile-linux-amd64-4vcpu
