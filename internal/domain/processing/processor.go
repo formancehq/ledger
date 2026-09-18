@@ -57,11 +57,13 @@ type Context struct {
 	RevertTargetDigest []byte
 
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
-	// this batch mutated it, captured by processApply on the first order that
-	// touches that ledger. A revert whose target id is at or above this value
-	// targets a transaction the batch itself creates, which admission could not
-	// observe — see processRevertTransaction. Derived from committed state, so
-	// every replica computes the same value.
+	// this batch mutated it, captured by processApply on the first *apply* order
+	// for that ledger — a ledger-scoped order that is not an apply never reaches
+	// processApply and records nothing, which is sound only because nothing but
+	// an apply moves NextTransactionId. A revert whose target id is at or above
+	// this value targets a transaction the batch itself creates, which admission
+	// could not observe — see processRevertTransaction. Derived from committed
+	// state, so every replica computes the same value.
 	batchInitialNextTxID map[string]uint64
 
 	// Per-apply — set by processApply / processMirrorIngest before

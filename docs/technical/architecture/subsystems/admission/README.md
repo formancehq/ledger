@@ -118,7 +118,7 @@ only when the batch carried an idempotency key. An unkeyed batch is rejected jus
 as permanently, but leaves nothing behind to replay.
 
 The same-batch case is decided from the ledger's `NextTransactionId` as it stood
-before the batch, captured by `processApply` on the first order touching that
+before the batch, captured by `processApply` on the first apply order for that
 ledger. It is derived from committed state, so every replica computes it
 identically.
 
