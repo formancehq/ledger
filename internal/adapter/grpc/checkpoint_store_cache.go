@@ -19,10 +19,10 @@ import (
 // attempted, and the caller's lease keeps a committed deletion from unlinking
 // underneath it, so the directory is neither late nor disappearing. Damage is
 // the expected cause past that gate, but a resource limit reaches it too, and
-// the two are not distinguished — the error surfaces as-is to the reader that
-// opened and to any already waiting on it, and the entry leaves the cache once
-// the last of them releases. A reader that arrives after the failure opens
-// again rather than inheriting it.
+// the two are not distinguished. The error surfaces as-is to the reader that
+// opened and to any already waiting on it; the entry is withdrawn as the error
+// publishes, so a reader arriving after that opens again rather than
+// inheriting it.
 //
 // Pebble takes a directory lock on open and keeps the held paths in a
 // process-global table, so a second open of a directory this process already
@@ -177,6 +177,11 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 // checkpoint waiting on a done channel that is never closed. A panic here is
 // already contained per-request by the server's recovery interceptor; without
 // this the first one would strand the checkpoint until the process restarts.
+//
+// It recovers whatever comes out of the callback, so a defect in the open path
+// arrives as an error rather than a crash. That is containment, not a handled
+// case: the error carries the panic and the log carries its stack, and the
+// branch that produced it is still a bug.
 //
 // open unwinds the handles it has taken on the way out, so the panic does not
 // leave one holding the directory lock. Pebble itself unwinds an open-time panic

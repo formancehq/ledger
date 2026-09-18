@@ -384,11 +384,10 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	}
 
 	// Concurrent readers of one checkpoint share a single open of its two
-	// directories: Pebble's directory lock is process-wide and taken even for a
-	// read-only open, so a second simultaneous open of the same checkpoint would
-	// fail. The lease above stays per-reader, so a reader arriving after a
-	// committed deletion is still turned away rather than served from an open
-	// held by an earlier one.
+	// directories; see checkpointStoreCache for why one open serves them all.
+	// The lease above stays per-reader precisely because the open does not: a
+	// reader arriving after a committed deletion is turned away at acquisition
+	// rather than served from an open an earlier reader still holds.
 	mainStore, readIdx, releaseStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
 		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
 	})
