@@ -195,6 +195,7 @@ func CheckPositiveBalance(t *testing.T, ctx context.Context, client servicepb.Bu
 	vol := acct.FindVolume(asset, "")
 	require.NotNil(t, vol, "account %s has no volumes for asset %s (uncolored)", address, asset)
 
+	require.NotNil(t, vol.GetBalance(), "account %s asset %s: balance field must be present", address, asset)
 	balance, err := vol.GetBalance().ToBigInt()
 	require.NoError(t, err, "invalid balance %q for account %s asset %s", vol.GetBalance().DecimalString(), address, asset)
 	require.True(t, balance.Sign() > 0,
@@ -215,6 +216,10 @@ func CheckDoubleEntryBalance(t *testing.T, ctx context.Context, client servicepb
 	for _, acct := range accounts {
 		for _, entry := range acct.GetVolumes() {
 			vol := entry.GetVolumes()
+			require.NotNil(t, vol, "account %s asset %s color %q: volumes entry must not be nil",
+				acct.GetAddress(), entry.GetAsset(), entry.GetColor())
+			require.NotNil(t, vol.GetBalance(), "account %s asset %s color %q: balance field must be present",
+				acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 			balance, err := vol.GetBalance().ToBigInt()
 			require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
 				vol.GetBalance().DecimalString(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
@@ -253,6 +258,7 @@ func CheckColoredAccountBalance(t *testing.T, ctx context.Context, client servic
 	vol := acct.FindVolume(asset, color)
 	require.NotNil(t, vol, "account %s has no volumes for asset %s color %q", address, asset, color)
 
+	require.NotNil(t, vol.GetBalance(), "account %s asset %s color %q: balance field must be present", address, asset, color)
 	balance, err := vol.GetBalance().ToBigInt()
 	require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
 		vol.GetBalance().DecimalString(), address, asset, color)
@@ -282,6 +288,10 @@ func CheckNoNegativeBalances(t *testing.T, ctx context.Context, client servicepb
 		}
 		for _, entry := range acct.GetVolumes() {
 			vol := entry.GetVolumes()
+			require.NotNil(t, vol, "account %s asset %s color %q: volumes entry must not be nil",
+				acct.GetAddress(), entry.GetAsset(), entry.GetColor())
+			require.NotNil(t, vol.GetBalance(), "account %s asset %s color %q: balance field must be present",
+				acct.GetAddress(), entry.GetAsset(), entry.GetColor())
 			balance, err := vol.GetBalance().ToBigInt()
 			require.NoError(t, err, "invalid balance %q for account %s asset %s color %q",
 				vol.GetBalance().DecimalString(), acct.GetAddress(), entry.GetAsset(), entry.GetColor())
