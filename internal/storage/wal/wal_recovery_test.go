@@ -56,10 +56,7 @@ func TestRecovery_DiscardsResurrectedLowerTermSuffix(t *testing.T) {
 	w := newTestWALAt(t, dir)
 
 	// The suffix that a later leader will overwrite.
-	old := make([]*raftpb.Entry, 0, 13)
-	for i := uint64(80); i <= 92; i++ {
-		old = append(old, ent(i, 5, []byte("old")))
-	}
+	old := entriesBetween(80, 92, 5, []byte("old"))
 
 	require.NoError(t, w.Append(hs(5, 1, 79), old))
 
@@ -97,20 +94,14 @@ func TestRecovery_DiscardsResurrectedHigherTermSuffix(t *testing.T) {
 	w := newTestWALAt(t, dir)
 
 	// Uncommitted entries this node accepted from a leader in term 20.
-	local := make([]*raftpb.Entry, 0, 13)
-	for i := uint64(80); i <= 92; i++ {
-		local = append(local, ent(i, 20, []byte("term20")))
-	}
+	local := entriesBetween(80, 92, 20, []byte("term20"))
 
 	require.NoError(t, w.Append(hs(20, 2, 79), local))
 
 	// A leader elected in term 21 backfills the entries actually committed in
 	// term 12. They are replicated with their original term, which is lower
 	// than the suffix they replace.
-	backfilled := make([]*raftpb.Entry, 0, 7)
-	for i := uint64(80); i <= 86; i++ {
-		backfilled = append(backfilled, ent(i, 12, []byte("term12")))
-	}
+	backfilled := entriesBetween(80, 86, 12, []byte("term12"))
 
 	require.NoError(t, w.Append(hs(21, 3, 86), backfilled))
 
@@ -133,10 +124,7 @@ func TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	local := make([]*raftpb.Entry, 0, 13)
-	for i := uint64(80); i <= 92; i++ {
-		local = append(local, ent(i, 20, []byte("term20")))
-	}
+	local := entriesBetween(80, 92, 20, []byte("term20"))
 
 	require.NoError(t, w.Append(hs(20, 2, 79), local))
 
@@ -162,10 +150,7 @@ func TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	local := make([]*raftpb.Entry, 0, 50)
-	for i := uint64(1); i <= 50; i++ {
-		local = append(local, ent(i, 1, []byte("term1")))
-	}
+	local := entriesBetween(1, 50, 1, []byte("term1"))
 
 	require.NoError(t, w.Append(hs(1, 1, 40), local))
 
@@ -175,10 +160,7 @@ func TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot(t *testing.T) {
 	}))
 
 	// The node then catches up normally and commits through 60.
-	caught := make([]*raftpb.Entry, 0, 10)
-	for i := uint64(51); i <= 60; i++ {
-		caught = append(caught, ent(i, 2, []byte("term2")))
-	}
+	caught := entriesBetween(51, 60, 2, []byte("term2"))
 
 	require.NoError(t, w.Append(hs(2, 1, 60), caught))
 	require.NoError(t, w.Close())
@@ -200,10 +182,7 @@ func TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall(t *testing.T) {
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	entries := make([]*raftpb.Entry, 0, 10)
-	for i := uint64(1); i <= 10; i++ {
-		entries = append(entries, ent(i, 1, []byte("d")))
-	}
+	entries := entriesBetween(1, 10, 1, []byte("d"))
 
 	require.NoError(t, w.Append(hs(1, 1, 7), entries))
 	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
@@ -234,10 +213,7 @@ func TestRecovery_KeepsEntriesWhenCommitOvertakesAGuardRecord(t *testing.T) {
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	first := make([]*raftpb.Entry, 0, 10)
-	for i := uint64(1); i <= 10; i++ {
-		first = append(first, ent(i, 1, []byte("d")))
-	}
+	first := entriesBetween(1, 10, 1, []byte("d"))
 
 	require.NoError(t, w.Append(hs(1, 1, 7), first))
 	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
@@ -250,10 +226,7 @@ func TestRecovery_KeepsEntriesWhenCommitOvertakesAGuardRecord(t *testing.T) {
 	}))
 
 	// The node carries on and commits well past that index.
-	later := make([]*raftpb.Entry, 0, 10)
-	for i := uint64(11); i <= 20; i++ {
-		later = append(later, ent(i, 1, []byte("d")))
-	}
+	later := entriesBetween(11, 20, 1, []byte("d"))
 
 	require.NoError(t, w.Append(hs(1, 1, 20), later))
 	require.NoError(t, w.Close())
@@ -300,10 +273,7 @@ func TestRecovery_KeepsHealthyTailAfterSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	entries := make([]*raftpb.Entry, 0, 9)
-	for i := uint64(80); i <= 88; i++ {
-		entries = append(entries, ent(i, 12, []byte("d")))
-	}
+	entries := entriesBetween(80, 88, 12, []byte("d"))
 
 	require.NoError(t, w.Append(hs(12, 1, 88), entries))
 	require.NoError(t, w.CreateSnapshot(86, testConfState(), nil))
@@ -326,10 +296,7 @@ func TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	w := newTestWALAt(t, dir)
 
-	entries := make([]*raftpb.Entry, 0, 10)
-	for i := uint64(1); i <= 10; i++ {
-		entries = append(entries, ent(i, 1, []byte("d")))
-	}
+	entries := entriesBetween(1, 10, 1, []byte("d"))
 
 	require.NoError(t, w.Append(hs(1, 1, 10), entries))
 	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
@@ -344,6 +311,8 @@ func TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite(t *testing.T) {
 	}))
 	require.NoError(t, w.Close())
 
-	require.Error(t, reopenWAL(t, dir),
-		"a recovered log with a hole must not be served")
+	err := reopenWAL(t, dir)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "current entry[Index: 7, Term: 2], len(ents): 0",
+		"the refusal must be the gap this fixture builds — entry 7 landing on a tail the overwrite at 3 emptied — not any other startup failure")
 }
