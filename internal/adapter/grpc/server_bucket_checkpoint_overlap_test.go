@@ -11,7 +11,7 @@ import (
 // Hold the first reader through the second acquisition, removing scheduler
 // timing from the production overlap that triggered Antithesis timeline
 // 8282440088460908998. GetTransaction uses this exact store-pair boundary.
-func TestEN2108OverlappingCheckpointReaders(t *testing.T) {
+func TestOpenCheckpointStoresServesOverlappingReaders(t *testing.T) {
 	t.Parallel()
 	impl := newCheckpointGateFixture(t)
 	_, _, releaseFirst, err := impl.openCheckpointStores(context.Background(), gateCheckpointID)

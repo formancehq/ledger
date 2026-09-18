@@ -16,25 +16,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-type en2108PanicListFS struct{ vfs.FS }
+type panicOnListFS struct{ vfs.FS }
 
-func (en2108PanicListFS) List(string) ([]string, error) {
-	panic("EN-2108 filesystem listing after lock acquisition")
+func (panicOnListFS) List(string) ([]string, error) {
+	panic("filesystem listing after lock acquisition")
 }
 
-func TestEN2108PebbleOpenPanicReleasesDirectoryLock(t *testing.T) {
+func TestPebbleOpenPanicReleasesDirectoryLock(t *testing.T) {
 	t.Parallel()
 	impl := newCheckpointGateFixture(t)
 	path := impl.store.QueryCheckpointMainDir(gateCheckpointID)
-	require.PanicsWithValue(t, "EN-2108 filesystem listing after lock acquisition", func() {
-		_, _ = pebble.Open(path, &pebble.Options{ReadOnly: true, FS: en2108PanicListFS{vfs.Default}})
+	require.PanicsWithValue(t, "filesystem listing after lock acquisition", func() {
+		_, _ = pebble.Open(path, &pebble.Options{ReadOnly: true, FS: panicOnListFS{vfs.Default}})
 	})
 	store, err := dal.OpenReadOnly(path, testLogger())
 	require.NoError(t, err, "Pebble unwinds its directory lock before propagating an open-time panic")
 	require.NoError(t, store.Close())
 }
 
-func TestEN2108JoinedWaiterCancellation(t *testing.T) {
+func TestCheckpointStoreCacheJoinedWaiterHonorsCancellation(t *testing.T) {
 	t.Parallel()
 	impl := newCheckpointGateFixture(t)
 	var cache checkpointStoreCache
@@ -120,7 +120,7 @@ func TestEN2108JoinedWaiterCancellation(t *testing.T) {
 	require.Equal(t, 1, refs, "cancellation must drop only the joiner's reference")
 }
 
-func TestEN2108DeletionWaitsForBothReaders(t *testing.T) {
+func TestOpenCheckpointStoresDeletionWaitsForBothReaders(t *testing.T) {
 	t.Parallel()
 	impl := newCheckpointGateFixture(t)
 	_, _, first, err := impl.openCheckpointStores(t.Context(), gateCheckpointID)

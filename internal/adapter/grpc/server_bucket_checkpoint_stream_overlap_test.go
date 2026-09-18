@@ -23,7 +23,7 @@ import (
 // Exercise the real ListTransactions handler/controller/cursor while its first
 // stream is still sending from the checkpoint. Only the stream transport is
 // mocked, so the second request must acquire the same frozen Pebble stores.
-func TestEN2108OverlappingCheckpointListTransactions(t *testing.T) {
+func TestListTransactionsServesOverlappingCheckpointStreams(t *testing.T) {
 	t.Parallel()
 
 	const ledger = "checkpoint-list-transactions"
