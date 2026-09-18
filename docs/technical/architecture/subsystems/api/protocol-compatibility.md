@@ -164,8 +164,11 @@ on the two revisions.
 The `.proto` text gains only an enum value, which is a compatible addition on
 its own; the incompatibility is the changed retained outcome, invisible to a
 schema comparison. A stale admission observation of a target that predates the
-batch answers the retryable `STALE_INPUTS_RESOLUTION`, which is not frozen and
-is unchanged in kind from the surrounding contract. See
+batch and is otherwise revertable answers the retryable
+`STALE_INPUTS_RESOLUTION`, which is not frozen and is unchanged in kind from the
+surrounding contract; a target that is unknown or already reverted keeps
+answering `TRANSACTION_NOT_FOUND` or `TRANSACTION_ALREADY_REVERTED` as it did on
+revision 10, because those checks run first. See
 [the revert-target observation](../admission/README.md#revert-target-observation).
 
 ## Maintaining the revision

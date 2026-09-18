@@ -197,6 +197,13 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 // declared. Rejecting here keeps the coverage gate meaning what it documents: a
 // miss is an admission bug, not a stale view.
 //
+// Reaching this function already means the target passed the handler's checks
+// on it, and those keep precedence: an id beyond the ledger boundary is
+// ErrTransactionNotFound, an already-reverted target is
+// ErrTransactionAlreadyReverted, and an allocated target with no state or no
+// postings is ErrTransactionStateInconsistent — a stale observation of any of
+// them answers with that reason, not with a mismatch classification.
+//
 // The two mismatch causes need different answers, and the difference is whether
 // a re-admission could ever see what apply sees:
 //

@@ -93,11 +93,20 @@ Admission therefore binds what it observed into
 `processRevertTransaction` re-derives the same digest from the `TransactionState`
 it already reads through the gate. The check runs **before** the reversed
 postings are built, so this cause can never reach the gate. It sits after the
-existing invariant checks, so an allocated transaction with no state, or with no
-postings, keeps surfacing as `ErrTransactionStateInconsistent` (invariant #7)
-rather than being softened.
+handler's existing checks on the target, which keep precedence:
 
-A mismatch is classified by whether a re-admission could ever converge:
+| Target as apply reads it | Outcome | Unchanged because |
+|---|---|---|
+| Id beyond the ledger boundary | `TRANSACTION_NOT_FOUND` | Nothing was allocated, so there is no observation to compare |
+| Already reverted | `TRANSACTION_ALREADY_REVERTED` | The revert is refused on its merits; a retry would be refused the same way |
+| Allocated with no state, or no postings | `TRANSACTION_STATE_INCONSISTENT` | A broken projection must surface as such (invariant #7) rather than be softened |
+
+`TestProcessRevertTransaction_NotFoundBeatsObservationCheck`,
+`…_AlreadyRevertedBeatsObservationCheck` and `…_InconsistentStateNotSoftened`
+pin that ordering.
+
+A mismatch that does reach the observation check is then classified by whether a
+re-admission could ever converge:
 
 | Target | Outcome | Why |
 |---|---|---|
