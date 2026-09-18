@@ -43,8 +43,8 @@ func (failures checkpointSetupProbeFailures) allTransient() bool {
 }
 
 // Cluster metadata RPCs read local storage. A routed GetLedger can succeed on
-// the leader while this node still lags, so fence the pinned node's durable
-// applied cursor before opening its registry or schedule snapshot.
+// the leader while this node still lags, so fence the pinned node's durably
+// persisted cursor before opening its registry or schedule snapshot.
 func readCheckpointRegistry(ctx context.Context, node *internal.PerNodeConn) (*clusterpb.ListQueryCheckpointsResponse, error) {
 	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err

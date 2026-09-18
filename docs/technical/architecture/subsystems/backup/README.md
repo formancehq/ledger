@@ -146,6 +146,23 @@ that has no post-checkpoint export does not exercise this path.
 deleted ledger's projections in the same apply, and the replay issues the same
 range deletes so the restored store does not resurrect them.
 
+Prepared queries are rebuilt from their exported create, update, and delete
+logs. Creates contain the complete definition. Updates carry only the new
+filter, so replay seeds the target and name from the checkpoint definition (or
+an earlier create in the same delta), replaces the filter, and keeps that
+pending value for later mutations. Deletes write a point tombstone and clear
+the pending value, which also covers create-update-delete within one delta.
+These mutations accumulate in the same rebuild write sessions as the other
+projections. `RebuildDelta` commits every 5,000 logs and clears its pending
+overlays to bound memory, then commits its audit-derived boundaries in a later
+batch. Earlier batches may already contain durable prepared-query (and other
+projection) mutations when a later operation fails. The current batch is
+indeterminate after a commit error, and staging cleanup can itself fail, so
+callers must never reuse failed staging. They must discard and recreate the
+entire staging store from the checkpoint before retrying; the restore service
+attempts to wipe the staging directory on failure or cancellation and logs any
+cleanup failure.
+
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
 The indexbuilder's `EMPTY`/`NON_EMPTY` ledger-history bytes are peer read-store state, not primary-store backup content. A restored node with a fresh read store reconstructs them by replaying the restored global log from zero; registry entries remain inactive until their `CreatedIndexLog` is reached. EMPTY ledgers promote their indexes without backfill, while NON_EMPTY ledgers schedule the normal replay. This state therefore needs no `RebuildDelta` branch: the exported log is its reconstruction evidence. Normal same-node restarts retain the byte atomically with the read-index cursor, and query checkpoints include it because they checkpoint the read store itself.

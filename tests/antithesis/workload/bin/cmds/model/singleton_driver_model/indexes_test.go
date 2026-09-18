@@ -260,6 +260,29 @@ func TestReconcileIndexes_IncarnationGuard(t *testing.T) {
 	require.False(t, active(c), "a moved create frontier discards the verdict")
 }
 
+func TestTrackedIndexesExcludesDeletedLedgers(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"deleted", "live"}, nil)
+	created := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+		createIndexReq("deleted", assetIndexID()),
+		createIndexReq("live", assetIndexID()),
+	}})
+	require.True(t, created.OK)
+	c.modelState = created.State
+	require.Len(t, c.trackedIndexes(), 2)
+
+	deleted := c.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
+		Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "deleted"}},
+	}}})
+	require.True(t, deleted.OK)
+	c.modelState = deleted.State
+
+	tracked := c.trackedIndexes()
+	require.NotContains(t, tracked, "deleted")
+	require.Contains(t, tracked, "live")
+}
+
 // TestIndexBuildingErrorReachesValidators pins the not-ready plumbing for
 // ErrIndexBuilding, which rides codes.Unavailable and therefore sits inside
 // internal.IsTransient: the query paths must peel it off the generic transient

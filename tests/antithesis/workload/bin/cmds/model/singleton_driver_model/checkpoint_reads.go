@@ -57,6 +57,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	id, frozen, deleted := c.pickCheckpointReadTarget()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+	ledgerNames := liveLedgerNames(frozen, c.ledgerNamesSnapshot())
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	choice := internal.Rand().Uint64() % 6
 	if choice == 0 || id == 0 {
@@ -71,9 +72,12 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	var matches bool
 	var concrete bool
 	var maxTicket uint64
+	var ledger string
 	details := internal.Details{"checkpoint": id, "readKind": choice}
 	if choice == 2 {
-		ledger, address, _, _, _, ok := pickReadTarget(frozen, c.ledgerNames)
+		var address string
+		var ok bool
+		ledger, address, _, _, _, ok = pickReadTarget(frozen, ledgerNames)
 		if !ok {
 			return
 		}
@@ -84,7 +88,9 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil)
 		concrete = err == nil && account != nil && modelKnowsAccount(frozen.Ledger(ledger), address)
 	} else if choice == 3 {
-		ledger, txID, _, ok := pickTransactionID(frozen, c.ledgerNames)
+		var txID uint64
+		var ok bool
+		ledger, txID, _, ok = pickTransactionID(frozen, ledgerNames)
 		if !ok {
 			return
 		}
@@ -95,7 +101,10 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
 		concrete = err == nil && response.GetTransaction() != nil
 	} else {
-		ledger := c.ledgerNames[internal.Rand().Uint64()%uint64(len(c.ledgerNames))]
+		if len(ledgerNames) == 0 {
+			return
+		}
+		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
 		pageSize := 1 + int(internal.Rand().Uint64()%16)
 		reverse := percentChance(50)
 		details["ledger"], details["pageSize"], details["reverse"] = ledger, pageSize, reverse
@@ -173,7 +182,11 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 	case <-start:
 	}
 
-	ledger := c.ledgerNames[0]
+	ledgerNames := c.liveLedgerNamesSnapshot()
+	if len(ledgerNames) == 0 {
+		return
+	}
+	ledger := ledgerNames[0]
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	info, err := bucket.GetLedger(readCtx, &servicepb.GetLedgerRequest{
 		Ledger: ledger,
@@ -194,14 +207,22 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 
 	c.mu.Lock()
 	matches := c.checkpointCreationMatches(maxTicket, checkpointID, func(state oracle.GlobalState) bool {
-		ls := state.Ledger(ledger)
-
-		return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
+		return predictedCheckpointLedgerMatches(state, ledger, info)
 	})
 	c.mu.Unlock()
 	if !matches {
 		assert.Unreachable("singleton_driver_model: predicted checkpoint read outside creation model", internal.Details{"checkpoint": checkpointID, "ledger": ledger})
 	}
+}
+
+func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, info *commonpb.LedgerInfo) bool {
+	lifecycle, exists := state.Lifecycle(ledger)
+	if !exists || lifecycle.Deleted {
+		return false
+	}
+	ls := state.Ledger(ledger)
+
+	return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
 }
 
 // pickCheckpointReadTarget samples uniformly from every retained snapshot.
@@ -233,8 +254,9 @@ func runCheckpointListRead(ctx context.Context, node *internal.PerNodeConn, c *C
 		sequences[id] = snapshot.maxSequence
 	}
 	c.mu.Unlock()
+	responseFrontier := c.beginResponseFrontier()
 	response, err := readCheckpointRegistry(ctx, node)
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -259,8 +281,9 @@ func runCheckpointListRead(ctx context.Context, node *internal.PerNodeConn, c *C
 }
 
 func runCheckpointScheduleRead(ctx context.Context, node *internal.PerNodeConn, c *Checker) {
+	responseFrontier := c.beginResponseFrontier()
 	response, err := readCheckpointSchedule(ctx, node)
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return

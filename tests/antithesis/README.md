@@ -63,8 +63,13 @@ A successful routed `GetLedger` is insufficient: it may run on the leader while
 the original node still lags. Raft `Commit`/`Applied` and a default
 `GetClusterState{NodeId:0}` response do not prove local Pebble progress.
 The registry/schedule read then uses the same pinned connection. Candidate
-states and the existing read-drain gate remain unchanged; barrier no-ops add
-no business logs. Setup uses the same fence before seeding the registry.
+states and the existing read-drain gate remain unchanged. The response-frontier
+lock covers discovery, the fence, and the metadata response, so writes cannot
+register between that response and its ticket snapshot. Registry and schedule
+reads are global: they remain valid when all live ledgers have been deleted and
+do not excuse metadata errors using ledger lifecycle states. Frozen checkpoint
+reads retain their lifecycle checks. Barrier no-ops add no business logs. Setup
+uses the same fence before seeding the registry.
 Deleted-checkpoint reads accept gRPC `NotFound` or a success matching the original
 frozen snapshot: a replica may lag deletion, and committed deletion precedes
 filesystem cleanup. Successful reads never count as deleted-read coverage;

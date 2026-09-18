@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -20,12 +22,23 @@ import (
 // Expensive validation searches run on a snapshot taken under mu, not under it.
 type Checker struct {
 	mu sync.Mutex
+	// dispatchMu orders write registration against a read's response frontier.
+	// Reads hold it through the response frontier. Writers wait on it before
+	// taking mu, so a stalled read never blocks processor model work.
+	dispatchMu sync.Mutex
 	// checkpointCreateMu keeps a predicted-ID probe paired with exactly one
 	// create transition until that transition has drained into modelState.
 	checkpointCreateMu sync.Mutex
+	ledgerMu           sync.RWMutex
 
-	// ledgerNames is the fleet the generator and reads draw from. Immutable.
-	ledgerNames []string
+	// ledgerNames grows when a generated CreateLedger commits. Deleted names stay
+	// reserved in the oracle but are filtered from generation and reads.
+	ledgerNames           []string
+	ledgerPrefix          string
+	liveTarget            int
+	ledgerSeq             atomic.Uint64
+	pendingLedgerCreates  int
+	reservedLedgerCreates map[string]uint64
 
 	// ticketSeq hands out a monotonic ticket per dispatched operation (bulk or
 	// read) — the dispatch order the drain gate compares against. It is atomic
@@ -78,22 +91,38 @@ type Checker struct {
 	// replayRegistryCap. Guarded by mu.
 	replayable []replayEntry
 
+	// Lifecycle coverage is credited only after the follow-up promised by the
+	// sonde has itself been observed and model-validated.
+	pendingDeleted  map[string]struct{}
+	pendingPromoted map[string]struct{}
+
 	// paused gates worker dispatch during a restore cycle; resumeCh is closed on
 	// resume so parked workers wake. Both guarded by mu (see restore.go).
 	paused   bool
 	resumeCh chan struct{}
+
+	// Maintenance recovery is coalesced so concurrent successful enables do not
+	// create an unbounded fleet of delayed disable RPCs. Guarded by mu.
+	maintenanceEnableSeq      uint64
+	maintenanceRecoveryActive bool
+	maintenanceRecoveryTicket uint64
+	ambiguousBulks            map[uint64]oracle.Bulk
+	ambiguousEnableClearSeq   uint64
+	recoveries                sync.WaitGroup
 }
 
 // One worker → processor message. observeTicket is the ticket high-water mark
 // when the response was received; the drain gate uses it to tell which
 // outstanding ops were dispatched after this bulk was observed.
 type observation struct {
-	ticket        uint64
-	bulk          oracle.Bulk
-	resp          *servicepb.ApplyResponse
-	err           error
-	observeTicket uint64
-	processed     chan struct{}
+	ticket          uint64
+	bulk            oracle.Bulk
+	resp            *servicepb.ApplyResponse
+	err             error
+	ambiguousEnable bool
+	recoverySeq     uint64
+	observeTicket   uint64
+	processed       chan struct{}
 }
 
 func isCheckpointCreate(bulk oracle.Bulk) bool {
@@ -116,6 +145,14 @@ type pendingObservation struct {
 func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadataFieldTypeCommand) *Checker {
 	modelState := oracle.NewGlobalState()
 	for _, ledger := range ledgerNames {
+		// setupLedgers created these outside the modeled Apply stream. Seed their
+		// identities so lifecycle generation can delete or otherwise target even
+		// a still-empty initial ledger without predicting LEDGER_NOT_FOUND.
+		created := modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
+			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger}},
+		}}})
+		modelState = created.State
+
 		cmds := schemas[ledger]
 		if len(cmds) == 0 {
 			continue
@@ -140,8 +177,11 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		modelState = modelState.SeedInitialSchema(reqs)
 	}
 
-	return &Checker{
+	prefix := strings.TrimSuffix(ledgerNames[0], "-0")
+	c := &Checker{
 		ledgerNames:                ledgerNames,
+		ledgerPrefix:               prefix,
+		liveTarget:                 len(ledgerNames),
 		inflight:                   map[uint64]oracle.Bulk{},
 		reads:                      map[uint64]struct{}{},
 		incoming:                   make(chan observation, incomingBuffer),
@@ -149,9 +189,117 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		checkpoints:                map[uint64]checkpointSnapshot{},
 		deletedCheckpointSnapshots: map[uint64]checkpointSnapshot{},
 		retypeObs:                  map[string]*retypeObservation{},
+		pendingDeleted:             map[string]struct{}{},
+		pendingPromoted:            map[string]struct{}{},
+		ambiguousBulks:             map[uint64]oracle.Bulk{},
+		reservedLedgerCreates:      map[string]uint64{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
 	}
+	c.ledgerSeq.Store(uint64(len(ledgerNames)))
+	return c
+}
+
+func (c *Checker) nextLedgerName() string {
+	return fmt.Sprintf("%s-%d", c.ledgerPrefix, c.ledgerSeq.Add(1)-1)
+}
+
+func (c *Checker) ledgerNamesSnapshot() []string {
+	c.ledgerMu.RLock()
+	defer c.ledgerMu.RUnlock()
+	return append([]string(nil), c.ledgerNames...)
+}
+
+func (c *Checker) liveLedgerNamesSnapshot() []string {
+	c.mu.Lock()
+	state := c.modelState
+	c.mu.Unlock()
+
+	return liveLedgerNames(state, c.ledgerNamesSnapshot())
+}
+
+// reserveLedgerCreate keeps concurrent workers from all replacing the same
+// deleted ledger. The reservation remains held until dispatchBulk's observation
+// has been processed, at which point a success is already reflected in
+// modelState and a failure no longer consumes capacity.
+func (c *Checker) reserveLedgerCreate(bulk oracle.Bulk) bool {
+	var name string
+	for _, req := range bulk.Requests {
+		if req.GetCreateLedger() != nil {
+			name = req.GetCreateLedger().GetName()
+			break
+		}
+	}
+	if name == "" {
+		return true
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if lifecycle, exists := c.modelState.Lifecycle(name); exists && lifecycle.Deleted {
+		return true
+	}
+	if len(liveLedgerNames(c.modelState, c.ledgerNamesSnapshot()))+c.pendingLedgerCreates >= c.liveTarget {
+		return false
+	}
+	c.pendingLedgerCreates++
+	c.reservedLedgerCreates[name]++
+
+	return true
+}
+
+func (c *Checker) releaseLedgerCreate(bulk oracle.Bulk) {
+	for _, req := range bulk.Requests {
+		name := req.GetCreateLedger().GetName()
+		if name == "" {
+			continue
+		}
+		c.mu.Lock()
+		if c.reservedLedgerCreates[name] > 0 {
+			c.pendingLedgerCreates--
+			c.reservedLedgerCreates[name]--
+			if c.reservedLedgerCreates[name] == 0 {
+				delete(c.reservedLedgerCreates, name)
+			}
+		}
+		c.mu.Unlock()
+		return
+	}
+}
+
+func liveLedgerNames(state oracle.GlobalState, names []string) []string {
+	live := make([]string, 0, len(names))
+	for _, name := range names {
+		if ledgerIsLive(state, name) {
+			live = append(live, name)
+		}
+	}
+
+	return live
+}
+
+func ledgerIsLive(state oracle.GlobalState, name string) bool {
+	lifecycle, exists := state.Lifecycle(name)
+
+	return exists && !lifecycle.Deleted
+}
+
+func partitionLifecycleLedgers(state oracle.GlobalState, names []string) (live, deleted []string) {
+	live = make([]string, 0, len(names))
+	deleted = make([]string, 0, len(names))
+	for _, name := range names {
+		lifecycle, exists := state.Lifecycle(name)
+		if !exists {
+			continue
+		}
+		if lifecycle.Deleted {
+			deleted = append(deleted, name)
+		} else {
+			live = append(live, name)
+		}
+	}
+
+	return live, deleted
 }
 
 // retypeObservation drives one retype window's closure, two-phase per node so

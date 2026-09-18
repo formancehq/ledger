@@ -6,7 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -482,7 +484,7 @@ func logWindow(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilte
 
 // runLogQuery drives one ListLogs page and checks it against the model.
 func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 
 	var filter *commonpb.QueryFilter
 	if !oneIn(4) {
@@ -512,6 +514,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	// certified up to it (EN-1946), so the window stays representable by a
 	// candidate base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListLogs(readCtx, &servicepb.ListLogsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
@@ -526,7 +529,11 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		logs, err = drainStream(stream)
 	}
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
+	if status.Code(err) == codes.NotFound {
+		c.validateLedgerNotFound(maxTicket, ledger, "ListLogs")
+		return
+	}
 
 	errKind, gated := classifyLogQueryError(err)
 	if !gated {
@@ -617,7 +624,11 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	}
 
 	matched := c.matchesModel(maxTicket, "LOGQUERY", func(base oracle.GlobalState) bool {
-		return logOutcomeLegal(base.Ledger(ledger), ledger, filter, needed, errKind, page, afterSeq, pageSize)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
+		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize)
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,

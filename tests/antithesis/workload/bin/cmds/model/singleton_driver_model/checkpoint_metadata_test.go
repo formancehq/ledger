@@ -2,17 +2,13 @@ package main
 
 import (
 	"context"
-	"net"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -55,17 +51,9 @@ func TestCheckpointMetadataFenceFailureStopsRead(t *testing.T) {
 
 func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
 	t.Helper()
-	listener := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer()
 	handler := &checkpointMetadataServer{addr: "node"}
-	servicepb.RegisterBucketServiceServer(server, handler)
-	clusterpb.RegisterClusterServiceServer(server, handler)
-	go func() { _ = server.Serve(listener) /* Stop terminates Serve with an expected error. */ }()
-	t.Cleanup(server.Stop)
-	conn, err := grpc.NewClient("passthrough:///checkpoint-metadata", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	return handler, servicepb.NewBucketServiceClient(conn), clusterpb.NewClusterServiceClient(conn)
+	bucket, cluster := serveCheckpointMetadata(t, handler, handler)
+	return handler, bucket, cluster
 }
 
 type checkpointMetadataServer struct {

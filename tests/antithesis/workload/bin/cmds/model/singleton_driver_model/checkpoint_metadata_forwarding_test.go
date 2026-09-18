@@ -106,10 +106,10 @@ func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *cluste
 	}, nil
 }
 
-func serveCheckpointMetadata(t *testing.T, bucket servicepb.BucketServiceServer, cluster clusterpb.ClusterServiceServer) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+func serveCheckpointMetadata(t *testing.T, bucket servicepb.BucketServiceServer, cluster clusterpb.ClusterServiceServer, opts ...grpc.ServerOption) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
-	server := grpc.NewServer()
+	server := grpc.NewServer(opts...)
 	servicepb.RegisterBucketServiceServer(server, bucket)
 	clusterpb.RegisterClusterServiceServer(server, cluster)
 	go func() { _ = server.Serve(listener) /* Stop terminates Serve. */ }()
