@@ -1808,10 +1808,15 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 			}
 
 			replayEntries[string(canonicalKey)] = replayMeta{value: mv}
-			var key domain.MetadataKey
-			if err := key.Unmarshal(canonicalKey); err == nil {
-				activeAccounts[key.AccountKey] = struct{}{}
-			}
+		}
+
+		// A deletion tombstone is evidence that this account was recreated
+		// after an earlier purge, even when it has no current volume or metadata.
+		// Keep it active so the historical purge exclusion cannot hide a live
+		// metadata row that should have been deleted in the new incarnation.
+		var key domain.MetadataKey
+		if err := key.Unmarshal(canonicalKey); err == nil {
+			activeAccounts[key.AccountKey] = struct{}{}
 		}
 	}
 
