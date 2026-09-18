@@ -106,6 +106,20 @@ func (s sinkErrorSanitizer) addURL(pairs map[string]string, raw string) {
 	pairs[strconv.Quote(raw)] = strconv.Quote(safeString)
 }
 
+// rawQueryValues extracts raw (undecoded) values for a key from a raw query string.
+// It returns the raw value bytes, useful when url.ParseQuery would silently drop
+// pairs with malformed percent escapes, such as nested proxy URLs from drivers.
+func rawQueryValues(rawQuery, key string) []string {
+	var results []string
+	for _, part := range strings.Split(rawQuery, "&") {
+		if k, v, ok := strings.Cut(part, "="); ok && k == key && v != "" {
+			results = append(results, v)
+		}
+	}
+
+	return results
+}
+
 func sinkReplacementPairs(pairs map[string]string) []string {
 	keys := make([]string, 0, len(pairs))
 	for key := range pairs {

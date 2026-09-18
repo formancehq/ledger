@@ -114,6 +114,11 @@ func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (_ *ClickH
 	if parsed, err := url.Parse(cfg.DSN); err == nil {
 		// The driver embeds decoded proxy parse errors as text, losing their URL
 		// error type. Register the nested URL even when that URL is malformed.
+		// url.ParseQuery silently drops pairs with malformed percent escapes, so
+		// also register the raw values to catch credential leaks when decoding fails.
+		for _, rawVal := range rawQueryValues(parsed.RawQuery, "http_proxy") {
+			connectionURLs = append(connectionURLs, rawVal)
+		}
 		connectionURLs = append(connectionURLs, parsed.Query()["http_proxy"]...)
 	}
 	sanitizer := newSinkErrorSanitizer(connectionURLs)
