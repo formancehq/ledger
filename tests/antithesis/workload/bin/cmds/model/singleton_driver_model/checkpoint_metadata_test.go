@@ -11,12 +11,10 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -29,7 +27,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	stale, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 	require.NoError(t, err)
 	require.Empty(t, stale.GetCheckpoints())
-	registry, err := readCheckpointRegistry(ctx, bucket, cluster, "L")
+	registry, err := readCheckpointRegistry(ctx, checkpointTestNode(bucket, cluster))
 	require.NoError(t, err)
 	require.Len(t, registry.GetCheckpoints(), 1)
 	require.Equal(t, uint64(7), registry.Checkpoints[0].GetCheckpointId())
@@ -37,7 +35,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	staleSchedule, err := cluster.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
 	require.NoError(t, err)
 	require.Empty(t, staleSchedule.GetCron())
-	schedule, err := readCheckpointSchedule(ctx, bucket, cluster, "L")
+	schedule, err := readCheckpointSchedule(ctx, checkpointTestNode(bucket, cluster))
 	require.NoError(t, err)
 	require.Equal(t, modelCheckpointCrons[0], schedule.GetCron())
 }
@@ -48,9 +46,9 @@ func TestCheckpointMetadataFenceFailureStopsRead(t *testing.T) {
 	defer cancel()
 	server, bucket, cluster := checkpointMetadataClients(t)
 	server.failFence.Store(true)
-	_, err := readCheckpointRegistry(ctx, bucket, cluster, "L")
+	_, err := readCheckpointRegistry(ctx, checkpointTestNode(bucket, cluster))
 	require.Equal(t, codes.Unavailable, status.Code(err))
-	_, err = readCheckpointSchedule(ctx, bucket, cluster, "L")
+	_, err = readCheckpointSchedule(ctx, checkpointTestNode(bucket, cluster))
 	require.Equal(t, codes.Unavailable, status.Code(err))
 	require.Zero(t, server.metadataReads.Load())
 }
@@ -59,7 +57,7 @@ func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, service
 	t.Helper()
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
-	handler := &checkpointMetadataServer{}
+	handler := &checkpointMetadataServer{addr: "node"}
 	servicepb.RegisterBucketServiceServer(server, handler)
 	clusterpb.RegisterClusterServiceServer(server, handler)
 	go func() { _ = server.Serve(listener) /* Stop terminates Serve with an expected error. */ }()
@@ -73,13 +71,17 @@ func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, service
 type checkpointMetadataServer struct {
 	servicepb.UnimplementedBucketServiceServer
 	clusterpb.UnimplementedClusterServiceServer
+	addr                   string
+	denied                 bool
+	failDiscovery          bool
 	fenced                 atomic.Bool
 	failFence              atomic.Bool
 	remainingFenceFailures atomic.Int32
+	remainingDemotions     atomic.Int32
 	metadataReads          atomic.Int32
 }
 
-func (s *checkpointMetadataServer) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
+func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	for remaining := s.remainingFenceFailures.Load(); remaining > 0; remaining = s.remainingFenceFailures.Load() {
 		if s.remainingFenceFailures.CompareAndSwap(remaining, remaining-1) {
 			return nil, status.Error(codes.Unavailable, "fence temporarily unavailable")
@@ -88,12 +90,31 @@ func (s *checkpointMetadataServer) GetLedger(ctx context.Context, req *servicepb
 	if s.failFence.Load() {
 		return nil, status.Error(codes.Unavailable, "fence unavailable")
 	}
-	md, _ := metadata.FromIncomingContext(ctx)
-	if req.GetLedger() != "L" || len(md.Get("x-consistency")) != 1 || md.Get("x-consistency")[0] != "linearizable" {
-		return nil, status.Error(codes.InvalidArgument, "missing linearizable ledger fence")
+	if s.denied {
+		return nil, status.Error(codes.PermissionDenied, "fence denied")
+	}
+	return &servicepb.BarrierResponse{CommitIndex: 42}, nil
+}
+
+func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clusterpb.GetClusterStateRequest) (*clusterpb.ClusterState, error) {
+	if req.GetNodeId() == 0 {
+		if s.remainingDemotions.CompareAndSwap(1, 0) {
+			return &clusterpb.ClusterState{State: "Follower", LocalNode: 1}, nil
+		}
+		if s.failDiscovery {
+			return nil, status.Error(codes.Unavailable, "node unavailable during identity discovery")
+		}
+		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
+	}
+	if req.GetNodeId() != 2 {
+		return nil, status.Error(codes.InvalidArgument, "expected pinned node ID")
 	}
 	s.fenced.Store(true)
-	return &commonpb.LedgerInfo{}, nil
+	return &clusterpb.ClusterState{LocalNode: 2, RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: 42}}, nil
+}
+
+func checkpointTestNode(bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient) *internal.PerNodeConn {
+	return &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 }
 
 func (s *checkpointMetadataServer) ListQueryCheckpoints(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
@@ -120,13 +141,14 @@ func TestCheckpointSetupSelectsReachablePinnedNode(t *testing.T) {
 	defer cancel()
 	firstServer, firstBucket, firstCluster := checkpointMetadataClients(t)
 	firstServer.failFence.Store(true)
-	_, secondBucket, secondCluster := checkpointMetadataClients(t)
-	first := &internal.PerNodeConn{Addr: "first", Bucket: firstBucket, Cluster: firstCluster}
-	second := &internal.PerNodeConn{Addr: "second", Bucket: secondBucket, Cluster: secondCluster}
-	selected, err := selectCheckpointSetupNode(ctx, internal.PerNodeConns{first, second}, "L")
+	secondServer, secondBucket, secondCluster := checkpointMetadataClients(t)
+	firstServer.addr, secondServer.addr = "first", "second"
+	first := &internal.PerNodeConn{Addr: "first", NodeID: 2, Bucket: firstBucket, Cluster: firstCluster}
+	second := &internal.PerNodeConn{Addr: "second", NodeID: 2, Bucket: secondBucket, Cluster: secondCluster}
+	selected, err := selectCheckpointSetupNode(ctx, internal.PerNodeConns{first, second})
 	require.NoError(t, err)
 	require.Same(t, second, selected)
-	_, err = selectCheckpointSetupNode(ctx, internal.PerNodeConns{first}, "L")
+	_, err = selectCheckpointSetupNode(ctx, internal.PerNodeConns{first})
 	require.ErrorContains(t, err, "first")
 	require.ErrorContains(t, err, "fence unavailable")
 	failures, ok := err.(checkpointSetupProbeFailures)
@@ -158,9 +180,9 @@ func TestCheckpointSetupRetriesTransientProbeFailures(t *testing.T) {
 	defer cancel()
 	server, bucket, cluster := checkpointMetadataClients(t)
 	server.remainingFenceFailures.Store(1)
-	node := &internal.PerNodeConn{Addr: "node", Bucket: bucket, Cluster: cluster}
+	node := &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 
-	selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node}, "L")
+	selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node})
 	require.NoError(t, err)
 	require.Same(t, node, selected)
 }
@@ -169,12 +191,50 @@ func TestCheckpointSetupReturnsDefinitiveProbeFailure(t *testing.T) {
 	t.Parallel()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, bucket, cluster := checkpointMetadataClients(t)
-	node := &internal.PerNodeConn{Addr: "node", Bucket: bucket, Cluster: cluster}
+	server, bucket, cluster := checkpointMetadataClients(t)
+	server.denied = true
+	node := &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 
-	_, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node}, "missing")
+	_, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node})
 	failures, ok := err.(checkpointSetupProbeFailures)
 	require.True(t, ok)
 	require.Len(t, failures, 1)
-	require.Equal(t, codes.InvalidArgument, status.Code(failures[0].err))
+	require.Equal(t, codes.PermissionDenied, status.Code(failures[0].err))
+}
+
+func TestCheckpointSetupResolvesIdentityAfterFailedDialDiscovery(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	firstServer, firstBucket, firstCluster := checkpointMetadataClients(t)
+	firstServer.failDiscovery = true
+	secondServer, secondBucket, secondCluster := checkpointMetadataClients(t)
+	secondServer.addr = "second"
+	// DialPerNode discovery is best effort. A down first address can consume
+	// its shared deadline and leave even reachable connections unresolved.
+	first := &internal.PerNodeConn{Addr: "first", Bucket: firstBucket, Cluster: firstCluster}
+	second := &internal.PerNodeConn{Addr: "second", Bucket: secondBucket, Cluster: secondCluster}
+	selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{first, second})
+	require.NoError(t, err)
+	require.Same(t, second, selected)
+	response, err := readCheckpointSchedule(ctx, selected)
+	require.NoError(t, err)
+	require.Equal(t, modelCheckpointCrons[0], response.GetCron())
+	require.Zero(t, selected.NodeID, "resolution must not race by mutating a connection shared with workers")
+	require.Zero(t, firstServer.metadataReads.Load())
+}
+
+func TestCheckpointSetupRetriesDiscoveryDuringLeadershipChange(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	server, bucket, cluster := checkpointMetadataClients(t)
+	server.remainingDemotions.Store(1)
+	node := checkpointTestNode(bucket, cluster)
+	selected, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node})
+	require.NoError(t, err)
+	require.Same(t, node, selected)
+	require.Zero(t, server.remainingDemotions.Load(), "the first leader lookup must observe a demotion")
+	require.True(t, server.fenced.Load(), "the retry must reach local durable progress")
+	require.Zero(t, server.metadataReads.Load(), "discovery retries must not read metadata")
 }
