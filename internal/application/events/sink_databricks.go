@@ -139,7 +139,7 @@ func newDatabricksConnector(cfg DatabricksSinkConfig) (driver.Connector, error) 
 //
 // Authentication: exactly one of PAT (Token) or OAuth M2M (OAuthClientID +
 // OAuthClientSecret) must be configured.
-func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (result *DatabricksSink, retErr error) {
+func NewDatabricksSink(ctx context.Context, cfg DatabricksSinkConfig) (_ *DatabricksSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer(nil, cfg.Token, cfg.OAuthClientSecret)
 	defer sanitizer.sanitizeReturned(&retErr)
 	connector, err := newDatabricksConnector(cfg)
