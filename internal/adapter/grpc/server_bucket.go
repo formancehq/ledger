@@ -383,11 +383,9 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 		return nil, nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
 
-	// Concurrent readers of one checkpoint share a single open of its two
-	// directories; see checkpointStoreCache for why one open serves them all.
-	// The lease above stays per-reader precisely because the open does not: a
-	// reader arriving after a committed deletion is turned away at acquisition
-	// rather than served from an open an earlier reader still holds.
+	// One open of the checkpoint's two directories is shared by its concurrent
+	// readers; see checkpointStoreCache. The lease above stays per-reader so that
+	// a reader arriving after a committed deletion is refused at acquisition.
 	mainStore, readIdx, releaseStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
 		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
 	})

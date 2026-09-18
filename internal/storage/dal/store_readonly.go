@@ -13,12 +13,10 @@ import (
 // The returned Store implements PebbleReader and can be passed to free functions in state/ and events/.
 // The caller must call Close() when done.
 //
-// One open can serve any number of concurrent readers, which is what keeps
-// callers off Pebble's process-global directory lock. Pebble supports concurrent
-// reads; the rest is the caller's to hold up. Nothing here forbids a writer or a
-// RestoreCheckpoint on this Store, and either would swap the DB under those
-// readers, so a shared handle must be given out read-only and closed only once
-// the last reader is done with it.
+// A single handle may be shared by concurrent readers; Pebble supports
+// concurrent reads. Nothing here forbids RestoreCheckpoint on the shared Store,
+// which swaps the database under its readers, so a shared handle must be closed
+// only after the last reader is done with it.
 //
 // Memory profile: tuned for short-lived secondary opens (e.g. reading a few
 // well-known keys from a backup checkpoint while the primary store still

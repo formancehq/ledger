@@ -59,9 +59,9 @@ func TestCheckpointStoreCacheSharesOneOpenAcrossReaders(t *testing.T) {
 		results = make([]acquireResult, readers)
 	)
 
-	// Results are collected rather than asserted in the goroutines: require's
-	// FailNow is a runtime.Goexit, which testify does not support off the test
-	// goroutine, and it would skip the releases below.
+	// Asserted on the test goroutine: require's FailNow is a runtime.Goexit,
+	// which testify does not support elsewhere, and it would skip the releases
+	// below.
 	for i := range results {
 		wg.Go(func() {
 			main, readIdx, release, err := cache.acquire(t.Context(), gateCheckpointID, testLogger(), open)
@@ -165,9 +165,9 @@ func TestCheckpointStoreCacheSurvivesAPanickingOpen(t *testing.T) {
 	result.release()
 }
 
-// A reader waiting on someone else's open must still honor its own deadline:
-// sharing an open must not let one slow reader hold the rest past theirs.
-func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
+// A reader whose context is already cancelled is refused before it takes a
+// hold, whether or not an open is in flight for its checkpoint.
+func TestCheckpointStoreCacheRefusesACancelledReader(t *testing.T) {
 	t.Parallel()
 
 	impl := newCheckpointGateFixture(t)
@@ -200,7 +200,7 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 	cancel()
 
 	_, _, release, err := cache.acquire(ctx, gateCheckpointID, testLogger(), succeed)
-	require.ErrorIs(t, err, context.Canceled, "a cancelled joiner must not wait for the open")
+	require.ErrorIs(t, err, context.Canceled, "a cancelled reader must not wait for the open")
 	require.Nil(t, release)
 
 	close(unblock)
@@ -208,8 +208,8 @@ func TestCheckpointStoreCacheJoinerHonorsCancellation(t *testing.T) {
 	require.NoError(t, opener.err)
 	opener.release()
 
-	require.Equal(t, int64(1), opens.Load(), "the cancelled joiner must not have started its own open")
-	require.Empty(t, cache.entries, "the cancelled joiner's ref must have been dropped")
+	require.Equal(t, int64(1), opens.Load(), "the cancelled reader must not have started its own open")
+	require.Empty(t, cache.entries, "the cancelled reader must not have taken a hold")
 }
 
 // pebble.DB.Close panics with "element has outstanding references" when a file
@@ -249,7 +249,7 @@ func TestCheckpointStoreCacheClosesMainStoreWhenReadIndexCloseFails(t *testing.T
 }
 
 // rebuildReadIndexCheckpointWithSSTs materializes a read-index checkpoint at
-// path whose data sits in an SST rather than a memtable.
+// path whose data has been flushed to an SST.
 func rebuildReadIndexCheckpointWithSSTs(t *testing.T, path string) {
 	t.Helper()
 
