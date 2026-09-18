@@ -259,10 +259,13 @@ func TestTransactionWindow(t *testing.T) {
 
 func stamp(v uint64) *commonpb.Timestamp { return &commonpb.Timestamp{Data: v} }
 
-// buildGlobal applies reqs as one bulk and returns the global state, for tests
-// that need LearnTxStamps on top of the applied records.
 // buildGlobal commits reqs one bulk per request — see buildLedger for why they
-// are not grouped — and returns the resulting global state.
+// are not grouped — and returns the resulting global state, for tests that need
+// LearnTxStamps on top of the applied records.
+//
+// A fixture whose scenario *is* end-of-bulk semantics must use
+// buildGlobalOneBulk instead: committing request by request never puts two
+// requests in the same bulk, so it cannot reproduce them.
 func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	t.Helper()
 
@@ -276,6 +279,23 @@ func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	}
 
 	return state
+}
+
+// buildGlobalOneBulk commits reqs as a single bulk. Reserved for fixtures whose
+// scenario is end-of-bulk semantics — an ephemeral cell washed back to zero
+// within one bulk is excluded from the indexes, and splitting the wash across
+// bulks would index the first leg and then merely drop the account from the
+// query universe, which is a different mechanism (TestMatchTxAddress_UniverseDrop).
+//
+// Such a fixture must not revert a transaction the same bulk creates; see
+// buildLedger.
+func buildGlobalOneBulk(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
+	t.Helper()
+
+	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
+	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
+
+	return res.State
 }
 
 // serverTxFromRec builds the wire transaction the server would return for a
@@ -440,9 +460,12 @@ func TestTxWindowMatches_OptionalRows(t *testing.T) {
 func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 	t.Parallel()
 
-	// Bulk: an ephemeral wash on e:1 (its cell is excluded at end of bulk) and a
-	// normal funding of a:1. tx 1 is the wash, tx 2 the funding.
-	gs := buildGlobal(t,
+	// One bulk on purpose: an ephemeral wash on e:1 (its cell is zero, and so
+	// excluded, at end of bulk) and a normal funding of a:1. tx 1 is the wash,
+	// tx 2 the funding. Splitting the wash across bulks would index e:1 on the
+	// funding leg and exercise the universe drop instead — see
+	// buildGlobalOneBulk.
+	gs := buildGlobalOneBulk(t,
 		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 		oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
 		oracletest.TxReqL("L", "world", "e:1", "USD", 5),
@@ -461,7 +484,13 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 		return f.GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
 
-	// The excluded ephemeral cell strips e:1 membership from both wash txs.
+	// The excluded ephemeral cell strips e:1 membership from both wash txs. The
+	// membership assertion is what separates this from the universe drop
+	// (TestMatchTxAddress_UniverseDrop), where the rows stay indexed and only
+	// the address match stops resolving — matchTxAddress alone would be false
+	// under either mechanism.
+	require.Zero(t, txs.Get(int(0)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
+	require.Zero(t, txs.Get(int(1)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
 	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
 	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
 
