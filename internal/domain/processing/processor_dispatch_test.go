@@ -225,7 +225,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 			name: "add_events_sink/batch_size_too_large",
 			payload: &raftcmdpb.SystemScopedOrder{Payload: &raftcmdpb.SystemScopedOrder_AddEventsSink{
 				AddEventsSink: &raftcmdpb.AddEventsSinkOrder{
-					Config: &commonpb.SinkConfig{Name: "s", BatchSize: domain.MaxSinkBatchSize + 1},
+					Config: &commonpb.SinkConfigInput{Name: "s", BatchSize: domain.MaxSinkBatchSize + 1},
 				},
 			}},
 			check: requireErr(new(*domain.ErrSinkBatchSizeTooLarge)),

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -46,28 +47,39 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 		clickHousePassword = "clickhouse-output-prefix@clickhouse-output-secret"
 	)
 
+	mustSink := func(input *commonpb.SinkConfigInput) *commonpb.SinkConfig {
+		s, err := connectionconfig.Sink(input)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return s
+	}
+	natsCfg := mustSink(&commonpb.SinkConfigInput{Name: "stream", Type: &commonpb.SinkConfigInput_Nats{Nats: &commonpb.NatsSinkConfigInput{
+		Url: "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222," +
+			"operator:" + natsNoSchemePass + "@three:4222," + natsNoSchemeToken + "@four:4222",
+		Topic: "events",
+	}}})
+	httpCfg := mustSink(&commonpb.SinkConfigInput{Name: "webhook", Type: &commonpb.SinkConfigInput_Http{Http: &commonpb.HttpSinkConfigInput{
+		Endpoint: "https://operator:" + httpPassword + "@hooks.example/events",
+	}}})
+	chCfg := mustSink(&commonpb.SinkConfigInput{Name: "analytics", Type: &commonpb.SinkConfigInput_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfigInput{
+		Dsn: "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
+	}}})
 	fixture := &eventsURLRedactionServer{
 		response: &servicepb.GetEventsSinksResponse{
 			Sinks: []*commonpb.SinkConfig{
 				{
 					Name: "stream",
-					Type: &commonpb.SinkConfig_Nats{Nats: &commonpb.NatsSinkConfig{
-						Url: "nats://operator:" + natsPassword + "@one:4222,nats://" + natsToken + "@two:4222," +
-							"operator:" + natsNoSchemePass + "@three:4222," + natsNoSchemeToken + "@four:4222",
-						Topic: "events",
-					}},
+					Type: natsCfg.GetType(),
 				},
 				{
 					Name: "webhook",
-					Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{
-						Endpoint: "https://operator:" + httpPassword + "@hooks.example/events",
-					}},
+					Type: httpCfg.GetType(),
 				},
 				{
 					Name: "analytics",
-					Type: &commonpb.SinkConfig_Clickhouse{Clickhouse: &commonpb.ClickHouseSinkConfig{
-						Dsn: "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
-					}},
+					Type: chCfg.GetType(),
 				},
 				{
 					Name: "kafka-empty-secret",
@@ -98,8 +110,8 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 		applyRequests: make(chan *servicepb.ApplyRequest, 16),
 	}
 	listControls := []string{
-		"stream", "operator", "events", "one:4222", "two:4222", "three:4222", "four:4222",
-		"hooks.example", "db.example", "secure=true",
+		"stream", "operator", "events", "one", "two", "three", "four",
+		"hooks.example", "db.example", "secure",
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -173,7 +185,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-topic", "events",
 			},
 			credentials: []string{natsPassword},
-			controls:    []string{"stream", "operator", "one:4222", "events"},
+			controls:    []string{"stream", "operator", "one", "events"},
 		},
 		{
 			name: "NATS token",
@@ -182,7 +194,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-topic", "events",
 			},
 			credentials: []string{natsToken},
-			controls:    []string{"stream", "two:4222", "events"},
+			controls:    []string{"stream", "two", "events"},
 		},
 		{
 			name: "scheme-less NATS password",
@@ -191,7 +203,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-topic", "events",
 			},
 			credentials: []string{natsNoSchemePass},
-			controls:    []string{"stream", "operator", "three:4222", "events"},
+			controls:    []string{"stream", "operator", "three", "events"},
 		},
 		{
 			name: "scheme-less NATS token",
@@ -200,7 +212,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--nats-topic", "events",
 			},
 			credentials: []string{natsNoSchemeToken},
-			controls:    []string{"stream", "four:4222", "events"},
+			controls:    []string{"stream", "four", "events"},
 		},
 		{
 			name: "HTTP password",
@@ -216,7 +228,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				"--clickhouse-dsn", "clickhouse://db.example:9000/ledger?password=" + clickHousePassword + "&secure=true",
 			},
 			credentials: []string{"clickhouse-output-prefix", "clickhouse-output-secret"},
-			controls:    []string{"stream", "db.example", "secure=true"},
+			controls:    []string{"stream", "db.example", "secure"},
 		},
 	}
 	for _, format := range []string{"table", "json", "yaml"} {

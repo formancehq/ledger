@@ -505,8 +505,14 @@ func rebuildDelta(
 				}
 			}
 
-		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_RemovedEventsSink:
+			if err := sinkConfig.Delete(batch, domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()}.Bytes()); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("removing events sink at log %d: %w", seq, err)
+			}
+
+		// Log types with no persistent state to rebuild:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 			if deleted := p.DeletedPreparedQuery; deleted != nil {
 				if err := state.DeletePreparedQuery(batch, deleted.GetLedger(), deleted.GetName()); err != nil {

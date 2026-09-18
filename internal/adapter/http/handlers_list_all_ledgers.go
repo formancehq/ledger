@@ -2,6 +2,8 @@ package http
 
 import (
 	"net/http"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 )
 
 // handleListAllLedgers handles GET / to list all ledgers.
@@ -22,5 +24,8 @@ func (s *Server) handleListAllLedgers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return ledgers list wrapped in BaseResponse
+	for i, item := range ret {
+		ret[i] = sensitive.Clone(item)
+	}
 	writeOK(w, ret)
 }

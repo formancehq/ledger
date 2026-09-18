@@ -100,3 +100,13 @@ The signed payload format is fixed by vtprotobuf encoding rules — `internal/pk
 | Bootstrap registration rejected | `RequireSignatures()` is true and there is no parent key — solution is the maintenance-mode workaround above. |
 | Client cannot verify a stored log | Server's response key has rotated; client must refresh via the Discovery RPC or the `--response-verify-key` flag. |
 | Audit chain hash mismatch on entries with valid `Log.Signature` | Log entry tampered after the fact — caught by the checker, not by signature verification (the signature still verifies; the hash chain doesn't). |
+
+## Operational configuration and public reads
+
+Sink and mirror input URLs/DSNs are retained in the immutable accepted order and
+original signed batch bytes. The FSM derives separate structured operational
+configurations without mutating that evidence. Read-side log copies omit
+`responseSignature`; write-response signing retains its original contract.
+Audit responses still carry the original evidence, which may contain credentials;
+this configuration change does not redact the raw audit API. See
+[structured credentials](../api/structured-credentials.md).

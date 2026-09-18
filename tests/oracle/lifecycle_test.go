@@ -79,7 +79,7 @@ func TestGlobalState_LifecycleDeletion(t *testing.T) {
 func TestGlobalState_LifecyclePromotion(t *testing.T) {
 	t.Parallel()
 	req := createLifecycleLedger(commonpb.LedgerMode_LEDGER_MODE_MIRROR)
-	req.GetCreateLedger().MirrorSource = &commonpb.MirrorSourceConfig{BatchSize: 17}
+	req.GetCreateLedger().MirrorSource = &commonpb.MirrorSourceConfigInput{BatchSize: 17}
 	created := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, created.OK)
 	before := created.State.Fingerprint()

@@ -32,10 +32,10 @@ func main() {
 	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_AddEventsSink{
 			AddEventsSink: &servicepb.AddEventsSinkRequest{
-				Config: &commonpb.SinkConfig{
+				Config: &commonpb.SinkConfigInput{
 					Name: sinkName,
-					Type: &commonpb.SinkConfig_Nats{
-						Nats: &commonpb.NatsSinkConfig{
+					Type: &commonpb.SinkConfigInput_Nats{
+						Nats: &commonpb.NatsSinkConfigInput{
 							Url:   "nats://nats:4222",
 							Topic: topic,
 						},

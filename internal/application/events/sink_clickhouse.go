@@ -12,6 +12,7 @@ import (
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
@@ -21,7 +22,7 @@ func init() {
 		s := sc.GetType().(*commonpb.SinkConfig_Clickhouse)
 
 		return NewClickHouseSink(context.Background(), ClickHouseSinkConfig{
-			DSN:   s.Clickhouse.GetDsn(),
+			DSN:   connectionconfig.RenderDatabase(s.Clickhouse.GetConnection()),
 			Table: s.Clickhouse.GetTable(),
 		})
 	})

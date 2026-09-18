@@ -92,7 +92,7 @@ func TestSaveSinkConfig(t *testing.T) {
 	// Save a sink config via attribute
 	config := &commonpb.SinkConfig{
 		Name: "my-sink",
-		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
+		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: &commonpb.ConnectionURL{Scheme: "http", Address: &commonpb.ConnectionAddress{Host: "example.com"}}}},
 	}
 	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "my-sink"}.Bytes(), config)
@@ -116,7 +116,7 @@ func TestDeleteSinkConfig(t *testing.T) {
 	batch := s.OpenWriteSession()
 	_, err := attr.Set(batch, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes(), &commonpb.SinkConfig{
 		Name: "sink-to-delete",
-		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: "http://example.com"}},
+		Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Endpoint: &commonpb.ConnectionURL{Scheme: "http", Address: &commonpb.ConnectionAddress{Host: "example.com"}}}},
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
