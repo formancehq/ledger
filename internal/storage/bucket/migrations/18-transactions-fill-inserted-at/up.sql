@@ -18,6 +18,7 @@ do $$
 			execute _vsql;
 		end loop;
 
+		drop table if exists logs_transactions;
 		create temporary table logs_transactions as
 		select row_number() over (order by ledger, id) as row_number, ledger, date, (data->'transaction'->>'id')::bigint as transaction_id
 		from logs
