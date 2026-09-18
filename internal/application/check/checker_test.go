@@ -875,6 +875,21 @@ func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.Acco
 	}
 }
 
+func removeAccountTypeOrder(ledger, name string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+						RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: name},
+					}},
+				},
+			},
+		},
+	}
+}
+
 func deleteLedgerOrder(name string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -1287,6 +1302,50 @@ func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
 		}
 	}
 	require.True(t, found, "checker must reject a fabricated row for the previously purged USD cell: %v", errors)
+}
+
+func TestCheckerRejectsMetadataSurvivingDeletionAfterAccountRecreation(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+	engine.processAndCommit(removeAccountTypeOrder("ledger", "orders"))
+	engine.processAndCommit(saveAccountMetadataOrder("ledger", "orders:1", map[string]string{
+		"status": "recreated",
+	}))
+	engine.processAndCommit(deleteAccountMetadataOrder("ledger", "orders:1", "status"))
+
+	batch := engine.store.OpenWriteSession()
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Key:        "status",
+	}
+	_, err := engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var found bool
+	for _, checkErr := range errors {
+		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH &&
+			checkErr.GetAccount() == "orders:1" &&
+			strings.Contains(checkErr.GetMessage(), "unexpected metadata for orders:1/status") {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "checker must reject metadata surviving a deletion in the recreated account: %v", errors)
 }
 
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
