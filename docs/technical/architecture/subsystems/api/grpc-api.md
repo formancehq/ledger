@@ -577,6 +577,17 @@ the transport message. Caller cancellation, unrelated `Canceled`, a server
 status on a live connection, and statuses carrying details retain their
 existing handling; `Unknown` is not made retryable. Forwarding does not retry.
 
+This requires `NewConn` to wrap the raw `*grpc.ClientConn` directly, as the
+leader-forwarding call site does. Other `ClientConnInterface` implementations
+retain error reconstruction but do not receive this normalization. Shutdown
+is observed after the invocation returns; it is not atomic with status delivery
+and does not prove the status's origin. An identical bare peer-authored
+`Canceled` received just before local closure is also mapped to `Unavailable`.
+Snapshotting state immediately after the call cannot eliminate that window.
+`TestConn_ServerStatusBeforeLocalShutdown` deterministically receives the peer
+status before closing the real connection, pinning this residual limit and
+preservation of unrelated, `Unknown`, and structured statuses during closure.
+
 This is an interrupted outcome, not a definitive business rejection:
 `Unavailable` can arrive **after a write has committed** when its response is
 lost. A client retry must retain the original idempotency key and payload.
@@ -589,6 +600,8 @@ a single transaction and balance effect. The factory also preserves ambiguity
 when a later attempt hits the real maintenance gate; after disabling maintenance,
 the same key and payload recover the original result. This transport result
 alone does not prove a maintenance rejection or a failed second revert.
+The fixture also passes the actual forwarded close error to
+`IsAmbiguousCommit`, guarding the cross-package wire contract against drift.
 
 | Code | Condition |
 |------|-----------|

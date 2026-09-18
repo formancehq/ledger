@@ -37,7 +37,7 @@
   "adversarial_questions": [
     "Where can a request commit and then lose its response?",
     "What does a client retry after timeout, cancellation, connection reset, or leader change do?",
-    "Does the current client factory preserve a possibly committed operation when an exact bare forwarded peer-close status is followed by maintenance? Distinguish this from an immediate maintenance rejection or no-leader then maintenance; preserve the original key and payload through recovery.",
+    "Does the current client factory preserve a possibly committed operation when an exact bare forwarded peer-close status is followed by maintenance? Distinguish this from an immediate maintenance rejection or no-leader then maintenance; preserve the original key and payload through recovery. Pin the producer/consumer contract using the actual forwarded close error; post-invocation local shutdown does not prove status origin when an identical peer-authored status races closure.",
     "Which operations have no stable logical identity across retries?",
     "Can bulk handlers commit a prefix before a later element fails?",
     "Can storage retry repeat a non-idempotent side effect?",

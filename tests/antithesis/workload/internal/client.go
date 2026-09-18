@@ -90,12 +90,6 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 				classifyStreamInterceptor(),
 			),
 		)
-
-		if retryForever {
-			// Retain the transport cap setting, although application retries are
-			// owned by the interceptors and no service-config retry is installed.
-			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
-		}
 	} else {
 		// Retry disabled (LEDGER_NO_RETRY) — classify stays on; same Chain*
 		// option for consistency, even with a single member.
@@ -348,8 +342,9 @@ func IsAborted(err error) bool {
 
 // IsCanceled recognizes the wire code, not its origin. A driver can treat it as
 // its own shutdown only when its caller context is done. The unary forwarding
-// boundary maps a proven local peer-connection close to Unavailable while that
-// caller remains live; unrelated server-authored Canceled statuses stay visible.
+// boundary maps the exact bare close status to Unavailable when the raw local
+// connection is shut down and the caller remains live. A matching server status
+// racing that shutdown is indistinguishable; unrelated Canceled stays visible.
 func IsCanceled(err error) bool {
 	if err == nil {
 		return false

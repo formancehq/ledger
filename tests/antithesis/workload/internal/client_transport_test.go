@@ -214,6 +214,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	interrupted := <-forwarder.interrupted
 	require.Equal(t, codes.Unavailable, status.Code(interrupted))
 	require.Equal(t, "grpc: the client connection is closing", status.Convert(interrupted).Message())
+	require.True(t, internal.IsAmbiguousCommit(interrupted), "the workload must recognize the actual forwarding boundary's close status")
 	wantAttempts := int32(2)
 	switch mode {
 	case "disabled":

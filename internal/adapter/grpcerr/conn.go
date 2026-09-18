@@ -26,8 +26,11 @@ type Conn struct {
 	inner grpc.ClientConnInterface
 }
 
-// NewConn wraps cc so forwarded errors retain their typed identity and a
-// proven local connection closure is distinct from caller cancellation.
+// NewConn wraps cc so forwarded errors retain their typed identity. Unary
+// close-status normalization additionally requires cc to be the raw
+// *grpc.ClientConn: pass it directly, before adding any connection decorator.
+// Other ClientConnInterface implementations receive error reconstruction only;
+// their state cannot establish that the underlying local connection is closed.
 func NewConn(cc grpc.ClientConnInterface) *Conn {
 	return &Conn{inner: cc}
 }
@@ -40,6 +43,8 @@ func (c *Conn) Invoke(ctx context.Context, method string, args, reply any, opts 
 	// external caller is still waiting. Only grpc-go's exact, unadorned close
 	// status on a locally closed connection is a transport interruption:
 	// matching the status alone would also match a peer-authored lookalike.
+	// Shutdown is observed after Invoke, not atomically with status delivery:
+	// an identical peer-authored status followed by local closure is also mapped.
 	// Arbitrary Canceled statuses and structured server failures retain their
 	// identity.
 	// Unavailable does not prove non-commit. The caller must reuse its original

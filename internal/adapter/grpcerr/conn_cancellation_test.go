@@ -11,6 +11,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -165,4 +166,46 @@ func TestConn_UnaryServerStatusesArePreserved(t *testing.T) {
 		_, got := client.GetTransaction(t.Context(), &servicepb.GetTransactionRequest{})
 		require.True(t, proto.Equal(status.Convert(upstream).Proto(), status.Convert(got).Proto()))
 	})
+}
+
+// A client interceptor deterministically closes the real connection after the
+// peer's status arrived but before Conn.Invoke observes local state. This pins
+// the residual attribution limit; it does not simulate grpc-go's close error.
+func TestConn_ServerStatusBeforeLocalShutdown(t *testing.T) {
+	t.Parallel()
+	closeMessage := "grpc: the client connection is closing"
+	structured, err := status.New(codes.Canceled, closeMessage).WithDetails(
+		&errdetails.ErrorInfo{Domain: "another-service", Reason: "FUTURE_REASON"},
+	)
+	require.NoError(t, err)
+	for _, test := range []struct {
+		name     string
+		upstream *status.Status
+		want     *status.Status
+	}{
+		{"bare close lookalike", status.New(codes.Canceled, closeMessage), status.New(codes.Unavailable, closeMessage)},
+		{"other cancellation", status.New(codes.Canceled, "remote cancellation"), status.New(codes.Canceled, "remote cancellation")},
+		{"unknown lookalike", status.New(codes.Unknown, closeMessage), status.New(codes.Unknown, closeMessage)},
+		{"structured lookalike", structured, structured},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			client := dialWrapped(t, &rejectingServer{err: test.upstream.Err()}, grpc.WithUnaryInterceptor(
+				func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+					err := invoker(ctx, method, req, reply, cc, opts...)
+					require.True(t, proto.Equal(test.upstream.Proto(), status.Convert(err).Proto()), "the peer's response arrived before local closure")
+					require.NotEqual(t, connectivity.Shutdown, cc.GetState())
+					require.NoError(t, cc.Close())
+					require.Equal(t, connectivity.Shutdown, cc.GetState())
+					require.NoError(t, ctx.Err(), "the caller remains live")
+
+					return err
+				},
+			))
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			t.Cleanup(cancel)
+			_, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{})
+			require.True(t, proto.Equal(test.want.Proto(), status.Convert(err).Proto()), "local closure cannot prove the origin of an identical bare close status")
+		})
+	}
 }

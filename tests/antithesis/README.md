@@ -109,9 +109,10 @@ The workload uses a layered predicate set (`internal/client.go`):
   consensus, so the bulk did not commit and a retry is sound).
 - `IsCanceled(err)` — recognizes the wire code only. Check the caller's own
   `ctx.Err()` before treating cancellation as local shutdown. The unary
-  forwarding boundary reports proven local peer-connection closure as
-  `Unavailable` while the caller is live; unrelated server cancellation is
-  not automatically a retryable outcome.
+  forwarding boundary maps the exact bare close status to `Unavailable` when
+  the raw local connection is shut down and the caller is live. An identical
+  peer-authored status racing local closure is indistinguishable at that check;
+  unrelated server cancellation is not automatically a retryable outcome.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
   **This is what
   Sometimes() probes use**: `assert.Sometimes(internal.IsTolerated(err),
@@ -130,7 +131,11 @@ The workload uses a layered predicate set (`internal/client.go`):
   service-config retry policy. `internal/client_transport_test.go` tests this
   real factory after a committed response is lost, including default, forever,
   disabled-retry, and maintenance/recovery cases. The original native retry
-  control remains separate. `client_transport_controls_test.go` verifies caller
+  control remains separate. The fixture asserts that `IsAmbiguousCommit`
+  recognizes the actual forwarded close error, so producer/consumer drift fails
+  the cross-package test. Retry budgets belong to the interceptors; the former
+  `WithMaxCallAttempts` option only capped native service-config retry policies
+  and has been removed from this factory. `client_transport_controls_test.go` verifies caller
   cancellation and terminal server statuses through the same factory.
 - `IsClassified(err)` — `nil | IsTransient | IsCanceled | <business code>`
   (deliberately excludes `Aborted`). Business codes are `NotFound`,

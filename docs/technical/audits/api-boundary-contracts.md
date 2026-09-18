@@ -44,11 +44,19 @@ specific: `grpcerr.Conn.Invoke` converts the exact bare grpc-go close status
 only when the local connection is shut down and the caller context is live.
 Check actual pool removal/replacement, caller cancellation, a peer-authored
 lookalike on a live connection, and structured/unknown statuses separately.
+The decorator must receive the raw `*grpc.ClientConn`; another connection
+decorator receives reconstruction only. The post-invocation shutdown check is
+not atomic with status delivery: an identical bare peer-authored close status
+received just before local closure is also normalized. Preserve the deterministic
+`TestConn_ServerStatusBeforeLocalShutdown` control for this attribution limit;
+do not interpret shutdown as proof of status origin.
 `internal/adapter/grpcerr/conn_cancellation_test.go` provides these controls.
 `tests/antithesis/workload/internal/client_transport_test.go` adds a real Ledger
 commit before response loss, preserving the native retry control and separately
 testing the current `NewGRPCConn` factory. Its maintenance case retains ambiguity
-and recovers with the same key/payload after the gate is disabled. The companion
+and recovers with the same key/payload after the gate is disabled. The actual
+forwarded close error must satisfy the workload's ambiguity predicate, pinning
+both boundaries without deriving the expected wire text from production code. The companion
 `client_transport_controls_test.go` checks terminal statuses and cancellation
 through that factory. These checks establish keyed recovery, not non-commit or
 safe unkeyed replay; those identities remain owned by
