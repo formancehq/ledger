@@ -22,7 +22,7 @@ func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcement
 
 // maybeAddSkippableReason composes skip opt-ins with ordinary generated slots,
 // preserving their position, ledger selection, and surrounding bulk shape.
-func maybeAddSkippableReason(req *servicepb.Request) *servicepb.Request {
+func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) != 0 {
 		return req
 	}
@@ -51,6 +51,14 @@ func maybeAddSkippableReason(req *servicepb.Request) *servicepb.Request {
 		return req
 	}
 	if create := req.GetApply().GetAction().GetCreateTransaction(); create != nil {
+		// Ordinary creates carry a globally-unique reference, so opting one into
+		// REFERENCE_CONFLICT without rebinding the reference asks for a skip the
+		// FSM can never perform. Half keep their unique reference, so the opt-in
+		// that never fires stays covered too.
+		if ref, _, ok := pickTxRef(ls); ok && random.RandomChoice([]uint8{0, 1}) == 0 {
+			create.Reference = ref
+		}
+
 		return applyCreate(req.GetApply().GetLedger(), create, reason)
 	}
 

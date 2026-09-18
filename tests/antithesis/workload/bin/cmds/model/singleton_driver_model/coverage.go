@@ -116,6 +116,8 @@ func registerCoverage() {
 }
 
 func emitCoverage(cond bool, msg string, details internal.Details, hit bool) {
+	recordCoverageHit(msg, cond, hit)
+
 	// The two zeros are line and column: these probes are registered by name,
 	// not discovered at a source location.
 	assert.AssertRaw(cond, msg, details, coverageClass, "noteQueryCoverage", coverageFile, 0, 0,

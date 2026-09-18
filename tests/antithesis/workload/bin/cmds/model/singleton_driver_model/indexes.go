@@ -498,11 +498,47 @@ func dropIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
 	}}
 }
 
+// ledgerIndexPool is every index the workload churns on one ledger: the
+// builtins plus one metadata index per declared field of both indexable
+// targets, so metadata index lifecycles churn alongside the builtins.
+func ledgerIndexPool(ls oracle.LedgerState) []workloadIndex {
+	all := workloadIndexes()
+	for _, target := range []commonpb.TargetType{
+		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+	} {
+		for key := range ls.FieldTypesFor(target).All() {
+			id := indexes.MetadataID(target, key)
+			all = append(all, workloadIndex{id, indexes.Canonical(id)})
+		}
+	}
+
+	return all
+}
+
+// absentIndexes is the subset of pool the ledger does not hold.
+func absentIndexes(ls oracle.LedgerState, pool []workloadIndex) []workloadIndex {
+	var absent []workloadIndex
+	for _, candidate := range pool {
+		if exists, _ := ls.IndexState(candidate.canonical); !exists {
+			absent = append(absent, candidate)
+		}
+	}
+
+	return absent
+}
+
 // rollIndexOp: ~1-in-8 a bulk is an index create/drop rather than ledger
 // traffic. Lifecycle operations consume part of the same finite run, so this
 // rate keeps every builtin and metadata index reachable before the coverage
-// probes are evaluated.
-func rollIndexOp() bool {
+// probes are evaluated. A ledger still missing indexes rolls harder: ledgers
+// are created and deleted mid-run, and a fresh one starts bare, so its whole
+// index set has to be built at more than the saturated fleet's average rate.
+func rollIndexOp(ls oracle.LedgerState) bool {
+	if len(absentIndexes(ls, ledgerIndexPool(ls))) > 0 {
+		return oneIn(3)
+	}
+
 	return oneIn(8)
 }
 
@@ -522,18 +558,17 @@ func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
 	}
 
 	ls := g.Ledger(ledger)
-	all := workloadIndexes()
+	all := ledgerIndexPool(ls)
 
-	// The declared metadata fields of both indexable targets join the pool, so
-	// metadata index lifecycles churn alongside the builtins.
-	for _, target := range []commonpb.TargetType{
-		commonpb.TargetType_TARGET_TYPE_ACCOUNT,
-		commonpb.TargetType_TARGET_TYPE_TRANSACTION,
-	} {
-		for key := range ls.FieldTypesFor(target).All() {
-			id := indexes.MetadataID(target, key)
-			all = append(all, workloadIndex{id, indexes.Canonical(id)})
-		}
+	// A uniform pick spreads lifecycle operations over every (ledger, index)
+	// pair, so a fleet this size converges to "mostly present" far slower than
+	// one run lasts and queries are gated on an absent index. Filling a gap
+	// takes priority; the uniform pick still runs often enough to keep dropping.
+	absent := absentIndexes(ls, all)
+	if len(absent) > 0 && !oneIn(4) {
+		gap := absent[internal.Rand().Intn(len(absent))]
+
+		return createIndexReq(ledger, gap.id)
 	}
 
 	pick := all[internal.Rand().Intn(len(all))]
@@ -543,7 +578,10 @@ func generateIndexOp(g oracle.GlobalState, ledger string) *servicepb.Request {
 		return createIndexReq(ledger, pick.id)
 	}
 
-	if oneIn(3) {
+	// A dropped index is rebuilt from scratch, and queries needing it are gated
+	// until every replica reports it ready, so a high drop rate leaves the
+	// indexed query surface mostly unserved.
+	if oneIn(8) {
 		return dropIndexReq(ledger, pick.id)
 	}
 
