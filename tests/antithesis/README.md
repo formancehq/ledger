@@ -117,6 +117,11 @@ the values under test. Every source ledger ID is checked to exclude another
 incarnation. Streams with errors, repeated cursors, and incomplete folds never
 produce a successful observation.
 
+Witness names use the registered `PrefixStatsWitness` owned-ledger prefix, so
+generic drivers cannot select them in later runs. The command derives a
+five-minute child deadline from `SingletonContext`; this keeps lifecycle
+handling consistent without extending its dedicated qualification budget.
+
 Each replica has a bounded convergence window. Persistent incorrect counts or
 a stalled witness produce an explicit failure with the fixed expectations and
 last complete observation even if later RPCs fail. Results are buffered until a final barrier confirms that no

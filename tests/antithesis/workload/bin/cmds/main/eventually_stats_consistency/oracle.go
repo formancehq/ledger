@@ -57,7 +57,7 @@ func runAttempt(ctx context.Context, conns internal.PerNodeConns, config oracleC
 		return report, fmt.Errorf("selecting source: %w", err)
 	}
 	source := sourceConn.Bucket
-	report.Witness = fmt.Sprintf("stats-witness-%016x", internal.Rand().Uint64())
+	report.Witness = internal.PrefixStatsWitness.WithSuffix(fmt.Sprintf("%016x", internal.Rand().Uint64()))
 	witness, err := createWitness(ctx, source, report.Witness)
 	if err != nil {
 		return report, fmt.Errorf("creating witness: %w", err)

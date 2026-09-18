@@ -12,7 +12,9 @@ import (
 )
 
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	lifecycleCtx, stopLifecycle := internal.SingletonContext()
+	defer stopLifecycle()
+	ctx, cancel := context.WithTimeout(lifecycleCtx, 5*time.Minute)
 	defer cancel()
 	// Startup ID discovery is best-effort; an absent first slot must not spend
 	// the whole oracle budget before per-attempt source selection can run.

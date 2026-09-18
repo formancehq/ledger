@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -497,4 +498,43 @@ func TestRunOracleSelectsReachableSourceAfterAbsentFirstCandidate(t *testing.T) 
 	require.Equal(t, uint32(1), fixture.inactiveRequests.Load(), "only the failed selection probe should contact the absent candidate")
 	require.Equal(t, uint32(1), fixture.membershipReads.Load(), "membership must use the selected healthy source")
 	require.Equal(t, uint32(3), fixture.readinessReads.Load())
+}
+
+func TestRunOracleWitnessIsExcludedFromGenericLedgerSelection(t *testing.T) {
+	t.Parallel()
+	fixture := newOracleLifecycleFixture(0, false)
+	_, candidates := newOracleLifecycleClients(t, fixture)
+	reports := runOracle(sourceTestContext(t), candidates, oracleConfig{
+		Attempts: 1, ConvergenceWindow: time.Minute,
+		Wait: func(context.Context) error { return context.DeadlineExceeded },
+	})
+	require.Len(t, reports, 1)
+	require.True(t, reports[0].Qualified, reports[0].Error)
+	witness := reports[0].Witness // Use the actual command's name, not a test-only prefix.
+
+	for _, shared := range []string{"", "stats-witnesses-shared"} {
+		t.Run("shared="+shared, func(t *testing.T) {
+			t.Parallel()
+			client := newSourceTestClient(t, &oracleTestServer{
+				listLedgersFn: func(_ *servicepb.ListLedgersRequest, stream servicepb.BucketService_ListLedgersServer) error {
+					if err := stream.Send(&commonpb.LedgerInfo{Name: witness}); err != nil {
+						return err
+					}
+					if shared != "" {
+						return stream.Send(&commonpb.LedgerInfo{Name: shared})
+					}
+					return nil
+				},
+			})
+			// With only the witness in the pool, a missing registration leaks it
+			// deterministically. A similar unrestricted name must remain selectable.
+			selected, err := internal.GetRandomLedger(sourceTestContext(t), client)
+			if shared == "" {
+				require.ErrorIs(t, err, io.EOF, "generic drivers must never select the oracle's witness")
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, shared, selected)
+		})
+	}
 }
