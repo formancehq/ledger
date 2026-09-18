@@ -15,7 +15,7 @@ This page covers both. The cryptographic request-signing layer (Ed25519, used to
 
 ### Token formats
 
-`internal/adapter/auth/grpc_auth.go:validateToken (lines 186-241)` accepts two formats:
+`internal/adapter/auth/grpc_auth.go:validateToken` accepts two formats:
 
 | Format | Use case |
 |--------|---------|
@@ -37,7 +37,7 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 
 `validateToken()` runs on every request — there is **no token cache**. Steps:
 
-1. Decode the token (`grpc_auth.go:189`).
+1. Decode the token (`grpc_auth.go:validateToken`).
 2. Parse claims (`oidc.AccessTokenClaims`).
 3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
 4. Verify expiration.
@@ -85,7 +85,7 @@ HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:10
 | Bearer token invalid (bad signature, expired, wrong issuer) | `Unauthenticated` | 401 |
 | Bearer token valid, scopes insufficient | `PermissionDenied` | 403 |
 
-Failures are structured-logged with reason, key ID, remote address, and an OTel span via `logAuthFailure()` (`grpc_auth.go:257-292`) — so an operator can correlate a 403 to a specific span without parsing logs.
+Failures are structured-logged with reason, key ID, remote address, and an OTel span via `grpc_auth.go:logAuthFailure` — so an operator can correlate a 403 to a specific span without parsing logs.
 
 ## Anonymous access
 
@@ -111,7 +111,7 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:91-100`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
+There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:EvaluateGRPCCredentials`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
 
 ## Caller identity in the audit chain
 

@@ -423,8 +423,11 @@ func TestApplyDynamicAuthorizationPreservesSignedPayloadPrecedence(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := authorizeDynamicUnaryRPC(ctx, test.request, commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY)
+			authorizedCtx, err := authorizeDynamicUnaryRPC(ctx, test.request, commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY)
 			require.Equal(t, test.wantCode, status.Code(err))
+			if test.name == "authorized request" {
+				require.Equal(t, 1, authorizedCtx.Value(applyBatchSizeKey{}))
+			}
 		})
 	}
 }

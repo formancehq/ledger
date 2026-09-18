@@ -149,20 +149,6 @@ func AuthorizeGRPC(ctx context.Context, scopes ...Scope) error {
 	return status.Errorf(codes.PermissionDenied, "missing required scope (required: %v)", scopes)
 }
 
-// Authenticate is retained for compatibility tests and non-handler callers.
-// Public gRPC handlers are authenticated by the service interceptors.
-func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context.Context, error) {
-	ctx, err := EvaluateGRPCCredentials(ctx, cfg)
-	if err != nil {
-		return ctx, err
-	}
-	if err := AuthorizeGRPC(ctx, scopes...); err != nil {
-		return ctx, err
-	}
-
-	return ctx, nil
-}
-
 // isGodMode checks whether the token contains the custom "god": true claim,
 // which grants all granular scopes regardless of what scopes the token carries.
 func isGodMode(claims *oidc.AccessTokenClaims) bool {

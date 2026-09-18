@@ -14,6 +14,7 @@ import (
 )
 
 type queryProfileClockKey struct{}
+type applyBatchSizeKey struct{}
 
 func queryProfileClockUnaryInterceptor() ggrpc.UnaryServerInterceptor {
 	return queryProfileClockUnaryInterceptorAt(time.Now)
@@ -55,7 +56,8 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerIntercep
 		if err != nil {
 			return nil, err
 		}
-		if err := authorizeUnaryRPC(ctx, req, policy); err != nil {
+		ctx, err = authorizeUnaryRPC(ctx, req, policy)
+		if err != nil {
 			return nil, err
 		}
 
@@ -109,65 +111,65 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 	}
 }
 
-func authorizeUnaryRPC(ctx context.Context, req any, policy *commonpb.MethodAuthPolicy) error {
+func authorizeUnaryRPC(ctx context.Context, req any, policy *commonpb.MethodAuthPolicy) (context.Context, error) {
 	switch typed := policy.GetPolicy().(type) {
 	case *commonpb.MethodAuthPolicy_FixedScope:
 		scope, err := authScope(typed.FixedScope)
 		if err != nil {
-			return err
+			return ctx, err
 		}
 
-		return internalauth.AuthorizeGRPC(ctx, scope)
+		return ctx, internalauth.AuthorizeGRPC(ctx, scope)
 	case *commonpb.MethodAuthPolicy_DynamicResolver:
 		return authorizeDynamicUnaryRPC(ctx, req, typed.DynamicResolver)
 	default:
-		return status.Error(codes.Internal, "RPC authentication policy is missing")
+		return ctx, status.Error(codes.Internal, "RPC authentication policy is missing")
 	}
 }
 
-func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.DynamicAuthResolver) error {
+func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.DynamicAuthResolver) (context.Context, error) {
 	switch resolver {
 	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY:
 		applyReq, ok := req.(*servicepb.ApplyRequest)
 		if !ok {
-			return unexpectedAuthRequest(resolver, req)
+			return ctx, unexpectedAuthRequest(resolver, req)
 		}
 
 		batch, err := servicepb.PeekBatch(applyReq)
 		if err != nil {
 			if applyReq.GetSigned() != nil {
-				return nil
+				return ctx, nil
 			}
 
-			return status.Errorf(codes.InvalidArgument, "%v", err)
+			return ctx, status.Errorf(codes.InvalidArgument, "%v", err)
 		}
 		if len(batch.GetRequests()) == 0 {
-			return errEnvelopesRequired
+			return ctx, errEnvelopesRequired
 		}
 		for index, request := range batch.GetRequests() {
 			required := internalauth.RequiredScopeForRequest(request)
 			if err := internalauth.AuthorizeGRPC(ctx, required); err != nil {
-				return status.Errorf(status.Code(err), "request %d requires scope %s", index, required)
+				return ctx, status.Errorf(status.Code(err), "request %d requires scope %s", index, required)
 			}
 		}
 
-		return nil
+		return context.WithValue(ctx, applyBatchSizeKey{}, len(batch.GetRequests())), nil
 	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX:
 		indexReq, ok := req.(*servicepb.GetIndexRequest)
 		if !ok {
-			return unexpectedAuthRequest(resolver, req)
+			return ctx, unexpectedAuthRequest(resolver, req)
 		}
 
-		return internalauth.AuthorizeGRPC(ctx, indexAuthScope(indexReq.GetLedger()))
+		return ctx, internalauth.AuthorizeGRPC(ctx, indexAuthScope(indexReq.GetLedger()))
 	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS:
 		entryReq, ok := req.(*servicepb.GetIndexEntryStatusRequest)
 		if !ok {
-			return unexpectedAuthRequest(resolver, req)
+			return ctx, unexpectedAuthRequest(resolver, req)
 		}
 
-		return internalauth.AuthorizeGRPC(ctx, indexAuthScope(entryReq.GetLedger()))
+		return ctx, internalauth.AuthorizeGRPC(ctx, indexAuthScope(entryReq.GetLedger()))
 	default:
-		return status.Errorf(codes.Internal, "dynamic resolver %s is not valid for a unary RPC", resolver)
+		return ctx, status.Errorf(codes.Internal, "dynamic resolver %s is not valid for a unary RPC", resolver)
 	}
 }
 
