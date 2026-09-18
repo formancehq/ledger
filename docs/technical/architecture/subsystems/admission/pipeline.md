@@ -19,8 +19,9 @@ sequenceDiagram
     participant FSM as FSM<br/>(infra/state)
 
     C->>I: Apply(SignedApplyBatch)
-    I->>I: Authenticate JWT + PeekBatch<br/>authorize every embedded request
-    I->>G: trusted request + caller snapshot
+    I->>I: Authenticate credentials + PeekBatch<br/>if parseable, authorize every embedded request
+    I->>G: unverified request + authenticated caller state<br/>+ optional peeked batch size
+    G->>G: If cluster-internal, adopt forwarded caller snapshot
     G->>Ctrl: ctrl.Apply(batch)
     Ctrl->>A: Admit(batch)
     A->>A: Health + maintenance check
@@ -47,10 +48,10 @@ sequenceDiagram
 
 | Layer | Location | Role |
 |-------|----------|------|
-| gRPC interceptor | `authUnaryInterceptor` — `internal/adapter/grpc/auth_interceptor.go` | Authenticate the caller, `PeekBatch`, authorize every embedded request, and attach the trusted batch size and caller state to the context. |
-| gRPC handler | `BucketServiceServerImpl.Apply` — `internal/adapter/grpc/server_bucket.go` | Adopt a trusted forwarded caller snapshot, short-circuit cross-node forwarding, record metrics from the interceptor's batch size, then delegate. |
+| gRPC interceptor | `authUnaryInterceptor` — `internal/adapter/grpc/auth_interceptor.go` | Authenticate the caller and inspect the request with `PeekBatch`. If the payload is parseable, authorize every embedded request and attach its non-authoritative batch size to the context. Signed payloads that cannot be peeked continue to admission so signature verification retains precedence. The interceptor does not verify the signed payload or adopt a forwarded caller snapshot. |
+| gRPC handler | `BucketServiceServerImpl.Apply` — `internal/adapter/grpc/server_bucket.go` | At the forwarding trust boundary, adopt a forwarded caller snapshot only from a cluster-internal connection, short-circuit cross-node forwarding, record metrics from any batch size peeked by the interceptor, then delegate. |
 | Controller | `DefaultController.Apply` — `internal/application/ctrl/controller_default.go` | Forwarding layer. Peeks the batch for metrics and traces, delegates to `Admission.Admit`, records duration. No mutation. |
-| Admission | `Admission.Admit` — `internal/application/admission/admission.go` | The real pipeline. |
+| Admission | `Admission.Admit` — `internal/application/admission/admission.go` | Verify and extract signed payloads, then run the real pipeline. Only this verified extraction makes a signed batch authoritative. |
 
 The gRPC interceptor, handler, and controller layers exist so the same admission logic can sit behind multiple transports (HTTP REST is a thin wrapper over the same controller) and so cross-cutting concerns (auth, telemetry, forwarding, and peek-then-delegate) stay outside the pipeline body.
 
