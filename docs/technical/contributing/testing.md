@@ -437,7 +437,8 @@ restarts the complete query within a ten-second context, discarding partial
 rows. A status response from a different replica cannot certify readiness.
 Only clean EOF makes a page conclusive; ten rows suffice for these absence and
 at-most-one checks. Permanent setup/read errors, including missing indexes,
-emit an Unreachable assertion with the ledger, filter, error and partial IDs.
+emit an Unreachable assertion with the ledger, operation, error and gRPC code.
+Read errors also include the filter and partial transaction IDs.
 Transient failures and caller cancellation do not certify a business result.
 The shared RPC classification is unchanged.
 

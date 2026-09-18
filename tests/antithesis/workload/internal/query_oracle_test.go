@@ -2,6 +2,7 @@ package internal_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"testing"
 
@@ -105,6 +106,32 @@ func TestQueryOracleRetriesIndexBuilding(t *testing.T) {
 	})
 }
 
+func TestQueryOracleUnfaultedStreamPreservesEOF(t *testing.T) {
+	drivertest.CheckEmissions(t, func() {
+		ctx, client := drivertest.StartServer(t)
+		expected := seedOracle(t, ctx, client)
+		reader := &faultedQueryClient{BucketServiceClient: client}
+		stream, err := reader.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+			Ledger: "oracle", Options: &commonpb.ListOptions{Filter: actions.ReferenceFilter("reference")},
+		})
+		require.NoError(t, err)
+		tx, err := stream.Recv()
+		require.NoError(t, err)
+		require.Equal(t, expected[0], tx.GetId())
+		tx, err = stream.Recv()
+		require.ErrorIs(t, err, io.EOF, "an unfaulted decorator must preserve the real stream's end")
+		require.Nil(t, tx)
+
+		ids, err := workload.ReadOracleTransactions(ctx, reader, "oracle", actions.ReferenceFilter("reference"))
+		require.NoError(t, err)
+		require.Equal(t, expected, ids, "a fresh complete read must finish with the real transaction")
+	}, func(records []drivertest.Assertion) {
+		for _, record := range records {
+			require.NotEqual(t, permanentOracleError, record.Message)
+		}
+	})
+}
+
 func TestQueryOracleSetupError(t *testing.T) {
 	drivertest.CheckEmissions(t, func() {
 		ctx, client := drivertest.StartServer(t)
@@ -195,7 +222,7 @@ type faultedQueryStream struct {
 
 func (s *faultedQueryStream) Recv() (*commonpb.Transaction, error) {
 	tx, err := s.ServerStreamingClient.Recv()
-	if err == io.EOF {
+	if errors.Is(err, io.EOF) && s.failure != nil {
 		return nil, s.failure
 	}
 	return tx, err
