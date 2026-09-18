@@ -92,6 +92,34 @@ The prefix encodes **how Antithesis schedules the binary**:
 | `eventually_` | Runs at the **end** of the workload, after writers have quiesced. | Cross-checks that only make sense after the system has had time to converge (balance audits, cross-node identity). |
 | `first_` | Runs **before** the parallel pool starts. | One-shot setup (e.g. `first_default_ledger`). |
 
+## Balance cross-check quiescence
+
+`eventually_correct` establishes an initial horizon with two consecutive Raft
+barriers. Each successful `Barrier` appends one no-op entry, so an idle pair has
+indices `Q`, `Q+1`. If a list/get balance comparison differs, requalification
+starts from the preceding horizon: `Q+1` accounts for the recheck's own barrier
+and permits reporting the mismatch. Any additional entry requires a complete
+re-read after quiescence. That entry may be a late write, another check's barrier,
+or an ambiguously retried RPC; the index jump alone does not identify its cause.
+
+A failed or expired requalification is inconclusive. Each quiescence search and
+each full comparison has a budget of 20 attempts; exhaustion stops the check
+without asserting a balance divergence or successful comparison. The budgets
+count workload calls, while the client's existing RPC retries remain bounded by
+the singleton context. They do not change the server's Barrier contract.
+
+`quiescence_test.go` starts a real local server and captures SDK observations in
+isolated subprocesses. It proves idle barrier increments, persistent divergence
+injected only into an observed response, a real late transaction followed by
+convergence, ambiguous barrier completion, unavailable/expired requalification,
+and the full-comparison bound under continued writes. The injected observation
+is a test of the workload oracle, not evidence of an engine corruption.
+
+```sh
+cd tests/antithesis/workload
+GOMAXPROCS=2 GOFLAGS=-p=2 go test -race ./bin/cmds/main/eventually_correct -run TestQuiescenceAgainstServer -count=1
+```
+
 ## Driver-side conventions
 
 These conventions are what every driver in this tree should follow. They exist
