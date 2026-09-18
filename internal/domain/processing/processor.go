@@ -49,6 +49,32 @@ type Context struct {
 	// the stale-inputs check. Empty when the order carries no resolution hash.
 	InputsResolutionHash []byte
 
+	// RevertTargetDigest is the admission-derived digest of what the revert
+	// target looked like when admission declared THIS order's volume coverage
+	// (from OrderTechnical). Like InputsResolutionHash it lives on the parent
+	// Order, so the dispatcher stages it here for processRevertTransaction.
+	// Empty for every non-revert order.
+	RevertTargetDigest []byte
+
+	// batchInitialNextTxID is the NextTransactionId each ledger carried before
+	// this batch mutated it, captured by processApply on the first *apply* order
+	// for that ledger. A revert whose target id is at or above this value targets
+	// a transaction the batch itself creates, which admission could not observe —
+	// see processRevertTransaction. Derived from committed state, so every
+	// replica computes the same value.
+	//
+	// Mirror ingest also advances NextTransactionId (processMirrorFillGap,
+	// processMirrorCreatedTransaction, processMirrorRevertedTransaction) and
+	// records no horizon. That is sound because the two can never touch the same
+	// ledger: processMirrorIngest refuses a ledger not in MIRROR mode, and
+	// processApply refuses a revert on one that is (isMirrorSafeApply whitelists
+	// only schema operations). A mirror revert is dispatched to
+	// processMirrorRevertedTransaction and never reaches the observation check.
+	// It is that mode split, not an apply-only monopoly on the counter, that
+	// makes the missing horizon unreachable — widen either side and this must be
+	// captured in processMirrorIngest too.
+	batchInitialNextTxID map[string]uint64
+
 	// Per-apply — set by processApply / processMirrorIngest before
 	// dispatching to apply-child handlers; nil/empty otherwise.
 	// LedgerInfo is the immutable reader view: read-only child handlers
@@ -160,9 +186,10 @@ func (p *RequestProcessor) ProcessOrders(orders []*raftcmdpb.Order, scopeFactory
 	// per-apply fields (Boundaries, LedgerInfo) are populated by the apply
 	// orchestrators.
 	ctx := &Context{
-		NumscriptCache: p.numscriptCache,
-		CompiledTypes:  p.compiledTypesCache,
-		AssetCache:     p.assetCache,
+		NumscriptCache:       p.numscriptCache,
+		CompiledTypes:        p.compiledTypesCache,
+		AssetCache:           p.assetCache,
+		batchInitialNextTxID: make(map[string]uint64),
 	}
 
 	ctx.metadataBudget = &commandMetadataBudget{}
@@ -392,6 +419,12 @@ func HashOrders(orders []*raftcmdpb.Order) []byte {
 //     a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT (EN-1406 P1-3). It is a
 //     preload/staleness hint, not logical identity.
 //   - preload_unavailable: an admission-forwarding marker, never logical identity.
+//   - revert_target_digest: what admission observed of the revert target when it
+//     derived that order's volume coverage. The same revert re-admitted against a
+//     node that has since applied the target binds a different digest, so hashing
+//     it would turn a legitimate replay into an IDEMPOTENCY_KEY_CONFLICT. It is a
+//     staleness binding, not logical identity — the caller's intent is the
+//     transaction id, which lives on the business payload.
 //
 // out is marshalled into buf[:0] (grown as needed) and returned; reuse it as buf
 // on the next call to amortize allocations. Pass nil to allocate a fresh slice
@@ -433,10 +466,11 @@ func hashOrder(order *raftcmdpb.Order, buf []byte) (hash []byte, grownBuf []byte
 // processor's per-batch caches and forwards to processOrder.
 func (p *RequestProcessor) ProcessOrder(order *raftcmdpb.Order, s Scope) (*commonpb.LogPayload, domain.Describable) {
 	ctx := &Context{
-		metadataBudget: &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
-		NumscriptCache: p.numscriptCache,
-		CompiledTypes:  p.compiledTypesCache,
-		AssetCache:     p.assetCache,
+		metadataBudget:       &commandMetadataBudget{bytes: domain.OrderMetadataSize(order)},
+		NumscriptCache:       p.numscriptCache,
+		CompiledTypes:        p.compiledTypesCache,
+		AssetCache:           p.assetCache,
+		batchInitialNextTxID: make(map[string]uint64),
 	}
 
 	return p.processOrder(order, s, ctx)
@@ -452,6 +486,7 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// the stale-inputs check in the numscript producer, which only sees the
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
+	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil
