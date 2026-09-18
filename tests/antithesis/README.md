@@ -229,11 +229,17 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   must include the status code, error string (including any correlation ID),
   ledger and received count in assertion details; a raw error object may
   serialize without its message. `Unknown` is not a normal transient.
+- A receive status of `Canceled` is local teardown only when the caller's
+  context is itself done. Keep remote `Canceled` under a live caller visible,
+  and never suppress another status such as `Unknown` merely because the
+  caller was canceled concurrently.
 
 The audit driver has a local regression suite that invokes its real entrypoint
 against a controlled gRPC stream and inspects the SDK assertion output. It
 covers failures before and after a received prefix, known transients, and clean
-empty/nonempty results without needing an Antithesis run:
+empty/nonempty results without needing an Antithesis run. Cancellation cases
+exercise the same cycle callback with a controlled caller context and real gRPC
+receives, including a server error observed concurrently with local cancellation:
 
 ```sh
 cd tests/antithesis/workload
