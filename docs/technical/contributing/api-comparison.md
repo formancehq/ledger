@@ -747,28 +747,43 @@ worth relying on:
   (`release/v2.4` sets it under `COALESCE(d.insertion_date, transaction_date())`
   on the insert arm only). Copy it at cut-over or lose it — the v3 side has no
   first-insert concept to derive it from.
-- `updated_at` is refreshed on every write that touches the account, so a
-  copy is a snapshot that starts going stale immediately. If a workflow needs
-  it live, it needs an application-maintained key stamped on each write, with
-  no once-only guard — which is the ordinary overwrite that
-  `SaveAccountMetadata` already does.
+- `updated_at` moves only when the account row is actually rewritten. The
+  conflict arm carries `WHERE ... (d.first_usage < a.first_usage OR NOT
+  a.metadata @> d.metadata)`, so a later posting that changes no metadata and
+  supplies no earlier date leaves the row — and the timestamp — untouched. It
+  is *not* a last-touched marker. An application key stamped on every write is
+  the closest v3 equivalent, but it is a different semantic: it moves where v2
+  would have stood still.
 
-**Nothing in the mirror path carries `first_usage` across.** Copying the v2 value into the typed `datetime` metadata
-key at cut-over is the only lossless option. Reconstruction after the fact is
-possible because history is permanent, but it has to reproduce what v2 actually
-means, and v2 lowers `first_usage` from **two** paths (`release/v2.4`):
+**Nothing in the mirror path carries `first_usage` across.** Copying the v2
+value into the typed `datetime` metadata key at cut-over is the only lossless
+option. Reconstruction after the fact is possible because history is permanent,
+but it has to reproduce what v2 actually does, and v2 writes the field in two
+distinct ways (`release/v2.4`):
 
-- `upsertTransactionAccounts` → the **effective date** of every transaction the
-  account takes part in;
-- `UpdateAccountsMetadata` → the **log date** of every account-metadata save,
-  with the same `LEAST`-style conflict clause. An account that only ever
-  received metadata has a `first_usage` and no transaction at all.
+- **Established on insert.** Whichever write first creates the account row sets
+  `first_usage` to `COALESCE(d.first_usage, transaction_date())`. A transaction
+  supplies its effective date; a plain `SaveAccountMetadata` supplies nothing
+  and takes `transaction_date()`, so a metadata-only account does have a
+  `first_usage` with no transaction behind it.
+- **Lowered afterwards only by a write that supplies an earlier value**, through
+  `first_usage = LEAST(d.first_usage, a.first_usage)`. Two callers supply one:
+  `upsertTransactionAccounts` (the transaction's effective date) and, on the
+  import path only, `importLog` → `UpdateAccountsMetadata` (the log date).
 
-So the equivalent is the minimum over both arms — every transaction touching
-the address and every `SavedMetadata` log targeting it — scanned across the
-whole log. O(history), fine as a one-off. A transaction-only scan silently
-returns a later date for any account given metadata before its first posting,
-and misses metadata-only accounts entirely.
+A normal `SaveAccountMetadata` is **not** in that second group: it calls
+`UpsertAccounts` with the date fields unset, `LEAST` ignores the NULL, and the
+`WHERE` gate's `d.first_usage < a.first_usage` is never true for it. So an
+ordinary metadata save on an account that already exists does not move
+`first_usage` at all.
+
+The reconstruction that follows from this: take the minimum transaction
+effective date over every transaction touching the address; where the account
+has no transaction, fall back to the date of the log that first created it —
+the closest recoverable proxy for the `transaction_date()` that v2 stamped; and
+on a ledger populated by `Import`, also take the log dates of the replayed
+metadata entries, which is the one case where a metadata save really can lower
+the value. A transaction-only scan misses metadata-only accounts entirely.
 
 **On a mirrored ledger the metadata arm is not in the emitted log — read the
 audit chain or the v2 log instead.** `processMirrorSavedMetadata` is called
