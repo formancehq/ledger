@@ -322,7 +322,9 @@ ledgerctl ledgers create [flags]
 |------|---------|-------------|
 | `--name` | | Name of the ledger to create |
 | `--metadata` | | Metadata key=value pairs |
-| `--schema` | | Metadata schema in `target:key:type` format (repeatable) |
+| `--schema` | | Metadata schema in `target:key:type` format (repeatable; keys may contain colons) |
+| `--index` | | Initial index, builtin name or `metadata:target:key` with target `account` or `transaction` (repeatable) |
+| `--idempotency-key` | | Idempotency key for the whole creation batch, including its indexes |
 | `--mode` | `normal` | Ledger mode: `normal` or `mirror` |
 | `--mirror-source-type` | `http` | Mirror source type: `http` or `postgres` |
 | `--mirror-ledger-name` | | Source ledger name in the v2 system (defaults to ledger name) |
@@ -344,6 +346,9 @@ ledgerctl ledgers create [flags]
 
 **Behavior:**
 - In interactive mode (no `--schema` flags), prompts "Add metadata schema?" and loops through target/key/type selection
+- Initial schema and indexes are committed atomically with ledger creation. A mirror cannot ingest history between these declarations. An invalid index rejects the entire batch.
+- Builtin `--index` values are `address`, `source-address`, `destination-address`, `reference`, `timestamp`, `inserted-at`, `reverted-at`, and `account-asset`. Metadata indexes require a matching `--schema` declaration.
+- Retry an identical creation command with the same `--idempotency-key` to recover its original result within the server's idempotency retention window.
 - If the ledger is created with a schema, the schema is displayed in the output
 - For mirror mode, displays the mirror source configuration in the output
 
@@ -358,6 +363,14 @@ ledgerctl ledgers create --name my-ledger --metadata description="My ledger" --m
 
 # Create with typed metadata schema
 ledgerctl ledgers create --name my-ledger --schema account:age:int64 --schema account:active:bool
+
+# Create a mirror with its query indexes before ingestion starts
+ledgerctl ledgers create --name indexed-mirror \
+  --mode mirror --mirror-base-url https://v2-api.example.com \
+  --schema transaction:external:id:string \
+  --index reference --index account-asset \
+  --index metadata:transaction:external:id \
+  --idempotency-key indexed-mirror-provisioning
 
 # Create a mirror ledger from an HTTP v2 source with OAuth2
 ledgerctl ledgers create --name my-mirror \

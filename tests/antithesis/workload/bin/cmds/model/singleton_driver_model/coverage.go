@@ -73,7 +73,14 @@ func coverageTargetName(target commonpb.QueryTarget) string {
 // exercised rather than merely compiled.
 const coverageRetypeMessage = coveragePrefix + "a query was served while a retype window was open"
 
-// queryCoverageMessages lists the query sondes, in registration order.
+const (
+	coverageDeletionMessage    = coveragePrefix + "ledger deletion and reserved-name rejection verified"
+	coveragePromotionMessage   = coveragePrefix + "mirror promotion and write recovery verified"
+	coverageMaintenanceMessage = coveragePrefix + "concurrent maintenance rejection verified"
+)
+
+// Query sondes are evaluated by served pages; lifecycle sondes are evaluated
+// when their generated concurrent outcomes pass model validation.
 func queryCoverageMessages() []string {
 	out := make([]string, 0, len(coverageIndexes)+3)
 	for _, wi := range coverageIndexes {
@@ -95,7 +102,8 @@ func checkpointCoverageMessages() []string {
 }
 
 func coverageMessages() []string {
-	return append(queryCoverageMessages(), checkpointCoverageMessages()...)
+	out := append(queryCoverageMessages(), checkpointCoverageMessages()...)
+	return append(out, coverageDeletionMessage, coveragePromotionMessage, coverageMaintenanceMessage)
 }
 
 // registerCoverage declares every sonde before the run loop starts, so one that

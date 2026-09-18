@@ -1595,4 +1595,49 @@ func TestResolveBatch(t *testing.T) {
 		_, err := adm.resolveBatch(context.Background(), signedBatchRequest(t, req, "my-key", otherPrivKey))
 		require.ErrorIs(t, err, signing.ErrInvalidSignature)
 	})
+
+	// Once a cascade revoke has removed both P and the child it re-registered
+	// (EN-2011), neither can get back in — and the rejection happens HERE, at the
+	// key lookup, not at the idempotency gate further down the pipeline.
+	//
+	// The distinction matters for how a replay of the original batch is reasoned
+	// about: the envelope signed by P never reaches the idempotency cache after P
+	// is gone, so "the idempotency key would return the original outcome" is not
+	// what stops it. The key lookup is, and it stops the re-registered child's
+	// replacement key on exactly the same step.
+	t.Run("a cascade-revoked key is rejected at the lookup, before idempotency", func(t *testing.T) {
+		t.Parallel()
+		store := createTestStore(t)
+		adm, _ := createTestAdmission(t, store)
+
+		parentPubKey, parentPrivKey := generateTestKeyPair(t)
+		_, replacementPrivKey := generateTestKeyPair(t)
+
+		adm.keyStore.AddPublicKey("P", parentPubKey, "")
+
+		req := &servicepb.Request{
+			Type: &servicepb.Request_RevokeSigningKey{
+				RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{KeyId: "P", Cascade: true},
+			},
+		}
+
+		// The envelope P signed while it was still live, kept so the post-revoke
+		// replay below is the same bytes rather than a fresh signature.
+		original := signedBatchRequest(t, req, "P", parentPrivKey)
+
+		_, err := adm.resolveBatch(context.Background(), original)
+		require.NoError(t, err, "P must be admitted while it is still registered")
+
+		// The FSM applied the cascade: P and the child it had re-registered are both
+		// out of the key store.
+		adm.keyStore.RemovePublicKey("P")
+
+		_, err = adm.resolveBatch(context.Background(), original)
+		require.ErrorIs(t, err, signing.ErrUnknownKeyID,
+			"replaying the original envelope fails at the key lookup once P is revoked")
+
+		_, err = adm.resolveBatch(context.Background(), signedBatchRequest(t, req, "C", replacementPrivKey))
+		require.ErrorIs(t, err, signing.ErrUnknownKeyID,
+			"the cascaded child's replacement key is rejected on the same step")
+	})
 }

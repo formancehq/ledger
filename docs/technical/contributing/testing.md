@@ -468,6 +468,48 @@ a later non-skippable failure. Invalid opt-ins must fail admission. Enforcement
 mode, chart, and ledger metadata readback must match the same model snapshot.
 Signing-key lifecycle and signed submissions remain outside this model driver.
 
+#### Ledger lifecycle coverage
+
+The model driver generates ledger creation, deletion, mirror promotion, and
+maintenance toggles in the same concurrent bulk stream as business writes. The
+oracle owns ledger existence and filters deleted names from reads and generation.
+Mirror ledgers remain eligible for lifecycle operations and reads, but enter the
+business-write pool only after their promotion has committed.
+Because deletion permanently reserves a name, committed creations grow the
+`model-<runID>-<n>` pool; creation is biased when deletion shrinks the live pool.
+
+Maintenance mode is a global admission gate modeled in `GlobalState.Apply`.
+The workload retry predicate surfaces a first-attempt `MAINTENANCE_MODE`
+rejection even though the transport code is `Unavailable`. When maintenance is
+observed after an ambiguous transport attempt, an enabling request stops because
+it may itself have activated the gate; the driver submits that rejection for
+model validation while preserving the request as a possibly committed
+predecessor. Other idempotency-keyed requests keep retrying through the
+already-scheduled recovery window so their ambiguous outcome becomes definitive.
+A successful or ambiguously committed enable schedules a randomly delayed
+disable through the normal in-flight/processor path, preventing all workers from
+becoming stuck behind the gate. Enable generation is deliberately rarer than
+disable generation because every active window pauses useful business coverage.
+Concurrent ambiguous enables are coalesced into one state-equivalent optional
+predecessor so they cannot exceed the candidate-search capacity.
+Startup and shutdown also make a best-effort disable so an interrupted run
+cannot block the next invocation.
+
+Each of deletion, promotion, and maintenance has a required coverage marker.
+Creation back-pressure keeps the live pool near its configured size while still
+allowing retained tombstone names to accumulate as required by the service contract.
+
+EN-1627's original successful same-name recreation expectation does not match the
+current service contract: deletion retains a tombstone and recreation returns
+`LEDGER_DELETED`. The model tests that rejection. It does not claim to prove
+projection cleanup by querying a successfully recreated ledger. Concurrent
+ledger-scoped reads validate NotFound against candidate lifecycle states when a
+selected ledger is deleted before the read executes. Reads otherwise hide retired
+ledgers even when ledger-scoped rows remain physically present. Repeated
+deletion can still operate on retained tombstones. Other ledger-scoped writes,
+including ledger metadata changes, return `LEDGER_DELETED`. The service-backed
+lifecycle scenario compares the supported outcomes with the real API.
+
 #### How it works
 
 N workers fan out across a fleet of ledgers, dispatching bulks concurrently;
@@ -543,7 +585,7 @@ Common tunables (full list in the script header):
 
 | Variable | Meaning |
 |----------|---------|
-| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. |
+| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. Workers are capped at 6 because candidate-state search is exponential in outstanding writes; two additional slots are reserved for maintenance recovery and one retained ambiguous enable. |
 | `MODEL_DEBUG` | Enable driver debug logging. |
 | `MODEL_FAIL_FAST` | Stop on first finding (default); `0` runs the full duration. |
 | `MODEL_DUMP_BATCHES` | Log every submitted bulk (`[batch-dump]` lines) for deterministic offline replay through `tests/oracle/cmd/replay`. |

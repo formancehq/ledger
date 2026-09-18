@@ -11,6 +11,8 @@ import (
 	"golang.org/x/term"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
+	domainindexes "github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -29,6 +31,8 @@ func NewCreateCommand() *cobra.Command {
 
 	cmd.Flags().String("name", "", "Name of the ledger to create")
 	cmd.Flags().StringArray("schema", nil, "Metadata schema entries in target:key:type format (can be repeated, e.g. account:age:int64)")
+	cmd.Flags().StringArray("index", nil, "Initial index: a builtin type (e.g. reference) or metadata:<account|transaction>:<key> (repeatable; atomic with ledger creation)")
+	cmd.Flags().String("idempotency-key", "", "Idempotency key for the entire ledger creation batch")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -87,6 +91,12 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	indexEntries, _ := cmd.Flags().GetStringArray("index")
+	initialIndexes, err := parseInitialIndexes(indexEntries)
+	if err != nil {
+		return err
+	}
+
 	// Parse mirror mode
 	mode, mirrorSource, err := parseMirrorFlags(cmd, name)
 	if err != nil {
@@ -131,6 +141,14 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 				},
 			},
 		},
+	}
+
+	// Keep index declarations in the creation proposal so the mirror worker
+	// cannot commit history before its initial query indexes exist (EN-2070).
+	for _, id := range initialIndexes {
+		requests = append(requests, &servicepb.Request{Type: &servicepb.Request_CreateIndex{
+			CreateIndex: &servicepb.CreateIndexRequest{Ledger: name, Id: id},
+		}})
 	}
 
 	applyReq, err := cmdutil.BuildApplyRequest(cmd, requests...)
@@ -197,6 +215,33 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 
 	if ledger.GetMetadataSchema() != nil {
 		renderLedgerSchema(ledger.GetMetadataSchema())
+	}
+
+	// Render any CreateIndex logs that followed the CreateLedger log in the
+	// atomic batch (see EN-2070). Each outer Log wraps an ApplyLedgerLog; the
+	// inner LedgerLog carries the CreateIndex payload.
+	var indexLines []string
+	for _, lg := range resp.GetLogs()[1:] {
+		applyLog := lg.GetPayload().GetApply()
+		if applyLog == nil {
+			continue
+		}
+		createdIdx := applyLog.GetLog().GetData().GetCreateIndex()
+		if createdIdx == nil {
+			continue
+		}
+		typeName, target, key := describeIndex(createdIdx.GetId())
+		if target != "-" && key != "-" {
+			indexLines = append(indexLines, fmt.Sprintf("  %s (%s.%s)", typeName, target, key))
+		} else {
+			indexLines = append(indexLines, "  "+typeName)
+		}
+	}
+	if len(indexLines) > 0 {
+		pterm.Printf("Indexes:\n")
+		for _, line := range indexLines {
+			pterm.Println(line)
+		}
 	}
 
 	return nil
@@ -306,4 +351,23 @@ func schemaWizard() ([]*commonpb.SetMetadataFieldTypeCommand, error) {
 	}
 
 	return schema, nil
+}
+
+func parseInitialIndexes(entries []string) ([]*commonpb.IndexID, error) {
+	var ids []*commonpb.IndexID
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		id, err := indexes.ParseDefinition(entry)
+		if err != nil {
+			return nil, err
+		}
+		canonical := domainindexes.Canonical(id)
+		if _, duplicate := seen[canonical]; duplicate {
+			return nil, fmt.Errorf("duplicate initial index %q", entry)
+		}
+		seen[canonical] = struct{}{}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
 }
