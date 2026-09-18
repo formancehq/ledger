@@ -223,6 +223,22 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   && !IsTransient(err) { assert.Unreachable(...) }` before skipping is the
   minimum bar. Otherwise an `InvalidArgument` on a `Recv()` is undistinguishable
   from a partition-induced `Aborted`.
+- Evaluate stream-content invariants only after clean `io.EOF`. Every other
+  receive error must return before validating counts or reporting a completed
+  cycle, even when some entries were received. Unexpected receive failures
+  must include the status code, error string (including any correlation ID),
+  ledger and received count in assertion details; a raw error object may
+  serialize without its message. `Unknown` is not a normal transient.
+
+The audit driver has a local regression suite that invokes its real entrypoint
+against a controlled gRPC stream and inspects the SDK assertion output. It
+covers failures before and after a received prefix, known transients, and clean
+empty/nonempty results without needing an Antithesis run:
+
+```sh
+cd tests/antithesis/workload
+go test -race ./bin/cmds/main/parallel_driver_audit -run '^TestAuditDriverStream' -count=1
+```
 
 ### What *not* to do
 
@@ -250,9 +266,10 @@ just compose-down
 just k8s-push-images
 ```
 
-`run_model_test.sh` only exercises `singleton_driver_model` — the 60+
-property drivers under `main/` are tested exclusively by the Antithesis
-hypervisor.
+`run_model_test.sh` only exercises `singleton_driver_model`. The 60+
+property drivers under `main/` run their chaos scenarios on the Antithesis
+hypervisor; focused driver regressions can also run locally, as in the audit
+stream test above.
 
 ## Adding a new driver
 

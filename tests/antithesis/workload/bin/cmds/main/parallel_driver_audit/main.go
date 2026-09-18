@@ -9,6 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"google.golang.org/grpc/status"
 )
 
 func main() {
@@ -58,7 +59,6 @@ func main() {
 		}
 
 		count := 0
-		streamFailed := false
 
 		for {
 			_, err := stream.Recv()
@@ -66,20 +66,20 @@ func main() {
 				break
 			}
 			if err != nil {
-				if internal.IsTransient(err) {
-					streamFailed = true
+				if !internal.IsTransient(err) {
+					assert.Unreachable("ListAuditEntries stream returned unexpected error", internal.Details{
+						"ledger": ledger,
+						"count":  count,
+						"code":   status.Code(err).String(),
+						"error":  err.Error(),
+					})
 				}
 
-				break
+				// Even a nonempty prefix is inconclusive until a clean EOF.
+				return
 			}
 
 			count++
-		}
-
-		// If the stream failed due to a leadership change, we cannot draw
-		// any conclusion about the audit trail contents — just bail out.
-		if streamFailed {
-			return
 		}
 
 		assert.AlwaysOrUnreachable(count > 0, "audit trail should contain entries", internal.Details{
