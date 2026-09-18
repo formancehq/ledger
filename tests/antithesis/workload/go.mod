@@ -13,6 +13,7 @@ require (
 	github.com/formancehq/ledger/v3 v3.0.0-00010101000000-000000000000
 	github.com/holiman/uint256 v1.3.2
 	github.com/stretchr/testify v1.11.1
+	go.opentelemetry.io/otel/metric v1.44.0
 	golang.org/x/net v0.58.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478
 	google.golang.org/grpc v1.82.1
@@ -252,7 +253,6 @@ require (
 	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.41.0 // indirect
 	go.opentelemetry.io/otel/exporters/stdout/stdouttrace v1.41.0 // indirect
 	go.opentelemetry.io/otel/log v0.17.0 // indirect
-	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.43.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.15.0 // indirect
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
