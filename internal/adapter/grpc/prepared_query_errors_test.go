@@ -36,17 +36,17 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 		{
 			name: "aggregate transactions", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 			mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
-			want: domain.ErrPreparedQueryAggregateTarget, code: codes.InvalidArgument,
+			want: query.ErrPreparedQueryAggregateTarget, code: codes.InvalidArgument,
 		},
 		{
 			name: "aggregate logs", target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
 			mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
-			want: domain.ErrPreparedQueryAggregateTarget, code: codes.InvalidArgument,
+			want: query.ErrPreparedQueryAggregateTarget, code: codes.InvalidArgument,
 		},
 		{
 			name: "unsupported mode", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			mode: commonpb.QueryMode(999),
-			want: domain.ErrQueryModeUnsupported, code: codes.InvalidArgument,
+			want: query.ErrQueryModeUnsupported, code: codes.InvalidArgument,
 		},
 		{
 			name: "missing query", missing: true, mode: commonpb.QueryMode_QUERY_MODE_LIST,

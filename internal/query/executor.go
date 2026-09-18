@@ -84,12 +84,12 @@ func Execute(
 		}
 	}
 
-	// Validate mode compatibility. A typed business error, not a bare one: both
-	// guards reject a caller mistake, and a bare error reaches the client as the
-	// sanitised codes.Unknown reserved for server faults.
+	// Validate mode compatibility with query-layer typed errors. They implement
+	// domain.Describable for wire conversion without presenting read-side request
+	// validation as an FSM-generated business outcome.
 	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
 		pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return nil, &domain.BusinessError{Err: domain.ErrPreparedQueryAggregateTarget}
+		return nil, ErrPreparedQueryAggregateTarget
 	}
 
 	// The definition and volumes share the reserved main-store snapshot above.
@@ -192,7 +192,7 @@ func Execute(
 		}
 
 	default:
-		return nil, &domain.BusinessError{Err: domain.ErrQueryModeUnsupported}
+		return nil, ErrQueryModeUnsupported
 	}
 
 	return resp, nil
