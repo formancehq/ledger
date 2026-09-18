@@ -59,12 +59,21 @@ type Context struct {
 
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
-	// for that ledger — a ledger-scoped order that is not an apply never reaches
-	// processApply and records nothing, which is sound only because nothing but
-	// an apply moves NextTransactionId. A revert whose target id is at or above
-	// this value targets a transaction the batch itself creates, which admission
-	// could not observe — see processRevertTransaction. Derived from committed
-	// state, so every replica computes the same value.
+	// for that ledger. A revert whose target id is at or above this value targets
+	// a transaction the batch itself creates, which admission could not observe —
+	// see processRevertTransaction. Derived from committed state, so every
+	// replica computes the same value.
+	//
+	// Mirror ingest also advances NextTransactionId (processMirrorFillGap,
+	// processMirrorCreatedTransaction, processMirrorRevertedTransaction) and
+	// records no horizon. That is sound because the two can never touch the same
+	// ledger: processMirrorIngest refuses a ledger not in MIRROR mode, and
+	// processApply refuses a revert on one that is (isMirrorSafeApply whitelists
+	// only schema operations). A mirror revert is dispatched to
+	// processMirrorRevertedTransaction and never reaches the observation check.
+	// It is that mode split, not an apply-only monopoly on the counter, that
+	// makes the missing horizon unreachable — widen either side and this must be
+	// captured in processMirrorIngest too.
 	batchInitialNextTxID map[string]uint64
 
 	// Per-apply — set by processApply / processMirrorIngest before
