@@ -45,6 +45,6 @@ var _ = Describe("Barrier", Ordered, func() {
 		Expect(account).NotTo(BeNil())
 		usdVol := account.FindVolume("USD", "")
 		Expect(usdVol).NotTo(BeNil(), "expected USD volumes on barrier-test-account")
-		Expect(usdVol.GetBalance()).To(Equal("500"))
+		Expect(usdVol.GetBalance().DecimalString()).To(Equal("500"))
 	})
 })

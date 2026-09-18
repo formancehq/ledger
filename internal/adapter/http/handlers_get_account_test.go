@@ -90,18 +90,18 @@ func TestHandleGetAccount_VolumesInJSON(t *testing.T) {
 						Asset: "USD/2",
 						Color: "", // uncolored bucket — must appear in JSON with color:""
 						Volumes: &commonpb.VolumesWithBalance{
-							Input:   "100",
-							Output:  "30",
-							Balance: "70",
+							Input:   commonpb.MustBigUintFromDecimal("100"),
+							Output:  commonpb.MustBigUintFromDecimal("30"),
+							Balance: commonpb.MustSignedBigIntFromDecimal("70"),
 						},
 					},
 					{
 						Asset: "USD/2",
 						Color: "GRANTS",
 						Volumes: &commonpb.VolumesWithBalance{
-							Input:   "50",
-							Output:  "0",
-							Balance: "50",
+							Input:   commonpb.MustBigUintFromDecimal("50"),
+							Output:  commonpb.MustBigUintFromDecimal("0"),
+							Balance: commonpb.MustSignedBigIntFromDecimal("50"),
 						},
 					},
 				},

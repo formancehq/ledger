@@ -372,11 +372,11 @@ func describeAccountContentDiff(ls oracle.LedgerState, addr string, serverAcct *
 
 		vp, ok := model[key]
 		if !ok {
-			return fmt.Sprintf("%s volumes[%s] model=<absent> server=in:%s,out:%s", addr, key, av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
+			return fmt.Sprintf("%s volumes[%s] model=<absent> server=in:%s,out:%s", addr, key, av.GetVolumes().GetInput().DecimalString(), av.GetVolumes().GetOutput().DecimalString())
 		}
 
-		if vp.Input.Dec() != av.GetVolumes().GetInput() || vp.Output.Dec() != av.GetVolumes().GetOutput() {
-			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=in:%s,out:%s", addr, key, vp.Input.Dec(), vp.Output.Dec(), av.GetVolumes().GetInput(), av.GetVolumes().GetOutput())
+		if vp.Input.Dec() != av.GetVolumes().GetInput().DecimalString() || vp.Output.Dec() != av.GetVolumes().GetOutput().DecimalString() {
+			return fmt.Sprintf("%s volumes[%s] model=in:%s,out:%s server=in:%s,out:%s", addr, key, vp.Input.Dec(), vp.Output.Dec(), av.GetVolumes().GetInput().DecimalString(), av.GetVolumes().GetOutput().DecimalString())
 		}
 	}
 
