@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"10"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"11"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 10:
+leader. For example, with a schema implementing revision 11:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 10' \
+grpcurl -plaintext -H 'ledger-protocol-version: 11' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -143,6 +143,15 @@ revision-9 peer applied them and returned success. The `.proto` text is
 unchanged and `LEDGER_DELETED` was already part of the error contract, so the
 difference is invisible to a schema comparison: only which request produces it
 changed. See [deleted ledger data retention](../../../../ops/disk-space.md#deleted-ledger-data-retention).
+
+## Prepared-query execution errors (revision 11)
+
+Revision 11 classifies invalid prepared-query execution requests as
+`InvalidArgument` with structured `VALIDATION` error information. In particular,
+aggregate requests for non-account targets and requests with an unsupported
+query mode no longer surface as sanitized `Unknown` failures. A revision-10
+client can interpret those status codes differently for retry and operation
+handling, so clients and servers must use the matching revision.
 
 ## Maintaining the revision
 

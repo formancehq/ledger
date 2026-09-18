@@ -29,6 +29,7 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 		name    string
 		target  commonpb.QueryTarget
 		mode    commonpb.QueryMode
+		filter  *commonpb.QueryFilter
 		missing bool
 		want    domain.Describable
 		code    codes.Code
@@ -46,6 +47,9 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 		{
 			name: "unsupported mode", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 			mode: commonpb.QueryMode(999),
+			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
+				Address: &commonpb.AddressMatch{Match: &commonpb.AddressMatch_ParamExact{ParamExact: "missing"}},
+			}},
 			want: query.ErrQueryModeUnsupported, code: codes.InvalidArgument,
 		},
 		{
@@ -68,7 +72,7 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 			require.NoError(t, state.SaveLedger(batch, "ledger", &commonpb.LedgerInfo{Name: "ledger"}))
 			if !tc.missing {
 				_, err = attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: "ledger", Name: "query"}.Bytes(), &commonpb.PreparedQuery{
-					Name: "query", Target: tc.target,
+					Name: "query", Target: tc.target, Filter: tc.filter,
 				})
 				require.NoError(t, err)
 			}
