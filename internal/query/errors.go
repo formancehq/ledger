@@ -36,3 +36,11 @@ func (e *ErrAggregateOverflow) Metadata() map[string]string {
 // Compile-time assertion that ErrAggregateOverflow satisfies domain.Describable
 // so it keeps flowing through the shared error edge (gRPC/HTTP mapping).
 var _ domain.Describable = (*ErrAggregateOverflow)(nil)
+
+// Query-mode validation is a read-side concern: these failures are produced
+// only while executing a prepared query and can never be emitted by the FSM.
+// They implement domain.Describable solely to reuse the shared wire conversion.
+var (
+	ErrPreparedQueryAggregateTarget = domain.NewValidationSentinel("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+	ErrQueryModeUnsupported         = domain.NewValidationSentinel("unsupported query mode")
+)
