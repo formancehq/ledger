@@ -696,6 +696,23 @@ for {
 
 ## Audit Entries
 
+
+The response type is `publicaudit.AuditEntry`. Detail items expose `order` as a
+typed ledger-scoped or system-scoped message. Connection configurations use
+normalized components with annotated secrets masked. A configuration that cannot
+be normalized is omitted and its order sets `configurationUnavailable: true`;
+the remaining order details remain readable. Historical failure messages are
+masked and failure context is omitted, while the typed reason is preserved.
+
+`hash` identifies the original stored audit evidence. `signature`, when present,
+contains only the original signing `keyId`; it does not claim cryptographic
+verification. Neither field authenticates this public display. Raw
+`serializedOrder`, signed batch payloads and signature bytes are absent. Exact
+internal audit and signed evidence remain unchanged. The current server checker
+checks its implemented integrity and projection invariants; it does not verify
+client/server signatures cryptographically or certify completeness of a public
+response. See [structured credentials](structured-credentials.md).
+
 List audit trail entries (success and failure):
 
 ```go

@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"13"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"14"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 13:
+leader. For example, with a schema implementing revision 14:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 13' \
+grpcurl -plaintext -H 'ledger-protocol-version: 14' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -233,3 +233,18 @@ cannot enter unary or streaming business handlers, while the matching revision
 does. Keep diagnostic exemptions usable without a revision. Exercise the real
 client/server paths, restoration without Discovery, and internal service
 forwarding so the gate cannot make the repository's own clients incompatible.
+
+Structured connection input/output messages require revision 11 on top of the
+revision 10 gate: existing connection configuration fields changed to structured message types.
+
+
+## Structured connection input/output messages (revision 11)
+
+Revision 11 is required when the client uses structured connection configuration
+messages (SinkConfigInput, MirrorSourceConfigInput) for write requests and reads
+structured SinkConfig/MirrorSourceConfig output from GetEventsSinks, GetLedger,
+ListLedgers, GetLog, and ListLogs. Existing configuration fields changed message
+types; clients and servers at different revisions decode them incorrectly.
+
+Typed public audit views require revision 12 on top of structured connections:
+ListAuditEntries and GetAuditEntry return the public audit message contract.

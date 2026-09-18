@@ -13,9 +13,8 @@ import (
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,7 +23,7 @@ import (
 )
 
 // collectAuditEntries collects all audit entries from the streaming RPC.
-func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
+func collectAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*publicauditpb.AuditEntry, error) {
 	return actions.ListAuditEntriesWithRequest(ctx, client, req)
 }
 
@@ -49,22 +48,17 @@ func filterReq(filter *commonpb.QueryFilter) *servicepb.ListAuditEntriesRequest 
 	return &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{Filter: filter}}
 }
 
-// decodeOrder unmarshals AuditItem.serialized_order back into a typed Order.
-// The audit hash chain hashes the stored bytes directly (cf.
-// docs/ops/correctness.md); typed Order access is a display-side concern,
-// so any UnmarshalVT failure here is a fatal test invariant violation
-// rather than a chain-integrity signal.
-func decodeOrder(item *auditpb.AuditItem) *raftcmdpb.Order {
-	order := &raftcmdpb.Order{}
-	Expect(order.UnmarshalVT(item.GetSerializedOrder())).To(Succeed())
-
-	return order
+// auditOrder returns the public typed details without decoding stored evidence.
+func auditOrder(item *publicauditpb.AuditItem) *publicauditpb.Order {
+	GinkgoHelper()
+	Expect(item.GetOrder()).NotTo(BeNil())
+	return item.GetOrder()
 }
 
-func auditEntryWithIdempotency(entries []*auditpb.AuditEntry, key string) *auditpb.AuditEntry {
+func auditEntryWithIdempotency(entries []*publicauditpb.AuditEntry, key string) *publicauditpb.AuditEntry {
 	GinkgoHelper()
 
-	matches := make([]*auditpb.AuditEntry, 0, 1)
+	matches := make([]*publicauditpb.AuditEntry, 0, 1)
 	for _, entry := range entries {
 		if entry.GetIdempotency().GetKey() == key {
 			matches = append(matches, entry)
@@ -254,7 +248,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
-		firstOrder := decodeOrder(full.GetItems()[0])
+		firstOrder := auditOrder(full.GetItems()[0])
 		Expect(firstOrder.GetLedgerScoped()).NotTo(BeNil())
 		Expect(firstOrder.GetLedgerScoped().GetLedger()).To(Equal(ledgerForOrders))
 		Expect(firstOrder.GetLedgerScoped().GetCreateLedger()).NotTo(BeNil())
@@ -276,7 +270,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
-		ls := decodeOrder(full.GetItems()[0]).GetLedgerScoped()
+		ls := auditOrder(full.GetItems()[0]).GetLedgerScoped()
 		Expect(ls).NotTo(BeNil())
 		Expect(ls.GetLedger()).To(Equal(ledgerForOrders))
 		apply := ls.GetApply()
@@ -303,26 +297,24 @@ var _ = Describe("Audit Log", Ordered, func() {
 
 		// Create a ledger with a signed batch
 		signedReq := actions.CreateLedgerAction("signed-ledger", nil)
-		signedLedger, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{signedReq}}, keyID, privKey)
+		signedLedger, err := actions.SignBatch(&servicepb.ApplyBatch{Requests: []*servicepb.Request{signedReq}, IdempotencyKey: "audit-signed-ledger"}, keyID, privKey)
 		Expect(err).To(Succeed())
 		_, err = sigClient.Apply(sigCtx, signedLedger)
 		Expect(err).To(Succeed())
 
-		// The batch signature is recorded once per proposal on AppliedProposal,
-		// not on the Log, and AppliedProposal has no public read endpoint yet —
-		// so the signature itself can't be asserted through the API here. What
-		// is observable: admission verified the signed batch (the Apply above
-		// succeeded) and both batches produced audit entries with their items.
+		// Public audit details expose the original signing-key identity without
+		// exporting the raw signed payload or claiming the display is signed.
 		entries, err := collectAuditEntries(sigCtx, sigClient, &servicepb.ListAuditEntriesRequest{})
 		Expect(err).To(Succeed())
 		Expect(len(entries)).To(BeNumerically(">=", 2))
 
-		last := entries[len(entries)-1]
+		last := auditEntryWithIdempotency(entries, "audit-signed-ledger")
 		full, err := sigClient.GetAuditEntry(sigCtx, &servicepb.GetAuditEntryRequest{
 			Sequence: last.Sequence,
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(1))
+		Expect(full.GetSignature().GetKeyId()).To(Equal(keyID))
 
 		// The signed batch's log is still readable; it just no longer carries
 		// the signature inline.
@@ -354,8 +346,8 @@ var _ = Describe("Audit Log", Ordered, func() {
 		})
 		Expect(err).To(Succeed())
 		Expect(full.GetItems()).To(HaveLen(2))
-		Expect(decodeOrder(full.GetItems()[0]).GetLedgerScoped().GetApply()).NotTo(BeNil())
-		Expect(decodeOrder(full.GetItems()[1]).GetLedgerScoped().GetApply()).NotTo(BeNil())
+		Expect(auditOrder(full.GetItems()[0]).GetLedgerScoped().GetApply()).NotTo(BeNil())
+		Expect(auditOrder(full.GetItems()[1]).GetLedgerScoped().GetApply()).NotTo(BeNil())
 	})
 
 	It("Should get a single entry with items populated", func() {
@@ -382,7 +374,7 @@ var _ = Describe("Audit Log", Ordered, func() {
 		}, nil, nil)))
 		Expect(err).To(HaveOccurred())
 
-		var last *auditpb.AuditEntry
+		var last *publicauditpb.AuditEntry
 		Eventually(func(g Gomega) {
 			entries, err := collectAuditEntries(sharedCtx, sharedClient,
 				filterReq(auditStringFilter(commonpb.AuditField_AUDIT_FIELD_OUTCOME, "failure")))

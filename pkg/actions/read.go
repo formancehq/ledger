@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -329,7 +329,7 @@ func AggregateVolumes(ctx context.Context, client servicepb.BucketServiceClient,
 // appear. Callers that assert on a freshly-applied entry must poll (e.g.
 // require.Eventually / Gomega Eventually) rather than assume immediate
 // visibility; do not add time.Sleep.
-func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*auditpb.AuditEntry, error) {
+func ListAuditEntries(ctx context.Context, client servicepb.BucketServiceClient, failuresOnly bool) ([]*publicauditpb.AuditEntry, error) {
 	req := &servicepb.ListAuditEntriesRequest{}
 	if failuresOnly {
 		req.Options = &commonpb.ListOptions{Filter: AuditOutcomeFilter(false)}
@@ -366,7 +366,7 @@ func AuditOutcomeFilter(success bool) *commonpb.QueryFilter {
 // until the server returns a short page. The caller-supplied
 // Options.PageSize / Options.Cursor on req are used to seed the first call
 // and are then overwritten on each subsequent iteration.
-func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*auditpb.AuditEntry, error) {
+func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.ListAuditEntriesRequest) ([]*publicauditpb.AuditEntry, error) {
 	// Field-by-field copy rather than `page := *req` — protobuf-generated
 	// messages embed a sync.Mutex (in MessageState) so value copy trips
 	// govet (copylocks). We only need the request fields used by the
@@ -383,7 +383,7 @@ func ListAuditEntriesWithRequest(ctx context.Context, client servicepb.BucketSer
 		},
 	}
 
-	var entries []*auditpb.AuditEntry
+	var entries []*publicauditpb.AuditEntry
 
 	for {
 		stream, err := client.ListAuditEntries(ctx, page)
@@ -503,7 +503,7 @@ func GetLog(ctx context.Context, client servicepb.BucketServiceClient, sequence 
 }
 
 // GetAuditEntry retrieves a single audit entry by sequence number.
-func GetAuditEntry(ctx context.Context, client servicepb.BucketServiceClient, sequence uint64) (*auditpb.AuditEntry, error) {
+func GetAuditEntry(ctx context.Context, client servicepb.BucketServiceClient, sequence uint64) (*publicauditpb.AuditEntry, error) {
 	return client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{
 		Sequence: sequence,
 	})

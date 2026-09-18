@@ -2,7 +2,6 @@ package admission
 
 import (
 	"crypto/ed25519"
-	"errors"
 	"net/url"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
@@ -265,9 +264,13 @@ func validateOrderPreparedQuery(order *raftcmdpb.Order) domain.Describable {
 	}
 }
 
-// validateOrderMirrorSource checks required fields, rewrite rules and the IAM
-// TLS policy before admission. Complete connection normalization happens during
-// processing; malformed non-IAM URLs or DSNs can be recorded as rejected orders.
+// validateOrderMirrorSource enforces structural well-formedness on the
+// optional MirrorSource carried by a CreateLedger order. Mirror ledgers go
+// through the standard create path, so a missing/blank field reaches the
+// FSM and is only surfaced when the mirror worker actually tries to open a
+// connection -- well after the ledger has been persisted via Raft. This
+// gate fails fast at admission so a malformed mirror config is rejected
+// before it lands in the audit chain.
 func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// System-scoped orders carry no mirror source. The proto-generated
 	// GetLedgerScoped/GetPayload getters are nil-safe by themselves, but
@@ -324,11 +327,7 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// Runtime also checks the driver configuration before connecting; this
 	// admission gate fails before the order touches the audit chain.
 	if _, err := connectionconfig.Mirror(src); err != nil {
-		if errors.Is(err, connectionconfig.ErrPostgresIAMRequiresTLS) {
-			return ErrMirrorIAMRequiresTLS
-		}
-
-		return ErrMirrorConnectionInvalid
+		return ErrMirrorIAMRequiresTLS
 	}
 
 	return nil
