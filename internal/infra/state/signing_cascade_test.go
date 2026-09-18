@@ -5,11 +5,15 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -233,17 +237,47 @@ func TestSigningCascadeReachesAReregisteredChild(t *testing.T) {
 	}
 }
 
+// restart boots a second Machine over the same store through the production
+// recovery path, which repopulates the key store from the persisted signing rows
+// and nothing else. It is what a replica that went down and came back sees.
+func (r *signingBatchRunner) restart() *keystore.KeyStore {
+	r.t.Helper()
+
+	ctx := logging.TestingContext()
+	logger := logging.FromContext(ctx)
+	meterProvider := noop.NewMeterProvider()
+
+	c, err := cache.New(1000, meterProvider.Meter("test"))
+	require.NoError(r.t, err)
+
+	registry := NewStateRegistry(c, attributes.New())
+	recovered := keystore.NewKeyStore()
+
+	machine, err := NewMachine(
+		logger, registry, NewCacheSnapshotter(logger, registry, nil), r.store,
+		dal.NewSentinelFactory(r.store, false), meterProvider, recovered,
+		NewSharedState(), newNoopNotifier(r.t), nil, "test-cluster", 0, noopConfChangeHandler,
+	)
+	require.NoError(r.t, err)
+	require.NoError(r.t, NewRecovery(machine, r.store).RecoverState())
+
+	return recovered
+}
+
 // TestSigningCascadeSurvivesRestart pins that a replica which rebuilt its key
 // store from the persisted rows agrees with one that never restarted.
 //
 // The cascade reads the key store, so a divergence here would be invariant #1 and
-// #2: two replicas emitting different cascaded_key_ids for the same order.
+// #2: two replicas emitting different cascaded_key_ids for the same order. The
+// restarted store is built by the real recovery path rather than asserted about,
+// because the two representations are written by different code — Merge writes the
+// live store and the Pebble row side by side, and recovery reads only the row back.
 func TestSigningCascadeSurvivesRestart(t *testing.T) {
 	t.Parallel()
 
 	runner := newSigningBatchRunner(t)
 
-	parentPub, _ := signingKeypair(t)
+	parentPub, parentPriv := signingKeypair(t)
 	childPub, _ := signingKeypair(t)
 	replacementPub, replacementPriv := signingKeypair(t)
 	survivorPub, survivorPriv := signingKeypair(t)
@@ -258,21 +292,29 @@ func TestSigningCascadeSurvivesRestart(t *testing.T) {
 		revokeOrder("P", true),
 	)
 
-	// Recovery rebuilds the in-memory store from the persisted rows and nothing
-	// else, so this is the state a restarted replica boots into.
 	require.ElementsMatch(t, []string{"survivor"}, runner.persistedKeyIDs())
 
-	handle, err := runner.store.NewReadHandle()
-	require.NoError(t, err)
+	recovered := runner.restart()
 
-	defer func() { _ = handle.Close() }()
+	for _, keyID := range []string{"P", "C"} {
+		require.Nil(t, recovered.GetPublicKey(keyID),
+			"a restarted replica must not resurrect %q", keyID)
+		require.Nil(t, runner.machine.keyStore.GetPublicKey(keyID),
+			"and the un-restarted replica must agree")
+	}
 
-	rows, malformed, err := query.ReadSigningKeys(handle)
-	require.NoError(t, err)
-	require.Empty(t, malformed)
-	require.NotContains(t, rows, "C", "a restarted replica must not resurrect the re-registered child")
+	require.Equal(t, survivorPub, recovered.GetPublicKey("survivor"),
+		"an unrelated root key survives the restart with its material intact")
+
+	// The cascade walks the parent relation, so the two stores have to agree on
+	// the edges too, not just on which keys exist.
+	require.Empty(t, recovered.GetChildren("P"),
+		"the revoked parent has no children left to cascade on a restarted replica")
+	require.Equal(t, runner.machine.keyStore.GetChildren("P"), recovered.GetChildren("P"))
+	require.Equal(t, runner.machine.keyStore.GetChildren("survivor"), recovered.GetChildren("survivor"))
 
 	require.False(t, runner.authenticates("C", replacementPriv))
+	require.False(t, runner.authenticates("P", parentPriv))
 	require.True(t, runner.authenticates("survivor", survivorPriv),
 		"an unrelated root key is untouched by the cascade")
 }
