@@ -226,6 +226,9 @@ func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 // closeSafe closes one store, containing a panic out of Pebble's Close.
 // Close failures are not actionable at request end, so they are logged rather
 // than returned.
+//
+// dal.closeDBSafe documents why that close panics and why containing it is a net
+// rather than a fix.
 func closeSafe(logger logging.Logger, what string, closeStore func() error) {
 	defer func() {
 		if r := recover(); r != nil {
