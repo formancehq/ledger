@@ -107,18 +107,36 @@ The workload uses a layered predicate set (`internal/client.go`):
   WritesBlockedDiskFull` (the write gate's
   `ResourceExhausted / WRITES_BLOCKED_DISK_FULL` refusal: rejected before
   consensus, so the bulk did not commit and a retry is sound).
-- `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
-  finding; the driver just exits.
+- `IsCanceled(err)` — recognizes the wire code only. Check the caller's own
+  `ctx.Err()` before treating cancellation as local shutdown. The unary
+  forwarding boundary maps the exact bare close status to `Unavailable` when
+  the raw local connection is shut down and the caller is live. An identical
+  peer-authored status racing local closure is indistinguishable at that check;
+  unrelated server cancellation is not automatically a retryable outcome.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
   **This is what
   Sometimes() probes use**: `assert.Sometimes(internal.IsTolerated(err),
   "should be able to X", details)`. Using `IsTransient` directly here would
   flip the per-driver Sometimes to "never true" when ctx cancellation
   dominates a chaotic run.
-- `IsAmbiguousCommit(err)` — strict subset of `IsTransient` where the
-  request may have committed despite the error (today: `DeadlineExceeded`).
-  Drivers asserting on post-commit state can use this to decide whether to
-  verify read-after-write even on the error branch.
+- `IsAmbiguousCommit(err)` — detects `DeadlineExceeded` and the exact bare
+  `Unavailable: grpc: the client connection is closing` category. A later
+  maintenance rejection must preserve that possible earlier commit. Other
+  `Unavailable` messages, `Canceled`, `Unknown`, and structured lookalikes are
+  not added to this category. A false result is still not proof of non-commit.
+  Retried writes need the original idempotency key and payload. Neither code
+  establishes a definitive business rejection; verify the resulting state or
+  recover the keyed outcome before asserting non-execution.
+- `NewGRPCConn` performs application retries in interceptors, with no native
+  service-config retry policy. `internal/client_transport_test.go` tests this
+  real factory after a committed response is lost, including default, forever,
+  disabled-retry, and maintenance/recovery cases. The original native retry
+  control remains separate. The fixture asserts that `IsAmbiguousCommit`
+  recognizes the actual forwarded close error, so producer/consumer drift fails
+  the cross-package test. Retry budgets belong to the interceptors; the former
+  `WithMaxCallAttempts` option only capped native service-config retry policies
+  and has been removed from this factory. `client_transport_controls_test.go` verifies caller
+  cancellation and terminal server statuses through the same factory.
 - `IsClassified(err)` — `nil | IsTransient | IsCanceled | <business code>`
   (deliberately excludes `Aborted`). Business codes are `NotFound`,
   `AlreadyExists`, `InvalidArgument`, generic `FailedPrecondition`;
@@ -138,8 +156,9 @@ classify interceptor surface it (as "Always(IsClassified)" Details
 `code=Aborted`) is intentional — if it shows up under chaos, that is a
 finding worth triaging.
 
-`IsUnavailable(err)` is deliberately narrow — it backs the gRPC service
-config's retryable-codes list. Using it as a Sometimes tolerance predicate
+`IsUnavailable(err)` is deliberately narrow — it recognizes only that wire
+code; the factory's retry decision also inspects business reasons. Using it
+as a Sometimes tolerance predicate
 masks `DeadlineExceeded` / `ExternalServiceError`
 and silently shorts the driver — exactly the bug the audit in
 `refactor(antithesis): chaos error classification + workload cleanup`
@@ -231,7 +250,7 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   bounded by the driver's context deadline.
 - Hand-roll a retry loop that classifies errors itself — let the gRPC
   interceptors in `internal/client.go` handle transients. Drivers only see
-  errors that survived `retryMaxAttempts` retries.
+  errors that survived the configured unary or stream retry budget.
 - Swallow an error with `if err != nil { continue }` — at least log via
   `LogCleanupError` (for cleanup paths) or `assert.Reachable("X skipped due
   to error", …)` so the path stays visible in the trace.
