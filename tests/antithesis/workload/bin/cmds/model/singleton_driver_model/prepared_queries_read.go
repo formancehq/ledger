@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/holiman/uint256"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -39,7 +38,7 @@ import (
 // the model. The RPC has no pagination and no ordering contract, so the check
 // is a set comparison on (name, target, filter).
 func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -55,6 +54,11 @@ func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceC
 
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+		if status.Code(err) == codes.NotFound {
+			c.validateLedgerNotFound(maxTicket, ledger, "ListPreparedQueries")
+
 			return
 		}
 
@@ -74,6 +78,11 @@ func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceC
 // target and the byte-identical stored filter.
 func (c *Checker) validateListPreparedQueries(maxTicket uint64, ledger string, served []*commonpb.PreparedQuery) {
 	if c.matchesModel(maxTicket, "PQLIST", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		if !exists || lc.Deleted {
+			return false
+		}
+
 		return registryMatches(base.Ledger(ledger), served)
 	}) {
 		return
@@ -142,6 +151,7 @@ const (
 	pqErrIndex
 	pqErrCompilation
 	pqErrAggregateTarget
+	pqErrLedgerNotFound
 	pqErrOther
 )
 
@@ -159,6 +169,8 @@ func classifyPreparedExecError(err error) pqErrKind {
 		return pqErrCompilation
 	case status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "VALIDATION"):
 		return pqErrAggregateTarget
+	case internal.HasErrorReason(err, "LEDGER_NOT_FOUND"):
+		return pqErrLedgerNotFound
 	default:
 		return pqErrOther
 	}
@@ -183,7 +195,7 @@ func asIndexedErrKind(kind pqErrKind) indexedErrKind {
 // call (which parameters to bind, which mode is applicable); validation reads
 // the definition from each candidate base.
 func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	name := preparedQueryName()
 
 	snapshot, ls := c.preparedQuerySnapshot(ledger, name)
@@ -438,6 +450,10 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 	}
 
 	if c.matchesModel(maxTicket, "PQEXEC", func(base oracle.GlobalState) bool {
+		if handled, legal := preparedLedgerOutcomeLegal(base, call); handled {
+			return legal
+		}
+
 		return preparedListOutcomeLegal(base.Ledger(call.ledger), call, after, cur)
 	}) {
 		return
@@ -461,6 +477,23 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		"modelRows":    modelRows,
 		"modelQueries": c.modelPreparedQueries(call.ledger),
 	})
+}
+
+// preparedLedgerOutcomeLegal handles lifecycle outcomes before validators read
+// the ledger's retained model state. Deletion keeps that state for recreation,
+// but ledger-scoped reads must return NotFound while the lifecycle is absent or
+// deleted and must never serve the retained snapshot.
+func preparedLedgerOutcomeLegal(base oracle.GlobalState, call preparedCall) (handled, legal bool) {
+	lc, exists := base.Lifecycle(call.ledger)
+	live := exists && !lc.Deleted
+	if call.errKind == pqErrLedgerNotFound {
+		return true, !live
+	}
+	if !live {
+		return true, false
+	}
+
+	return false, false
 }
 
 // preparedListOutcomeLegal is the whole per-base verdict for a LIST page.
@@ -731,6 +764,10 @@ func parseAfterUint(after string) (uint64, bool) {
 // leaving every total identical, and comparing sums alone would miss it.
 func (c *Checker) validateExecuteAggregate(maxTicket uint64, call preparedCall, agg *commonpb.AggregateResult) {
 	if c.matchesModel(maxTicket, "PQAGG", func(base oracle.GlobalState) bool {
+		if handled, legal := preparedLedgerOutcomeLegal(base, call); handled {
+			return legal
+		}
+
 		return preparedAggregateOutcomeLegal(base.Ledger(call.ledger), call, agg)
 	}) {
 		return

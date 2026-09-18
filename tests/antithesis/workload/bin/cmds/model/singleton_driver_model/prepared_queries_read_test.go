@@ -137,7 +137,51 @@ func TestClassifyAggregateTargetRejectionByCodeAndReason(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, pqErrAggregateTarget, classifyPreparedExecError(target.Err()))
-	require.Equal(t, pqErrOther, classifyPreparedExecError(other.Err()))
+	require.Equal(t, pqErrLedgerNotFound, classifyPreparedExecError(other.Err()))
+}
+
+func TestPreparedLedgerOutcomeFollowsLifecycle(t *testing.T) {
+	t.Parallel()
+
+	live := buildGlobal(t, &servicepb.Request{Type: &servicepb.Request_CreateLedger{
+		CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"},
+	}}, createPreparedQueryReq("L", &commonpb.PreparedQuery{
+		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	}))
+	call := preparedCall{ledger: "L", errKind: pqErrLedgerNotFound}
+	handled, legal := preparedLedgerOutcomeLegal(live, call)
+	require.True(t, handled)
+	require.False(t, legal, "a live ledger cannot return LEDGER_NOT_FOUND")
+
+	call.errKind = pqErrNone
+	handled, legal = preparedLedgerOutcomeLegal(live, call)
+	require.False(t, handled, "a live ledger must continue through prepared-query validation")
+	require.False(t, legal)
+
+	deleted := live.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, deleted.OK)
+
+	call.errKind = pqErrLedgerNotFound
+	handled, legal = preparedLedgerOutcomeLegal(deleted.State, call)
+	require.True(t, handled)
+	require.True(t, legal, "a deleted ledger must return LEDGER_NOT_FOUND despite retained state")
+
+	call.errKind = pqErrNone
+	handled, legal = preparedLedgerOutcomeLegal(deleted.State, call)
+	require.True(t, handled)
+	require.False(t, legal, "a deleted ledger cannot serve its retained prepared-query snapshot")
+
+	missing := preparedCall{ledger: "missing", errKind: pqErrLedgerNotFound}
+	handled, legal = preparedLedgerOutcomeLegal(live, missing)
+	require.True(t, handled)
+	require.True(t, legal)
+
+	missing.errKind = pqErrNone
+	handled, legal = preparedLedgerOutcomeLegal(live, missing)
+	require.True(t, handled)
+	require.False(t, legal, "an absent ledger cannot serve a retained prepared-query snapshot")
 }
 
 func TestAggregateRecreationValidatesAccountsCandidateResult(t *testing.T) {
