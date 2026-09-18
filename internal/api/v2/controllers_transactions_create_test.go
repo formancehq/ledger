@@ -128,6 +128,22 @@ func TestTransactionCreate(t *testing.T) {
 			},
 		},
 		{
+			name: "rejects fractional legacy monetary variable",
+			payload: bulking.TransactionRequest{
+				Script: ledgercontroller.ScriptV1{
+					Script: ledgercontroller.Script{Plain: `send $val`},
+					Vars: map[string]any{
+						"val": map[string]any{
+							"asset":  "USD",
+							"amount": 1.5,
+						},
+					},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
+		},
+		{
 			name:                 "using plain numscript and dry run",
 			expectControllerCall: true,
 			payload: bulking.TransactionRequest{
