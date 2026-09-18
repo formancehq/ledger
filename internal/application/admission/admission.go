@@ -2519,22 +2519,22 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			return nil, err
 		}
 
-		// Resolve the original postings so admission can declare volume
-		// coverage for each posting account (invariant #9 — the FSM's
-		// applyPosting call reads Volumes().Get through the coverage gate).
-		// They are recorded in the overlay sidecar for the preload and
-		// intra-bulk effect passes, NOT attached to the order: the FSM
-		// re-derives them from the coverage-gated TransactionState, so the
+		// Observe the target so admission can declare volume coverage for each
+		// posting account (invariant #9 — the FSM's applyPosting call reads
+		// Volumes().Get through the coverage gate). The observation is recorded
+		// in the overlay sidecar for the preload, intra-bulk effect and
+		// digest-binding passes, NOT attached to the order: the FSM re-derives
+		// the postings from the coverage-gated TransactionState, so the
 		// audit-bound order carries only caller intent.
 		//
-		// A fetch miss (missing ledger or missing tx) yields nil postings
-		// and the proposal still enters Raft; the FSM apply is the audit
+		// A miss (missing ledger or missing tx) is an absent observation, not an
+		// error, and the proposal still enters Raft; the FSM apply is the audit
 		// authority for the resulting business rejection (invariant #8) —
 		// processApply.loadBoundaries audits missing ledgers,
 		// processRevertTransaction's boundary check audits missing txs.
 		observation, err := a.observeRevertTarget(apply.GetLedger(), txID)
 		if err != nil {
-			return nil, fmt.Errorf("getting original transaction postings: %w", err)
+			return nil, fmt.Errorf("observing revert target: %w", err)
 		}
 
 		overlay.recordRevertTarget(domain.TransactionKey{LedgerName: apply.GetLedger(), ID: txID}, observation)
