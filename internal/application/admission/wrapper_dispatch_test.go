@@ -29,7 +29,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 	revertOverlay := newBulkOverlay()
 	revertOverlay.recordRevertTarget(
 		domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 13},
-		observedRevertTarget([]*commonpb.Posting{{Source: "world", Destination: "user:eve", Asset: "USD"}}, true),
+		presentRevertTarget([]*commonpb.Posting{{Source: "world", Destination: "user:eve", Asset: "USD"}}),
 	)
 
 	cases := []struct {

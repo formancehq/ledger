@@ -125,13 +125,14 @@ type revertTargetObservation struct {
 	postings []*commonpb.Posting
 }
 
-// observedRevertTarget builds the observation for a lookup that happened. found
-// reports whether the transaction was in the local store.
-func observedRevertTarget(postings []*commonpb.Posting, found bool) revertTargetObservation {
-	if !found {
-		return revertTargetObservation{state: revertTargetAbsent}
-	}
+// absentRevertTarget records that admission looked and the transaction was not
+// in the local store. Distinct from never having looked — see revertTargetState.
+func absentRevertTarget() revertTargetObservation {
+	return revertTargetObservation{state: revertTargetAbsent}
+}
 
+// presentRevertTarget records the postings admission read for the target.
+func presentRevertTarget(postings []*commonpb.Posting) revertTargetObservation {
 	return revertTargetObservation{state: revertTargetPresent, postings: postings}
 }
 
