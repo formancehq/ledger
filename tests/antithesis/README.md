@@ -92,6 +92,46 @@ The prefix encodes **how Antithesis schedules the binary**:
 | `eventually_` | Runs at the **end** of the workload, after writers have quiesced. | Cross-checks that only make sense after the system has had time to converge (balance audits, cross-node identity). |
 | `first_` | Runs **before** the parallel pool starts. | One-shot setup (e.g. `first_default_ledger`). |
 
+## Asynchronous stats convergence
+
+`parallel_driver_stats_consistency` checks the main-store structural predicate
+and aggregate double-entry balance during concurrent writes. Usage counters
+(`postingCount`, `revertCount`, etc.) come from a different, asynchronous snapshot;
+they may lag or lead the main-store transaction boundary. A Raft barrier does
+not make usage current.
+
+`eventually_stats_consistency` keeps an exact usage oracle after writers and
+faults stop. Each attempt selects a reachable source with bounded probes; the
+first configured address need not be present or available. It drains every ledger and log page to successful EOF, folds posting
+and revert counts, checks log completeness against the primary log boundary,
+and fences the source with Raft barriers. Mirror transaction IDs can contain
+gaps, so transaction ID boundaries are not treated as transaction cardinality.
+
+After the fold, it refreshes cluster membership and writes a referenced
+transaction to its own fresh witness ledger. Configured addresses for absent
+scale-up slots are excluded, but every current member (including learners and
+unavailable members) remains required. Each member must reach the source FSM horizon, then expose
+the witness's reference counter on a local stale connection before the source
+posting/revert counters are compared. The reference witness is independent of
+the values under test. Every source ledger ID is checked to exclude another
+incarnation. Streams with errors, repeated cursors, and incomplete folds never
+produce a successful observation.
+
+Each replica has a bounded convergence window. Persistent incorrect counts or
+a stalled witness produce an explicit failure with the fixed expectations and
+last complete observation even if later RPCs fail. Results are buffered until a final barrier confirms that no
+unrelated proposal changed the source. An invalidated horizon restarts the whole
+capture and witness lifecycle, up to three attempts within five minutes; replica
+polls run concurrently with a shared 60-second window per attempt. All attempts
+retain their diagnostics. Exhausting retries or the global deadline reports a
+separate oracle-qualification failure, never a silent success or a claim that
+unqualified counters are corrupt. This is an eventual observation, not a
+claim that the witness and target RPCs share one usage snapshot: a restart may
+rewind the WAL-less projection between calls, so mismatches are retried and the
+witness is checked again after the sweep. Public APIs and asynchronous product
+behavior are unchanged. No query checkpoint is used (historical usage fields
+are intentionally unavailable/zero).
+
 ## Driver-side conventions
 
 These conventions are what every driver in this tree should follow. They exist
