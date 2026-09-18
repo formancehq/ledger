@@ -219,6 +219,29 @@ if err != nil {
   no-shared-prefix invariant so a typo like `"lrec"` (which does not
   match `lrecreate-N`) is caught at test time, not in a chaos run.
 
+### Parallel query-checkpoint capacity and ownership
+
+`parallel_driver_query_checkpoints` shares the retained-checkpoint pool with
+other invocations. A create returning exactly gRPC `FailedPrecondition` with
+`CHECKPOINT_LIMIT_REACHED` is an expected capacity observation, not a completed
+lifecycle or a transient retry. Other preconditions and permanent errors remain
+findings. The product limit and global error classifiers are unchanged.
+The capacity predicate is sampled after every create with `Sometimes`, so
+Antithesis can explore saturation without counting it as lifecycle completion.
+
+After an acknowledged create, the invocation owns only that returned ID. An
+early exit during list/info verification attempts to delete it with a fresh
+30-second cleanup budget, even if the driver context has expired. It never
+reclaims IDs discovered in a list. Cleanup failures are logged, and unexpected
+errors also produce an SDK finding. Before normal deletion the fallback is
+disarmed, so a failed or ambiguous delete response does not start a second
+logical delete. Persistent faults can still leave checkpoints behind, and an
+ambiguous create without an acknowledged ID cannot be reclaimed by this driver.
+
+The local regression runs the actual driver with SDK JSON capture against a
+real node: ten creates and the next rejection, release/recreate, competing
+owners of the last slot, and failed-read cleanup while preserving other IDs.
+
 ### Transaction validation
 
 When a driver creates a transaction and uses any field of the response,
