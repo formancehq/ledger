@@ -207,6 +207,11 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 					"skipContext": skipped.GetContext(),
 					"logSequence": freshResp.Logs[0].GetSequence(),
 				}))
+
+			return
 		}
 	}
+
+	assert.Unreachable("skip-tolerant first-claim on a fresh reference must return a CreatedTransaction",
+		freshDetails.With(internal.Details{"logs": len(freshResp.GetLogs())}))
 }

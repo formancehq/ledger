@@ -114,27 +114,8 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 	// SDK output is configured when the process initializes. A child process
 	// captures the real assertion as well as checking the transport/state below.
 	if os.Getenv("LEDGER_TEST_UNKEYED_REFERENCE_CHILD") != "1" {
-		outputPath := filepath.Join(t.TempDir(), "assertions.jsonl")
-		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestReferenceConflictSkipUnkeyedControl$", "-test.v")
-		cmd.Env = append(os.Environ(), "LEDGER_TEST_UNKEYED_REFERENCE_CHILD=1", "ANTITHESIS_SDK_LOCAL_OUTPUT="+outputPath)
-		output, err := cmd.CombinedOutput()
-		t.Logf("%s", output)
-		require.NoError(t, err)
-		data, err := os.ReadFile(outputPath)
-		require.NoError(t, err)
 		hits := 0
-		for _, line := range bytes.Split(bytes.TrimSpace(data), []byte("\n")) {
-			var event struct {
-				Assertion struct {
-					Message   string         `json:"message"`
-					Hit       bool           `json:"hit"`
-					Condition bool           `json:"condition"`
-					Details   map[string]any `json:"details"`
-				} `json:"antithesis_assert"`
-			}
-			require.NoError(t, json.Unmarshal(line, &event))
+		for _, event := range captureAssertions(t, t.Name(), "LEDGER_TEST_UNKEYED_REFERENCE_CHILD=1") {
 			if event.Assertion.Hit && event.Assertion.Message == "skip-tolerant first-claim on a fresh reference must NOT fire the skip" {
 				hits++
 				require.False(t, event.Assertion.Condition)
@@ -179,6 +160,68 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 	t.Log("lost one committed response as Unavailable; unkeyed retry legally skipped its own transaction")
 }
 
+func TestReferenceConflictSkipUnexpectedFreshResponse(t *testing.T) {
+	mode := os.Getenv("LEDGER_TEST_UNEXPECTED_FRESH_RESPONSE")
+	if mode == "" {
+		for _, mode := range []string{"empty", "unknown"} {
+			t.Run(mode, func(t *testing.T) {
+				hits := 0
+				for _, event := range captureAssertions(t, "TestReferenceConflictSkipUnexpectedFreshResponse", "LEDGER_TEST_UNEXPECTED_FRESH_RESPONSE="+mode) {
+					if event.Assertion.Hit && event.Assertion.Message == "skip-tolerant first-claim on a fresh reference must return a CreatedTransaction" {
+						hits++
+						require.False(t, event.Assertion.Condition)
+						require.NotEmpty(t, event.Assertion.Details["reference"])
+						require.NotEmpty(t, event.Assertion.Details["idempotencyKey"])
+					}
+				}
+				require.Equal(t, 1, hits, "unexpected successful response must remain observable")
+			})
+		}
+		return
+	}
+
+	ctx, backend := referenceTestServer(t)
+	const ledger = "reference-unexpected"
+	_, err := backend.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+	require.NoError(t, err)
+	proxy := &lostResponseServer{backend: backend, freshResponseMode: mode, attempts: make(map[string][]applyAttempt)}
+	run(ctx, retryingClient(t, proxy), ledger)
+	require.Len(t, proxy.snapshot(), 3)
+}
+
+type assertionEvent struct {
+	Assertion struct {
+		Message   string         `json:"message"`
+		Hit       bool           `json:"hit"`
+		Condition bool           `json:"condition"`
+		Details   map[string]any `json:"details"`
+	} `json:"antithesis_assert"`
+}
+
+func captureAssertions(t *testing.T, testName, childEnv string) []assertionEvent {
+	t.Helper()
+	outputPath := filepath.Join(t.TempDir(), "assertions.jsonl")
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+testName+"$", "-test.v")
+	cmd.Env = append(os.Environ(), childEnv, "ANTITHESIS_SDK_LOCAL_OUTPUT="+outputPath)
+	output, err := cmd.CombinedOutput()
+	t.Logf("%s", output)
+	require.NoError(t, err)
+	data, err := os.ReadFile(outputPath)
+	require.NoError(t, err)
+	var events []assertionEvent
+	for _, line := range bytes.Split(data, []byte("\n")) {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		var event assertionEvent
+		require.NoError(t, json.Unmarshal(line, &event))
+		events = append(events, event)
+	}
+	return events
+}
+
 type applyAttempt struct {
 	request      *servicepb.ApplyRequest
 	response     *servicepb.ApplyResponse
@@ -189,12 +232,13 @@ type applyAttempt struct {
 // This is a transport fault injector, not a mock of Ledger business semantics.
 type lostResponseServer struct {
 	servicepb.UnimplementedBucketServiceServer
-	backend        servicepb.BucketServiceClient
-	lostStep       string
-	unkeyedFresh   bool
-	mu             sync.Mutex
-	firstReference string
-	attempts       map[string][]applyAttempt
+	backend           servicepb.BucketServiceClient
+	lostStep          string
+	unkeyedFresh      bool
+	freshResponseMode string
+	mu                sync.Mutex
+	firstReference    string
+	attempts          map[string][]applyAttempt
 }
 
 func (s *lostResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
@@ -222,6 +266,15 @@ func (s *lostResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequ
 	s.attempts[step] = append(s.attempts[step], entry)
 	if entry.lostResponse {
 		return nil, status.Error(codes.Unavailable, "injected response loss after successful commit")
+	}
+	if err == nil && step == "fresh" {
+		switch s.freshResponseMode {
+		case "empty":
+			return &servicepb.ApplyResponse{}, nil
+		case "unknown":
+			resp = proto.Clone(resp).(*servicepb.ApplyResponse)
+			resp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().Payload = nil
+		}
 	}
 	return resp, err
 }
