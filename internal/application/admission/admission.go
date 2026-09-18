@@ -659,15 +659,12 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	operations := make([]plan.WriteOperation, len(orders))
 	cmdOrders := cmd.GetOrders()
 	for i := range orders {
-		// coverage_bits lives on OrderTechnical; create it nil-safely (may already
-		// exist from the inputs-resolution-hash pass above) before pointing Build
-		// at the field it fills.
-		if cmdOrders[i].GetTechnical() == nil {
-			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
-		}
+		// coverage_bits lives on OrderTechnical, which may already exist from the
+		// inputs-resolution-hash pass above; orderTechnical is nil-safe either
+		// way, so Build can be pointed straight at the field it fills.
 		operations[i] = plan.WriteOperation{
 			Coverage: perOrder[i],
-			Target:   &cmdOrders[i].Technical.CoverageBits,
+			Target:   &orderTechnical(cmdOrders[i]).CoverageBits,
 		}
 	}
 
@@ -1609,15 +1606,30 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	return aggregate, perOrder, nil
 }
 
+// orderTechnical returns the order's OrderTechnical sub-message, creating it on
+// first use.
+//
+// Every admission-derived technical field goes through it — coverage bits, the
+// inputs-resolution hash, the preload-unavailable marker, the revert-target
+// digest — so the passes can run in any order and a new field cannot forget the
+// nil guard. Writing here does not touch the order's logical identity:
+// OrderTechnical is excluded wholesale from the idempotency and business-intent
+// hashes, which is what makes it the one mutation invariant #10 permits on an
+// accepted order before audit capture.
+func orderTechnical(order *raftcmdpb.Order) *raftcmdpb.OrderTechnical {
+	if order.GetTechnical() == nil {
+		order.Technical = &raftcmdpb.OrderTechnical{}
+	}
+
+	return order.Technical
+}
+
 // markPreloadUnavailable stamps the OrderTechnical PreloadUnavailable flag — the
 // only mutation permitted on an accepted order before audit capture (invariant
 // #10 exempts OrderTechnical) — and reports forwarded=true so the caller
 // forwards the order to the FSM replay gate.
 func (a *Admission) markPreloadUnavailable(order *raftcmdpb.Order) bool {
-	if order.GetTechnical() == nil {
-		order.Technical = &raftcmdpb.OrderTechnical{}
-	}
-	order.Technical.PreloadUnavailable = true
+	orderTechnical(order).PreloadUnavailable = true
 
 	return true
 }
@@ -2041,10 +2053,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// admission and apply). Nil for fully-static scripts (nothing read) —
 			// the FSM then skips the check. Technical is created nil-safely and
 			// shared with the coverage-bits pass (order-independent).
-			if order.GetTechnical() == nil {
-				order.Technical = &raftcmdpb.OrderTechnical{}
-			}
-			order.Technical.InputsResolutionHash = discovered.InputsHash
+			orderTechnical(order).InputsResolutionHash = discovered.InputsHash
 
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
