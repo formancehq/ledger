@@ -217,6 +217,33 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		renderLedgerSchema(ledger.GetMetadataSchema())
 	}
 
+	// Render any CreateIndex logs that followed the CreateLedger log in the
+	// atomic batch (see EN-2070). Each outer Log wraps an ApplyLedgerLog; the
+	// inner LedgerLog carries the CreateIndex payload.
+	var indexLines []string
+	for _, lg := range resp.GetLogs()[1:] {
+		applyLog := lg.GetPayload().GetApply()
+		if applyLog == nil {
+			continue
+		}
+		createdIdx := applyLog.GetLog().GetData().GetCreateIndex()
+		if createdIdx == nil {
+			continue
+		}
+		typeName, target, key := describeIndex(createdIdx.GetId())
+		if target != "-" && key != "-" {
+			indexLines = append(indexLines, fmt.Sprintf("  %s (%s.%s)", typeName, target, key))
+		} else {
+			indexLines = append(indexLines, "  "+typeName)
+		}
+	}
+	if len(indexLines) > 0 {
+		pterm.Printf("Indexes:\n")
+		for _, line := range indexLines {
+			pterm.Println(line)
+		}
+	}
+
 	return nil
 }
 

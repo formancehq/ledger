@@ -142,7 +142,29 @@ func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (res
 	if err := createLedgerWithExec(&ledger, args, func(args ...string) error {
 		return r.ledgerctlExec(execCtx, ledger.Namespace, ledger.Spec.ClusterRef, pod0, grpcPort, args...)
 	}); err != nil {
-		if !isAlreadyExists(err) {
+		switch {
+		case isAlreadyExists(err):
+			// The ledger (and its initial indexes) already exist — idempotent.
+		case isIdempotencyConflict(err):
+			// The FSM rejected the retry because the idempotency key was reused
+			// with different hash content. Most likely a referenced Secret (OAuth2
+			// client secret, Postgres password) was rotated between the original
+			// creation — which may have succeeded — and this retry. Surface a
+			// distinct condition so the operator can act: restore the original
+			// Secret value, edit spec to advance the generation, or wait for
+			// idempotency TTL expiry (cluster-policy default 24h).
+			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+				Type:               conditionLedgerSynced,
+				Status:             metav1.ConditionFalse,
+				Reason:             "IdempotencyConflict",
+				Message:            "creation idempotency key conflict: a referenced Secret was likely rotated; restore the original value or edit spec to bump the generation",
+				ObservedGeneration: ledger.Generation,
+			})
+			ledger.Status.Phase = ledgerv1alpha1.LedgerPhasePending
+			ledger.Status.Message = "idempotency key conflict: see LedgerSynced condition for remediation"
+
+			return ctrl.Result{RequeueAfter: ledgerRequeueDelay}, nil
+		default:
 			meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
 				Type:               conditionLedgerSynced,
 				Status:             metav1.ConditionFalse,
@@ -649,6 +671,16 @@ func nestedFieldNoCopy(obj map[string]any, fields ...string) (any, bool, error) 
 // createLedgerWithExec records ownership only after the atomic batch reports
 // success, including an idempotent replay of that success. AlreadyExists alone
 // is not proof of ownership: that ledger and its indexes may be external.
+//
+// Narrow orphan window: if the exec response is lost and the operator retries
+// under a new generation (spec edit before recovery), indexes committed by the
+// first batch are not registered in status.appliedIndexes and will not be
+// dropped by a subsequent diffIndexes pass. This requires both a lost response
+// AND a spec edit before recovery — the same ownership class the README
+// already names as a concern for standalone index creates. Closing it would
+// require querying the ledger's actual index set before every creation, or a
+// cross-generation status migration with its own races; document here and keep
+// the operator README acknowledgement in sync.
 func createLedgerWithExec(ledger *ledgerv1alpha1.Ledger, args []string, exec func(...string) error) error {
 	if err := exec(args...); err != nil {
 		return err
@@ -659,3 +691,16 @@ func createLedgerWithExec(ledger *ledgerv1alpha1.Ledger, args []string, exec fun
 
 	return nil
 }
+
+// isIdempotencyConflict checks if the error output indicates an idempotency key
+// conflict: the same key was used with different request content. This happens
+// when a retry carries rotated Secret material that was embedded in the
+// original creation batch (OAuth2 client secret, Postgres password). The FSM
+// rejects the retry because the hash bound to the key differs from the stored
+// success. The ledger may or may not have been created by the earlier attempt;
+// unlike AlreadyExists, this cannot be treated as a silent no-op.
+func isIdempotencyConflict(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "idempotency key conflict")
+}
+
+// isLedgerNotFound checks if the error output indicates the ledger was not found.
