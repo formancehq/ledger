@@ -124,6 +124,19 @@ func TestTransactionsCreate(t *testing.T) {
 			},
 		},
 		{
+			name: "using plain numscript with invalid variable",
+			payload: CreateTransactionRequest{
+				Script: Script{
+					Script: ledgercontroller.Script{Plain: `send $val`},
+					Vars: map[string]json.RawMessage{
+						"val": json.RawMessage(`42`),
+					},
+				},
+			},
+			expectedStatusCode: http.StatusBadRequest,
+			expectedErrorCode:  common.ErrValidation,
+		},
+		{
 			name: "using plain numscript and dry run",
 			payload: CreateTransactionRequest{
 				Script: Script{
