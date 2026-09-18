@@ -27,10 +27,20 @@ func CheckedNextSequence(current uint64, counter SequenceCounter) (uint64, *ErrS
 	return current + 1, nil
 }
 
-// CheckedNextLedgerID returns the next uint32 ledger identifier without
-// allowing modular wrap. MaxUint32 is deliberately not allocatable because the
-// persisted counter stores the next value; accepting it would reset that value
-// to zero and permit identifier reuse.
+// CheckedNextLedgerID checks that current is a safe ledger ID and returns
+// current+1, or ErrSequenceExhausted when current==MaxUint32.
+//
+// The argument semantics differ by call site:
+//   - Live path (processCreateLedger): current is the persisted next-ID
+//     counter (the value that will be assigned to the new ledger). The return
+//     is discarded; only the exhaustion check matters before IncrementNextLedgerID.
+//   - Restore path (rebuildDelta): current is a CreatedLedgerLog.id that has
+//     already been assigned. The return (current+1) is used as the minimum
+//     value for the rebuilt next-ID counter.
+//
+// In both cases MaxUint32 is rejected because persisting it as the next value
+// would wrap the uint32 counter to zero on the following allocation, permitting
+// identifier reuse.
 func CheckedNextLedgerID(current uint32) (uint32, *ErrSequenceExhausted) {
 	if current == math.MaxUint32 {
 		return 0, &ErrSequenceExhausted{Counter: SequenceCounterLedgerID}
