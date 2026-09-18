@@ -1469,6 +1469,18 @@ func (s *LedgerState) applyRevert(
 		return OrderResult{Reason: domain.ErrReasonTransactionNotFound}
 	}
 
+	orig := s.txs.Get(int(id - 1))
+
+	// Check order mirrors processRevertTransaction: the already-reverted check
+	// runs before the target-observation comparison that yields
+	// REVERT_TARGET_CREATED_IN_BATCH. No input reaches both today — a target the
+	// batch creates cannot already be reverted, since the first revert rejects
+	// the whole batch — but keeping the model's order aligned means a future
+	// fixture cannot make them disagree.
+	if orig.reverted {
+		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
+	}
+
 	if id > batchInitialTxCount {
 		// The target is created by an earlier order in this same batch. Admission
 		// resolves a revert's original postings from the local store only, and
@@ -1478,12 +1490,6 @@ func (s *LedgerState) applyRevert(
 		// un-creates the target, so an identical retry reproduces the same
 		// observation.
 		return OrderResult{Reason: domain.ErrReasonRevertTargetCreatedInBatch}
-	}
-
-	orig := s.txs.Get(int(id - 1))
-
-	if orig.reverted {
-		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
 	}
 
 	reversed := make([]*commonpb.Posting, len(orig.postings))
