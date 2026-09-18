@@ -74,6 +74,16 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
+	// Caller metadata is validated before the observation check, for the same
+	// reason TRANSACTION_ALREADY_REVERTED outranks it: a permanently invalid
+	// order is invalid however fresh the view is, so classifying it as a stale
+	// observation would advertise a retry that re-admission refuses identically.
+	// It reads only the committed cluster policy, no coverage-gated key, so
+	// running it first cannot reach the gate ahead of the check below.
+	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
+		return nil, err
+	}
+
 	// Admission declared this order's volume coverage from its own read of the
 	// target, taken from the local store with no read barrier. If what it saw
 	// differs from what apply just read through the gate, the declared coverage
@@ -86,10 +96,6 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// must keep surfacing as such rather than being softened into a retryable
 	// mismatch.
 	if err := checkRevertTargetObservation(ledger, order.GetTransactionId(), originalPostings, ctx); err != nil {
-		return nil, err
-	}
-
-	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
 		return nil, err
 	}
 
