@@ -79,6 +79,19 @@ func main() {
 		}
 	}
 
+	if !fuzzInventoryOnly {
+		sdkFindings, err := checkSDKPin()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking the SDK pin: %v\n", err)
+			failed = true
+		}
+
+		for _, item := range sdkFindings {
+			printFinding(item)
+			failed = true
+		}
+	}
+
 	fuzzFindings, err := checkFuzzInventory(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "check-repo-invariants: checking fuzz inventory: %v\n", err)

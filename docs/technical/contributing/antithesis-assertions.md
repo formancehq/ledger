@@ -77,9 +77,12 @@ without it:
 
 Both images build the instrumentor from the fork at the same SHA as the
 `replace`, because `go install pkg@version` ignores `replace` and so cannot
-reach a fork that keeps the upstream module path. Keep the two in step: an
-instrumentor that does not know the `assert.Enabled` shape leaves an
-unreachable coverage edge at every guarded site.
+reach a fork that keeps the upstream module path. An instrumentor that does not
+know the `assert.Enabled` shape leaves an unreachable coverage edge at every
+guarded site, so the two are not merely meant to stay in step:
+`check-repo-invariants` fails `SDK_PIN_DRIFT` when the fork commit, the fork
+module path or the SDK version disagree across the two `go.mod` replaces, the
+two Dockerfile checkouts and the two `-instrumentor_version` flags.
 
 Both images also pass `-instrumentor_version`, which sets the SDK version the
 *generated notifier module* requires. With the `replace` in place this does not

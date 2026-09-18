@@ -24,6 +24,13 @@ const (
 	armedCoverageRecipe = "test-antithesis-assertions"
 )
 
+// The workload is a separate module with its own armed build: the
+// Tests-Antithesis-Workload job runs it with the tag — which
+// check_model_workload_reachability pins — and its Dockerfile builds the
+// campaign binaries the same way. A guard there does execute armed, so the
+// justfile recipe is not the authority over it.
+var armedCoverageExternalTrees = []string{"tests/antithesis/workload"}
+
 var (
 	armedCoverageGuard  = regexp.MustCompile(`(?m)^\s*if\s+assert\.Enabled\s*{`)
 	armedCoveragePkgArg = regexp.MustCompile(`\./([A-Za-z0-9_./-]+?)/\.\.\.`)
@@ -31,12 +38,12 @@ var (
 
 // checkArmedCoverage reports guards that the armed test target cannot reach.
 func checkArmedCoverage(files []string) ([]finding, error) {
-	trees, err := armedCoverageTrees()
+	recipeTrees, err := armedCoverageTrees()
 	if err != nil {
 		return nil, err
 	}
 
-	if len(trees) == 0 {
+	if len(recipeTrees) == 0 {
 		return []finding{{
 			path: justfilePath, line: 1, column: 1,
 			message: fmt.Sprintf(
@@ -45,6 +52,8 @@ func checkArmedCoverage(files []string) ([]finding, error) {
 			),
 		}}, nil
 	}
+
+	trees := append(append([]string{}, recipeTrees...), armedCoverageExternalTrees...)
 
 	var findings []finding
 
@@ -83,9 +92,9 @@ func armedCoverageInSource(path string, source []byte, trees []string) (finding,
 	return finding{
 		path: path, line: 1, column: 1,
 		message: fmt.Sprintf(
-			"ARMED_COVERAGE_UNREACHABLE: %s holds an `if assert.Enabled` guard outside the trees %s runs (%s); "+
+			"ARMED_COVERAGE_UNREACHABLE: %s holds an `if assert.Enabled` guard outside every armed build (%s); "+
 				"the guarded lines would never execute armed and never appear in a coverage profile",
-			path, armedCoverageRecipe, strings.Join(trees, " "),
+			path, strings.Join(trees, " "),
 		),
 	}, true
 }

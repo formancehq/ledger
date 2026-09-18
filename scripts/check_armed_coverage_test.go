@@ -19,6 +19,47 @@ func f() {
 
 var armedCoverageTestTrees = []string{"internal/infra/state", "internal/query"}
 
+// The workload module is armed by its own CI job and Dockerfile, so a guard
+// there is reachable even though the justfile recipe says nothing about it.
+func TestArmedCoverageAcceptsGuardsInTheWorkloadModule(t *testing.T) {
+	t.Parallel()
+
+	trees := append(append([]string{}, armedCoverageTestTrees...), armedCoverageExternalTrees...)
+
+	_, found := armedCoverageInSource(
+		"tests/antithesis/workload/bin/cmds/main/driver/main.go",
+		[]byte(armedCoverageGuardedSource),
+		trees,
+	)
+	require.False(t, found)
+}
+
+// The recipe name is matched with its colon, so a longer recipe sharing the
+// prefix is a different recipe and must not be picked up.
+func TestArmedCoverageRecipeNameIsNotMatchedByPrefix(t *testing.T) {
+	t.Parallel()
+
+	trees, err := armedCoverageTreesFromJustfile(`test-antithesis-assertions-fast:
+    go test ./wrong/...
+
+test-antithesis-assertions:
+    go test ./right/...
+`)
+	require.NoError(t, err)
+	require.Equal(t, []string{"right"}, trees)
+}
+
+// just allows dependencies after the colon; that is the same recipe.
+func TestArmedCoverageRecipeAcceptsDependencies(t *testing.T) {
+	t.Parallel()
+
+	trees, err := armedCoverageTreesFromJustfile(
+		"test-antithesis-assertions: build\n    go test ./right/...\n",
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"right"}, trees)
+}
+
 func TestArmedCoverageAcceptsGuardsInsideTheTarget(t *testing.T) {
 	t.Parallel()
 

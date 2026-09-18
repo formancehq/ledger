@@ -173,6 +173,10 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 		return nil, 0, nil, err
 	}
 
+	// Loop state, not assertion bookkeeping: both are captured on one
+	// iteration and read on a later one, so they cannot live inside the guard
+	// that reads them however the guard rule is written. Only the Sometimes
+	// call below consumes them today.
 	waited := false
 	var initialLag uint64
 

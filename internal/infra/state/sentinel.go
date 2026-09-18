@@ -434,11 +434,11 @@ func verifyVolumeDeltasMatchPostings(
 // reportVolumeOffense names one representative offender to both sinks the
 // delta checks report through: the Antithesis property and the returned error.
 //
-// The identity lives here rather than at each call site because it kept
-// drifting apart when it did not — `volume delta missing` and
-// `volume delta mismatch` printed three fields while the assertion beside them
-// printed four, which made the representative `lowestVolumeKey` deterministically
-// chose impossible to tell from any other offender differing only by color.
+// The identity lives here rather than at each call site because it drifted
+// when it did not: `volume delta missing` and `volume delta mismatch` printed
+// three fields while the assertion beside them printed four, so there was no
+// way to tell which offender `lowestVolumeKey` had chosen among any that
+// differed only by color.
 // A fourth check gets the identity, the offender count and the ordering for
 // free; what it supplies is the property, the summary and its own quantities.
 func reportVolumeOffense(
