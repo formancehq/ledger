@@ -2146,7 +2146,9 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		// coverage gate; a mismatch means admission declared coverage against a
 		// view apply does not share, and the order is rejected before it can
 		// read an undeclared volume.
-		bindRevertTargetDigest(order, reqType.Apply.GetLedger(), applyOrder, overlay)
+		if err := bindRevertTargetDigest(order, reqType.Apply.GetLedger(), applyOrder, overlay); err != nil {
+			return nil, err
+		}
 
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.Apply.GetLedger(),

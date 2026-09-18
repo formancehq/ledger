@@ -103,15 +103,22 @@ type revertTargetObservation struct {
 // digest and the FSM skips the check. OrderTechnical is excluded wholesale from
 // the idempotency and business-intent hashes, so writing here cannot change the
 // order's logical identity.
+//
+// A revert with no recorded observation is rejected here rather than shipped
+// with an empty digest. The FSM refuses that order anyway, but only after a Raft
+// round-trip, and assert.Unreachable is a no-op outside Antithesis — so the
+// assertion alone would let a future producer that skips
+// recordRevertOriginalPostings reach consensus before failing. Same reason class
+// either way, so the caller sees no difference beyond the earlier rejection.
 func bindRevertTargetDigest(
 	order *raftcmdpb.Order,
 	ledgerName string,
 	applyOrder *raftcmdpb.LedgerApplyOrder,
 	overlay *bulkOverlay,
-) {
+) error {
 	revert, ok := applyOrder.GetData().(*raftcmdpb.LedgerApplyOrder_RevertTransaction)
 	if !ok {
-		return
+		return nil
 	}
 
 	observation, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{
@@ -128,7 +135,9 @@ func bindRevertTargetDigest(
 			"transactionId": revert.RevertTransaction.GetTransactionId(),
 		})
 
-		return
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: "revert order built without a recorded target observation",
+		}
 	}
 
 	if order.GetTechnical() == nil {
@@ -136,6 +145,8 @@ func bindRevertTargetDigest(
 	}
 
 	order.Technical.RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found)
+
+	return nil
 }
 
 func newBulkOverlay() *bulkOverlay {
