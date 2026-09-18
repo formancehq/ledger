@@ -79,9 +79,8 @@ func (impl *ClusterBootstrapServiceServerImpl) checkClusterID(ctx context.Contex
 // service addresses. Called by a joining node before it starts Raft, to
 // populate its initial WAL snapshot.
 //
-// node.GetClusterState only populates the nodes slice when the local
-// node is the Raft leader (see node.go: "if status.RaftState ==
-// raft.StateLeader"). On a follower the slice is empty, so the joining
+// node.GetConfiguredPeers only returns configured peers when the local
+// node is the Raft leader. On a follower the slice is empty, so the joining
 // node would receive a useless answer. Forward the call to the leader
 // to guarantee a meaningful response.
 func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req *clusterbootstrappb.GetPeersRequest) (*clusterbootstrappb.GetPeersResponse, error) {
@@ -114,6 +113,7 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 			Id:             p.ID,
 			RaftAddress:    p.RaftAddress,
 			ServiceAddress: p.ServiceAddress,
+			InstanceId:     p.InstanceID,
 		})
 	}
 
@@ -125,8 +125,8 @@ func (impl *ClusterBootstrapServiceServerImpl) GetPeers(ctx context.Context, req
 // RaftServer. On the leader, it consults the removed-member registry
 // (EN-1045) first — a rejoin with a blacklisted (nodeID, instance_id)
 // tuple is refused with FailedPrecondition — then delegates to the
-// application membership service which wires the peer into the
-// transport/pool and proposes the ConfChange.
+// application membership service which proposes the ConfChange. The committed
+// change observer updates transport routing after admission succeeds.
 func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context, req *clusterbootstrappb.JoinAsLearnerRequest) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
 	if err := impl.checkClusterID(ctx); err != nil {
 		return nil, err
@@ -168,7 +168,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 
 	// EN-1045: every peer must present its 16-byte instance_id — clients
 	// acquire one at first boot via wal.EnsureInstanceID.
-	if len(req.GetInstanceId()) != 16 {
+	if len(req.GetInstanceId()) != membership.InstanceIDLen {
 		return nil, status.Errorf(codes.InvalidArgument, "instance_id must be 16 bytes, got %d", len(req.GetInstanceId()))
 	}
 
@@ -198,7 +198,7 @@ func (impl *ClusterBootstrapServiceServerImpl) JoinAsLearner(ctx context.Context
 			req.GetNodeId(), req.GetInstanceId())
 	}
 
-	if err := impl.membership.AddLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
+	if err := impl.membership.JoinAsLearner(ctx, req.GetNodeId(), req.GetRaftAddress(), req.GetServiceAddress(), req.GetInstanceId()); err != nil {
 		// EN-1436: a JoinAsLearner call reaches the leader only when the caller
 		// has no CLUSTER_JOINED marker on its WAL (see bootstrap/module.go
 		// tryAddLearner). If the leader's Progress already carries this
