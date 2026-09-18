@@ -979,7 +979,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 | Maintenance mode | `UNAVAILABLE` | `MAINTENANCE_MODE` | *(none)* |
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
-| Stale Numscript inputs resolution | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
+| Stale inputs resolution (Numscript inputs, or a revert's target observation) | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
 | Preload unavailable (discovery failed; forwarded for idempotent replay) | `UNAVAILABLE` | `PRELOAD_UNAVAILABLE` | *(none)* |
 | Raft node already absent during removal | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
 | Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
