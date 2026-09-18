@@ -631,9 +631,11 @@ decision in [ledger#2025](https://github.com/formancehq/ledger/issues/2025)).
 - **Not paginatable.** Account cursor pagination is by address.
 
 **Why it is removed rather than pending:** the original ledger maintains
-`first_usage` with a read-modify-write upsert
-(`first_usage = LEAST(d.first_usage, a.first_usage)`,
-`internal/storage/ledger/accounts.go:170` on `release/v2.4`). v3's admission
+`first_usage` with a read-modify-write upsert — its `UpsertAccounts` statement
+reads the stored row and lowers the value whenever the incoming write carries an
+earlier one (`internal/storage/ledger/accounts.go:170` on `release/v2.4`; the
+statement and its aliases are v2 Postgres and have no counterpart in this
+codebase). v3's admission
 path deliberately stopped injecting prior values into the preload — the same
 change that disabled `MetadataCount`
 (`internal/application/ctrl/controller_default.go:552-555`). A first-touch
@@ -743,14 +745,15 @@ worth writing down. The other two are straight cut-over copies into typed
 `datetime` keys of their own, and neither is recoverable afterwards in a way
 worth relying on:
 
-- `insertion_date` is stamped once, on insert, and never lowered
-  (`release/v2.4` sets it under `COALESCE(d.insertion_date, transaction_date())`
-  on the insert arm only). Copy it at cut-over or lose it — the v3 side has no
-  first-insert concept to derive it from.
+- `insertion_date` is stamped once, on insert, and never lowered — on
+  `release/v2.4` only the insert arm sets it, to the incoming value or to
+  `transaction_date()` when none is supplied. Copy it at cut-over or lose it;
+  the v3 side has no first-insert concept to derive it from.
 - `updated_at` moves only when the account row is actually rewritten. The
-  conflict arm carries `WHERE ... (d.first_usage < a.first_usage OR NOT
-  a.metadata @> d.metadata)`, so a later posting that changes no metadata and
-  supplies no earlier date leaves the row — and the timestamp — untouched. It
+  update arm runs only when the incoming row carries an earlier `first_usage`
+  than the stored one, or brings metadata the stored row does not already
+  contain — so a later posting that changes no metadata and supplies no earlier
+  date leaves the row, and the timestamp, untouched. It
   is *not* a last-touched marker. An application key stamped on every write is
   the closest v3 equivalent, but it is a different semantic: it moves where v2
   would have stood still.
@@ -762,18 +765,19 @@ but it has to reproduce what v2 actually does, and v2 writes the field in two
 distinct ways (`release/v2.4`):
 
 - **Established on insert.** Whichever write first creates the account row sets
-  `first_usage` to `COALESCE(d.first_usage, transaction_date())`. A transaction
-  supplies its effective date; a plain `SaveAccountMetadata` supplies nothing
-  and takes `transaction_date()`, so a metadata-only account does have a
-  `first_usage` with no transaction behind it.
-- **Lowered afterwards only by a write that supplies an earlier value**, through
-  `first_usage = LEAST(d.first_usage, a.first_usage)`. Two callers supply one:
+  `first_usage` to the incoming value, or to the database's `transaction_date()`
+  when the write supplies none. A transaction supplies its effective date; a
+  plain `SaveAccountMetadata` supplies nothing and takes `transaction_date()`,
+  so a metadata-only account does have a `first_usage` with no transaction
+  behind it.
+- **Lowered afterwards only by a write that supplies an earlier value.** Two
+  callers supply one:
   `upsertTransactionAccounts` (the transaction's effective date) and, on the
   import path only, `importLog` → `UpdateAccountsMetadata` (the log date).
 
 A normal `SaveAccountMetadata` is **not** in that second group: it calls
 `UpsertAccounts` with the date fields unset, `LEAST` ignores the NULL, and the
-`WHERE` gate's `d.first_usage < a.first_usage` is never true for it. So an
+update arm's "incoming date is earlier" test is never true for it. So an
 ordinary metadata save on an account that already exists does not move
 `first_usage` at all.
 
