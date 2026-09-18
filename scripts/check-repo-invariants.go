@@ -66,6 +66,19 @@ func main() {
 		}
 	}
 
+	if !fuzzInventoryOnly {
+		pinFindings, err := checkEtcdPinParityFiles()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking etcd pin parity: %v\n", err)
+			failed = true
+		}
+
+		for _, item := range pinFindings {
+			printFinding(item)
+			failed = true
+		}
+	}
+
 	fuzzFindings, err := checkFuzzInventory(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "check-repo-invariants: checking fuzz inventory: %v\n", err)
