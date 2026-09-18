@@ -938,6 +938,28 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, order.GetTechnical().GetRevertTargetDigest())
 	})
+
+	t.Run("rejects a revert order whose target observation was never recorded", func(t *testing.T) {
+		t.Parallel()
+
+		// Stands in for a future producer that builds a revert order without
+		// going through convertApplyRequest's lookup. The order must not reach
+		// Raft with an empty digest: assert.Unreachable is a no-op outside
+		// Antithesis, so the binding step itself has to fail closed.
+		order := &raftcmdpb.Order{}
+		applyOrder := &raftcmdpb.LedgerApplyOrder{
+			Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
+				RevertTransaction: &raftcmdpb.RevertTransactionOrder{TransactionId: 42},
+			},
+		}
+
+		err := bindRevertTargetDigest(order, testLedgerName, applyOrder, newBulkOverlay())
+
+		var invalidPlan *domain.ErrInvalidExecutionPlan
+		require.ErrorAs(t, err, &invalidPlan)
+		require.Empty(t, order.GetTechnical().GetRevertTargetDigest(),
+			"the order must be rejected, not stamped with a digest for a lookup that never happened")
+	})
 }
 
 func TestExtractNeededVolumes_Numscript(t *testing.T) {
