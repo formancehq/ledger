@@ -38,6 +38,7 @@ var _ = Describe("NumscriptLanguage", Ordered, func() {
 			g.Expect(err).To(Succeed())
 			vol := account.FindVolume(asset, "")
 			g.Expect(vol).NotTo(BeNil())
+			g.Expect(vol.GetBalance()).NotTo(BeNil(), "balance field must be present for asset %s", asset)
 			return vol.GetBalance().DecimalString()
 		}
 	}
