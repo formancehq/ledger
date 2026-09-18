@@ -81,6 +81,40 @@ and checkpoint-creation batches are covered by oracle unit tests only. Exercisin
 that admitted wire shape requires capturing the model state immediately before
 the creation order within the batch, rather than after the whole response drains.
 
+## Deleted-ledger isolation
+
+`main/parallel_driver_ledger_recreate` keeps its discovery name, but exercises
+the permanent tombstone contract: a deleted ledger name cannot be reused.
+After acknowledged predecessor writes and deletion, it checks the exact
+`LEDGER_DELETED` write refusal and the read endpoints' `NotFound` responses.
+It then creates a different driver-owned ledger, checks that predecessor
+transactions and accounts are absent, and reuses one predecessor reference
+there. References are unique within a ledger name. The original name is probed
+again after that successful activity.
+
+The former same-name recreation assumptions map to these reachable checks:
+
+| Former property | Replacement |
+| --- | --- |
+| Recreated ledger exposes no predecessor transactions | Complete transaction listing in another ledger contains no predecessor reference; deleted-ledger transaction reads return `NotFound` |
+| Recreated ledger exposes no predecessor account activity | Complete account listing in another ledger contains no predecessor address; deleted-ledger account reads return `NotFound` |
+| Predecessor references are reusable after recreation | A predecessor reference is accepted in another ledger; every permanent reuse error fails the oracle |
+| Predecessor reference accepted by recreated ledger | `Sometimes` observes successful reference reuse in another ledger |
+
+Each logical write uses its own idempotency key, stable across client retries.
+In particular, the recreation probe must not replay the original creation key.
+An ambiguous deletion does not count as confirmed deletion. Isolation reads use
+unfiltered, fully paginated helpers, so no undeclared reference/address index
+can silently prevent verification. Initial and receive errors remain visible;
+only the established transient/cancellation policy permits an inconclusive run.
+API absence does not establish physical storage reclamation.
+
+`TestLedgerDeletionScenarioContract` runs the actual scenario against a local
+single-node service with the sentinel enabled and inspects local SDK output.
+Its sensitivity cases inject unexpected name reuse, exposed deleted reads or
+writes, real cross-ledger reference/account contamination, a real reference
+conflict, other permanent errors, truncated streams, and a lost delete response.
+
 ## Driver naming convention
 
 The prefix encodes **how Antithesis schedules the binary**:
