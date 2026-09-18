@@ -29,6 +29,10 @@ const (
 	ledgerFinalizer = "ledger.formance.com/finalizer"
 	clusterGRPCPort = 8888
 	ledgerContainer = "ledger"
+	// errSubstrIdempotencyConflict is the stable prefix of ErrIdempotencyKeyConflict.Error().
+	// Shared here so isIdempotencyConflict can be tested against it without importing
+	// the full server module into the operator.
+	errSubstrIdempotencyConflict = "idempotency key conflict"
 	// ledgerExecTimeout bounds a single in-pod ledgerctl invocation. It must
 	// stay strictly larger than ledgerctl's own OpenTelemetry shutdown-flush
 	// budget (otelShutdownTimeout, 5s) plus a normal RPC round-trip: when a
@@ -700,7 +704,5 @@ func createLedgerWithExec(ledger *ledgerv1alpha1.Ledger, args []string, exec fun
 // success. The ledger may or may not have been created by the earlier attempt;
 // unlike AlreadyExists, this cannot be treated as a silent no-op.
 func isIdempotencyConflict(err error) bool {
-	return strings.Contains(strings.ToLower(err.Error()), "idempotency key conflict")
+	return strings.Contains(strings.ToLower(err.Error()), errSubstrIdempotencyConflict)
 }
-
-// isLedgerNotFound checks if the error output indicates the ledger was not found.
