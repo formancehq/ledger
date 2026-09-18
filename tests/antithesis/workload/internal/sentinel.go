@@ -61,9 +61,9 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 }
 
 // Verify asserts the sentinel transaction is still readable via the gRPC
-// client. Transient failures (UNAVAILABLE, ledger-deleted, etc.) are downgraded
-// to a Reachable check; a NotFound on a previously committed transaction is a
-// hard failure (Always violation).
+// client. Transient failures are recorded separately; a NotFound on a previously
+// committed transaction is a forbidden outcome. Successful reads have their own
+// required coverage, so the failure-only observation must not require a hit.
 func (s *Sentinel) Verify(ctx context.Context, client servicepb.BucketServiceClient, label string) {
 	details := Details{
 		"label":     label,
@@ -87,5 +87,7 @@ func (s *Sentinel) Verify(ctx context.Context, client servicepb.BucketServiceCli
 	st, _ := status.FromError(err)
 	// A committed sentinel must never be NotFound, regardless of the operational
 	// disruption that occurred between PreCommit and Verify.
-	assert.Always(st.Code() != codes.NotFound, "committed sentinel transaction must survive operational events", details.With(Details{"error": err}))
+	if st.Code() == codes.NotFound {
+		assert.Unreachable("committed sentinel transaction must survive operational events", details.With(Details{"error": err}))
+	}
 }
