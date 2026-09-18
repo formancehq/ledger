@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -102,13 +103,10 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 		return nil, err
 	}
 
-	// Authorization already peeked the batch in the interceptor. Keep a
-	// best-effort view solely for tracing and metrics; admission remains the
-	// authoritative parser and signature verifier.
-	batch, _ := servicepb.PeekBatch(req)
+	batchSize, _ := ctx.Value(applyBatchSizeKey{}).(int)
 
 	if impl.logger.Enabled(logging.TraceLevel) {
-		impl.logger.Tracef("Apply request received with %d requests", len(batch.GetRequests()))
+		impl.logger.Tracef("Apply request received with %d requests", batchSize)
 	}
 
 	result, err := impl.ctrl.Apply(ctx, req)
@@ -143,7 +141,7 @@ func (impl *BucketServiceServerImpl) Apply(ctx context.Context, req *servicepb.A
 	}
 
 	impl.applyDuration.Record(ctx, time.Since(start).Microseconds(),
-		metric.WithAttributes(attribute.Int("batch_size", len(batch.GetRequests()))))
+		metric.WithAttributes(attribute.Int("batch_size", batchSize)))
 
 	if skipResponse {
 		for _, log := range logs {
@@ -1212,6 +1210,7 @@ func withTransportQueryProfile(ctx context.Context) (context.Context, *query.Que
 	if start, ok := ctx.Value(queryProfileClockKey{}).(time.Time); ok {
 		return query.WithProfileStartingAt(ctx, start)
 	}
+	assert.Unreachable("profiled gRPC read has no request clock — queryProfileClock interceptor is missing from the server chain", nil)
 
 	return query.WithProfile(ctx)
 }
