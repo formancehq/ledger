@@ -30,10 +30,14 @@ var errReachedVolumes = errors.New("reached the volume read")
 
 const staleTestLedger = "stale-ledger"
 
-// revertStaleFixture wires the reads processRevertTransaction performs before
-// the observation check: the reverted-bitset probe and the gated transaction
-// state. Volumes are deliberately left unexpected.
-func revertStaleFixture(t *testing.T, txID uint64, postings []*commonpb.Posting) (*MockScope, *raftcmdpb.LedgerBoundaries) {
+// revertObservationFixture wires the reads processRevertTransaction performs
+// before the observation check: the reverted-bitset probe and the gated
+// transaction state. Volumes are deliberately left unexpected.
+//
+// It serves every test in this file that reaches those reads, not only the
+// stale-observation ones — the inconsistent-state and malformed-order cases go
+// through the same setup.
+func revertObservationFixture(t *testing.T, txID uint64, postings []*commonpb.Posting) (*MockScope, *raftcmdpb.LedgerBoundaries) {
 	t.Helper()
 
 	ctrl := gomock.NewController(t)
@@ -66,7 +70,7 @@ func TestProcessRevertTransaction_StaleObservationIsRetryable(t *testing.T) {
 
 	const txID uint64 = 300
 
-	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+	scope, boundaries := revertObservationFixture(t, txID, revertTestPostings())
 
 	payload, err := processRevertTransaction(
 		staleTestLedger,
@@ -98,7 +102,7 @@ func TestProcessRevertTransaction_TargetCreatedInBatchIsPermanent(t *testing.T) 
 
 	const txID uint64 = 300
 
-	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+	scope, boundaries := revertObservationFixture(t, txID, revertTestPostings())
 
 	payload, err := processRevertTransaction(
 		staleTestLedger,
@@ -133,7 +137,7 @@ func TestProcessRevertTransaction_MatchingObservationProceeds(t *testing.T) {
 	const txID uint64 = 300
 
 	postings := revertTestPostings()
-	scope, boundaries := revertStaleFixture(t, txID, postings)
+	scope, boundaries := revertObservationFixture(t, txID, postings)
 
 	// Reaching the volume reads is the assertion: the check let the order
 	// through. Fail the order there so the test stays focused on the check.
@@ -175,7 +179,7 @@ func TestProcessRevertTransaction_NoDigestIsRejected(t *testing.T) {
 
 	const txID uint64 = 300
 
-	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+	scope, boundaries := revertObservationFixture(t, txID, revertTestPostings())
 
 	payload, err := processRevertTransaction(
 		staleTestLedger,
@@ -209,7 +213,7 @@ func TestProcessRevertTransaction_NoBatchHorizonIsRejected(t *testing.T) {
 
 	const txID uint64 = 300
 
-	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+	scope, boundaries := revertObservationFixture(t, txID, revertTestPostings())
 
 	payload, err := processRevertTransaction(
 		staleTestLedger,
@@ -243,7 +247,7 @@ func TestProcessRevertTransaction_InconsistentStateNotSoftened(t *testing.T) {
 
 	const txID uint64 = 300
 
-	scope, boundaries := revertStaleFixture(t, txID, nil)
+	scope, boundaries := revertObservationFixture(t, txID, nil)
 
 	payload, err := processRevertTransaction(
 		staleTestLedger,
