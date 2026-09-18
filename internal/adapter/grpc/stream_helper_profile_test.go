@@ -83,7 +83,12 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 	t.Run("stream sends are charged to delivery, outside the server total", func(t *testing.T) {
 		t.Parallel()
 
-		ctx, profile := query.WithProfile(context.Background())
+		const (
+			controlledElapsed  = 2 * time.Hour
+			controlledDelivery = time.Hour
+			clockTolerance     = time.Minute
+		)
+		ctx, profile := query.WithProfileStartingAt(context.Background(), time.Now().Add(-controlledElapsed))
 		profile.EnterExecute()
 		profile.LeaveExecute()
 
@@ -97,13 +102,16 @@ func TestSendPagedToStream_ProfilePhaseAttribution(t *testing.T) {
 
 		require.GreaterOrEqual(t, profile.DeliverDuration, 3*spinPerItem,
 			"stream.Send() time must be attributed to the delivery phase")
+		// Add a controlled delivery interval large enough that scheduler noise
+		// cannot mask whether Finish subtracts delivery from server time.
+		profile.AddDelivery(controlledDelivery)
 
 		profile.Finish()
 
-		require.Less(t, profile.ServerDuration, 3*spinPerItem,
+		require.InDelta(t, (controlledElapsed - controlledDelivery).Seconds(), profile.ServerDuration.Seconds(), clockTolerance.Seconds(),
 			"consumer back-pressure must not inflate the consumer-independent total")
-		require.GreaterOrEqual(t, profile.WallDuration(), 3*spinPerItem,
-			"but the slow-query threshold must still see it")
+		require.Greater(t, profile.WallDuration(), profile.ServerDuration,
+			"the slow-query threshold must still include delivery")
 		require.Positive(t, profile.FirstRowDuration, "the first Send must be timestamped")
 	})
 
