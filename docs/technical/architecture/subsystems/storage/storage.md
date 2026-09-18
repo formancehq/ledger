@@ -420,8 +420,8 @@ replaces the log in memory — snapshot, entry cache, compaction boundary, and
 in this order:
 
 1. the full snapshot file, before any WAL record: an orphaned snap file is
-   harmless and a later snapshot cleans it up, while a WAL record without its
-   file makes restart fail;
+   harmless and a later snapshot cleans it up, while a WAL record whose file is
+   missing is skipped at startup, sending recovery back to an older snapshot;
 2. a guard WAL snapshot record, which is synced;
 3. the new `HardState`, which a commit-only update leaves buffered rather than
    synced;
@@ -433,10 +433,16 @@ is still on disk: when the entry at the snapshot index does not carry the
 snapshot term, the entries read before it are obsolete even though no record
 says so.
 
-Every durable prefix is recoverable. A crash between 2 and 4 leaves the guard
-record without the `HardState` that validates it, so replay ignores the record
-and the previous snapshot and WAL segments still describe the node; after 4, the
-`HardState` is backed by a snapshot record that was synced before it.
+Every durable prefix is recoverable, in one of two ways. A crash between 2 and 4
+may leave the guard record without the `HardState` that validates it, in which
+case replay ignores the record and the previous snapshot and WAL segments still
+describe the node. It may equally leave that `HardState` durable — step 3 is
+buffered rather than synced, but a segment rotation or an unrelated term or vote
+change syncs it, and the caller has usually written its own `HardState` before
+`ApplySnapshot` — in which case the new snapshot is selected, backed by the guard
+record that was synced at step 2. Both outcomes are consistent; what step 4
+guarantees is that neither leaves a `HardState` pointing at a snapshot record
+that is not durable.
 
 etcd v3.7.1 applies the first rule only to records above the opening snapshot
 (`ents = append(ents[:offset], e)` under `e.Index > w.start.Index`) and does not

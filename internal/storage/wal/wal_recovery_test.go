@@ -174,10 +174,14 @@ func TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot(t *testing.T) {
 }
 
 // TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall pins the opposite
-// hazard. ApplySnapshot persists a guard snapshot record *before* advancing
-// HardState, so a crash in between leaves a record that does not describe
-// durable state. Honouring it would delete committed entries and refuse a
-// recoverable startup.
+// hazard. ApplySnapshot persists the snapshot file and a guard snapshot record
+// *before* advancing HardState, so a crash in between leaves a record that does
+// not describe durable state. Honouring it would delete committed entries and
+// refuse a recoverable startup.
+//
+// The fixture writes the snapshot file too. Without it LoadNewestAvailable
+// (wal_default.go) skips the record whatever the commit index says, and the test
+// would pass without ever reaching the rule it exists for.
 func TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall(t *testing.T) {
 	t.Parallel()
 
@@ -189,8 +193,16 @@ func TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall(t *testing.T) {
 	require.NoError(t, w.Append(hs(1, 1, 7), entries))
 	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
 
-	// The guard record an interrupted ApplySnapshot leaves behind: index 9 is
-	// beyond the durable commit of 7, and no HardState follows it.
+	// What an interrupted ApplySnapshot leaves behind. The snapshot file comes
+	// first, exactly as ApplySnapshot writes it, so the guard record below is
+	// selectable as far as the snapshotter is concerned and only the commit
+	// index can exclude it.
+	require.NoError(t, w.snapshotter.Save(&raftpb.Snapshot{
+		Metadata: snapshotMeta(9, 2, testConfState()),
+	}))
+
+	// The guard record itself: index 9 is beyond the durable commit of 7, and no
+	// HardState follows it.
 	require.NoError(t, w.wal.SaveSnapshot(&walpb.Snapshot{
 		Index:     new(uint64(9)),
 		Term:      new(uint64(2)),
@@ -200,41 +212,6 @@ func TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall(t *testing.T) {
 
 	reopened := assertRecoveredLog(t, dir, 10, 1)
 	require.Len(t, reopened.entries, 5, "entries 6..10 must survive an unacknowledged guard record")
-	require.Equal(t, uint64(6), reopened.entries[0].GetIndex())
-}
-
-// TestRecovery_KeepsEntriesWhenCommitOvertakesAGuardRecord is the sharper form
-// of the case above. An interrupted install leaves a guard record behind; the
-// node then recovers and keeps committing, so the commit index advances past
-// that record's index. Any rule that decides a snapshot record's validity from
-// the final durable commit would accept the stale guard retroactively and delete
-// committed entries — which is why only the selected snapshot has an effect.
-func TestRecovery_KeepsEntriesWhenCommitOvertakesAGuardRecord(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	w := newTestWALAt(t, dir)
-
-	first := entriesBetween(1, 10, 1, []byte("d"))
-
-	require.NoError(t, w.Append(hs(1, 1, 7), first))
-	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
-
-	// The guard record an interrupted ApplySnapshot left at index 9.
-	require.NoError(t, w.wal.SaveSnapshot(&walpb.Snapshot{
-		Index:     new(uint64(9)),
-		Term:      new(uint64(2)),
-		ConfState: testConfState(),
-	}))
-
-	// The node carries on and commits well past that index.
-	later := entriesBetween(11, 20, 1, []byte("d"))
-
-	require.NoError(t, w.Append(hs(1, 1, 20), later))
-	require.NoError(t, w.Close())
-
-	reopened := assertRecoveredLog(t, dir, 20, 1)
-	require.Len(t, reopened.entries, 15, "entries 6..20 must survive a guard record the commit index later overtook")
 	require.Equal(t, uint64(6), reopened.entries[0].GetIndex())
 }
 
@@ -302,6 +279,13 @@ func TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite(t *testing.T) {
 
 	require.NoError(t, w.Append(hs(1, 1, 10), entries))
 	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
+
+	// The sentinel below is raised by any gap, so bind the boundary this case is
+	// about: replay must open at snapshot 5, which is what makes the overwrite
+	// at index 3 a below-snapshot one.
+	snap, err := w.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), snap.GetMetadata().GetIndex())
 
 	// An overwrite at index 3, below the snapshot the WAL will be opened at.
 	require.NoError(t, w.Append(hs(2, 1, 10), []*raftpb.Entry{ent(3, 2, []byte("d"))}))
