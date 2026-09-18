@@ -1440,9 +1440,10 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// so if apply finds the transaction after all it rejects the order
 			// before reading an undeclared volume instead of tripping the
 			// coverage gate.
-			observation, _ := overlay.revertOriginalPostingsFor(
-				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
-			)
+			// A target never recorded declares the same as one observed absent:
+			// nothing. bindRevertTargetDigest refuses the unrecorded case before
+			// the order can reach Raft, so the two need not be told apart here.
+			observation, _ := overlay.revertTargetObservation(ledgerName, applyData.RevertTransaction)
 			for _, posting := range observation.postings {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
@@ -1831,10 +1832,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// marks the transaction reverted. Folding it as a zero-delta revert
 			// would leave the effect accumulator claiming a reversion that never
 			// happens, and mispredict a later order in the same batch.
-			revertTarget := domain.TransactionKey{
-				LedgerName: ledgerName,
-				ID:         applyData.RevertTransaction.GetTransactionId(),
-			}
+			revertTarget := revertTargetKey(ledgerName, applyData.RevertTransaction)
 
 			observation, _ := overlay.revertOriginalPostingsFor(revertTarget)
 			if !observation.found {
@@ -2642,8 +2640,8 @@ func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *se
 // postings' accounts (invariant #9). A missing ledger or missing tx is
 // NOT a business rejection here — invariant #8 says every business
 // decision must appear in the audit chain, and only the FSM apply path
-// writes audit entries. On ErrNotFound the fetch returns (nil, nil) and
-// the proposal proceeds; the FSM apply's processApply → loadBoundaries
+// writes audit entries. On ErrNotFound the fetch returns (nil, false, nil)
+// and the proposal proceeds; the FSM apply's processApply → loadBoundaries
 // audits ErrLedgerNotFound, processRevertTransaction's
 // `txID >= boundaries.GetNextTransactionId()` check audits
 // ErrTransactionNotFound.

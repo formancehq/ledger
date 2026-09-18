@@ -121,10 +121,7 @@ func bindRevertTargetDigest(
 		return nil
 	}
 
-	observation, recorded := overlay.revertOriginalPostingsFor(domain.TransactionKey{
-		LedgerName: ledgerName,
-		ID:         revert.RevertTransaction.GetTransactionId(),
-	})
+	observation, recorded := overlay.revertTargetObservation(ledgerName, revert.RevertTransaction)
 	if !recorded {
 		// Unreachable by construction: convertApplyRequest records an
 		// observation for every revert it builds. Leaving the digest empty here
@@ -183,6 +180,23 @@ func (o *bulkOverlay) revertOriginalPostingsFor(key domain.TransactionKey) (reve
 	observation, ok := o.revertOriginalPostings[key]
 
 	return observation, ok
+}
+
+// revertTargetKey is the overlay key for a revert order's target. The three
+// passes that consult the observation — coverage extraction, intra-bulk effect
+// folding, and digest binding — all go through it, so none can drift from the
+// key convertApplyRequest recorded under.
+func revertTargetKey(ledgerName string, revert *raftcmdpb.RevertTransactionOrder) domain.TransactionKey {
+	return domain.TransactionKey{LedgerName: ledgerName, ID: revert.GetTransactionId()}
+}
+
+// revertTargetObservation is revertOriginalPostingsFor keyed straight off a
+// revert order.
+func (o *bulkOverlay) revertTargetObservation(
+	ledgerName string,
+	revert *raftcmdpb.RevertTransactionOrder,
+) (revertTargetObservation, bool) {
+	return o.revertOriginalPostingsFor(revertTargetKey(ledgerName, revert))
 }
 
 // recordNumscriptSave records an immutable save in the overlay and advances the
