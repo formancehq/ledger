@@ -13,6 +13,7 @@ import (
 
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
@@ -48,15 +49,16 @@ type prefetchResult struct {
 // Worker continuously fetches v2 logs for a single mirror ledger and proposes
 // them via Raft. It is started/stopped by the Manager based on leadership.
 type Worker struct {
-	ledgerName     string
-	batchSize      int
-	source         v2.Source
-	rewriter       *celrewrite.Rewriter
-	store          *dal.Store
-	proposer       Proposer
-	builder        *plan.Builder
-	logger         logging.Logger
-	sourceLogCount uint64
+	ledgerName          string
+	batchSize           int
+	source              v2.Source
+	rewriter            *celrewrite.Rewriter
+	store               *dal.Store
+	lifecycleSerializer *accountlifecycle.Serializer
+	proposer            Proposer
+	builder             *plan.Builder
+	logger              logging.Logger
+	sourceLogCount      uint64
 	// sourceHeadObserved records that GetLatestLogID has answered at least
 	// once, making sourceLogCount == 0 an observed empty source rather than
 	// "never asked". Without it publishIdleStatus cannot tell the two apart,
@@ -118,9 +120,13 @@ func NewWorker(
 	builder *plan.Builder,
 	logger logging.Logger,
 	meterProvider metric.MeterProvider,
+	lifecycleSerializer *accountlifecycle.Serializer,
 ) *Worker {
 	if batchSize <= 0 {
 		batchSize = defaultBatchSize
+	}
+	if lifecycleSerializer == nil {
+		lifecycleSerializer = accountlifecycle.NewSerializer()
 	}
 
 	meter := meterProvider.Meter("mirror")
@@ -152,15 +158,16 @@ func NewWorker(
 		metric.WithUnit("1"))
 
 	return &Worker{
-		ledgerName: ledgerName,
-		batchSize:  batchSize,
-		source:     source,
-		rewriter:   rewriter,
-		store:      store,
-		proposer:   proposer,
-		builder:    builder,
-		logger:     logger.WithFields(map[string]any{"cmp": "mirror-worker", "ledger": ledgerName}),
-		notify:     signal.New(),
+		ledgerName:          ledgerName,
+		batchSize:           batchSize,
+		source:              source,
+		rewriter:            rewriter,
+		store:               store,
+		lifecycleSerializer: lifecycleSerializer,
+		proposer:            proposer,
+		builder:             builder,
+		logger:              logger.WithFields(map[string]any{"cmp": "mirror-worker", "ledger": ledgerName}),
+		notify:              signal.New(),
 
 		ledgerAttr:        attribute.String("ledger", ledgerName),
 		fetchDuration:     fetchDuration,
@@ -401,6 +408,19 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	preloadStart := time.Now()
 
 	aggregate, perOrder := w.extractMirrorNeeds(cmd)
+	accounts, err := lifecycleAccounts(perOrder)
+	if err != nil {
+		return false, fmt.Errorf("collecting mirror account lifecycle locks: %w", err)
+	}
+	releaseLifecycle, err := w.lifecycleSerializer.Acquire(ctx, accounts, false)
+	if err != nil {
+		return false, fmt.Errorf("acquiring mirror account lifecycle locks: %w", err)
+	}
+	defer func() {
+		if releaseLifecycle != nil {
+			releaseLifecycle()
+		}
+	}()
 	if err := w.expandAccountLifecycleCoverage(aggregate, perOrder); err != nil {
 		return false, fmt.Errorf("expanding mirror account lifecycle coverage: %w", err)
 	}
@@ -480,6 +500,11 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	proposal := runResult.Proposal
 	fsmFuture := runResult.FSMFuture
+	go func(release func()) {
+		_, _ = fsmFuture.Wait(context.Background())
+		release()
+	}(releaseLifecycle)
+	releaseLifecycle = nil
 
 	// Start prefetching the next batch while waiting for Raft consensus.
 	// The goroutine writes to a buffered channel and always exits, even if
@@ -884,4 +909,30 @@ func (w *Worker) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrd
 	}
 
 	return nil
+}
+
+func lifecycleAccounts(perOrder []*plan.Coverage) (map[domain.AccountKey]struct{}, error) {
+	accounts := make(map[domain.AccountKey]struct{})
+	for _, coverage := range perOrder {
+		for attrCode, entries := range coverage.Attributes {
+			for _, entry := range entries {
+				switch attrCode {
+				case dal.SubAttrVolume:
+					var key domain.VolumeKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return nil, err
+					}
+					accounts[key.AccountKey] = struct{}{}
+				case dal.SubAttrMetadata:
+					var key domain.MetadataKey
+					if err := key.Unmarshal(entry.Canonical); err != nil {
+						return nil, err
+					}
+					accounts[key.AccountKey] = struct{}{}
+				}
+			}
+		}
+	}
+
+	return accounts, nil
 }

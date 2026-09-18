@@ -2,17 +2,20 @@ package admission
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	stdtime "time"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 func TestReleaseLifecycleWhenFSMCompletesWaitsPastCallerCancellation(t *testing.T) {
@@ -41,7 +44,9 @@ func TestAccountTypeMutationSerializesAllLifecycleStripes(t *testing.T) {
 
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
-	require.NoError(t, admission.ephemeralLifecycleLocks[0].Acquire(t.Context(), 1))
+	stripe0 := accountOnLifecycleStripe(0)
+	releaseHeld, err := admission.lifecycleSerializer.Acquire(t.Context(), map[domain.AccountKey]struct{}{stripe0: {}}, false)
+	require.NoError(t, err)
 
 	done := make(chan func(), 1)
 	go func() {
@@ -63,7 +68,7 @@ func TestAccountTypeMutationSerializesAllLifecycleStripes(t *testing.T) {
 	case <-stdtime.After(20 * stdtime.Millisecond):
 	}
 
-	admission.ephemeralLifecycleLocks[0].Release(1)
+	releaseHeld()
 	select {
 	case release := <-done:
 		release()
@@ -77,8 +82,11 @@ func TestAccountTypeMutationCancellationReleasesAcquiredLifecycleStripes(t *test
 
 	store := createTestStore(t)
 	admission, _ := createTestAdmission(t, store)
-	require.NoError(t, admission.ephemeralLifecycleLocks[1].Acquire(t.Context(), 1))
-	t.Cleanup(func() { admission.ephemeralLifecycleLocks[1].Release(1) })
+	stripe0 := accountOnLifecycleStripe(0)
+	stripe1 := accountOnLifecycleStripe(1)
+	releaseHeld, err := admission.lifecycleSerializer.Acquire(t.Context(), map[domain.AccountKey]struct{}{stripe1: {}}, false)
+	require.NoError(t, err)
+	t.Cleanup(releaseHeld)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
@@ -94,8 +102,8 @@ func TestAccountTypeMutationCancellationReleasesAcquiredLifecycleStripes(t *test
 	}()
 
 	require.Eventually(t, func() bool {
-		if admission.ephemeralLifecycleLocks[0].TryAcquire(1) {
-			admission.ephemeralLifecycleLocks[0].Release(1)
+		if release, ok := admission.lifecycleSerializer.TryAcquire(stripe0); ok {
+			release()
 
 			return false
 		}
@@ -104,8 +112,18 @@ func TestAccountTypeMutationCancellationReleasesAcquiredLifecycleStripes(t *test
 	}, stdtime.Second, stdtime.Millisecond)
 	cancel()
 	require.ErrorIs(t, <-done, context.Canceled)
-	require.True(t, admission.ephemeralLifecycleLocks[0].TryAcquire(1), "cancellation must release already acquired stripes")
-	admission.ephemeralLifecycleLocks[0].Release(1)
+	release, ok := admission.lifecycleSerializer.TryAcquire(stripe0)
+	require.True(t, ok, "cancellation must release already acquired stripes")
+	release()
+}
+
+func accountOnLifecycleStripe(index int) domain.AccountKey {
+	for i := 0; ; i++ {
+		account := domain.AccountKey{LedgerName: testLedgerName, Account: fmt.Sprintf("stripe:%d", i)}
+		if accountlifecycle.Index(account) == index {
+			return account
+		}
+	}
 }
 
 func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T) {
@@ -145,6 +163,16 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 			}},
 		}}),
 	}
+	volume := domain.NewVolumeKey(testLedgerName, "users:alice", "USD", "")
+	metadata := domain.MetadataKey{AccountKey: volume.AccountKey, Key: "note"}
+	batch = store.OpenWriteSession()
+	_, err = attrs.Volume.Set(batch, volume.Bytes(), &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0),
+	})
+	require.NoError(t, err)
+	_, err = attrs.Metadata.Set(batch, metadata.Bytes(), commonpb.NewStringValue("value"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
 
 	snapshots, err := admission.accountLifecycleTypeSnapshots(orders)
 	require.NoError(t, err)
@@ -152,6 +180,15 @@ func TestAccountLifecycleTypeSnapshotsCoverProposalTypeTransitions(t *testing.T)
 		"removing a more-specific persistent type must expose the ephemeral fallback")
 	require.True(t, accountMatchesEphemeralSnapshot("temporary:one", snapshots[testLedgerName]),
 		"an ephemeral type introduced by the proposal must participate in coverage")
+	aggregate := plan.NewCoverage()
+	perOrder := []*plan.Coverage{plan.NewCoverage(), plan.NewCoverage()}
+	release, err := admission.expandAccountLifecycleCoverage(t.Context(), aggregate, perOrder, orders)
+	require.NoError(t, err)
+	defer release()
+	require.True(t, perOrder[0].Has(dal.SubAttrVolume, volume.Bytes()))
+	require.True(t, perOrder[0].Has(dal.SubAttrMetadata, metadata.Bytes()))
+	require.True(t, aggregate.Has(dal.SubAttrVolume, volume.Bytes()))
+	require.True(t, aggregate.Has(dal.SubAttrMetadata, metadata.Bytes()))
 }
 
 func TestAccountLifecycleTypeSnapshotsPreserveSkippedDuplicateAdd(t *testing.T) {

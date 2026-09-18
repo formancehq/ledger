@@ -453,20 +453,6 @@ func TestZeroVolumeCache_Empty(t *testing.T) {
 	require.NoError(t, batch.Commit())
 }
 
-func TestIsVolumeEmptyDistinguishesBalancedFlowFromCachePlaceholder(t *testing.T) {
-	t.Parallel()
-
-	require.True(t, isVolumeEmpty(&raftcmdpb.VolumePair{}))
-	require.True(t, isVolumeEmpty(&raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
-	}))
-	require.False(t, isVolumeEmpty(&raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(10),
-		Output: commonpb.NewUint256FromUint64(10),
-	}))
-}
-
 func TestIsVolumeZeroBalance_Transient(t *testing.T) {
 	t.Parallel()
 
@@ -562,6 +548,38 @@ func TestPrepareEphemeralAccountPurgeRequiresLastLiveVolume(t *testing.T) {
 	require.Contains(t, buf.purgedAccounts, usd.AccountKey)
 	require.NoError(t, buf.stagePurgedAccountRows())
 	_, err = buf.Derived.AccountMetadata.Get(meta)
+	require.ErrorIs(t, err, domain.ErrNotFound)
+}
+
+func TestPrepareEphemeralAccountPurgeDeletesPersistedExplicitZeroVolume(t *testing.T) {
+	t.Parallel()
+
+	machine, _, _ := newTestMachine(t)
+	ledger := &commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{
+		"hold": {Name: "hold", Pattern: "hold:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+	}}
+	ledgerKey := domain.LedgerKey{Name: "test"}
+	_, _, err := machine.Registry.Ledgers.KeyStore().Put(ledgerKey.Bytes(), ledger)
+	require.NoError(t, err)
+	volume := domain.NewVolumeKey("test", "hold:1", "USD", "")
+	_, _, err = machine.Registry.Volumes.KeyStore().Put(volume.Bytes(), &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0),
+	})
+	require.NoError(t, err)
+
+	buf := NewWriteSet(machine)
+	plans := []*raftcmdpb.AttributeCoverage{
+		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
+		declareCanonicalTestPlan(volume.Bytes(), dal.SubAttrVolume),
+	}
+	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
+	require.NoError(t, err)
+	require.Nil(t, buf.ValidateTransientVolumes(scope))
+	require.NoError(t, buf.PrepareEphemeralAccountPurge(scope, plans))
+	require.Contains(t, buf.purgedAccounts, volume.AccountKey)
+	require.Contains(t, buf.purgedAccountVolumeKeys, volume)
+	require.NoError(t, buf.stagePurgedAccountRows())
+	_, err = buf.Derived.Volumes.Get(volume)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 }
 
