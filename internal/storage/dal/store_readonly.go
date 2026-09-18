@@ -14,9 +14,9 @@ import (
 // The caller must call Close() when done.
 //
 // A single handle may be shared by concurrent readers; Pebble supports
-// concurrent reads. Nothing here forbids RestoreCheckpoint on the shared Store,
-// which swaps the database under its readers, so a shared handle must be closed
-// only after the last reader is done with it.
+// concurrent reads. RestoreCheckpoint would swap the database under them; its
+// only caller is the IncomingRestoreFactory, built once over the live store at
+// boot.
 //
 // Memory profile: tuned for short-lived secondary opens (e.g. reading a few
 // well-known keys from a backup checkpoint while the primary store still
