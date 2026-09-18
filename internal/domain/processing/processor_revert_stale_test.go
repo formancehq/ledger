@@ -167,6 +167,46 @@ func TestProcessRevertTransaction_MatchingObservationProceeds(t *testing.T) {
 	require.NotErrorAs(t, err, &created)
 }
 
+// TestProcessRevertTransaction_InvalidMetadataBeatsObservationCheck pins that a
+// permanently invalid order is not reported as a stale observation.
+//
+// Both conditions hold here: the metadata exceeds the committed ceiling *and*
+// admission's observation is stale. Answering STALE_INPUTS_RESOLUTION would
+// advertise a retry that re-admission refuses identically — the same reason
+// TRANSACTION_ALREADY_REVERTED outranks the observation check.
+func TestProcessRevertTransaction_InvalidMetadataBeatsObservationCheck(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	scope, boundaries := revertObservationFixture(t, txID, revertTestPostings())
+	scope.EXPECT().GetClusterPolicy().Return(tightMetadataPolicy(4)).AnyTimes()
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{
+			TransactionId: txID,
+			Metadata: map[string]*commonpb.MetadataValue{
+				"k": commonpb.NewStringValue("far past the ceiling"),
+			},
+		},
+		&Context{
+			Scope:      scope,
+			Boundaries: boundaries,
+			LedgerInfo: (&commonpb.LedgerInfo{}).AsReader(),
+			// Admission looked and saw nothing: the observation is stale too.
+			RevertTargetDigest:   domain.RevertTargetDigest(nil, false),
+			batchInitialNextTxID: map[string]uint64{staleTestLedger: txID + 1},
+		},
+	)
+
+	require.Nil(t, payload)
+	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
+		"a permanently invalid order must not be advertised as retryable")
+	require.Equal(t, domain.KindValidation, domain.Kind(err),
+		"the metadata rejection is the one the caller can act on")
+}
+
 // TestProcessRevertTransaction_NoDigestIsRejected pins that an order carrying no
 // bound observation is refused rather than tolerated.
 //
