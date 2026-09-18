@@ -1424,3 +1424,76 @@ func TestRaftPortFromBindAddr(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Cluster policy: metadata limits and revision
+// ---------------------------------------------------------------------------
+
+func TestBuildEnvVars_ClusterPolicyRevision(t *testing.T) {
+	t.Parallel()
+
+	t.Run("set emits env var", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		v := int64(2)
+		ls.Spec.ClusterPolicyRevision = &v
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "CLUSTER_POLICY_REVISION", "2")
+	})
+
+	t.Run("nil omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "CLUSTER_POLICY_REVISION")
+	})
+}
+
+func TestBuildEnvVars_MetadataLimits(t *testing.T) {
+	t.Parallel()
+
+	t.Run("all set emit env vars", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		entries := int64(64)
+		keyBytes := int64(512)
+		valueBytes := int64(32768)
+		entityBytes := int64(131072)
+		commandBytes := int64(1048576)
+		ls.Spec.MetadataMaxEntries = &entries
+		ls.Spec.MetadataMaxKeyBytes = &keyBytes
+		ls.Spec.MetadataMaxValueBytes = &valueBytes
+		ls.Spec.MetadataMaxEntityBytes = &entityBytes
+		ls.Spec.MetadataMaxCommandBytes = &commandBytes
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "METADATA_MAX_ENTRIES", "64")
+		assertEnv(t, envs, "METADATA_MAX_KEY_BYTES", "512")
+		assertEnv(t, envs, "METADATA_MAX_VALUE_BYTES", "32768")
+		assertEnv(t, envs, "METADATA_MAX_ENTITY_BYTES", "131072")
+		assertEnv(t, envs, "METADATA_MAX_COMMAND_BYTES", "1048576")
+	})
+
+	t.Run("nil fields omitted", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertNoEnv(t, envs, "METADATA_MAX_ENTRIES")
+		assertNoEnv(t, envs, "METADATA_MAX_KEY_BYTES")
+		assertNoEnv(t, envs, "METADATA_MAX_VALUE_BYTES")
+		assertNoEnv(t, envs, "METADATA_MAX_ENTITY_BYTES")
+		assertNoEnv(t, envs, "METADATA_MAX_COMMAND_BYTES")
+	})
+
+	t.Run("only command bytes set emits only that env var", func(t *testing.T) {
+		t.Parallel()
+		ls := newMinimalCluster()
+		v := int64(1048576)
+		ls.Spec.MetadataMaxCommandBytes = &v
+		envs := buildEnvVars(ls, "disabled", nil)
+		assertEnv(t, envs, "METADATA_MAX_COMMAND_BYTES", "1048576")
+		assertNoEnv(t, envs, "METADATA_MAX_ENTRIES")
+		assertNoEnv(t, envs, "METADATA_MAX_KEY_BYTES")
+		assertNoEnv(t, envs, "METADATA_MAX_VALUE_BYTES")
+		assertNoEnv(t, envs, "METADATA_MAX_ENTITY_BYTES")
+	})
+}

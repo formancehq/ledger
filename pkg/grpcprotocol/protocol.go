@@ -12,7 +12,10 @@ const (
 	// Version must change when the client-facing wire format or semantics break.
 	// See docs/technical/architecture/subsystems/api/protocol-compatibility.md.
 	// A compiled constant also identifies local builds without release ldflags.
-	Version = "10"
+	// Bumped to 11: DefaultMetadataMaxCommandBytes raised from 256 KiB to 1 MiB
+	// (EN-2069/EN-2105). Clients that previously hit the command ceiling now
+	// succeed, so the effective server behaviour changed under the same revision.
+	Version = "11"
 	// MetadataKey carries the protocol version, not authentication credentials.
 	MetadataKey = "ledger-protocol-version"
 )
