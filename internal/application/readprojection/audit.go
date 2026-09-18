@@ -80,15 +80,11 @@ func publicOrder(order *raftcmdpb.Order) (*publicauditpb.Order, error) {
 		}
 		target := &publicauditpb.LedgerScopedOrder{Ledger: source.GetLedger()}
 		if create := source.GetCreateLedger(); create != nil {
-			config, err := connectionconfig.Mirror(create.GetMirrorSource())
-			if err != nil {
-				// Parser diagnostics can contain credentials; expose only the flag.
-				config = nil
-			}
+			config, unavailable := normalizeOrFlag(connectionconfig.Mirror(create.GetMirrorSource()))
 			target.Payload = &publicauditpb.LedgerScopedOrder_CreateLedger{CreateLedger: &publicauditpb.CreateLedgerOrder{
 				InitialSchema: create.GetInitialSchema(), Mode: create.GetMode(), MirrorSource: config,
 				AccountTypes: create.GetAccountTypes(), DefaultEnforcementMode: create.GetDefaultEnforcementMode(),
-				ConfigurationUnavailable: err != nil,
+				ConfigurationUnavailable: unavailable,
 			}}
 		} else if err := copyOrderPayload(source.ProtoReflect(), target.ProtoReflect()); err != nil {
 			return nil, err
@@ -101,13 +97,9 @@ func publicOrder(order *raftcmdpb.Order) (*publicauditpb.Order, error) {
 		}
 		target := &publicauditpb.SystemScopedOrder{}
 		if add := source.GetAddEventsSink(); add != nil {
-			config, err := connectionconfig.Sink(add.GetConfig())
-			if err != nil {
-				// Parser diagnostics can contain credentials; expose only the flag.
-				config = nil
-			}
+			config, unavailable := normalizeOrFlag(connectionconfig.Sink(add.GetConfig()))
 			target.Payload = &publicauditpb.SystemScopedOrder_AddEventsSink{AddEventsSink: &publicauditpb.AddEventsSinkOrder{
-				Config: config, ConfigurationUnavailable: err != nil,
+				Config: config, ConfigurationUnavailable: unavailable,
 			}}
 		} else if err := copyOrderPayload(source.ProtoReflect(), target.ProtoReflect()); err != nil {
 			return nil, err
@@ -123,6 +115,17 @@ func publicOrder(order *raftcmdpb.Order) (*publicauditpb.Order, error) {
 // All ordinary order arms share their typed message with the authoritative
 // schema. Only the two configuration arms require normalization above. Match
 // descriptors explicitly so a new or changed arm cannot silently lose detail.
+
+// normalizeOrFlag runs a normalize function and returns (nil, true) on failure.
+// Parser diagnostics can contain credentials; the flag is the only signal exposed.
+func normalizeOrFlag[T any](value T, err error) (T, bool) {
+	if err != nil {
+		var zero T
+		return zero, true
+	}
+	return value, false
+}
+
 func copyOrderPayload(source, target protoreflect.Message) error {
 	field := source.WhichOneof(source.Descriptor().Oneofs().ByName("payload"))
 	if field == nil {
