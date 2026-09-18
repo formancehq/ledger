@@ -569,6 +569,24 @@ Streaming cursors also preserve these decoded statuses before interpreting raw
 `Canceled` as EOF or a retryable transport failure. An unknown Ledger reason
 carried by `Canceled` remains an error with its original details.
 
+Unary leader forwarding also distinguishes a local peer-connection teardown
+from caller cancellation (EN-2212). `grpcerr.Conn.Invoke` maps grpc-go's exact
+bare `ErrClientConnClosing` to `Unavailable` only when the actual local
+`ClientConn` is shut down and the caller context is still live. It preserves
+the transport message. Caller cancellation, unrelated `Canceled`, a server
+status on a live connection, and statuses carrying details retain their
+existing handling; `Unknown` is not made retryable. Forwarding does not retry.
+
+This is an interrupted outcome, not a definitive business rejection:
+`Unavailable` can arrive **after a write has committed** when its response is
+lost. A client retry must retain the original idempotency key and payload.
+Without a key, replaying the request may execute it again. The regression
+`TestConn_LostCommittedResponseRetriesWithStableKey` commits against a real
+Ledger node, closes the peer connection before response delivery, and verifies
+that native gRPC retry returns the original outcome with a single transaction
+and balance effect. This transport result alone does not prove a maintenance
+rejection or a failed second revert.
+
 | Code | Condition |
 |------|-----------|
 | `OK` | Request succeeded |

@@ -107,18 +107,23 @@ The workload uses a layered predicate set (`internal/client.go`):
   WritesBlockedDiskFull` (the write gate's
   `ResourceExhausted / WRITES_BLOCKED_DISK_FULL` refusal: rejected before
   consensus, so the bulk did not commit and a retry is sound).
-- `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
-  finding; the driver just exits.
+- `IsCanceled(err)` — recognizes the wire code only. Check the caller's own
+  `ctx.Err()` before treating cancellation as local shutdown. The unary
+  forwarding boundary reports proven local peer-connection closure as
+  `Unavailable` while the caller is live; unrelated server cancellation is
+  not automatically a retryable outcome.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
   **This is what
   Sometimes() probes use**: `assert.Sometimes(internal.IsTolerated(err),
   "should be able to X", details)`. Using `IsTransient` directly here would
   flip the per-driver Sometimes to "never true" when ctx cancellation
   dominates a chaotic run.
-- `IsAmbiguousCommit(err)` — strict subset of `IsTransient` where the
-  request may have committed despite the error (today: `DeadlineExceeded`).
-  Drivers asserting on post-commit state can use this to decide whether to
-  verify read-after-write even on the error branch.
+- `IsAmbiguousCommit(err)` — detects the `DeadlineExceeded` category only.
+  A false result is not proof of non-commit: `Unavailable` can also follow
+  a committed write whose response was lost during peer-connection closure.
+  Retried writes need the original idempotency key and payload. Neither code
+  establishes a definitive business rejection; verify the resulting state or
+  recover the keyed outcome before asserting non-execution.
 - `IsClassified(err)` — `nil | IsTransient | IsCanceled | <business code>`
   (deliberately excludes `Aborted`). Business codes are `NotFound`,
   `AlreadyExists`, `InvalidArgument`, generic `FailedPrecondition`;

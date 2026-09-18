@@ -1037,7 +1037,15 @@ Every response the table maps to 503 also carries `Retry-After: 1` — the kind 
 | `INVALID_ARGUMENT` | 400, `errorCode: INVALID_REQUEST` |
 | `UNAVAILABLE` | 503 + `Retry-After: 1`, `errorCode: UNAVAILABLE` |
 
-The `UNAVAILABLE` row is the forwarded-stream error shape: a syncing follower forwards a read to the leader, and the forwarded stream is torn down mid-transfer (peer connection churn) — `normalizeStreamEnd` re-codes that from the raw `Canceled` the transport reports into `Unavailable` with the original message, since the caller did not cancel and an immediate retry can succeed. gRPC clients see the same event as `codes.Unavailable`; SDK retry predicates treat it as retryable on both surfaces.
+The `UNAVAILABLE` row also covers forwarding interruptions. For streams,
+`normalizeStreamEnd` re-codes raw peer cancellation while the caller is live.
+For unary calls, `grpcerr.Conn.Invoke` only re-codes the exact bare
+`ErrClientConnClosing` when the actual local connection is shut down and the
+caller is live. Server-authored statuses on a live connection and structured
+failures retain their existing handling. Both surfaces expose a retryable
+transport error, but it does not prove that a write failed to commit: retry
+with the original idempotency key and payload. See the
+[gRPC error contract](../architecture/subsystems/api/grpc-api.md#grpc-status-codes).
 
 **Breaking change in #432**: HTTP `errorCode` JSON field previously used HTTP-specific codes (`"CONFLICT"`, `"NOT_FOUND"`, `"SCRIPT_PARSE_ERROR"`, `"INSUFFICIENT_FUNDS"`, ...) that were sometimes the same as the gRPC Reason and sometimes different. After the Describable refactor (#432) it is uniformly `Reason()` from the table above — e.g. `"LEDGER_ALREADY_EXISTS"` (was `"CONFLICT"`), `"NUMSCRIPT_PARSE_ERROR"` (was `"SCRIPT_PARSE_ERROR"`). Update REST clients to widen pattern matching accordingly.
 

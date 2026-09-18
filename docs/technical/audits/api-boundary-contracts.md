@@ -39,6 +39,17 @@ values, not a test oracle that has already rounded through `float64`.
 
 ## Boundaries
 
+For unary peer-connection interruption (EN-2212), the observable contract is
+specific: `grpcerr.Conn.Invoke` converts the exact bare grpc-go close status
+only when the local connection is shut down and the caller context is live.
+Check actual pool removal/replacement, caller cancellation, a peer-authored
+lookalike on a live connection, and structured/unknown statuses separately.
+`internal/adapter/grpcerr/conn_cancellation_test.go` provides these controls.
+`conn_commit_test.go` adds a real Ledger commit before response loss and a
+native gRPC retry with the same key/payload. Its single-effect check establishes
+the keyed recovery case, not non-commit or safe unkeyed replay; those identities
+remain owned by `idempotency-retries-partial-failures`.
+
 The broad adapter and CLI globs locate request builders, shared encoders and
 existing tests. They do not authorize auditing every subsystem reachable from
 those directories. Bucket, Cluster and Restore service request/response adapters

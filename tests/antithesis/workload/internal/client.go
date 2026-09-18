@@ -157,11 +157,10 @@ func retryDelay(attempt int) time.Duration {
 }
 
 // retryUnaryInterceptor retries unary RPCs on the transient set (IsTransient)
-// to a definitive outcome — each code either clears (Unavailable: no leader
-// → elected; ExternalServiceError: external service recovers) or is an
-// ambiguous commit (DeadlineExceeded — see
-// IsAmbiguousCommit) that a retry resolves via the idempotency cache. None is
-// a permanent business answer, so retrying is safe and cannot loop forever.
+// toward a definitive outcome. Unavailable and DeadlineExceeded can both
+// follow a commit whose response was lost; a write is safe to replay only
+// with the original idempotency key and payload. IsAmbiguousCommit is not
+// an exhaustive classifier of those outcomes.
 // maxAttempts bounds the loop (~infinite in retry-forever mode); ctx
 // cancellation (shutdown / MODEL_MAX_SECONDS) ends it regardless.
 //
@@ -321,11 +320,10 @@ func IsAborted(err error) bool {
 	return ok && st.Code() == codes.Aborted
 }
 
-// IsCanceled returns true if the error is a gRPC Canceled status. Emitted
-// when the local ctx is dead — the parent driver is shutting down (global
-// deadline reached, composer kill propagated). Not retry-safe (the next
-// retry would see ctx.Done() immediately) and not a finding: the driver
-// just exits.
+// IsCanceled recognizes the wire code, not its origin. A driver can treat it as
+// its own shutdown only when its caller context is done. The unary forwarding
+// boundary maps a proven local peer-connection close to Unavailable while that
+// caller remains live; unrelated server-authored Canceled statuses stay visible.
 func IsCanceled(err error) bool {
 	if err == nil {
 		return false
@@ -334,11 +332,11 @@ func IsCanceled(err error) bool {
 	return ok && st.Code() == codes.Canceled
 }
 
-// IsAmbiguousCommit returns true if the error indicates the request may have
-// committed despite the error code — the retry resolves the ambiguity via
-// the idempotency cache. Today: DeadlineExceeded only (Unavailable surfaces
-// before the server sees the request and ExternalServiceError happens before
-// the audit ack).
+// IsAmbiguousCommit identifies the DeadlineExceeded ambiguity category. It is
+// not an exhaustive non-commit test: Unavailable can also follow a committed
+// write when a forwarding connection closes before the response is delivered.
+// Every retried write needs its original idempotency key and payload, including
+// when this predicate returns false.
 //
 // IsAmbiguousCommit is a STRICT SUBSET of IsTransient — every member is
 // already retried by the interceptors. The separation exists so drivers
@@ -470,8 +468,9 @@ func IsNoFullCheckpoint(err error) bool {
 // IsTransient returns true for a retry-safe infrastructure error — not a
 // definitive business answer, not a local-lifecycle event. Retrying reaches a
 // definitive outcome: the condition clears (no leader → elected) or — since
-// DeadlineExceeded can follow a commit — the retry resolves the ambiguity via
-// the idempotency cache. The retry interceptors
+// transport interruption can follow a commit — a keyed retry resolves the
+// ambiguity via the idempotency cache. Unkeyed writes are not replay-safe.
+// The retry interceptors
 // retry exactly this set. Covers:
 //   - Unavailable (cluster unhealthy / no leader / Raft transients)
 //   - DeadlineExceeded (wire-level timeout, also see IsAmbiguousCommit)
@@ -481,7 +480,7 @@ func IsNoFullCheckpoint(err error) bool {
 //
 // NOT in IsTransient:
 //   - Aborted (see IsAborted comment — surfaced loud, not retried)
-//   - Canceled (see IsCanceled — local lifecycle, not a server transient)
+//   - Canceled (see IsCanceled — the wire code alone does not prove its origin)
 //   - All business outcomes (NotFound, AlreadyExists, LedgerDeleted, generic
 //     FailedPrecondition) — definitive, validated rather than skipped.
 func IsTransient(err error) bool {
