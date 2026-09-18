@@ -201,6 +201,58 @@ if err != nil {
 }
 ```
 
+### Backup destination contention and recovery
+
+Full and incremental backups share a replicated destination slot. A committed
+Start with a lost acknowledgment, or a lost terminal Fail/Complete proposal,
+can leave that slot RUNNING after the local executor has exited. The next RPC
+then correctly returns `FailedPrecondition` with
+`backup: destination already has a running job`. This protects the shared
+manifest; a short busy observation does not prove a deadlock. The leader's
+orphan cleanup normally scans every 30 seconds and skips live executors.
+
+Both backup drivers use `internal.RetryBackup` for all four stages: standalone
+full, pre-incremental full, first incremental and second incremental. It matches
+that exact busy suffix and status code, then waits using the existing bounded
+backoff. A two-minute window starts at the first busy result and bounds starting
+further retries. Admitted RPCs retain the caller's deadline, so a healthy large
+backup is not cut short by the contention budget. Caller cancellation ends the
+wait. Transport retry classification remains unchanged; job-ID collision,
+unrelated preconditions and server failures are not turned into busy outcomes.
+Drivers tolerate cancellation only when the caller context has ended and the
+returned error represents that cancellation. A concurrent caller cancellation
+does not make an `Unknown` or `Internal` server response inconclusive, and a
+remote `Canceled` response with a live caller remains an unexpected error.
+
+The `backup recovery after destination busy succeeds` Sometimes property records
+false on contention and true only after an actual successful retry. Its details
+identify the stage and stage-attempt count (an RPC's automatic transport retries
+can add more wire attempts). Exhaustion retains the last busy error and is logged
+as inconclusive: it is neither a completed backup nor proof of engine liveness
+failure under continuing faults. This reach claim does not prove every busy
+episode recovered. The existing backup result and sequence invariants still run
+only after successful RPCs.
+
+Local regressions separate the two seams: workload tests commit and reload Start,
+lose its acknowledgment, cross the real client retry interceptor, receive a real
+busy rejection and recover after the cleanup cadence using a simulated clock.
+Application tests drive the real Orchestrator and Cleanup through lost Fail,
+lost Complete and lost Start acknowledgments, including one failed cleanup
+proposal before recovery. They verify attempts, durable history, executor/slot
+and temporary-checkpoint cleanup, and exact restored history/projections from a
+full checkpoint plus non-empty incremental exports. A committed Complete with
+only its acknowledgment lost is a separate control: its slot is already free.
+These are deterministic proposal-seam tests, not a replay of Raft elections or
+network faults. Driver subprocess tests also inspect actual SDK assertions to
+verify that concurrent caller cancellation cannot hide server errors in any of
+the four stages. Run them with:
+
+```bash
+go test -race ./internal/application/backup -run TestBackupRecovery -count=1
+go -C tests/antithesis/workload test -race ./internal -run TestRetryBackup -count=1
+go -C tests/antithesis/workload test -race ./bin/cmds/main/singleton_driver_backup ./bin/cmds/main/singleton_driver_incremental_backup -count=1
+```
+
 ### Lifecycle & context
 
 - Parallel drivers should go through `internal.RunDriver(name, fn)` — it sets up
