@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/server/v3/storage/wal"
 	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
 	"go.etcd.io/raft/v3/raftpb"
 )
@@ -311,8 +312,10 @@ func TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite(t *testing.T) {
 	}))
 	require.NoError(t, w.Close())
 
-	err := reopenWAL(t, dir)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "current entry[Index: 7, Term: 2], len(ents): 0",
-		"the refusal must be the gap this fixture builds — entry 7 landing on a tail the overwrite at 3 emptied — not any other startup failure")
+	// ErrSliceOutOfRange comes from exactly one place in ReadAll: an entry whose
+	// index leaves a hole in what has been collected. Matching the sentinel
+	// rather than its message identifies that branch without pinning etcd's
+	// wording, so a torn tail or the EN-1525 marker refusal does not satisfy it.
+	require.ErrorIs(t, reopenWAL(t, dir), wal.ErrSliceOutOfRange,
+		"the refusal must be the gap this fixture builds: entry 7 landing on a tail the overwrite at 3 emptied")
 }

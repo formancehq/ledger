@@ -292,13 +292,8 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-// etcd v3.7.1 + etcd-io/etcd#22443 only: ReadAll replays the truncation an entry
-// record implies only above the snapshot the WAL was opened at, so a truncating
-// overwrite at or below the snapshot index resurrects the entries it replaced and
-// the recovered last-entry term stops describing the real log, which is enough to
-// grant a vote that loses acknowledged writes. Branch wal-truncation-below-snapshot
-// of formancehq/etcd is tag v3.7.1 plus that single upstream commit; drop this
-// replace once the fix ships in an etcd release. The version is named on purpose:
-// an unversioned replace would survive a later etcd bump silently. See
+// Mirrors the etcd replace in the root go.mod, which this module builds through
+// a local module replacement. Both must move together; the reason for the pin
+// and the condition for dropping it live in the root go.mod and in
 // docs/technical/architecture/subsystems/storage/storage.md#replay-validity.
 replace go.etcd.io/etcd/server/v3 v3.7.1 => github.com/formancehq/etcd/server/v3 v3.7.2-0.20260918095251-b5dd36e4493c
