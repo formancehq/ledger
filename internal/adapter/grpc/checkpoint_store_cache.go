@@ -21,7 +21,8 @@ import (
 // the expected cause past that gate, but a resource limit reaches it too, and
 // the two are not distinguished — the error surfaces as-is to the reader that
 // opened and to any already waiting on it, and the entry leaves the cache once
-// the last of them releases, so the reader after that opens again.
+// the last of them releases. A reader that arrives after the failure opens
+// again rather than inheriting it.
 //
 // Pebble takes a directory lock on open and keeps the held paths in a
 // process-global table, so a second open of a directory this process already
@@ -134,8 +135,16 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 		// reads them: the entry is reachable from the map before the open starts,
 		// so writing them bare would be a race on any reader that takes the mutex
 		// without first receiving from done.
+		//
+		// A failed entry is withdrawn in the same breath. It holds no handles, so
+		// nothing waits on its refcount, and leaving it reachable would hand its
+		// error to readers that arrive after the open rather than only to those
+		// that were already waiting on it.
 		c.mu.Lock()
 		entry.main, entry.readIdx, entry.err = main, readIdx, err
+		if err != nil && c.entries[id] == entry {
+			delete(c.entries, id)
+		}
 		c.mu.Unlock()
 
 		close(entry.done)
