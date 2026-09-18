@@ -40,6 +40,8 @@ type checkpointResponseLossProxy struct {
 	responses     []*servicepb.ApplyResponse
 	errors        []error
 	afterFirst    []uint64
+	registryError error
+	lostResponses int
 	terminalError error
 }
 
@@ -56,11 +58,14 @@ func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *servicepb.
 	if len(p.requests) == 1 && err == nil {
 		registry, readErr := p.cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 		if readErr != nil {
-			return nil, readErr
+			p.registryError = fmt.Errorf("read checkpoint registry after committed Apply: %w", readErr)
+			return nil, p.registryError
 		}
 		for _, checkpoint := range registry.GetCheckpoints() {
 			p.afterFirst = append(p.afterFirst, checkpoint.GetCheckpointId())
 		}
+	}
+	if err == nil && len(p.requests) <= p.lostResponses {
 		return nil, status.Error(codes.Unavailable, "injected response loss after committed checkpoint mutation")
 	}
 	return resp, err
@@ -69,16 +74,23 @@ func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *servicepb.
 func TestQueryCheckpointLostResponse(t *testing.T) {
 	// NewGRPCConn reads environment variables, so these cases must be sequential.
 	for _, tc := range []struct {
-		name   string
-		seed   int
-		delete bool
+		name          string
+		seed          int
+		delete        bool
+		lostResponses int
 	}{
-		{name: "create below capacity"},
-		{name: "create fills tenth slot", seed: 9},
-		{name: "delete committed checkpoint", seed: 1, delete: true},
+		{name: "create below capacity", lostResponses: 1},
+		{name: "create fills tenth slot", seed: 9, lostResponses: 1},
+		{name: "delete committed checkpoint", seed: 1, delete: true, lostResponses: 1},
+		{name: "create below capacity with repeated loss", lostResponses: 3},
+		{name: "create fills tenth slot with repeated loss", seed: 9, lostResponses: 3},
+		{name: "delete committed checkpoint with repeated loss", seed: 1, delete: true, lostResponses: 3},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, backend, cluster, client, proxy := checkpointRetryServer(t)
+			proxy.mu.Lock()
+			proxy.lostResponses = tc.lostResponses
+			proxy.mu.Unlock()
 			var victim uint64
 			for range tc.seed {
 				id, _, err := actions.CreateQueryCheckpoint(ctx, backend)
@@ -99,14 +111,17 @@ func TestQueryCheckpointLostResponse(t *testing.T) {
 			responses := append([]*servicepb.ApplyResponse(nil), proxy.responses...)
 			attemptErrors := append([]error(nil), proxy.errors...)
 			afterFirst := append([]uint64(nil), proxy.afterFirst...)
+			registryError := proxy.registryError
 			proxy.mu.Unlock()
-			require.Len(t, requests, 2, "one lost response must cause exactly one retry")
+			require.NoError(t, registryError, "the committed-registry observation must succeed before retry assertions")
+			require.Len(t, requests, tc.lostResponses+1, "each lost response must cause exactly one retry")
+			require.Len(t, responses, len(requests))
+			require.Len(t, attemptErrors, len(requests))
 			require.NoError(t, attemptErrors[0], "first mutation must really commit")
 			require.NotNil(t, responses[0])
-			first, second := responses[0], responses[1]
+			first := responses[0]
 			firstKey := requests[0].GetUnsigned().GetIdempotencyKey()
-			secondKey := requests[1].GetUnsigned().GetIdempotencyKey()
-			t.Logf("attempts=2 firstCommitted=true firstKey=%q retryKey=%q registryAfterCommit=%v retryError=%v reason=%s", firstKey, secondKey, afterFirst, err, workloadinternal.ErrorReason(err))
+			t.Logf("attempts=%d lostResponses=%d firstCommitted=true key=%q registryAfterCommit=%v retryError=%v reason=%s", len(requests), tc.lostResponses, firstKey, afterFirst, err, workloadinternal.ErrorReason(err))
 			if tc.delete {
 				require.NotContains(t, afterFirst, victim, "delete committed before response loss")
 				require.Equal(t, victim, first.GetLogs()[0].GetPayload().GetDeletedQueryCheckpoint().GetCheckpointId())
@@ -123,9 +138,12 @@ func TestQueryCheckpointLostResponse(t *testing.T) {
 				require.Equal(t, firstID, id, "retry must not allocate a second checkpoint")
 				require.Equal(t, firstSequence, sequence)
 			}
-			require.True(t, proto.Equal(first, second), "retry must replay original logs and sequences")
 			require.NotEmpty(t, firstKey)
-			require.Equal(t, firstKey, secondKey)
+			for i := 1; i < len(requests); i++ {
+				require.NoError(t, attemptErrors[i], "replay attempt %d must succeed on the server", i+1)
+				require.True(t, proto.Equal(first, responses[i]), "retry %d must replay original logs and sequences", i)
+				require.Equal(t, firstKey, requests[i].GetUnsigned().GetIdempotencyKey())
+			}
 			registry, listErr := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 			require.NoError(t, listErr)
 			var afterRetry []uint64
@@ -225,7 +243,7 @@ func checkpointRetryServer(t *testing.T) (context.Context, servicepb.BucketServi
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	backend := servicepb.NewBucketServiceClient(conn)
-	proxy := &checkpointResponseLossProxy{backend: backend, cluster: cluster}
+	proxy := &checkpointResponseLossProxy{backend: backend, cluster: cluster, lostResponses: 1}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	grpcServer := grpc.NewServer()
