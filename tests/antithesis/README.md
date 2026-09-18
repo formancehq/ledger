@@ -91,6 +91,10 @@ It then creates a different driver-owned ledger, checks that predecessor
 transactions and accounts are absent, and reuses one predecessor reference
 there. References are unique within a ledger name. The original name is probed
 again after that successful activity.
+Both probes evaluate the same invariant at one SDK assertion site; a later
+false observation remains visible even after an earlier true observation.
+Deleted point reads use the acknowledged transaction IDs and account addresses,
+in addition to checking `GetLedger`, `ListTransactions` and `ListAccounts`.
 
 The former same-name recreation assumptions map to these reachable checks:
 
@@ -107,13 +111,23 @@ An ambiguous deletion does not count as confirmed deletion. Isolation reads use
 unfiltered, fully paginated helpers, so no undeclared reference/address index
 can silently prevent verification. Initial and receive errors remain visible;
 only the established transient/cancellation policy permits an inconclusive run.
+Reference-reuse observations skip those inconclusive outcomes before evaluating
+`Sometimes(err == nil)`: a transport error is not evidence of accepted reuse.
 API absence does not establish physical storage reclamation.
+
+After confirmed creation, the isolation ledger is deleted on every exit as
+best-effort cleanup using its own stable operation key. Cleanup errors are
+logged without replacing the scenario's observations. Successful cleanup drops
+live projections; permanent tombstones and audit history remain, and a fault
+can prevent cleanup, so this does not bound total disk usage.
 
 `TestLedgerDeletionScenarioContract` runs the actual scenario against a local
 single-node service with the sentinel enabled and inspects local SDK output.
 Its sensitivity cases inject unexpected name reuse, exposed deleted reads or
 writes, real cross-ledger reference/account contamination, a real reference
-conflict, other permanent errors, truncated streams, and a lost delete response.
+conflict, other permanent errors, inconclusive reuse, truncated streams, and a
+lost delete response. It also checks cleanup after success and early return,
+and that a cleanup failure is logged without changing the successful oracles.
 
 ## Driver naming convention
 
@@ -144,11 +158,10 @@ The workload uses a layered predicate set (`internal/client.go`):
 - `IsCanceled(err)` — local ctx is dead (driver shutting down). Not a
   finding; the driver just exits.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
-  **This is what
-  Sometimes() probes use**: `assert.Sometimes(internal.IsTolerated(err),
-  "should be able to X", details)`. Using `IsTransient` directly here would
-  flip the per-driver Sometimes to "never true" when ctx cancellation
-  dominates a chaotic run.
+  Classification probes can use `assert.Sometimes(internal.IsTolerated(err),
+  "X returned a tolerated outcome", details)`. A reach claim for an accepted
+  operation must retain its actual success predicate and skip inconclusive
+  outcomes before evaluating it. Tolerated errors never prove acceptance.
 - `IsAmbiguousCommit(err)` — strict subset of `IsTransient` where the
   request may have committed despite the error (today: `DeadlineExceeded`).
   Drivers asserting on post-commit state can use this to decide whether to
@@ -234,14 +247,14 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
 
 ### Antithesis SDK usage
 
-- **Every `assert.Always` / `Sometimes` / `Reachable` / `Unreachable` MUST have a
-  globally-unique name.** Antithesis indexes assertions by name; two sites
-  sharing one name collapse into one signal and the triage UI shows you a
-  single average instead of three failure modes.
-- `Sometimes` is a coverage sonde — Antithesis prioritizes paths that make
-  more `Sometimes` calls satisfied. Use it to mark expected outcomes (`err
-  == nil || IsTransient(err)`) even when no invariant is at stake; it tells
-  the fuzzer "this branch matters."
+- **Every SDK assertion site MUST have an inline, globally unique literal
+  name.** A helper may repeatedly evaluate the same invariant at its single
+  assertion site, with the phase in details. Unrelated assertion sites must
+  not share a name. An earlier passing `Always` never hides a later violation.
+- `Sometimes` is a coverage sonde: its condition must be true at least once.
+  A false observation is not an immediate safety failure and does not erase a
+  prior true observation. Use the predicate named by the claim: acceptance
+  requires actual success; tolerance only proves an acceptable classification.
 - A `Reachable("X")` with no upstream `Sometimes` that fires when X is true
   is passive: Antithesis cannot bias toward making X happen. Prefer pairing
   them when the path is fragile. When the sonde and the `Reachable` would

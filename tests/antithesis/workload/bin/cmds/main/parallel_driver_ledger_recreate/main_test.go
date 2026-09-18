@@ -41,6 +41,14 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 		if mode != "healthy" {
 			require.True(t, injected.Load(), "sensitivity trigger was not exercised: %s", mode)
 		}
+		if mode == "healthy" || mode == "stream-recv" || mode == "cleanup-failure" {
+			_, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: fmt.Sprintf("lrecreate-other-%016x", uint64(174236))})
+			if mode == "cleanup-failure" {
+				require.NoError(t, err, "failed cleanup must leave the isolation ledger visible")
+			} else {
+				require.Equal(t, codes.NotFound, status.Code(err), "isolation ledger must be cleaned up on success and early return")
+			}
+		}
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("probe-tombstone", actions.CreateLedgerAction("lrecreate-174236", nil)))
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 		require.True(t, workloadinternal.IsLedgerDeleted(err), "%v", err)
@@ -53,6 +61,8 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 		{"recreate-before", "deleted ledger name remains permanently reserved"},
 		{"recreate-after", "deleted ledger name remains permanently reserved"},
 		{"deleted-read", "deleted ledger is hidden from ledger reads"},
+		{"deleted-transaction-point", "deleted ledger hides predecessor transaction point reads"},
+		{"deleted-account-point", "deleted ledger hides predecessor account point reads"},
 		{"deleted-transactions-row", "deleted ledger exposes no predecessor transactions"},
 		{"deleted-transactions-eof", "deleted ledger exposes no predecessor transactions"},
 		{"deleted-accounts-row", "deleted ledger exposes no predecessor accounts"},
@@ -63,15 +73,36 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 		{"account-leak", "other ledger never exposes predecessor account activity"},
 		{"reuse-conflict", "predecessor references are reusable in another ledger"},
 		{"reuse-permanent", "predecessor references are reusable in another ledger"},
+		{"reuse-unavailable", ""},
+		{"reuse-deadline", ""},
+		{"reuse-canceled", ""},
+		{"reuse-context-deadline", ""},
 		{"stream-initial", "ledger deletion scenario has no unexpected operation errors"},
 		{"stream-recv", "ledger deletion scenario has no unexpected operation errors"},
 		{"ambiguous-delete", ""},
+		{"cleanup-failure", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
 			observations := runScenarioProcess(t, tc.mode)
 			if tc.failure != "" {
 				require.Contains(t, observations[tc.failure], false, "injected violation must fail its exact SDK property")
+				if tc.mode == "recreate-after" {
+					require.Equal(t, []bool{true, false}, observations[tc.failure], "a later violation must remain visible after the initial passing probe")
+				}
+				if tc.mode == "recreate-before" {
+					require.Equal(t, []bool{false}, observations[tc.failure])
+				}
+				if tc.mode == "reuse-conflict" || tc.mode == "reuse-permanent" {
+					require.Equal(t, []bool{false}, observations["predecessor reference accepted by another ledger"])
+					require.Equal(t, []bool{false}, observations[tc.failure])
+				}
+				return
+			}
+			if tc.mode == "reuse-unavailable" || tc.mode == "reuse-deadline" || tc.mode == "reuse-canceled" || tc.mode == "reuse-context-deadline" {
+				require.Contains(t, observations["other ledger never exposes predecessor account activity"], true)
+				require.NotContains(t, observations, "predecessor reference accepted by another ledger", "inconclusive reuse must not be observed as accepted or rejected")
+				require.NotContains(t, observations, "predecessor references are reusable in another ledger")
 				return
 			}
 			if tc.mode == "ambiguous-delete" {
@@ -83,6 +114,8 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 			for _, message := range []string{
 				"deleted ledger name remains permanently reserved",
 				"deleted ledger is hidden from ledger reads",
+				"deleted ledger hides predecessor transaction point reads",
+				"deleted ledger hides predecessor account point reads",
 				"deleted ledger exposes no predecessor transactions",
 				"deleted ledger exposes no predecessor accounts",
 				"deleted ledger rejects new transaction writes",
@@ -110,6 +143,9 @@ func runScenarioProcess(t *testing.T, mode string) map[string][]bool {
 	result, err := cmd.CombinedOutput()
 	t.Logf("%s", result)
 	require.NoError(t, err)
+	if mode == "cleanup-failure" {
+		require.Contains(t, string(result), "cleanup: delete isolation ledger failed (transient, expected under faults)")
+	}
 	f, err := os.Open(output)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, f.Close()) })
@@ -136,8 +172,26 @@ func runScenarioProcess(t *testing.T, mode string) map[string][]bool {
 // Intercept only the selected response or add real ledger state at a precise
 // stage. All setup, deletion, reads and reference conflicts use the real service.
 func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.UnaryClientInterceptor {
+	var predecessor *commonpb.Transaction
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		if mode == "deleted-read" && strings.HasSuffix(method, "/GetLedger") {
+			injected.Store(true)
+			return nil
+		}
+		if mode == "deleted-transaction-point" && strings.HasSuffix(method, "/GetTransaction") {
+			require.NotNil(t, predecessor)
+			read := req.(*servicepb.GetTransactionRequest)
+			require.Equal(t, "lrecreate-174236", read.GetLedger())
+			require.Equal(t, predecessor.GetId(), read.GetTransactionId())
+			reply.(*servicepb.GetTransactionResponse).Transaction = predecessor
+			injected.Store(true)
+			return nil
+		}
+		if mode == "deleted-account-point" && strings.HasSuffix(method, "/GetAccount") {
+			read := req.(*servicepb.GetAccountRequest)
+			require.Equal(t, "lrecreate-174236", read.GetLedger())
+			require.Equal(t, "lrec-old:174236:0", read.GetAddress())
+			reply.(*commonpb.Account).Address = read.GetAddress()
 			injected.Store(true)
 			return nil
 		}
@@ -146,11 +200,29 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			return invoke(ctx, method, req, reply, cc, opts...)
 		}
 		key := apply.GetUnsigned().GetIdempotencyKey()
+		if mode == "cleanup-failure" && strings.HasSuffix(key, "-cleanup-other") {
+			injected.Store(true)
+			return status.Error(codes.Unavailable, "injected cleanup failure")
+		}
 		if (mode == "recreate-before" || mode == "recreate-after" || mode == "deleted-write") && strings.HasSuffix(key, "-"+mode) {
 			injected.Store(true)
 			return nil
 		}
 		if strings.HasSuffix(key, "-reuse") {
+			switch mode {
+			case "reuse-unavailable", "reuse-deadline", "reuse-canceled", "reuse-context-deadline":
+				injected.Store(true)
+				switch mode {
+				case "reuse-unavailable":
+					return status.Error(codes.Unavailable, "injected unavailable reuse")
+				case "reuse-deadline":
+					return status.Error(codes.DeadlineExceeded, "injected ambiguous reuse")
+				case "reuse-canceled":
+					return context.Canceled
+				default:
+					return fmt.Errorf("injected local reuse timeout: %w", context.DeadlineExceeded)
+				}
+			}
 			if mode == "reuse-permanent" {
 				injected.Store(true)
 				return status.Error(codes.InvalidArgument, "injected permanent reuse failure")
@@ -164,6 +236,9 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 		err := invoke(ctx, method, req, reply, cc, opts...)
 		if err != nil {
 			return err
+		}
+		if strings.HasSuffix(key, "-seed-0") {
+			predecessor = workloadinternal.ExtractCreatedTransaction(reply.(*servicepb.ApplyResponse)).GetTransaction()
 		}
 		if mode == "missing-marker-log" && strings.HasSuffix(key, "-marker") {
 			reply.(*servicepb.ApplyResponse).Logs = nil

@@ -49,10 +49,10 @@ func operationFailed(err error, stage string, details internal.Details) bool {
 	return err != nil
 }
 
-func confirmedTransaction(resp *servicepb.ApplyResponse, details internal.Details) bool {
+func confirmedTransaction(resp *servicepb.ApplyResponse, details internal.Details) *commonpb.CreatedTransaction {
 	created := internal.CheckCreatedTransaction(resp, details)
 	assert.Always(created != nil, "ledger deletion acknowledged transaction includes its created log", details)
-	return created != nil
+	return created
 }
 
 func confirmTombstone(ctx context.Context, client servicepb.BucketServiceClient, ledger, key string, details internal.Details) bool {
@@ -88,6 +88,7 @@ func runScenario(ctx context.Context, client servicepb.BucketServiceClient, run 
 	}
 
 	var refs, accounts []string
+	var transactionIDs []uint64
 	for i := range txCount {
 		ref := fmt.Sprintf("lrec-%d-%d", run, i)
 		account := fmt.Sprintf("lrec-old:%d:%d", run%1_000_000, i)
@@ -95,9 +96,11 @@ func runScenario(ctx context.Context, client servicepb.BucketServiceClient, run 
 		if operationFailed(err, "seed predecessor", details) {
 			continue
 		}
-		if !confirmedTransaction(resp, details) {
+		created := confirmedTransaction(resp, details)
+		if created == nil {
 			return
 		}
+		transactionIDs = append(transactionIDs, created.GetTransaction().GetId())
 		refs = append(refs, ref)
 		accounts = append(accounts, account)
 	}
@@ -122,6 +125,26 @@ func runScenario(ctx context.Context, client servicepb.BucketServiceClient, run 
 	assert.Always(status.Code(err) == codes.NotFound, "deleted ledger is hidden from ledger reads", details.With(internal.Details{"error": err}))
 	if status.Code(err) != codes.NotFound {
 		return
+	}
+	for i, transactionID := range transactionIDs {
+		_, err = client.GetTransaction(ctx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: transactionID})
+		if err != nil && internal.IsTolerated(err) {
+			return
+		}
+		assert.Always(status.Code(err) == codes.NotFound, "deleted ledger hides predecessor transaction point reads",
+			details.With(internal.Details{"transactionID": transactionID, "error": err}))
+		if status.Code(err) != codes.NotFound {
+			return
+		}
+		_, err = client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger, Address: accounts[i]})
+		if err != nil && internal.IsTolerated(err) {
+			return
+		}
+		assert.Always(status.Code(err) == codes.NotFound, "deleted ledger hides predecessor account point reads",
+			details.With(internal.Details{"account": accounts[i], "error": err}))
+		if status.Code(err) != codes.NotFound {
+			return
+		}
 	}
 
 	txStream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{Ledger: ledger})
@@ -162,11 +185,17 @@ func runScenario(ctx context.Context, client servicepb.BucketServiceClient, run 
 	if operationFailed(err, "create other ledger", details) {
 		return
 	}
+	// Best effort on every exit after confirmed creation. This removes live
+	// projections when reachable; the permanent tombstone/audit still remain.
+	defer func() {
+		_, cleanupErr := client.Apply(ctx, servicepb.UnsignedApplyRequest(key("cleanup-other"), actions.DeleteLedgerAction(other)))
+		internal.LogCleanupError("delete isolation ledger", cleanupErr)
+	}()
 	resp, err := createTx(ctx, client, key("marker"), other, "", "lrec-marker")
 	if operationFailed(err, "write other ledger marker", details) {
 		return
 	}
-	if !confirmedTransaction(resp, details) {
+	if confirmedTransaction(resp, details) == nil {
 		return
 	}
 
@@ -208,12 +237,14 @@ func runScenario(ctx context.Context, client servicepb.BucketServiceClient, run 
 
 	resp, err = createTx(ctx, client, key("reuse"), other, refs[0], "lrec-new:0")
 	reuseDetails := details.With(internal.Details{"reference": refs[0], "error": err})
-	assert.Sometimes(err == nil, "predecessor reference accepted by another ledger", reuseDetails)
 	if err != nil && internal.IsTolerated(err) {
 		return
 	}
+	// This is a reach claim for actual acceptance, not error classification.
+	// Inconclusive transport/lifecycle outcomes cannot satisfy or refute it.
+	assert.Sometimes(err == nil, "predecessor reference accepted by another ledger", reuseDetails)
 	assert.Always(err == nil, "predecessor references are reusable in another ledger", reuseDetails)
-	if err != nil || !confirmedTransaction(resp, reuseDetails) {
+	if err != nil || confirmedTransaction(resp, reuseDetails) == nil {
 		return
 	}
 
