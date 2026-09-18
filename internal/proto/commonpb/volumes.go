@@ -212,6 +212,7 @@ func parseCanonicalBigUint(decimal string) (*BigUint, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return encoded, nil
 }
 
