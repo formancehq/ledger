@@ -8,47 +8,74 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
+
+type queryProfileClock struct {
+	start   time.Time
+	claimed bool
+}
 
 type queryProfileClockKey struct{}
 type applyBatchSizeKey struct{}
 
-func queryProfileClockUnaryInterceptor() ggrpc.UnaryServerInterceptor {
-	return queryProfileClockUnaryInterceptorAt(time.Now)
+func queryProfileClockUnaryInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrpc.UnaryServerInterceptor {
+	return queryProfileClockUnaryInterceptorAt(logger, slowThreshold, time.Now)
 }
 
-func queryProfileClockUnaryInterceptorAt(now func() time.Time) ggrpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req any, _ *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
-		return handler(context.WithValue(ctx, queryProfileClockKey{}, now()), req)
+func queryProfileClockUnaryInterceptorAt(logger logging.Logger, slowThreshold time.Duration, now func() time.Time) ggrpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
+		clock := &queryProfileClock{start: now()}
+		ctx = context.WithValue(ctx, queryProfileClockKey{}, clock)
+		resp, err := handler(ctx, req)
+		if err != nil && isProfiledRPCMethod(info.FullMethod) && !clock.claimed {
+			_, profile := query.WithProfileStartingAt(ctx, clock.start)
+			emitQueryProfile(ctx, profile, logger, slowThreshold)
+		}
+
+		return resp, err
 	}
 }
 
-func queryProfileClockStreamInterceptor() ggrpc.StreamServerInterceptor {
-	return func(srv any, stream ggrpc.ServerStream, _ *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
-		ctx := context.WithValue(stream.Context(), queryProfileClockKey{}, time.Now())
+func queryProfileClockStreamInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrpc.StreamServerInterceptor {
+	return func(srv any, stream ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
+		clock := &queryProfileClock{start: time.Now()}
+		ctx := context.WithValue(stream.Context(), queryProfileClockKey{}, clock)
+		wrapped := &authServerStream{ServerStream: stream, ctx: ctx}
+		err := handler(srv, wrapped)
+		if err != nil && isProfiledRPCMethod(info.FullMethod) && !clock.claimed {
+			_, profile := query.WithProfileStartingAt(ctx, clock.start)
+			emitQueryProfile(ctx, profile, logger, slowThreshold)
+		}
 
-		return handler(srv, &authServerStream{ServerStream: stream, ctx: ctx})
+		return err
+	}
+}
+
+func isProfiledRPCMethod(method string) bool {
+	switch method {
+	case servicepb.BucketService_ListTransactions_FullMethodName,
+		servicepb.BucketService_ListAccounts_FullMethodName,
+		servicepb.BucketService_ExecutePreparedQuery_FullMethodName,
+		servicepb.BucketService_AggregateVolumes_FullMethodName:
+		return true
+	default:
+		return false
 	}
 }
 
 func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *ggrpc.UnaryServerInfo, handler ggrpc.UnaryHandler) (any, error) {
-		if isInfrastructureRPCMethod(info.FullMethod) {
-			return handler(ctx, req)
-		}
-
-		policy, err := commonpb.RPCAuthPolicyForMethod(info.FullMethod)
+		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
-			return nil, status.Error(codes.Internal, err.Error())
+			return nil, err
 		}
-		if public, ok := policy.GetPolicy().(*commonpb.MethodAuthPolicy_Public); ok {
-			if !public.Public {
-				return nil, status.Error(codes.Internal, "invalid public RPC authentication policy")
-			}
-
+		if !protected {
 			return handler(ctx, req)
 		}
 
@@ -67,19 +94,11 @@ func authUnaryInterceptor(cfg internalauth.AuthConfig) ggrpc.UnaryServerIntercep
 
 func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterceptor {
 	return func(srv any, stream ggrpc.ServerStream, info *ggrpc.StreamServerInfo, handler ggrpc.StreamHandler) error {
-		if isInfrastructureRPCMethod(info.FullMethod) {
-			return handler(srv, stream)
-		}
-
-		policy, err := commonpb.RPCAuthPolicyForMethod(info.FullMethod)
+		policy, protected, err := protectedRPCPolicy(info.FullMethod)
 		if err != nil {
-			return status.Error(codes.Internal, err.Error())
+			return err
 		}
-		if public, ok := policy.GetPolicy().(*commonpb.MethodAuthPolicy_Public); ok {
-			if !public.Public {
-				return status.Error(codes.Internal, "invalid public RPC authentication policy")
-			}
-
+		if !protected {
 			return handler(srv, stream)
 		}
 
@@ -87,7 +106,8 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 		if err != nil {
 			return err
 		}
-		stream = &authServerStream{ServerStream: stream, ctx: ctx}
+		authStream := &authServerStream{ServerStream: stream, ctx: ctx}
+		stream = authStream
 
 		switch typed := policy.GetPolicy().(type) {
 		case *commonpb.MethodAuthPolicy_FixedScope:
@@ -102,13 +122,33 @@ func authStreamInterceptor(cfg internalauth.AuthConfig) ggrpc.StreamServerInterc
 			if typed.DynamicResolver != commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_LIST_INDEXES {
 				return status.Errorf(codes.Internal, "dynamic resolver %s is not valid for a streaming RPC", typed.DynamicResolver)
 			}
-			stream = &listIndexesAuthServerStream{authServerStream: stream.(*authServerStream)}
+			stream = &listIndexesAuthServerStream{authServerStream: authStream}
 		default:
 			return status.Error(codes.Internal, "RPC authentication policy is missing")
 		}
 
 		return handler(srv, stream)
 	}
+}
+
+func protectedRPCPolicy(method string) (*commonpb.MethodAuthPolicy, bool, error) {
+	if isInfrastructureRPCMethod(method) {
+		return nil, false, nil
+	}
+
+	policy, err := commonpb.RPCAuthPolicyForMethod(method)
+	if err != nil {
+		return nil, false, status.Error(codes.Internal, err.Error())
+	}
+	if public, ok := policy.GetPolicy().(*commonpb.MethodAuthPolicy_Public); ok {
+		if !public.Public {
+			return nil, false, status.Error(codes.Internal, "invalid public RPC authentication policy")
+		}
+
+		return nil, false, nil
+	}
+
+	return policy, true, nil
 }
 
 func authorizeUnaryRPC(ctx context.Context, req any, policy *commonpb.MethodAuthPolicy) (context.Context, error) {

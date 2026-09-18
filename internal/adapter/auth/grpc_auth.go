@@ -125,6 +125,9 @@ func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Conte
 // EvaluateGRPCCredentials. Missing state is an internal wiring error and fails
 // closed.
 func AuthorizeGRPC(ctx context.Context, scopes ...Scope) error {
+	ctx, span := authTracer.Start(ctx, "auth.authorize")
+	defer span.End()
+
 	state, ok := authenticationStateFromContext(ctx)
 	if !ok {
 		return status.Error(codes.Internal, "gRPC authentication state is missing")

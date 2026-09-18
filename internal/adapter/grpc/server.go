@@ -945,8 +945,8 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 	if authPolicy == ServiceAuthPolicyPublic {
 		// Stamp the query-profile clock before authentication so profiled reads
 		// measure the same preparation span as their HTTP counterparts.
-		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(), authUnaryInterceptor(authCfg))
-		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(), authStreamInterceptor(authCfg))
+		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(logger, slowThreshold), authUnaryInterceptor(authCfg))
+		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(logger, slowThreshold), authStreamInterceptor(authCfg))
 	}
 
 	serverOpts := []ggrpc.ServerOption{

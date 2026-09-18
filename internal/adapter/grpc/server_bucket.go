@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -1190,14 +1189,18 @@ func (impl *BucketServiceServerImpl) Discovery(_ context.Context, _ *servicepb.D
 // A threshold of 0 disables the log entirely — every duration is >= 0, so
 // comparing against 0 would otherwise log every single read.
 func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *query.QueryProfile) {
+	emitQueryProfile(ctx, profile, impl.logger, impl.queryProfileThreshold)
+}
+
+func emitQueryProfile(ctx context.Context, profile *query.QueryProfile, logger logging.Logger, slowThreshold time.Duration) {
 	if profile == nil {
 		return
 	}
 
 	profile.Finish()
 
-	if impl.queryProfileThreshold > 0 && profile.WallDuration() >= impl.queryProfileThreshold {
-		profile.LogTo(impl.logger)
+	if slowThreshold > 0 && profile.WallDuration() >= slowThreshold {
+		profile.LogTo(logger)
 		profile.EmitToSpan(trace.SpanFromContext(ctx))
 	}
 
@@ -1207,10 +1210,11 @@ func (impl *BucketServiceServerImpl) emitProfile(ctx context.Context, profile *q
 }
 
 func withTransportQueryProfile(ctx context.Context) (context.Context, *query.QueryProfile) {
-	if start, ok := ctx.Value(queryProfileClockKey{}).(time.Time); ok {
-		return query.WithProfileStartingAt(ctx, start)
+	if clock, ok := ctx.Value(queryProfileClockKey{}).(*queryProfileClock); ok {
+		clock.claimed = true
+
+		return query.WithProfileStartingAt(ctx, clock.start)
 	}
-	assert.Unreachable("profiled gRPC read has no request clock — queryProfileClock interceptor is missing from the server chain", nil)
 
 	return query.WithProfile(ctx)
 }
