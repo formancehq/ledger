@@ -702,7 +702,7 @@ List audit trail entries (success and failure):
 stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
 	Options: &commonpb.ListOptions{
 		PageSize: 100,
-		Filter: auditFilter, // Bare audit fields, e.g. ledger/outcome.
+		Filter: auditFilter, // Bare audit fields, e.g. ledger/outcome/idempotency_key.
 	},
 })
 if err != nil {
@@ -728,6 +728,13 @@ its aligned snapshot; the matching `AuditEntry` values are loaded from the same
 main-store snapshot. Unfiltered requests and `seq`-only conjunctions scan the
 audit zone directly and do not wait for the audit projection. Checkpoint reads
 use the projection snapshots frozen with the checkpoint.
+
+`AUDIT_FIELD_IDEMPOTENCY_KEY` accepts string equality and string-prefix
+conditions. It resolves through the audit secondary index and can return
+multiple entries for one key when the key was reused after its deduplication
+TTL expired. This is an additive request capability: existing request and
+response interpretations remain unchanged, so service protocol revision 10 is
+retained.
 
 ## Store Metrics
 

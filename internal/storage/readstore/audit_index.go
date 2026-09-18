@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/cockroachdb/pebble/v2"
 
@@ -289,6 +290,36 @@ func auditSeqsByString(reader dal.PebbleReader, field byte, value string) ([]uin
 		Build()
 
 	return auditSeqsForPrefix(reader, lower, prefixUpperBound(lower), len(lower)+8)
+}
+
+// AuditSeqsByStringPrefix returns audit sequences whose indexed string value
+// starts with value. The range stops at the successor of the raw value prefix;
+// it never leaves the selected audit field and never scans the audit zone.
+func (s *Store) AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error) {
+	return auditSeqsByStringPrefix(s.db, field, value)
+}
+
+func (s *AuditIndexSnapshot) AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error) {
+	return auditSeqsByStringPrefix(s.reader, field, value)
+}
+
+func auditSeqsByStringPrefix(reader dal.PebbleReader, field byte, value string) ([]uint64, error) {
+	// NUL is used as the value terminator in AuditIndexStringKey. A prefix
+	// operand containing NUL shares a byte-prefix with shorter exact keys and
+	// would produce false-positive matches. Reject it explicitly.
+	if strings.ContainsRune(value, '\x00') {
+		return nil, errors.New("audit index prefix operand must not contain NUL")
+	}
+
+	kb := dal.NewKeyBuilder()
+	lower := kb.Reset().
+		PutByte(PrefixInternal).
+		PutByte(SubInternalAuditIndex).
+		PutByte(field).
+		PutBytes([]byte(value)).
+		Build()
+
+	return auditSeqsForPrefix(reader, lower, prefixUpperBound(lower), 0)
 }
 
 // AuditSeqsByOutcome returns audit sequences for success (true) or failure (false).

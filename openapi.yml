@@ -469,7 +469,8 @@ paths:
             endpoint uses (see the `ListFilter` parameter). In practice audit
             filters use the **textual** representation, restricted to bare
             audit fields (`outcome`, `ledger`, `seq`, `proposal_id`,
-            `timestamp`, `log_seq`, `caller_subject`, `order_type`). These are
+            `timestamp`, `log_seq`, `caller_subject`, `order_type`,
+            `idempotency_key`). These are
             written without any prefix and are resolved against the audit query
             target (EN-1549 — this replaced the old `audit[...]` namespaced
             syntax; it is a breaking change with no backward compatibility):
@@ -478,10 +479,18 @@ paths:
               - `order_type in (create_transaction, revert_transaction)`
               - `seq between 1000 and 2000`
               - `timestamp >= "2023-11-14T22:13:20Z"`
+              - `idempotency_key == "retry-123"`
+              - `idempotency_key ^= "import-2026-"`
             Supported fields: `seq`, `proposal_id`, `log_seq` (numeric);
             `timestamp` (RFC3339 or unix microseconds); `outcome`
-            (success|failure), `ledger`, `caller_subject`, `order_type`
-            (string). Bare audit fields are resolved against the audit query
+            (success|failure), `ledger`, `caller_subject`, `order_type`,
+            `idempotency_key` (string; `idempotency_key` also supports prefix
+            matching with `^=`; a reused key returns every historical audit
+            entry; bare alphanumeric values are accepted unquoted, while values
+            containing `-`, `:`, spaces, or other non-identifier characters
+            must be single- or double-quoted; keys containing both `"` and `'`
+            cannot be expressed in the textual DSL and require the gRPC
+            `AuditCondition.string_prefix` field directly). Bare audit fields are resolved against the audit query
             target: `timestamp` and `ledger` collide with the transaction
             `timestamp` field and the top-level `ledger` condition, so on the
             audit target they resolve to the audit condition (and only there —

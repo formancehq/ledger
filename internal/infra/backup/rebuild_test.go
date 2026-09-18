@@ -14,6 +14,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -25,6 +26,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 func testLogger() logging.Logger {
@@ -1958,4 +1960,17 @@ func TestBackup_IdempotencyExpiresAtRestoreParity(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, dstHashes, 1, "restored time-index has the outcome at its expires_at")
 	require.Equal(t, len(srcHashes), len(dstHashes), "source and restored eviction schedules match")
+
+	// The audit search projection is deliberately absent from backup artifacts.
+	// Rebuild it from the restored, authoritative audit zone and prove the
+	// post-checkpoint key is searchable without consulting the expiring row.
+	rs, err := readstore.New(t.TempDir(), testLogger(), readstore.DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = rs.Close() })
+	idx := auditindexer.New(auditindexer.Config{}, dst, rs, testLogger(), noop.NewMeterProvider().Meter("test"))
+	require.NoError(t, idx.Rebuild(ctx))
+	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldIdempotencyKey, key)
+	require.NoError(t, err)
+	require.Equal(t, []uint64{2}, seqs,
+		"restored checkpoint plus non-empty delta must reconstruct the historical audit index")
 }

@@ -1,6 +1,7 @@
 package auditindexer
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -31,6 +32,7 @@ func TestAppendEntryKeys(t *testing.T) {
 		Outcome:        &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers:        []string{"a", "b"},
 		CallerSnapshot: &commonpb.CallerSnapshot{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
+		Idempotency:    &commonpb.Idempotency{Key: "retry-1"},
 	}
 	createTx := &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{
 		LedgerScoped: &raftcmdpb.LedgerScopedOrder{Payload: &raftcmdpb.LedgerScopedOrder_Apply{
@@ -49,20 +51,24 @@ func TestAppendEntryKeys(t *testing.T) {
 
 	require.NoError(t, appendEntryKeys(dal.NewKeyBuilder(), emit, entry, items))
 
-	require.Len(t, keys, 8) // outcome + 2 ledgers + caller + order_type + timestamp + proposal_id + log_seq(100)
+	require.Len(t, keys, 9) // outcome + 2 ledgers + caller + order_type + timestamp + proposal_id + idempotency + log_seq(100)
 
 	for _, k := range keys {
 		require.Equal(t, readstore.PrefixInternal, k[0])
 		require.Equal(t, readstore.SubInternalAuditIndex, k[1])
 	}
 
-	var orderTypeKeys int
+	var orderTypeKeys, idempotencyKeys int
 	for _, k := range keys {
 		if k[2] == readstore.AuditFieldOrderType {
 			orderTypeKeys++
 		}
+		if k[2] == readstore.AuditFieldIdempotencyKey {
+			idempotencyKeys++
+		}
 	}
 	require.Equal(t, 1, orderTypeKeys)
+	require.Equal(t, 1, idempotencyKeys)
 }
 
 func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
@@ -88,4 +94,23 @@ func TestAppendEntryKeysFailureNilCaller(t *testing.T) {
 	for _, k := range keys {
 		require.NotEqual(t, readstore.AuditFieldCallerSubject, k[2])
 	}
+}
+
+func TestAppendEntryKeysPropagatesIdempotencyIndexWriteError(t *testing.T) {
+	t.Parallel()
+
+	want := errors.New("write failed")
+	entry := &auditpb.AuditEntry{
+		Sequence: 1, ProposalId: 1,
+		Outcome:     &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+		Idempotency: &commonpb.Idempotency{Key: "retry-1"},
+	}
+	err := appendEntryKeys(dal.NewKeyBuilder(), func(key []byte) error {
+		if key[2] == readstore.AuditFieldIdempotencyKey {
+			return want
+		}
+
+		return nil
+	}, entry, nil)
+	require.ErrorIs(t, err, want)
 }

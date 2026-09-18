@@ -680,9 +680,11 @@ Query parameters:
 - `reverse`: `true` iterates newest-first
 - `filter`: a filter expression restricted to bare audit fields (`outcome`,
   `ledger`, `seq`, `proposal_id`, `timestamp`, `log_seq`, `caller_subject`,
-  `order_type`), using the same grammar as `ledgerctl audit list --filter` (e.g.
+  `order_type`, `idempotency_key`), using the same grammar as `ledgerctl audit list --filter` (e.g.
   `outcome == failure`, `ledger == main`,
-  `order_type in (create_transaction, revert_transaction)`). The fields are
+  `idempotency_key == retry_123`, `idempotency_key ^= retry_`). String audit
+  fields support equality and `in`; `idempotency_key` additionally supports
+  prefix matching with `^=`. The fields are
   written without any prefix and resolved against the audit query target
   (EN-1549 — this replaced the old `audit[...]` namespaced syntax, a breaking
   change with no backward compatibility); bare `timestamp` and `ledger` resolve

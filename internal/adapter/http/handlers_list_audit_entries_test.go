@@ -212,6 +212,29 @@ func TestHandleListAuditEntries_OutcomeFilter(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestHandleListAuditEntries_IdempotencyKeyPrefixFilter(t *testing.T) {
+	t.Parallel()
+
+	backend := NewMockBackend(gomock.NewController(t))
+	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ uint32, _ uint64, filter *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+			audit := filter.GetAudit()
+			require.NotNil(t, audit)
+			require.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, audit.GetField())
+			require.Equal(t, "import-2026-", audit.GetStringPrefix())
+
+			return cursor.NewSliceCursor[*auditpb.AuditEntry](nil), nil
+		}).Times(1)
+	srv := newTestServer(t, backend)
+
+	w := httptest.NewRecorder()
+	r := newRequest(t, http.MethodGet, "/_/audit-entries?filter="+url.QueryEscape(`idempotency_key ^= "import-2026-"`), nil, nil)
+
+	srv.handleListAuditEntries(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+}
+
 func TestHandleListAuditEntries_InvalidFilter(t *testing.T) {
 	t.Parallel()
 
