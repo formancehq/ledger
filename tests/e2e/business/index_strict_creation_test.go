@@ -93,7 +93,7 @@ var _ = Describe("Strict index creation", func() {
 			Expect(err).To(Succeed())
 			Expect(full.GetItems()).To(HaveLen(1))
 			Expect(full.GetItems()[0].GetLogSequence()).To(BeZero(), "failure must not emit a created or skipped log")
-			Expect(decodeOrder(full.GetItems()[0]).GetLedgerScoped().GetApply().GetCreateIndex()).NotTo(BeNil())
+			Expect(auditOrder(full.GetItems()[0]).GetLedgerScoped().GetApply().GetCreateIndex()).NotTo(BeNil())
 		}
 		logs, err := actions.ListAllLogs(ctx, client, ledger)
 		Expect(err).To(Succeed())

@@ -15,8 +15,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	appctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -378,7 +378,7 @@ func TestListAuditEntries_Success(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
-	stream := newRecvStream[auditpb.AuditEntry](ctrl, []*auditpb.AuditEntry{
+	stream := newRecvStream[publicauditpb.AuditEntry](ctrl, []*publicauditpb.AuditEntry{
 		{Sequence: 1},
 	}, nil)
 	mock.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any()).DoAndReturn(
@@ -439,7 +439,7 @@ func TestGetLog_Error(t *testing.T) {
 func TestGetAuditEntry_Success(t *testing.T) {
 	t.Parallel()
 
-	expected := &auditpb.AuditEntry{Sequence: 7}
+	expected := &publicauditpb.AuditEntry{Sequence: 7}
 	ctrl := gomock.NewController(t)
 	mock := NewMockBucketServiceClient(ctrl)
 	mock.EXPECT().GetAuditEntry(gomock.Any(), gomock.Any()).Return(expected, nil)

@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"11"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"12"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 11:
+leader. For example, with a schema implementing revision 12:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 11' \
+grpcurl -plaintext -H 'ledger-protocol-version: 12' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -197,3 +197,6 @@ messages (SinkConfigInput, MirrorSourceConfigInput) for write requests and reads
 structured SinkConfig/MirrorSourceConfig output from GetEventsSinks, GetLedger,
 ListLedgers, GetLog, and ListLogs. Existing configuration fields changed message
 types; clients and servers at different revisions decode them incorrectly.
+
+Typed public audit views require revision 12 on top of structured connections:
+ListAuditEntries and GetAuditEntry return the public audit message contract.

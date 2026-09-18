@@ -14,7 +14,8 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `bucket.proto` | gRPC service definitions (BucketService), includes mirror sync, promote |
 | `cluster.proto` | Cluster management (ClusterService) |
 | `snapshot.proto` | Snapshot service definitions |
-| `audit.proto` | Audit log messages |
+| `audit.proto` | Internal audit evidence messages |
+| `audit_view.proto` | Public audit views without opaque signed evidence |
 | `signature.proto` | Request signature types |
 | `events.proto` | Domain event types |
 | `restore.proto` | Restore service |
@@ -29,7 +30,8 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `clusterpb/` | Cluster state |
 | `signaturepb/` | Signature types |
 | `snapshotpb/` | Snapshot service |
-| `auditpb/` | Audit log types |
+| `auditpb/` | Internal audit evidence types |
+| `publicauditpb/` | Public audit view types |
 | `eventspb/` | Domain event types |
 | `restorepb/` | Restore service |
 
