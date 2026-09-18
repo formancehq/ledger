@@ -15,6 +15,14 @@ import (
 // checkpointStoreCache shares one read-only open of a query checkpoint's two
 // directories across every concurrent reader of that checkpoint.
 //
+// What a failed open means here: readiness is settled before the open is
+// attempted, and the caller's lease keeps a committed deletion from unlinking
+// underneath it, so the directory is neither late nor disappearing. Damage is
+// the expected cause past that gate, but a resource limit reaches it too, and
+// the two are not distinguished — the error surfaces as-is to the reader that
+// opened and to any already waiting on it, and the entry leaves the cache once
+// the last of them releases, so the reader after that opens again.
+//
 // Pebble takes a directory lock on open and keeps the held paths in a
 // process-global table, so a second open of a directory this process already
 // holds fails with "lock held by current process" — `ReadOnly` does not exempt
@@ -57,11 +65,8 @@ type checkpointStoreEntry struct {
 func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (*dal.Store, *readstore.Store, error) {
 	mainStore, err := dal.OpenReadOnly(mainPath, logger)
 	if err != nil {
-		// Both markers are present and the caller's lease keeps a committed
-		// deletion from unlinking under this open, so the directory the marker
-		// vouched for is not late. Damage is the expected cause past that gate,
-		// though a resource limit reaches here too; either way the error
-		// surfaces as-is, like the read index's below.
+		// Surfaced as-is, like the read index's below; see checkpointStoreCache
+		// for what a failure at this point means.
 		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
 
@@ -142,13 +147,8 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 	c.mu.Unlock()
 
 	if openErr != nil {
-		// The entry leaves the cache once the last reader holding it has
-		// released, and the reader after that opens again. A reader already
-		// waiting when the open failed is served the same error: the readiness
-		// markers are checked before the open, so the expected failure here is
-		// damage, which a second open would hit identically. A transient cause
-		// (a descriptor or space limit) is not distinguished, and costs those
-		// waiting readers an error each until the entry clears.
+		// Readers that were already waiting share this failure rather than
+		// reopening; see checkpointStoreCache for why, and what it costs them.
 		c.release(id, entry)
 
 		return nil, nil, nil, openErr
