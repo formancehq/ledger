@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -240,6 +241,10 @@ func indexIdempotencyKeyLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition
 		}
 		seqs, err = idx.AuditSeqsByString(readstore.AuditFieldIdempotencyKey, c.StringCond.GetHardcoded())
 	case *commonpb.AuditCondition_StringPrefix:
+		if strings.ContainsRune(c.StringPrefix, '\x00') {
+			return auditCompiled{}, status.Error(codes.InvalidArgument,
+				"idempotency_key prefix operand must not contain NUL")
+		}
 		seqs, err = idx.AuditSeqsByStringPrefix(readstore.AuditFieldIdempotencyKey, c.StringPrefix)
 	default:
 		return auditCompiled{}, status.Error(codes.InvalidArgument,

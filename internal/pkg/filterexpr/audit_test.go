@@ -72,6 +72,23 @@ func TestParseAudit_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
 	require.ErrorContains(t, err, "supports == and in only")
 }
 
+func TestParse_MetadataPrefixRejected(t *testing.T) {
+	t.Parallel()
+
+	// ^= is a valid lexer token but not a valid operator for metadata fields.
+	// It must be rejected at the toProto stage, not silently fall through.
+	_, err := Parse(`metadata[k] ^= value`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.ErrorContains(t, err, "prefix operator ^= is not supported for metadata conditions")
+}
+
+func TestParse_TimestampPrefixRejected(t *testing.T) {
+	t.Parallel()
+
+	// ^= on a numeric/datetime field must also be rejected explicitly.
+	_, err := Parse(`timestamp ^= foo`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.ErrorContains(t, err, "prefix operator ^= is not supported for numeric or datetime fields")
+}
+
 func TestParseAudit_TimestampRFC3339(t *testing.T) {
 	t.Parallel()
 
