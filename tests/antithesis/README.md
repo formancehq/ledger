@@ -198,6 +198,8 @@ other invocations. A create returning exactly gRPC `FailedPrecondition` with
 `CHECKPOINT_LIMIT_REACHED` is an expected capacity observation, not a completed
 lifecycle or a transient retry. Other preconditions and permanent errors remain
 findings. The product limit and global error classifiers are unchanged.
+The capacity predicate is sampled after every create with `Sometimes`, so
+Antithesis can explore saturation without counting it as lifecycle completion.
 
 After an acknowledged create, the invocation owns only that returned ID. An
 early exit during list/info verification attempts to delete it with a fresh

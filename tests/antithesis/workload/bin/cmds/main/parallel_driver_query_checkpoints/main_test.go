@@ -155,6 +155,17 @@ func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.Buck
 	return ctx, address, client, cluster
 }
 
+func listCheckpointIDs(t *testing.T, ctx context.Context, cluster clusterpb.ClusterServiceClient) []uint64 {
+	t.Helper()
+	list, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	require.NoError(t, err)
+	var ids []uint64
+	for _, checkpoint := range list.GetCheckpoints() {
+		ids = append(ids, checkpoint.GetCheckpointId())
+	}
+	return ids
+}
+
 func TestQueryCheckpointDriverCapacityAgainstServer(t *testing.T) {
 	t.Parallel()
 	ctx, address, client, cluster := checkpointTestServer(t)
@@ -165,16 +176,7 @@ func TestQueryCheckpointDriverCapacityAgainstServer(t *testing.T) {
 		require.NotContains(t, ids, id)
 		ids = append(ids, id)
 	}
-	liveIDs := func() []uint64 {
-		list, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
-		require.NoError(t, err)
-		var result []uint64
-		for _, checkpoint := range list.GetCheckpoints() {
-			result = append(result, checkpoint.GetCheckpointId())
-		}
-		return result
-	}
-	require.ElementsMatch(t, ids, liveIDs())
+	require.ElementsMatch(t, ids, listCheckpointIDs(t, ctx, cluster))
 	_, _, err := actions.CreateQueryCheckpoint(ctx, client)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 	info := actions.ExtractGRPCErrorInfo(err)
@@ -182,16 +184,16 @@ func TestQueryCheckpointDriverCapacityAgainstServer(t *testing.T) {
 	require.Equal(t, domain.ErrReasonCheckpointLimitReached, info.GetReason())
 	require.Equal(t, "10", info.GetMetadata()["limit"])
 	t.Logf("ten acknowledged checkpoints=%v; eleventh create=%v; ErrorInfo=%v", ids, err, info)
-	require.ElementsMatch(t, ids, liveIDs())
+	require.ElementsMatch(t, ids, listCheckpointIDs(t, ctx, cluster))
 
 	assertions := runCheckpointDriver(t, address)
 	requireNoCheckpointFindings(t, assertions)
 	requireCheckpointEvent(t, assertions, "query checkpoint capacity reached")
-	require.ElementsMatch(t, ids, liveIDs(), "capacity handling must not evict another invocation's checkpoints")
+	require.ElementsMatch(t, ids, listCheckpointIDs(t, ctx, cluster), "capacity handling must not evict another invocation's checkpoints")
 
 	require.NoError(t, actions.DeleteQueryCheckpoint(ctx, client, ids[0]))
 	assertions = runCheckpointDriver(t, address)
 	requireNoCheckpointFindings(t, assertions)
 	requireCheckpointEvent(t, assertions, "query checkpoint lifecycle completed")
-	require.ElementsMatch(t, ids[1:], liveIDs(), "the driver must release its own checkpoint and preserve the others")
+	require.ElementsMatch(t, ids[1:], listCheckpointIDs(t, ctx, cluster), "the driver must release its own checkpoint and preserve the others")
 }

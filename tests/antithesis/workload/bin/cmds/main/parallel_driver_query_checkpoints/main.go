@@ -37,13 +37,15 @@ func main() {
 func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServiceClient, bucketClient servicepb.BucketServiceClient) {
 	// 1. Create a query checkpoint.
 	cpID, maxSeq, err := actions.CreateQueryCheckpoint(ctx, bucketClient)
+	// Observe both outcomes so Antithesis can explore shared-pool saturation.
+	capacityReached := status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, domain.ErrReasonCheckpointLimitReached)
+	assert.Sometimes(capacityReached, "query checkpoint capacity reached", internal.Details{
+		"error": err, "code": status.Code(err).String(), "reason": internal.ErrorReason(err),
+	})
 	if err != nil {
 		// Parallel invocations share a bounded pool of retained checkpoints.
 		// Capacity is a definitive business outcome, not a retryable error.
-		if status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, domain.ErrReasonCheckpointLimitReached) {
-			assert.Reachable("query checkpoint capacity reached", internal.Details{
-				"error": err, "code": status.Code(err).String(), "reason": internal.ErrorReason(err),
-			})
+		if capacityReached {
 			return
 		}
 		if internal.IsTransient(err) {

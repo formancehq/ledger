@@ -183,13 +183,7 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 				// The fixture now releases its known ID before testing healthy recovery.
 				require.NoError(t, actions.DeleteQueryCheckpoint(ctx, client, createdID.Load()))
 			}
-			list, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
-			require.NoError(t, err)
-			var remaining []uint64
-			for _, checkpoint := range list.GetCheckpoints() {
-				remaining = append(remaining, checkpoint.GetCheckpointId())
-			}
-			require.ElementsMatch(t, foreignIDs, remaining)
+			require.ElementsMatch(t, foreignIDs, listCheckpointIDs(t, ctx, cluster))
 			// A clean invocation can fill the freed slot and release it again.
 			recovery := runCheckpointDriver(t, address)
 			requireNoCheckpointFindings(t, recovery)
@@ -256,11 +250,5 @@ func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 	recovery := runCheckpointDriver(t, address)
 	requireNoCheckpointFindings(t, recovery)
 	requireCheckpointEvent(t, recovery, "query checkpoint lifecycle completed")
-	list, err := cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
-	require.NoError(t, err)
-	var remaining []uint64
-	for _, checkpoint := range list.GetCheckpoints() {
-		remaining = append(remaining, checkpoint.GetCheckpointId())
-	}
-	require.ElementsMatch(t, foreignIDs, remaining)
+	require.ElementsMatch(t, foreignIDs, listCheckpointIDs(t, ctx, cluster))
 }
