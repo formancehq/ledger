@@ -13,18 +13,28 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-// buildLedger commits reqs on an empty-chart ledger "L" and returns its state.
-// An empty chart disables account-type enforcement, so transactions to
-// arbitrary addresses commit and populate volumes.
+// buildLedger applies reqs as one committed bulk on an empty-chart ledger "L"
+// and returns its state. An empty chart disables account-type enforcement, so
+// transactions to arbitrary addresses commit and populate volumes.
 //
-// Each request is its own bulk. Grouping them into one would let a fixture
-// revert a transaction the same bulk creates, which the server rejects —
-// admission cannot declare the volume coverage that revert needs, because the
-// target is not in the local store when it builds the order.
+// One bulk is the default because the fixtures are written against end-of-bulk
+// semantics — a shared proposal date, and ephemeral cells judged once at the end
+// of the bulk. A fixture that reverts a transaction the same bulk creates must
+// use buildLedgerSeparateBulks instead.
 func buildLedger(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
 	t.Helper()
 
 	return buildGlobal(t, reqs...).Ledger("L")
+}
+
+// buildLedgerSeparateBulks commits each request as its own bulk. Reserved for
+// fixtures that revert a transaction an earlier request creates: the server
+// rejects that within one bulk, because admission cannot declare the volume
+// coverage the revert needs when the target is not yet in the local store.
+func buildLedgerSeparateBulks(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
+	t.Helper()
+
+	return buildGlobalSeparateBulks(t, reqs...).Ledger("L")
 }
 
 const (
@@ -147,8 +157,9 @@ func TestMatchTxFilter(t *testing.T) {
 	t.Parallel()
 
 	// Two funding transactions, then revert the first: tx 1 is reverted, tx 3 is
-	// the compensating transaction (tx 2 is the second funding tx).
-	ls := buildLedger(t,
+	// the compensating transaction (tx 2 is the second funding tx). Separate
+	// bulks because the revert targets a transaction this setup creates.
+	ls := buildLedgerSeparateBulks(t,
 		oracletest.TxReq("world", "acc:1", "USD", 5),
 		oracletest.TxReq("world", "acc:2", "USD", 5),
 		oracletest.RevertReqL("L", 1, true),
@@ -259,14 +270,27 @@ func TestTransactionWindow(t *testing.T) {
 
 func stamp(v uint64) *commonpb.Timestamp { return &commonpb.Timestamp{Data: v} }
 
-// buildGlobal commits reqs one bulk per request — see buildLedger for why they
-// are not grouped — and returns the resulting global state, for tests that need
-// LearnTxStamps on top of the applied records.
-//
-// A fixture whose scenario *is* end-of-bulk semantics must use
-// buildGlobalOneBulk instead: committing request by request never puts two
-// requests in the same bulk, so it cannot reproduce them.
+// buildGlobal applies reqs as one bulk and returns the global state, for tests
+// that need LearnTxStamps on top of the applied records. See buildLedger for
+// why one bulk is the default.
 func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
+	t.Helper()
+
+	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
+	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
+
+	return res.State
+}
+
+// buildGlobalSeparateBulks commits each request as its own bulk — the global
+// counterpart of buildLedgerSeparateBulks, and reserved for the same reason.
+//
+// Splitting is not free: end-of-bulk semantics stop applying. Each request gets
+// its own proposal date, and an ephemeral cell washed back to zero across two
+// bulks is indexed by the first and then only dropped from the query universe by
+// the second, which is a different mechanism (TestMatchTxAddress_UniverseDrop).
+// Do not move a fixture here to make it pass.
+func buildGlobalSeparateBulks(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	t.Helper()
 
 	state := oracle.NewGlobalState()
@@ -279,23 +303,6 @@ func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	}
 
 	return state
-}
-
-// buildGlobalOneBulk commits reqs as a single bulk. Reserved for fixtures whose
-// scenario is end-of-bulk semantics — an ephemeral cell washed back to zero
-// within one bulk is excluded from the indexes, and splitting the wash across
-// bulks would index the first leg and then merely drop the account from the
-// query universe, which is a different mechanism (TestMatchTxAddress_UniverseDrop).
-//
-// Such a fixture must not revert a transaction the same bulk creates; see
-// buildLedger.
-func buildGlobalOneBulk(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
-	t.Helper()
-
-	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
-	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
-
-	return res.State
 }
 
 // serverTxFromRec builds the wire transaction the server would return for a
@@ -353,7 +360,8 @@ func TestMatchTxFilter_TxBuiltinLeaves(t *testing.T) {
 
 	// tx 1 (ref r1), tx 2, tx 3 = revert of 2. Stamps learned as the checker
 	// would from the commit response; tx 2's reverted_at is tx 3's timestamp.
-	gs := buildGlobal(t,
+	// Separate bulks because the revert targets a transaction this setup creates.
+	gs := buildGlobalSeparateBulks(t,
 		oracletest.TxReqRefL("L", "r1", "world", "acc:1", "USD", 5),
 		oracletest.TxReqL("L", "world", "acc:2", "USD", 5),
 		oracletest.RevertReqL("L", 2, true),
@@ -464,8 +472,8 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 	// excluded, at end of bulk) and a normal funding of a:1. tx 1 is the wash,
 	// tx 2 the funding. Splitting the wash across bulks would index e:1 on the
 	// funding leg and exercise the universe drop instead — see
-	// buildGlobalOneBulk.
-	gs := buildGlobalOneBulk(t,
+	// buildGlobalSeparateBulks.
+	gs := buildGlobal(t,
 		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 		oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
 		oracletest.TxReqL("L", "world", "e:1", "USD", 5),
