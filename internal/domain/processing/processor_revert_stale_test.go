@@ -151,6 +151,12 @@ func TestProcessRevertTransaction_MatchingObservationProceeds(t *testing.T) {
 		},
 	)
 
+	// Positive, not just "not one of the two mismatch reasons": without it any
+	// other early rejection — including the check itself refusing a matching
+	// digest — satisfies the negative assertions and the test proves nothing.
+	require.ErrorIs(t, err, errReachedVolumes,
+		"a matching observation must let the order through to the volume reads")
+
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution)
 
 	var created *domain.ErrRevertTargetCreatedInBatch
@@ -187,6 +193,8 @@ func TestProcessRevertTransaction_NoDigestIsRejected(t *testing.T) {
 	var invalid *domain.ErrInvalidExecutionPlan
 	require.ErrorAs(t, err, &invalid,
 		"a revert order with no bound observation is malformed, not exempt from the check")
+	require.Contains(t, invalid.Reason_, "no target observation digest",
+		"the missing-digest branch, not the sibling missing-horizon one")
 }
 
 // TestProcessRevertTransaction_NoBatchHorizonIsRejected pins that a mismatch
@@ -220,6 +228,8 @@ func TestProcessRevertTransaction_NoBatchHorizonIsRejected(t *testing.T) {
 
 	var invalid *domain.ErrInvalidExecutionPlan
 	require.ErrorAs(t, err, &invalid)
+	require.Contains(t, invalid.Reason_, "no recorded batch transaction-id horizon",
+		"the missing-horizon branch, not the sibling missing-digest one")
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
 		"an unclassifiable mismatch must not default to the retryable answer")
 }
