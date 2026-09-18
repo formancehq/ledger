@@ -189,6 +189,41 @@ func TestProcessRevertTransaction_NoDigestIsRejected(t *testing.T) {
 		"a revert order with no bound observation is malformed, not exempt from the check")
 }
 
+// TestProcessRevertTransaction_NoBatchHorizonIsRejected pins that a mismatch
+// with no recorded batch horizon is refused rather than defaulted.
+//
+// processApply records the horizon for every ledger before dispatch, so this is
+// unreachable today. It is pinned because the silent fallback would be the worst
+// of the two answers: a target the batch creates would be reported as merely
+// stale, and the client would re-admit the identical batch forever.
+func TestProcessRevertTransaction_NoBatchHorizonIsRejected(t *testing.T) {
+	t.Parallel()
+
+	const txID uint64 = 300
+
+	scope, boundaries := revertStaleFixture(t, txID, revertTestPostings())
+
+	payload, err := processRevertTransaction(
+		staleTestLedger,
+		&raftcmdpb.RevertTransactionOrder{TransactionId: txID},
+		&Context{
+			Scope:              scope,
+			Boundaries:         boundaries,
+			LedgerInfo:         (&commonpb.LedgerInfo{}).AsReader(),
+			RevertTargetDigest: domain.RevertTargetDigest(nil, false),
+			// Another ledger's horizon only: this one has none.
+			batchInitialNextTxID: map[string]uint64{"other-ledger": txID + 1},
+		},
+	)
+
+	require.Nil(t, payload)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid)
+	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
+		"an unclassifiable mismatch must not default to the retryable answer")
+}
+
 // TestProcessRevertTransaction_InconsistentStateNotSoftened pins the ordering
 // that keeps invariant #7 intact: a transaction allocated with no postings is a
 // broken projection and must keep surfacing as one, even though the bound
