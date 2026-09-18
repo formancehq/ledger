@@ -23,11 +23,20 @@ import (
 // and is part of the digest: an absent observation must not collide with a
 // present one, whatever the postings are.
 //
-// The encoding is length-delimited and count-prefixed so it is injective.
-// Account names, assets and colors are arbitrary caller bytes, so plain
-// separators would let a crafted posting set collide with a different one and
-// evade detection. Posting order is preserved rather than sorted: it is the
-// stored order both sides read, and reordering is itself a divergence.
+// The encoding is length-delimited and count-prefixed, so it is injective over
+// the field *values* it is given. Account names, assets and colors are arbitrary
+// caller bytes, so plain separators would let a crafted posting set collide with
+// a different one and evade detection. Posting order is preserved rather than
+// sorted: it is the stored order both sides read, and reordering is itself a
+// divergence.
+//
+// One value is canonicalised before it is hashed: Uint256.ToBigInt maps both a
+// nil amount and an explicit zero to the same empty byte string, so those two
+// postings digest alike. That is sound here because the digest only ever
+// compares two reads of the *same* stored transaction, whose postings are
+// immutable after create — the distinction cannot differ between the sides. Do
+// not reuse this digest to compare posting sets of different provenance without
+// adding a presence byte for the amount.
 func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
 	h := blake3.New()
 
