@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"slices"
-	"sort"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
@@ -17,11 +15,11 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/semaphore"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
@@ -106,7 +104,7 @@ type Admission struct {
 	ordersPreparationDurationHistogram  metric.Int64Histogram
 	scriptsDurationHistogram            metric.Int64Histogram
 	responseResolutionDurationHistogram metric.Int64Histogram
-	ephemeralLifecycleLocks             [64]*semaphore.Weighted
+	lifecycleSerializer                 *accountlifecycle.Serializer
 }
 
 // phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
@@ -149,6 +147,12 @@ func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Ad
 	}
 }
 
+func WithLifecycleSerializer(serializer *accountlifecycle.Serializer) func(*Admission) {
+	return func(a *Admission) {
+		a.lifecycleSerializer = serializer
+	}
+}
+
 func NewAdmission(
 	store *dal.Store,
 	logger logging.Logger,
@@ -164,19 +168,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
-	}
-	for index := range a.ephemeralLifecycleLocks {
-		a.ephemeralLifecycleLocks[index] = semaphore.NewWeighted(1)
+		store:               store,
+		logger:              logger,
+		proposer:            proposer,
+		builder:             builder,
+		writeGate:           writeGate,
+		keyStore:            keyStore,
+		sharedState:         sharedState,
+		attrs:               attrs,
+		numscriptCache:      numscriptCache,
+		waitLeaderReady:     waitLeaderReady,
+		lifecycleSerializer: accountlifecycle.NewSerializer(),
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -921,7 +923,8 @@ func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResul
 // uses this closed key set to decide and apply an account-wide EPHEMERAL purge
 // without scanning Pebble or bypassing the coverage gate.
 func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
-	lockSet := make(map[int]struct{})
+	accountsToLock := make(map[domain.AccountKey]struct{})
+	lockAll := false
 	perOrderAccounts := make([]map[domain.AccountKey]struct{}, len(perOrder))
 
 	// Lock every touched account before reading account-type snapshots. Type
@@ -950,7 +953,7 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 					continue
 				}
 				accounts[account] = struct{}{}
-				lockSet[accountLifecycleLockIndex(account)] = struct{}{}
+				accountsToLock[account] = struct{}{}
 			}
 		}
 		perOrderAccounts[orderIndex] = accounts
@@ -962,31 +965,12 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 		}
 		switch apply.GetData().(type) {
 		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
-			for index := range a.ephemeralLifecycleLocks {
-				lockSet[index] = struct{}{}
-			}
+			lockAll = true
 		}
 	}
-	lockIndexes := make([]int, 0, len(lockSet))
-	for index := range lockSet {
-		lockIndexes = append(lockIndexes, index)
-	}
-	sort.Ints(lockIndexes)
-	acquired := 0
-	for _, index := range lockIndexes {
-		if err := a.ephemeralLifecycleLocks[index].Acquire(ctx, 1); err != nil {
-			for _, acquiredIndex := range slices.Backward(lockIndexes[:acquired]) {
-				a.ephemeralLifecycleLocks[acquiredIndex].Release(1)
-			}
-
-			return nil, err
-		}
-		acquired++
-	}
-	release := func() {
-		for _, lockIndexe := range slices.Backward(lockIndexes) {
-			a.ephemeralLifecycleLocks[lockIndexe].Release(1)
-		}
+	release, err := a.lifecycleSerializer.Acquire(ctx, accountsToLock, lockAll)
+	if err != nil {
+		return nil, err
 	}
 	success := false
 	defer func() {
@@ -1003,6 +987,70 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 		return nil, err
 	}
 	defer func() { _ = handle.Close() }()
+
+	// Account-type mutations can reclassify accounts without directly touching
+	// any account row. Enumerate persisted ledger-scoped rows while all lifecycle
+	// stripes are held so newly EPHEMERAL accounts enter both coverage and the
+	// FSM purge candidate set.
+	for orderIndex, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		apply := ledgerOrder.GetApply()
+		if apply == nil {
+			continue
+		}
+		switch apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		default:
+			continue
+		}
+		ledger := ledgerOrder.GetLedger()
+		for _, spec := range []struct{ attrCode byte }{
+			{dal.SubAttrVolume},
+			{dal.SubAttrMetadata},
+		} {
+			canonicalPrefix := domain.LedgerScopedPrefix(ledger)
+			lower := append([]byte{dal.ZoneAttributes, spec.attrCode}, canonicalPrefix...)
+			upper := append([]byte(nil), lower...)
+			upper[len(upper)-1]++
+			iter, iterErr := dal.NewBoundedIter(handle, lower, upper)
+			if iterErr != nil {
+				return nil, iterErr
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				canonical := append([]byte(nil), iter.Key()[2:]...)
+				var account domain.AccountKey
+				if spec.attrCode == dal.SubAttrVolume {
+					var key domain.VolumeKey
+					if err := key.Unmarshal(canonical); err != nil {
+						_ = iter.Close()
+
+						return nil, err
+					}
+					account = key.AccountKey
+				} else {
+					var key domain.MetadataKey
+					if err := key.Unmarshal(canonical); err != nil {
+						_ = iter.Close()
+
+						return nil, err
+					}
+					account = key.AccountKey
+				}
+				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[ledger]) {
+					perOrder[orderIndex].Add(spec.attrCode, canonical)
+					aggregate.Add(spec.attrCode, append([]byte(nil), canonical...))
+				}
+			}
+			if err := iter.Error(); err != nil {
+				_ = iter.Close()
+
+				return nil, err
+			}
+			if err := iter.Close(); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	for orderIndex, coverage := range perOrder {
 		accounts := perOrderAccounts[orderIndex]
@@ -1110,19 +1158,6 @@ func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.C
 	}
 
 	return false
-}
-
-func accountLifecycleLockIndex(account domain.AccountKey) int {
-	var hash uint64 = 1469598103934665603
-	for _, value := range []string{account.LedgerName, account.Account} {
-		for i := range len(value) {
-			hash ^= uint64(value[i])
-			hash *= 1099511628211
-		}
-		hash ^= 0xff
-	}
-
-	return int(hash % 64)
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {
