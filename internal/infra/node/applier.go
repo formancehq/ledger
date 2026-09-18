@@ -418,10 +418,12 @@ func (a *Applier) FailFuturesBelowTerm(threshold uint64, err error) {
 	// This sweep runs after every committed batch with maxTerm > 0, so the
 	// condition — not the call — carries the signal: it is true only when an
 	// actual straggler (truncated lower-term proposal) was swept.
-	assert.Sometimes(resolved > 0, "FailFuturesBelowTerm resolved at least one future", map[string]any{
-		"threshold": threshold,
-		"resolved":  resolved,
-	})
+	if assert.Enabled {
+		assert.Sometimes(resolved > 0, "FailFuturesBelowTerm resolved at least one future", map[string]any{
+			"threshold": threshold,
+			"resolved":  resolved,
+		})
+	}
 }
 
 // batchMaxTerm returns the highest Raft term in entries.
@@ -1330,13 +1332,15 @@ func (a *Applier) runCommitter(ctx context.Context, stop chan struct{}) {
 			// Runs on every committed batch: the condition is the signal —
 			// true only when a below-maxTerm future got its real result in
 			// the same batch that triggers a sweep.
-			assert.Sometimes(oldTermResolved > 0,
-				"old-term entry committed and resolved in same batch as a sweep",
-				map[string]any{
-					"maxTerm":         work.maxTerm,
-					"oldTermResolved": oldTermResolved,
-					"batchFutures":    len(work.futures),
-				})
+			if assert.Enabled {
+				assert.Sometimes(oldTermResolved > 0,
+					"old-term entry committed and resolved in same batch as a sweep",
+					map[string]any{
+						"maxTerm":         work.maxTerm,
+						"oldTermResolved": oldTermResolved,
+						"batchFutures":    len(work.futures),
+					})
+			}
 		} else {
 			// Fail fast: ownership was already taken via LoadAndDelete, so no
 			// other path (term sweep, dropped-proposal resolution) can ever

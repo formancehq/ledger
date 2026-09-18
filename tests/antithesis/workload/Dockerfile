@@ -5,7 +5,15 @@ ARG GOOS
 
 RUN apt-get update && apt-get install -y bash git gcc
 
-RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.7.0
+# Built from the Formance fork rather than `go install ...@version`: the fork
+# keeps the upstream module path, so it is reachable only through the go.mod
+# replace, which `go install pkg@version` ignores. Keep this SHA equal to the
+# replace in go.mod — the instrumentor must know the assert.Enabled guard shape,
+# or it synthesizes an unreachable coverage edge for every guarded site.
+RUN git clone --quiet https://github.com/formancehq/antithesis-sdk-go /sdk \
+ && git -C /sdk checkout --quiet 1c9afdaf82044c6c7b52d1feb751358034c98506 \
+ && cd /sdk/tools/antithesis-go-instrumentor \
+ && go build -o /usr/local/bin/antithesis-go-instrumentor .
 
 COPY go.* /src/
 COPY cmd/server /src/cmd/server
@@ -24,16 +32,25 @@ RUN cp /src/go.* / && mkdir -p /cmd && cp -r /src/cmd/server /cmd/server \
 
 RUN mkdir /instrumented
 WORKDIR /src/tests/antithesis/workload
-RUN antithesis-go-instrumentor . /instrumented
+# -instrumentor_version sets the SDK version the generated notifier module
+# requires. The versionless replace above already redirects every selected
+# version to the fork, so this does not change which SDK is built; it keeps
+# the generated require line matching the one we declare, and restores the
+# real guarantee if the replace is ever dropped (upstream stable v0.8.0
+# outranks the prerelease in module resolution).
+RUN antithesis-go-instrumentor -instrumentor_version v0.8.0-default-no-op . /instrumented
 WORKDIR /instrumented/customer
 
-RUN go build -o /init ./bin/init
+# enable_antithesis_sdk arms the SDK, which v0.8.0-default-no-op compiles
+# out unless asked. This image exists only to drive Antithesis runs, so
+# every binary in it is built armed.
+RUN go build -tags enable_antithesis_sdk -o /init ./bin/init
 RUN mkdir -p /cmds
 
 # Pre-warm the build cache: compile all shared dependencies once (race-instrumented).
 # This avoids recompiling the same packages once per driver — subsequent builds only
 # compile the unique main.go (~117 LOC each).
-RUN go build -race ./internal/...
+RUN go build -race -tags enable_antithesis_sdk ./internal/...
 
 # Optional dev-loop filter: when INCLUDED_DRIVERS is a non-empty comma-separated
 # list of <template>/<driver> paths (e.g. "main/parallel_driver_bulk,main/first_default_ledger"),
@@ -58,7 +75,7 @@ RUN set -e; \
         cp /tmp/all-drivers.txt /tmp/targets.txt; \
     fi; \
     cat /tmp/targets.txt \
-        | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -o "/cmds/$1" "./bin/cmds/$1"' _ {}
+        | xargs -P"$(nproc)" -I{} sh -c 'mkdir -p "/cmds/$(dirname "$1")" && go build -race -tags enable_antithesis_sdk -o "/cmds/$1" "./bin/cmds/$1"' _ {}
 
 # Runner
 FROM debian:trixie AS runner

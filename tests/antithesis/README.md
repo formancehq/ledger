@@ -307,13 +307,13 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   globally-unique name.** Antithesis indexes assertions by name; two sites
   sharing one name collapse into one signal and the triage UI shows you a
   single average instead of three failure modes.
-- `Sometimes` is a coverage sonde — Antithesis prioritizes paths that make
+- `Sometimes` is a coverage probe — Antithesis prioritizes paths that make
   more `Sometimes` calls satisfied. Use it to mark expected outcomes (`err
   == nil || IsTransient(err)`) even when no invariant is at stake; it tells
   the fuzzer "this branch matters."
 - A `Reachable("X")` with no upstream `Sometimes` that fires when X is true
   is passive: Antithesis cannot bias toward making X happen. Prefer pairing
-  them when the path is fragile. When the sonde and the `Reachable` would
+  them when the path is fragile. When the probe and the `Reachable` would
   carry the same predicate, drop the `Reachable` — both are `mustHit`, so the
   `Sometimes` alone enforces it and additionally gives the fuzzer a gradient.
   `singleton_driver_model/coverage.go` is the worked example.

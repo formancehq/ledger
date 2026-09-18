@@ -211,8 +211,8 @@ func (t *SentinelTracer) Dump(logger logging.Logger) {
 			parts := make([]string, 0, len(e.Volumes))
 			for _, v := range e.Volumes {
 				parts = append(parts, fmt.Sprintf(
-					"%q/%s/%s[%s] key=%s id=%s old(%s,%s)→new(%s,%s)",
-					v.Key.LedgerName, v.Key.Account, v.Key.Asset, v.Partition,
+					"%q/%s/%s/%s[%s] key=%s id=%s old(%s,%s)→new(%s,%s)",
+					v.Key.LedgerName, v.Key.Account, v.Key.Asset, v.Key.Color, v.Partition,
 					v.CanonicalKey, v.ID,
 					v.OldInput, v.OldOutput,
 					v.NewInput, v.NewOutput,

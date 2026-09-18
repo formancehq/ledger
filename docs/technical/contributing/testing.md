@@ -569,7 +569,7 @@ default. A successful run also requires at least one
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
 
-It reports coverage sondes that were not satisfied in the sampled trajectory
+It reports coverage probes that were not satisfied in the sampled trajectory
 without turning those stochastic gaps into correctness failures (see below).
 
 The local runner's shell-fixture tests use a logical clock. Time remains before
@@ -593,31 +593,31 @@ Common tunables (full list in the script header):
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
 | `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
 
-#### Coverage sondes
+#### Coverage probes
 
 A green run proves nothing about a query path it never took. `coverage.go`
 registers one `Sometimes` per index the oracle models — the nine the generator
 churns, plus one per entity target for the metadata-field indexes and one for
 the retype window — and the runner reports any that were never satisfied.
-A sonde is satisfied only by a page that the index was needed for AND that the
+A probe is satisfied only by a page that the index was needed for AND that the
 oracle verified; a refusal the model predicted proves the lifecycle gate, not
 that the index can answer.
 
 They are `Sometimes` rather than `Reachable` because a `Reachable` hard-wires
 its condition to true and so never produces a failing evaluation for
 Antithesis to steer on. On the platform, the run branches and biases toward
-unsatisfied sondes, making Antithesis the authoritative exhaustive-coverage
+unsatisfied probes, making Antithesis the authoritative exhaustive-coverage
 environment. Locally there is one short linear trajectory and no guidance, so
-missing sondes remain visible as diagnostics rather than making CI depend on
-random generator choices. Apply sondes additionally require each skipped reason
+missing probes remain visible as diagnostics rather than making CI depend on
+random generator choices. Apply probes additionally require each skipped reason
 followed by a successful order, both mode setters in both modes, and a rejected
-invalid skip opt-in. A selected request does not satisfy a sonde: the observed
+invalid skip opt-in. A selected request does not satisfy a probe: the observed
 outcome must pass oracle validation.
 
-Sonde names are data-driven, so the instrumentor cannot catalogue them; they
+Probe names are data-driven, so the instrumentor cannot catalogue them; they
 are registered through `assert.AssertRaw`, as `internal/block/block.go` does.
 
-Because these sondes are false by design on most queries, the runner treats
+Because these probes are false by design on most queries, the runner treats
 assertion classes differently: a false `Always` / `AlwaysOrUnreachable` /
 `Unreachable` is a finding, a false `Sometimes` is not. The exception is
 `STRICT_SOMETIMES`, the shared helpers whose `assert.Sometimes(IsTolerated(err),

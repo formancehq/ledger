@@ -3,6 +3,8 @@ package processing
 import (
 	"errors"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -29,6 +31,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, domain.StoreFailure("checking reverted status", err)
 	}
 
+	if assert.Enabled {
+		assert.Sometimes(reverted, "repeat revert rejected", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
+	}
 	if reverted {
 		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.GetTransactionId()}
 	}
@@ -42,6 +49,10 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// with the invariant-violation error class (invariant #7).
 	origStateReader, err := s.TransactionStates().Get(txKey)
 	if errors.Is(err, domain.ErrNotFound) {
+		assert.Unreachable("revert target has allocated transaction state", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
+
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
@@ -53,6 +64,9 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 
 	originalPostings := origState.GetPostings()
 	if len(originalPostings) == 0 {
+		assert.Unreachable("revert target has nonempty original postings", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
 		// Create rejects empty transactions, so a stored state always carries
 		// at least one posting; an empty set here is an inconsistent projection
 		// (invariant #7), not a revertable transaction.
@@ -119,6 +133,10 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	revertTimestamp := s.GetDate().Mutate()
 	if order.GetAtEffectiveDate() {
 		if origState.GetTimestamp() == nil {
+			assert.Unreachable("effective-date revert target has a timestamp", map[string]any{
+				"ledger": ledger, "transactionId": order.GetTransactionId(),
+			})
+
 			return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert at_effective_date"}
 		}
 
