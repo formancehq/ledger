@@ -28,9 +28,11 @@ func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
 	bulk := oracle.Bulk{Requests: []*servicepb.Request{oracletest.CreateIndexReq(assetIndexID())}}
 	result := c.modelState.Apply(bulk)
 	require.True(t, result.OK)
+	c.mu.Lock()
 	c.modelState = result.State
 	c.recordIndexCreates(bulk, &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 10}}})
 	c.modelState.SetIndexActive("L", assetIndexCanonical)
+	c.mu.Unlock()
 	ready := &servicepb.GetIndexStatusResponse{
 		LastIndexedSequence: 10,
 		Indexes: []*servicepb.IndexEntry{{
@@ -40,6 +42,19 @@ func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
 	blocked, blockedNode := newIndexPollDeadlineNode(t, ready, true)
 	healthy, healthyNode := newIndexPollDeadlineNode(t, ready, false)
 	conns := internal.PerNodeConns{blockedNode, healthyNode}
+	assertPoll := func(wantCalls int) {
+		t.Helper()
+		for _, node := range []*indexPollDeadlineServer{blocked, healthy} {
+			observed := node.observations()
+			require.Len(t, observed, wantCalls, "each poll must sample both nodes exactly once")
+			latest := observed[wantCalls-1]
+			require.True(t, latest.hasDeadline)
+			// gRPC transmits a relative timeout, then reconstructs the server
+			// deadline. Allow encoding/transport slack, not the parent's lifetime.
+			require.LessOrEqual(t, latest.remaining, indexPollInterval+100*time.Millisecond)
+			require.Equal(t, []string{"stale"}, latest.consistency)
+		}
+	}
 
 	// The first real RPC waits for its request context to end. Its deadline
 	// must release the poller while the longer driver context remains live.
@@ -49,15 +64,7 @@ func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
 	require.NoError(t, ctx.Err(), "a blocked node must not exhaust the parent deadline")
 	_, active := c.modelState.Ledger("L").IndexState(assetIndexCanonical)
 	require.False(t, active, "the timed-out node must demote the index")
-	for _, node := range []*indexPollDeadlineServer{blocked, healthy} {
-		observed := node.observations()
-		require.Len(t, observed, 1, "the same poll must sample the healthy node after the blocked node")
-		require.True(t, observed[0].hasDeadline)
-		// gRPC transmits a relative timeout, then reconstructs the server
-		// deadline. Allow encoding/transport slack, not the parent's lifetime.
-		require.LessOrEqual(t, observed[0].remaining, indexPollInterval+100*time.Millisecond)
-		require.Equal(t, []string{"stale"}, observed[0].consistency)
-	}
+	assertPoll(1)
 
 	// The failed node answers the next request: readiness must recover, with
 	// exactly one additional RPC per node and the same live parent context.
@@ -65,9 +72,7 @@ func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
 	require.NoError(t, ctx.Err())
 	_, active = c.modelState.Ledger("L").IndexState(assetIndexCanonical)
 	require.True(t, active, "a fail-then-success poll must restore active readiness")
-	for _, node := range []*indexPollDeadlineServer{blocked, healthy} {
-		require.Len(t, node.observations(), 2)
-	}
+	assertPoll(2)
 }
 
 type indexPollDeadlineObservation struct {
@@ -122,6 +127,10 @@ func newIndexPollDeadlineNode(t *testing.T, response *servicepb.GetIndexStatusRe
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }),
 		grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+	t.Cleanup(func() {
+		if err := conn.Close(); err != nil {
+			t.Errorf("close gRPC client: %v", err)
+		}
+	})
 	return handler, &internal.PerNodeConn{Bucket: servicepb.NewBucketServiceClient(conn)}
 }
