@@ -2,6 +2,7 @@ package admission
 
 import (
 	"crypto/ed25519"
+	"errors"
 	"net/url"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/v2/celrewrite"
@@ -327,7 +328,11 @@ func validateOrderMirrorSource(order *raftcmdpb.Order) domain.Describable {
 	// Runtime also checks the driver configuration before connecting; this
 	// admission gate fails before the order touches the audit chain.
 	if _, err := connectionconfig.Mirror(src); err != nil {
-		return ErrMirrorIAMRequiresTLS
+		if errors.Is(err, connectionconfig.ErrPostgresIAMRequiresTLS) {
+			return ErrMirrorIAMRequiresTLS
+		}
+
+		return ErrMirrorConnectionInvalid
 	}
 
 	return nil
