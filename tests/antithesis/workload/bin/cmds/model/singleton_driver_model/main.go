@@ -46,11 +46,13 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
 func main() {
@@ -83,6 +85,10 @@ func main() {
 
 	numLedgers := envInt("MODEL_LEDGERS", defaultLedgers)
 	numWorkers := envInt("MODEL_WORKERS", defaultWorkers)
+	if numWorkers > maxWorkers {
+		log.Printf("warning: MODEL_WORKERS=%d exceeds the safe maximum %d, using %d", numWorkers, maxWorkers, maxWorkers)
+		numWorkers = maxWorkers
+	}
 
 	client, conn, err := internal.NewClient()
 	if err != nil {
@@ -90,6 +96,20 @@ func main() {
 		return
 	}
 	defer conn.Close()
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := client.Apply(cleanupCtx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+			log.Printf("disable maintenance during shutdown: %v", err)
+		}
+	}()
+
+	// A previous driver may have died after enabling the cluster-wide gate.
+	// Recover before setup so CreateLedger cannot wait behind maintenance forever.
+	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
+		log.Printf("disable maintenance during startup: %v", err)
+		return
+	}
 
 	// Unique per-run prefix so a fresh invocation never reattaches to a
 	// previous run's ledgers (the model starts empty; inherited committed
@@ -183,6 +203,7 @@ func main() {
 	workers.Wait()
 	restore.Wait()
 	pollers.Wait()
+	checker.recoveries.Wait()
 	close(checker.incoming)
 	processors.Wait()
 }
@@ -213,24 +234,25 @@ func runWorker(
 		// field types), and the two list queries (filtered, paginated, ordered
 		// windows over accounts and transactions). Reads validate against the
 		// in-flight bulk set, exercising cross-node freshness without needing
-		// quiescence.
+		// quiescence. Account and transaction queries receive extra slots because
+		// together they must exercise every builtin and declared metadata index.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
 				runTransactionRead(ctx, client, c)
 			case 2:
 				runSchemaRead(ctx, client, c)
-			case 3:
+			case 3, 4:
 				runAccountQuery(ctx, client, c)
-			case 4:
+			case 5, 6, 7:
 				runTransactionQuery(ctx, client, c)
-			case 5:
-				runReplay(ctx, client, c)
-			case 6:
-				runLogQuery(ctx, client, c)
 			case 8:
+				runReplay(ctx, client, c)
+			case 9:
+				runLogQuery(ctx, client, c)
+			case 10:
 				node := random.RandomChoice(checkpointNodes)
 				runCheckpointRead(ctx, node.Bucket, node.Cluster, c)
 			default:
@@ -248,133 +270,279 @@ func runWorker(
 			continue
 		}
 		state := c.modelState
+		ledgers := c.ledgerNamesSnapshot()
 		c.mu.Unlock()
 
 		var bulk oracle.Bulk
 		if percentChance(10) {
 			bulk = generateCheckpointBulk(state)
 		} else {
-			bulk = generateBulk(state, c.ledgerNames)
+			bulk = generateBulk(state, ledgers, c.nextLedgerName(), c.liveTarget)
 		}
 		if len(bulk.Requests) == 0 {
 			continue
 		}
-		checkpointCreate := isCheckpointCreate(bulk)
-		if checkpointCreate {
-			c.checkpointCreateMu.Lock()
-		}
-
-		c.mu.Lock()
-		// A pause committed while generating: back out without dispatching,
-		// so no bulk commits between the drain and the backup.
-		if c.paused {
-			c.mu.Unlock()
-			if checkpointCreate {
-				c.checkpointCreateMu.Unlock()
-			}
+		if !c.reserveLedgerCreate(bulk) {
 			continue
 		}
-		// Occasionally tag this bulk with an idempotency key — reusing a committed
-		// key on a different body (conflict) or minting a fresh tracked one (a
-		// replayable original) — to exercise the server's dedup.
-		c.stampIdempotency(&bulk)
-		var predictedCheckpointID uint64
-		if checkpointCreate {
-			predictedCheckpointID = c.modelState.NextQueryCheckpointID()
-		}
-		ticket := c.registerInflight(bulk)
+		dispatchBulk(ctx, client, checkpointNodes, c, bulk)
+	}
+}
+
+// dispatchBulk sends every generated request through the same inflight and
+// processor path. Maintenance enable schedules a modeled disable independently,
+// so a write-blocked worker fleet cannot stall the run permanently.
+func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, checkpointNodes internal.PerNodeConns, c *Checker, bulk oracle.Bulk) {
+	defer c.releaseLedgerCreate(bulk)
+	checkpointCreate := isCheckpointCreate(bulk)
+	if checkpointCreate {
+		c.checkpointCreateMu.Lock()
+		defer c.checkpointCreateMu.Unlock()
+	}
+
+	c.dispatchMu.Lock()
+	c.mu.Lock()
+	if c.paused {
 		c.mu.Unlock()
+		c.dispatchMu.Unlock()
+		return
+	}
+	c.stampIdempotency(&bulk)
+	var predictedCheckpointID uint64
+	if checkpointCreate {
+		predictedCheckpointID = c.modelState.NextQueryCheckpointID()
+	}
+	ticket := c.registerInflight(bulk)
+	c.mu.Unlock()
+	c.dispatchMu.Unlock()
 
-		var probeDone <-chan struct{}
-		if checkpointCreate {
-			start := make(chan struct{})
-			registered := make(chan struct{})
-			done := make(chan struct{})
-			probeDone = done
-			node := random.RandomChoice(checkpointNodes)
-			go func() {
-				defer close(done)
-				runPredictedCheckpointRead(ctx, node.Bucket, c, predictedCheckpointID, start, registered)
-			}()
-			<-registered
-			close(start)
+	var probeDone <-chan struct{}
+	if checkpointCreate {
+		start := make(chan struct{})
+		registered := make(chan struct{})
+		done := make(chan struct{})
+		probeDone = done
+		node := random.RandomChoice(checkpointNodes)
+		go func() {
+			defer close(done)
+			runPredictedCheckpointRead(ctx, node.Bucket, c, predictedCheckpointID, start, registered)
+		}()
+		<-registered
+		close(start)
+	}
+
+	req := applyRequest(bulk)
+	var resp *servicepb.ApplyResponse
+	var err error
+	hadAmbiguousAttempt := false
+	provisionalMaintenanceRecoveryScheduled := false
+	var provisionalMaintenanceRecoverySeq uint64
+	for {
+		resp, err = client.Apply(ctx, req)
+		if err == nil || ctx.Err() != nil {
+			break
 		}
-
-		// Application-level retry to a definitive outcome. The gRPC-layer
-		// retries live inside one call's context, so a cancellation that
-		// kills the call — a dying node propagates codes.Canceled from its
-		// handler, a connection teardown cancels every in-flight RPC — ends
-		// the whole chain with the bulk possibly committed. The request is
-		// rendered ONCE (the idempotency key must pin the first attempt's
-		// identity) and re-submitted until the server gives a commit — served
-		// from its idempotency cache when the lost attempt landed — or a
-		// business rejection. Only this driver's own context ending abandons
-		// a bulk, which the processor's shutdown skip already models.
-		req := applyRequest(bulk)
-
-		var (
-			resp *servicepb.ApplyResponse
-			err  error
-		)
-
-		for {
-			resp, err = client.Apply(ctx, req)
-			if err == nil || ctx.Err() != nil {
+		if internal.IsMaintenanceAfterAmbiguousCommit(err) {
+			hadAmbiguousAttempt = true
+		}
+		maintenanceRejected := internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
+		if shouldScheduleMaintenanceRecovery(bulk, err, hadAmbiguousAttempt) && !provisionalMaintenanceRecoveryScheduled {
+			provisionalMaintenanceRecoverySeq = scheduleMaintenanceRecovery(ctx, client, c)
+			provisionalMaintenanceRecoveryScheduled = true
+		}
+		if maintenanceRejected {
+			if !hadAmbiguousAttempt || bulkEnablesMaintenance(bulk) {
 				break
 			}
-
-			if !internal.IsTransient(err) && !internal.IsCanceled(err) {
-				break
-			}
-
-			select {
-			case <-ctx.Done():
-			case <-time.After(200 * time.Millisecond):
-			}
 		}
-
-		dumpBatch(ticket, req, resp, err)
-		if probeDone != nil {
-			<-probeDone
+		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
+			break
 		}
-
-		// Snapshot the ticket high-water at observe (lock-free, atomic counter);
-		// the drain gate compares outstanding tickets against it (see tryDrain).
-		// This is a loose upper bound: a sibling worker can register its own bulk
-		// between Apply returning and this Load, so observeTicket may cover a
-		// ticket whose effect could not precede this response. That only enlarges
-		// the candidate-base set validation considers (it gets more permissive),
-		// never shrinks it — it can mask a divergence but never manufacture a
-		// false failure. The window is irreducible: the counter can always climb
-		// between the RPC returning and the atomic read, so we accept it.
-		obs := observation{
-			ticket:        ticket,
-			bulk:          bulk,
-			resp:          resp,
-			err:           err,
-			observeTicket: c.ticketSeq.Load(),
-		}
-		if checkpointCreate {
-			obs.processed = make(chan struct{})
-		}
-
-		// Block on a full channel — natural back-pressure.
+		// A transport cancellation while the driver context remains live can
+		// arrive after the server committed the request. Preserve that ambiguity
+		// so a maintenance rejection on the retry schedules recovery instead of
+		// being treated as a definitive failure.
+		hadAmbiguousAttempt = hadAmbiguousAttempt || internal.IsAmbiguousCommit(err) || internal.IsCanceled(err)
 		select {
 		case <-ctx.Done():
-			if checkpointCreate {
-				c.checkpointCreateMu.Unlock()
-			}
-			return
-		case c.incoming <- obs:
-		}
-		if checkpointCreate {
-			select {
-			case <-ctx.Done():
-			case <-obs.processed:
-			}
-			c.checkpointCreateMu.Unlock()
+		case <-time.After(200 * time.Millisecond):
 		}
 	}
+
+	dumpBatch(ticket, req, resp, err)
+	if probeDone != nil {
+		<-probeDone
+	}
+	// Keep each worker to one registered write at a time. Besides applying
+	// backpressure when the processor falls behind, this makes maxWorkers a real
+	// bound on the candidate search's independently committable bulks.
+	obs := observation{
+		ticket:          ticket,
+		bulk:            bulk,
+		resp:            resp,
+		err:             err,
+		ambiguousEnable: bulkEnablesMaintenance(bulk) && hadAmbiguousAttempt && internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode),
+		recoverySeq:     provisionalMaintenanceRecoverySeq,
+		observeTicket:   c.ticketSeq.Load(),
+		processed:       make(chan struct{}),
+	}
+	// Register the disable recovery before publishing the successful enable.
+	// The processor may otherwise make that enable visible to restore, which can
+	// begin draining while no recovery read protects the maintenance window.
+	if err == nil && bulkEnablesMaintenance(bulk) {
+		scheduleMaintenanceRecovery(ctx, client, c)
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case c.incoming <- obs:
+	}
+	select {
+	case <-ctx.Done():
+	case <-obs.processed:
+	}
+}
+
+func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) uint64 {
+	c.mu.Lock()
+	if c.maintenanceRecoveryActive {
+		if c.maintenanceRecoveryTicket != 0 {
+			c.maintenanceEnableSeq++
+		}
+		recoverySeq := c.maintenanceEnableSeq
+		c.mu.Unlock()
+		return recoverySeq
+	}
+	c.maintenanceEnableSeq++
+	recoverySeq := c.maintenanceEnableSeq
+	c.maintenanceRecoveryActive = true
+	recoveryID := c.registerRead()
+	c.recoveries.Add(1)
+	c.mu.Unlock()
+
+	go func() {
+		defer c.recoveries.Done()
+		readRegistered := true
+		defer func() {
+			if readRegistered {
+				c.finishRead(recoveryID)
+			}
+		}()
+		for {
+			c.mu.Lock()
+			c.maintenanceRecoveryTicket = 0
+			enableSeq := c.maintenanceEnableSeq
+			c.mu.Unlock()
+
+			delay := time.Duration(internal.Rand().Int63n(int64(maintenanceMaxWindow)))
+			select {
+			case <-ctx.Done():
+				c.mu.Lock()
+				c.maintenanceRecoveryActive = false
+				c.mu.Unlock()
+				return
+			case <-time.After(delay):
+			}
+			dispatchMaintenanceRecovery(ctx, client, c, recoveryID, enableSeq)
+			readRegistered = false
+
+			c.mu.Lock()
+			if c.maintenanceEnableSeq == enableSeq {
+				c.maintenanceRecoveryActive = false
+				c.mu.Unlock()
+				return
+			}
+			recoveryID = c.registerRead()
+			readRegistered = true
+			c.mu.Unlock()
+		}
+	}()
+
+	return recoverySeq
+}
+
+// dispatchMaintenanceRecovery bypasses the restore pause because the recovery
+// read registered before its delay keeps pauseAndDrain from completing. It
+// atomically replaces that read with the disable's in-flight ticket so restore
+// remains blocked without preventing the disable observation from draining. A
+// fresh key prevents deliberate conflict injection from turning a temporary
+// maintenance window into a permanent stall.
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
+	bulk := oracle.Bulk{
+		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
+		IdempotencyKey: idempotencyKey(),
+	}
+
+	c.dispatchMu.Lock()
+	c.mu.Lock()
+	ticket := c.registerInflight(bulk)
+	c.maintenanceRecoveryTicket = ticket
+	delete(c.reads, recoveryID)
+	c.tryDrain()
+	c.mu.Unlock()
+	c.dispatchMu.Unlock()
+
+	req := applyRequest(bulk)
+	var resp *servicepb.ApplyResponse
+	var err error
+	for {
+		resp, err = client.Apply(ctx, req)
+		if err == nil || ctx.Err() != nil || (!internal.IsTransient(err) && !internal.IsCanceled(err)) {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
+	dumpBatch(ticket, req, resp, err)
+	obs := observation{
+		ticket:        ticket,
+		bulk:          bulk,
+		resp:          resp,
+		err:           err,
+		recoverySeq:   recoverySeq,
+		observeTicket: c.ticketSeq.Load(),
+		processed:     make(chan struct{}),
+	}
+	select {
+	case <-ctx.Done():
+		return
+	case c.incoming <- obs:
+	}
+	// Keep the recovery coalesced until its observation leaves c.inflight and
+	// has been validated. Clearing maintenanceRecoveryActive any earlier lets a
+	// concurrent enable schedule a second recovery on top of every worker bulk,
+	// exceeding the candidate-search bound.
+	select {
+	case <-ctx.Done():
+	case <-obs.processed:
+	}
+}
+
+func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
+	for _, req := range bulk.Requests {
+		if toggle := req.GetSetMaintenanceMode(); toggle != nil && toggle.GetEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+func bulkDisablesMaintenance(bulk oracle.Bulk) bool {
+	for _, req := range bulk.Requests {
+		if toggle := req.GetSetMaintenanceMode(); toggle != nil && !toggle.GetEnabled() {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguousAttempt bool) bool {
+	return hadAmbiguousAttempt &&
+		bulkEnablesMaintenance(bulk) &&
+		internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 }
 
 // initialSchema generates a small, random metadata schema declared at ledger

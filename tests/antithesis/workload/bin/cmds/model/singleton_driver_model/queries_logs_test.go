@@ -372,8 +372,9 @@ func TestLearnTxStamps_RecordsLogDateAndSequence(t *testing.T) {
 	row := gs.Ledger("L").LogRows()[0]
 	require.Nil(t, row.Date)
 	require.Zero(t, row.Sequence)
+	snapshot := gs
 
-	learnTxStamps(gs, bulk, []*commonpb.Log{{
+	learnTxStamps(&gs, bulk, []*commonpb.Log{{
 		Sequence: 17,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 			LedgerName: "L",
@@ -384,6 +385,7 @@ func TestLearnTxStamps_RecordsLogDateAndSequence(t *testing.T) {
 	learned := gs.Ledger("L").LogRows()[0]
 	assert.Equal(t, uint64(99), learned.Date.GetData(), "the date comes from the commit response")
 	assert.Equal(t, uint64(17), learned.Sequence, "so does the global sequence")
+	require.Nil(t, snapshot.Ledger("L").LogRows()[0].Date, "learning must not mutate published snapshots")
 }
 
 // The global sequence spans every ledger and the technical entries between

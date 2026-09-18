@@ -5,6 +5,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
@@ -33,6 +34,20 @@ func (c *Checker) registerRead() uint64 {
 	c.reads[t] = struct{}{}
 
 	return t
+}
+
+// beginResponseFrontier prevents a write from registering between the read's
+// response and its ticket snapshot. The caller must start the RPC after this
+// call and invoke the returned closure immediately after the complete response
+// (including stream drain) is observed.
+func (c *Checker) beginResponseFrontier() func() uint64 {
+	c.dispatchMu.Lock()
+
+	return func() uint64 {
+		defer c.dispatchMu.Unlock()
+
+		return c.ticketSeq.Load()
+	}
 }
 
 // finishRead drops an outstanding read and resumes any draining it held back.
@@ -86,6 +101,21 @@ func (c *Checker) handleObservation(obs observation) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if obs.ambiguousEnable {
+		// A maintenance rejection after an ambiguous enable does not determine
+		// whether that enable committed. Keep it as an optional predecessor after
+		// its worker observation leaves inflight so validation can serialize
+		// through either outcome. Ordinary bulks retry through recovery instead.
+		if retainedTicket, retained := c.ambiguousMaintenanceEnableTicket(); !retained {
+			c.ambiguousBulks[obs.ticket] = obs.bulk
+		} else if obs.ticket < retainedTicket {
+			delete(c.ambiguousBulks, retainedTicket)
+			c.ambiguousBulks[obs.ticket] = obs.bulk
+		}
+		if obs.recoverySeq > c.ambiguousEnableClearSeq {
+			c.ambiguousEnableClearSeq = obs.recoverySeq
+		}
+	}
 	c.removeInflight(obs.ticket)
 	defer c.tryDrain()
 
@@ -93,7 +123,7 @@ func (c *Checker) handleObservation(obs observation) {
 	// effectively didn't happen. Shutdown errors (ctx cancelled / deadline
 	// from MODEL_MAX_SECONDS) are dropped the same way: the outcome is
 	// unknown but we're tearing down, so there's nothing to validate.
-	if obs.err != nil && (internal.IsTransient(obs.err) || isShutdownError(obs.err)) {
+	if obs.err != nil && ((internal.IsTransient(obs.err) && !internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode)) || isShutdownError(obs.err)) {
 		dbg("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		markObservationProcessed(obs)
 		return
@@ -105,6 +135,9 @@ func (c *Checker) handleObservation(obs observation) {
 		// high-water reproduces the observed error (validateFailure).
 		dbg("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
+		if internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode) {
+			emitCoverage(true, coverageMaintenanceMessage, internal.Details{}, coverageHit)
+		}
 		markModelOutcomeVerified()
 		markObservationProcessed(obs)
 		return
@@ -120,6 +153,19 @@ func (c *Checker) handleObservation(obs observation) {
 	}
 
 	c.insertPending(&pendingObservation{minSeq: minSeq, obs: obs})
+}
+
+// Multiple optional maintenance enables are state-equivalent until the
+// recovery disable. Coalescing them keeps the candidate-search capacity bound
+// while preserving both possible maintenance states. Caller holds c.mu.
+func (c *Checker) ambiguousMaintenanceEnableTicket() (uint64, bool) {
+	for ticket, bulk := range c.ambiguousBulks {
+		if bulkEnablesMaintenance(bulk) {
+			return ticket, true
+		}
+	}
+
+	return 0, false
 }
 
 // Drains buffered observations in log-sequence order while safe: the head drains
@@ -138,8 +184,27 @@ func (c *Checker) tryDrain() {
 
 		c.pending = c.pending[1:]
 		c.validateBulkSuccess(head.obs.bulk, head.obs.resp)
+		if bulkDisablesMaintenance(head.obs.bulk) {
+			c.clearAmbiguousMaintenanceEnable(head.obs.recoverySeq)
+		}
 		markModelOutcomeVerified()
 		markObservationProcessed(head.obs)
+	}
+}
+
+// clearAmbiguousMaintenanceEnable removes the optional enable only after the
+// recovery generation scheduled for that ambiguity has committed. Dispatch
+// ticket order alone cannot establish the Raft commit order. Caller holds c.mu.
+func (c *Checker) clearAmbiguousMaintenanceEnable(recoverySeq uint64) {
+	if c.ambiguousEnableClearSeq == 0 || recoverySeq < c.ambiguousEnableClearSeq {
+		return
+	}
+	for ticket, bulk := range c.ambiguousBulks {
+		if bulkEnablesMaintenance(bulk) {
+			delete(c.ambiguousBulks, ticket)
+			c.ambiguousEnableClearSeq = 0
+			return
+		}
 	}
 }
 
