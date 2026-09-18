@@ -1621,7 +1621,7 @@ func orderTechnical(order *raftcmdpb.Order) *raftcmdpb.OrderTechnical {
 		order.Technical = &raftcmdpb.OrderTechnical{}
 	}
 
-	return order.Technical
+	return order.GetTechnical()
 }
 
 // markPreloadUnavailable stamps the OrderTechnical PreloadUnavailable flag — the
