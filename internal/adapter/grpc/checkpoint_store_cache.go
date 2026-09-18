@@ -199,17 +199,11 @@ func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 	closeSafe(entry.logger, "checkpoint main store", entry.main.Close)
 }
 
-// closeSafe closes one store, logging a failure or a panic out of Pebble's
-// Close; neither is actionable at request end. dal.closeDBSafe documents why
-// that close can panic.
+// closeSafe closes one store, logging a failure or a recovered panic out of
+// Pebble's Close; neither is actionable at request end. dal.CloseSafe documents
+// the panic, and that the directory lock is already released when it fires.
 func closeSafe(logger logging.Logger, what string, closeStore func() error) {
-	defer func() {
-		if r := recover(); r != nil {
-			logger.Errorf("Panic closing %s: %v\n%s", what, r, debug.Stack())
-		}
-	}()
-
-	if err := closeStore(); err != nil {
+	if err := dal.CloseSafe(closeStore); err != nil {
 		logger.WithField("error", err).Errorf("Failed to close %s", what)
 	}
 }
