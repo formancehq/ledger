@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -22,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -31,24 +31,16 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-// Every scenario below is decided by which assertions the subprocess emitted.
-// The no-op SDK never opens ANTITHESIS_SDK_LOCAL_OUTPUT, so an unarmed build
-// leaves nothing to decide from; CI runs this module with the tag. The guard
-// keeps the positive `assert.Enabled` form the instrumentor recognises.
-func requireArmedSDK(t *testing.T) {
-	t.Helper()
-	if assert.Enabled {
-		return
-	}
-	t.Skip("requires -tags enable_antithesis_sdk: the no-op SDK writes no local output")
-}
-
 // A subprocess isolates the SDK's process-wide assertion cache and initializes
 // its local output before any assertions run. Every RPC reaches a real server;
 // only the observed GetAccount balance is changed in the corruption control.
 func TestQuiescenceAgainstServer(t *testing.T) {
 	t.Parallel()
-	requireArmedSDK(t)
+	// Every scenario below is decided by which assertions the subprocess
+	// emitted, and the no-op SDK writes none.
+	if !antithesistest.Armed {
+		t.Skip(antithesistest.UnarmedSkip)
+	}
 	for _, scenario := range []string{"idle", "divergence", "late_write", "busy", "unavailable", "expired", "ambiguous_barrier"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()

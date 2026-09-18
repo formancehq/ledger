@@ -26,7 +26,23 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 )
+
+// Armed reports whether the SDK in this build actually emits. It is a
+// constant, so a test can be excluded from an unarmed build at compile time,
+// and it is defined here so that every such test agrees on what armed means
+// and skips with the same words.
+//
+// A test needs this when its subject is what an assertion reported rather than
+// what the code did: the no-op SDK writes no local output, so there is nothing
+// to read back and the test can only skip. Tests that assert on behavior run
+// either way and must not consult it.
+const Armed = assert.Enabled
+
+// UnarmedSkip is the reason to pass to Skip when Armed is false.
+const UnarmedSkip = "requires -tags enable_antithesis_sdk: the no-op SDK writes no local output"
 
 // Emitted runs one test in a fresh copy of the calling test binary and reports
 // whether it emitted property with that condition.
