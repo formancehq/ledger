@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func main() {
@@ -26,10 +31,21 @@ func main() {
 	// Checkpoint mutations are audited writes: they travel as ledger.Request
 	// variants through BucketService.Apply. The read RPCs stay on ClusterService.
 	bucketClient := servicepb.NewBucketServiceClient(conn)
+	runQueryCheckpointDriver(ctx, client, bucketClient)
+}
 
+func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServiceClient, bucketClient servicepb.BucketServiceClient) {
 	// 1. Create a query checkpoint.
 	cpID, maxSeq, err := actions.CreateQueryCheckpoint(ctx, bucketClient)
 	if err != nil {
+		// Parallel invocations share a bounded pool of retained checkpoints.
+		// Capacity is a definitive business outcome, not a retryable error.
+		if status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, domain.ErrReasonCheckpointLimitReached) {
+			assert.Reachable("query checkpoint capacity reached", internal.Details{
+				"error": err, "code": status.Code(err).String(), "reason": internal.ErrorReason(err),
+			})
+			return
+		}
 		if internal.IsTransient(err) {
 			log.Printf("CreateQueryCheckpoint transient: %v", err)
 			return
@@ -42,6 +58,23 @@ func main() {
 	}
 
 	details := internal.Details{"checkpointId": cpID, "maxSequence": maxSeq}
+	// Only an acknowledged ID belongs to this invocation. Read failures must
+	// not leave it occupying a slot; never reclaim another driver's checkpoint.
+	needsCleanup := true
+	defer func() {
+		if !needsCleanup {
+			return
+		}
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cleanupCancel()
+		if err := actions.DeleteQueryCheckpoint(cleanupCtx, bucketClient, cpID); err != nil {
+			internal.LogCleanupError("delete owned query checkpoint", err)
+			if !internal.IsTolerated(err) {
+				assert.Unreachable("owned query checkpoint cleanup returned unexpected error",
+					details.With(internal.Details{"error": err}))
+			}
+		}
+	}()
 
 	assert.Reachable("query checkpoint created", details)
 
@@ -71,8 +104,8 @@ func main() {
 		"created checkpoint should appear in list", details)
 
 	if !found {
-		// Leader change between Create and List — the new leader may not
-		// have committed the entry yet. Bail out gracefully.
+		// The metadata read can land on a replica whose local view still lags
+		// the acknowledged create. The deferred cleanup releases our checkpoint.
 		return
 	}
 
@@ -103,6 +136,10 @@ func main() {
 		}))
 
 	// 4. Delete the checkpoint.
+	// This is the invocation's deletion attempt. Do not start a second logical
+	// delete from the defer if its response is ambiguous; retries belong to the
+	// client/helper contract, and unexpected delete errors remain visible here.
+	needsCleanup = false
 	if err := actions.DeleteQueryCheckpoint(ctx, bucketClient, cpID); err != nil {
 		if internal.IsTransient(err) {
 			return
