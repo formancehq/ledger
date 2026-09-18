@@ -275,6 +275,10 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "empty-source",
 			})
 			Expect(err).To(Succeed())
+			sourceVol := source.FindVolume("USD", "")
+			Expect(sourceVol).NotTo(BeNil(), "expected USD entry on source account")
+			Expect(sourceVol.GetInput()).NotTo(BeNil(), "source input field must be present")
+			Expect(sourceVol.GetBalance()).NotTo(BeNil(), "source balance field must be present")
 			Expect(source.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("0"))
 			Expect(source.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("500"))
 			Expect(source.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("-500"))
@@ -285,6 +289,9 @@ var _ = Describe("Force Transactions", Ordered, func() {
 				Address: "target",
 			})
 			Expect(err).To(Succeed())
+			targetVol := target.FindVolume("USD", "")
+			Expect(targetVol).NotTo(BeNil(), "expected USD entry on target account")
+			Expect(targetVol.GetOutput()).NotTo(BeNil(), "target output field must be present")
 			Expect(target.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("500"))
 			Expect(target.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
 			Expect(target.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("500"))

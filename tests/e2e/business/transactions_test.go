@@ -688,6 +688,8 @@ var _ = Describe("Transactions", Ordered, func() {
 			// ev-simple is fresh — exact values are predictable
 			evSimple := pcv["ev-simple"].FindVolume("USD", "")
 			Expect(evSimple).NotTo(BeNil(), "expected USD entry on ev-simple")
+			Expect(evSimple.GetInput()).NotTo(BeNil(), "ev-simple input field must be present")
+			Expect(evSimple.GetOutput()).NotTo(BeNil(), "ev-simple output field must be present")
 			Expect(evSimple.GetInput().DecimalString()).To(Equal("100"))
 			Expect(evSimple.GetOutput().DecimalString()).To(Equal("0"))
 		})

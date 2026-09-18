@@ -108,7 +108,9 @@ var _ = Describe("Ledger Deletion Data Cleanup", Ordered, func() {
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(account.FindVolume("USD", "")).NotTo(BeNil(), "expected USD entry on account")
-				g.Expect(account.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("0"))
+				cleanupVol := account.FindVolume("USD", "")
+				g.Expect(cleanupVol.GetBalance()).NotTo(BeNil(), "balance field must be present")
+				g.Expect(cleanupVol.GetBalance().DecimalString()).To(Equal("0"))
 			}).Within(15 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
 		})
 

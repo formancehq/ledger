@@ -439,6 +439,7 @@ var _ = Describe("TransientAccounts", Ordered, func() {
 				usdVol := account.FindVolume("USD", "")
 				g.Expect(usdVol).NotTo(BeNil())
 				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance()).NotTo(BeNil(), "balance field must be present")
 				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 

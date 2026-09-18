@@ -222,7 +222,9 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(wallet.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on wallet")
-				g.Expect(wallet.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("0")) // Fully drained
+				drainedVol := wallet.FindVolume("USD/2", "")
+				g.Expect(drainedVol.GetBalance()).NotTo(BeNil(), "balance field must be present on drained wallet")
+				g.Expect(drainedVol.GetBalance().DecimalString()).To(Equal("0")) // Fully drained
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
