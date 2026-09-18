@@ -75,7 +75,7 @@ of reading `TransactionState`.
 ## Revert-target observation
 
 Admission declares a revert's volume coverage from the target transaction's
-stored postings, read by `Admission.getTransactionPostings` with
+stored postings, read by `Admission.observeRevertTarget` with
 `Attribute.Get` — a raw point read of the local store. There is no read barrier
 on that path: `waitLeaderReady` covers a leadership transition, not steady-state
 concurrency.

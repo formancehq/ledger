@@ -85,16 +85,54 @@ type bulkOverlay struct {
 	// caller intent is bound into the audit chain. The observation itself is
 	// bound, as a digest, so apply can tell a stale admission view from an
 	// under-declaration.
-	revertOriginalPostings map[domain.TransactionKey]revertTargetObservation
+	revertTargets map[domain.TransactionKey]revertTargetObservation
 }
 
+// revertTargetState is what admission knows about a revert target. The three
+// states must stay distinguishable, because each one means something different
+// downstream:
+//
+//   - revertTargetUnobserved — no revert order referenced this target, so there
+//     is nothing to bind. bindRevertTargetDigest refuses such an order rather
+//     than stamping a digest for a lookup that never happened.
+//   - revertTargetAbsent — admission looked and the transaction was not in the
+//     local store (missing, or committed but not yet applied here). That is an
+//     observation in its own right: it is bound into revert_target_digest so
+//     apply rejects a stale view before reading an undeclared volume.
+//   - revertTargetPresent — admission read the target's postings and declares
+//     volume coverage from them.
+type revertTargetState uint8
+
+const (
+	revertTargetUnobserved revertTargetState = iota
+	revertTargetAbsent
+	revertTargetPresent
+)
+
 // revertTargetObservation is what admission saw when it looked up a revert
-// target in the local store. found=false records that it looked and found
-// nothing, which is different from never having looked.
+// target in the local store. Its zero value is the unobserved state, so a miss
+// on the overlay map reads correctly without a second return value.
 type revertTargetObservation struct {
+	state    revertTargetState
 	postings []*commonpb.Posting
-	found    bool
 }
+
+// observedRevertTarget builds the observation for a lookup that happened. found
+// reports whether the transaction was in the local store.
+func observedRevertTarget(postings []*commonpb.Posting, found bool) revertTargetObservation {
+	if !found {
+		return revertTargetObservation{state: revertTargetAbsent}
+	}
+
+	return revertTargetObservation{state: revertTargetPresent, postings: postings}
+}
+
+// observed reports whether a lookup happened at all, as opposed to finding
+// something.
+func (o revertTargetObservation) observed() bool { return o.state != revertTargetUnobserved }
+
+// found reports whether the target was in the local store.
+func (o revertTargetObservation) found() bool { return o.state == revertTargetPresent }
 
 // bindRevertTargetDigest stamps a revert order's technical sub-message with a
 // digest of what admission observed of its target.
@@ -107,9 +145,9 @@ type revertTargetObservation struct {
 // A revert with no recorded observation is rejected here rather than shipped
 // with an empty digest. The FSM refuses that order anyway, but only after a Raft
 // round-trip, and assert.Unreachable is a no-op outside Antithesis — so the
-// assertion alone would let a future producer that skips
-// recordRevertOriginalPostings reach consensus before failing. Same reason class
-// either way, so the caller sees no difference beyond the earlier rejection.
+// assertion alone would let a future producer that skips recordRevertTarget
+// reach consensus before failing. Same reason class either way, so the caller
+// sees no difference beyond the earlier rejection.
 func bindRevertTargetDigest(
 	order *raftcmdpb.Order,
 	ledgerName string,
@@ -121,8 +159,8 @@ func bindRevertTargetDigest(
 		return nil
 	}
 
-	observation, recorded := overlay.revertTargetObservation(ledgerName, revert.RevertTransaction)
-	if !recorded {
+	observation := overlay.revertTarget(ledgerName, revert.RevertTransaction)
+	if !observation.observed() {
 		// Unreachable by construction: convertApplyRequest records an
 		// observation for every revert it builds. Leaving the digest empty here
 		// would silently disable the apply-time check, so say so loudly rather
@@ -141,62 +179,45 @@ func bindRevertTargetDigest(
 		order.Technical = &raftcmdpb.OrderTechnical{}
 	}
 
-	order.Technical.RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found)
+	order.Technical.RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found())
 
 	return nil
 }
 
 func newBulkOverlay() *bulkOverlay {
 	return &bulkOverlay{
-		numscriptEntries:       newOverlay[numscriptEntryKey, string](),
-		numscriptLatest:        newOverlay[numscriptNameKey, string](),
-		sinks:                  newOverlay[string, *commonpb.SinkConfig](),
-		revertOriginalPostings: make(map[domain.TransactionKey]revertTargetObservation),
+		numscriptEntries: newOverlay[numscriptEntryKey, string](),
+		numscriptLatest:  newOverlay[numscriptNameKey, string](),
+		sinks:            newOverlay[string, *commonpb.SinkConfig](),
+		revertTargets:    make(map[domain.TransactionKey]revertTargetObservation),
 	}
 }
 
-// recordRevertOriginalPostings stores what admission observed of a revert
-// target so later passes read it without re-fetching. found is false when the
-// transaction was not in the local store — an observation in its own right, not
-// an absence of one.
-func (o *bulkOverlay) recordRevertOriginalPostings(
-	key domain.TransactionKey,
-	postings []*commonpb.Posting,
-	found bool,
-) {
-	o.revertOriginalPostings[key] = revertTargetObservation{postings: postings, found: found}
+// recordRevertTarget stores what admission observed of a revert target so later
+// passes read it without re-fetching.
+func (o *bulkOverlay) recordRevertTarget(key domain.TransactionKey, observation revertTargetObservation) {
+	o.revertTargets[key] = observation
 }
 
-// revertOriginalPostingsFor returns the postings recorded for a revert target
-// and whether admission resolved that target at all.
+// revertTarget returns what admission observed of a revert order's target. A
+// target no revert order referenced reads back as the zero value, which is the
+// unobserved state — see revertTargetState for why that is not the same as an
+// absent one.
 //
-// The two conditions must stay distinguishable. Nil postings with ok=true is an
-// observation — admission looked and the transaction was not in the local store
-// (a missing tx, or one committed but not yet applied here) — and it is bound
-// into the order's revert_target_digest so apply can reject a stale view before
-// it reads an undeclared volume. ok=false means no revert order referenced this
-// key, which carries no observation at all.
-func (o *bulkOverlay) revertOriginalPostingsFor(key domain.TransactionKey) (revertTargetObservation, bool) {
-	observation, ok := o.revertOriginalPostings[key]
-
-	return observation, ok
-}
-
-// revertTargetKey is the overlay key for a revert order's target. The three
-// passes that consult the observation — coverage extraction, intra-bulk effect
-// folding, and digest binding — all go through it, so none can drift from the
-// key convertApplyRequest recorded under.
-func revertTargetKey(ledgerName string, revert *raftcmdpb.RevertTransactionOrder) domain.TransactionKey {
-	return domain.TransactionKey{LedgerName: ledgerName, ID: revert.GetTransactionId()}
-}
-
-// revertTargetObservation is revertOriginalPostingsFor keyed straight off a
-// revert order.
-func (o *bulkOverlay) revertTargetObservation(
+// This is the only accessor, and it is keyed off the order rather than a
+// caller-built key, so the three passes that consult the observation — coverage
+// extraction, intra-bulk effect folding, and digest binding — cannot drift from
+// the key convertApplyRequest recorded under.
+func (o *bulkOverlay) revertTarget(
 	ledgerName string,
 	revert *raftcmdpb.RevertTransactionOrder,
-) (revertTargetObservation, bool) {
-	return o.revertOriginalPostingsFor(revertTargetKey(ledgerName, revert))
+) revertTargetObservation {
+	return o.revertTargets[revertTargetKey(ledgerName, revert)]
+}
+
+// revertTargetKey is the overlay key for a revert order's target.
+func revertTargetKey(ledgerName string, revert *raftcmdpb.RevertTransactionOrder) domain.TransactionKey {
+	return domain.TransactionKey{LedgerName: ledgerName, ID: revert.GetTransactionId()}
 }
 
 // recordNumscriptSave records an immutable save in the overlay and advances the
