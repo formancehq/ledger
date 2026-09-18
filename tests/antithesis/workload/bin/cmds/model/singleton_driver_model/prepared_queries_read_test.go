@@ -89,6 +89,10 @@ func TestAggregateMatchesRejectsDivergence(t *testing.T) {
 		{"extra zero bucket", aggResult(aggVolume("USD/2", 5, 0), aggVolume("EUR/2", 3, 0), aggVolume("GBP/2", 0, 0))},
 		{"wrong input", aggResult(aggVolume("USD/2", 6, 0), aggVolume("EUR/2", 3, 0))},
 		{"wrong output", aggResult(aggVolume("USD/2", 5, 1), aggVolume("EUR/2", 3, 0))},
+		{"unexpected group", &commonpb.AggregateResult{
+			Volumes: exact.GetVolumes(),
+			Groups:  []*commonpb.GroupedAggregateResult{{}},
+		}},
 		{"colored bucket the workload never produces", aggResult(
 			aggVolume("USD/2", 5, 0),
 			&commonpb.AggregatedVolume{Asset: "EUR/2", Color: "red", Input: u256(3), Output: u256(0)},

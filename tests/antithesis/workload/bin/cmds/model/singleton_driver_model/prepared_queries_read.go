@@ -828,6 +828,10 @@ type aggregateBucket struct {
 // aggregateMatches folds the base's volume cells over the accounts the filter
 // selects and compares the bucket set and every total exactly.
 func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *commonpb.AggregateResult) bool {
+	if len(agg.GetGroups()) != 0 {
+		return false
+	}
+
 	want := modelAggregate(ls, bound)
 
 	got := map[aggregateBucket]oracle.VolumePair{}
