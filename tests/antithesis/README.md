@@ -275,6 +275,9 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   as missed. Sentinel survival and list/get balance consistency retain separate
   required `Reachable` observations for successful reads and nonempty matching
   pairs. Empty results and transient errors do not satisfy that success coverage.
+  Other classified Sentinel errors are evaluated by the global RPC classifier
+  and intentionally produce neither survival nor success observations:
+  an unsuccessful read does not establish whether the transaction survived.
   Their regression tests capture real SDK JSON in isolated subprocesses because
   the SDK initializes its output at startup and deduplicates observations by name.
 - Stream errors deserve classification, not blanket swallow: `if err != nil

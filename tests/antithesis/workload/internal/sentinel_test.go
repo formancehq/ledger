@@ -37,12 +37,12 @@ func TestSentinelVerifySDK(t *testing.T) {
 	t.Parallel()
 	const survival = "committed sentinel transaction must survive operational events"
 	const success = "sentinel transaction read-after-write succeeded"
-	for _, code := range []codes.Code{codes.OK, codes.NotFound, codes.Unavailable, codes.DeadlineExceeded, codes.Unknown} {
+	for _, code := range []codes.Code{codes.OK, codes.NotFound, codes.Unavailable, codes.DeadlineExceeded, codes.FailedPrecondition, codes.Unknown} {
 		t.Run(code.String(), func(t *testing.T) {
 			t.Parallel()
 			events := sdktest.Capture(t, func() {
 				server := &sentinelSDKServer{code: code}
-				client := sdktest.Client(t, server, grpc.WithUnaryInterceptor(classifyUnaryInterceptor()))
+				client := sdktest.Client(t, server, grpc.WithChainUnaryInterceptor(classifyUnaryInterceptor()))
 				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 				defer cancel()
 				sentinel := Sentinel{Ledger: "sdk-sentinel", Reference: "committed-reference", TxID: 42}
@@ -71,6 +71,12 @@ func TestSentinelVerifySDK(t *testing.T) {
 				sdktest.Absent(t, events, success)
 			case codes.Unavailable, codes.DeadlineExceeded:
 				sdktest.Find(t, events, "sentinel verify hit a transient error")
+				sdktest.Absent(t, events, success)
+				sdktest.Absent(t, events, survival)
+			case codes.FailedPrecondition:
+				event := sdktest.Find(t, events, "every RPC error must be classified (workload predicate set complete)")
+				require.True(t, event.Condition, "classified business errors remain observed")
+				sdktest.Absent(t, events, "sentinel verify hit a transient error")
 				sdktest.Absent(t, events, success)
 				sdktest.Absent(t, events, survival)
 			case codes.Unknown:
