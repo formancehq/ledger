@@ -486,10 +486,11 @@ paths:
             (success|failure), `ledger`, `caller_subject`, `order_type`,
             `idempotency_key` (string; `idempotency_key` also supports prefix
             matching with `^=`; a reused key returns every historical audit
-            entry; string values must be quoted — single or double — and keys
-            containing both `"` and `'` cannot be expressed in the textual
-            DSL: use the gRPC `AuditCondition.string_prefix` field directly
-            for such keys). Bare audit fields are resolved against the audit query
+            entry; bare alphanumeric values are accepted unquoted, while values
+            containing `-`, `:`, spaces, or other non-identifier characters
+            must be single- or double-quoted; keys containing both `"` and `'`
+            cannot be expressed in the textual DSL and require the gRPC
+            `AuditCondition.string_prefix` field directly). Bare audit fields are resolved against the audit query
             target: `timestamp` and `ledger` collide with the transaction
             `timestamp` field and the top-level `ledger` condition, so on the
             audit target they resolve to the audit condition (and only there —

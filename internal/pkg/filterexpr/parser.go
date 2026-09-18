@@ -504,6 +504,10 @@ func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*c
 	uc := &commonpb.UintCondition{}
 
 	switch {
+	// op.Prefix is routed to auditToProto before reaching this helper for the
+	// one field that supports it (idempotency_key); any remaining Prefix is an error.
+	case op.Prefix != nil:
+		return nil, errors.New("prefix operator ^= is not supported for numeric or datetime fields")
 	case op.Eq != nil:
 		n, err := parse(op.Eq)
 		if err != nil {
@@ -753,6 +757,10 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 	switch {
 	case op.Eq != nil:
 		return metadataEqualityToProto(field, op.Eq)
+	case op.Prefix != nil:
+		// ^= was added to MetadataOp so the audit idempotency_key field can use it
+		// via FieldCond.auditToProto; it is not a valid operator for metadata fields.
+		return nil, fmt.Errorf("prefix operator ^= is not supported for metadata conditions")
 	case op.Ne != nil:
 		inner, err := metadataEqualityToProto(field, op.Ne)
 		if err != nil {

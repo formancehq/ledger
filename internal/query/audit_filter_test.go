@@ -138,6 +138,24 @@ func TestCompileAuditFilter_IdempotencyKeyValidationAndLookupErrors(t *testing.T
 	require.ErrorIs(t, err, lookupErr)
 }
 
+func TestCompileAuditFilter_IdempotencyKeyNULPrefixIsInvalidArgument(t *testing.T) {
+	t.Parallel()
+
+	// A NUL-bearing prefix must be rejected at the compiler level as
+	// codes.InvalidArgument so ValidateAuditFilter can catch it and the gRPC
+	// error code is consistent with every other client-facing rejection.
+	nulPrefix := auditStringPrefix(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "key\x00")
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{}, nulPrefix)
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"NUL prefix must be rejected as gRPC InvalidArgument")
+	require.ErrorContains(t, err, "NUL")
+
+	// ValidateAuditFilter must also reject it (it uses auditValidationIndex{}).
+	err = ValidateAuditFilter(nulPrefix)
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"ValidateAuditFilter must surface NUL rejection as InvalidArgument")
+}
+
 func TestCompileAuditFilter_Nil(t *testing.T) {
 	t.Parallel()
 
