@@ -760,7 +760,7 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 	case op.Prefix != nil:
 		// ^= was added to MetadataOp so the audit idempotency_key field can use it
 		// via FieldCond.auditToProto; it is not a valid operator for metadata fields.
-		return nil, fmt.Errorf("prefix operator ^= is not supported for metadata conditions")
+		return nil, errors.New("prefix operator ^= is not supported for metadata conditions")
 	case op.Ne != nil:
 		inner, err := metadataEqualityToProto(field, op.Ne)
 		if err != nil {
