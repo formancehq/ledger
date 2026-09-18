@@ -59,8 +59,9 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 	if err != nil {
 		// Both markers are present and the caller's lease keeps a committed
 		// deletion from unlinking under this open, so the directory the marker
-		// vouched for is damaged rather than late; the error surfaces as-is,
-		// like the read index's below.
+		// vouched for is not late. Damage is the expected cause past that gate,
+		// though a resource limit reaches here too; either way the error
+		// surfaces as-is, like the read index's below.
 		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
 
@@ -72,9 +73,7 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 	handedOver := false
 	defer func() {
 		if !handedOver {
-			// Best-effort: this read-only store is only being unwound after a
-			// failed open.
-			_ = mainStore.Close()
+			closeSafe(logger, "checkpoint main store", mainStore.Close)
 		}
 	}()
 
@@ -124,11 +123,25 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 			return nil, nil, nil, ctx.Err()
 		}
 	} else {
-		entry.main, entry.readIdx, entry.err = openSafe(open, logger)
+		main, readIdx, err := openSafe(open, logger)
+
+		// Published under the mutex, which is where every reader of these fields
+		// reads them: the entry is reachable from the map before the open starts,
+		// so writing them bare would be a race on any reader that takes the mutex
+		// without first receiving from done.
+		c.mu.Lock()
+		entry.main, entry.readIdx, entry.err = main, readIdx, err
+		c.mu.Unlock()
+
 		close(entry.done)
 	}
 
-	if entry.err != nil {
+	// One read of what the open published, under the mutex that published it.
+	c.mu.Lock()
+	main, readIdx, openErr := entry.main, entry.readIdx, entry.err
+	c.mu.Unlock()
+
+	if openErr != nil {
 		// The entry leaves the cache once the last reader holding it has
 		// released, and the reader after that opens again. A reader already
 		// waiting when the open failed is served the same error: the readiness
@@ -138,14 +151,14 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 		// waiting readers an error each until the entry clears.
 		c.release(id, entry)
 
-		return nil, nil, nil, entry.err
+		return nil, nil, nil, openErr
 	}
 
 	// One hold, one release: a second call would drop a hold this reader does
 	// not have and close the stores under the checkpoint's other readers.
 	var once sync.Once
 
-	return entry.main, entry.readIdx, func() {
+	return main, readIdx, func() {
 		once.Do(func() { c.release(id, entry) })
 	}, nil
 }
