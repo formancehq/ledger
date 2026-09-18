@@ -414,10 +414,29 @@ physically present and only replay decides which version survives. An entry
 record at index `i` means Raft truncated its log to `[.., i-1]` before appending
 it, so every record read earlier with an index `>= i` is stale — and that
 truncation is a property of the record, independent of the snapshot the WAL was
-opened at. An installed snapshot carries the same meaning: `ApplySnapshot`
-replaces the log in memory and persists only a snapshot record, so when the
-entry at the snapshot index does not carry the snapshot term, the entries read
-before it are obsolete too.
+opened at. An installed snapshot carries the same meaning. `ApplySnapshot` first
+replaces the log in memory — snapshot, entry cache, compaction boundary, and
+`HardState` when the snapshot is ahead of the durable commit — and then persists,
+in this order:
+
+1. the full snapshot file, before any WAL record: an orphaned snap file is
+   harmless and a later snapshot cleans it up, while a WAL record without its
+   file makes restart fail;
+2. a guard WAL snapshot record, which is synced;
+3. the new `HardState`, which a commit-only update leaves buffered rather than
+   synced;
+4. the same snapshot record again, as the sync barrier for that `HardState`.
+
+Older snap files are removed only after that. No step records the entry
+truncation the install performed in memory, which is why the superseded suffix
+is still on disk: when the entry at the snapshot index does not carry the
+snapshot term, the entries read before it are obsolete even though no record
+says so.
+
+Every durable prefix is recoverable. A crash between 2 and 4 leaves the guard
+record without the `HardState` that validates it, so replay ignores the record
+and the previous snapshot and WAL segments still describe the node; after 4, the
+`HardState` is backed by a snapshot record that was synced before it.
 
 etcd v3.7.1 applies the first rule only to records above the opening snapshot
 (`ents = append(ents[:offset], e)` under `e.Index > w.start.Index`) and does not

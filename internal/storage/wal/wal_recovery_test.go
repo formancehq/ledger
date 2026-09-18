@@ -116,9 +116,10 @@ func TestRecovery_DiscardsResurrectedHigherTermSuffix(t *testing.T) {
 }
 
 // TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot covers the second
-// escape: ApplySnapshot clears the entry cache in memory but persists only
-// snapshot records and HardState, so the conflicting suffix is still on disk and
-// replay restores it.
+// escape: ApplySnapshot clears the entry cache in memory, but what it persists —
+// the snapshot file, a guard record, HardState, that record again as the sync
+// barrier — never includes the truncation, so the conflicting suffix is still on
+// disk and replay restores it.
 func TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot(t *testing.T) {
 	t.Parallel()
 
