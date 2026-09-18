@@ -175,11 +175,7 @@ func bindRevertTargetDigest(
 		}
 	}
 
-	if order.GetTechnical() == nil {
-		order.Technical = &raftcmdpb.OrderTechnical{}
-	}
-
-	order.Technical.RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found())
+	orderTechnical(order).RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found())
 
 	return nil
 }
