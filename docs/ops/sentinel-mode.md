@@ -15,7 +15,7 @@ Environment variable: `SENTINEL_MODE=true`
 
 ## Checks Performed
 
-Sentinel mode runs four checks, in order, during every `applyProposal()`:
+Sentinel mode runs two checks during proposal preparation and two after the batch commits:
 
 ### 1. Volume Update Monotonicity
 
@@ -31,23 +31,35 @@ After merge, computes the expected volume deltas from the postings in the commit
 - **Where**: `applyProposal()`, after `Merge()`
 - **Catches**: Wrong amount applied, wrong account credited/debited, missed posting
 
-### 3. Aggregated Volume Balance
+### 3. Post-Commit Volume Verification
 
-For every ledger touched by the proposal, reads back the full aggregated volumes from Pebble and verifies the **double-entry invariant**: for each asset, the global sum of inputs must equal the global sum of outputs.
+After the Pebble batch commits, `CommitPreparedBatch()` reads a snapshot pinned
+to that commit and compares the surviving volume rows with values captured by
+`Merge()`. Repeated updates use the last value for each canonical key. Ephemeral
+purges invalidate that key's earlier updates; a successful ledger deletion
+invalidates every update for that ledger at or before the deletion, including
+updates in the same proposal. Other ledgers remain checked, and unexpected
+missing rows or different values still fail.
 
-- **Where**: `applyProposal()`, after delta cross-check
-- **Catches**: Any form of volume corruption, regardless of root cause
+The deletion list is captured from the successful `WriteSet`, with independent
+slice ownership before the next proposal resets it. Rejected deletion orders do
+not invalidate expectations. Same-name ledger recreation remains rejected by
+the ledger tombstone contract.
 
-### 4. Post-Commit Cache/Pebble Verification
+### 4. Aggregated Volume Balance
 
-After the Pebble batch is committed, reads back the volume values from Pebble and compares them to the expected values written during `Merge()`. When multiple entries in the same `ApplyEntries` batch touch the same volume key, only the last entry's value is verified (earlier values are overwritten).
+On the same post-commit snapshot, every touched ledger's aggregate volumes must
+satisfy the **double-entry invariant**: total inputs equal total outputs for
+each asset. This detects imbalances even outside the individual updated rows.
 
-- **Where**: `ApplyEntries()`, after Pebble batch commit
-- **Catches**: Pebble write failures, cache/storage divergence, snapshot inconsistencies
+Both post-commit checks run for live apply, follower catch-up, and WAL replay.
+Preparation has already mutated the in-memory FSM and staged its writes; the
+Pebble commit happens before verification. A failed check therefore returns an
+error after those writes are durable; it does not roll back the committed batch.
 
 ## Antithesis Integration
 
-All checks use the Antithesis SDK's `assert.Unreachable()` to report detected invariant violations. This allows Antithesis to flag these as property violations during chaos testing, even if the node subsequently crashes or recovers.
+Some invariant branches also call the Antithesis SDK's `assert.Unreachable()`. All check failures propagate as errors; the missing-volume post-commit branch, for example, returns an error without a dedicated assertion.
 
 ## Performance Impact
 

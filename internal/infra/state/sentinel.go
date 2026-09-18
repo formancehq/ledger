@@ -48,12 +48,24 @@ func (e *ErrVolumeCachePebbleDivergence) Error() string {
 // Volumes purged by ephemeral purge in a later entry are excluded: the purge
 // deletes the Pebble entry written by the earlier entry, so verifying the
 // earlier entry's expected value would fail with "volume missing from pebble".
+// Ledger deletion likewise removes all volume writes at or before its result,
+// including writes in the same proposal: Merge stages its deletion cascade last.
 func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
+	lastDeletion := make(map[string]int)
+	for i, r := range results {
+		for _, ledger := range r.deletedLedgerNames {
+			lastDeletion[ledger] = i
+		}
+	}
+
 	seen := make(map[domain.VolumeKey]int) // key -> index in deduped slice
 	var deduped []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 
-	for _, r := range results {
+	for i, r := range results {
 		for _, update := range r.volumeUpdates {
+			if deletedAt, ok := lastDeletion[update.Key.LedgerName]; ok && i <= deletedAt {
+				continue // This expected write is intentionally removed by the cascade.
+			}
 			if idx, ok := seen[update.Key]; ok {
 				deduped[idx] = update
 			} else {

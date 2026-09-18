@@ -1656,6 +1656,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		QueryCheckpointDeleted: queryCheckpointDeleted,
 		volumeUpdates:          buffer.KeptVolumeUpdates(),
 		purgedVolumeKeys:       buffer.PurgedVolumeKeys(),
+		deletedLedgerNames:     buffer.DeletedLedgerNames(),
 		createdLogs:            createdLogs,
 		ledgerNames:            ledgerNames,
 	}, nil
@@ -1856,10 +1857,11 @@ type ApplyResult struct {
 
 	// volumeUpdates and createdLogs are captured for post-commit verification.
 	// Not exported because they are only used internally by ApplyEntries.
-	volumeUpdates    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
-	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
-	createdLogs      []*commonpb.Log
-	ledgerNames      []string // ledger names touched by this proposal (for post-commit balance check)
+	volumeUpdates      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	purgedVolumeKeys   []domain.VolumeKey // keys removed by ephemeral purge
+	deletedLedgerNames []string           // ledgers removed by successful deletion cascades
+	createdLogs        []*commonpb.Log
+	ledgerNames        []string // ledger names touched by this proposal (for post-commit balance check)
 }
 
 type ApplyEntriesResult struct {

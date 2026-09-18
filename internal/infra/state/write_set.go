@@ -1592,6 +1592,13 @@ func (b *WriteSet) PurgedVolumeKeys() []domain.VolumeKey {
 	return b.purgedVolumeKeys
 }
 
+// DeletedLedgerNames captures the successful deletion cascades for post-commit
+// verification. ApplyResults outlive Reset, which reuses deletedLedgers' backing
+// array, so the result must own its slice.
+func (b *WriteSet) DeletedLedgerNames() []string {
+	return slices.Clone(b.deletedLedgers)
+}
+
 // TransientVolumes returns the unique transient (account, asset, color)
 // volumes per ledger, collected during Merge from the transient volume
 // partition.
