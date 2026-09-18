@@ -689,6 +689,10 @@ type OrderResult struct {
 	Skipped *commonpb.OrderSkippedLog
 	// LogID is the independently assigned ledger-local log ID, zero for non-ledger logs.
 	LogID uint64
+	// PreparedQueryLog is the exact top-level audit payload produced by a
+	// committed prepared-query lifecycle order. These orders do not have a
+	// ledger-local LogID, but their echoed definitions are still observable.
+	PreparedQueryLog *commonpb.LogPayload
 }
 
 // metaEffect is a metadata write's predicted effect, for asserting the server's
@@ -1983,7 +1987,12 @@ func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQuer
 
 	s.preparedQueries = s.preparedQueries.Set(q.GetName(), q.CloneVT())
 
-	return OrderResult{OK: true}
+	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
+			Ledger: req.GetLedger(),
+			Query:  q.CloneVT(),
+		}},
+	}}
 }
 
 // applyUpdatePreparedQuery replaces a stored query's filter, mirroring
@@ -2019,7 +2028,14 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 	updated.Filter = req.GetFilter().CloneVT()
 	s.preparedQueries = s.preparedQueries.Set(req.GetName(), updated)
 
-	return OrderResult{OK: true}
+	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+			Ledger:         req.GetLedger(),
+			Name:           req.GetName(),
+			PreviousFilter: existing.GetFilter().CloneVT(),
+			NewFilter:      req.GetFilter().CloneVT(),
+		}},
+	}}
 }
 
 // applyDeletePreparedQuery removes a stored query, mirroring
@@ -2036,7 +2052,12 @@ func (s *LedgerState) applyDeletePreparedQuery(req *servicepb.DeletePreparedQuer
 
 	s.preparedQueries = s.preparedQueries.Delete(req.GetName())
 
-	return OrderResult{OK: true}
+	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{
+			Ledger: req.GetLedger(),
+			Name:   req.GetName(),
+		}},
+	}}
 }
 
 // applyDropIndex removes an index. Drop is instantaneous: once this order is in

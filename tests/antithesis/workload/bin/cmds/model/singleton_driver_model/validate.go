@@ -162,7 +162,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		if i < len(logs) {
 			payload = logs[i].GetPayload()
 		}
-		if err := validateLifecycleLog(req, payload); err != nil {
+		if err := validateLifecycleLog(req, res.Orders[i].PreparedQueryLog, payload); err != nil {
 			assert.Unreachable("singleton_driver_model: lifecycle response mismatch", internal.Details{
 				"ledger": oracle.LedgerOf(req),
 				"kind":   requestKinds(oracle.Bulk{Requests: []*servicepb.Request{req}}),

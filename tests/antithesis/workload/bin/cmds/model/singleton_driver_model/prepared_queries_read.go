@@ -48,9 +48,9 @@ func runListPreparedQueries(ctx context.Context, client servicepb.BucketServiceC
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.ListPreparedQueries(readCtx, &servicepb.ListPreparedQueriesRequest{Ledger: ledger})
-
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
@@ -226,6 +226,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.ExecutePreparedQuery(readCtx, &servicepb.ExecutePreparedQueryRequest{
 		Ledger:     ledger,
 		QueryName:  name,
@@ -234,7 +235,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		Mode:       mode,
 	})
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 
 	if err != nil && (internal.IsTransient(err) && !isIndexNotReady(err) || isShutdownError(err)) {
 		return
@@ -291,6 +292,7 @@ type preparedCall struct {
 	errKind     pqErrKind
 	err         error
 	wrongResult bool
+	cursor      string
 }
 
 // runExecuteNextPage issues the follow-on page for prev and validates it with
@@ -314,6 +316,7 @@ func (c *Checker) runExecuteNextPage(
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.ExecutePreparedQuery(readCtx, &servicepb.ExecutePreparedQueryRequest{
 		Ledger:     call.ledger,
 		QueryName:  call.name,
@@ -323,7 +326,7 @@ func (c *Checker) runExecuteNextPage(
 		Mode:       commonpb.QueryMode_QUERY_MODE_LIST,
 	})
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 
 	if err != nil && (internal.IsTransient(err) && !isIndexNotReady(err) || isShutdownError(err)) {
 		return
@@ -331,6 +334,7 @@ func (c *Checker) runExecuteNextPage(
 
 	call.errKind = classifyPreparedExecError(err)
 	call.err = err
+	call.cursor = prev.GetNext()
 	_, cursorResult := resp.GetResult().(*servicepb.ExecutePreparedQueryResponse_Cursor)
 	call.wrongResult = err == nil && !cursorResult
 
@@ -398,6 +402,7 @@ func runAggregateTargetMisuse(
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.ExecutePreparedQuery(readCtx, &servicepb.ExecutePreparedQueryRequest{
 		Ledger:     ledger,
 		QueryName:  name,
@@ -405,7 +410,7 @@ func runAggregateTargetMisuse(
 		Mode:       commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
 	})
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 
 	if err != nil && (internal.IsTransient(err) || isShutdownError(err)) {
 		return
@@ -444,6 +449,14 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 			"query":  call.name,
 			"params": describeParams(call.params),
 			"error":  call.err.Error(),
+		})
+
+		return
+	}
+	if call.errKind == pqErrNone && !preparedCursorMetadataMatches(call, cur) {
+		assert.Unreachable("singleton_driver_model: prepared query cursor metadata mismatch", internal.Details{
+			"ledger": call.ledger, "query": call.name, "pageSize": cur.GetPageSize(),
+			"previous": cur.GetPrevious(), "expectedPrevious": call.cursor,
 		})
 
 		return
@@ -604,6 +617,10 @@ func preparedWindowMatches(
 	default:
 		return false
 	}
+}
+
+func preparedCursorMetadataMatches(call preparedCall, cur *commonpb.PreparedQueryCursor) bool {
+	return cur.GetPageSize() == uint32(call.pageSize) && cur.GetPrevious() == call.cursor
 }
 
 // preparedAccountPageMatches checks the rows, their content, and has_more. The

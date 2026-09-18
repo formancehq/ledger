@@ -23,6 +23,12 @@ func roundTripFilters() map[string]*commonpb.QueryFilter {
 		"tx id range":    filterTxIDRange(2, 20),
 		"date range": filterDateRange(
 			commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP, 100, 900),
+		"log date range": {Filter: &commonpb.QueryFilter_LogBuiltinUint{
+			LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
+				Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
+				Cond:  &commonpb.UintCondition{Min: &ulo, Max: &uhi},
+			},
+		}},
 		"field string": filterFieldString("k1", "v1"),
 		"field int":    filterFieldInt("k2", &lo, &hi),
 		"field uint":   filterFieldUint("k3", &ulo, &uhi),

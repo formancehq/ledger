@@ -258,6 +258,24 @@ func TestPreparedPaginationPreservesRawCursorOrderingAcrossTargets(t *testing.T)
 		"account keys sort after a big-endian transaction cursor")
 }
 
+func TestPreparedCursorMetadataEchoesRequest(t *testing.T) {
+	t.Parallel()
+
+	call := preparedCall{pageSize: 17, cursor: "opaque-cursor"}
+	require.True(t, preparedCursorMetadataMatches(call, &commonpb.PreparedQueryCursor{
+		PageSize: 17,
+		Previous: "opaque-cursor",
+	}))
+	require.False(t, preparedCursorMetadataMatches(call, &commonpb.PreparedQueryCursor{
+		PageSize: 16,
+		Previous: "opaque-cursor",
+	}))
+	require.False(t, preparedCursorMetadataMatches(call, &commonpb.PreparedQueryCursor{
+		PageSize: 17,
+		Previous: "wrong",
+	}))
+}
+
 func TestPreparedTransactionContinuationMustMatchRemainingRows(t *testing.T) {
 	t.Parallel()
 
