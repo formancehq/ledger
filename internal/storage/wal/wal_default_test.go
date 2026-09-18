@@ -36,6 +36,17 @@ func ent(index, term uint64, data []byte) *raftpb.Entry {
 	}
 }
 
+// entriesBetween builds the inclusive index range [from, to] at one term, for the
+// fixtures that write a whole log segment at once.
+func entriesBetween(from, to, term uint64, data []byte) []*raftpb.Entry {
+	out := make([]*raftpb.Entry, 0, to-from+1)
+	for i := from; i <= to; i++ {
+		out = append(out, ent(i, term, data))
+	}
+
+	return out
+}
+
 // snapshotMeta builds a *raftpb.SnapshotMetadata for terse test literals.
 func snapshotMeta(index, term uint64, cs *raftpb.ConfState) *raftpb.SnapshotMetadata {
 	return &raftpb.SnapshotMetadata{

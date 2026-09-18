@@ -1,0 +1,308 @@
+package wal
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"go.etcd.io/etcd/server/v3/storage/wal"
+	"go.etcd.io/etcd/server/v3/storage/wal/walpb"
+	"go.etcd.io/raft/v3/raftpb"
+)
+
+// These tests pin the WAL recovery contract through the whole stack, etcd's
+// ReadAll included.
+//
+// etcd v3.7.1 replays the truncation a record implies only above the snapshot
+// the WAL was opened at, so a truncating overwrite written at or below the
+// snapshot index is skipped together with its truncation and the physically
+// earlier entries it replaced come back. The node's last-entry term then no
+// longer describes its real log, which is enough for it to grant a vote it must
+// refuse and let a replica missing committed entries win an election.
+//
+// The fix lives upstream (etcd-io/etcd#22443) and reaches us through the
+// go.mod replace on go.etcd.io/etcd/server/v3. Four cases fail without that
+// replace — the three TestRecovery_Discards* ones and
+// TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite — so they also
+// guard against dropping it before the fix ships in an etcd release. The rest
+// pin the opposite hazard: a replay that discards too much loses healthy state
+// or refuses a recoverable startup.
+
+func testConfState() *raftpb.ConfState {
+	return &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
+}
+
+// assertRecoveredLog reopens dir and asserts the log the node comes up with.
+func assertRecoveredLog(t *testing.T, dir string, wantLastIndex, wantLastTerm uint64) *DefaultWAL {
+	t.Helper()
+
+	reopened := newTestWALAt(t, dir)
+
+	lastIndex, err := reopened.LastIndex()
+	require.NoError(t, err)
+	require.Equal(t, wantLastIndex, lastIndex, "recovered log must end at the real last index")
+
+	lastTerm, err := reopened.Term(lastIndex)
+	require.NoError(t, err)
+	require.Equal(t, wantLastTerm, lastTerm,
+		"recovered last-entry term decides vote eligibility; a regressed term lets this node vote for a shorter log")
+
+	return reopened
+}
+
+// TestRecovery_DiscardsResurrectedLowerTermSuffix is the failure Antithesis
+// observed: n1 recovered [87/5 … 92/5] under snapshot 86/12 and voted for a
+// replica whose log was missing two acknowledged transactions.
+func TestRecovery_DiscardsResurrectedLowerTermSuffix(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	// The suffix that a later leader will overwrite.
+	old := entriesBetween(80, 92, 5, []byte("old"))
+
+	require.NoError(t, w.Append(hs(5, 1, 79), old))
+
+	// One truncating append at index 80 replaces the whole suffix with a
+	// shorter, newer-term history. etcd's WAL is append-only, so both versions
+	// are physically present and only replay decides which one survives.
+	require.NoError(t, w.Append(hs(12, 1, 86), []*raftpb.Entry{
+		ent(80, 6, []byte("new")),
+		ent(81, 7, []byte("new")),
+		ent(82, 8, []byte("new")),
+		ent(83, 10, []byte("new")),
+		ent(84, 10, []byte("new")),
+		ent(85, 12, []byte("new")),
+		ent(86, 12, []byte("new")),
+	}))
+
+	require.NoError(t, w.CreateSnapshot(86, testConfState(), nil))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 86, 12)
+
+	require.Empty(t, reopened.entries,
+		"the snapshot sits at the real last index, so nothing survives above it; the resurrected term-5 suffix would show up here")
+}
+
+// TestRecovery_DiscardsResurrectedHigherTermSuffix covers the backfill shape: a
+// later leader replicates older committed entries, which keep their original
+// term. The resurrected suffix then carries a term *higher* than the snapshot's,
+// so any check comparing the recovered term against the snapshot term is blind
+// to it.
+func TestRecovery_DiscardsResurrectedHigherTermSuffix(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	// Uncommitted entries this node accepted from a leader in term 20.
+	local := entriesBetween(80, 92, 20, []byte("term20"))
+
+	require.NoError(t, w.Append(hs(20, 2, 79), local))
+
+	// A leader elected in term 21 backfills the entries actually committed in
+	// term 12. They are replicated with their original term, which is lower
+	// than the suffix they replace.
+	backfilled := entriesBetween(80, 86, 12, []byte("term12"))
+
+	require.NoError(t, w.Append(hs(21, 3, 86), backfilled))
+
+	require.NoError(t, w.CreateSnapshot(86, testConfState(), nil))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 86, 12)
+
+	require.Empty(t, reopened.entries,
+		"the snapshot sits at the real last index, so nothing survives above it; the resurrected term-20 suffix would show up here")
+}
+
+// TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot covers the second
+// escape: ApplySnapshot clears the entry cache in memory, but what it persists —
+// the snapshot file, a guard record, HardState, that record again as the sync
+// barrier — never includes the truncation, so the conflicting suffix is still on
+// disk and replay restores it.
+func TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	local := entriesBetween(80, 92, 20, []byte("term20"))
+
+	require.NoError(t, w.Append(hs(20, 2, 79), local))
+
+	// The leader sends a snapshot that conflicts at index 86 (term 12, not 20),
+	// so every local entry from 80 on is obsolete.
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(86, 12, testConfState()),
+	}))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 86, 12)
+	require.Empty(t, reopened.entries,
+		"an installed snapshot conflicting at its own index invalidates the whole cached suffix")
+}
+
+// TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot pins that the
+// selected snapshot clears only the log that preceded it. A received snapshot
+// conflicting with the local boundary invalidates what came before, not what the
+// node legitimately appended and committed afterwards.
+func TestRecovery_KeepsEntriesAppendedAfterAnInstalledSnapshot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	local := entriesBetween(1, 50, 1, []byte("term1"))
+
+	require.NoError(t, w.Append(hs(1, 1, 40), local))
+
+	// A received snapshot conflicting at index 50 (term 2, not 1).
+	require.NoError(t, w.ApplySnapshot(&raftpb.Snapshot{
+		Metadata: snapshotMeta(50, 2, testConfState()),
+	}))
+
+	// The node then catches up normally and commits through 60.
+	caught := entriesBetween(51, 60, 2, []byte("term2"))
+
+	require.NoError(t, w.Append(hs(2, 1, 60), caught))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 60, 2)
+	require.Len(t, reopened.entries, 10,
+		"entries appended after the snapshot was installed must survive it")
+	require.Equal(t, uint64(51), reopened.entries[0].GetIndex())
+}
+
+// TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall pins the opposite
+// hazard. ApplySnapshot persists the snapshot file and a guard snapshot record
+// *before* advancing HardState, so a crash in between leaves a record that does
+// not describe durable state. Honouring it would delete committed entries and
+// refuse a recoverable startup.
+//
+// The fixture writes the snapshot file too. Without it LoadNewestAvailable
+// (wal_default.go) skips the record whatever the commit index says, and the test
+// would pass without ever reaching the rule it exists for.
+func TestRecovery_KeepsEntriesAfterInterruptedSnapshotInstall(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	entries := entriesBetween(1, 10, 1, []byte("d"))
+
+	require.NoError(t, w.Append(hs(1, 1, 7), entries))
+	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
+
+	// What an interrupted ApplySnapshot leaves behind. The snapshot file comes
+	// first, exactly as ApplySnapshot writes it, so the guard record below is
+	// selectable as far as the snapshotter is concerned and only the commit
+	// index can exclude it.
+	require.NoError(t, w.snapshotter.Save(&raftpb.Snapshot{
+		Metadata: snapshotMeta(9, 2, testConfState()),
+	}))
+
+	// The guard record itself: index 9 is beyond the durable commit of 7, and no
+	// HardState follows it.
+	require.NoError(t, w.wal.SaveSnapshot(&walpb.Snapshot{
+		Index:     new(uint64(9)),
+		Term:      new(uint64(2)),
+		ConfState: testConfState(),
+	}))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 10, 1)
+	require.Len(t, reopened.entries, 5, "entries 6..10 must survive an unacknowledged guard record")
+	require.Equal(t, uint64(6), reopened.entries[0].GetIndex())
+}
+
+// TestRecovery_KeepsOverwriteBelowFinalCommit pins that an ordinary overwrite of
+// uncommitted entries is not mistaken for corruption. Indices 2 and 3 are
+// replaced before the commit index reaches them, so the discarded versions sit
+// inside the final committed range yet were never committed.
+func TestRecovery_KeepsOverwriteBelowFinalCommit(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	require.NoError(t, w.Append(hs(1, 1, 1), []*raftpb.Entry{
+		ent(1, 1, []byte("a")),
+		ent(2, 1, []byte("b")),
+		ent(3, 1, []byte("c")),
+	}))
+	require.NoError(t, w.CreateSnapshot(1, testConfState(), nil))
+
+	// A new leader in term 2 replaces the uncommitted tail, then it commits.
+	require.NoError(t, w.Append(hs(2, 2, 3), []*raftpb.Entry{
+		ent(2, 2, []byte("b2")),
+		ent(3, 2, []byte("c2")),
+	}))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 3, 2)
+	require.Len(t, reopened.entries, 2)
+	require.Equal(t, uint64(2), reopened.entries[0].GetTerm(), "the term-2 version must win")
+}
+
+// TestRecovery_KeepsHealthyTailAfterSnapshot is the plain case: entries written
+// after a local snapshot stay available for follower catch-up.
+func TestRecovery_KeepsHealthyTailAfterSnapshot(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	entries := entriesBetween(80, 88, 12, []byte("d"))
+
+	require.NoError(t, w.Append(hs(12, 1, 88), entries))
+	require.NoError(t, w.CreateSnapshot(86, testConfState(), nil))
+	require.NoError(t, w.Close())
+
+	reopened := assertRecoveredLog(t, dir, 88, 12)
+	require.Len(t, reopened.entries, 2, "entries 87 and 88 must remain available")
+	require.Equal(t, uint64(87), reopened.entries[0].GetIndex())
+}
+
+// TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite pins what the
+// stricter replay does with a log that is not a log. Honouring an overwrite
+// below the snapshot boundary empties the recovered tail, so a following batch
+// that does not resume at the next index has nowhere to land and startup fails
+// instead of returning a gapped log. Only Append's defensive gap branch writes
+// that shape; raft never produces it.
+func TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	w := newTestWALAt(t, dir)
+
+	entries := entriesBetween(1, 10, 1, []byte("d"))
+
+	require.NoError(t, w.Append(hs(1, 1, 10), entries))
+	require.NoError(t, w.CreateSnapshot(5, testConfState(), nil))
+
+	// The sentinel below is raised by any gap, so bind the boundary this case is
+	// about: replay must open at snapshot 5, which is what makes the overwrite
+	// at index 3 a below-snapshot one.
+	snap, err := w.Snapshot()
+	require.NoError(t, err)
+	require.Equal(t, uint64(5), snap.GetMetadata().GetIndex())
+
+	// An overwrite at index 3, below the snapshot the WAL will be opened at.
+	require.NoError(t, w.Append(hs(2, 1, 10), []*raftpb.Entry{ent(3, 2, []byte("d"))}))
+
+	// A batch that resumes at 7 rather than 4.
+	require.NoError(t, w.Append(hs(2, 1, 10), []*raftpb.Entry{
+		ent(7, 2, []byte("d")),
+		ent(8, 2, []byte("d")),
+	}))
+	require.NoError(t, w.Close())
+
+	// ErrSliceOutOfRange comes from exactly one place in ReadAll: an entry whose
+	// index leaves a hole in what has been collected. Matching the sentinel
+	// rather than its message identifies that branch without pinning etcd's
+	// wording, so a torn tail or the EN-1525 marker refusal does not satisfy it.
+	require.ErrorIs(t, reopenWAL(t, dir), wal.ErrSliceOutOfRange,
+		"the refusal must be the gap this fixture builds: entry 7 landing on a tail the overwrite at 3 emptied")
+}

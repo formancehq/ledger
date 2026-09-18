@@ -407,6 +407,79 @@ The system can recover completely from:
 2. **Complete WAL**: If no snapshot, complete replay of the WAL
 3. **Store**: Reconstruction of balances from the logs
 
+#### Replay validity
+
+The WAL is append-only, so an entry that a later leader overwrote is still
+physically present and only replay decides which version survives. An entry
+record at index `i` means Raft truncated its log to `[.., i-1]` before appending
+it, so every record read earlier with an index `>= i` is stale — and that
+truncation is a property of the record, independent of the snapshot the WAL was
+opened at. An installed snapshot carries the same meaning. `ApplySnapshot` first
+replaces the log in memory — snapshot, entry cache, compaction boundary, and
+`HardState` when the snapshot is ahead of the durable commit — and then persists,
+in this order:
+
+1. the full snapshot file, before any WAL record: an orphaned snap file is
+   harmless and a later snapshot cleans it up, while a WAL record whose file is
+   missing is skipped at startup, sending recovery back to an older snapshot;
+2. a guard WAL snapshot record, which is synced;
+3. the new `HardState`, which a commit-only update leaves buffered rather than
+   synced;
+4. the same snapshot record again, as the sync barrier for that `HardState`.
+
+Older snap files are removed only after that. No step records the entry
+truncation the install performed in memory, which is why the superseded suffix
+is still on disk: when the entry at the snapshot index does not carry the
+snapshot term, the entries read before it are obsolete even though no record
+says so.
+
+Every durable prefix is recoverable, in one of two ways. A crash between 2 and 4
+may leave the guard record without the `HardState` that validates it, in which
+case replay ignores the record and the previous snapshot and WAL segments still
+describe the node. It may equally leave that `HardState` durable — step 3 is
+buffered rather than synced, but a segment rotation or an unrelated term or vote
+change syncs it, and the caller has usually written its own `HardState` before
+`ApplySnapshot` — in which case the new snapshot is selected, backed by the guard
+record that was synced at step 2. Both outcomes are consistent; what step 4
+guarantees is that neither leaves a `HardState` pointing at a snapshot record
+that is not durable.
+
+etcd v3.7.1 applies the first rule only to records above the opening snapshot
+(`ents = append(ents[:offset], e)` under `e.Index > w.start.Index`) and does not
+apply the second at all. A truncating overwrite written at or below the snapshot
+index is therefore skipped together with the truncation it implies, and the
+physically earlier entries it replaced come back after a restart.
+
+That tail is not a log any Raft node could hold, and the damage is not confined
+to storage: the node's last-entry term no longer describes its real log, which is
+enough for it to grant a vote it must refuse — raft compares last-entry term
+before index — so a replica whose log is missing committed entries can win an
+election and overwrite them. Treat the recovered last-entry term and index as
+consensus authority.
+
+Honouring the first rule also makes replay stricter in one direction: an
+overwrite below the snapshot boundary empties the recovered tail, so a following
+batch that does not resume at the next index has nowhere to land and startup
+fails instead of returning a log with a hole in it. Only `Append`'s defensive gap
+branch writes that shape — raft never produces it — and refusing to serve it is
+the intended outcome.
+
+Both rules are fixed upstream in
+[etcd-io/etcd#22443](https://github.com/etcd-io/etcd/pull/22443). Until that
+lands in an etcd release, `go.mod` pins a patched build through a `replace` on
+`go.etcd.io/etcd/server/v3`: the tag `v3.7.1` plus that single commit, on the
+`wal-truncation-below-snapshot` branch of `formancehq/etcd`. The `replace` names
+the version it substitutes (`go.etcd.io/etcd/server/v3 v3.7.1 => ...`), so a
+later etcd bump escapes it and the guard tests below fail loudly rather than
+silently keeping the fork. The same `replace` is mirrored in
+`tests/antithesis/workload/go.mod`, which builds this code through a local module
+replacement.
+
+**Removing the pin** requires an etcd release containing that commit; dropping it
+before then reintroduces the defect. `TestRecovery_DiscardsResurrected*` and
+`TestRecovery_DiscardsSuffixConflictingWithInstalledSnapshot` in
+`internal/storage/wal/` fail without it and are the guard.
+
 ### ACID Guarantees
 
 - **Atomicity**: Complete transactions or nothing
