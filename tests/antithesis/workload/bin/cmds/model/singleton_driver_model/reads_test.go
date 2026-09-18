@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -20,6 +21,17 @@ func TestModelKnowsAccount(t *testing.T) {
 	require.True(t, modelKnowsAccount(ls, "world"))
 	require.False(t, modelKnowsAccount(ls, "t-0:6"))
 	require.False(t, modelKnowsAccount(ls, "t-99:1"))
+}
+
+func TestLiveLedgerNamesFiltersTombstones(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L", "L2"}, nil)
+	deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, deleted.OK)
+	require.Equal(t, []string{"L2"}, liveLedgerNames(deleted.State, []string{"L", "L2"}))
 }
 
 // pickAbsentAccount must always hand back an address the model has no state for,
@@ -64,4 +76,8 @@ func TestPickLedgerReadTarget(t *testing.T) {
 			require.True(t, known[ledger], "known target is not a fleet ledger: %s", ledger)
 		}
 	}
+
+	ledger, absent := pickLedgerReadTarget(nil, 0)
+	require.True(t, absent)
+	require.NotEmpty(t, ledger)
 }

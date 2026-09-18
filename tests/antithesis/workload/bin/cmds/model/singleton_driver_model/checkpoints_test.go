@@ -133,6 +133,17 @@ func TestPredictedCheckpointMatchesCreationPredecessor(t *testing.T) {
 	require.Equal(t, uint64(1), createTicket)
 }
 
+func TestPredictedCheckpointRejectsTombstonedLedger(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
+		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	}}))
+	require.True(t, deleted.OK)
+	require.False(t, predictedCheckpointLedgerMatches(deleted.State, "L", &commonpb.LedgerInfo{}))
+}
+
 func checkpointMetadata(value string) map[string]*commonpb.MetadataValue {
 	return map[string]*commonpb.MetadataValue{"phase": {Type: &commonpb.MetadataValue_StringValue{StringValue: value}}}
 }

@@ -12,7 +12,9 @@ import (
 // iteration order is sorted, so callers may draw Antithesis-reproducible
 // decisions while ranging.
 
-func (g GlobalState) Ledgers() map[string]LedgerState { return g.ledgers }
+func (g GlobalState) Ledgers() map[string]LedgerState {
+	return g.ledgers
+}
 
 func (s LedgerState) Types() Map[string, TypeState]                    { return s.types }
 func (s LedgerState) Volumes() Map[VolumeKey, VolumePair]              { return s.volumes }
@@ -107,7 +109,7 @@ func (s LedgerState) IndexState(canonical string) (exists, active bool) {
 // shared ledgers map, updating the committed state; forks copied earlier hold
 // their own persistent values and are unaffected. Callers hold the checker
 // mutex.
-func (g GlobalState) SetIndexActive(ledger, canonical string) {
+func (g *GlobalState) SetIndexActive(ledger, canonical string) {
 	g.setIndexReadiness(ledger, canonical, true)
 }
 
@@ -117,11 +119,11 @@ func (g GlobalState) SetIndexActive(ledger, canonical string) {
 // only ever widens what the model tolerates — an ambiguous index accepts both a
 // not-ready error and a validated result window — so it can never manufacture a
 // finding. Same no-op / rebind semantics as SetIndexActive.
-func (g GlobalState) SetIndexAmbiguous(ledger, canonical string) {
+func (g *GlobalState) SetIndexAmbiguous(ledger, canonical string) {
 	g.setIndexReadiness(ledger, canonical, false)
 }
 
-func (g GlobalState) setIndexReadiness(ledger, canonical string, active bool) {
+func (g *GlobalState) setIndexReadiness(ledger, canonical string, active bool) {
 	ls, ok := g.ledgers[ledger]
 	if !ok {
 		return
@@ -129,6 +131,7 @@ func (g GlobalState) setIndexReadiness(ledger, canonical string, active bool) {
 
 	if ls.indexes.Has(canonical) {
 		ls.indexes = ls.indexes.Set(canonical, active)
+		*g = g.clone()
 		g.ledgers[ledger] = ls
 	}
 }
@@ -174,7 +177,7 @@ func (r *revertEffect) Postings() []*commonpb.Posting { return r.postings }
 // the checker's lock and call this only on the committed state, in the same
 // critical section that advanced it — forks copied earlier hold their own
 // persistent values and are unaffected.
-func (g GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, insertedAt, revertedAt *commonpb.Timestamp) {
+func (g *GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, insertedAt, revertedAt *commonpb.Timestamp) {
 	ls, ok := g.ledgers[ledger]
 	if !ok || id == 0 || id > uint64(ls.txs.Len()) {
 		return
@@ -192,6 +195,7 @@ func (g GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, inserted
 	}
 
 	ls.txs = ls.txs.Set(int(id-1), &rec)
+	*g = g.clone()
 	g.ledgers[ledger] = ls
 }
 
@@ -199,7 +203,7 @@ func (g GlobalState) LearnTxStamps(ledger string, id uint64, timestamp, inserted
 // stream the model cannot derive. The id is not learned: it is derived from
 // the stream's density, so a server that assigned a different one must be
 // caught, not copied.
-func (g GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Timestamp) {
+func (g *GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Timestamp) {
 	ls, ok := g.ledgers[ledger]
 	if !ok || id == 0 || id > uint64(ls.logs.Len()) {
 		return
@@ -211,13 +215,14 @@ func (g GlobalState) LearnLogDate(ledger string, id uint64, date *commonpb.Times
 	}
 
 	ls.logs = ls.logs.Set(int(id-1), &rec)
+	*g = g.clone()
 	g.ledgers[ledger] = ls
 }
 
 // LearnLogSequence fills in a log's global sequence, the second field of the
 // stream the model cannot derive: it counts every ledger's logs and the
 // technical entries among them. Fill-once, like the date.
-func (g GlobalState) LearnLogSequence(ledger string, id, sequence uint64) {
+func (g *GlobalState) LearnLogSequence(ledger string, id, sequence uint64) {
 	ls, ok := g.ledgers[ledger]
 	if !ok || id == 0 || id > uint64(ls.logs.Len()) || sequence == 0 {
 		return
@@ -229,6 +234,7 @@ func (g GlobalState) LearnLogSequence(ledger string, id, sequence uint64) {
 	}
 
 	ls.logs = ls.logs.Set(int(id-1), &rec)
+	*g = g.clone()
 	g.ledgers[ledger] = ls
 }
 
@@ -362,7 +368,7 @@ func (s LedgerState) WithDeclaredType(target commonpb.TargetType, key string, t 
 // retype's own log folded, and a later poll showed no rewrite pending. From
 // then on only the new type is legal. Same no-op / rebind semantics as
 // SetIndexActive.
-func (g GlobalState) CloseRetypeWindow(ledger, canonical string) {
+func (g *GlobalState) CloseRetypeWindow(ledger, canonical string) {
 	ls, ok := g.ledgers[ledger]
 	if !ok {
 		return
@@ -370,6 +376,7 @@ func (g GlobalState) CloseRetypeWindow(ledger, canonical string) {
 
 	if ls.retypeWindows.Has(canonical) {
 		ls.retypeWindows = ls.retypeWindows.Delete(canonical)
+		*g = g.clone()
 		g.ledgers[ledger] = ls
 	}
 }

@@ -26,8 +26,8 @@ func TestCoverageMessages_OneSondePerWorkloadIndex(t *testing.T) {
 			"index %s is churned but has no coverage sonde", wi.canonical)
 	}
 
-	require.Len(t, msgs, len(workloadIndexes())+12+len(applyCoverageMessages()),
-		"index, metadata, retype, Apply, and checkpoint sondes")
+	require.Len(t, msgs, len(workloadIndexes())+15+len(applyCoverageMessages()),
+		"index, metadata, retype, Apply, checkpoint, and lifecycle sondes")
 }
 
 // Antithesis keys properties by message, so two sondes sharing a name collapse

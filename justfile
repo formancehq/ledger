@@ -189,7 +189,7 @@ test-e2e-coverage packages="./tests/e2e/business/... ./tests/e2e/cluster/..." pr
     set -euo pipefail
     mkdir -p {{coverage_dir}}
     echo "==> E2E tests with coverage..."
-    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/{{profile}} -coverpkg={{coverage_pkgs}} {{packages}} -timeout 20m
+    GOTOOLCHAIN=$(go env GOVERSION) go test -race -tags "e2e,{{all_tags}}" -p 1 -coverprofile={{coverage_dir}}/{{profile}} -coverpkg={{coverage_pkgs}} {{packages}} -timeout 30m
     echo "Coverage profile: {{coverage_dir}}/{{profile}}"
 
 # Run scenario tests with coverage

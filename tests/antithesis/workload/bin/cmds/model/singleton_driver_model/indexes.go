@@ -256,7 +256,10 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 	gotResults := err == nil
 
 	matched := c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
-		ls := cand.Ledger(ledger)
+		ls, live := liveLedgerState(cand, ledger)
+		if !live {
+			return false
+		}
 		exists, active := ls.IndexState(assetIndexCanonical)
 
 		if !gotResults {
@@ -495,10 +498,12 @@ func dropIndexReq(ledger string, id *commonpb.IndexID) *servicepb.Request {
 	}}
 }
 
-// rollIndexOp: ~1-in-16 a bulk is an index create/drop rather than ledger
-// traffic, churning the index lifecycles the indexed queries probe.
+// rollIndexOp: ~1-in-8 a bulk is an index create/drop rather than ledger
+// traffic. Lifecycle operations consume part of the same finite run, so this
+// rate keeps every builtin and metadata index reachable before the coverage
+// sondes are evaluated.
 func rollIndexOp() bool {
-	return oneIn(16)
+	return oneIn(8)
 }
 
 // generateIndexOp picks one workload index; creates it when the ledger lacks
@@ -558,7 +563,7 @@ func (c *Checker) trackedIndexes() map[string]map[string]uint64 {
 	defer c.mu.Unlock()
 
 	out := map[string]map[string]uint64{}
-	for _, ledger := range c.ledgerNames {
+	for _, ledger := range liveLedgerNames(c.modelState, c.ledgerNamesSnapshot()) {
 		for canon := range c.modelState.Ledger(ledger).Indexes().All() {
 			if out[ledger] == nil {
 				out[ledger] = map[string]uint64{}
@@ -616,7 +621,7 @@ func (c *Checker) demoteAllIndexes() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for _, ledger := range c.ledgerNames {
+	for _, ledger := range c.ledgerNamesSnapshot() {
 		for canon := range c.modelState.Ledger(ledger).Indexes().All() {
 			c.modelState.SetIndexAmbiguous(ledger, canon)
 		}
@@ -789,7 +794,11 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 
 	rejectedIndex := rejectedIndexLabel(err)
 	matched := c.matchesModel(maxTicket, "TXQUERY-IDX", func(cand oracle.GlobalState) bool {
-		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
+		ls, live := liveLedgerState(cand, ledger)
+		if !live {
+			return false
+		}
+		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 		})
 	})
@@ -1165,7 +1174,11 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 
 	rejectedIndex := rejectedIndexLabel(err)
 	matched := c.matchesModel(maxTicket, "AQUERY-IDX", func(cand oracle.GlobalState) bool {
-		return indexedQueryOutcomeLegal(cand.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
+		ls, live := liveLedgerState(cand, ledger)
+		if !live {
+			return false
+		}
+		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			want := accountWindow(ls, filter, cursor, pageSize, reverse)
 			if len(want) != len(serverAccts) {
 				return false

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"maps"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
@@ -29,6 +30,54 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 
 	c.crossCheckCommit(bulk, resp)
 	c.recordIndexCreates(bulk, resp)
+	for i, req := range bulk.Requests {
+		switch {
+		case req.GetCreateLedger() != nil:
+			name := req.GetCreateLedger().GetName()
+			c.ledgerMu.Lock()
+			if !slices.Contains(c.ledgerNames, name) {
+				c.ledgerNames = append(c.ledgerNames, name)
+			}
+			c.ledgerMu.Unlock()
+		case req.GetDeleteLedger() != nil:
+			name := req.GetDeleteLedger().GetName()
+			delete(c.indexCreateSeq, name)
+			for key, obs := range c.retypeObs {
+				if obs.ledger == name {
+					delete(c.retypeObs, key)
+				}
+			}
+			c.pendingDeleted[name] = struct{}{}
+		case req.GetPromoteLedger() != nil:
+			c.pendingPromoted[req.GetPromoteLedger().GetLedger()] = struct{}{}
+		case req.GetApply() != nil && i < len(resp.GetLogs()) && isSuccessfulBusinessWrite(req, resp.GetLogs()[i]):
+			ledger := req.GetApply().GetLedger()
+			if _, pending := c.pendingPromoted[ledger]; pending {
+				emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": ledger}, coverageHit)
+				delete(c.pendingPromoted, ledger)
+			}
+		}
+	}
+}
+
+// isSuccessfulBusinessWrite reports whether a committed Apply proved that a
+// promoted ledger accepts ordinary business traffic. Mirror-safe configuration
+// actions and skipped orders do not establish that property.
+func isSuccessfulBusinessWrite(req *servicepb.Request, log *commonpb.Log) bool {
+	action := req.GetApply().GetAction()
+	if action == nil || log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped() != nil {
+		return false
+	}
+
+	switch action.GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction,
+		*servicepb.LedgerAction_RevertTransaction,
+		*servicepb.LedgerAction_AddMetadata,
+		*servicepb.LedgerAction_DeleteMetadata:
+		return true
+	default:
+		return false
+	}
 }
 
 // recordIndexCreates advances the create frontier of every index this bulk
@@ -106,6 +155,20 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				assert.Unreachable("singleton_driver_model: enforcement-mode response mismatch", internal.Details{"order": i, "expected": mode, "actual": data.GetUpdatedDefaultEnforcementMode()})
 				return
 			}
+		}
+	}
+	for i, req := range bulk.Requests {
+		var payload *commonpb.LogPayload
+		if i < len(logs) {
+			payload = logs[i].GetPayload()
+		}
+		if err := validateLifecycleLog(req, payload); err != nil {
+			assert.Unreachable("singleton_driver_model: lifecycle response mismatch", internal.Details{
+				"ledger": oracle.LedgerOf(req),
+				"kind":   requestKinds(oracle.Bulk{Requests: []*servicepb.Request{req}}),
+				"error":  err.Error(),
+			})
+			return
 		}
 	}
 	for i, order := range res.Orders {
@@ -385,7 +448,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			c.noteRetypeCommit(ledger, canonical, maxLogSequence(resp.GetLogs()))
 		}
 	}
-	learnTxStamps(c.modelState, bulk, logs)
+	learnTxStamps(&c.modelState, bulk, logs)
 
 	// A committed keyed bulk is frozen in modelState; remember it (with the
 	// sequences it committed at) so runReplay can re-send it and check the server
@@ -400,7 +463,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 // original's reverted_at (the compensating transaction's timestamp). Runs in
 // the same critical section that advanced the state — the safety condition
 // LearnTxStamps documents.
-func learnTxStamps(gs oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log) {
+func learnTxStamps(gs *oracle.GlobalState, bulk oracle.Bulk, logs []*commonpb.Log) {
 	for i, req := range bulk.Requests {
 		if i >= len(logs) {
 			break
@@ -452,6 +515,18 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 	})
 
 	if matched {
+		if reason == domain.ErrReasonLedgerDeleted {
+			for _, req := range failedBulk.Requests {
+				created := req.GetCreateLedger()
+				if created == nil {
+					continue
+				}
+				if _, pending := c.pendingDeleted[created.GetName()]; pending {
+					emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": created.GetName()}, coverageHit)
+					delete(c.pendingDeleted, created.GetName())
+				}
+			}
+		}
 		invalidOptIn := reason == domain.ErrReasonValidation && bulkHasInvalidSkippableReason(failedBulk)
 		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil, coverageHit)
 		// Coverage: each deliberately-triggered rejection branch must actually be
@@ -544,13 +619,24 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 	return matched
 }
 
+func liveLedgerState(base oracle.GlobalState, ledger string) (oracle.LedgerState, bool) {
+	if !ledgerIsLive(base, ledger) {
+		return oracle.LedgerState{}, false
+	}
+
+	return base.Ledger(ledger), true
+}
+
 // validateAccountRead checks one GetAccount snapshot against the model: the read
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
-		ls := base.Ledger(ledger)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return !found
+		}
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
@@ -622,6 +708,10 @@ func metadataMatches(ls oracle.LedgerState, addr string, serverMeta map[string]*
 // atomic snapshot.
 func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverTypes map[string]*commonpb.AccountType, serverMeta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) {
 	if c.matchesModel(maxTicket, "LEDGER", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		if !exists || lc.Deleted {
+			return false
+		}
 		ls := base.Ledger(ledger)
 		return ledgerReadMatches(ls, serverTypes, serverMeta, mode)
 	}) {
@@ -640,6 +730,22 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 
 func ledgerReadMatches(ls oracle.LedgerState, types map[string]*commonpb.AccountType, meta map[string]*commonpb.MetadataValue, mode commonpb.ChartEnforcementMode) bool {
 	return chartMatches(ls, types) && ledgerMetaMatches(ls, meta) && ls.DefaultEnforcementMode() == mode
+}
+
+// validateLedgerNotFound accepts NotFound only when some legal serialization
+// has not created the ledger yet or has already deleted it.
+func (c *Checker) validateLedgerNotFound(maxTicket uint64, ledger, operation string) {
+	if c.matchesModel(maxTicket, operation+" NOT_FOUND", func(base oracle.GlobalState) bool {
+		lc, exists := base.Lifecycle(ledger)
+		return !exists || lc.Deleted
+	}) {
+		return
+	}
+
+	assert.Unreachable("singleton_driver_model: ledger-scoped read returned unexplained NotFound", internal.Details{
+		"ledger":    ledger,
+		"operation": operation,
+	})
 }
 
 // chartMatches reports whether ls's chart equals the server's account types
@@ -690,7 +796,11 @@ func ledgerMetaMatches(ls oracle.LedgerState, serverMeta map[string]*commonpb.Me
 // cross-routing bug class — is caught here for transactions.
 func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id uint64, serverTx *commonpb.Transaction, found bool) {
 	if c.matchesModel(maxTicket, "TXREAD", func(base oracle.GlobalState) bool {
-		txs := base.Ledger(ledger).Txs()
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return !found
+		}
+		txs := ls.Txs()
 		if id == 0 || id > uint64(txs.Len()) {
 			return !found // no tx at this id in this base: consistent only with NotFound
 		}
@@ -724,7 +834,10 @@ func (c *Checker) validateTransactionRead(maxTicket uint64, ledger string, id ui
 // projection rather than just the per-op response echo.
 func (c *Checker) validateSchemaRead(maxTicket uint64, ledger string, acct, txn, ldg map[string]*servicepb.MetadataFieldStatus) {
 	if c.matchesModel(maxTicket, "SCHEMA", func(base oracle.GlobalState) bool {
-		ls := base.Ledger(ledger)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
 
 		return fieldTypesMatch(ls.AccountFieldTypes(), acct) &&
 			fieldTypesMatch(ls.TransactionFieldTypes(), txn) &&
