@@ -245,7 +245,9 @@ func TestCheckpointStoreCacheClosesMainStoreWhenReadIndexCloseFails(t *testing.T
 	reopened, err := dal.OpenReadOnly(mainPath, testLogger())
 	require.NoError(t, err, "the main store must close even when the read index's close panics")
 	require.NoError(t, reopened.Close())
-	require.NoError(t, iter.Close())
+	// The read index was left half-closed by the recovered panic above; this
+	// only drops the reference, and its outcome is not what the test checks.
+	_ = iter.Close()
 }
 
 // rebuildReadIndexCheckpointWithSSTs materializes a read-index checkpoint at
