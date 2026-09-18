@@ -988,6 +988,19 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 				for account := range orderAccounts {
 					accounts[account] = true
 				}
+				if requestMutatesAccountTypes(req) {
+					// A chart transition can expose an EPHEMERAL fallback without
+					// touching an account row. The server closes lifecycle coverage
+					// over every persisted volume and metadata row for such orders;
+					// mirror that candidate set so end-of-bulk purge semantics stay
+					// serializable in the model.
+					for key := range ls.volumes.All() {
+						accounts[key.Address] = true
+					}
+					for key := range ls.metadata.All() {
+						accounts[key.Address] = true
+					}
+				}
 			}
 			// Appended centrally rather than per handler: every committed
 			// ledger-scoped order produces exactly one log, so a handler that
@@ -1069,6 +1082,19 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	}
 
 	return ApplyResult{OK: true, State: next, Orders: orders}
+}
+
+func requestMutatesAccountTypes(req *servicepb.Request) bool {
+	switch req.GetType().(type) {
+	case *servicepb.Request_AddAccountType, *servicepb.Request_RemoveAccountType:
+		return true
+	}
+	switch req.GetApply().GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_AddAccountType, *servicepb.LedgerAction_RemoveAccountType:
+		return true
+	default:
+		return false
+	}
 }
 
 func requestAccountTouches(req *servicepb.Request) map[string]bool {
