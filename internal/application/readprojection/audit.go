@@ -121,8 +121,10 @@ func publicOrder(order *raftcmdpb.Order) (*publicauditpb.Order, error) {
 func normalizeOrFlag[T any](value T, err error) (T, bool) {
 	if err != nil {
 		var zero T
+
 		return zero, true
 	}
+
 	return value, false
 }
 
