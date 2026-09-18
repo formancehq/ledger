@@ -70,6 +70,38 @@ func TestEtcdPinParityRejectsDifferentReplacementTargets(t *testing.T) {
 	require.Contains(t, findings[0].message, "someone/etcd")
 }
 
+func TestEtcdPinParityRejectsARequireDroppedFromOneModuleOnly(t *testing.T) {
+	t.Parallel()
+
+	plain := []byte("module workload\n\ngo 1.26\n")
+
+	findings, err := checkEtcdPinParity(etcdModule("root", "v3.7.1", pinnedReplace), plain)
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "no requirement")
+
+	// and the other way round
+	findings, err = checkEtcdPinParity(plain, etcdModule("workload", "v3.7.1", pinnedReplace))
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "no requirement")
+}
+
+func TestEtcdPinParityRendersALocalPathReplacementWithoutATrailingAt(t *testing.T) {
+	t.Parallel()
+
+	local := "replace go.etcd.io/etcd/server/v3 v3.7.1 => ../../etcd/server"
+
+	findings, err := checkEtcdPinParity(
+		etcdModule("root", "v3.7.1", pinnedReplace),
+		etcdModule("workload", "v3.7.1", local),
+	)
+	require.NoError(t, err)
+	require.Len(t, findings, 1)
+	require.Contains(t, findings[0].message, "../../etcd/server\"")
+	require.NotContains(t, findings[0].message, "etcd/server@")
+}
+
 func TestEtcdPinParityIgnoresModulesWithoutEtcd(t *testing.T) {
 	t.Parallel()
 

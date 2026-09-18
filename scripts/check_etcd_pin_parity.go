@@ -22,6 +22,10 @@ type etcdPin struct {
 }
 
 func (p etcdPin) String() string {
+	if p.version == "" {
+		return "no requirement"
+	}
+
 	if p.replaceTo == "" {
 		return fmt.Sprintf("require %s, no replace", p.version)
 	}
@@ -50,8 +54,10 @@ func checkEtcdPinParity(rootSource, workloadSource []byte) ([]finding, error) {
 		return nil, err
 	}
 
-	if root.version == "" || workload.version == "" {
+	if root.version == "" && workload.version == "" {
 		// Neither module requires etcd any more; there is nothing to keep in sync.
+		// One of them dropping it is a divergence, and falls through to the
+		// comparison below.
 		return nil, nil
 	}
 
@@ -96,7 +102,12 @@ func parseEtcdPin(path string, source []byte) (etcdPin, error) {
 		// An unversioned replace applies to every version, which is the shape the
 		// pin deliberately avoids; record it as-is so a divergence still shows up.
 		pin.replaceFrom = replace.Old.Version
-		pin.replaceTo = replace.New.Path + "@" + replace.New.Version
+		pin.replaceTo = replace.New.Path
+
+		// A replacement by local path carries no version.
+		if replace.New.Version != "" {
+			pin.replaceTo += "@" + replace.New.Version
+		}
 
 		break
 	}

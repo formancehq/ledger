@@ -20,10 +20,12 @@ import (
 // refuse and let a replica missing committed entries win an election.
 //
 // The fix lives upstream (etcd-io/etcd#22443) and reaches us through the
-// go.mod replace on go.etcd.io/etcd/server/v3. The first three cases fail
-// without that replace, so they also guard against dropping it before the fix
-// ships in an etcd release. The rest pin the opposite hazard: a replay that
-// discards too much loses healthy state or refuses a recoverable startup.
+// go.mod replace on go.etcd.io/etcd/server/v3. Four cases fail without that
+// replace — the three TestRecovery_Discards* ones and
+// TestRecovery_FailsClosedOnAGapLeftByABelowSnapshotOverwrite — so they also
+// guard against dropping it before the fix ships in an etcd release. The rest
+// pin the opposite hazard: a replay that discards too much loses healthy state
+// or refuses a recoverable startup.
 
 func testConfState() *raftpb.ConfState {
 	return &raftpb.ConfState{Voters: []uint64{1, 2, 3}}
