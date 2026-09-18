@@ -731,11 +731,12 @@ const (
 	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_READY             ErrorReason = 55
 	ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP             ErrorReason = 56
 	ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID         ErrorReason = 57
-	// ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
-	// Numscript dependency resolution read at admission time changed before the
-	// FSM applied the transaction, so the preloaded key set may be wrong.
-	// Retryable (Kind=Unavailable) — a second admission re-resolves against the
-	// new values. See EN-1406.
+	// ERROR_REASON_STALE_INPUTS_RESOLUTION: the state admission read to compute
+	// the order's preload set changed before the FSM applied it, so the preloaded
+	// key set may be wrong. Raised by Numscript dependency resolution when the
+	// balances or metadata it read changed (see EN-1406), and by a revert whose
+	// target read as absent at admission and is present at apply. Retryable
+	// (Kind=Unavailable) — a second admission resolves against the current state.
 	ErrorReason_ERROR_REASON_STALE_INPUTS_RESOLUTION ErrorReason = 58
 	// ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
 	// for an order (e.g. Numscript dependency discovery failed against current

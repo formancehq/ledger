@@ -386,15 +386,23 @@ func (errStaleProposal) Metadata() map[string]string { return nil }
 
 var ErrStaleProposal Describable = errStaleProposal{}
 
-// ErrStaleInputsResolution — the balance/metadata values that admission's
-// Numscript dependency resolution read to compute the preload set changed
-// before the FSM applied the transaction. The preloaded key set may therefore
-// be wrong, so the order is rejected. Retryable (Kind=Unavailable): a second
-// admission re-resolves against the new values and re-preloads. See EN-1406.
+// ErrStaleInputsResolution — the state admission read to compute an order's
+// preload set changed before the FSM applied it. The preloaded key set may
+// therefore be wrong, so the order is rejected. Retryable (Kind=Unavailable): a
+// second admission resolves against the current state and re-preloads.
+//
+// Two producers derive coverage from a read and so can reach it, which is why
+// the message names the resolution rather than one producer's inputs:
+//
+//   - Numscript dependency resolution — the balances and metadata it read at
+//     admission changed before apply. See EN-1406.
+//   - a revert's target observation — the target read as absent at admission
+//     (no read barrier) and apply finds its real postings. See
+//     checkRevertTargetObservation.
 type errStaleInputsResolution struct{}
 
 func (errStaleInputsResolution) Error() string {
-	return "numscript inputs resolution is stale: balances or metadata changed between admission and apply; retry"
+	return "inputs resolution is stale: the state admission resolved changed between admission and apply; retry"
 }
 func (errStaleInputsResolution) Reason() string              { return ErrReasonStaleInputsResolution }
 func (errStaleInputsResolution) Metadata() map[string]string { return nil }
