@@ -352,6 +352,9 @@ func verifyVolumeDeltasMatchPostings(
 	// the same divergent input must produce the same assertion details and the
 	// same error string on every replica and every replay, or cross-timeline
 	// triage cannot correlate them. Nothing is appended on the happy path.
+	// Every message below names the full (ledger, account, asset, color)
+	// identity that ordering sorts on, or the representative it names would be
+	// indistinguishable from offenders that differ only by color.
 	var missing, mismatched []domain.VolumeKey
 
 	for key, exp := range expected {
@@ -378,8 +381,9 @@ func verifyVolumeDeltasMatchPostings(
 		})
 
 		return fmt.Errorf(
-			"volume delta missing for %q/%s/%s: expected input_delta=%s output_delta=%s (%d offending keys)",
-			key.LedgerName, key.Account, key.Asset, exp.input.String(), exp.output.String(), len(missing),
+			"volume delta missing for %q/%s/%s/%s: expected input_delta=%s output_delta=%s (%d offending keys)",
+			key.LedgerName, key.Account, key.Asset, key.Color,
+			exp.input.String(), exp.output.String(), len(missing),
 		)
 	}
 
@@ -395,8 +399,8 @@ func verifyVolumeDeltasMatchPostings(
 		})
 
 		return fmt.Errorf(
-			"volume delta mismatch for %q/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s) (%d offending keys)",
-			key.LedgerName, key.Account, key.Asset,
+			"volume delta mismatch for %q/%s/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s) (%d offending keys)",
+			key.LedgerName, key.Account, key.Asset, key.Color,
 			exp.input.String(), exp.output.String(),
 			act.input.String(), act.output.String(), len(mismatched),
 		)

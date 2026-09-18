@@ -664,8 +664,15 @@ After commit, the sentinel compares retained values against its pinned snapshot
 and checks aggregate conservation. Across entries in one apply batch, it keeps
 the last update per key and excludes keys purged by later entries. Missing
 values, mismatched deltas and conservation failures emit distinct Antithesis
-safety properties without changing the existing error behavior. Pebble read
-errors remain I/O failures and do not assert missing data. The `nonempty sentinel
+safety properties. The failure *class* is unchanged: each one still returns at
+the same point and stays fatal to the applier, and none became a per-proposal
+rejection. The failure *text* is not. Each message now names the full
+`(ledger, account, asset, color)` identity of the offender it reports, so that
+one deterministic representative is identifiable among offenders that differ
+only by color, and appends how many keys offended. The unexplained-delta check
+is new, so a balanced but unrelated debit/credit pair fails where it previously
+passed. Anything matching sentinel output on exact text has to be updated with
+it. Pebble read errors remain I/O failures and do not assert missing data. The `nonempty sentinel
 verification completed` coverage property is emitted only inside an executed,
 nonempty sentinel callback after all checks succeed; disabled sentinels cannot
 satisfy it.

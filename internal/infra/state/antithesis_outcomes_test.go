@@ -3,26 +3,21 @@
 package state
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// Run real guards in a fresh process: the SDK reads its output environment
-// during package initialization, before any test can call t.Setenv.
+// Run real guards in a fresh process; antithesistest.Emitted carries the
+// reason that is the only way to observe them.
 func TestAntithesisStateEmission(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -61,32 +56,10 @@ func TestAntithesisStateEmission(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			path := filepath.Join(t.TempDir(), "assertions.jsonl")
 			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^"+strings.ReplaceAll(tc.run, "/", "$/^")+"$", "-test.count=1")
-			cmd.Env = append(os.Environ(), "ANTITHESIS_SDK_LOCAL_OUTPUT="+path)
-			output, err := cmd.CombinedOutput()
-			require.NoError(t, err, "%s", output)
-			file, err := os.Open(path)
+			found, err := antithesistest.Emitted(ctx, t.TempDir(), tc.run, tc.property, tc.condition)
 			require.NoError(t, err)
-			defer func() { require.NoError(t, file.Close()) }()
-			found := false
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				var event struct {
-					Assertion *struct {
-						Message   string `json:"message"`
-						Hit       bool   `json:"hit"`
-						Condition bool   `json:"condition"`
-					} `json:"antithesis_assert"`
-				}
-				require.NoError(t, json.Unmarshal(scanner.Bytes(), &event))
-				if a := event.Assertion; a != nil && a.Hit && a.Message == tc.property && a.Condition == tc.condition {
-					found = true
-				}
-			}
-			require.NoError(t, scanner.Err())
 			require.Equal(t, tc.wantHit, found, "property %q, condition %v", tc.property, tc.condition)
 		})
 	}

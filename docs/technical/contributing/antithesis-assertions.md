@@ -36,10 +36,21 @@ the "not taken" coverage edge it would otherwise synthesise — an edge that can
 never be reached, since the condition is constant. Assertions inside a guard are
 still discovered and still registered in the catalog, so no property is lost.
 
-Guard by call frequency: a per-request, per-proposal or per-order path, plus any
-bookkeeping that exists only to feed such a property (the commit-outcome
-counters, for instance). Leave cold invariant branches unguarded — a guard buys
-nothing there and reads worse.
+Guard by call frequency: wrap the SDK call on a per-request, per-proposal or
+per-order path. Leave cold invariant branches unguarded — a guard buys nothing
+there and reads worse.
+
+Guard the SDK call, not the bookkeeping that feeds it, even when that
+bookkeeping exists only for the property. What the guard eliminates is the
+~540 ns and 6 allocations of the call itself, including the details map an
+unarmed build would otherwise still build; the bookkeeping beside it is noise
+by comparison — the eight-element `createdLogs` walk in `applyProposal`
+benchmarks at 4.6 ns and zero allocations, and `resolved++` is one increment.
+So a guard around the bookkeeping buys under 1% of the win and creates a
+genuine hazard: a variable that is correct in an armed build and silently zero
+in production, waiting for whoever first reads it for a metric. The
+commit-outcome counters, `stagedTransactions`, `resolved` and
+`oldTermResolved` are all deliberately unconditional for this reason.
 
 Five builds set `enable_antithesis_sdk`, and each would be silently useless
 without it:
