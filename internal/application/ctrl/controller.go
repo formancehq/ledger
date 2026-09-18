@@ -5,8 +5,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -44,8 +44,8 @@ type Controller interface {
 	GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error)
 
 	// Audit operations
-	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error)
-	GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error)
+	ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error)
+	GetAuditEntry(ctx context.Context, sequence uint64) (*publicauditpb.AuditEntry, error)
 
 	// Signing key operations
 	ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error)

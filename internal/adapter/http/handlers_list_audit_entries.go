@@ -77,7 +77,7 @@ func (s *Server) handleListAuditEntries(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// writeOKChecked (not writeOK): audit DTOs marshal chain-bound submessages
+	// writeOKChecked (not writeOK): public audit views marshal typed submessages
 	// via protojson, which can fail; buffering before the header keeps a marshal
 	// failure a clean 500 instead of a truncated 200 body.
 	writeOKChecked(w, r, entries)

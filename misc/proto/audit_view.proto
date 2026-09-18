@@ -1,0 +1,104 @@
+syntax = "proto3";
+
+package publicaudit;
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/publicauditpb";
+
+import "audit.proto";
+import "common.proto";
+import "raft_cmd.proto";
+
+// AuditEntry is a structured public display, not the original audit preimage.
+// Raw order bytes and signed batch payloads remain private to stored evidence.
+message AuditEntry {
+  fixed64 sequence = 1;
+  common.Timestamp timestamp = 2;
+  fixed64 proposal_id = 3;
+  oneof outcome {
+    audit.AuditSuccess success = 4;
+    AuditFailure failure = 5;
+  }
+  uint32 order_count = 6;
+  repeated AuditItem items = 7; // Detail lookup only; omitted by list reads.
+  repeated string ledgers = 8;
+  bytes hash = 9; // Identity of original evidence; not a hash of this display.
+  uint32 hash_version = 10;
+  common.CallerSnapshot caller_snapshot = 11;
+  common.Idempotency idempotency = 12;
+  SignatureInfo signature = 13;
+}
+
+// Presence records that the original batch carried a signature. This does not
+// assert cryptographic verification by the checker or authenticate this view.
+message SignatureInfo {
+  string key_id = 1;
+}
+
+message AuditItem {
+  uint32 order_index = 1;
+  fixed64 log_sequence = 2;
+  Order order = 3;
+}
+
+// Technical execution metadata is deliberately absent from this public shape.
+message Order {
+  oneof type {
+    LedgerScopedOrder ledger_scoped = 1;
+    SystemScopedOrder system_scoped = 2;
+  }
+}
+
+message LedgerScopedOrder {
+  string ledger = 1;
+  oneof payload {
+    raft.LedgerApplyOrder apply = 2;
+    CreateLedgerOrder create_ledger = 3;
+    raft.DeleteLedgerOrder delete_ledger = 4;
+    raft.MirrorIngestOrder mirror_ingest = 5;
+    raft.PromoteLedgerOrder promote_ledger = 6;
+    raft.SaveLedgerMetadataOrder save_ledger_metadata = 7;
+    raft.DeleteLedgerMetadataOrder delete_ledger_metadata = 8;
+    raft.SaveNumscriptOrder save_numscript = 9;
+    raft.CreatePreparedQueryOrder create_prepared_query = 10;
+    raft.UpdatePreparedQueryOrder update_prepared_query = 11;
+    raft.DeletePreparedQueryOrder delete_prepared_query = 12;
+  }
+}
+
+message SystemScopedOrder {
+  oneof payload {
+    raft.RegisterSigningKeyOrder register_signing_key = 1;
+    raft.RevokeSigningKeyOrder revoke_signing_key = 2;
+    raft.SetSigningConfigOrder set_signing_config = 3;
+    AddEventsSinkOrder add_events_sink = 4;
+    raft.RemoveEventsSinkOrder remove_events_sink = 5;
+    raft.SetMaintenanceModeOrder set_maintenance_mode = 6;
+    raft.CreateQueryCheckpointOrder create_query_checkpoint = 7;
+    raft.DeleteQueryCheckpointOrder delete_query_checkpoint = 8;
+    raft.SetQueryCheckpointScheduleOrder set_query_checkpoint_schedule = 9;
+    raft.DeleteQueryCheckpointScheduleOrder delete_query_checkpoint_schedule = 10;
+    raft.SetClusterPolicyOrder set_cluster_policy = 11;
+  }
+}
+
+// Configuration is normalized for display before annotated secrets are masked.
+message AddEventsSinkOrder {
+  common.SinkConfig config = 1;
+  bool configuration_unavailable = 2;
+}
+
+message CreateLedgerOrder {
+  repeated common.SetMetadataFieldTypeCommand initial_schema = 1;
+  common.LedgerMode mode = 2;
+  common.MirrorSourceConfig mirror_source = 3;
+  map<string, common.AccountType> account_types = 4;
+  common.ChartEnforcementMode default_enforcement_mode = 5;
+  bool configuration_unavailable = 6;
+}
+
+// Historical diagnostic strings can carry connector credentials. The typed
+// reason remains public; exact message/context remain on the original record.
+message AuditFailure {
+  common.ErrorReason reason = 1;
+  string message = 2 [(common.sensitive) = true];
+  map<string, string> context = 3 [(common.sensitive) = true];
+}
