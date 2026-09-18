@@ -33,6 +33,7 @@
     "docs/technical/architecture/subsystems/checker/audit-chain.md"
   ],
   "invariants": [
+    "Post-commit sentinel expectations must follow successful ordered effects, including same-proposal and cross-entry ledger deletion and ephemeral purge. Captured expectations must own reused WriteSet data; legitimate removal must not fail live apply or WAL replay, while missing or changed surviving volumes must remain fatal.",
     "For a fixed committed proposal, Raft index, and prior committed state, every replica and replay must produce the same apply outcome, audit bytes, counters, cache mutations, and durable writes. Wall clock, randomness, goroutine scheduling, map iteration, process identity, host resources, and node-local configuration must not affect that transition.",
     "Node-local flags, environment, startup settings, and binary defaults may gate admission before proposal, but apply must not consult them. A setting that affects committed semantics must arrive as ordered replicated input and be interpreted solely from committed state and proposal bytes.",
     "Every cache-keyed read by an order, technical update, proposal-wide validation, or composed helper must be declared by its producer in plan.Coverage and represented by the correct per-operation coverage bits. Numscript discovery and all non-order producers must enrich or declare their own dependencies before Build; later phases must not widen the read horizon.",
@@ -64,6 +65,7 @@
     "Do model, oracle, restart, divergence, coverage, aliasing, and rotation tests compare authoritative outputs and exact mutation sets across intentionally different local histories, or can they pass because all replicas share the same fixture state and configuration?"
   ],
   "dynamic_checks_to_consider": [
+    "Exercise transaction-then-DeleteLedger in one proposal, multiple entries, and separate commits with sentinel enabled. Include multiple deletion names to expose reused-slice aliasing, a surviving ledger with identical account/asset keys, and deliberate missing/changed surviving rows. Reopen WAL/Pebble and run Applier.RecoverAndReplay plus asynchronous follower catch-up; setup rejection or a disabled sentinel is not proof.",
     "Inventory the production dispatch tables, processing.Scope reads, plan attr-code resolvers, state coverage slots/gated accessors, preload loaders, cache/Bloom registries, and protobuf oneofs. Build an exact declaration-to-enforcement matrix and reject a finding based only on a missing test or textual mismatch.",
     "Use existing deterministic, model, oracle, coverage, cache-divergence, restart, aliasing, technical-update, and generation-boundary tests first. The audit may run allowed read-only or temporary diagnostics but must not edit tracked files; unexecuted scenarios remain reproduction plans.",
     "Replay identical serialized proposals at identical indexes from cloned committed state while varying node-local configuration, clock sources, process environment, map insertion order, and cache Gen0/Gen1 placement; compare ApplyResult, audit bytes, counters, WriteSet/cache deltas, and persisted batch bytes.",
