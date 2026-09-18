@@ -43,16 +43,18 @@ already removed.
 
 ## Declarative ledger indexes
 
-For a Ledger with `spec.indexes`, reconciliation lists the current registry and
-creates only missing indexes. Creation is strict: if another writer creates the
-index after the list, `INDEX_ALREADY_EXISTS` is reported through
-`IndexesSynced=False` and reconciliation is retried. The failed creation adds
-no entry to `status.appliedIndexes`; successful earlier operations in the same
-pass remain recorded. For an identity that was not previously tracked, the next
-pass lists the registry again and leaves the external index unowned. Existing
-ownership entries are retained: replacement of a previously tracked index and
-recovery after a lost successful create response or status update remain
-separate ownership concerns.
+For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
+separate batches tagged with the Ledger CR UID through the existing idempotency
+key. It reconstructs `status.appliedIndexes` from successful audit creation
+records matching the current index creation dates. A crash, lost CLI response,
+or failed status update therefore does not permanently lose attribution.
+Strict creation conflicts are surfaced and retried without adopting the index.
+
+Operator-created indexes must be managed through the Kubernetes spec. External
+indexes are not adopted; replacements already visible during attribution are
+excluded. Manual replacement between verification and the unconditional drop
+can still be deleted: this race is explicitly accepted, and no atomic deletion
+precondition is provided. See the [audit attribution contract](../../docs/technical/architecture/subsystems/indexer/operator-ownership.md).
 
 ## Backup scheduling
 

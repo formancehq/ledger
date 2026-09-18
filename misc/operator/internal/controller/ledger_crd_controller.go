@@ -67,6 +67,8 @@ type LedgerReconciler struct {
 	Dynamic   dynamic.Interface
 	Config    *rest.Config
 	Clientset kubernetes.Interface
+
+	exec ledgerctlExec
 }
 
 func (r *LedgerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, retErr error) {
@@ -543,7 +545,11 @@ func (r *LedgerReconciler) ledgerctlExecOutput(ctx context.Context, namespace, s
 	serverAddr := podSelfServerAddr(headlessServiceName(serviceName), grpcPort)
 	cmd := ledgerctlCommand(serverAddr, tlsMode, args...)
 
-	res, err := podExec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd)
+	exec := r.exec
+	if exec == nil {
+		exec = podExec
+	}
+	res, err := exec(ctx, r.Config, r.Clientset, namespace, pod, ledgerContainer, cmd)
 	if err != nil {
 		return "", fmt.Errorf("ledgerctl %s: %w", args[0], err)
 	}
