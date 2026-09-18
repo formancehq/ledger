@@ -109,7 +109,7 @@ type ClickHouseSink struct {
 
 // NewClickHouseSink creates a new ClickHouse sink, connects, and auto-creates
 // the target table with a structured JSON column.
-func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (result *ClickHouseSink, retErr error) {
+func NewClickHouseSink(ctx context.Context, cfg ClickHouseSinkConfig) (_ *ClickHouseSink, retErr error) {
 	connectionURLs := []string{cfg.DSN}
 	if parsed, err := url.Parse(cfg.DSN); err == nil {
 		// The driver embeds decoded proxy parse errors as text, losing their URL

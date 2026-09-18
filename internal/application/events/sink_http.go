@@ -34,7 +34,7 @@ type HTTPSink struct {
 }
 
 // NewHTTPSink creates a new HTTP webhook sink.
-func NewHTTPSink(cfg HTTPSinkConfig) (result *HTTPSink, retErr error) {
+func NewHTTPSink(cfg HTTPSinkConfig) (_ *HTTPSink, retErr error) {
 	sanitizer := newSinkErrorSanitizer([]string{cfg.Endpoint}, cfg.Secret)
 	defer sanitizer.sanitizeReturned(&retErr)
 	if cfg.Endpoint == "" {

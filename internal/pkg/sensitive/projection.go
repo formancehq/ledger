@@ -51,7 +51,9 @@ func redact(message protoreflect.Message) {
 			if field.Message() != nil {
 				list := value.List()
 				for i := range list.Len() {
-					redact(list.Get(i).Message())
+					if item := list.Get(i); item.IsValid() {
+						redact(item.Message())
+					}
 				}
 			}
 		case field.Message() != nil:
