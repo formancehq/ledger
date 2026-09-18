@@ -116,6 +116,8 @@ func registerCoverage() {
 }
 
 func emitCoverage(cond bool, msg string, details internal.Details, hit bool) {
+	recordCoverageHit(msg, cond, hit)
+
 	assert.AssertRaw(cond, msg, details, coverageClass, "noteQueryCoverage", coverageFile, 0,
 		hit, true, "sometimes", "Sometimes", msg)
 }

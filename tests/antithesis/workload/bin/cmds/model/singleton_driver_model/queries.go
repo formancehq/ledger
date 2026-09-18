@@ -883,8 +883,9 @@ func (c *Checker) sampleTxFilterSeeds(ledger string) txFilterSeeds {
 // genTransactionFilter rolls a query filter for ListTransactions. Sequential
 // rolls try an undeclared-field probe (1/8), a kind-mismatch probe (1/12), a
 // target-invalid condition (1/16), then the no-filter universe (1/4). These
-// odds are conditional on earlier rolls missing. The remaining choices split
-// between indexed metadata/tx-builtin filters and the index-free grammar.
+// odds are conditional on earlier rolls missing. The remainder favours the
+// indexed metadata/tx-builtin filters two to one over the index-free grammar,
+// which needs no index and so proves nothing about the indexed surface.
 func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
 	switch {
 	case oneIn(8):
@@ -902,7 +903,7 @@ func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
 		return filterHasAsset("USD", 2)
 	case random.RandomChoice([]uint8{0, 1, 2, 3}) == 0:
 		return nil // top-level universe (no filter)
-	case random.RandomChoice([]uint8{0, 1}) == 0:
+	case random.RandomChoice([]uint8{0, 1, 2}) != 0:
 		return genTransactionFilterIndexed(seeds, 0)
 	default:
 		return genTransactionFilterFree(0)
@@ -910,20 +911,22 @@ func genTransactionFilter(seeds txFilterSeeds) *commonpb.QueryFilter {
 }
 
 // genTransactionFilterIndexed rolls a transactions filter whose leaves include
-// the index-backed tx builtins — reference and the three date fields — mixed
-// with the index-free leaves. Unlike has-asset on accounts, every tx leaf
+// the index-backed tx builtins — reference, the three date fields and the three
+// address roles — mixed with the index-free leaves. Each branch is weighted by
+// how many distinct indexes it can need, so a family of three shares no less
+// pressure than a single index does. Unlike has-asset on accounts, every tx leaf
 // selects from the same transaction-log universe, so composition needs no
 // special casing: the window evaluator handles any boolean of these.
 func genTransactionFilterIndexed(seeds txFilterSeeds, depth int) *commonpb.QueryFilter {
 	if depth >= maxQueryGenDepth || random.RandomChoice([]uint8{0, 1}) == 0 {
-		switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+		switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 		case 0:
 			return filterReference(seedReference(seeds))
-		case 1, 2:
+		case 1, 2, 3:
 			return genDateLeaf(seeds)
-		case 3:
+		case 4, 5, 6:
 			return genTxAddressLeaf()
-		case 4:
+		case 7, 8:
 			if f := genFieldLeaf(seeds.fields); f != nil {
 				return f
 			}
