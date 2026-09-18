@@ -175,6 +175,11 @@ if err != nil {
 
 ### Lifecycle & context
 
+- The voter, pod, StatefulSet, and cluster-configuration polling helpers apply
+  their timeout to the entire wait, including each in-flight gRPC or Kubernetes
+  request. An earlier caller deadline or cancellation still wins. A response
+  arriving after that context expires is not reported as convergence, and
+  finishing a helper does not cancel its caller's context.
 - Parallel drivers should go through `internal.RunDriver(name, fn)` — it sets up
   the gRPC client, picks a random ledger, and bounds the run with the standard
   10 min deadline.

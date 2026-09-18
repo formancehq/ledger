@@ -134,15 +134,15 @@ func WaitForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceCl
 }
 
 func pollForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, expected int64, timeout time.Duration) bool {
-	deadline := time.After(timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return false
-		case <-deadline:
-			log.Printf("scaling: timed out waiting for %d voters", expected)
-
+			if ctx.Err() == context.DeadlineExceeded {
+				log.Printf("scaling: timed out waiting for %d voters", expected)
+			}
 			return false
 		case <-time.After(5 * time.Second):
 		}
@@ -152,6 +152,9 @@ func pollForVoters(ctx context.Context, clusterClient clusterpb.ClusterServiceCl
 			log.Printf("scaling: cluster state unavailable: %s", err)
 
 			continue
+		}
+		if ctx.Err() != nil {
+			return false
 		}
 
 		if state.GetLeader() == 0 {
@@ -266,16 +269,18 @@ func DeletePod(ctx context.Context, clientset kubernetes.Interface, name string)
 // WaitForPodGone polls until the pod with the given UID is gone or its UID
 // has changed (signalling the StatefulSet has recreated it).
 func WaitForPodGone(ctx context.Context, clientset kubernetes.Interface, name string, originalUID types.UID, timeout time.Duration) bool {
-	deadline := time.After(timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for {
 		select {
 		case <-ctx.Done():
 			return false
-		case <-deadline:
-			return false
 		case <-time.After(2 * time.Second):
 		}
 		pod, err := clientset.CoreV1().Pods(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
+		if ctx.Err() != nil {
+			return false
+		}
 		if apierrors.IsNotFound(err) {
 			return true
 		}
@@ -287,16 +292,18 @@ func WaitForPodGone(ctx context.Context, clientset kubernetes.Interface, name st
 
 // WaitForPodReady polls until the pod is in Ready condition or timeout expires.
 func WaitForPodReady(ctx context.Context, clientset kubernetes.Interface, name string, timeout time.Duration) bool {
-	deadline := time.After(timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for {
 		select {
 		case <-ctx.Done():
 			return false
-		case <-deadline:
-			return false
 		case <-time.After(2 * time.Second):
 		}
 		pod, err := clientset.CoreV1().Pods(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
+		if ctx.Err() != nil {
+			return false
+		}
 		if err != nil {
 			continue
 		}
@@ -318,17 +325,19 @@ func WaitForPodReady(ctx context.Context, clientset kubernetes.Interface, name s
 // name). Transient API errors and post-creation NotFound (the STS was
 // deleted while we wait) keep retrying until the deadline.
 func WaitForStatefulSetReady(ctx context.Context, clientset kubernetes.Interface, name string, expected int32, timeout time.Duration) bool {
-	deadline := time.After(timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	seen := false
 	for {
 		select {
 		case <-ctx.Done():
 			return false
-		case <-deadline:
-			return false
 		case <-time.After(2 * time.Second):
 		}
 		sts, err := clientset.AppsV1().StatefulSets(ClusterNamespace()).Get(ctx, name, metav1.GetOptions{})
+		if ctx.Err() != nil {
+			return false
+		}
 		if err != nil {
 			if apierrors.IsNotFound(err) && !seen {
 				log.Printf("WaitForStatefulSetReady: StatefulSet %q not found in namespace %q — wrong name?",
@@ -407,16 +416,21 @@ func WaitForClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterSe
 // entries reach followers a few hundred ms later, so a tight poll absorbs the
 // natural propagation delay without false-flagging an FSM divergence.
 func WaitForClusterConfigOnNode(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, nodeID uint32, predicate func(*commonpb.ClusterConfig) bool, timeout time.Duration) bool {
-	deadline := time.After(timeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	for {
+		if ctx.Err() != nil {
+			return false
+		}
 		cfg, err := GetClusterConfig(ctx, clusterClient, nodeID)
+		if ctx.Err() != nil {
+			return false
+		}
 		if err == nil && cfg != nil && predicate(cfg) {
 			return true
 		}
 		select {
 		case <-ctx.Done():
-			return false
-		case <-deadline:
 			return false
 		case <-time.After(1 * time.Second):
 		}
