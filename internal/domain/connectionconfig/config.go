@@ -18,7 +18,6 @@ import (
 // would expose an IAM bearer credential. Parser failures remain distinct.
 var ErrPostgresIAMRequiresTLS = errors.New("AWS IAM requires explicit TLS on every PostgreSQL endpoint")
 
-
 // Mirror normalizes a source without changing its accepted, signed input.
 func Mirror(input *commonpb.MirrorSourceConfigInput) (*commonpb.MirrorSourceConfig, error) {
 	if input == nil {
