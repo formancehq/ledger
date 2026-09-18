@@ -31,6 +31,10 @@ import (
 func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
 	h := blake3.New()
 
+	// Every h.Write below is intentionally unchecked: blake3.Hasher satisfies
+	// hash.Hash, whose Write never returns an error, and it writes to memory
+	// with no capacity bound. Checking would add a branch that cannot be taken
+	// and cannot be tested.
 	writeField := func(b []byte) {
 		var lenBuf [binary.MaxVarintLen64]byte
 
