@@ -25,7 +25,7 @@ const gateCheckpointID = uint64(3)
 
 // newCheckpointGateFixture registers query checkpoint gateCheckpointID and
 // materializes both of its halves, each marked ready.
-func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
+func newCheckpointGateFixture(t *testing.T, seed ...func(*dal.Store)) *BucketServiceServerImpl {
 	t.Helper()
 
 	store, err := dal.NewStore(t.TempDir(), testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
@@ -35,6 +35,10 @@ func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: gateCheckpointID}))
 	require.NoError(t, batch.Commit())
+
+	for _, populate := range seed {
+		populate(store)
+	}
 
 	_, err = store.CreateQueryCheckpoint(gateCheckpointID)
 	require.NoError(t, err)
@@ -47,7 +51,7 @@ func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
 	require.NoError(t, readIndex.CreateCheckpoint(readIndexPath))
 	require.NoError(t, dal.MarkCheckpointReady(readIndexPath))
 
-	return &BucketServiceServerImpl{logger: testLogger(), store: store}
+	return &BucketServiceServerImpl{logger: testLogger(), store: store, readStore: readIndex}
 }
 
 func unmark(t *testing.T, dir string) {
