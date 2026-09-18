@@ -2660,15 +2660,15 @@ func (a *Admission) observeRevertTarget(ledgerName string, transactionID uint64)
 	state, err := a.attrs.Transaction.Get(a.store, canonical)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return observedRevertTarget(nil, false), nil
+			return absentRevertTarget(), nil
 		}
 
 		return revertTargetObservation{}, fmt.Errorf("reading transaction state: %w", err)
 	}
 
 	if state == nil {
-		return observedRevertTarget(nil, false), nil
+		return absentRevertTarget(), nil
 	}
 
-	return observedRevertTarget(state.GetPostings(), true), nil
+	return presentRevertTarget(state.GetPostings()), nil
 }

@@ -191,14 +191,14 @@ func TestExtractNeededVolumes(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
-			observedRevertTarget([]*commonpb.Posting{
+			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
 					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
-			}, true),
+			}),
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -246,7 +246,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
-			observedRevertTarget([]*commonpb.Posting{
+			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
@@ -259,7 +259,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 					Amount:      commonpb.NewUint256FromUint64(50),
 					Asset:       "USD",
 				},
-			}, true),
+			}),
 		)
 
 		orders := []*raftcmdpb.Order{
@@ -660,14 +660,14 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
 			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
-			observedRevertTarget([]*commonpb.Posting{
+			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
 					Destination: "user:alice",
 					Amount:      commonpb.NewUint256FromUint64(100),
 					Asset:       "USD",
 				},
-			}, true),
+			}),
 		)
 
 		orders := []*raftcmdpb.Order{
