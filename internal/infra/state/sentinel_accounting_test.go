@@ -251,3 +251,36 @@ func TestVerifyPostCommitVolumesReadFailure(t *testing.T) {
 	require.ErrorContains(t, err, "reading volume from pebble for verification")
 	require.NotContains(t, err.Error(), "volume missing")
 }
+
+// Two offenders that differ only by color are the case the deterministic
+// representative exists for: map iteration would otherwise name either one,
+// and a message without the color could not tell which was named. Running the
+// same input repeatedly must produce one message, and that message must be the
+// lowest-sorting offender's.
+func TestVerifyVolumeDeltasMatchPostingsNamesTheLowestColorDeterministically(t *testing.T) {
+	t.Parallel()
+
+	// Two colors of the same (account, asset) pair, both debited and credited,
+	// so the log explains neither: both become unexplained offenders.
+	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
+		sentinelVolume("source", "USD", "red", 0, 0, 0, 7),
+		sentinelVolume("destination", "USD", "red", 0, 0, 7, 0),
+		sentinelVolume("source", "USD", "blue", 0, 0, 0, 7),
+		sentinelVolume("destination", "USD", "blue", 0, 0, 7, 0),
+	}
+
+	first := verifyVolumeDeltasMatchPostings(updates, nil)
+	require.Error(t, first)
+	require.ErrorContains(t, first, "unexpected volume delta")
+	require.ErrorContains(t, first, "(4 offending keys)")
+
+	// "blue" sorts before "red" under compareVolumeKeys, and "destination"
+	// before "source", so exactly one of the four can be named.
+	require.ErrorContains(t, first, `"test"/destination/USD/blue`)
+	require.NotContains(t, first.Error(), "/red", "only one offender may be named")
+
+	for range 20 {
+		require.Equal(t, first.Error(), verifyVolumeDeltasMatchPostings(updates, nil).Error(),
+			"map iteration must not change which offender is named")
+	}
+}

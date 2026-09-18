@@ -86,10 +86,14 @@ install-client:
 test:
     go test -race ./... -timeout 20m
 
-# Compile every internal package with the Antithesis SDK armed and run the
-# assertion-emission contract tests. The SDK is pinned to the fork's
-# default-no-op build, which compiles to no-ops unless enable_antithesis_sdk is
-# set, so the default suite above cannot observe a single assertion emit.
+# Compile the packages that hold guarded code with the Antithesis SDK armed and
+# run the assertion-emission contract tests. The trees below are the target's
+# reach, and check-repo-invariants fails any `if assert.Enabled` outside them,
+# so adding a guard elsewhere means widening this list.
+#
+# The SDK is pinned to the fork's default-no-op build, which compiles to no-ops
+# unless enable_antithesis_sdk is set, so the default suite above cannot
+# observe a single assertion emit.
 #
 # It carries a coverage profile because the guarded assertion branches are
 # reachable only in this shape: without it those lines are missing from every

@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
 	"slices"
 
@@ -380,36 +381,26 @@ func verifyVolumeDeltasMatchPostings(
 	if key, ok := lowestVolumeKey(missing); ok {
 		exp := expected[key]
 
-		assert.Unreachable("posting has a volume update", map[string]any{
-			"ledger": key.LedgerName, "account": key.Account,
-			"asset": key.Asset, "color": key.Color,
-			"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
-			"offenders": len(missing),
-		})
-
-		return fmt.Errorf(
-			"volume delta missing for %q/%s/%s/%s: expected input_delta=%s output_delta=%s (%d offending keys)",
-			key.LedgerName, key.Account, key.Asset, key.Color,
-			exp.input.String(), exp.output.String(), len(missing),
+		return reportVolumeOffense("posting has a volume update", key, len(missing),
+			map[string]any{
+				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+			},
+			"volume delta missing",
+			fmt.Sprintf("expected input_delta=%s output_delta=%s", exp.input, exp.output),
 		)
 	}
 
 	if key, ok := lowestVolumeKey(mismatched); ok {
 		exp, act := expected[key], actual[key]
 
-		assert.Unreachable("volume delta matches posting quantities", map[string]any{
-			"ledger": key.LedgerName, "account": key.Account,
-			"asset": key.Asset, "color": key.Color,
-			"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
-			"actualInput": act.input.String(), "actualOutput": act.output.String(),
-			"offenders": len(mismatched),
-		})
-
-		return fmt.Errorf(
-			"volume delta mismatch for %q/%s/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s) (%d offending keys)",
-			key.LedgerName, key.Account, key.Asset, key.Color,
-			exp.input.String(), exp.output.String(),
-			act.input.String(), act.output.String(), len(mismatched),
+		return reportVolumeOffense("volume delta matches posting quantities", key, len(mismatched),
+			map[string]any{
+				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+				"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			},
+			"volume delta mismatch",
+			fmt.Sprintf("expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
+				exp.input, exp.output, act.input, act.output),
 		)
 	}
 
@@ -428,21 +419,50 @@ func verifyVolumeDeltasMatchPostings(
 	if key, ok := lowestVolumeKey(unexplained); ok {
 		act := actual[key]
 
-		assert.Unreachable("nonzero volume delta is explained by postings", map[string]any{
-			"ledger": key.LedgerName, "account": key.Account,
-			"asset": key.Asset, "color": key.Color,
-			"actualInput": act.input.String(), "actualOutput": act.output.String(),
-			"offenders": len(unexplained),
-		})
-
-		return fmt.Errorf(
-			"unexpected volume delta for %q/%s/%s/%s: input_delta=%s output_delta=%s (%d offending keys)",
-			key.LedgerName, key.Account, key.Asset, key.Color,
-			act.input.String(), act.output.String(), len(unexplained),
+		return reportVolumeOffense("nonzero volume delta is explained by postings", key, len(unexplained),
+			map[string]any{
+				"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			},
+			"unexpected volume delta",
+			fmt.Sprintf("input_delta=%s output_delta=%s", act.input, act.output),
 		)
 	}
 
 	return nil
+}
+
+// reportVolumeOffense names one representative offender to both sinks the
+// delta checks report through: the Antithesis property and the returned error.
+//
+// The identity lives here rather than at each call site because it kept
+// drifting apart when it did not — `volume delta missing` and
+// `volume delta mismatch` printed three fields while the assertion beside them
+// printed four, which made the representative `lowestVolumeKey` deterministically
+// chose impossible to tell from any other offender differing only by color.
+// A fourth check gets the identity, the offender count and the ordering for
+// free; what it supplies is the property, the summary and its own quantities.
+func reportVolumeOffense(
+	property string,
+	key domain.VolumeKey,
+	offenders int,
+	facts map[string]any,
+	summary string,
+	quantities string,
+) error {
+	details := map[string]any{
+		"ledger": key.LedgerName, "account": key.Account,
+		"asset": key.Asset, "color": key.Color,
+		"offenders": offenders,
+	}
+
+	maps.Copy(details, facts)
+
+	assert.Unreachable(property, details)
+
+	return fmt.Errorf(
+		"%s for %q/%s/%s/%s: %s (%d offending keys)",
+		summary, key.LedgerName, key.Account, key.Asset, key.Color, quantities, offenders,
+	)
 }
 
 // lowestVolumeKey names one deterministic representative from a set of

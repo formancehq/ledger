@@ -66,6 +66,19 @@ func main() {
 		}
 	}
 
+	if !fuzzInventoryOnly {
+		armedFindings, err := checkArmedCoverage(files)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "check-repo-invariants: checking armed coverage: %v\n", err)
+			failed = true
+		}
+
+		for _, item := range armedFindings {
+			printFinding(item)
+			failed = true
+		}
+	}
+
 	fuzzFindings, err := checkFuzzInventory(files)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "check-repo-invariants: checking fuzz inventory: %v\n", err)

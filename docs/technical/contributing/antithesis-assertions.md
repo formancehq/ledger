@@ -182,7 +182,13 @@ AI_REVIEW_BASE_SHA=<exact-base-sha> bash scripts/agent-check-pr
 
 The default suite compiles the assertion sites but cannot observe one emit, so
 `just test-antithesis-assertions` is the target that proves emission: it builds
-every internal package with `enable_antithesis_sdk` and runs the contract tests.
+the packages that hold guarded code with `enable_antithesis_sdk` and runs the
+contract tests. It names those trees rather than the whole module, because an
+armed run of everything costs far more than the guarded code is worth — so a
+guard added outside them would never execute armed and never reach a coverage
+profile, while every gate stayed green. `check-repo-invariants` rejects that:
+an `if assert.Enabled` outside the recipe's trees fails
+`ARMED_COVERAGE_UNREACHABLE`, and widening the recipe widens what it accepts.
 
 `TestAntithesisStateEmission` and each affected package's
 `TestAntithesisContractEmission` run deliberately corrupt fixtures in isolated
