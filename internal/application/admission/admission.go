@@ -1437,10 +1437,10 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// so if apply finds the transaction after all it rejects the order
 			// before reading an undeclared volume instead of tripping the
 			// coverage gate.
-			// Unobserved and absent both declare nothing, and only a present
-			// observation carries postings, so this pass needs no state test:
-			// bindRevertTargetDigest refuses the unobserved case before the
-			// order can reach Raft.
+			// No state test: the loop declares one need per stored posting, and
+			// only a present observation ever carries any, so unobserved and
+			// absent both fall through declaring nothing. bindRevertTargetDigest
+			// refuses the unobserved case before the order can reach Raft.
 			observation := overlay.revertTarget(ledgerName, applyData.RevertTransaction)
 			for _, posting := range observation.postings {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())

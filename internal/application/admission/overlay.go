@@ -99,8 +99,16 @@ type bulkOverlay struct {
 //     local store (missing, or committed but not yet applied here). That is an
 //     observation in its own right: it is bound into revert_target_digest so
 //     apply rejects a stale view before reading an undeclared volume.
-//   - revertTargetPresent — admission read the target's postings and declares
-//     volume coverage from them.
+//   - revertTargetPresent — admission read the target and declares volume
+//     coverage from its postings, exactly as stored.
+//
+// Present carries the stored posting set verbatim, including an empty one. That
+// is not folded into absent on purpose: the two must stay distinguishable in the
+// digest, and a stored transaction with no postings is a broken projection that
+// processRevertTransaction rejects as ErrTransactionStateInconsistent before the
+// observation check ever runs (invariant #7). Create refuses an empty
+// transaction, so the case does not arise; reporting it as absent would classify
+// a broken projection as a stale or same-batch mismatch instead.
 type revertTargetState uint8
 
 const (
