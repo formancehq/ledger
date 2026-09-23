@@ -302,7 +302,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -426,7 +426,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -734,7 +734,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -781,7 +781,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -1075,7 +1075,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -1356,7 +1356,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -1415,7 +1415,7 @@ Delete metadata by key
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -1525,7 +1525,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -2095,7 +2095,7 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -2585,7 +2585,7 @@ file: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -2632,7 +2632,7 @@ Accept: application/octet-stream
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3143,7 +3143,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3188,7 +3188,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3234,7 +3234,7 @@ Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). A
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3282,7 +3282,7 @@ Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All 
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3541,7 +3541,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3586,7 +3586,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3631,7 +3631,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -3676,7 +3676,7 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 ```
 
@@ -5507,7 +5507,7 @@ Volumes aggregated per account and per asset
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "invalid account address: user:john:"
 }
 
 ```
@@ -5518,7 +5518,7 @@ Volumes aggregated per account and per asset
 |---|---|---|---|---|
 |errorCode|[V2ErrorsEnum](#schemav2errorsenum)|true|none|Machine-readable error code identifying the failure|
 |errorMessage|string|true|none|Human-readable description of the error|
-|details|string|false|none|Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it|
+|details|string|false|none|Optional additional context about the error. Currently only returned for some request validation errors, and it may duplicate `errorMessage`. Clients should not parse this field or rely on its presence.|
 
 <h2 id="tocS_V2ErrorsEnum">V2ErrorsEnum</h2>
 <!-- backwards compatibility -->
