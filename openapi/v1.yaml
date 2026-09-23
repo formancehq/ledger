@@ -1525,11 +1525,8 @@ components:
           example: account had insufficient funds
         details:
           type: string
-          description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+          description: Optional, human-readable details providing additional context about certain validation errors.
+          example: 'invalid account address: user:john:'
         transaction:
           $ref: '#/components/schemas/Transaction'
     Account:
@@ -1931,11 +1928,8 @@ components:
           example: '[INSUFFICIENT_FUND] account had insufficient funds'
         details:
           type: string
-          description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+          description: Optional, human-readable details providing additional context about certain validation errors.
+          example: 'invalid account address: user:john:'
     ErrorsEnum:
       type: string
       description: Machine-readable error code identifying the failure

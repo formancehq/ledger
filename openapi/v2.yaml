@@ -2946,11 +2946,8 @@ components:
           example: "[VALIDATION] invalid 'cursor' query param"
         details:
           type: string
-          description: >-
-            Optional link carrying additional context about the error, such as a Numscript playground URL
-            reproducing it
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+          description: Optional, human-readable details providing additional context about certain validation errors.
+          example: 'invalid account address: user:john:'
     V2ErrorsEnum:
       type: string
       description: Machine-readable error code identifying the failure
