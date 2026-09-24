@@ -16,7 +16,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
@@ -500,10 +502,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	proposal := runResult.Proposal
 	fsmFuture := runResult.FSMFuture
-	go func(release func()) {
-		_, _ = fsmFuture.Wait(context.Background())
-		release()
-	}(releaseLifecycle)
+	releaseMirrorLifecycleWhenTerminal(ctx, fsmFuture, releaseLifecycle)
 	releaseLifecycle = nil
 
 	// Start prefetching the next batch while waiting for Raft consensus.
@@ -582,6 +581,23 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.statusClearConfirmed = true
 
 	return hasMore, nil
+}
+
+// releaseMirrorLifecycleWhenTerminal keeps account lifecycle serialization
+// through FSM application while the mirror batch is live. If that wait is
+// abandoned, the proposal's predicted Raft index remains the ordering fence:
+// a late proposal can only apply at that index or be rejected as stale, so
+// retaining the local locks beyond the worker context cannot add safety and
+// would block a replacement worker indefinitely.
+func releaseMirrorLifecycleWhenTerminal(
+	ctx context.Context,
+	fsmFuture *futures.Future[state.ApplyResult],
+	release func(),
+) {
+	go func() {
+		_, _ = fsmFuture.Wait(ctx)
+		release()
+	}()
 }
 
 // drainPrefetch waits for a background prefetch goroutine to complete,

@@ -1054,9 +1054,11 @@ func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
 		createdTransactionPayload(1, rebuildTestPosting("world", "orders:1", "USD", 5)),
 	)))
-	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger",
+	drain := applyLedgerLog(3, "ledger",
 		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
-	)))
+	)
+	drain.GetPayload().GetApply().Log.PurgedAccounts = []string{"orders:1"}
+	require.NoError(t, batch.SetProto(coldLogKey(3), drain))
 	// logs 2-3 form one proposal, so orders:1 nets to zero at the boundary.
 	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
 	require.NoError(t, batch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 3)))
@@ -1086,26 +1088,38 @@ func TestRebuildDelta_PurgesCheckpointEraEphemeralAccountState(t *testing.T) {
 	metadataKey := domain.MetadataKey{AccountKey: volumeKey.AccountKey, Key: "holdId"}
 
 	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, "ledger", &commonpb.LedgerInfo{
+		Name: "ledger",
+		AccountTypes: map[string]*commonpb.AccountType{
+			"orders": {
+				Name:        "orders",
+				Pattern:     "orders:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		},
+	}))
 	_, err := attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(5)})
 	require.NoError(t, err)
 	_, err = attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("hold-1"))
 	require.NoError(t, err)
-	purge := applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{})
+	purge := applyLedgerLog(2, "ledger",
+		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
+	)
 	purge.GetPayload().GetApply().Log.PurgedAccounts = []string{"orders:1"}
 	require.NoError(t, batch.SetProto(coldLogKey(2), purge))
 	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 2, 2)))
 	require.NoError(t, batch.Commit())
 
-	require.ErrorContains(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0), "purged_accounts projection")
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0))
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 	volume, err := attrs.Volume.Get(handle, volumeKey.Bytes())
 	require.NoError(t, err)
-	require.NotNil(t, volume)
+	require.Nil(t, volume)
 	metadata, err := attrs.Metadata.Get(handle, metadataKey.Bytes())
 	require.NoError(t, err)
-	require.NotNil(t, metadata)
+	require.Nil(t, metadata)
 }
 
 // newAttributeReplayWriter builds an isolated writer for regression tests of

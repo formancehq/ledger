@@ -1136,6 +1136,58 @@ func (w *attributeReplayWriter) Accounts(ledger string) ([]string, error) {
 	return out, nil
 }
 
+func (w *attributeReplayWriter) AccountHasNonZeroVolume(ledger, account string) (bool, error) {
+	prefix := domain.LedgerScopedPrefix(ledger)
+	prefix = append(prefix, account...)
+	prefix = append(prefix, dal.CanonicalKeySepVolume)
+	lower := append([]byte{dal.ZoneAttributes, dal.SubAttrVolume}, prefix...)
+	upper := append([]byte(nil), lower...)
+	upper[len(upper)-1]++
+
+	seen := make(map[string]struct{})
+	iter, err := dal.NewBoundedIter(w.readHandle, lower, upper)
+	if err != nil {
+		return false, err
+	}
+	for iter.First(); iter.Valid(); iter.Next() {
+		canonical := append([]byte(nil), iter.Key()[2:]...)
+		seen[string(canonical)] = struct{}{}
+		pair, err := w.GetVolume(canonical)
+		if err != nil {
+			_ = iter.Close()
+
+			return false, err
+		}
+		if pair != nil && pair.GetInput().ToBigInt().Cmp(pair.GetOutput().ToBigInt()) != 0 {
+			_ = iter.Close()
+
+			return true, nil
+		}
+	}
+	if err := iter.Error(); err != nil {
+		_ = iter.Close()
+
+		return false, err
+	}
+	if err := iter.Close(); err != nil {
+		return false, err
+	}
+
+	for canonical, pair := range w.pendingVolumes {
+		if pair == nil || !strings.HasPrefix(canonical, string(prefix)) {
+			continue
+		}
+		if _, ok := seen[canonical]; ok {
+			continue
+		}
+		if pair.GetInput().ToBigInt().Cmp(pair.GetOutput().ToBigInt()) != 0 {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
 // stream does not carry: MirrorFillGap's skipped transaction ids (FilledGapLog
 // keeps only the original v2 id) and every MirrorIngest's source v2 log id

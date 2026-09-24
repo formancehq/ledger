@@ -1,17 +1,36 @@
 package mirror
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestReleaseMirrorLifecycleWhenFSMWaitIsAbandoned(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	released := make(chan struct{})
+	releaseMirrorLifecycleWhenTerminal(ctx, futures.New[state.ApplyResult](), func() { close(released) })
+	cancel()
+
+	select {
+	case <-released:
+	case <-time.After(time.Second):
+		t.Fatal("abandoned FSM wait retained account lifecycle locks")
+	}
+}
 
 func TestExpandAccountLifecycleCoverageIncludesPersistedMirrorVolumes(t *testing.T) {
 	t.Parallel()
