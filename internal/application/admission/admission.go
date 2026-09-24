@@ -2537,16 +2537,15 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			return nil, fmt.Errorf("observing revert target: %w", err)
 		}
 
-		overlay.recordRevertTarget(domain.TransactionKey{LedgerName: apply.GetLedger(), ID: txID}, observation)
-
-		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId:   txID,
-				Force:           data.RevertTransaction.GetForce(),
-				AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
-				Metadata:        data.RevertTransaction.GetMetadata(),
-			},
+		revert := &raftcmdpb.RevertTransactionOrder{
+			TransactionId:   txID,
+			Force:           data.RevertTransaction.GetForce(),
+			AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
+			Metadata:        data.RevertTransaction.GetMetadata(),
 		}
+		overlay.recordRevertTarget(apply.GetLedger(), revert, observation)
+
+		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: revert}
 	default:
 		return nil, fmt.Errorf("unsupported apply data type: %T", apply.GetAction().GetData())
 	}

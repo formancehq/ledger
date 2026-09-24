@@ -28,7 +28,7 @@ func TestExtractLedgerScopedNeeds_CoversEveryPayloadVariant(t *testing.T) {
 	// Revert original postings live in the overlay sidecar, not on the order.
 	revertOverlay := newBulkOverlay()
 	revertOverlay.recordRevertTarget(
-		domain.TransactionKey{LedgerName: wrapperTestLedger, ID: 13},
+		wrapperTestLedger, &raftcmdpb.RevertTransactionOrder{TransactionId: 13},
 		presentRevertTarget([]*commonpb.Posting{{Source: "world", Destination: "user:eve", Asset: "USD"}}),
 	)
 

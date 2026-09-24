@@ -198,10 +198,18 @@ func newBulkOverlay() *bulkOverlay {
 	}
 }
 
-// recordRevertTarget stores what admission observed of a revert target so later
-// passes read it without re-fetching.
-func (o *bulkOverlay) recordRevertTarget(key domain.TransactionKey, observation revertTargetObservation) {
-	o.revertTargets[key] = observation
+// recordRevertTarget stores what admission observed of a revert order's target
+// so later passes read it without re-fetching.
+//
+// It takes the order, like revertTarget, rather than a caller-built key: both
+// sides derive the key through revertTargetKey, so the writer cannot record
+// under a key the readers never look up.
+func (o *bulkOverlay) recordRevertTarget(
+	ledgerName string,
+	revert *raftcmdpb.RevertTransactionOrder,
+	observation revertTargetObservation,
+) {
+	o.revertTargets[revertTargetKey(ledgerName, revert)] = observation
 }
 
 // revertTarget returns what admission observed of a revert order's target. A

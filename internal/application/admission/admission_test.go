@@ -190,7 +190,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 		// order-build time), not on the wire order.
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
-			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
+			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
 			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
@@ -245,7 +245,7 @@ func TestExtractNeededVolumes(t *testing.T) {
 
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
-			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
+			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
 			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
@@ -659,7 +659,7 @@ func TestExtractNeededVolumes_Force(t *testing.T) {
 		// force=true on revert still preloads all volumes
 		overlay := newBulkOverlay()
 		overlay.recordRevertTarget(
-			domain.TransactionKey{LedgerName: testLedgerName, ID: 1},
+			testLedgerName, &raftcmdpb.RevertTransactionOrder{TransactionId: 1},
 			presentRevertTarget([]*commonpb.Posting{
 				{
 					Source:      "world",
