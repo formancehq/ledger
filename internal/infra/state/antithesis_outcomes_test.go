@@ -122,11 +122,12 @@ func TestPreparedBatchOutcomeFacts(t *testing.T) {
 	require.NoError(t, err)
 	defer first.Close()
 	require.Equal(t, 2, first.Result.Results[0].createdTransactions)
-	txID := first.Result.Results[0].Logs[0].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
+	created := first.Result.Results[0].Logs[0].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction()
+	txID := created.GetId()
 
 	// Prepare a different outcome before committing the first batch, just as
 	// the pipelined applier can. Neither fact set may follow the live WriteSet.
-	revertProposal := makeProposal(3, revertTransactionOrder("outcomes", txID))
+	revertProposal := makeProposal(3, revertObservedTransactionOrder("outcomes", txID, created.GetPostings()))
 	revertProposal.ExecutionPlan.Attributes = append(revertProposal.ExecutionPlan.Attributes,
 		buildVolumePreloads([]*raftcmdpb.Order{proposal.GetOrders()[0]})...)
 	second, err := fsm.PrepareEntries(ctx, store, makeEntry(t, 3, revertProposal))

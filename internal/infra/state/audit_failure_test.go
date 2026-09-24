@@ -370,6 +370,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"transactionId": "91"},
 		},
 		{
+			name:        "RevertTargetCreatedInBatch",
+			err:         &domain.ErrRevertTargetCreatedInBatch{TransactionID: 91},
+			wantReason:  domain.ErrReasonRevertTargetCreatedInBatch,
+			wantContext: map[string]string{"transactionId": "91"},
+		},
+		{
 			name: "TransactionStateInconsistent",
 			err: &domain.ErrTransactionStateInconsistent{
 				TransactionID: 91,

@@ -77,7 +77,7 @@ projection gap, not an exemption created by the mirror-date change.
 
 `AuditItem.serialized_order` stores the *business-intent* bytes of the order — the
 order with its `OrderTechnical` sub-message (`coverage_bits`,
-`inputs_resolution_hash`, `preload_unavailable`) excluded. These fields are
+`inputs_resolution_hash`, `preload_unavailable`, `revert_target_digest`) excluded. These fields are
 admission-derived execution metadata that rides in the Raft entry for the FSM apply
 path but is not part of the accepted user intent, so it must not participate in the
 audit hash. The exclusion is defined once in `processing.MarshalOrderBusinessIntent`
@@ -120,18 +120,30 @@ Because the apply path cannot read Pebble (invariant #3), the value comes from t
 cache the preload seeded — never from the order.
 
 **Revert is the canonical example.** `RevertTransactionOrder` carries only
-`transaction_id`, `force`, `at_effective_date`, `metadata`, and `expand_volumes`.
+`transaction_id`, `force`, `at_effective_date`, and `metadata`.
 The original postings the FSM reverses are **not** on the order: admission
 preloads the target `TransactionState` (`addTransactionTargetNeeds`) and
 `processRevertTransaction` reads `origState.GetPostings()` through the coverage
-gate. Admission still resolves the postings at order-build time — from the
+gate. Admission still observes the target at order-build time — from the
 `Transaction` attribute — to declare the volume-preload coverage
-the reversed postings touch (invariant #9), but it holds them in an
-admission-local sidecar (`bulkOverlay.revertOriginalPostings`), never on the wire
-order. A revert reads
+the reversed postings touch (invariant #9), but it holds that observation (absent,
+or present with its postings) in an admission-local sidecar
+(`bulkOverlay.revertTargets`), never in the business payload. A revert reads
 its postings from the surviving projection; a missing state for an *allocated* id
 is an inconsistency surfaced loudly (invariant #7), not a routine not-found —
 that case is caught earlier by the `txID >= NextTransactionId` boundary check.
+
+The one piece of that observation that does ride the wire is technical:
+`OrderTechnical.revert_target_digest`, a digest of what admission saw. Admission
+reads the target with no read barrier, so a target committed but not yet applied
+on the admitting node reads as absent and the order declares no volume coverage
+for it. The FSM re-derives the digest from the postings it reads and rejects a
+mismatch — as `STALE_INPUTS_RESOLUTION`, or `REVERT_TARGET_CREATED_IN_BATCH` when
+the target is created in the same batch — before any volume read, so a
+coverage-gate miss keeps meaning an admission bug. The digest is excluded from the
+business-intent hash with the rest of `OrderTechnical`, and the checker does not
+read it: it describes admission's view of the target, not the accepted intent, so
+there is nothing for audit verification to re-derive.
 
 ## Mirror ingestion position
 

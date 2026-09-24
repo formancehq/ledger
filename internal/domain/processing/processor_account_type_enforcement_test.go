@@ -90,15 +90,17 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	setupLedgersStub(mockStore).expectGet(domain.LedgerKey{Name: ledger}, ledgerInfo.AsReader(), nil)
 	setupBoundariesStub(mockStore).expectGet(domain.LedgerKey{Name: ledger}, boundaries.AsReader(), nil)
 
+	targetPostings := []*commonpb.Posting{{
+		Source:      "world",
+		Destination: "legacy:merchant",
+		Amount:      commonpb.NewUint256FromUint64(100),
+		Asset:       "USD",
+	}}
+
 	transactionStates := &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{}
 	transactionStates.expectGet(txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
-		Postings: []*commonpb.Posting{{
-			Source:      "world",
-			Destination: "legacy:merchant",
-			Amount:      commonpb.NewUint256FromUint64(100),
-			Asset:       "USD",
-		}},
+		Postings:     targetPostings,
 	}).AsReader(), nil)
 	mockStore.EXPECT().TransactionStates().Return(transactionStates).AnyTimes()
 
@@ -116,6 +118,11 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(50)).AnyTimes()
 
 	order := &raftcmdpb.Order{
+		// Admission binds what it observed of the target on every revert order;
+		// apply rejects one that carries none.
+		Technical: &raftcmdpb.OrderTechnical{
+			RevertTargetDigest: domain.RevertTargetDigest(targetPostings, true),
+		},
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,

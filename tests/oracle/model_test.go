@@ -791,3 +791,27 @@ func TestGlobalState_Apply_CreateIndexRejectsDuplicates(t *testing.T) {
 		removed.State.Apply(bulkOf(oracletest.CreateIndexReq(metaID))).Reason,
 		"the index died with its declaration, so this is a fresh creation again")
 }
+
+// TestApplyRevert_TargetCreatedInSameBatch pins the prediction for a batch that
+// reverts a transaction it also creates. Admission resolves a revert's original
+// postings from the local store only, and the bulk overlay does not carry
+// transactions the batch itself creates, so it cannot declare the volume
+// coverage apply needs. The server rejects the whole batch permanently: the
+// rejection un-creates the target, so an identical retry reproduces the same
+// observation and a retryable answer would never converge.
+func TestApplyRevert_TargetCreatedInSameBatch(t *testing.T) {
+	t.Parallel()
+
+	sameBatch := NewGlobalState().Apply(bulkOf(
+		oracletest.TxReq("world", "x:1", "USD", 10),
+		oracletest.RevertReqL("L", 1, true),
+	))
+
+	require.False(t, sameBatch.OK)
+	require.Equal(t, domain.ErrReasonRevertTargetCreatedInBatch, sameBatch.Reason)
+
+	// The same revert in a later batch is ordinary and still commits.
+	created := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "x:1", "USD", 10)))
+	require.True(t, created.OK)
+	require.True(t, created.State.Apply(bulkOf(oracletest.RevertReqL("L", 1, true))).OK)
+}

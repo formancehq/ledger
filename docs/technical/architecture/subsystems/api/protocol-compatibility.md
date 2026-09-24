@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"10"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"11"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 10:
+leader. For example, with a schema implementing revision 11:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 10' \
+grpcurl -plaintext -H 'ledger-protocol-version: 11' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -143,6 +143,37 @@ revision-9 peer applied them and returned success. The `.proto` text is
 unchanged and `LEDGER_DELETED` was already part of the error contract, so the
 difference is invisible to a schema comparison: only which request produces it
 changed. See [deleted ledger data retention](../../../../ops/disk-space.md#deleted-ledger-data-retention).
+
+## Revert-target rejection and its retained outcome (revision 11)
+
+Revision 11 changes what a batch that reverts a transaction it also creates
+returns, and what that outcome leaves behind under an idempotency key.
+
+A revision-10 peer answered `COVERAGE_MISS` (`Internal`), because admission
+could not declare the volume coverage apply would need and the coverage gate
+rejected the order. `KindInternal` failures are never frozen, so the key stayed
+free and a later retry could execute.
+
+Revision 11 answers `REVERT_TARGET_CREATED_IN_BATCH` (`InvalidArgument`). That
+kind **is** freezable, so the rejection is retained against the key and a retry
+replays it instead of re-executing — including a retry issued after the target
+transaction was committed independently, which a revision-10 peer could still
+execute successfully. The same batch therefore has a different retained outcome
+on the two revisions.
+
+The service `.proto` text gains only the `ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH`
+enum value, which is a compatible addition on its own; the incompatibility is the
+changed retained outcome, invisible to a schema comparison. The revision also adds
+`OrderTechnical.revert_target_digest` to `raft_cmd.proto`. That message is not
+part of the service contract — no service RPC carries it; it travels only inside
+Raft entries between replicas — so it does not bear on this revision's client
+compatibility; apply semantics must still agree across every replica. A stale admission observation of a target that predates the
+batch and is otherwise revertable answers the retryable
+`STALE_INPUTS_RESOLUTION`, which is not frozen and is unchanged in kind from the
+surrounding contract; a target that is unknown or already reverted keeps
+answering `TRANSACTION_NOT_FOUND` or `TRANSACTION_ALREADY_REVERTED` as it did on
+revision 10, because those checks run first. See
+[the revert-target observation](../admission/README.md#revert-target-observation).
 
 ## Maintaining the revision
 

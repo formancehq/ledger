@@ -253,6 +253,7 @@ const (
 	ErrReasonCheckpointNotFound            = "CHECKPOINT_NOT_FOUND"
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
+	ErrReasonRevertTargetCreatedInBatch    = "REVERT_TARGET_CREATED_IN_BATCH"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -385,15 +386,23 @@ func (errStaleProposal) Metadata() map[string]string { return nil }
 
 var ErrStaleProposal Describable = errStaleProposal{}
 
-// ErrStaleInputsResolution — the balance/metadata values that admission's
-// Numscript dependency resolution read to compute the preload set changed
-// before the FSM applied the transaction. The preloaded key set may therefore
-// be wrong, so the order is rejected. Retryable (Kind=Unavailable): a second
-// admission re-resolves against the new values and re-preloads. See EN-1406.
+// ErrStaleInputsResolution — the state admission read to compute an order's
+// preload set changed before the FSM applied it. The preloaded key set may
+// therefore be wrong, so the order is rejected. Retryable (Kind=Unavailable): a
+// second admission resolves against the current state and re-preloads.
+//
+// Two producers derive coverage from a read and so can reach it, which is why
+// the message names the resolution rather than one producer's inputs:
+//
+//   - Numscript dependency resolution — the balances and metadata it read at
+//     admission changed before apply. See EN-1406.
+//   - a revert's target observation — the target read as absent at admission
+//     (no read barrier) and apply finds its real postings. See
+//     checkRevertTargetObservation.
 type errStaleInputsResolution struct{}
 
 func (errStaleInputsResolution) Error() string {
-	return "numscript inputs resolution is stale: balances or metadata changed between admission and apply; retry"
+	return "inputs resolution is stale: the state admission resolved changed between admission and apply; retry"
 }
 func (errStaleInputsResolution) Reason() string              { return ErrReasonStaleInputsResolution }
 func (errStaleInputsResolution) Metadata() map[string]string { return nil }
@@ -650,6 +659,30 @@ func (e *ErrTransactionAlreadyReverted) Error() string {
 }
 func (*ErrTransactionAlreadyReverted) Reason() string { return ErrReasonTransactionAlreadyReverted }
 func (e *ErrTransactionAlreadyReverted) Metadata() map[string]string {
+	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
+}
+
+// ErrRevertTargetCreatedInBatch — a revert targeted a transaction created by an
+// earlier order in the same atomic batch.
+//
+// Admission resolves a revert's original postings from the local store only, and
+// the bulk overlay does not carry transactions the batch itself creates, so it
+// cannot declare the volume coverage apply needs. The rejection is permanent
+// rather than retryable on purpose: the whole batch is rejected, so the create
+// never lands and re-admitting the identical batch reproduces the same
+// observation. Classifying it as stale would spin the client forever.
+type ErrRevertTargetCreatedInBatch struct {
+	TransactionID uint64
+}
+
+func (e *ErrRevertTargetCreatedInBatch) Error() string {
+	return fmt.Sprintf(
+		"transaction %d is created by this batch and cannot be reverted in it; submit the revert separately",
+		e.TransactionID,
+	)
+}
+func (*ErrRevertTargetCreatedInBatch) Reason() string { return ErrReasonRevertTargetCreatedInBatch }
+func (e *ErrRevertTargetCreatedInBatch) Metadata() map[string]string {
 	return map[string]string{"transactionId": strconv.FormatUint(e.TransactionID, 10)}
 }
 

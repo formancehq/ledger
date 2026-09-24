@@ -77,6 +77,11 @@ func (m *OrderTechnical) CloneVT() *OrderTechnical {
 		copy(tmpBytes, rhs)
 		r.InputsResolutionHash = tmpBytes
 	}
+	if rhs := m.RevertTargetDigest; rhs != nil {
+		tmpBytes := make([]byte, len(rhs))
+		copy(tmpBytes, rhs)
+		r.RevertTargetDigest = tmpBytes
+	}
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -2133,6 +2138,9 @@ func (this *OrderTechnical) EqualVT(that *OrderTechnical) bool {
 		return false
 	}
 	if this.PreloadUnavailable != that.PreloadUnavailable {
+		return false
+	}
+	if string(this.RevertTargetDigest) != string(that.RevertTargetDigest) {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -5611,6 +5619,13 @@ func (m *OrderTechnical) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if len(m.RevertTargetDigest) > 0 {
+		i -= len(m.RevertTargetDigest)
+		copy(dAtA[i:], m.RevertTargetDigest)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.RevertTargetDigest)))
+		i--
+		dAtA[i] = 0x22
 	}
 	if m.PreloadUnavailable {
 		i--
@@ -10657,6 +10672,10 @@ func (m *OrderTechnical) SizeVT() (n int) {
 	if m.PreloadUnavailable {
 		n += 2
 	}
+	l = len(m.RevertTargetDigest)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -13010,6 +13029,40 @@ func (m *OrderTechnical) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.PreloadUnavailable = bool(v != 0)
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field RevertTargetDigest", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.RevertTargetDigest = append(m.RevertTargetDigest[:0], dAtA[iNdEx:postIndex]...)
+			if m.RevertTargetDigest == nil {
+				m.RevertTargetDigest = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
