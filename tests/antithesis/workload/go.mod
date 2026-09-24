@@ -231,10 +231,10 @@ require (
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	github.com/zitadel/oidc/v3 v3.45.3 // indirect
 	github.com/zitadel/schema v1.3.2 // indirect
-	go.etcd.io/etcd/api/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/pkg/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/server/v3 v3.7.0 // indirect
+	go.etcd.io/etcd/api/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/server/v3 v3.7.1 // indirect
 	go.etcd.io/raft/v3 v3.7.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/bridges/otelzap v0.16.0 // indirect
@@ -291,3 +291,9 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.2 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
+
+// Mirrors the etcd replace in the root go.mod, which this module builds through
+// a local module replacement. Both must move together; the reason for the pin
+// and the condition for dropping it live in the root go.mod and in
+// docs/technical/architecture/subsystems/storage/storage.md#replay-validity.
+replace go.etcd.io/etcd/server/v3 v3.7.1 => github.com/formancehq/etcd/server/v3 v3.7.2-0.20260918095251-b5dd36e4493c
