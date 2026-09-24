@@ -252,11 +252,16 @@ func (wb *WriteBatch) WriteAccountByAssetIndex(kb *dal.KeyBuilder, ledgerName, a
 	}
 
 	key := AccountByAssetKey(kb, ledgerName, assetBase, precision, account)
+	reverseKey := AssetsByAccountKey(kb, ledgerName, account, assetBase, precision)
 
 	var stamp [8]byte
 	binary.BigEndian.PutUint64(stamp[:], seq)
 
-	return wb.put(key, stamp[:])
+	if err := wb.put(key, stamp[:]); err != nil {
+		return err
+	}
+
+	return wb.put(reverseKey, key)
 }
 
 // InsertMetadataIndexV inserts a metadata index entry at an explicit

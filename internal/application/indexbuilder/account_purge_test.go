@@ -37,6 +37,11 @@ func TestPurgeCurrentAccountIndexesReconcilesSameBatchMembership(t *testing.T) {
 	require.Len(t, value, 8)
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(value), "re-fund must refresh the membership stamp")
 	require.NoError(t, closer.Close())
+	reverseKey := readstore.AssetsByAccountKey(dal.NewKeyBuilder(), ledger, account, "USD", 2)
+	forwardKey, reverseCloser, err := b.readStore.DB().Get(reverseKey)
+	require.NoError(t, err)
+	require.Equal(t, key, forwardKey, "re-fund must recreate the purge companion")
+	require.NoError(t, reverseCloser.Close())
 }
 
 func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRefund(t *testing.T) {
@@ -67,6 +72,11 @@ func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRef
 	require.Len(t, value, 8)
 	require.Equal(t, uint64(3), binary.BigEndian.Uint64(value), "re-fund must refresh the membership stamp")
 	require.NoError(t, closer.Close())
+	reverseKey := readstore.AssetsByAccountKey(dal.NewKeyBuilder(), ledger, account, "USD", 2)
+	forwardKey, reverseCloser, err := b.readStore.DB().Get(reverseKey)
+	require.NoError(t, err)
+	require.Equal(t, key, forwardKey, "same-batch refund must preserve the recreated purge companion")
+	require.NoError(t, reverseCloser.Close())
 }
 
 func TestMarkLedgerDeletedInBatchPreservesOtherLedgerMemberships(t *testing.T) {

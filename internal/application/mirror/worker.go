@@ -584,18 +584,16 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 }
 
 // releaseMirrorLifecycleWhenTerminal keeps account lifecycle serialization
-// through FSM application while the mirror batch is live. If that wait is
-// abandoned, the proposal's predicted Raft index remains the ordering fence:
-// a late proposal can only apply at that index or be rejected as stale, so
-// retaining the local locks beyond the worker context cannot add safety and
-// would block a replacement worker indefinitely.
+// through the FSM future's terminal result even when the worker is stopped.
+// The accepted proposal may still apply after worker cancellation; releasing
+// early would let a replacement snapshot pre-apply state and omit its effects.
 func releaseMirrorLifecycleWhenTerminal(
-	ctx context.Context,
+	_ context.Context,
 	fsmFuture *futures.Future[state.ApplyResult],
 	release func(),
 ) {
 	go func() {
-		_, _ = fsmFuture.Wait(ctx)
+		_, _ = fsmFuture.Wait(context.Background())
 		release()
 	}()
 }

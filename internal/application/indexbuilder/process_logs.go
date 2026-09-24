@@ -676,19 +676,21 @@ func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledge
 			b.deletedAcctAsset = make(map[string]struct{})
 		}
 
-		// has-asset is asset-first, so scan the bounded ledger keyspace and delete
-		// rows whose terminal entity is exactly this address.
-		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
-		for sk := range b.seenAcctAsset {
-			key := []byte(sk)
-			if bytes.HasPrefix(key, prefix) && accountByAssetKeyAccount(key[len(prefix):]) == account {
-				if err := b.wb.DeleteKey(key); err != nil {
+		accountKey := domain.AccountKey{LedgerName: ledger, Account: account}
+		for sk := range b.seenAcctAssetByAccount[accountKey] {
+			if err := b.wb.DeleteKey([]byte(sk)); err != nil {
+				return err
+			}
+			if reverseKey := b.seenAcctAssetReverse[sk]; reverseKey != "" {
+				if err := b.wb.DeleteKey([]byte(reverseKey)); err != nil {
 					return err
 				}
-				b.deletedAcctAsset[sk] = struct{}{}
-				delete(b.seenAcctAsset, sk)
 			}
+			b.deletedAcctAsset[sk] = struct{}{}
+			delete(b.seenAcctAsset, sk)
+			delete(b.seenAcctAssetReverse, sk)
 		}
+		delete(b.seenAcctAssetByAccount, accountKey)
 	}
 	if cfg == nil {
 		return nil
@@ -717,69 +719,51 @@ func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledge
 	return nil
 }
 
-// purgeCommittedAccountAssetIndexes scans the asset-first committed index once
-// for all purges accumulated in a fold batch. Rows recreated later in the same
-// batch remain in seenAcctAsset and must survive the committed-row cleanup.
+// purgeCommittedAccountAssetIndexes scans the account-first purge companion for
+// each purged account. Rows recreated later in the same batch remain in
+// seenAcctAsset and must survive the committed-row cleanup.
 func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledger string, accounts ...string) error {
 	if len(accounts) == 0 {
 		return nil
-	}
-	purgedAccounts := make(map[string]struct{}, len(accounts))
-	for _, account := range accounts {
-		purgedAccounts[account] = struct{}{}
 	}
 	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
 		if b.deletedAcctAsset == nil {
 			b.deletedAcctAsset = make(map[string]struct{})
 		}
-		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
-		upper := append([]byte(nil), prefix...)
-		upper[len(upper)-1]++
-		iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
-		if err != nil {
-			return err
-		}
-		for iter.First(); iter.Valid(); iter.Next() {
-			rest := iter.Key()[len(prefix):]
-			indexedAccount := accountByAssetKeyAccount(rest)
-			if indexedAccount == "" {
+		for _, account := range accounts {
+			prefix := readstore.AssetsByAccountPrefix(b.kb, ledger, account)
+			iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+			if err != nil {
+				return err
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				forwardKey := append([]byte(nil), iter.Value()...)
+				if _, recreated := b.seenAcctAsset[string(forwardKey)]; !recreated {
+					if err := b.wb.DeleteKey(forwardKey); err != nil {
+						_ = iter.Close()
+
+						return err
+					}
+					b.deletedAcctAsset[string(forwardKey)] = struct{}{}
+					if err := b.wb.DeleteKey(append([]byte(nil), iter.Key()...)); err != nil {
+						_ = iter.Close()
+
+						return err
+					}
+				}
+			}
+			if err := iter.Error(); err != nil {
 				_ = iter.Close()
 
-				return fmt.Errorf("malformed account-by-asset key %x", iter.Key())
+				return err
 			}
-			if _, purged := purgedAccounts[indexedAccount]; purged {
-				key := append([]byte(nil), iter.Key()...)
-				if _, recreated := b.seenAcctAsset[string(key)]; recreated {
-					continue
-				}
-				if err := b.wb.DeleteKey(key); err != nil {
-					_ = iter.Close()
-
-					return err
-				}
-				b.deletedAcctAsset[string(key)] = struct{}{}
+			if err := iter.Close(); err != nil {
+				return err
 			}
-		}
-		if err := iter.Error(); err != nil {
-			_ = iter.Close()
-
-			return err
-		}
-		if err := iter.Close(); err != nil {
-			return err
 		}
 	}
 
 	return nil
-}
-
-func accountByAssetKeyAccount(rest []byte) string {
-	sep := bytes.IndexByte(rest, 0)
-	if sep < 0 || len(rest) < sep+2 {
-		return ""
-	}
-
-	return string(rest[sep+2:])
 }
 
 func (b *Builder) materializePendingCheckpoint(ctx context.Context) error {
@@ -1427,6 +1411,18 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	}
 
 	b.seenAcctAsset[sk] = struct{}{}
+	if b.seenAcctAssetByAccount == nil {
+		b.seenAcctAssetByAccount = make(map[domain.AccountKey]map[string]struct{})
+	}
+	if b.seenAcctAssetReverse == nil {
+		b.seenAcctAssetReverse = make(map[string]string)
+	}
+	accountKey := domain.AccountKey{LedgerName: ledger, Account: account}
+	if b.seenAcctAssetByAccount[accountKey] == nil {
+		b.seenAcctAssetByAccount[accountKey] = make(map[string]struct{})
+	}
+	b.seenAcctAssetByAccount[accountKey][sk] = struct{}{}
+	b.seenAcctAssetReverse[sk] = string(readstore.AssetsByAccountKey(kb, ledger, account, assetBase, precision))
 
 	// If this ledger's indexes were range-deleted earlier in the same batch,
 	// the committed-state read is stale: readstoreKeyExists reads committed
@@ -1464,6 +1460,12 @@ func (b *Builder) markLedgerDeletedInBatch(name string) {
 	for key := range b.seenAcctAsset {
 		if bytes.HasPrefix([]byte(key), prefix) {
 			delete(b.seenAcctAsset, key)
+			delete(b.seenAcctAssetReverse, key)
+		}
+	}
+	for account := range b.seenAcctAssetByAccount {
+		if account.LedgerName == name {
+			delete(b.seenAcctAssetByAccount, account)
 		}
 	}
 }

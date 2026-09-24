@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
@@ -17,19 +18,30 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func TestReleaseMirrorLifecycleWhenFSMWaitIsAbandoned(t *testing.T) {
+func TestReleaseMirrorLifecycleWaitsForFSMTerminalResultAfterCancellation(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	released := make(chan struct{})
-	releaseMirrorLifecycleWhenTerminal(ctx, futures.New[state.ApplyResult](), func() { close(released) })
+	serializer := accountlifecycle.NewSerializer()
+	account := domain.AccountKey{LedgerName: "mirror", Account: "hold:1"}
+	release, err := serializer.Acquire(ctx, map[domain.AccountKey]struct{}{account: {}}, false)
+	require.NoError(t, err)
+	future := futures.New[state.ApplyResult]()
+	releaseMirrorLifecycleWhenTerminal(ctx, future, release)
 	cancel()
 
-	select {
-	case <-released:
-	case <-time.After(time.Second):
-		t.Fatal("abandoned FSM wait retained account lifecycle locks")
-	}
+	_, acquired := serializer.TryAcquire(account)
+	require.False(t, acquired, "replacement lifecycle operation acquired the stripe before FSM resolution")
+
+	future.Resolve(state.ApplyResult{}, nil)
+	require.Eventually(t, func() bool {
+		release, acquired := serializer.TryAcquire(account)
+		if acquired {
+			release()
+		}
+
+		return acquired
+	}, time.Second, time.Millisecond, "replacement lifecycle operation remained blocked after FSM resolution")
 }
 
 func TestExpandAccountLifecycleCoverageIncludesPersistedMirrorVolumes(t *testing.T) {

@@ -119,6 +119,10 @@ type Builder struct {
 	// batch skips a redundant Get + Put. Reset per batch (initBatch) so it does
 	// not grow unbounded across a long backfill.
 	seenAcctAsset map[string]struct{}
+	// seenAcctAssetByAccount makes same-batch purge cleanup proportional to the
+	// purged account's asset cells rather than every membership in the batch.
+	seenAcctAssetByAccount map[domain.AccountKey]map[string]struct{}
+	seenAcctAssetReverse   map[string]string
 	// deletedAcctAsset holds exact account-by-asset keys deleted earlier in the
 	// in-flight batch. Committed Pebble still exposes those rows until commit,
 	// so a later re-fund must bypass the committed-state dedup read and queue a
@@ -738,6 +742,8 @@ func NewBuilder(
 func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})
+	b.seenAcctAssetByAccount = make(map[domain.AccountKey]map[string]struct{})
+	b.seenAcctAssetReverse = make(map[string]string)
 	b.deletedAcctAsset = make(map[string]struct{})
 	b.purgedCurrentAccounts = make(map[domain.AccountKey]struct{})
 	b.deletedThisBatch = make(map[string]struct{})

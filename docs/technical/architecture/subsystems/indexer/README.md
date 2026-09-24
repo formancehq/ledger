@@ -5,8 +5,11 @@
 `LedgerLog.purged_accounts` is the durable boundary between atomic primary
 deletion and the per-replica read projection. For each address, the indexer
 removes current account metadata memberships (forward, existence, and reverse
-limbs) and has-asset rows in the same local batch that advances projection
-progress. This guarantees atomic publication within the read projection. An
+limbs) and has-asset rows in the same local batch that advances projection.
+Has-asset writes maintain an account-first purge companion, so lifecycle cleanup
+scans only the purged account's asset cells rather than the ledger-wide
+asset-first query index. This guarantees atomic publication within the read
+projection. An
 aligned snapshot may use a projection already ahead of its main-store pin, so
 the has-asset exception and its mixed-horizon implications remain as documented
 in [read-consistency-projections.md](../../../audits/read-consistency-projections.md).

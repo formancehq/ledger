@@ -27,6 +27,7 @@ const (
 	PrefixTransactionInsertedAt byte = 0x0B // txiat — transaction inserted_at
 	PrefixAccountByAsset        byte = 0x0C // abya — account-by-asset inverted index (asset→account)
 	PrefixTransactionRevertedAt byte = 0x0D // rvat — transaction reverted_at
+	PrefixAssetsByAccount       byte = 0x0E // abya reverse membership (account→asset)
 
 	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
 	// so that Comparer.Split can treat them uniformly (full key = prefix).
@@ -384,6 +385,29 @@ func AccountByAssetPrefix(kb *dal.KeyBuilder, ledgerName, assetBase string, prec
 		PutLedgerNameFixed(ledgerName).
 		PutStringNull(assetBase).
 		PutByte(precision).
+		Snapshot()
+}
+
+// AssetsByAccountKey is the purge companion for AccountByAssetKey. Its value
+// stores the corresponding asset-first key, allowing account lifecycle cleanup
+// to delete current memberships without scanning the ledger-wide asset index.
+//
+//	[0x0E][ledgerName padded 64B][account\x00][assetBase\x00][precision(1B)]
+func AssetsByAccountKey(kb *dal.KeyBuilder, ledgerName, account, assetBase string, precision uint8) []byte {
+	return kb.Reset().
+		PutByte(PrefixAssetsByAccount).
+		PutLedgerNameFixed(ledgerName).
+		PutStringNull(account).
+		PutStringNull(assetBase).
+		PutByte(precision).
+		Build()
+}
+
+func AssetsByAccountPrefix(kb *dal.KeyBuilder, ledgerName, account string) []byte {
+	return kb.Reset().
+		PutByte(PrefixAssetsByAccount).
+		PutLedgerNameFixed(ledgerName).
+		PutStringNull(account).
 		Snapshot()
 }
 

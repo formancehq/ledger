@@ -1606,7 +1606,11 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 			return fmt.Errorf("invariant: unsupported account backfill index %v", kind.AccountBuiltin)
 		}
 
-		return deletePrefix(readstore.PrefixAccountByAsset)
+		if err := deletePrefix(readstore.PrefixAccountByAsset); err != nil {
+			return err
+		}
+
+		return deletePrefix(readstore.PrefixAssetsByAccount)
 	case *commonpb.IndexID_LogBuiltin:
 		if kind.LogBuiltin != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 			return fmt.Errorf("invariant: unsupported log backfill index %v", kind.LogBuiltin)
