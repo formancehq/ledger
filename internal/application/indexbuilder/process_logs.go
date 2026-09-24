@@ -372,27 +372,19 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 
 				return cursor, err
 			}
-			for _, account := range ledgerLog.GetPurgedAccounts() {
-				if err := b.purgeQueuedCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
-					_ = batch.Cancel()
+			accounts := purgedAccountsByLedger[ledgerName]
+			if accounts == nil {
+				accounts = make(map[string]struct{})
+				purgedAccountsByLedger[ledgerName] = accounts
+			}
+			if err := b.collectPurgedAccounts(cfg, ledgerName, ledgerLog.GetPurgedAccounts(), accounts); err != nil {
+				_ = batch.Cancel()
 
-					return cursor, err
-				}
-				accounts := purgedAccountsByLedger[ledgerName]
-				if accounts == nil {
-					accounts = make(map[string]struct{})
-					purgedAccountsByLedger[ledgerName] = accounts
-				}
-				accounts[account] = struct{}{}
+				return cursor, err
 			}
 		}
 		for ledgerName, accountSet := range purgedAccountsByLedger {
-			accounts := make([]string, 0, len(accountSet))
-			for account := range accountSet {
-				accounts = append(accounts, account)
-			}
-			sort.Strings(accounts)
-			if err := b.purgeCommittedAccountAssetIndexes(b.ledgerConfig(ledgerName), ledgerName, accounts...); err != nil {
+			if err := b.flushCollectedPurgedAccounts(b.ledgerConfig(ledgerName), ledgerName, accountSet); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -650,6 +642,27 @@ func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger stri
 	return b.purgeCommittedAccountAssetIndexes(cfg, ledger, accounts...)
 }
 
+func (b *Builder) collectPurgedAccounts(cfg *ledgerIndexConfig, ledger string, annotated []string, collected map[string]struct{}) error {
+	for _, account := range annotated {
+		if err := b.purgeQueuedCurrentAccountIndexes(cfg, ledger, account); err != nil {
+			return err
+		}
+		collected[account] = struct{}{}
+	}
+
+	return nil
+}
+
+func (b *Builder) flushCollectedPurgedAccounts(cfg *ledgerIndexConfig, ledger string, collected map[string]struct{}) error {
+	accounts := make([]string, 0, len(collected))
+	for account := range collected {
+		accounts = append(accounts, account)
+	}
+	sort.Strings(accounts)
+
+	return b.purgeCommittedAccountAssetIndexes(cfg, ledger, accounts...)
+}
+
 // purgeQueuedCurrentAccountIndexes applies the ordered portion of an account
 // purge immediately. A later log in the same batch can then recreate an index
 // row after this deletion.
@@ -677,12 +690,12 @@ func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledge
 	if cfg == nil {
 		return nil
 	}
-	for canonical, index := range cfg.byCanonical {
+	for _, index := range cfg.byCanonical {
 		metadata := index.GetId().GetMetadata()
 		if metadata == nil || metadata.GetTarget() != commonpb.TargetType_TARGET_TYPE_ACCOUNT {
 			continue
 		}
-		current, pending := b.versionFor(ledger, canonical)
+		current, pending := b.metadataIndexVersions(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata.GetKey())
 		for _, version := range []uint32{current, pending} {
 			if version == 0 {
 				continue
@@ -821,12 +834,8 @@ func (b *Builder) indexPayload(
 	ledgerName string,
 	payload any,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
-	historyExclusions ...map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
-	historyExcludedVolumes := excludedVolumes
-	if len(historyExclusions) > 0 {
-		historyExcludedVolumes = historyExclusions[0]
-	}
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
 		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
@@ -1131,18 +1140,13 @@ func (b *Builder) indexCreatedTransaction(
 	ledger string,
 	ct *commonpb.CreatedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
-	historyExclusions ...map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
 	}
 
 	txn := ct.GetTransaction()
-	historyExcludedVolumes := excludedVolumes
-	if len(historyExclusions) > 0 {
-		historyExcludedVolumes = historyExclusions[0]
-	}
-
 	wb := b.wb
 
 	// Collect unique accounts from postings (reuse builder's map)
@@ -1251,17 +1255,13 @@ func (b *Builder) indexRevertedTransaction(
 	ledger string,
 	rt *commonpb.RevertedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
-	historyExclusions ...map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
 	}
 
 	revertTxn := rt.GetRevertTransaction()
-	historyExcludedVolumes := excludedVolumes
-	if len(historyExclusions) > 0 {
-		historyExcludedVolumes = historyExclusions[0]
-	}
 	wb := b.wb
 
 	// Account→tx mapping for revert postings (reuse builder's map)
@@ -1348,13 +1348,9 @@ func (b *Builder) indexPostingAddressMappings(
 	indexSource bool,
 	indexDestination bool,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
-	historyExclusions ...map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	wb := b.wb
-	historyExcludedVolumes := excludedVolumes
-	if len(historyExclusions) > 0 {
-		historyExcludedVolumes = historyExclusions[0]
-	}
 	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
 	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
 	sourceHistoryExcluded := isExcluded(historyExcludedVolumes, source, asset, color)

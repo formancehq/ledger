@@ -46,3 +46,9 @@ type Writer interface {
 type AccountLivenessWriter interface {
 	AccountHasNonZeroVolume(ledger, account string) (bool, error)
 }
+
+// AccountEnumerator lets replay derive the account set affected by a chart
+// transition from replay state instead of trusting unhashed purge annotations.
+type AccountEnumerator interface {
+	Accounts(ledger string) ([]string, error)
+}

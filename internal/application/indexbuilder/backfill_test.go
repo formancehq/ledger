@@ -432,7 +432,7 @@ func TestIndexPostingAddressMappingsWritesAccountByAsset(t *testing.T) {
 	// source=accounts:alice destination=accounts:bob asset="USD/2".
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil,
+		false, false, false, nil, nil,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -466,11 +466,11 @@ func TestIndexPostingAddressMappingsAccountByAssetDedup(t *testing.T) {
 	// Feed the same posting twice within the same batch.
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil,
+		false, false, false, nil, nil,
 	))
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 2, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil,
+		false, false, false, nil, nil,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -514,7 +514,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		b.wb.SetEventSequence(1)
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-			false, false, false, nil,
+			false, false, false, nil, nil,
 		))
 		require.NoError(t, b.wb.Flush())
 		require.Len(t, scanAccountByAsset(t, store, "test", "USD", 2), 2)
@@ -529,7 +529,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		b.markLedgerDeletedInBatch("test")
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2", "",
-			false, false, false, nil,
+			false, false, false, nil, nil,
 		))
 		require.NoError(t, b.wb.Flush())
 
@@ -565,7 +565,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// Old generation writes (queued, uncommitted) populate seenAcctAsset ...
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-			false, false, false, nil,
+			false, false, false, nil, nil,
 		))
 		// ... the ledger is deleted in the same batch (range delete queued,
 		// seenAcctAsset invalidated) ...
@@ -575,7 +575,7 @@ func TestIndexPostingAddressMappingsAccountByAssetSurvivesInBatchDelete(t *testi
 		// seenAcctAsset on delete, this Put would be skipped and lost.
 		require.NoError(t, b.indexPostingAddressMappings(
 			b.kb, cfg, "test", 2, "accounts:alice", "accounts:carol", "USD/2", "",
-			false, false, false, nil,
+			false, false, false, nil, nil,
 		))
 		require.NoError(t, b.wb.Flush())
 
@@ -613,7 +613,7 @@ func TestIndexPostingAddressMappingsAccountByAssetExcludesTransient(t *testing.T
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, excludedVolumes,
+		false, false, false, excludedVolumes, excludedVolumes,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -646,7 +646,7 @@ func TestIndexPostingAddressMappingsAccountByAssetDisabled(t *testing.T) {
 
 	require.NoError(t, b.indexPostingAddressMappings(
 		b.kb, cfg, "test", 1, "accounts:alice", "accounts:bob", "USD/2", "",
-		false, false, false, nil,
+		false, false, false, nil, nil,
 	))
 	require.NoError(t, b.wb.Flush())
 
@@ -1101,7 +1101,7 @@ func TestIndexCreatedThenOverwrittenTxMetadataSameBatch(t *testing.T) {
 			Metadata: map[string]*commonpb.MetadataValue{key: v1},
 		},
 	}
-	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil))
+	require.NoError(t, b.indexCreatedTransaction(kb, cfg, ledger, ct, nil, nil))
 
 	// 2. Same batch: overwrite the same key to v2 before the batch commits.
 	b.wb.SetEventSequence(2)
@@ -1148,7 +1148,7 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 						Id:       11,
 						Metadata: map[string]*commonpb.MetadataValue{key: value},
 					},
-				}, nil)
+				}, nil, nil)
 			},
 		},
 		{
@@ -1160,7 +1160,7 @@ func TestNewTransactionMetadataUsesKnownAbsentInsert(t *testing.T) {
 						Id:       12,
 						Metadata: map[string]*commonpb.MetadataValue{key: value},
 					},
-				}, nil)
+				}, nil, nil)
 			},
 		},
 	}

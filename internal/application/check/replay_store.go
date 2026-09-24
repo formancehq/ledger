@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"os"
+	"sort"
 
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
@@ -353,6 +354,54 @@ func (s *replayStore) replayDerivedPurgedAccounts() map[domain.AccountKey]struct
 
 func (s *replayStore) replayDerivedPurgedVolumes() map[domain.VolumeKey]struct{} {
 	return s.purgedVolumes
+}
+
+func (s *replayStore) Accounts(ledger string) ([]string, error) {
+	accounts := make(map[string]struct{})
+	for _, spec := range []struct{ prefix byte }{{replayPrefixVolume}, {replayPrefixMetadata}} {
+		lower := append([]byte{spec.prefix}, domain.LedgerScopedPrefix(ledger)...)
+		upper := append([]byte(nil), lower...)
+		upper[len(upper)-1]++
+		iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+		if err != nil {
+			return nil, err
+		}
+		for iter.First(); iter.Valid(); iter.Next() {
+			canonical := iter.Key()[1:]
+			if spec.prefix == replayPrefixVolume {
+				var key domain.VolumeKey
+				if err := key.Unmarshal(canonical); err != nil {
+					_ = iter.Close()
+
+					return nil, err
+				}
+				accounts[key.Account] = struct{}{}
+			} else {
+				var key domain.MetadataKey
+				if err := key.Unmarshal(canonical); err != nil {
+					_ = iter.Close()
+
+					return nil, err
+				}
+				accounts[key.Account] = struct{}{}
+			}
+		}
+		if err := iter.Error(); err != nil {
+			_ = iter.Close()
+
+			return nil, err
+		}
+		if err := iter.Close(); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]string, 0, len(accounts))
+	for account := range accounts {
+		out = append(out, account)
+	}
+	sort.Strings(out)
+
+	return out, nil
 }
 
 func (s *replayStore) AccountHasNonZeroVolume(ledger, account string) (bool, error) {

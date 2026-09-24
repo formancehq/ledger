@@ -5180,6 +5180,8 @@ type AttributeCoverageReader interface {
 	GetAttrCode() uint32
 	GetValue() AttributeValueReader
 	GetCanonicalKey() []byte
+	GetPersisted() bool
+	GetLifecycleCandidate() bool
 	Mutate() *AttributeCoverage
 }
 
@@ -5207,6 +5209,14 @@ func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
 
 func (r *attributeCoverageReadonly) GetCanonicalKey() []byte {
 	return bytes.Clone((*AttributeCoverage)(r).GetCanonicalKey())
+}
+
+func (r *attributeCoverageReadonly) GetPersisted() bool {
+	return (*AttributeCoverage)(r).GetPersisted()
+}
+
+func (r *attributeCoverageReadonly) GetLifecycleCandidate() bool {
+	return (*AttributeCoverage)(r).GetLifecycleCandidate()
 }
 
 func (r *attributeCoverageReadonly) Mutate() *AttributeCoverage {

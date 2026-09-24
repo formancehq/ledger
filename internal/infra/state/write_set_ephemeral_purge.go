@@ -30,9 +30,15 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 	}
 
 	volumeKeys := make(map[domain.AccountKey][]domain.VolumeKey)
+	persistedVolumes := make(map[domain.VolumeKey]struct{})
 	metadataKeys := make(map[domain.AccountKey][]domain.MetadataKey)
 	for _, plan := range plans {
 		if len(plan.GetCanonicalKey()) == 0 {
+			switch byte(plan.GetAttrCode()) {
+			case dal.SubAttrVolume, dal.SubAttrMetadata:
+				return fmt.Errorf("covered lifecycle attribute 0x%02x has no canonical key", plan.GetAttrCode())
+			}
+
 			continue
 		}
 		switch byte(plan.GetAttrCode()) {
@@ -42,14 +48,21 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 				return fmt.Errorf("decoding covered volume key: %w", err)
 			}
 			volumeKeys[key.AccountKey] = append(volumeKeys[key.AccountKey], key)
-			candidates[key.AccountKey] = struct{}{}
+			if plan.GetPersisted() {
+				persistedVolumes[key] = struct{}{}
+			}
+			if plan.GetLifecycleCandidate() {
+				candidates[key.AccountKey] = struct{}{}
+			}
 		case dal.SubAttrMetadata:
 			var key domain.MetadataKey
 			if err := key.Unmarshal(plan.GetCanonicalKey()); err != nil {
 				return fmt.Errorf("decoding covered metadata key: %w", err)
 			}
 			metadataKeys[key.AccountKey] = append(metadataKeys[key.AccountKey], key)
-			candidates[key.AccountKey] = struct{}{}
+			if plan.GetLifecycleCandidate() {
+				candidates[key.AccountKey] = struct{}{}
+			}
 		}
 	}
 
@@ -80,7 +93,9 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 			}
 			// A successful read proves this is a persisted or in-batch row. Absent
 			// coverage placeholders are normalized to ErrNotFound by the accessor.
-			persistedVolumeKeys = append(persistedVolumeKeys, key)
+			if _, persisted := persistedVolumes[key]; persisted {
+				persistedVolumeKeys = append(persistedVolumeKeys, key)
+			}
 		}
 		if live {
 			continue

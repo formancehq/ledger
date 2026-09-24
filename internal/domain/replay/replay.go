@@ -44,6 +44,9 @@ func ReplayLedgerLog(
 			if err := w.AddAccountType(ledger, at); err != nil {
 				return fmt.Errorf("replaying added account type: %w", err)
 			}
+			if err := touchLedgerAccounts(ephemeralPurgeBuffer, w, ledger); err != nil {
+				return err
+			}
 		}
 
 	case *commonpb.LedgerLogPayload_RemovedAccountType:
@@ -55,6 +58,9 @@ func ReplayLedgerLog(
 
 			if err := w.RemoveAccountType(ledger, p.RemovedAccountType.GetName()); err != nil {
 				return fmt.Errorf("replaying removed account type: %w", err)
+			}
+			if err := touchLedgerAccounts(ephemeralPurgeBuffer, w, ledger); err != nil {
+				return err
 			}
 		}
 
@@ -262,6 +268,25 @@ func ReplayLedgerLog(
 		if err := w.PurgeAccount(ledger, account, nil); err != nil {
 			return fmt.Errorf("purging ephemeral account %q: %w", account, err)
 		}
+	}
+
+	return nil
+}
+
+func touchLedgerAccounts(buffer *EphemeralPurgeBuffer, w Writer, ledger string) error {
+	if buffer == nil {
+		return nil
+	}
+	enumerator, ok := w.(AccountEnumerator)
+	if !ok {
+		return fmt.Errorf("replay writer cannot enumerate accounts for account-type transition in ledger %q", ledger)
+	}
+	accounts, err := enumerator.Accounts(ledger)
+	if err != nil {
+		return fmt.Errorf("enumerating accounts for account-type transition in ledger %q: %w", ledger, err)
+	}
+	for _, account := range accounts {
+		buffer.TouchAccount(ledger, account)
 	}
 
 	return nil

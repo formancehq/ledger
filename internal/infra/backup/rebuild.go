@@ -7,6 +7,7 @@ import (
 	"io"
 	"maps"
 	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -173,7 +174,8 @@ func rebuildDelta(
 	}
 
 	var (
-		count uint64
+		count        uint64
+		storedPurges = make(map[domain.AccountKey]struct{})
 		// Highest query-checkpoint id seen across CreatedQueryCheckpoint logs
 		// (deleted ones included). Used after the replay to restore the monotonic
 		// SubGlobNextQueryCheckpointID counter.
@@ -209,6 +211,12 @@ func rebuildDelta(
 
 				return fmt.Errorf("flushing replay ephemeral purge at missing log boundary %d: %w", nextProposalEnd, err)
 			}
+			if err := writer.verifyPurgedAccounts(storedPurges); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("validating account-purge projection at log %d: %w", nextProposalEnd, err)
+			}
+			clear(storedPurges)
 
 			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
 			if err != nil {
@@ -225,8 +233,11 @@ func rebuildDelta(
 			}
 
 			ledgerName := p.Apply.GetLedgerName()
+			for _, account := range p.Apply.GetLog().GetPurgedAccounts() {
+				storedPurges[domain.AccountKey{LedgerName: ledgerName, Account: account}] = struct{}{}
+			}
 
-			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), p.Apply.GetLog().GetPurgedAccounts(), p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
+			if err := replay.ReplayLedgerLog(ledgerName, seq, p.Apply.GetLog().GetData(), nil, p.Apply.GetLog().GetDate(), writer, rawLedgerTypes, ledgerAccountTypes, ephemeralPurgeBuffer); err != nil {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("replaying ledger log %d: %w", seq, err)
@@ -558,6 +569,12 @@ func rebuildDelta(
 
 				return fmt.Errorf("flushing replay ephemeral purge at log %d: %w", seq, err)
 			}
+			if err := writer.verifyPurgedAccounts(storedPurges); err != nil {
+				_ = batch.Cancel()
+
+				return fmt.Errorf("validating account-purge projection at log %d: %w", seq, err)
+			}
+			clear(storedPurges)
 
 			nextProposalEnd, hasProposalEnd, err = proposalBoundaries.Next()
 			if err != nil {
@@ -597,6 +614,11 @@ func rebuildDelta(
 			_ = batch.Cancel()
 
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
+		}
+		if err := writer.verifyPurgedAccounts(storedPurges); err != nil {
+			_ = batch.Cancel()
+
+			return fmt.Errorf("validating final account-purge projection: %w", err)
 		}
 	}
 
@@ -1025,6 +1047,93 @@ type attributeReplayWriter struct {
 	// boundaries.
 	reversions      map[string]*bitset.Bitset
 	dirtyReversions map[string]struct{}
+	derivedPurges   map[domain.AccountKey]struct{}
+}
+
+func (w *attributeReplayWriter) verifyPurgedAccounts(stored map[domain.AccountKey]struct{}) error {
+	if len(stored) != len(w.derivedPurges) {
+		return fmt.Errorf("untrusted purged_accounts projection differs from audit-derived purge set: stored=%d derived=%d", len(stored), len(w.derivedPurges))
+	}
+	for key := range stored {
+		if _, ok := w.derivedPurges[key]; !ok {
+			return fmt.Errorf("untrusted purged_accounts projection contains non-derived account %q in ledger %q", key.Account, key.LedgerName)
+		}
+	}
+	clear(w.derivedPurges)
+
+	return nil
+}
+
+func (w *attributeReplayWriter) Accounts(ledger string) ([]string, error) {
+	accounts := make(map[string]struct{})
+	for _, attrCode := range []byte{dal.SubAttrVolume, dal.SubAttrMetadata} {
+		lower := append([]byte{dal.ZoneAttributes, attrCode}, domain.LedgerScopedPrefix(ledger)...)
+		upper := append([]byte(nil), lower...)
+		upper[len(upper)-1]++
+		iter, err := dal.NewBoundedIter(w.readHandle, lower, upper)
+		if err != nil {
+			return nil, err
+		}
+		for iter.First(); iter.Valid(); iter.Next() {
+			canonical := iter.Key()[2:]
+			if attrCode == dal.SubAttrVolume {
+				var key domain.VolumeKey
+				if err := key.Unmarshal(canonical); err != nil {
+					_ = iter.Close()
+
+					return nil, err
+				}
+				accounts[key.Account] = struct{}{}
+			} else {
+				var key domain.MetadataKey
+				if err := key.Unmarshal(canonical); err != nil {
+					_ = iter.Close()
+
+					return nil, err
+				}
+				accounts[key.Account] = struct{}{}
+			}
+		}
+		if err := iter.Error(); err != nil {
+			_ = iter.Close()
+
+			return nil, err
+		}
+		if err := iter.Close(); err != nil {
+			return nil, err
+		}
+	}
+	for canonical, value := range w.pendingVolumes {
+		if value == nil {
+			continue
+		}
+		var key domain.VolumeKey
+		if err := key.Unmarshal([]byte(canonical)); err != nil {
+			return nil, err
+		}
+		if key.LedgerName == ledger {
+			accounts[key.Account] = struct{}{}
+		}
+	}
+	for canonical, value := range w.pendingMetadata {
+		if value == nil {
+			continue
+		}
+		var key domain.MetadataKey
+		if err := key.Unmarshal([]byte(canonical)); err != nil {
+			return nil, err
+		}
+		if key.LedgerName == ledger {
+			accounts[key.Account] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(accounts))
+	for account := range accounts {
+		out = append(out, account)
+	}
+	sort.Strings(out)
+
+	return out, nil
 }
 
 // applyAuditOrderEffects folds order-level boundary effects that the ledger-log
@@ -1537,6 +1646,10 @@ func hasCanonicalPrefix(prefixes map[string]struct{}, canonicalKey []byte) bool 
 }
 
 func (w *attributeReplayWriter) PurgeAccount(ledger, account string, _ replay.ExclusionCollector) error {
+	if w.derivedPurges == nil {
+		w.derivedPurges = make(map[domain.AccountKey]struct{})
+	}
+	w.derivedPurges[domain.AccountKey{LedgerName: ledger, Account: account}] = struct{}{}
 	for _, spec := range []struct{ attrCode, separator byte }{
 		{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
 		{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},

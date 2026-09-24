@@ -755,11 +755,17 @@ func (c *Checker) comparePurgedAccountAbsence(
 	}
 	for volumes.Next() {
 		if ctx.Err() != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("purged-account volume scan canceled: %v", ctx.Err()), 0, "", "", ""))
+
 			break
 		}
 		entry := volumes.Entry()
 		var key domain.VolumeKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+				fmt.Sprintf("decoding volume key during purged-account scan: %v", err), 0, "", "", ""))
+
 			continue
 		}
 		_, accountPurged := purged[key.AccountKey]
@@ -788,11 +794,17 @@ func (c *Checker) comparePurgedAccountAbsence(
 	}
 	for metadata.Next() {
 		if ctx.Err() != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("purged-account metadata scan canceled: %v", ctx.Err()), 0, "", "", ""))
+
 			break
 		}
 		entry := metadata.Entry()
 		var key domain.MetadataKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				fmt.Sprintf("decoding metadata key during purged-account scan: %v", err), 0, "", "", ""))
+
 			continue
 		}
 		if _, ok := purged[key.AccountKey]; ok {

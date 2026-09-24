@@ -250,6 +250,31 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 	// gen0 byte for incremental 0xFF cache writes.
 	genByte := byte(b.fsm.Registry.Cache.CurrentGeneration() % 2)
 
+	// A proposal containing only skipped/replayed orders has no fresh ledger log
+	// on which to record an account-wide purge. Such a proposal is a no-op: do
+	// not turn admission's conservative lifecycle coverage into state deletion.
+	freshLedgers := make(map[string]struct{})
+	for _, lr := range logsOrRefs {
+		if apply := lr.GetCreatedLog().GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
+			freshLedgers[apply.GetLedgerName()] = struct{}{}
+		}
+	}
+	for account := range b.purgedAccounts {
+		if _, ok := freshLedgers[account.LedgerName]; !ok {
+			delete(b.purgedAccounts, account)
+		}
+	}
+	b.purgedAccountVolumeKeys = slices.DeleteFunc(b.purgedAccountVolumeKeys, func(key domain.VolumeKey) bool {
+		_, ok := freshLedgers[key.LedgerName]
+
+		return !ok
+	})
+	b.purgedAccountMetadataKeys = slices.DeleteFunc(b.purgedAccountMetadataKeys, func(key domain.MetadataKey) bool {
+		_, ok := freshLedgers[key.LedgerName]
+
+		return !ok
+	})
+
 	// === Phase 1: overlay drain (no Pebble writes) ============================
 	// Account-wide purge preparation has already classified the end state. Any
 	// covered, untouched volume rows and all account metadata are staged here;

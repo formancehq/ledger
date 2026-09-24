@@ -1057,7 +1057,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 		if len(coveredPurged) > 0 {
 			for _, orderTouche := range slices.Backward(orderTouches) {
-				if orderTouche.ledger == name {
+				if orderTouche.ledger == name && ls.logs.Get(orderTouche.logIdx).kind != "order_skipped" {
 					ls.annotateCoveredPurges(orderTouche.logIdx, coveredPurged)
 
 					break

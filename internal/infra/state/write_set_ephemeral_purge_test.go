@@ -572,6 +572,8 @@ func TestPrepareEphemeralAccountPurgeDeletesPersistedExplicitZeroVolume(t *testi
 		declareCanonicalTestPlan(ledgerKey.Bytes(), dal.SubAttrLedger),
 		declareCanonicalTestPlan(volume.Bytes(), dal.SubAttrVolume),
 	}
+	plans[1].Persisted = true
+	plans[1].LifecycleCandidate = true
 	scope, err := NewScopeFactory(buf, &raftcmdpb.ExecutionPlan{Attributes: plans}, machine.logger, machine.preloadMissCounter, 1).NewProposalScope()
 	require.NoError(t, err)
 	require.Nil(t, buf.ValidateTransientVolumes(scope))

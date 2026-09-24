@@ -408,7 +408,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	preloadStart := time.Now()
 
 	aggregate, perOrder := w.extractMirrorNeeds(cmd)
-	accounts, err := lifecycleAccounts(perOrder)
+	accounts, err := accountlifecycle.AccountsForOrders(perOrder)
 	if err != nil {
 		return false, fmt.Errorf("collecting mirror account lifecycle locks: %w", err)
 	}
@@ -857,82 +857,17 @@ func (w *Worker) expandAccountLifecycleCoverage(aggregate *plan.Coverage, perOrd
 	defer func() { _ = handle.Close() }()
 
 	for _, coverage := range perOrder {
-		accounts := make(map[domain.AccountKey]struct{})
-		for attrCode, entries := range coverage.Attributes {
-			for _, entry := range entries {
-				switch attrCode {
-				case dal.SubAttrVolume:
-					var key domain.VolumeKey
-					if err := key.Unmarshal(entry.Canonical); err != nil {
-						return err
-					}
-					accounts[key.AccountKey] = struct{}{}
-				case dal.SubAttrMetadata:
-					var key domain.MetadataKey
-					if err := key.Unmarshal(entry.Canonical); err != nil {
-						return err
-					}
-					accounts[key.AccountKey] = struct{}{}
-				}
-			}
+		accounts, err := accountlifecycle.Accounts(coverage)
+		if err != nil {
+			return err
 		}
 
 		for account := range accounts {
-			for _, spec := range []struct{ attrCode, separator byte }{
-				{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
-				{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},
-			} {
-				canonicalPrefix := append(domain.LedgerScopedPrefix(account.LedgerName), account.Account...)
-				canonicalPrefix = append(canonicalPrefix, spec.separator)
-				lower := append([]byte{dal.ZoneAttributes, spec.attrCode}, canonicalPrefix...)
-				upper := append([]byte(nil), lower...)
-				upper[len(upper)-1]++
-				iter, err := dal.NewBoundedIter(handle, lower, upper)
-				if err != nil {
-					return err
-				}
-				for iter.First(); iter.Valid(); iter.Next() {
-					canonical := append([]byte(nil), iter.Key()[2:]...)
-					coverage.Add(spec.attrCode, canonical)
-					aggregate.Add(spec.attrCode, append([]byte(nil), canonical...))
-				}
-				if err := iter.Error(); err != nil {
-					_ = iter.Close()
-
-					return err
-				}
-				if err := iter.Close(); err != nil {
-					return err
-				}
+			if err := accountlifecycle.AddPersistedRows(handle, account, coverage, aggregate); err != nil {
+				return err
 			}
 		}
 	}
 
 	return nil
-}
-
-func lifecycleAccounts(perOrder []*plan.Coverage) (map[domain.AccountKey]struct{}, error) {
-	accounts := make(map[domain.AccountKey]struct{})
-	for _, coverage := range perOrder {
-		for attrCode, entries := range coverage.Attributes {
-			for _, entry := range entries {
-				switch attrCode {
-				case dal.SubAttrVolume:
-					var key domain.VolumeKey
-					if err := key.Unmarshal(entry.Canonical); err != nil {
-						return nil, err
-					}
-					accounts[key.AccountKey] = struct{}{}
-				case dal.SubAttrMetadata:
-					var key domain.MetadataKey
-					if err := key.Unmarshal(entry.Canonical); err != nil {
-						return nil, err
-					}
-					accounts[key.AccountKey] = struct{}{}
-				}
-			}
-		}
-	}
-
-	return accounts, nil
 }

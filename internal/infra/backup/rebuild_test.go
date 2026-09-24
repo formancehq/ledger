@@ -1096,16 +1096,16 @@ func TestRebuildDelta_PurgesCheckpointEraEphemeralAccountState(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 2, 2)))
 	require.NoError(t, batch.Commit())
 
-	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0))
+	require.ErrorContains(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0), "purged_accounts projection")
 	handle, err := store.NewDirectReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 	volume, err := attrs.Volume.Get(handle, volumeKey.Bytes())
 	require.NoError(t, err)
-	require.Nil(t, volume)
+	require.NotNil(t, volume)
 	metadata, err := attrs.Metadata.Get(handle, metadataKey.Bytes())
 	require.NoError(t, err)
-	require.Nil(t, metadata)
+	require.NotNil(t, metadata)
 }
 
 // newAttributeReplayWriter builds an isolated writer for regression tests of

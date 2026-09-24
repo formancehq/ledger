@@ -501,7 +501,7 @@ func Module() fx.Option {
 			accountlifecycle.NewSerializer,
 			fx.Annotate(func(store *dal.Store, proposer mirror.Proposer, builder *plan.Builder, logger logging.Logger, notifications *signal.Notifications, meterProvider metric.MeterProvider, cfg Config, lifecycleSerializer *accountlifecycle.Serializer) *mirror.Manager {
 				return mirror.NewManager(store, proposer, builder, logger, notifications, meterProvider, cfg.MirrorMaxBatchSize, lifecycleSerializer)
-			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``)),
+			}, fx.ParamTags(``, ``, ``, ``, `name:"mirror"`, ``, ``, ``)),
 			// Provide mirror.Proposer from the Raft node
 			func(n *node.Node) mirror.Proposer {
 				return n

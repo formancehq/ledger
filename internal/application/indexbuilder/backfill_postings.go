@@ -3,7 +3,6 @@ package indexbuilder
 import (
 	"context"
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -160,13 +159,10 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 
 			// Skip non-transaction logs (config mutations, metadata-only, etc.)
 			if parsed.LogType == 0 {
-				for _, account := range parsed.PurgedAccounts {
-					if err := b.purgeQueuedCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
-						_ = batch.Cancel()
+				if err := b.collectPurgedAccounts(cfg, parsed.Ledger, parsed.PurgedAccounts, purgedAccounts); err != nil {
+					_ = batch.Cancel()
 
-						return err
-					}
-					purgedAccounts[account] = struct{}{}
+					return err
 				}
 
 				continue
@@ -192,21 +188,13 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 					return err
 				}
 			}
-			for _, account := range parsed.PurgedAccounts {
-				if err := b.purgeQueuedCurrentAccountIndexes(cfg, parsed.Ledger, account); err != nil {
-					_ = batch.Cancel()
+			if err := b.collectPurgedAccounts(cfg, parsed.Ledger, parsed.PurgedAccounts, purgedAccounts); err != nil {
+				_ = batch.Cancel()
 
-					return err
-				}
-				purgedAccounts[account] = struct{}{}
+				return err
 			}
 		}
-		accounts := make([]string, 0, len(purgedAccounts))
-		for account := range purgedAccounts {
-			accounts = append(accounts, account)
-		}
-		sort.Strings(accounts)
-		if err := b.purgeCommittedAccountAssetIndexes(cfg, task.ledger, accounts...); err != nil {
+		if err := b.flushCollectedPurgedAccounts(cfg, task.ledger, purgedAccounts); err != nil {
 			_ = batch.Cancel()
 
 			return err

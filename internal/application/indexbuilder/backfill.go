@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"slices"
-	"sort"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -1457,13 +1456,10 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 			}
 			if !isHistoryLog(log) {
 				b.wb.SetEventSequence(log.GetSequence())
-				for _, account := range ledgerLog.GetPurgedAccounts() {
-					if err := b.purgeQueuedCurrentAccountIndexes(cfg, task.ledger, account); err != nil {
-						_ = batch.Cancel()
+				if err := b.collectPurgedAccounts(cfg, task.ledger, ledgerLog.GetPurgedAccounts(), purgedAccounts); err != nil {
+					_ = batch.Cancel()
 
-						return err
-					}
-					purgedAccounts[account] = struct{}{}
+					return err
 				}
 
 				continue
@@ -1474,21 +1470,13 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 
 				return err
 			}
-			for _, account := range ledgerLog.GetPurgedAccounts() {
-				if err := b.purgeQueuedCurrentAccountIndexes(cfg, task.ledger, account); err != nil {
-					_ = batch.Cancel()
+			if err := b.collectPurgedAccounts(cfg, task.ledger, ledgerLog.GetPurgedAccounts(), purgedAccounts); err != nil {
+				_ = batch.Cancel()
 
-					return err
-				}
-				purgedAccounts[account] = struct{}{}
+				return err
 			}
 		}
-		accounts := make([]string, 0, len(purgedAccounts))
-		for account := range purgedAccounts {
-			accounts = append(accounts, account)
-		}
-		sort.Strings(accounts)
-		if err := b.purgeCommittedAccountAssetIndexes(cfg, task.ledger, accounts...); err != nil {
+		if err := b.flushCollectedPurgedAccounts(cfg, task.ledger, purgedAccounts); err != nil {
 			_ = batch.Cancel()
 
 			return err

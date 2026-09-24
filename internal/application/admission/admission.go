@@ -932,29 +932,12 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 	// class of any address in the ledger. This makes the type snapshot and the
 	// subsequent key enumeration one serialized lifecycle operation.
 	for orderIndex, coverage := range perOrder {
-		accounts := make(map[domain.AccountKey]struct{})
-		for attrCode, entries := range coverage.Attributes {
-			for _, coverageEntry := range entries {
-				var account domain.AccountKey
-				switch attrCode {
-				case dal.SubAttrVolume:
-					var key domain.VolumeKey
-					if err := key.Unmarshal(coverageEntry.Canonical); err != nil {
-						return nil, err
-					}
-					account = key.AccountKey
-				case dal.SubAttrMetadata:
-					var key domain.MetadataKey
-					if err := key.Unmarshal(coverageEntry.Canonical); err != nil {
-						return nil, err
-					}
-					account = key.AccountKey
-				default:
-					continue
-				}
-				accounts[account] = struct{}{}
-				accountsToLock[account] = struct{}{}
-			}
+		accounts, err := accountlifecycle.Accounts(coverage)
+		if err != nil {
+			return nil, err
+		}
+		for account := range accounts {
+			accountsToLock[account] = struct{}{}
 		}
 		perOrderAccounts[orderIndex] = accounts
 	}
@@ -1037,8 +1020,8 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 					account = key.AccountKey
 				}
 				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[ledger]) {
-					perOrder[orderIndex].Add(spec.attrCode, canonical)
-					aggregate.Add(spec.attrCode, append([]byte(nil), canonical...))
+					perOrder[orderIndex].AddLifecycleCandidate(spec.attrCode, canonical)
+					aggregate.AddLifecycleCandidate(spec.attrCode, append([]byte(nil), canonical...))
 				}
 			}
 			if err := iter.Error(); err != nil {
@@ -1075,8 +1058,8 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 				}
 				for iter.First(); iter.Valid(); iter.Next() {
 					canonical := append([]byte(nil), iter.Key()[2:]...)
-					coverage.Add(attrCode, canonical)
-					aggregate.Add(attrCode, append([]byte(nil), canonical...))
+					coverage.AddPersisted(attrCode, canonical)
+					aggregate.AddPersisted(attrCode, append([]byte(nil), canonical...))
 				}
 				if err := iter.Error(); err != nil {
 					_ = iter.Close()

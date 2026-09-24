@@ -740,6 +740,12 @@ message AttributeCoverage {
   // Canonical key bytes retained for proposal-wide deterministic lifecycle
   // operations that must enumerate only the keys admission declared.
   bytes canonical_key = 4;
+  // True when admission proved the row exists in the primary attribute zone.
+  // Cache-only zero placeholders are never marked persisted.
+  bool persisted = 5;
+  // True when an account-type transition makes this row's owner an explicit
+  // proposal-boundary lifecycle candidate even without a row mutation.
+  bool lifecycle_candidate = 6;
 }
 
 // AttributeValue carries the typed value to seed the FSM-side cache for

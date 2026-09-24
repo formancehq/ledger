@@ -294,13 +294,14 @@ func (s *appliedProposalSync) exclusionsForLog(logSeq uint64, ledger string, log
 	for _, account := range annotatedAccounts {
 		purgedAccounts[account] = struct{}{}
 	}
-	transientPurges := make(map[domain.AccountAssetKey]struct{})
-	for key := range purged {
-		if _, ephemeral := purgedAccounts[key.Account]; !ephemeral {
-			transientPurges[key] = struct{}{}
-		}
-	}
 	if s == nil {
+		transientPurges := make(map[domain.AccountAssetKey]struct{})
+		for key := range purged {
+			if _, ephemeral := purgedAccounts[key.Account]; !ephemeral {
+				transientPurges[key] = struct{}{}
+			}
+		}
+
 		return purged, transientPurges
 	}
 
