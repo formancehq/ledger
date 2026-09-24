@@ -239,6 +239,12 @@ receive, unreachable, and pending-send channels remain open, guarded by the
 stopped flag, as before. Shutdown does not promise delivery of queued Raft
 messages after peer cancellation and does not change node drain ordering.
 
+In optional TLS mode, each peer connection monitor is authorized by the exact
+connection-pool entry it captured, not only by the reusable peer ID. A monitor
+that observes a failure and then loses ownership to `AddPeer`, removal, or
+another restart fails its entry-identity check under the pool lock and cannot
+restart or delete the replacement connection.
+
 `TestTransportShutdown` blocks the actual dispatcher during peer publication,
 cancels after Fx hook entry, and checks both the context-bounded outer stop and
 the later worker/hook join. It also delays peer completion to prove cleanup
