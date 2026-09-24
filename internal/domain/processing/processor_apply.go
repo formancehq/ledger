@@ -58,12 +58,8 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	// later orders in the batch see their predecessors' mutations, so only the
 	// first observation is the pre-batch one. processRevertTransaction uses it
 	// to tell a target this batch creates from one that already existed.
-	if ctx.batchInitialNextTxID == nil {
-		// Context literals built outside ProcessOrders/ProcessOrder (tests,
-		// recovery flows) reach here without the map.
-		ctx.batchInitialNextTxID = make(map[string]uint64)
-	}
-
+	// ProcessOrders and ProcessOrder, the only Context constructors, both
+	// allocate the map.
 	if _, seen := ctx.batchInitialNextTxID[ledger]; !seen {
 		ctx.batchInitialNextTxID[ledger] = boundaries.GetNextTransactionId()
 	}

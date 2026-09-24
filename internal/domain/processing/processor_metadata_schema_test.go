@@ -239,7 +239,7 @@ func TestProcessApplyMissingLedgerClearsStaleLedgerInfo(t *testing.T) {
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "missing"}, nil, domain.ErrNotFound).AnyTimes()
 
 	stale := (&commonpb.LedgerInfo{Name: "previous-ledger", Id: 1}).AsReader()
-	ctx := &Context{Scope: mockStore, LedgerInfo: stale}
+	ctx := &Context{Scope: mockStore, LedgerInfo: stale, batchInitialNextTxID: make(map[string]uint64)}
 
 	apply := &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_SetMetadataFieldType{
 		SetMetadataFieldType: &raftcmdpb.SetMetadataFieldTypeOrder{
