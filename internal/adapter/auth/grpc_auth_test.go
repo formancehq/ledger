@@ -96,10 +96,22 @@ func testAuthConfig(t *testing.T, keySet oidc.KeySet) AuthConfig {
 	}
 }
 
+func authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context.Context, error) {
+	ctx, err := EvaluateGRPCCredentials(ctx, cfg)
+	if err != nil {
+		return ctx, err
+	}
+	if err := AuthorizeGRPC(ctx, scopes...); err != nil {
+		return ctx, err
+	}
+
+	return ctx, nil
+}
+
 func TestAuthenticate_Disabled(t *testing.T) {
 	t.Parallel()
 
-	ctx, err := Authenticate(context.Background(), AuthConfig{Enabled: false}, ScopeLedgersRead)
+	ctx, err := authenticate(context.Background(), AuthConfig{Enabled: false}, ScopeLedgersRead)
 	require.NoError(t, err)
 	require.NotNil(t, ctx)
 }
@@ -114,7 +126,7 @@ func TestAuthenticate_NoScopes(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims())
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg)
+	newCtx, err := authenticate(ctx, cfg)
 	require.NoError(t, err)
 
 	claims := claimsFromContext(newCtx)
@@ -129,7 +141,7 @@ func TestAuthenticate_MissingToken(t *testing.T) {
 	cfg := testAuthConfig(t, keySet)
 
 	// No authorization header
-	_, err := Authenticate(context.Background(), cfg, ScopeLedgersRead)
+	_, err := authenticate(context.Background(), cfg, ScopeLedgersRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -146,7 +158,7 @@ func TestAuthenticate_ValidToken_VirtualToGranular(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims("ledger:read"))
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	newCtx, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.NoError(t, err)
 
 	claims := claimsFromContext(newCtx)
@@ -169,7 +181,7 @@ func TestAuthenticate_WrongScope(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	_, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -189,7 +201,7 @@ func TestAuthenticate_ExpiredToken(t *testing.T) {
 	token := signToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	_, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -206,7 +218,7 @@ func TestAuthenticate_NoScopesDenied(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims())
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	_, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -223,7 +235,7 @@ func TestAuthenticate_WriteScope(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsWrite)
+	newCtx, err := authenticate(ctx, cfg, ScopeTransactionsWrite)
 	require.NoError(t, err)
 	require.NotNil(t, newCtx)
 }
@@ -238,7 +250,7 @@ func TestAuthenticate_AdminScope(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims("ledger:admin"))
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeClusterRead)
+	newCtx, err := authenticate(ctx, cfg, ScopeClusterRead)
 	require.NoError(t, err)
 	require.NotNil(t, newCtx)
 
@@ -259,7 +271,7 @@ func TestAuthenticate_WrongIssuer(t *testing.T) {
 	token := signToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	_, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -327,7 +339,7 @@ func TestAuthenticate_EdDSA_Valid(t *testing.T) {
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	newCtx, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.NoError(t, err)
 
 	got := claimsFromContext(newCtx)
@@ -355,7 +367,7 @@ func TestAuthenticate_EdDSA_ExcessiveScopes(t *testing.T) {
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg, ScopeClusterRead)
+	_, err := authenticate(ctx, cfg, ScopeClusterRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -381,7 +393,7 @@ func TestAuthenticate_EdDSA_UnknownKey(t *testing.T) {
 	token := signEdDSA(t, unknownPriv, "unknown-key", claims)
 	ctx := ctxWithBearer(token)
 
-	_, err = Authenticate(ctx, cfg)
+	_, err = authenticate(ctx, cfg)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -406,7 +418,7 @@ func TestAuthenticate_EdDSA_Expired(t *testing.T) {
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg)
+	_, err := authenticate(ctx, cfg)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -430,7 +442,7 @@ func TestAuthenticate_EdDSA_NoIssuerCheck(t *testing.T) {
 	token := signEdDSA(t, edPriv, "ed-key", claims)
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg)
+	newCtx, err := authenticate(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, claimsFromContext(newCtx))
 }
@@ -445,7 +457,7 @@ func TestAuthenticate_GranularScopePassThrough(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims("ledger:TransactionRead"))
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsRead)
+	newCtx, err := authenticate(ctx, cfg, ScopeTransactionsRead)
 	require.NoError(t, err)
 
 	effective := ExpandedScopesFromContext(newCtx)
@@ -466,7 +478,7 @@ func TestAuthenticate_GodMode_OIDC(t *testing.T) {
 	token := signToken(t, privKey, claims)
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeClusterWrite)
+	newCtx, err := authenticate(ctx, cfg, ScopeClusterWrite)
 	require.NoError(t, err)
 
 	effective := ExpandedScopesFromContext(newCtx)
@@ -496,7 +508,7 @@ func TestAuthenticate_GodMode_EdDSA_Allowed(t *testing.T) {
 	token := signEdDSA(t, edPriv, "admin-key", claims)
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeClusterWrite)
+	newCtx, err := authenticate(ctx, cfg, ScopeClusterWrite)
 	require.NoError(t, err)
 
 	effective := ExpandedScopesFromContext(newCtx)
@@ -527,7 +539,7 @@ func TestAuthenticate_GodMode_EdDSA_NotAllowed(t *testing.T) {
 	token := signEdDSA(t, edPriv, "bot-key", claims)
 	ctx := ctxWithBearer(token)
 
-	_, err := Authenticate(ctx, cfg)
+	_, err := authenticate(ctx, cfg)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -561,7 +573,7 @@ func TestAuthenticate_WritesOnly_Read_NoToken_Passes(t *testing.T) {
 
 	cfg, _ := writesOnlyGRPCConfig(t)
 
-	newCtx, err := Authenticate(context.Background(), cfg, ScopeLedgersRead)
+	newCtx, err := authenticate(context.Background(), cfg, ScopeLedgersRead)
 	require.NoError(t, err)
 
 	assert.False(t, AuthPresentedFromContext(newCtx))
@@ -574,7 +586,7 @@ func TestAuthenticate_WritesOnly_Read_InvalidToken_Unauthenticated(t *testing.T)
 	cfg, _ := writesOnlyGRPCConfig(t)
 	ctx := ctxWithBearer("garbage-not-a-jwt")
 
-	_, err := Authenticate(ctx, cfg, ScopeLedgersRead)
+	_, err := authenticate(ctx, cfg, ScopeLedgersRead)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -586,7 +598,7 @@ func TestAuthenticate_WritesOnly_Write_NoToken_Unauthenticated(t *testing.T) {
 
 	cfg, _ := writesOnlyGRPCConfig(t)
 
-	_, err := Authenticate(context.Background(), cfg, ScopeTransactionsWrite)
+	_, err := authenticate(context.Background(), cfg, ScopeTransactionsWrite)
 	require.Error(t, err)
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -600,7 +612,7 @@ func TestAuthenticate_WritesOnly_Write_ValidToken_Passes(t *testing.T) {
 	token := signToken(t, privKey, newTestClaims("ledger:write"))
 	ctx := ctxWithBearer(token)
 
-	newCtx, err := Authenticate(ctx, cfg, ScopeTransactionsWrite)
+	newCtx, err := authenticate(ctx, cfg, ScopeTransactionsWrite)
 	require.NoError(t, err)
 	assert.True(t, AuthPresentedFromContext(newCtx))
 }
@@ -608,14 +620,13 @@ func TestAuthenticate_WritesOnly_Write_ValidToken_Passes(t *testing.T) {
 func TestAuthenticate_WritesOnly_NoArgs_NoToken_Passes(t *testing.T) {
 	t.Parallel()
 
-	// Apply.handler calls Authenticate(ctx, cfg) with no scopes upfront. With
-	// the new fallback contract this must NOT error — the per-Request scope
-	// check inside Apply enforces the actual write-scope requirement on the
-	// payload.
+	// Credential evaluation with no required scopes must NOT error — dynamic
+	// authorization enforces the actual write-scope requirement on each Apply
+	// request after decoding the payload.
 
 	cfg, _ := writesOnlyGRPCConfig(t)
 
-	newCtx, err := Authenticate(context.Background(), cfg)
+	newCtx, err := authenticate(context.Background(), cfg)
 	require.NoError(t, err)
 	assert.False(t, AuthPresentedFromContext(newCtx))
 	// Effective scopes are the anonymous set.
@@ -634,7 +645,7 @@ func TestAuthenticate_ClusterSecret_GrantsAllScopes(t *testing.T) {
 
 	ctx := ctxWithBearer(secret)
 
-	newCtx, err := Authenticate(ctx, cfg)
+	newCtx, err := authenticate(ctx, cfg)
 	require.NoError(t, err)
 
 	// Cluster-internal requests must have all granular scopes
@@ -669,7 +680,7 @@ func TestAuthenticate_ClusterSecret_RejectsWrongValue(t *testing.T) {
 
 	ctx := ctxWithBearer(wrong)
 
-	_, err := Authenticate(ctx, cfg)
+	_, err := authenticate(ctx, cfg)
 	require.Error(t, err,
 		"cluster-secret comparison must reject a same-length token whose bytes differ (#339)")
 }
@@ -687,7 +698,7 @@ func TestAuthenticate_ClusterSecret_RejectsWrongLength(t *testing.T) {
 
 	ctx := ctxWithBearer("short")
 
-	_, err := Authenticate(ctx, cfg)
+	_, err := authenticate(ctx, cfg)
 	require.Error(t, err)
 }
 
@@ -703,7 +714,7 @@ func TestAuthenticate_ClusterSecret_MarksClusterInternal(t *testing.T) {
 		ClusterSecret: secret,
 	}
 
-	newCtx, err := Authenticate(ctxWithBearer(secret), cfg)
+	newCtx, err := authenticate(ctxWithBearer(secret), cfg)
 	require.NoError(t, err)
 
 	require.True(t, IsClusterInternal(newCtx),
@@ -728,7 +739,7 @@ func TestAuthenticate_UserToken_NotClusterInternal(t *testing.T) {
 
 	token := signToken(t, privKey, newTestClaims("ledger:read"))
 
-	newCtx, err := Authenticate(ctxWithBearer(token), cfg)
+	newCtx, err := authenticate(ctxWithBearer(token), cfg)
 	require.NoError(t, err)
 	require.False(t, IsClusterInternal(newCtx),
 		"user JWT must not be tagged as cluster-internal")
