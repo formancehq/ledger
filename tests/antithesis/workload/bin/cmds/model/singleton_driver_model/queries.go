@@ -56,7 +56,7 @@ func queryPageSize() int {
 // page against the model's ordered window (see validateAccountQuery). Filters
 // cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genAccountFilter(c.sampleAccountFieldSeeds(ledger))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
@@ -83,6 +83,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	// in flight, and the ordered window stays representable by a candidate
 	// base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListAccounts(readCtx, &servicepb.ListAccountsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
@@ -101,10 +102,14 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 	// High-water at the read's completion: only bulks dispatched by now could be
 	// reflected in the page. Captured before validation so later dispatches
 	// aren't folded into this read's candidate states.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 
 	if err != nil {
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
+			return
+		}
+		if status.Code(err) == codes.NotFound {
+			c.validateLedgerNotFound(maxTicket, ledger, "ListAccounts")
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
@@ -168,7 +173,7 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 // streamed page against the model's ordered window (see validateTransactionQuery).
 // Filters cover indexed and index-free reads plus missing-index and invalid-kind probes.
 func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
@@ -198,6 +203,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 	// in flight, and the ordered window stays representable by a candidate
 	// base.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	stream, err := client.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
@@ -213,10 +219,14 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		txs, err = drainStream(stream)
 	}
 
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 
 	if err != nil {
 		if (internal.IsTransient(err) && !isIndexNotReady(err)) || isShutdownError(err) {
+			return
+		}
+		if status.Code(err) == codes.NotFound {
+			c.validateLedgerNotFound(maxTicket, ledger, "ListTransactions")
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
@@ -312,7 +322,10 @@ func drainStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 // address AND its whole volumes/metadata snapshot matching on that same base.
 func (c *Checker) validateAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account) {
 	if c.matchesModel(maxTicket, "AQUERY", func(base oracle.GlobalState) bool {
-		ls := base.Ledger(ledger)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
 		want := accountWindow(ls, filter, cursor, pageSize, reverse)
 		if len(want) != len(serverAccts) {
 			return false
@@ -361,7 +374,11 @@ func (c *Checker) modelAccountWindow(ledger string, filter *commonpb.QueryFilter
 // id (see txRecordMatches) on that same base.
 func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) {
 	if c.matchesModel(maxTicket, "TXQUERY", func(base oracle.GlobalState) bool {
-		return txWindowMatches(base.Ledger(ledger), filter, afterID, pageSize, reverse, serverTxs)
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
+		return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 	}) {
 		return
 	}

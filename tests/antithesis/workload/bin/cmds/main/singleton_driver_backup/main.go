@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -21,22 +22,26 @@ func main() {
 	}
 	defer conn.Close()
 
-	client := clusterpb.NewClusterServiceClient(conn)
+	run(ctx, clusterpb.NewClusterServiceClient(conn))
+}
 
-	resp, err := client.Backup(ctx, &clusterpb.BackupRequest{
-		Storage: &commonpb.BackupStorage{
-			Provider: &commonpb.BackupStorage_S3{
-				S3: &commonpb.S3StorageConfig{
-					Bucket:   "backups",
-					Region:   "us-east-1",
-					Endpoint: "http://minio:9000",
+func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
+	resp, err := internal.RetryBackup(ctx, "Backup", func(ctx context.Context) (*clusterpb.BackupResponse, error) {
+		return client.Backup(ctx, &clusterpb.BackupRequest{
+			Storage: &commonpb.BackupStorage{
+				Provider: &commonpb.BackupStorage_S3{
+					S3: &commonpb.S3StorageConfig{
+						Bucket:   "backups",
+						Region:   "us-east-1",
+						Endpoint: "http://minio:9000",
+					},
 				},
 			},
-		},
+		})
 	})
 	if err != nil {
-		if internal.IsTransient(err) {
-			log.Printf("Backup transient error: %s", err)
+		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
+			log.Printf("Backup inconclusive error after retries: %s", err)
 			return
 		}
 

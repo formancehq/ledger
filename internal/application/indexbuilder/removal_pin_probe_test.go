@@ -114,7 +114,7 @@ func TestFieldRemoval_LeavesNoVersionRecordOrRows(t *testing.T) {
 	require.Equal(t, uint32(1), st.HighWater, "the removed incarnation's version is retired forever")
 
 	// …which queries must read exactly like an absent record: removed.
-	_, primed, err := readstore.SnapshotVersionResolver(b.readStore.DB(), ledger)(canonical)
+	_, primed, err := b.readStore.SnapshotVersionResolver(b.readStore.DB(), ledger)(canonical)
 	require.NoError(t, err)
 	require.False(t, primed, "a tombstone must resolve as removed, never as building")
 }

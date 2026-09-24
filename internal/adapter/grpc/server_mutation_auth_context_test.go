@@ -139,13 +139,15 @@ func TestMutationRequestsPropagateAuthenticatedContext(t *testing.T) {
 					return nil, errCaptured
 				})
 
+			ctx, err := internalauth.EvaluateGRPCCredentials(ctx, authCfg)
+			require.NoError(t, err)
+
 			bucket := &BucketServiceServerImpl{
-				logger:  logging.Testing(),
-				ctrl:    controller,
-				authCfg: authCfg,
+				logger: logging.Testing(),
+				ctrl:   controller,
 			}
 
-			_, err := bucket.Apply(ctx, servicepb.UnsignedApplyRequest("", test.request))
+			_, err = bucket.Apply(ctx, servicepb.UnsignedApplyRequest("", test.request))
 
 			require.ErrorIs(t, err, errCaptured)
 			require.NotNil(t, captured, "the downstream write path must receive the authenticated context")

@@ -468,6 +468,48 @@ a later non-skippable failure. Invalid opt-ins must fail admission. Enforcement
 mode, chart, and ledger metadata readback must match the same model snapshot.
 Signing-key lifecycle and signed submissions remain outside this model driver.
 
+#### Ledger lifecycle coverage
+
+The model driver generates ledger creation, deletion, mirror promotion, and
+maintenance toggles in the same concurrent bulk stream as business writes. The
+oracle owns ledger existence and filters deleted names from reads and generation.
+Mirror ledgers remain eligible for lifecycle operations and reads, but enter the
+business-write pool only after their promotion has committed.
+Because deletion permanently reserves a name, committed creations grow the
+`model-<runID>-<n>` pool; creation is biased when deletion shrinks the live pool.
+
+Maintenance mode is a global admission gate modeled in `GlobalState.Apply`.
+The workload retry predicate surfaces a first-attempt `MAINTENANCE_MODE`
+rejection even though the transport code is `Unavailable`. When maintenance is
+observed after an ambiguous transport attempt, an enabling request stops because
+it may itself have activated the gate; the driver submits that rejection for
+model validation while preserving the request as a possibly committed
+predecessor. Other idempotency-keyed requests keep retrying through the
+already-scheduled recovery window so their ambiguous outcome becomes definitive.
+A successful or ambiguously committed enable schedules a randomly delayed
+disable through the normal in-flight/processor path, preventing all workers from
+becoming stuck behind the gate. Enable generation is deliberately rarer than
+disable generation because every active window pauses useful business coverage.
+Concurrent ambiguous enables are coalesced into one state-equivalent optional
+predecessor so they cannot exceed the candidate-search capacity.
+Startup and shutdown also make a best-effort disable so an interrupted run
+cannot block the next invocation.
+
+Each of deletion, promotion, and maintenance has a required coverage marker.
+Creation back-pressure keeps the live pool near its configured size while still
+allowing retained tombstone names to accumulate as required by the service contract.
+
+EN-1627's original successful same-name recreation expectation does not match the
+current service contract: deletion retains a tombstone and recreation returns
+`LEDGER_DELETED`. The model tests that rejection. It does not claim to prove
+projection cleanup by querying a successfully recreated ledger. Concurrent
+ledger-scoped reads validate NotFound against candidate lifecycle states when a
+selected ledger is deleted before the read executes. Reads otherwise hide retired
+ledgers even when ledger-scoped rows remain physically present. Repeated
+deletion can still operate on retained tombstones. Other ledger-scoped writes,
+including ledger metadata changes, return `LEDGER_DELETED`. The service-backed
+lifecycle scenario compares the supported outcomes with the real API.
+
 #### How it works
 
 N workers fan out across a fleet of ledgers, dispatching bulks concurrently;
@@ -527,7 +569,7 @@ default. A successful run also requires at least one
 after a definitive server outcome reaches model validation. Driver liveness,
 assertion registration, and ledger-setup assertions do not satisfy that gate.
 
-It reports coverage sondes that were not satisfied in the sampled trajectory
+It reports coverage probes that were not satisfied in the sampled trajectory
 without turning those stochastic gaps into correctness failures (see below).
 
 The local runner's shell-fixture tests use a logical clock. Time remains before
@@ -543,7 +585,7 @@ Common tunables (full list in the script header):
 
 | Variable | Meaning |
 |----------|---------|
-| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. |
+| `MODEL_LEDGERS` / `MODEL_WORKERS` | Fleet size and concurrency. Workers are capped at 6 because candidate-state search is exponential in outstanding writes; two additional slots are reserved for maintenance recovery and one retained ambiguous enable. |
 | `MODEL_DEBUG` | Enable driver debug logging. |
 | `MODEL_FAIL_FAST` | Stop on first finding (default); `0` runs the full duration. |
 | `MODEL_DUMP_BATCHES` | Log every submitted bulk (`[batch-dump]` lines) for deterministic offline replay through `tests/oracle/cmd/replay`. |
@@ -551,31 +593,31 @@ Common tunables (full list in the script header):
 | `COMPACTION_MARGIN` | Raft entries between snapshots; low values force snapshot recovery. |
 | `RESTORE_INTERVAL` | Seconds between backup/restore cycles with `--restore`. |
 
-#### Coverage sondes
+#### Coverage probes
 
 A green run proves nothing about a query path it never took. `coverage.go`
 registers one `Sometimes` per index the oracle models — the nine the generator
 churns, plus one per entity target for the metadata-field indexes and one for
 the retype window — and the runner reports any that were never satisfied.
-A sonde is satisfied only by a page that the index was needed for AND that the
+A probe is satisfied only by a page that the index was needed for AND that the
 oracle verified; a refusal the model predicted proves the lifecycle gate, not
 that the index can answer.
 
 They are `Sometimes` rather than `Reachable` because a `Reachable` hard-wires
 its condition to true and so never produces a failing evaluation for
 Antithesis to steer on. On the platform, the run branches and biases toward
-unsatisfied sondes, making Antithesis the authoritative exhaustive-coverage
+unsatisfied probes, making Antithesis the authoritative exhaustive-coverage
 environment. Locally there is one short linear trajectory and no guidance, so
-missing sondes remain visible as diagnostics rather than making CI depend on
-random generator choices. Apply sondes additionally require each skipped reason
+missing probes remain visible as diagnostics rather than making CI depend on
+random generator choices. Apply probes additionally require each skipped reason
 followed by a successful order, both mode setters in both modes, and a rejected
-invalid skip opt-in. A selected request does not satisfy a sonde: the observed
+invalid skip opt-in. A selected request does not satisfy a probe: the observed
 outcome must pass oracle validation.
 
-Sonde names are data-driven, so the instrumentor cannot catalogue them; they
+Probe names are data-driven, so the instrumentor cannot catalogue them; they
 are registered through `assert.AssertRaw`, as `internal/block/block.go` does.
 
-Because these sondes are false by design on most queries, the runner treats
+Because these probes are false by design on most queries, the runner treats
 assertion classes differently: a false `Always` / `AlwaysOrUnreachable` /
 `Unreachable` is a finding, a false `Sometimes` is not. The exception is
 `STRICT_SOMETIMES`, the shared helpers whose `assert.Sometimes(IsTolerated(err),

@@ -15,7 +15,7 @@ This page covers both. The cryptographic request-signing layer (Ed25519, used to
 
 ### Token formats
 
-`internal/adapter/auth/grpc_auth.go:validateToken (lines 186-241)` accepts two formats:
+`internal/adapter/auth/grpc_auth.go:validateToken` accepts two formats:
 
 | Format | Use case |
 |--------|---------|
@@ -37,7 +37,7 @@ If no bearer is present, the request is treated as **anonymous** and given whate
 
 `validateToken()` runs on every request — there is **no token cache**. Steps:
 
-1. Decode the token (`grpc_auth.go:189`).
+1. Decode the token (`grpc_auth.go:validateToken`).
 2. Parse claims (`oidc.AccessTokenClaims`).
 3. Verify signature against the composite keyset (OIDC JWKS + Ed25519 statics).
 4. Verify expiration.
@@ -71,7 +71,9 @@ Every BucketService and ClusterService RPC declares a typed `common.auth_policy`
 
 `protoc-gen-rpcauth` rejects missing, false-public, unspecified, and unknown policy values during `just generate-proto`. It also emits `commonpb.RPCAuthPolicyForMethod`, whose unknown-method result is a typed error. At public-server startup, Ledger walks the registered service descriptors before binding the listener. BucketService and ClusterService methods must exist in that generated registry; only the exact gRPC health and reflection methods bypass it. This makes adding an RPC without an authentication decision a generation or startup failure.
 
-The generated inventory is the structural contract for the interceptor migration. During this first step, request behavior is unchanged: each RPC still calls `auth.Authenticate(ctx, cfg, scopeRequired...)` explicitly, and dynamic methods still derive their required scope in their handler.
+The public service consumes this inventory in unary and streaming interceptors before generated handlers run. Credential evaluation produces immutable authentication state, then fixed policies check their declared scope. Dynamic resolvers inspect the request: `Apply` checks every embedded request, `GetIndex` and `GetIndexEntryStatus` choose ledger-read or ops-read from the ledger field, and `ListIndexes` authorizes the first received request message before handler business logic. An unparsable signed Apply payload still reaches admission so signature verification keeps precedence over payload parsing.
+
+The public service, loopback-by-default restore service, and Raft transport have distinct trust modes. Restore does not install JWT interceptors. Raft uses its own cluster-secret interceptor.
 
 HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:100-126`) wraps each protected route.
 
@@ -83,7 +85,7 @@ HTTP follows the same model: a `RequireScope` middleware (`http_middleware.go:10
 | Bearer token invalid (bad signature, expired, wrong issuer) | `Unauthenticated` | 401 |
 | Bearer token valid, scopes insufficient | `PermissionDenied` | 403 |
 
-Failures are structured-logged with reason, key ID, remote address, and an OTel span via `logAuthFailure()` (`grpc_auth.go:257-292`) — so an operator can correlate a 403 to a specific span without parsing logs.
+Failures are structured-logged with reason, key ID, remote address, and an OTel span via `grpc_auth.go:logAuthFailure` — so an operator can correlate a 403 to a specific span without parsing logs.
 
 ## Anonymous access
 
@@ -99,7 +101,7 @@ This is the right setting to relax for embedded / dev deployments without disabl
 
 ## Dev-mode bypass
 
-`--auth-enabled` (default `false`) is the master switch. When auth is disabled, `Authenticate()` is a no-op and every request is admitted with full scopes. **There is no separate `--unsafe-disable-auth` flag** — the default is "off" because the system is designed for explicit opt-in.
+`--auth-enabled` (default `false`) is the master switch. When auth is disabled, credential evaluation and authorization allow every request. **There is no separate `--unsafe-disable-auth` flag** — the default is "off" because the system is designed for explicit opt-in.
 
 ## Inter-node authentication (Raft)
 
@@ -109,7 +111,7 @@ Raft transport uses a **shared cluster secret**, not JWT. `internal/adapter/grpc
 - Comparison uses `crypto/subtle.ConstantTimeCompare` to avoid timing attacks.
 - If `--cluster-secret` is empty, the legacy "no auth" mode is used (not recommended).
 
-There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:91-100`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
+There is a **fast path** when the cluster secret is presented through the client surface (`grpc_auth.go:EvaluateGRPCCredentials`): the request bypasses JWT validation, gets every granular scope, is marked as cluster-internal in the context, and — if the request is a leader forwarding a follower's work — carries the forwarded `CallerSnapshot` so the audit chain still attributes the operation to the original caller. If a request carries a forwarded snapshot but the connection is **not** cluster-internal (cluster secret unset or mismatched), the leader **rejects** it with `PermissionDenied` rather than silently dropping the identity (`server_bucket.go:adoptForwardedSnapshotIfTrusted`) — a misconfiguration surfaces as a failed write instead of an unattributed audit entry.
 
 ## Caller identity in the audit chain
 
@@ -172,7 +174,7 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 
 | Concern | File |
 |---------|------|
-| JWT validation, scope enforcement | `internal/adapter/auth/grpc_auth.go` |
+| JWT validation, scope enforcement | `internal/adapter/auth/grpc_auth.go`, `internal/adapter/grpc/auth_interceptor.go` |
 | HTTP auth middleware | `internal/adapter/auth/http_middleware.go` |
 | Scope definitions and mapping | `internal/adapter/auth/scopes.go` |
 | gRPC policy declarations | `misc/proto/bucket.proto`, `misc/proto/cluster.proto` |

@@ -32,6 +32,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
@@ -911,11 +912,12 @@ const (
 )
 
 // NewServiceServer builds the shared public/restore transport and interceptor
-// chain. Public mode validates that registered methods and generated auth
-// policies match exactly before Listen binds. Restore mode is deliberately
-// outside the BucketService and ClusterService policy inventory.
+// chain. Public mode evaluates credentials and enforces generated auth policies
+// before invoking handlers, and validates that registered methods and policies
+// match exactly before Listen binds. Restore mode does not install the JWT
+// interceptors and is outside the BucketService and ClusterService inventory.
 // See NewRaftServer for the (tlsCfg, acceptPlaintext) semantics.
-func NewServiceServer(authPolicy ServiceAuthPolicy, host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
+func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthConfig, host string, port int, logger logging.Logger, debug bool, slowThreshold time.Duration, tlsCfg *tls.Config, acceptPlaintext bool, opts ...Option) (*ServiceServer, error) {
 	if authPolicy != ServiceAuthPolicyPublic && authPolicy != ServiceAuthPolicyRestore {
 		return nil, fmt.Errorf("unknown service authentication policy %d", authPolicy)
 	}
@@ -939,6 +941,12 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, host string, port int, logge
 		loggingStreamInterceptor(logger, slowThreshold),
 		errorConversionStreamInterceptor(logger),
 		protocolVersionStreamInterceptor(),
+	}
+	if authPolicy == ServiceAuthPolicyPublic {
+		// Stamp the query-profile clock before authentication so profiled reads
+		// measure the same preparation span as their HTTP counterparts.
+		unaryInterceptors = append(unaryInterceptors, queryProfileClockUnaryInterceptor(logger, slowThreshold), authUnaryInterceptor(authCfg))
+		streamInterceptors = append(streamInterceptors, queryProfileClockStreamInterceptor(logger, slowThreshold), authStreamInterceptor(authCfg))
 	}
 
 	serverOpts := []ggrpc.ServerOption{

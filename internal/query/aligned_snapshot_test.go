@@ -3,7 +3,10 @@ package query_test
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -214,8 +217,7 @@ func TestAlignedIndexSnapshotRejectsMainSnapshotBehindReadBarrier(t *testing.T) 
 
 	ctx := query.WithReadBarrierHorizon(t.Context(), horizon+1)
 	_, _, _, err = query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
-	require.ErrorContains(t, err, "behind ReadIndex horizon",
-		"a projection certificate must not hide a main snapshot older than R")
+	require.EqualError(t, err, fmt.Sprintf("main-store snapshot applied index %d is behind ReadIndex horizon %d", horizon, horizon+1))
 }
 
 func TestAlignedIndexSnapshotFrozenProjectionMustCoverMainHorizon(t *testing.T) {
@@ -456,4 +458,87 @@ func TestOpenQueryHandle_ReservesAtTheFoldCursor(t *testing.T) {
 	// Before alignment runs: the only lease is the reservation.
 	require.Equal(t, uint64(2), rs.Leases().BeginGC(1_000),
 		"everything below the fold cursor stays reclaimable while the read waits")
+}
+
+func TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier(t *testing.T) {
+	t.Parallel()
+	for _, barrier := range []uint64{0, 2, 3} {
+		t.Run(strconv.FormatUint(barrier, 10), func(t *testing.T) {
+			t.Parallel()
+			store := newTestStore(t)
+			registerLedger(t, store, "l")
+			appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+			rs := newTestReadStore(t)
+			handle, err := store.NewReadHandle()
+			require.NoError(t, err)
+			// Read-only handle released in cleanup: a close error cannot
+			// invalidate what the assertions above already observed.
+			defer func() { _ = handle.Close() }()
+			horizon, err := query.ReadLastAppliedIndex(handle)
+			require.NoError(t, err)
+			require.Equal(t, uint64(3), horizon)
+			setReadStoreProgress(t, rs, horizon)
+			ctx := t.Context()
+			if barrier != 0 {
+				ctx = query.WithReadBarrierHorizon(ctx, barrier)
+			}
+			snap, _, release, err := query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
+			require.NoError(t, err)
+			defer release()
+			// Pebble snapshot released in cleanup; the test's claim is the
+			// successful return above, which a close error cannot undo.
+			defer func() { _ = snap.Close() }()
+		})
+	}
+}
+
+// Done is consulted by the projection wait only after observing lag. This
+// handshake makes catch-up deterministic without a sleep or a production hook.
+type alignmentWaitContext struct {
+	context.Context
+
+	once    sync.Once
+	waiting chan struct{}
+}
+
+func (c *alignmentWaitContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.waiting) })
+
+	return c.Context.Done()
+}
+
+func TestAlignedIndexSnapshotAlignsAfterObservedWait(t *testing.T) {
+	t.Parallel()
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+	appendLogs(t, store, 3, createTestLogsForLedger("l", 1)...)
+	rs := newTestReadStore(t)
+	handle, err := store.NewReadHandle()
+	require.NoError(t, err)
+	// Read-only handle released in cleanup: a close error cannot invalidate
+	// what the assertions below already observed.
+	defer func() { _ = handle.Close() }()
+	setReadStoreProgress(t, rs, 2)
+	base, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	ctx := &alignmentWaitContext{Context: base, waiting: make(chan struct{})}
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+		select {
+		case <-ctx.waiting:
+			setReadStoreProgress(t, rs, 3)
+		case <-base.Done():
+		}
+	}()
+	snap, _, release, err := query.AlignedIndexSnapshot(ctx, rs, handle, "l", func() {})
+	<-finished
+	require.NoError(t, err)
+	defer release()
+	// Pebble snapshot released in cleanup; the test's claim is the certificate
+	// read below, which a close error cannot undo.
+	defer func() { _ = snap.Close() }()
+	certificate, err := rs.ReadRaftProgressFrom(snap)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), certificate)
 }

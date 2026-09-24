@@ -370,7 +370,7 @@ wait_healthy() {
 # Sometimes is existential -- satisfied by a single true evaluation anywhere in
 # the run -- so an individual false is normal and is NOT a finding. Its failure
 # mode is the opposite one, never satisfied at all, which the report checks
-# separately over the coverage sondes.
+# separately over the coverage probes.
 #
 # The exception is the shared internal helpers, whose Sometimes assertions are
 # invariants wearing the wrong primitive: `assert.Sometimes(IsTolerated(err),
@@ -394,7 +394,7 @@ failed_assertions() {
 		return 0
 	fi
 
-	# Without jq the class split is unavailable. Drop the coverage sondes,
+	# Without jq the class split is unavailable. Drop the coverage probes,
 	# which are false by design, and treat every other false as a finding --
 	# over-reporting a rare Sometimes beats missing a real invariant.
 	grep -E '"hit":[[:space:]]*true' "$ASSERTIONS" 2>/dev/null \
@@ -445,13 +445,18 @@ has_verified_model_outcome() {
 # untagged build silently tolerates it. The local server is always built with
 # the tag so both environments police the same store invariants; the cost is
 # a few percent, not race-detector overhead.
+# The server is deliberately NOT built with enable_antithesis_sdk. Only the
+# driver is given ANTITHESIS_SDK_LOCAL_OUTPUT below, so server-side assertions
+# have nowhere to go in this harness — arming it would buy no signal and cost
+# throughput on a gate whose coverage probes depend on how much work the run
+# completes.
 server_tags="-tags invariants"
 [ "$RESTORE" = 1 ] && server_tags="-tags invariants,s3"
 build_cmd="go build $server_tags -o '$SERVER_BIN' . && "
 if [ "$NODES" -gt 1 ] || [ "$RESTORE" = 1 ]; then
 	build_cmd="${build_cmd}go build $server_tags -o '$LEDGERCTL_BIN' ./cmd/ledgerctl && "
 fi
-build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
+build_cmd="${build_cmd}cd '$MODEL_HARNESS_REPO/tests/antithesis/workload' && go build -tags enable_antithesis_sdk -o '$DRIVER_BIN' ./bin/cmds/model/singleton_driver_model"
 
 # Build inside the nix dev shell for a reproducible toolchain — unless we are
 # already in one (CI runs this as `nix develop --command just test-model`), in
@@ -734,16 +739,16 @@ if [ "$RESTORE" = 1 ] && [ "$RESTORE_FAILED_CYCLES" -gt 0 ]; then
 	findings=$((findings + 1))
 fi
 
-# 9. Report coverage sondes that were registered but never satisfied. A
+# 9. Report coverage probes that were registered but never satisfied. A
 # Sometimes is existential, so its failure mode is "never true anywhere in the
 # run". The required set is the registrations themselves (the driver emits every
-# sonde with hit:false before the first query), so nothing is duplicated here
+# probe with hit:false before the first query), so nothing is duplicated here
 # and the two cannot drift.
 #
 # The local run is one short linear trajectory with no guidance. Missing a rare
-# sonde there is useful coverage evidence, but not a deterministic correctness
-# finding: requiring every sonde makes CI depend on random generator choices.
-# Antithesis explores a branching tree, steers toward unsatisfied sondes, and is
+# probe there is useful coverage evidence, but not a deterministic correctness
+# finding: requiring every probe makes CI depend on random generator choices.
+# Antithesis explores a branching tree, steers toward unsatisfied probes, and is
 # the authoritative exhaustive-coverage environment.
 unsatisfied_coverage() {
 	[ -s "$ASSERTIONS" ] || return 0
@@ -766,7 +771,7 @@ if [ "$findings" -eq 0 ]; then
 	missing="$(unsatisfied_coverage)"
 	if [ -n "$missing" ]; then
 		echo
-		echo "COVERAGE SONDES NOT SATISFIED IN THIS RUN: the oracle predicted no served page for"
+		echo "COVERAGE PROBES NOT SATISFIED IN THIS RUN: the oracle predicted no served page for"
 		printf '  %s\n' "$missing"
 		echo "  (diagnostic only for this unguided run; Antithesis enforces exhaustive coverage)"
 	fi

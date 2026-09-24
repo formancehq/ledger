@@ -15,7 +15,11 @@ import (
 // node local server.
 const (
 	defaultLedgers = 4
-	defaultWorkers = 8
+	defaultWorkers = 6
+	// Leave candidate-search slots for the independently dispatched maintenance
+	// recovery and one retained ambiguous enable. The search is exponential in
+	// outstanding writes.
+	maxWorkers = maxCandidateInflight - 2
 )
 
 // --- Address space ------------------------------------------------------
@@ -146,6 +150,9 @@ const replayConflictOneIn = 6
 
 // Worker → processor channel cap, well above steady-state inflight.
 const incomingBuffer = 256
+
+// Maximum maintenance window before an independently dispatched disable.
+const maintenanceMaxWindow = 3 * time.Second
 
 // --- Index readiness poller ---------------------------------------------
 

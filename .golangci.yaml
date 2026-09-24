@@ -90,6 +90,10 @@ linters:
       replace-local: true
       replace-allow-list:
       - github.com/expr-lang/expr
+      # The Antithesis SDK is pinned to the Formance fork, which keeps the
+      # upstream module path, so a replace is the only way to select it.
+      # See docs/technical/contributing/antithesis-assertions.md.
+      - github.com/antithesishq/antithesis-sdk-go
     revive:
       rules:
       - name: package-comments

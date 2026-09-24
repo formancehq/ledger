@@ -66,11 +66,34 @@ Keys are managed by Raft-replicated orders (`processor_signing.go`):
 
 | Order | Effect |
 |-------|--------|
-| `RegisterSigningKey` | Add a new public key. Its parent is the **signer of the registration request** — the hierarchy is automatic and immutable. |
-| `RevokeSigningKey` | Cascade-revoke a key and every key descended from it (BFS over the parent relation). |
+| `RegisterSigningKey` | **Upsert** a public key. Its parent is the **signer of the registration request** — the hierarchy is automatic, and re-registering an existing key ID replaces both its public key and its parent link. |
+| `RevokeSigningKey` | Revoke a key, and with `cascade` every key descended from it (BFS over the parent relation). |
 | `SetSigningConfig` | Cluster-wide flags such as `require_signatures`. |
 
 The **first** `RegisterSigningKey` is the bootstrap: it has no parent because no signing key exists yet to authorise it. `authorizeUnsignedBatch()` in admission allows that single unsigned bootstrap to land. Every subsequent registration must be signed by an existing key.
+
+Registration is an upsert rather than an insert: nothing rejects a duplicate key ID. Re-registering moves the key under whoever signed that batch, and re-registering with no parent makes it a root. The hierarchy is therefore mutable — a key's parent is whatever its **latest** registration assigned. See [Cascade and the effective parent](#cascade-and-the-effective-parent).
+
+### Cascade and the effective parent
+
+`RevokeSigningKey` with `cascade` removes the revoked key and its entire descendant subtree, and records the descendants in `RevokedSigningKeyLog.cascaded_key_ids`.
+
+Which keys are descendants is decided by the **effective** parent relation: the committed key store with the current batch's staged signing updates folded over it **in order**, last write per key ID winning (`state.WriteSet.GetSigningKeyChildren`). That is the same sequence `WriteSet.Merge` replays into Pebble and the in-memory `KeyStore`, and the same one `backup.RebuildDelta` replays on restore, so all three agree on which keys a cascade reached.
+
+Two consequences inside a single signed batch, both following from "the last registration decides":
+
+- A key revoked earlier in the batch and then **re-registered** under the revoke target **is** cascaded. The registration supersedes the removal, so the key is back in the subtree when the cascade runs.
+- A key **reassigned** earlier in the batch is cascaded or not according to where its new parent sits. Reassignment removes the old edge, so the key is no longer reachable through it — but the walk is transitive, so a new parent that is *itself* inside the revoked subtree still carries the cascade to it. Only a new parent the cascade never reaches takes the key out of range.
+
+Since the parent is the batch signer, reassignment means submitting the registration in a batch signed by the intended new parent, and an empty parent is reachable only for the unsigned bootstrap registration — once any key exists, `authorizeUnsignedBatch` rejects unsigned registration, so every registration is signed and therefore parented. The FSM still handles an empty `ParentKeyId` deterministically: recovery and `RebuildDelta` both rebuild roots from parent-less persisted rows.
+
+A batch boundary does not change either answer: the same ordered operations produce the same surviving key set whether they are submitted as one signed batch or several. Deriving the cascade from an unordered view of the staged updates is what made those two disagree (EN-2011).
+
+Revocation's only persistent representation is **row absence** — the stored row carries no revoked flag — so a cascade that misses a key leaves a fully working credential behind. Signature verification looks the requested key ID up in the `KeyStore` and verifies against that key's own public key; it never walks up to the parent, so revoking a parent does not by itself disable a surviving child.
+
+The parent graph is not validated: registration shape-checks the two key IDs and never confirms the parent exists, so `register a under b` followed by `register b under a` is accepted end to end and makes the graph cyclic. The cascade walk carries a visited set for that reason — it runs inside Raft apply, where a non-terminating walk would wedge every replica at once and replay on every restart. A cycle is an operator mistake, not a supported topology.
+
+The audit-side re-derivation in `check.signingVerifier` folds the same orders in the same sequence and walks the same relation, so it reaches the same descendant set without reproducing any batch-local bookkeeping. It never reads `cascaded_key_ids` off the log — re-deriving the cascade is the point of the pass, and trusting the recorded list would let a tampered projection justify itself.
 
 Because registrations and revocations go through Raft, key changes are subject to consensus latency: between submission and FSM apply, a soon-to-be-revoked key remains valid. Operationally this is the same trade-off as any Raft-mediated control plane change.
 

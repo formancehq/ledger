@@ -26,10 +26,12 @@ Verifies that volumes **never decrease** (input and output can only grow). A shr
 
 ### 2. Delta / Posting Cross-Check
 
-After merge, computes the expected volume deltas from the postings in the committed logs and compares them to the actual volume deltas produced by the processing pipeline.
+After merge, computes the expected volume deltas from the postings in the committed logs and compares them to the actual volume deltas produced by the processing pipeline. The comparison runs in both directions: every expected delta must be present and equal, and every nonzero actual delta must be explained by a posting, so an extra debit/credit pair fails even though it balances. An unchanged touched key carries no delta and is legitimate.
+
+When a check fails it names one offender — the lowest-sorting `(ledger, account, asset, color)` among those found, chosen so that the same divergent input produces the same message on every replica and every replay — and reports how many keys offended in total.
 
 - **Where**: `applyProposal()`, after `Merge()`
-- **Catches**: Wrong amount applied, wrong account credited/debited, missed posting
+- **Catches**: Wrong amount applied, wrong account credited/debited, missed posting, unrelated balanced pair
 
 ### 3. Aggregated Volume Balance
 

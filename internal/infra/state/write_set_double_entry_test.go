@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -43,4 +44,27 @@ func TestWriteSetMergeRejectsUnbalancedVolumeUpdate(t *testing.T) {
 	persisted, err := buf.attrs.Volume.Get(dataStore, key.Bytes())
 	require.NoError(t, err)
 	require.Nil(t, persisted)
+}
+
+// The all-update check passes here; the inconsistent transient partition must
+// be rejected specifically by the persisted-update check.
+func TestWriteSetMergeRejectsUnbalancedPersistedVolumeUpdate(t *testing.T) {
+	t.Parallel()
+	buf, machine, dataStore := newTestBuffer(t)
+	machine.sentinelMode = true
+	machine.sentinelTracer = NewSentinelTracer(machine.logger)
+	buf.gatedLedgerTypes = gatedTypesFor(&commonpb.LedgerInfo{Name: "test", AccountTypes: map[string]*commonpb.AccountType{"transient": {Name: "transient", Pattern: "transient:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT}}})
+	updates := []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("transient:source", "USD", "", 0, 0, 0, 10), sentinelVolume("destination", "USD", "", 0, 0, 10, 0)}
+	require.NoError(t, checkDoubleEntryInvariant(updates))
+	for _, update := range updates {
+		buf.Volumes().Put(update.Key, update.New)
+	}
+	batch := dataStore.OpenWriteSession()
+	err := buf.Merge(batch, nil)
+	require.NoError(t, batch.Cancel())
+	require.ErrorContains(t, err, "persisted double-entry invariant violated (transient excluded)")
+	var violation *ErrDoubleEntryInvariantViolated
+	require.ErrorAs(t, err, &violation)
+	require.Equal(t, "10", violation.InputSum)
+	require.Equal(t, "0", violation.OutputSum)
 }

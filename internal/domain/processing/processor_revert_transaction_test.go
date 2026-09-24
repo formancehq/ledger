@@ -265,8 +265,9 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	// State carries postings (so the revert proceeds past posting resolution)
 	// but no Timestamp. With at_effective_date=true this must surface loudly
 	// rather than silently falling back to s.GetDate(). The timestamp is
-	// resolved before the reverted markers are written, so no transaction state
-	// is persisted on this path.
+	// resolved after speculative volumes, the reverted bit and the transaction
+	// boundary are staged, but before transaction states are written. The
+	// proposal write set discards these speculative effects on failure.
 	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
 		Postings: []*commonpb.Posting{
@@ -477,4 +478,27 @@ func TestProcessRevertTransaction_AlreadyReverted(t *testing.T) {
 	var alreadyReverted *domain.ErrTransactionAlreadyReverted
 	require.ErrorAs(t, err, &alreadyReverted)
 	require.Equal(t, uint64(3), alreadyReverted.TransactionID)
+}
+
+func TestProcessRevertTransaction_EmptyPostingsIsInconsistent(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 5}
+	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 3}
+	mockStore.EXPECT().GetReverted(txKey).Return(false, nil)
+	// Returning a real state proves this is the empty-postings guard, not the
+	// earlier absent-state guard. No volume or transaction writes are allowed.
+	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
+		Timestamp: &commonpb.Timestamp{Data: 1},
+	}).AsReader(), nil)
+	payload, err := processRevertTransaction("test-ledger", &raftcmdpb.RevertTransactionOrder{TransactionId: 3}, &Context{
+		Scope: mockStore, Boundaries: boundaries, LedgerInfo: (&commonpb.LedgerInfo{}).AsReader(),
+	})
+	require.Nil(t, payload)
+	var inconsistent *domain.ErrTransactionStateInconsistent
+	require.ErrorAs(t, err, &inconsistent)
+	require.Equal(t, uint64(3), inconsistent.TransactionID)
+	require.Equal(t, "revert", inconsistent.Operation)
+	require.Equal(t, uint64(5), boundaries.GetNextTransactionId())
 }
