@@ -187,6 +187,20 @@ func (m *Membership) wireRemove(nodeID uint64) {
 	}
 }
 
+// WithPeerAddresses calls fn with the current peer address map while holding
+// the read lock, preventing a concurrent Rehydrate / OnSnapshotInstalled from
+// modifying the cache between successive reads. Callers on the orchestrate
+// goroutine use this to capture a consistent snapshot of both the Raft rawNode
+// state and the membership addresses: since rawNode is only written by the
+// orchestrate goroutine, calling rawNode.Status() inside fn observes a view
+// that is stable with respect to the locked address map.
+func (m *Membership) WithPeerAddresses(fn func(map[uint64]ConfChangeContext) error) error {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return fn(m.addresses)
+}
+
 // PeerAddresses returns a defensive copy of the current cache.
 func (m *Membership) PeerAddresses() map[uint64]ConfChangeContext {
 	m.mu.RLock()

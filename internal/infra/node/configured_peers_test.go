@@ -150,3 +150,74 @@ func TestGetConfiguredPeers_RejectsMissingConfiguredIdentity(t *testing.T) {
 	cmd.errCh <- cmd.fn()
 	require.ErrorContains(t, <-results, "invariant: cluster member 2 has no membership row")
 }
+
+
+func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *testing.T) {
+	t.Parallel()
+
+	// Regression test for the concurrency window between rawNode.Status() and
+	// membership.PeerAddresses() in the pre-fix GetConfiguredPeers. The fix
+	// wraps both reads inside membership.WithPeerAddresses (which holds m.mu.RLock
+	// for the duration), so a concurrent Rehydrate / OnSnapshotInstalled calling
+	// m.mu.Lock cannot interleave and produce a mixed snapshot.
+	//
+	// This test runs a concurrent Set() that races with cmd.fn(). Either:
+	//   • Set() wins: fn() sees the new addresses (new:7777 / next-instance-id).
+	//   • fn()  wins: fn() sees the old addresses (old:7777 / peer-instance-id).
+	// In both cases the result must be internally consistent: the address and
+	// identity for peer 2 must belong to the same incarnation, never a mix.
+	n := newConfiguredPeersTestNode(t)
+
+	type result struct {
+		peers []Peer
+		err   error
+	}
+	results := make(chan result, 1)
+	go func() {
+		peers, err := n.GetConfiguredPeers(t.Context())
+		results <- result{peers: peers, err: err}
+	}()
+
+	cmd := <-n.clusterCommandCh
+
+	// Start concurrent Set() immediately — races with cmd.fn().
+	// WithPeerAddresses ensures the two views (Status + addresses) are captured
+	// under a single RLock, so Set() either runs entirely before or entirely after
+	// the snapshot, never in between.
+	setDone := make(chan struct{})
+	go func() {
+		require.NoError(t, n.membership.Set(2, "new:7777", "new:8888", []byte("next-instance-id")))
+		close(setDone)
+	}()
+
+	err := cmd.fn()
+	require.NoError(t, err)
+	cmd.errCh <- err
+
+	<-setDone
+	got := <-results
+	require.NoError(t, got.err)
+
+	// Find peer 2 in the result.
+	var peer2 *Peer
+	for i := range got.peers {
+		if got.peers[i].ID == 2 {
+			peer2 = &got.peers[i]
+			break
+		}
+	}
+	require.NotNil(t, peer2, "peer 2 must be present in the topology snapshot")
+
+	// The snapshot must be one consistent incarnation: address and identity must match.
+	switch peer2.Address {
+	case "old:7777":
+		require.Equal(t, []byte("peer-instance-id"), peer2.InstanceID,
+			"old address must pair with old identity, never a mixed incarnation")
+	case "new:7777":
+		require.Equal(t, []byte("next-instance-id"), peer2.InstanceID,
+			"new address must pair with new identity, never a mixed incarnation")
+	default:
+		t.Fatalf("unexpected address for peer 2: %q", peer2.Address)
+	}
+}
+
