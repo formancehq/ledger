@@ -24,6 +24,11 @@ type queryProfileClock struct {
 type queryProfileClockKey struct{}
 type applyBatchSizeKey struct{}
 
+type indexedScope struct {
+	scope internalauth.Scope
+	index int
+}
+
 func queryProfileClockUnaryInterceptor(logger logging.Logger, slowThreshold time.Duration) ggrpc.UnaryServerInterceptor {
 	return queryProfileClockUnaryInterceptorAt(logger, slowThreshold, time.Now)
 }
@@ -33,7 +38,7 @@ func queryProfileClockUnaryInterceptorAt(logger logging.Logger, slowThreshold ti
 		clock := &queryProfileClock{start: now()}
 		ctx = context.WithValue(ctx, queryProfileClockKey{}, clock)
 		resp, err := handler(ctx, req)
-		if err != nil && isProfiledRPCMethod(info.FullMethod) && !clock.claimed {
+		if err != nil && wantsProfile(ctx) && !clock.claimed {
 			_, profile := query.WithProfileStartingAt(ctx, clock.start)
 			emitQueryProfile(ctx, profile, logger, slowThreshold)
 		}
@@ -48,24 +53,12 @@ func queryProfileClockStreamInterceptor(logger logging.Logger, slowThreshold tim
 		ctx := context.WithValue(stream.Context(), queryProfileClockKey{}, clock)
 		wrapped := &authServerStream{ServerStream: stream, ctx: ctx}
 		err := handler(srv, wrapped)
-		if err != nil && isProfiledRPCMethod(info.FullMethod) && !clock.claimed {
+		if err != nil && wantsProfile(ctx) && !clock.claimed {
 			_, profile := query.WithProfileStartingAt(ctx, clock.start)
 			emitQueryProfile(ctx, profile, logger, slowThreshold)
 		}
 
 		return err
-	}
-}
-
-func isProfiledRPCMethod(method string) bool {
-	switch method {
-	case servicepb.BucketService_ListTransactions_FullMethodName,
-		servicepb.BucketService_ListAccounts_FullMethodName,
-		servicepb.BucketService_ExecutePreparedQuery_FullMethodName,
-		servicepb.BucketService_AggregateVolumes_FullMethodName:
-		return true
-	default:
-		return false
 	}
 }
 
@@ -186,10 +179,9 @@ func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.Dy
 		if len(batch.GetRequests()) == 0 {
 			return ctx, errEnvelopesRequired
 		}
-		for index, request := range batch.GetRequests() {
-			required := internalauth.RequiredScopeForRequest(request)
-			if err := internalauth.AuthorizeGRPC(ctx, required); err != nil {
-				return ctx, status.Errorf(status.Code(err), "request %d requires scope %s", index, required)
+		for _, required := range distinctApplyScopes(batch.GetRequests()) {
+			if err := internalauth.AuthorizeGRPC(ctx, required.scope); err != nil {
+				return ctx, status.Errorf(status.Code(err), "request %d requires scope %s", required.index, required.scope)
 			}
 		}
 
@@ -211,6 +203,21 @@ func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.Dy
 	default:
 		return ctx, status.Errorf(codes.Internal, "dynamic resolver %s is not valid for a unary RPC", resolver)
 	}
+}
+
+func distinctApplyScopes(requests []*servicepb.Request) []indexedScope {
+	seen := make(map[internalauth.Scope]struct{})
+	required := make([]indexedScope, 0, len(requests))
+	for index, request := range requests {
+		scope := internalauth.RequiredScopeForRequest(request)
+		if _, exists := seen[scope]; exists {
+			continue
+		}
+		seen[scope] = struct{}{}
+		required = append(required, indexedScope{scope: scope, index: index})
+	}
+
+	return required
 }
 
 func unexpectedAuthRequest(resolver commonpb.DynamicAuthResolver, req any) error {

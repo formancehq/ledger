@@ -182,6 +182,13 @@ func TestProfiledRPCAuthDenialsEmitRequestedProfileThroughServerChain(t *testing
 		require.NotEmpty(t, trailer.Get(metadataKeyQueryProfileResult))
 	})
 
+	t.Run("unprofiled unary", func(t *testing.T) {
+		var trailer metadata.MD
+		_, err := client.Barrier(ctx, &servicepb.BarrierRequest{}, ggrpc.Trailer(&trailer))
+		require.Equal(t, codes.Unauthenticated, status.Code(err))
+		require.NotEmpty(t, trailer.Get(metadataKeyQueryProfileResult))
+	})
+
 	t.Run("stream", func(t *testing.T) {
 		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{})
 		require.NoError(t, err)
@@ -386,6 +393,21 @@ func TestApplyDynamicPolicyAuthorizesEveryEmbeddedRequest(t *testing.T) {
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.Contains(t, status.Convert(err).Message(), "request 1 requires scope "+string(internalauth.ScopeClusterWrite))
 	require.Zero(t, server.applyCalls.Load())
+}
+
+func TestDistinctApplyScopesPreservesFirstRequestOrder(t *testing.T) {
+	t.Parallel()
+
+	requests := []*servicepb.Request{
+		{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{}}},
+		{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{}}},
+		{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}},
+	}
+
+	require.Equal(t, []indexedScope{
+		{scope: internalauth.ScopeMetadataWrite, index: 0},
+		{scope: internalauth.ScopeClusterWrite, index: 2},
+	}, distinctApplyScopes(requests))
 }
 
 func anonymousAuthConfig(scopes ...internalauth.Scope) internalauth.AuthConfig {
