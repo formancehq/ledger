@@ -492,29 +492,24 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 		return f.GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
 
-	// The excluded ephemeral cell strips e:1 membership from both wash txs. The
-	// membership assertion is what separates this from the universe drop
-	// (TestMatchTxAddress_UniverseDrop), where the rows stay indexed and only
-	// the address match stops resolving — matchTxAddress alone would be false
-	// under either mechanism.
-	require.Zero(t, txs.Get(int(0)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
-	require.Zero(t, txs.Get(int(1)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
-	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
-	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
+	// EPHEMERAL current state is purged, but transaction address membership is
+	// immutable history and remains queryable for both wash transactions.
+	require.True(t, matchTxAddress(addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
+	require.True(t, matchTxAddress(addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
 
 	// world's side of the wash is a kept NORMAL cell — still indexed.
-	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("world", src)), txs.Get(int(0))))
-	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("world", dst)), txs.Get(int(1))))
+	require.True(t, matchTxAddress(addr(filterAddrExactRole("world", src)), txs.Get(int(0))))
+	require.True(t, matchTxAddress(addr(filterAddrExactRole("world", dst)), txs.Get(int(1))))
 
 	// Role bits on the funding tx: world is the source, a:1 the destination.
-	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("a:1", anyRole)), txs.Get(int(2))))
-	require.True(t, matchTxAddress(ls, addr(filterAddrExactRole("a:1", dst)), txs.Get(int(2))))
-	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("a:1", src)), txs.Get(int(2))))
-	require.True(t, matchTxAddress(ls, addr(filterAddrPrefixRole("a:", dst)), txs.Get(int(2))))
-	require.False(t, matchTxAddress(ls, addr(filterAddrPrefixRole("b:", anyRole)), txs.Get(int(2))))
+	require.True(t, matchTxAddress(addr(filterAddrExactRole("a:1", anyRole)), txs.Get(int(2))))
+	require.True(t, matchTxAddress(addr(filterAddrExactRole("a:1", dst)), txs.Get(int(2))))
+	require.False(t, matchTxAddress(addr(filterAddrExactRole("a:1", src)), txs.Get(int(2))))
+	require.True(t, matchTxAddress(addr(filterAddrPrefixRole("a:", dst)), txs.Get(int(2))))
+	require.False(t, matchTxAddress(addr(filterAddrPrefixRole("b:", anyRole)), txs.Get(int(2))))
 }
 
-func TestMatchTxAddress_UniverseDrop(t *testing.T) {
+func TestMatchTxAddress_PurgedAccountHistory(t *testing.T) {
 	t.Parallel()
 
 	// Bulk 1 funds ephemeral e:1 (non-zero at end of bulk → kept and indexed).
@@ -528,12 +523,10 @@ func TestMatchTxAddress_UniverseDrop(t *testing.T) {
 	exact := func(a string) *commonpb.AddressMatch {
 		return filterAddrExactRole(a, commonpb.AddressRole_ADDRESS_ROLE_ANY).GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
-	require.True(t, matchTxAddress(ls1, exact("e:1"), ls1.Txs().Get(int(0))))
+	require.True(t, matchTxAddress(exact("e:1"), ls1.Txs().Get(int(0))))
 
-	// Bulk 2 drains it to zero: the cell is purged, dropping e:1 from the V+M
-	// universe — tx 1 keeps its index membership but stops being reachable
-	// through an address match, exactly like the server's attributes-zone
-	// account resolution.
+	// Bulk 2 drains it to zero: the cell is purged from current state, while tx 1
+	// keeps its index membership and remains reachable through an address match.
 	res2 := res1.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
 		oracletest.TxReqL("L", "e:1", "world", "USD", 5),
 	}})
@@ -543,7 +536,7 @@ func TestMatchTxAddress_UniverseDrop(t *testing.T) {
 	rec := ls2.Txs().Get(int(0))
 	require.NotZero(t, rec.IndexedAddrs()["e:1"], "membership itself is monotone")
 	require.False(t, ls2.HasAccount("e:1"))
-	require.False(t, matchTxAddress(ls2, exact("e:1"), rec))
+	require.True(t, matchTxAddress(exact("e:1"), rec))
 }
 
 func TestNeededIndexCanonicals_AddressRoles(t *testing.T) {

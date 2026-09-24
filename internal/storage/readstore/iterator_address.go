@@ -84,7 +84,7 @@ func (it *MappedAccountPrefixIterator) Close()          { _ = it.iter.Close() }
 
 // addressTxUnion is the account→transaction union underlying an address match
 // on the TRANSACTIONS target. It works by:
-//  1. Scanning the existence index for matching account addresses
+//  1. Scanning the account→transaction mapping index for matching addresses
 //  2. For each matching account, scanning the account→tx mapping
 //  3. Unioning all transaction ID sets into a single sorted slice
 //

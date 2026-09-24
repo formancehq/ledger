@@ -1346,7 +1346,7 @@ func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordV
 				// never written to the index, so they can never match.
 				return kleene{match: rec.Reference() != "" && rec.Reference() == x.Reference.GetCond().GetHardcoded(), known: true}
 			case *commonpb.QueryFilter_Address:
-				return kleene{match: matchTxAddress(ls, x.Address, rec), known: true}
+				return kleene{match: matchTxAddress(x.Address, rec), known: true}
 			case *commonpb.QueryFilter_Field:
 				return kleene{match: matchFieldCondition(ls.TransactionFieldTypes(), func(key string) (*commonpb.MetadataValue, bool) {
 					v, ok := rec.Metadata()[key]
@@ -1368,12 +1368,10 @@ func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordV
 
 // matchTxAddress evaluates an address leaf on the TRANSACTIONS target: the
 // transaction matches iff some account in its account→tx index membership
-// (IndexedAddrs, role-filtered) matches the prefix/exact pattern AND is still
-// in the merged V+M account universe — the server resolves matching accounts
-// through the attributes zone (pebbleAccountExists / the account prefix
-// iterator), so a purged account with no metadata stops reaching its
-// transactions even though the index rows remain.
-func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txRecordView) bool {
+// (IndexedAddrs, role-filtered) matches the prefix/exact pattern. Membership is
+// immutable history, so purging an account from current state does not make its
+// transactions unreachable through address filters.
+func matchTxAddress(am *commonpb.AddressMatch, rec txRecordView) bool {
 	var roleMask uint8
 	switch am.GetRole() {
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
@@ -1402,9 +1400,7 @@ func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txReco
 			continue // param matches are not generated
 		}
 
-		if ls.HasAccount(addr) {
-			return true
-		}
+		return true
 	}
 
 	return false
