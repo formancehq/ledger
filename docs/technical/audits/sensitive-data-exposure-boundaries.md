@@ -119,6 +119,22 @@ The matrix must include at least:
 - ledgerctl profiles/config exports/errors and operator CR/status/Event/log paths;
 - explicit intended secret outputs as negative controls.
 
+### Pyroscope operator credential oracle (EN-2061)
+
+`Cluster.spec.monitoring.pyroscope` accepts optional `authTokenFrom` and
+`basicAuthPasswordFrom` Secret references, never literal credentials. Exercise
+neither, either and both references with profiling enabled and disabled. Inspect
+serialized Cluster and StatefulSet/Pod templates in JSON and YAML for credential
+canary absence, exact required `secretKeyRef` delivery, and non-secret profiling
+controls. Inspect both generated and Helm CRDs for removal of literal credential
+fields. Reference changes must alter the Pod template without mutating the
+source Cluster. Secret content rotation requires an explicit Pod restart; the
+operator does not read these secrets or automatically roll on content changes.
+The rendering and rollout oracle lives in
+`misc/operator/internal/controller/pyroscope_test.go`; the pruning oracle for
+both generated and Helm CRDs lives in
+`misc/operator/api/v1alpha1/pyroscope_test.go` (`TestPyroscopeCRDSecretBoundary`).
+
 ## Rejection and deduplication rules
 
 ### HTTP mirror parser error oracle
