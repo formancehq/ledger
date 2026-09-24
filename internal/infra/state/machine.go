@@ -809,11 +809,12 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 		}
 
 		if assert.Enabled {
-			// Stated rather than positional: line 780 returns early when both
-			// sets are empty, so a constant true would hold only for as long
-			// as this block stays under that guard. Spelling the condition out
-			// means a refactor that moves or widens the block reports a false
-			// Sometimes instead of silently certifying an empty verification.
+			// Stated rather than positional: the guard before sentinel.Run
+			// skips this callback when both sets are empty, so a constant true
+			// would hold only for as long as this block stays under that
+			// guard. Spelling the condition out means a refactor that moves or
+			// widens the block reports a false Sometimes instead of silently
+			// certifying an empty verification.
 			assert.Sometimes(
 				len(pb.sentinelUpdates)+len(pb.sentinelLedgerNames) > 0,
 				"nonempty sentinel verification completed",
