@@ -422,6 +422,36 @@ driver's template decides who it shares the timeline with:
 
 The split is wired in `tests/antithesis/workload/Dockerfile`.
 
+#### Dedicated-ledger query oracles
+
+The reference-race, definitive-errors and bulk-atomicity drivers declare the
+reference index on their private ledgers; bulk atomicity also declares the
+transaction-address index. `CreateQueryOracleLedger` puts ledger creation and
+index declarations in one idempotent proposal. This preserves the bulk audit
+oracle's limit of one successful setup proposal. A ledger-name collision stops
+the invocation without reusing the existing ledger or reporting a finding.
+
+Every filtered check uses `ReadOracleTransactions`. The actual linearizable
+query gates readiness on the replica serving it. An `INDEX_BUILDING` response
+restarts the complete query within a ten-second context, discarding partial
+rows. A status response from a different replica cannot certify readiness.
+Only clean EOF makes a page conclusive; ten rows suffice for these absence and
+at-most-one checks. Permanent setup/read errors, including missing indexes,
+emit an Unreachable assertion with the ledger, operation, error and gRPC code.
+Read errors also include the filter and partial transaction IDs.
+Transient failures and caller cancellation do not certify a business result.
+The shared RPC classification is unchanged.
+
+Each driver's `TestDriverQueryOracles` invokes its real entry point against a
+local server and captures SDK JSON in a child process. It requires the original
+Always properties to emit `hit:true` and `condition:true`, including both bulk
+effect checks and the separate audit check. False Always or Unreachable hits
+fail these healthy-driver tests. Sensitivity tests use committed
+matching activity for absence checks and an explicitly injected second response
+ID for uniqueness. The latter validates the oracle, not an engine duplicate.
+Run the three driver packages and `./internal` from the nested
+`tests/antithesis/workload` module; root-module tests do not include them.
+
 ### Model-based conformance test (`singleton_driver_model`)
 
 This is an in-memory **model checker**: it runs a deterministic reference model
