@@ -161,9 +161,13 @@ transaction was committed independently, which a revision-10 peer could still
 execute successfully. The same batch therefore has a different retained outcome
 on the two revisions.
 
-The `.proto` text gains only an enum value, which is a compatible addition on
-its own; the incompatibility is the changed retained outcome, invisible to a
-schema comparison. A stale admission observation of a target that predates the
+The service `.proto` text gains only the `ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH`
+enum value, which is a compatible addition on its own; the incompatibility is the
+changed retained outcome, invisible to a schema comparison. The revision also adds
+`OrderTechnical.revert_target_digest` to `raft_cmd.proto`. That message is not
+part of the service contract — no service RPC carries it; it travels only inside
+Raft entries between replicas — so it does not bear on this revision's client
+compatibility; apply semantics must still agree across every replica. A stale admission observation of a target that predates the
 batch and is otherwise revertable answers the retryable
 `STALE_INPUTS_RESOLUTION`, which is not frozen and is unchanged in kind from the
 surrounding contract; a target that is unknown or already reverted keeps
