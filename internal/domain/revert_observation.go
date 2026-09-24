@@ -42,6 +42,7 @@ func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
 
 	if !found {
 		h.WriteField([]byte("absent"))
+
 		return h.Sum()
 	}
 
