@@ -30,13 +30,15 @@ import (
 // sorted: it is the stored order both sides read, and reordering is itself a
 // divergence.
 //
-// One value is canonicalised before it is hashed: Uint256.ToBigInt maps both a
-// nil amount and an explicit zero to the same empty byte string, so those two
-// postings digest alike. That is sound here because the digest only ever
-// compares two reads of the *same* stored transaction, whose postings are
-// immutable after create — the distinction cannot differ between the sides. Do
-// not reuse this digest to compare posting sets of different provenance without
-// adding a presence byte for the amount.
+// Amounts are hashed as their four limbs, a fixed 32-byte little-endian block,
+// so they need no length prefix and cost no allocation on the apply path. The
+// limbs are read through the nil-safe getters, so a nil amount digests exactly
+// like an explicit zero. That is deliberate, not a gap in the injectivity
+// argument: the two sides read the target from different places (admission
+// from the Transaction attribute in the store, apply from the cache), and nil
+// versus zero is a representation detail of one amount — it changes neither the
+// reversed posting nor the volume coverage. Adding a presence byte would turn
+// that representation difference into a spurious stale-observation rejection.
 func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
 	h := blake3.New()
 
@@ -70,7 +72,16 @@ func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
 		writeField([]byte(p.GetDestination()))
 		writeField([]byte(p.GetAsset()))
 		writeField([]byte(p.GetColor()))
-		writeField(p.GetAmount().ToBigInt().Bytes())
+
+		amount := p.GetAmount()
+
+		var limbs [32]byte
+
+		binary.LittleEndian.PutUint64(limbs[0:8], amount.GetV0())
+		binary.LittleEndian.PutUint64(limbs[8:16], amount.GetV1())
+		binary.LittleEndian.PutUint64(limbs[16:24], amount.GetV2())
+		binary.LittleEndian.PutUint64(limbs[24:32], amount.GetV3())
+		_, _ = h.Write(limbs[:])
 	}
 
 	return h.Sum(nil)

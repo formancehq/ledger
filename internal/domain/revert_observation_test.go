@@ -96,3 +96,59 @@ func TestRevertTargetDigest_EncodingIsInjective(t *testing.T) {
 
 	require.NotEqual(t, RevertTargetDigest(left, true), RevertTargetDigest(right, true))
 }
+
+// TestRevertTargetDigest_EveryAmountLimbIsSignificant pins that the fixed-width
+// amount block covers all four limbs, not only the low one the other cases use.
+func TestRevertTargetDigest_EveryAmountLimbIsSignificant(t *testing.T) {
+	t.Parallel()
+
+	withAmount := func(amount *commonpb.Uint256) []*commonpb.Posting {
+		p := posting("world", "users:001", "USD/2", "", 0)
+		p.Amount = amount
+
+		return []*commonpb.Posting{p}
+	}
+
+	zeroDigest := RevertTargetDigest(withAmount(&commonpb.Uint256{}), true)
+
+	for _, tc := range []struct {
+		name   string
+		amount *commonpb.Uint256
+	}{
+		{"v0", &commonpb.Uint256{V0: 1}},
+		{"v1", &commonpb.Uint256{V1: 1}},
+		{"v2", &commonpb.Uint256{V2: 1}},
+		{"v3", &commonpb.Uint256{V3: 1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.NotEqual(t, zeroDigest, RevertTargetDigest(withAmount(tc.amount), true))
+		})
+	}
+
+	require.NotEqual(t,
+		RevertTargetDigest(withAmount(&commonpb.Uint256{V0: 1}), true),
+		RevertTargetDigest(withAmount(&commonpb.Uint256{V1: 1}), true),
+		"the same limb value in a different position is a different amount",
+	)
+}
+
+// TestRevertTargetDigest_NilAmountDigestsAsZero pins the one deliberate
+// canonicalisation. Admission and apply read the target from different places,
+// and nil versus an explicit zero is a representation detail of one amount, so
+// distinguishing them would reject a revert whose observation did not diverge.
+func TestRevertTargetDigest_NilAmountDigestsAsZero(t *testing.T) {
+	t.Parallel()
+
+	withNil := posting("world", "users:001", "USD/2", "", 0)
+	withNil.Amount = nil
+
+	withZero := posting("world", "users:001", "USD/2", "", 0)
+	withZero.Amount = &commonpb.Uint256{}
+
+	require.Equal(t,
+		RevertTargetDigest([]*commonpb.Posting{withNil}, true),
+		RevertTargetDigest([]*commonpb.Posting{withZero}, true),
+	)
+}
