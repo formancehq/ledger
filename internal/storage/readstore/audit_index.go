@@ -307,6 +307,8 @@ func auditSeqsByStringPrefix(reader dal.PebbleReader, field byte, value string) 
 	// NUL is used as the value terminator in AuditIndexStringKey. A prefix
 	// operand containing NUL shares a byte-prefix with shorter exact keys and
 	// would produce false-positive matches. Reject it explicitly.
+	// The audit filter compiler (indexIdempotencyKeyLeaf) also guards this at
+	// the gRPC layer; this check is defence-in-depth for direct callers.
 	if strings.ContainsRune(value, '\x00') {
 		return nil, errors.New("audit index prefix operand must not contain NUL")
 	}

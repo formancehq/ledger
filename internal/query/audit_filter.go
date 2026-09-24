@@ -241,6 +241,9 @@ func indexIdempotencyKeyLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition
 		}
 		seqs, err = idx.AuditSeqsByString(readstore.AuditFieldIdempotencyKey, c.StringCond.GetHardcoded())
 	case *commonpb.AuditCondition_StringPrefix:
+		// NUL check here (before the readstore call) ensures ValidateAuditFilter
+		// and gRPC callers receive codes.InvalidArgument. auditSeqsByStringPrefix
+		// also guards the same invariant at the storage interface layer.
 		if strings.ContainsRune(c.StringPrefix, '\x00') {
 			return auditCompiled{}, status.Error(codes.InvalidArgument,
 				"idempotency_key prefix operand must not contain NUL")
