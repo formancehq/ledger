@@ -77,6 +77,11 @@ Both are catastrophic for an FSM that is supposed to be a pure function of its d
 
 ## How a violation surfaces
 
+A refused access also emits the Antithesis safety property
+`admission declared every FSM attribute access`, with bounded attribute kind,
+hashed identifier and Raft index. Reporting does not change the error, metrics,
+logging or audit metadata below, forward the access, or make it fatal to apply.
+
 A coverage miss is an admission bug, not an infrastructure fault, and it is labelled that way on every surface it reaches:
 
 | Surface | Value |

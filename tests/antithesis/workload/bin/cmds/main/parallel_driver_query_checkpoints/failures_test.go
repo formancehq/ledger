@@ -68,6 +68,7 @@ func requireCheckpointFinding(t *testing.T, assertions []sdkAssertion, message s
 
 func TestQueryCheckpointDriverRejectsOtherErrors(t *testing.T) {
 	t.Parallel()
+	requireArmedSDK(t)
 	for _, tc := range []struct {
 		name   string
 		code   codes.Code
@@ -101,6 +102,7 @@ func TestQueryCheckpointDriverRejectsOtherErrors(t *testing.T) {
 
 func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T) {
 	t.Parallel()
+	requireArmedSDK(t)
 	ctx, address, client, cluster := checkpointTestServer(t)
 	var foreignIDs []uint64
 	for range 9 {
@@ -194,6 +196,7 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 
 func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 	t.Parallel()
+	requireArmedSDK(t)
 	ctx, address, client, cluster := checkpointTestServer(t)
 	var foreignIDs []uint64
 	for range 9 {

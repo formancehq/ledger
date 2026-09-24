@@ -808,6 +808,24 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 			}
 		}
 
+		if assert.Enabled {
+			// Stated rather than positional: the guard before sentinel.Run
+			// skips this callback when both sets are empty, so a constant true
+			// would hold only for as long as this block stays under that
+			// guard. Spelling the condition out means a refactor that moves or
+			// widens the block reports a false Sometimes instead of silently
+			// certifying an empty verification.
+			assert.Sometimes(
+				len(pb.sentinelUpdates)+len(pb.sentinelLedgerNames) > 0,
+				"nonempty sentinel verification completed",
+				map[string]any{
+					"raftIndex":     pb.lastAppliedIndex,
+					"volumeUpdates": len(pb.sentinelUpdates),
+					"ledgers":       len(pb.sentinelLedgerNames),
+				},
+			)
+		}
+
 		return nil
 	}); err != nil {
 		return err
@@ -835,6 +853,28 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 
 	if pb.sinkConfigChanged || pb.mirrorConfigChanged {
 		fsm.notifier.NotifyConfigChanged()
+	}
+
+	// These facts belong to this prepared batch. The next preparation may
+	// already have changed the live FSM, and only a successful commit counts.
+	//
+	// Guarded, unlike the counters it reads: nothing here escapes the guard, so
+	// there is no value another caller could find silently zero, and an unarmed
+	// build skips a walk and a map allocation on every commit. See the
+	// contributing guide's rule on what belongs inside a guard.
+	if assert.Enabled {
+		for _, result := range pb.Result.Results {
+			if result.Error != nil || result.Replayed {
+				continue
+			}
+			details := map[string]any{
+				"proposalId":   result.ProposalID,
+				"raftIndex":    result.AppliedIndex,
+				"transactions": result.createdTransactions,
+			}
+			assert.Sometimes(result.createdTransactions >= 2, "multi-transaction proposal committed", details)
+			assert.Sometimes(result.revertedTransaction, "transaction revert committed", details)
+		}
 	}
 
 	return nil
@@ -1297,8 +1337,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 
 		if stored, ok := fsm.Registry.Idempotency.Get(idempotencyKey); ok &&
 			!fsm.Registry.Idempotency.IsExpired(stored, effectiveDate.GetData()) {
+			matchingHash := bytes.Equal(proposalHash, stored.GetHash())
+			if assert.Enabled {
+				details := map[string]any{"proposalId": proposal.GetId(), "raftIndex": raftIndex}
+				assert.Sometimes(!matchingHash, "idempotency body conflict rejected", details)
+				assert.Sometimes(matchingHash && stored.GetFailure() == nil, "successful idempotency outcome replayed", details)
+			}
 			switch {
-			case !bytes.Equal(proposalHash, stored.GetHash()):
+			case !matchingHash:
 				err = &domain.ErrIdempotencyKeyConflict{Key: idempotencyKey}
 			case stored.GetFailure() != nil:
 				replayed = true
@@ -1658,6 +1704,14 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		purgedVolumeKeys:       buffer.PurgedVolumeKeys(),
 		createdLogs:            createdLogs,
 		ledgerNames:            ledgerNames,
+		// Outcome facts for the commit-milestone properties, accumulated by
+		// the pass that produced the logs rather than rebuilt by a second
+		// walk over them here. Deliberately NOT behind assert.Enabled: a
+		// field populated only in armed builds is a trap for the next caller
+		// who reads it for something real, and the cost is nothing beside
+		// the ~540ns SDK call it feeds.
+		createdTransactions: ordersResult.CreatedTransactions,
+		revertedTransaction: ordersResult.RevertedTransaction,
 	}, nil
 }
 
@@ -1860,6 +1914,11 @@ type ApplyResult struct {
 	purgedVolumeKeys []domain.VolumeKey // keys removed by ephemeral purge
 	createdLogs      []*commonpb.Log
 	ledgerNames      []string // ledger names touched by this proposal (for post-commit balance check)
+
+	// Bounded outcome facts captured before the reusable WriteSet is reset.
+	// These are observational only; they never enter the replicated contract.
+	createdTransactions int
+	revertedTransaction bool
 }
 
 type ApplyEntriesResult struct {

@@ -150,7 +150,7 @@ func noteApplyCoverage(bulk oracle.Bulk, result oracle.ApplyResult) {
 	}
 }
 
-// applyCoverageHits decides every Apply sonde for each validated commit.
+// applyCoverageHits decides every Apply probe for each validated commit.
 func applyCoverageHits(bulk oracle.Bulk, result oracle.ApplyResult) map[string]bool {
 	hits := make(map[string]bool, len(applyCoverageMessages()))
 	for _, message := range applyCoverageMessages() {

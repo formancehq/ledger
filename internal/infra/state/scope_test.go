@@ -1,6 +1,8 @@
 package state
 
 import (
+	"context"
+	"encoding/hex"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -11,6 +13,71 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+func TestScope_DeclaredAccessAndRejectedAccess(t *testing.T) {
+	t.Parallel()
+
+	fsm, _, _ := newTestMachine(t)
+	key := domain.LedgerKey{Name: "declared"}
+	id, _ := attributes.MakeKey(key.Bytes())
+	fsm.writeSet.Reset(&commonpb.Timestamp{Data: 1})
+	factory := NewScopeFactory(fsm.writeSet, &raftcmdpb.ExecutionPlan{
+		Attributes: []*raftcmdpb.AttributeCoverage{declareTestPlan(id, dal.SubAttrLedger)},
+	}, fsm.logger, fsm.preloadMissCounter, 42)
+	scope, err := factory.NewScope([]byte{1})
+	require.NoError(t, err)
+	info := &commonpb.LedgerInfo{Id: 7, Name: key.Name}
+	scope.Ledgers().Put(key, info)
+	got, err := scope.Ledgers().Get(key)
+	require.NoError(t, err)
+	require.Equal(t, info.GetId(), got.GetId())
+	require.Equal(t, info.GetName(), got.GetName())
+
+	scope, err = factory.NewScope(nil)
+	require.NoError(t, err)
+	_, err = scope.Ledgers().Get(key)
+	var miss *ErrCoverageMiss
+	require.ErrorAs(t, err, &miss)
+	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
+	require.Equal(t, map[string]string{
+		"attribute": "ledgers", "canonicalHex": hex.EncodeToString(key.Bytes()),
+		"idHex": id.Hex(), "raftIndex": "42",
+	}, miss.Metadata())
+	require.False(t, domain.IsFreezableFailure(domain.Kind(miss)))
+
+	// The refused access did not delete or alter the staged value.
+	scope, err = factory.NewScope([]byte{1})
+	require.NoError(t, err)
+	got, err = scope.Ledgers().Get(key)
+	require.NoError(t, err)
+	require.Equal(t, info.GetId(), got.GetId())
+	require.Equal(t, info.GetName(), got.GetName())
+}
+
+func TestScope_CoverageMissDoesNotFreezeIdempotency(t *testing.T) {
+	t.Parallel()
+
+	fsm, store, _ := newTestMachine(t)
+	proposal := makeProposal(1, createLedgerOrder("coverage"))
+	proposal.Idempotency = &commonpb.Idempotency{Key: "retryable"}
+	proposal.ExecutionPlan.Attributes = nil // Deliberately omit the ledger read.
+	result, err := fsm.ApplyEntries(context.Background(), store, makeEntry(t, 1, proposal))
+	require.NoError(t, err, "a coverage miss must not become a fatal apply failure")
+	var miss *ErrCoverageMiss
+	require.ErrorAs(t, result.Results[0].Error, &miss)
+	require.Equal(t, "ledgers", miss.Attribute)
+	_, frozen := fsm.Registry.Idempotency.Get("retryable")
+	require.False(t, frozen)
+
+	// Repair only the admission declaration and retry the identical business
+	// request under the same key. It must execute, not replay a frozen failure.
+	proposal = makeProposal(2, createLedgerOrder("coverage"))
+	proposal.Idempotency = &commonpb.Idempotency{Key: "retryable"}
+	result, err = fsm.ApplyEntries(context.Background(), store, makeEntry(t, 2, proposal))
+	require.NoError(t, err)
+	require.NoError(t, result.Results[0].Error)
+	require.False(t, result.Results[0].Replayed)
+}
 
 // TestScope_TechnicalUpdate_CoverageMissShortCircuits pins that an
 // undeclared ledger read in a technical-update handler propagates the

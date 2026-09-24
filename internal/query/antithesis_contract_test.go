@@ -1,0 +1,43 @@
+//go:build enable_antithesis_sdk
+
+package query_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
+)
+
+// Each case re-execs one ordinary regression and checks what it reported to
+// the SDK; antithesistest.Emitted carries the reason a subprocess is required.
+// Only ordinary regressions are named here, so injected corrupt states stay
+// confined to test binaries.
+func TestAntithesisContractEmission(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		test, property     string
+		condition, emitted bool
+	}{
+		{"TestAlignedIndexSnapshotRejectsMainSnapshotBehindReadBarrier", "linearizable query snapshot covers its read barrier", false, true},
+		{"TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier", "linearizable query snapshot covers its read barrier", false, false},
+		{"TestAlignedIndexSnapshotAlignsAfterObservedWait", "indexed snapshot aligned after waiting for projection", true, true},
+		// The already-aligned return still evaluates the property, false: the
+		// gate is assert.Enabled, not a branch, so Antithesis keeps the signal.
+		{"TestAlignedIndexSnapshotAcceptsCoveredOrAbsentReadBarrier", "indexed snapshot aligned after waiting for projection", false, true},
+		{"TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows", "indexed snapshot aligned after waiting for projection", true, false},
+		{"TestAlignedIndexSnapshot_WaitsOnlyAsLongAsTheCallerAllows", "linearizable query snapshot covers its read barrier", false, false},
+	} {
+		t.Run(tc.test+"/"+tc.property, func(t *testing.T) {
+			t.Parallel()
+			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+			defer cancel()
+			found, err := antithesistest.Emitted(ctx, t.TempDir(), tc.test, tc.property, tc.condition)
+			require.NoError(t, err)
+			require.Equal(t, tc.emitted, found, "property %q, condition %v", tc.property, tc.condition)
+		})
+	}
+}

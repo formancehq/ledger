@@ -21,6 +21,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -35,6 +36,11 @@ import (
 // only the observed GetAccount balance is changed in the corruption control.
 func TestQuiescenceAgainstServer(t *testing.T) {
 	t.Parallel()
+	// Every scenario below is decided by which assertions the subprocess
+	// emitted, and the no-op SDK writes none.
+	if !antithesistest.Armed {
+		t.Skip(antithesistest.UnarmedSkip)
+	}
 	for _, scenario := range []string{"idle", "divergence", "late_write", "busy", "unavailable", "expired", "ambiguous_barrier"} {
 		t.Run(scenario, func(t *testing.T) {
 			dir := t.TempDir()

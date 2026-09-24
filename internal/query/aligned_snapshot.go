@@ -39,6 +39,10 @@ func mainAppliedHorizon(ctx context.Context, mainReader dal.PebbleGetter) (uint6
 		return 0, fmt.Errorf("reading main-store applied index: %w", err)
 	}
 	if barrier, ok := ReadBarrierHorizon(ctx); ok && horizon < barrier {
+		assert.Unreachable("linearizable query snapshot covers its read barrier", map[string]any{
+			"appliedIndex": horizon, "readBarrier": barrier,
+		})
+
 		return 0, fmt.Errorf(
 			"main-store snapshot applied index %d is behind ReadIndex horizon %d",
 			horizon, barrier,
@@ -169,6 +173,13 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 		return nil, 0, nil, err
 	}
 
+	// Loop state, not assertion bookkeeping: both are captured on one
+	// iteration and read on a later one, so they cannot live inside the guard
+	// that reads them however the guard rule is written. Only the Sometimes
+	// call below consumes them today.
+	waited := false
+	var initialLag uint64
+
 	// A frozen store (query checkpoint) never advances. The builder publishes
 	// its .ready marker only after every promised projection has certified the
 	// checkpoint's applied index; still re-read that certificate below so a
@@ -209,6 +220,17 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 
 		if lastIndexed >= mainAppliedIndex {
 			releaseHold()
+			// assert.Enabled is a constant, so an unarmed build discards this
+			// block and its details map rather than evaluating them on a path
+			// every read takes. That is what lets the property keep evaluating
+			// `waited` instead of firing only on the slow path: Antithesis
+			// reads the false evaluations as a signal to steer toward
+			// projection lag.
+			if assert.Enabled {
+				assert.Sometimes(waited, "indexed snapshot aligned after waiting for projection", map[string]any{
+					"appliedIndex": mainAppliedIndex, "indexedIndex": lastIndexed, "initialLag": initialLag,
+				})
+			}
 
 			return snap, mainSeq, releaseLease, nil
 		}
@@ -223,6 +245,10 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader d
 			)
 		}
 
+		if !waited {
+			initialLag = mainAppliedIndex - lastIndexed
+		}
+		waited = true
 		if waitErr := rs.WaitForRaftProgress(ctx, mainAppliedIndex); waitErr != nil {
 			// The caller's context ending is the caller's answer; a Pebble
 			// fault reading progress is a real I/O error and must not be
