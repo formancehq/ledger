@@ -243,7 +243,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		}
 	}
 
-	// The "and continued" sondes need an order executed after the skip, and most
+	// The "and continued" probes need an order executed after the skip, and most
 	// bulks hold a single order. Half the trailing opt-ins get a successor that
 	// always commits; the rest stay trailing, where the skip proves only that it
 	// did not fail the bulk.

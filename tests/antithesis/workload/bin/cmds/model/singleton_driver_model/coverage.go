@@ -112,7 +112,7 @@ func registerCoverage() {
 	}
 }
 
-// emitCoverage records one evaluation of a sonde: the code point was reached,
+// emitCoverage records one evaluation of a probe: the code point was reached,
 // and cond says whether this outcome satisfies it.
 func emitCoverage(cond bool, msg string, details internal.Details) {
 	recordCoverageHit(msg, cond)

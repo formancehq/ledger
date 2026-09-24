@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-// Per-sonde hit counts, enabled with MODEL_COVERAGE_STATS=1. The SDK emits one
+// Per-probe hit counts, enabled with MODEL_COVERAGE_STATS=1. The SDK emits one
 // line for an assertion's first pass and one for its first failure, so the run
-// output says whether a sonde fired but never how often or how evenly — which
-// is what separates a sonde that holds a rate from one that passed on a single
+// output says whether a probe fired but never how often or how evenly — which
+// is what separates a probe that holds a rate from one that passed on a single
 // transient window.
 
-// covBucket is the resolution of the per-sonde hit timeline.
+// covBucket is the resolution of the per-probe hit timeline.
 const covBucket = 5 * time.Second
 
 type covStat struct {
@@ -31,7 +31,7 @@ var (
 	covStatsData  = map[string]*covStat{}
 )
 
-// recordCoverageHit counts one satisfied sonde evaluation. Registrations never
+// recordCoverageHit counts one satisfied probe evaluation. Registrations never
 // reach it, and an unsatisfied evaluation carries no rate information.
 func recordCoverageHit(msg string, cond bool) {
 	if !covStatsOn || !cond {
@@ -62,6 +62,15 @@ func startCoverageStats() {
 	if !covStatsOn {
 		return
 	}
+
+	// Seeded from the registered set so a probe the run never satisfies is
+	// reported with zero hits: an absent row reads as "not instrumented", and
+	// the probe that never fired is the one the table exists to surface.
+	covStatsMu.Lock()
+	for _, msg := range coverageMessages() {
+		covStatsData[msg] = &covStat{}
+	}
+	covStatsMu.Unlock()
 
 	go func() {
 		for range time.Tick(covBucket) {
