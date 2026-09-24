@@ -1152,11 +1152,23 @@ func (w *attributeReplayWriter) AccountHasNonZeroVolume(ledger, account string) 
 	for iter.First(); iter.Valid(); iter.Next() {
 		canonical := append([]byte(nil), iter.Key()[2:]...)
 		seen[string(canonical)] = struct{}{}
-		pair, err := w.GetVolume(canonical)
-		if err != nil {
-			_ = iter.Close()
+		pair, pending := w.pendingVolumes[string(canonical)]
+		if !pending {
+			var key domain.VolumeKey
+			if err := key.Unmarshal(canonical); err != nil {
+				_ = iter.Close()
 
-			return false, err
+				return false, err
+			}
+			if _, purged := w.derivedPurges[key.AccountKey]; purged {
+				continue
+			}
+			pair = &raftcmdpb.VolumePair{}
+			if err := pair.UnmarshalVT(iter.Value()); err != nil {
+				_ = iter.Close()
+
+				return false, err
+			}
 		}
 		if pair != nil && pair.GetInput().ToBigInt().Cmp(pair.GetOutput().ToBigInt()) != 0 {
 			_ = iter.Close()
@@ -1622,7 +1634,11 @@ func (w *attributeReplayWriter) GetVolume(canonicalKey []byte) (*raftcmdpb.Volum
 	if pair, ok := w.pendingVolumes[string(canonicalKey)]; ok {
 		return pair, nil
 	}
-	if hasCanonicalPrefix(w.purgedVolumePrefixes, canonicalKey) {
+	var key domain.VolumeKey
+	if err := key.Unmarshal(canonicalKey); err != nil {
+		return nil, err
+	}
+	if _, purged := w.derivedPurges[key.AccountKey]; purged {
 		return nil, nil
 	}
 

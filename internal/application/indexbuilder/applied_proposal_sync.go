@@ -286,25 +286,6 @@ func (s *appliedProposalSync) exclusionsForLog(logSeq uint64, ledger string, log
 	history map[domain.AccountAssetKey]struct{},
 ) {
 	purged := extractPurgedVolumes(log)
-	var annotatedAccounts []string
-	if annotated, ok := log.(interface{ GetPurgedAccounts() []string }); ok {
-		annotatedAccounts = annotated.GetPurgedAccounts()
-	}
-	purgedAccounts := make(map[string]struct{}, len(annotatedAccounts))
-	for _, account := range annotatedAccounts {
-		purgedAccounts[account] = struct{}{}
-	}
-	if s == nil {
-		transientPurges := make(map[domain.AccountAssetKey]struct{})
-		for key := range purged {
-			if _, ephemeral := purgedAccounts[key.Account]; !ephemeral {
-				transientPurges[key] = struct{}{}
-			}
-		}
-
-		return purged, transientPurges
-	}
-
 	transient := s.transientForLedger(logSeq, ledger)
 
 	return mergeExcluded(

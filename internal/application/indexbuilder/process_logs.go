@@ -675,6 +675,9 @@ func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledge
 		if b.deletedAcctAsset == nil {
 			b.deletedAcctAsset = make(map[string]struct{})
 		}
+
+		// has-asset is asset-first, so scan the bounded ledger keyspace and delete
+		// rows whose terminal entity is exactly this address.
 		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
 		for sk := range b.seenAcctAsset {
 			key := []byte(sk)
@@ -729,9 +732,6 @@ func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledg
 		if b.deletedAcctAsset == nil {
 			b.deletedAcctAsset = make(map[string]struct{})
 		}
-
-		// has-asset is asset-first, so scan the bounded ledger keyspace and delete
-		// rows whose terminal entity is exactly this address.
 		prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(ledger).Snapshot()
 		upper := append([]byte(nil), prefix...)
 		upper[len(upper)-1]++
@@ -1079,7 +1079,10 @@ func (b *Builder) indexLogEntryWithAccountPurge(cfg *ledgerIndexConfig, log *com
 		return nil
 	}
 
-	excludedVolumes, historyExcludedVolumes := proposals.exclusionsForLog(log.GetSequence(), ledgerName, ledgerLog)
+	var excludedVolumes, historyExcludedVolumes map[domain.AccountAssetKey]struct{}
+	if proposals != nil {
+		excludedVolumes, historyExcludedVolumes = proposals.exclusionsForLog(log.GetSequence(), ledgerName, ledgerLog)
+	}
 
 	b.wb.SetEventSequence(log.GetSequence())
 

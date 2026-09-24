@@ -913,7 +913,9 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 
 func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResult], release func()) {
 	go func() {
-		_, _ = fsmFuture.Wait(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = fsmFuture.Wait(ctx)
 		release()
 	}()
 }
@@ -1041,34 +1043,8 @@ func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregat
 			if !accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
 				continue
 			}
-			for _, attrCode := range []byte{dal.SubAttrVolume, dal.SubAttrMetadata} {
-				sep := dal.CanonicalKeySepVolume
-				if attrCode == dal.SubAttrMetadata {
-					sep = dal.CanonicalKeySepMetadata
-				}
-				canonicalPrefix := append(domain.LedgerScopedPrefix(account.LedgerName), account.Account...)
-				canonicalPrefix = append(canonicalPrefix, sep)
-				lower := append([]byte{dal.ZoneAttributes, attrCode}, canonicalPrefix...)
-				upper := append([]byte(nil), lower...)
-				upper[len(upper)-1]++
-
-				iter, err := dal.NewBoundedIter(handle, lower, upper)
-				if err != nil {
-					return nil, err
-				}
-				for iter.First(); iter.Valid(); iter.Next() {
-					canonical := append([]byte(nil), iter.Key()[2:]...)
-					coverage.AddPersisted(attrCode, canonical)
-					aggregate.AddPersisted(attrCode, append([]byte(nil), canonical...))
-				}
-				if err := iter.Error(); err != nil {
-					_ = iter.Close()
-
-					return nil, err
-				}
-				if err := iter.Close(); err != nil {
-					return nil, err
-				}
+			if err := accountlifecycle.AddPersistedRows(handle, account, coverage, aggregate); err != nil {
+				return nil, err
 			}
 		}
 	}

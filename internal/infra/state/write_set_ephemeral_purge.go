@@ -67,6 +67,8 @@ func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []
 	}
 
 	b.purgedAccounts = make(map[domain.AccountKey]struct{})
+	b.purgedAccountVolumeKeys = b.purgedAccountVolumeKeys[:0]
+	b.purgedAccountMetadataKeys = b.purgedAccountMetadataKeys[:0]
 	for account := range candidates {
 		ephemeral, err := b.isEphemeralAccount(scope, account)
 		if err != nil {

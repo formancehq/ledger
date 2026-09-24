@@ -746,6 +746,10 @@ func (c *Checker) comparePurgedAccountAbsence(
 	purgedVolumes map[domain.VolumeKey]struct{},
 	callback func(*servicepb.CheckStoreEvent),
 ) {
+	if len(purged) == 0 && len(purgedVolumes) == 0 {
+		return
+	}
+
 	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
 	if err != nil {
 		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,

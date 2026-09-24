@@ -329,6 +329,11 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 				collector(ledger, account, key.Asset, key.Color)
 				s.purgedVolumes[key] = struct{}{}
 			}
+			if err := iter.Error(); err != nil {
+				_ = iter.Close()
+
+				return err
+			}
 			if err := iter.Close(); err != nil {
 				return err
 			}

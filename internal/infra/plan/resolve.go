@@ -82,7 +82,7 @@ func (s *entrySlab) appendCoverage(id attributes.U128, tag uint64, attrCode byte
 	s.covs = append(s.covs, raftcmdpb.AttributeCoverage{
 		Id:                 &s.ids[len(s.ids)-1],
 		AttrCode:           uint32(attrCode),
-		CanonicalKey:       append([]byte(nil), entry.Canonical...),
+		CanonicalKey:       lifecycleCanonicalKey(attrCode, entry.Canonical),
 		Persisted:          entry.Persisted,
 		LifecycleCandidate: entry.LifecycleCandidate,
 	})
@@ -107,12 +107,20 @@ func (s *entrySlab) appendSeed(id attributes.U128, tag uint64, attrCode byte, en
 		Id:                 &s.ids[len(s.ids)-1],
 		AttrCode:           uint32(attrCode),
 		Value:              value,
-		CanonicalKey:       append([]byte(nil), entry.Canonical...),
+		CanonicalKey:       lifecycleCanonicalKey(attrCode, entry.Canonical),
 		Persisted:          entry.Persisted,
 		LifecycleCandidate: entry.LifecycleCandidate,
 	})
 
 	return &s.covs[len(s.covs)-1]
+}
+
+func lifecycleCanonicalKey(attrCode byte, canonical []byte) []byte {
+	if attrCode != dal.SubAttrVolume && attrCode != dal.SubAttrMetadata {
+		return nil
+	}
+
+	return append([]byte(nil), canonical...)
 }
 
 // resolveCoverage resolves one attribute cache for the plan pipeline.
