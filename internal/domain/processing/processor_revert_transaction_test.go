@@ -90,14 +90,7 @@ func TestProcessRevertTransaction_Success(t *testing.T) {
 	// compensating transaction id and the effective time it was reverted.
 	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
-		Postings: []*commonpb.Posting{
-			{
-				Source:      "bank",
-				Destination: "users:123",
-				Amount:      commonpb.NewUint256FromUint64(100),
-				Asset:       "USD",
-			},
-		},
+		Postings:     revertTestTargetPostings(),
 	}).AsReader(), nil)
 	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
 		require.Equal(t, uint64(5), st.GetRevertedByTransaction())
@@ -191,14 +184,7 @@ func TestProcessRevertTransaction_AtEffectiveDate(t *testing.T) {
 	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
 		Timestamp:    originalTimestamp,
-		Postings: []*commonpb.Posting{
-			{
-				Source:      "bank",
-				Destination: "users:123",
-				Amount:      commonpb.NewUint256FromUint64(100),
-				Asset:       "USD",
-			},
-		},
+		Postings:     revertTestTargetPostings(),
 	}).AsReader(), nil)
 	expectPutTransactionState(t, mockStore, txKey, nil, func(_ domain.TransactionKey, st *commonpb.TransactionState) {
 		require.Equal(t, uint64(5), st.GetRevertedByTransaction())
@@ -279,14 +265,7 @@ func TestProcessRevertTransaction_AtEffectiveDate_MissingOriginalTimestamp(t *te
 	// proposal write set discards these speculative effects on failure.
 	expectGetTransactionState(mockStore, txKey, (&commonpb.TransactionState{
 		CreatedByLog: 42,
-		Postings: []*commonpb.Posting{
-			{
-				Source:      "bank",
-				Destination: "users:123",
-				Amount:      commonpb.NewUint256FromUint64(100),
-				Asset:       "USD",
-			},
-		},
+		Postings:     revertTestTargetPostings(),
 	}).AsReader(), nil)
 
 	order := &raftcmdpb.Order{
