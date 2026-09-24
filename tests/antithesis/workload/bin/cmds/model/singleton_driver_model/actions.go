@@ -243,14 +243,13 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		}
 	}
 
-	// A skip opted into by the final order proves only that the order was
-	// dropped; the orders after it are what prove the bulk carried on. Most
-	// bulks hold a single order, so give a trailing opt-in a successor.
-	if n := len(requests); n > 0 && len(requests[n-1].GetApply().GetSkippableReasons()) > 0 {
-		ledger := requests[n-1].GetApply().GetLedger()
-		if req := generateMetadataOp(ledger, g.Ledger(ledger)); req != nil {
-			requests = append(requests, req)
-		}
+	// The "and continued" sondes need an order executed after the skip, and most
+	// bulks hold a single order. Half the trailing opt-ins get a successor that
+	// always commits; the rest stay trailing, where the skip proves only that it
+	// did not fail the bulk.
+	if n := len(requests); n > 0 && len(requests[n-1].GetApply().GetSkippableReasons()) > 0 &&
+		random.RandomChoice([]uint8{0, 1}) == 0 {
+		requests = append(requests, generateAddMetadata(requests[n-1].GetApply().GetLedger()))
 	}
 
 	return oracle.Bulk{Requests: requests}
@@ -907,7 +906,7 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 
 		key := random.RandomChoice(keys)
 		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-			key = metaKey()
+			key = "absent-" + metaKey()
 		}
 
 		return &servicepb.Request{

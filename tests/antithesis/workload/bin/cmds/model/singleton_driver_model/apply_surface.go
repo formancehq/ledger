@@ -154,7 +154,7 @@ func applyCoverageMessages() []string {
 func noteApplyCoverage(bulk oracle.Bulk, result oracle.ApplyResult) {
 	hits := applyCoverageHits(bulk, result)
 	for _, message := range applyCoverageMessages() {
-		emitCoverage(hits[message], message, nil, coverageHit)
+		emitCoverage(hits[message], message, nil)
 	}
 }
 

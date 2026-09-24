@@ -528,6 +528,19 @@ func absentIndexes(ls oracle.LedgerState, pool []workloadIndex) []workloadIndex 
 	return absent
 }
 
+// hasIndexGap reports whether the ledger is missing any index the workload
+// churns. generateIndexOp names the gap it fills; this only decides whether one
+// is worth looking for, so it stops at the first.
+func hasIndexGap(ls oracle.LedgerState) bool {
+	for _, candidate := range ledgerIndexPool(ls) {
+		if exists, _ := ls.IndexState(candidate.canonical); !exists {
+			return true
+		}
+	}
+
+	return false
+}
+
 // rollIndexOp: ~1-in-8 a bulk is an index create/drop rather than ledger
 // traffic. Lifecycle operations consume part of the same finite run, so this
 // rate keeps every builtin and metadata index reachable before the coverage
@@ -535,7 +548,7 @@ func absentIndexes(ls oracle.LedgerState, pool []workloadIndex) []workloadIndex 
 // are created and deleted mid-run, and a fresh one starts bare, so its whole
 // index set has to be built at more than the saturated fleet's average rate.
 func rollIndexOp(ls oracle.LedgerState) bool {
-	if len(absentIndexes(ls, ledgerIndexPool(ls))) > 0 {
+	if hasIndexGap(ls) {
 		return oneIn(3)
 	}
 

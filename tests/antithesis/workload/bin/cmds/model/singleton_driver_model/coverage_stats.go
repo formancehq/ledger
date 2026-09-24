@@ -31,10 +31,10 @@ var (
 	covStatsData  = map[string]*covStat{}
 )
 
-// recordCoverageHit counts one satisfied sonde evaluation. Registrations
-// (hit=false) and unsatisfied evaluations carry no rate information.
-func recordCoverageHit(msg string, cond, hit bool) {
-	if !covStatsOn || !hit || !cond {
+// recordCoverageHit counts one satisfied sonde evaluation. Registrations never
+// reach it, and an unsatisfied evaluation carries no rate information.
+func recordCoverageHit(msg string, cond bool) {
+	if !covStatsOn || !cond {
 		return
 	}
 
