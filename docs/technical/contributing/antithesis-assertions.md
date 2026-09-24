@@ -57,10 +57,13 @@ and zero allocations against the ~540 ns it feeds, under 1% of the win. So
 `resolved` and `oldTermResolved` are all deliberately unconditional.
 
 A computation that cannot escape the guard belongs inside it: nothing outside
-can observe it, so there is no zero to mistake for a real value. `runCommitter`
-walks the batch's results and builds a details map per result purely to feed
-two `Sometimes` calls three lines below; the whole walk sits inside
+can observe it, so there is no zero to mistake for a real value.
+`Machine.CommitPreparedBatch` walks the batch's results and builds a details map
+per result purely to feed two `Sometimes` calls; the whole walk sits inside
 `if assert.Enabled`, and an unarmed build does not allocate a map per commit.
+The applier's `runCommitter` is the contrast: its walk over `work.futures`
+resolves every future, so the walk and the `oldTermResolved` count it carries
+stay unconditional, and only the details map and the SDK call are guarded.
 The test is whether deleting the guard's body would change anything but the
 assertions.
 
