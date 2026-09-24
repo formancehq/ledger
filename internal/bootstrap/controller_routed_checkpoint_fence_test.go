@@ -18,7 +18,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
@@ -64,7 +63,7 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 
 		return handler(ctx, req)
 	}))
-	servicepb.RegisterBucketServiceServer(leaderServer, grpcadp.NewBucketServiceServer(logger, leaderController, leaderController, leaderStore, nil, attrs, nil, nil, internalauth.AuthConfig{}, 0, "", meters, nil, nil, version.Info{}))
+	servicepb.RegisterBucketServiceServer(leaderServer, grpcadp.NewBucketServiceServer(logger, leaderController, leaderController, leaderStore, nil, attrs, nil, nil, 0, "", meters, nil, nil, version.Info{}))
 	clusterpb.RegisterClusterServiceServer(leaderServer, checkpointMetadataHandler(leaderStore))
 	leaderAddr := serveCheckpointFenceRPC(t, leaderServer)
 	pool := transport.NewConnectionPool(transport.TLSPolicy{}, transport.PoolConfig{})
@@ -81,7 +80,7 @@ func TestRoutedController_GetLedgerFallbackDoesNotFenceCheckpointMetadata(t *tes
 	require.Empty(t, followerState.GetNodes(), "followers report their local cursor without leader topology")
 	routed := NewRoutedController(followerController, follower, pool)
 	followerServer := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(followerServer, grpcadp.NewBucketServiceServer(logger, routed, followerController, followerStore, nil, attrs, nil, nil, internalauth.AuthConfig{}, 0, "", meters, follower, pool, version.Info{}))
+	servicepb.RegisterBucketServiceServer(followerServer, grpcadp.NewBucketServiceServer(logger, routed, followerController, followerStore, nil, attrs, nil, nil, 0, "", meters, follower, pool, version.Info{}))
 	clusterpb.RegisterClusterServiceServer(followerServer, checkpointMetadataHandler(followerStore))
 	followerConn := dialCheckpointFenceRPC(t, serveCheckpointFenceRPC(t, followerServer))
 	bucket := servicepb.NewBucketServiceClient(followerConn)
@@ -197,7 +196,7 @@ func TestClusterService_CheckpointFenceIdentityAndLocalProgress(t *testing.T) {
 }
 
 func checkpointMetadataHandler(store *dal.Store) clusterpb.ClusterServiceServer {
-	return grpcadp.NewClusterServiceServer(nil, nil, nil, nil, store, nil, nil, nil, nil, nil, nil, logging.Testing(), "", "", internalauth.AuthConfig{}, "", version.Info{})
+	return grpcadp.NewClusterServiceServer(nil, nil, nil, nil, store, nil, nil, nil, nil, nil, nil, logging.Testing(), "", "", "", version.Info{})
 }
 
 func seedRoutedCheckpointMetadata(t *testing.T, store *dal.Store, applied, checkpoint uint64, cron string, mode commonpb.ChartEnforcementMode) {
@@ -235,7 +234,7 @@ func (fixture checkpointFenceNode) clusterHandler(store *dal.Store, pool *transp
 	// initial progress through the same methods used by the production handler.
 	builder := indexbuilder.NewBuilder(store, nil, attributes.New(), logging.Testing(), noop.NewMeterProvider().Meter("checkpoint-fence"), 0)
 
-	return grpcadp.NewClusterServiceServer(fixture.node, fixture.raftTransport, pool, nil, store, fixture.cache, fixture.shared, builder, nil, nil, nil, logging.Testing(), fixture.raftAddr, serviceAddr, internalauth.AuthConfig{}, "checkpoint-fence", version.Info{})
+	return grpcadp.NewClusterServiceServer(fixture.node, fixture.raftTransport, pool, nil, store, fixture.cache, fixture.shared, builder, nil, nil, nil, logging.Testing(), fixture.raftAddr, serviceAddr, "checkpoint-fence", version.Info{})
 }
 
 func startCheckpointFenceNode(t *testing.T, ctx context.Context, store *dal.Store, pool *transport.ConnectionPool, id, applied uint64, serviceAddr string, tickInterval time.Duration, confState *raftpb.ConfState) checkpointFenceNode {
