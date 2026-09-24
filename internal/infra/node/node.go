@@ -2236,39 +2236,42 @@ func (node *Node) LastPersistedIndex() uint64 {
 }
 
 // GetConfiguredPeers returns the leader's configured members with their
-// registered addresses and identities. Both views are captured in the same
-// orchestrate command, so a removal or re-registration cannot mix a previous
-// configuration with a later membership row. Followers return an empty list,
-// as they do not expose the leader's progress view.
+// registered addresses and identities. The Raft Status and the membership
+// address cache are captured atomically under the membership read lock: while
+// the lock is held, a concurrent Rehydrate / OnSnapshotInstalled cannot
+// swap the cache, so rawNode.Status() (safe on the orchestrate goroutine) and
+// the address lookup observe the same consistent snapshot. Followers return an
+// empty list, as they do not expose the leader's progress view.
 func (node *Node) GetConfiguredPeers(ctx context.Context) ([]Peer, error) {
 	var peers []Peer
 
 	err := node.execClusterCommand(ctx, false, func() error {
-		status := node.rawNode.Status()
-		if status.RaftState != raft.StateLeader {
+		return node.membership.WithPeerAddresses(func(addresses map[uint64]membership.ConfChangeContext) error {
+			status := node.rawNode.Status()
+			if status.RaftState != raft.StateLeader {
+				return nil
+			}
+
+			peers = make([]Peer, 0, len(status.Progress))
+			for nodeID := range status.Progress {
+				address, ok := addresses[nodeID]
+				if !ok {
+					return fmt.Errorf("invariant: cluster member %d has no membership row", nodeID)
+				}
+				if err := membership.ValidateInstanceID(address.InstanceID); err != nil {
+					return fmt.Errorf("invariant: cluster member %d has invalid identity: %w", nodeID, err)
+				}
+
+				peers = append(peers, Peer{
+					ID:             nodeID,
+					Address:        address.RaftAddress,
+					ServiceAddress: address.ServiceAddress,
+					InstanceID:     bytes.Clone(address.InstanceID),
+				})
+			}
+
 			return nil
-		}
-
-		addresses := node.membership.PeerAddresses()
-		peers = make([]Peer, 0, len(status.Progress))
-		for nodeID := range status.Progress {
-			address, ok := addresses[nodeID]
-			if !ok {
-				return fmt.Errorf("invariant: cluster member %d has no membership row", nodeID)
-			}
-			if err := membership.ValidateInstanceID(address.InstanceID); err != nil {
-				return fmt.Errorf("invariant: cluster member %d has invalid identity: %w", nodeID, err)
-			}
-
-			peers = append(peers, Peer{
-				ID:             nodeID,
-				Address:        address.RaftAddress,
-				ServiceAddress: address.ServiceAddress,
-				InstanceID:     address.InstanceID,
-			})
-		}
-
-		return nil
+		})
 	})
 	if err != nil {
 		return nil, err
