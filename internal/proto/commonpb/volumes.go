@@ -2,6 +2,7 @@ package commonpb
 
 import (
 	"database/sql/driver"
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -17,8 +18,19 @@ func (v *Volumes) Value() (driver.Value, error) {
 	if v == nil {
 		return nil, nil
 	}
+	if err := v.Validate(); err != nil {
+		return nil, fmt.Errorf("Volumes.Value: %w", err)
+	}
+	input, err := v.GetInput().Dec()
+	if err != nil {
+		return nil, err
+	}
+	output, err := v.GetOutput().Dec()
+	if err != nil {
+		return nil, err
+	}
 
-	return fmt.Sprintf("(%s, %s)", v.GetInput(), v.GetOutput()), nil
+	return fmt.Sprintf("(%s, %s)", input, output), nil
 }
 
 // Scan implements sql.Scanner for Volumes (for database reading).
@@ -30,39 +42,86 @@ func (v *Volumes) Scan(src any) error {
 	if !ok {
 		return fmt.Errorf("Volumes.Scan: expected string, got %T", src)
 	}
+	if len(s) < 5 || s[0] != '(' || s[len(s)-1] != ')' {
+		return fmt.Errorf("Volumes.Scan: malformed tuple %q", s)
+	}
 	// stored as (input, output)
 	parts := strings.Split(s[1:(len(s)-1)], ",")
+	if len(parts) != 2 {
+		return fmt.Errorf("Volumes.Scan: expected two tuple elements, got %d", len(parts))
+	}
 
-	v.Input = strings.TrimSpace(parts[0])
-	v.Output = strings.TrimSpace(parts[1])
+	input, err := parseCanonicalBigUint(strings.TrimSpace(parts[0]))
+	if err != nil {
+		return fmt.Errorf("Volumes.Scan input: %w", err)
+	}
+	output, err := parseCanonicalBigUint(strings.TrimSpace(parts[1]))
+	if err != nil {
+		return fmt.Errorf("Volumes.Scan output: %w", err)
+	}
+	v.Input = input
+	v.Output = output
 
 	return nil
 }
 
+func (v *Volumes) Validate() error {
+	if v == nil {
+		return nil
+	}
+	if v.GetInput() == nil || v.GetOutput() == nil {
+		return errors.New("volume input and output must be present")
+	}
+	if err := v.GetInput().Validate(); err != nil {
+		return fmt.Errorf("invalid input volume: %w", err)
+	}
+	if err := v.GetOutput().Validate(); err != nil {
+		return fmt.Errorf("invalid output volume: %w", err)
+	}
+
+	return nil
+}
+
+// canonicalUnsignedSchema and canonicalSignedSchema are the shared JSON schema
+// constraints for all typed amount fields. Centralising them means a pattern
+// change propagates to every volume-bearing schema without drift.
+var (
+	canonicalUnsignedSchema = &jsonschema.Schema{Type: "string", Pattern: `^(0|[1-9][0-9]*)$`}
+	canonicalSignedSchema   = &jsonschema.Schema{Type: "string", Pattern: `^(0|-?[1-9][0-9]*)$`}
+)
+
 // JSONSchemaExtend extends the JSON schema for Volumes.
 func (*Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {
-	inputProperty, _ := schema.Properties.Get("input")
-	schema.Properties.Set("balance", inputProperty)
+	schema.Properties.Set("input", canonicalUnsignedSchema)
+	schema.Properties.Set("output", canonicalUnsignedSchema)
+	schema.Properties.Set("balance", canonicalSignedSchema)
+}
+
+func (*VolumesWithBalance) JSONSchemaExtend(schema *jsonschema.Schema) {
+	schema.Properties.Set("input", canonicalUnsignedSchema)
+	schema.Properties.Set("output", canonicalUnsignedSchema)
+	schema.Properties.Set("balance", canonicalSignedSchema)
 }
 
 // Balance calculates the balance (input - output).
-func (v *Volumes) Balance() *big.Int {
+func (v *Volumes) Balance() (*big.Int, error) {
 	if v == nil {
-		return big.NewInt(0)
+		return big.NewInt(0), nil
+	}
+	if err := v.Validate(); err != nil {
+		return nil, err
 	}
 
-	input, _ := new(big.Int).SetString(v.GetInput(), 10)
-	output, _ := new(big.Int).SetString(v.GetOutput(), 10)
-
-	if input == nil {
-		input = big.NewInt(0)
+	input, err := v.GetInput().ToBigInt()
+	if err != nil {
+		return nil, fmt.Errorf("invalid input volume: %w", err)
+	}
+	output, err := v.GetOutput().ToBigInt()
+	if err != nil {
+		return nil, fmt.Errorf("invalid output volume: %w", err)
 	}
 
-	if output == nil {
-		output = big.NewInt(0)
-	}
-
-	return new(big.Int).Sub(input, output)
+	return new(big.Int).Sub(input, output), nil
 }
 
 // MarshalJSON implements json.Marshaler for Volumes.
@@ -71,23 +130,82 @@ func (v *Volumes) MarshalJSON() ([]byte, error) {
 		return json.Marshal(nil)
 	}
 
-	balance := v.Balance()
-	input, _ := new(big.Int).SetString(v.GetInput(), 10)
-	output, _ := new(big.Int).SetString(v.GetOutput(), 10)
-
-	if input == nil {
-		input = big.NewInt(0)
+	balance, err := v.Balance()
+	if err != nil {
+		return nil, err
 	}
 
-	if output == nil {
-		output = big.NewInt(0)
+	vwb := &VolumesWithBalance{
+		Input:   v.GetInput(),
+		Output:  v.GetOutput(),
+		Balance: NewSignedBigInt(balance),
+	}
+	// Marshal via pointer so VolumesWithBalance.MarshalJSON (pointer receiver)
+	// runs, calling Validate() and producing the canonical decimal-string shape.
+	return json.Marshal(vwb)
+}
+
+func (v *VolumesWithBalance) Validate() error {
+	if v == nil {
+		return nil
+	}
+	if v.GetInput() == nil || v.GetOutput() == nil || v.GetBalance() == nil {
+		return errors.New("volume input, output, and balance must be present")
+	}
+	input, err := v.GetInput().ToBigInt()
+	if err != nil {
+		return fmt.Errorf("invalid input volume: %w", err)
+	}
+	output, err := v.GetOutput().ToBigInt()
+	if err != nil {
+		return fmt.Errorf("invalid output volume: %w", err)
+	}
+	balance, err := v.GetBalance().ToBigInt()
+	if err != nil {
+		return fmt.Errorf("invalid balance: %w", err)
+	}
+	if want := new(big.Int).Sub(input, output); balance.Cmp(want) != 0 {
+		return fmt.Errorf("balance %s does not equal input minus output %s", balance, want)
 	}
 
-	return json.Marshal(VolumesWithBalance{
-		Input:   input.String(),
-		Output:  output.String(),
-		Balance: balance.String(),
+	return nil
+}
+
+func (v *VolumesWithBalance) MarshalJSON() ([]byte, error) {
+	if v == nil {
+		return json.Marshal(nil)
+	}
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+
+	return json.Marshal(&struct {
+		Input   string `json:"input"`
+		Output  string `json:"output"`
+		Balance string `json:"balance"`
+	}{
+		Input:   v.GetInput().DecimalString(),
+		Output:  v.GetOutput().DecimalString(),
+		Balance: v.GetBalance().DecimalString(),
 	})
+}
+
+func parseCanonicalBigUint(decimal string) (*BigUint, error) {
+	// Delegate to the shared validator so SQL scan and JSON decode
+	// cannot diverge when the canonical rules change.
+	if err := validateCanonicalDecimalString(decimal, false); err != nil {
+		return nil, err
+	}
+	value, ok := new(big.Int).SetString(decimal, 10)
+	if !ok {
+		return nil, fmt.Errorf("invalid integer %q", decimal)
+	}
+	encoded, err := NewBigUint(value)
+	if err != nil {
+		return nil, err
+	}
+
+	return encoded, nil
 }
 
 // AssetColored is implemented by every volume-bearing message keyed by an

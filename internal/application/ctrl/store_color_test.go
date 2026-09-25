@@ -1,8 +1,10 @@
 package ctrl
 
 import (
+	"math/big"
 	"testing"
 
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -50,16 +52,16 @@ func TestAssembleAccount_SegregatesColorsByDefault(t *testing.T) {
 
 	require.Equal(t, "USD/2", got[1].GetAsset())
 	require.Equal(t, "", got[1].GetColor())
-	require.Equal(t, "100", got[1].GetVolumes().GetInput())
-	require.Equal(t, "100", got[1].GetVolumes().GetBalance())
+	require.Equal(t, "100", got[1].GetVolumes().GetInput().DecimalString())
+	require.Equal(t, "100", got[1].GetVolumes().GetBalance().DecimalString())
 
 	require.Equal(t, "USD/2", got[2].GetAsset())
 	require.Equal(t, "GRANTS", got[2].GetColor())
-	require.Equal(t, "50", got[2].GetVolumes().GetBalance())
+	require.Equal(t, "50", got[2].GetVolumes().GetBalance().DecimalString())
 
 	require.Equal(t, "USD/2", got[3].GetAsset())
 	require.Equal(t, "OPS", got[3].GetColor())
-	require.Equal(t, "25", got[3].GetVolumes().GetBalance())
+	require.Equal(t, "25", got[3].GetVolumes().GetBalance().DecimalString())
 }
 
 // Collapse mode sums every (asset, *) bucket into a single entry with
@@ -80,9 +82,36 @@ func TestAssembleAccount_CollapseColors(t *testing.T) {
 	entry := acct.GetVolumes()[0]
 	require.Equal(t, "USD/2", entry.GetAsset())
 	require.Equal(t, "", entry.GetColor(), "collapsed entries are produced under the empty color")
-	require.Equal(t, "175", entry.GetVolumes().GetInput())   // 100 + 50 + 25
-	require.Equal(t, "15", entry.GetVolumes().GetOutput())   // 0 + 10 + 5
-	require.Equal(t, "160", entry.GetVolumes().GetBalance()) // 175 - 15
+	require.Equal(t, "175", entry.GetVolumes().GetInput().DecimalString())   // 100 + 50 + 25
+	require.Equal(t, "15", entry.GetVolumes().GetOutput().DecimalString())   // 0 + 10 + 5
+	require.Equal(t, "160", entry.GetVolumes().GetBalance().DecimalString()) // 175 - 15
+}
+
+func TestAssembleAccount_CollapseColorsPreservesTotalsBeyondUint256(t *testing.T) {
+	t.Parallel()
+
+	maxValue := new(uint256.Int).SetAllOne()
+	entry := func(color string) attributes.ComputedEntry[*raftcmdpb.VolumePair] {
+		return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
+			CanonicalKey: domain.NewVolumeKey("test", "alice", "USD", color).Bytes(),
+			Value: &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256(maxValue),
+				Output: commonpb.NewUint256(maxValue),
+			},
+		}
+	}
+
+	acct, err := assembleAccount("alice", []attributes.ComputedEntry[*raftcmdpb.VolumePair]{
+		entry("A"), entry("B"),
+	}, nil, true)
+	require.NoError(t, err)
+	require.Len(t, acct.GetVolumes(), 1)
+
+	want := new(big.Int).Mul(maxValue.ToBig(), big.NewInt(2)).String()
+	volumes := acct.GetVolumes()[0].GetVolumes()
+	require.Equal(t, want, volumes.GetInput().DecimalString())
+	require.Equal(t, want, volumes.GetOutput().DecimalString())
+	require.Equal(t, "0", volumes.GetBalance().DecimalString())
 }
 
 // FindVolume helper round-trip: drilling into the returned Account by
@@ -97,8 +126,8 @@ func TestAssembleAccount_FindVolume(t *testing.T) {
 	acct, err := assembleAccount("alice", entries, nil, false)
 	require.NoError(t, err)
 
-	require.Equal(t, "100", acct.FindVolume("USD/2", "").GetBalance())
-	require.Equal(t, "50", acct.FindVolume("USD/2", "GRANTS").GetBalance())
+	require.Equal(t, "100", acct.FindVolume("USD/2", "").GetBalance().DecimalString())
+	require.Equal(t, "50", acct.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString())
 	require.Nil(t, acct.FindVolume("USD/2", "MISSING"))
 	require.Nil(t, acct.FindVolume("EUR/2", ""))
 }

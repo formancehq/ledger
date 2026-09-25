@@ -27,7 +27,11 @@ type balanceSDKServer struct {
 func sdkAccount(balance string) *commonpb.Account {
 	return &commonpb.Account{Address: "users:1", Volumes: []*commonpb.AccountVolume{{
 		Asset: "COIN", Color: "blue",
-		Volumes: &commonpb.VolumesWithBalance{Input: balance, Output: "0", Balance: balance},
+		Volumes: &commonpb.VolumesWithBalance{
+			Input:   commonpb.MustBigUintFromDecimal(balance),
+			Output:  commonpb.MustBigUintFromDecimal("0"),
+			Balance: commonpb.MustSignedBigIntFromDecimal(balance),
+		},
 	}}}
 }
 

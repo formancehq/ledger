@@ -990,13 +990,14 @@ func postCommitVolume(pcv *commonpb.PostCommitVolumes, key oracle.VolumeKey) (in
 		return in, out, false
 	}
 
-	if err := in.SetFromDecimal(vol.GetInput()); err != nil {
+	if vol.GetInput() == nil || vol.GetOutput() == nil {
 		return in, out, false
 	}
-
-	if err := out.SetFromDecimal(vol.GetOutput()); err != nil {
+	if err := in.SetFromDecimal(vol.GetInput().DecimalString()); err != nil {
 		return in, out, false
 	}
-
+	if err := out.SetFromDecimal(vol.GetOutput().DecimalString()); err != nil {
+		return in, out, false
+	}
 	return in, out, true
 }

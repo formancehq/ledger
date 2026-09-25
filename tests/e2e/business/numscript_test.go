@@ -70,7 +70,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(account.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on account")
-				g.Expect(account.FindVolume("USD/2", "").Balance).To(Equal("1000"))
+				g.Expect(account.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("1000"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
@@ -102,7 +102,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(account.FindVolume("EUR/2", "")).NotTo(BeNil(), "expected EUR/2 entry on account")
-				g.Expect(account.FindVolume("EUR/2", "").Balance).To(Equal("5000"))
+				g.Expect(account.FindVolume("EUR/2", "").GetBalance().DecimalString()).To(Equal("5000"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
@@ -157,7 +157,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(taxAccount.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on taxAccount")
-				g.Expect(taxAccount.FindVolume("USD/2", "").Balance).To(Equal("200")) // 20% of 1000
+				g.Expect(taxAccount.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("200")) // 20% of 1000
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -167,7 +167,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(mainAccount.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on mainAccount")
-				g.Expect(mainAccount.FindVolume("USD/2", "").Balance).To(Equal("800")) // 80% of 1000
+				g.Expect(mainAccount.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("800")) // 80% of 1000
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
@@ -222,7 +222,9 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(wallet.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on wallet")
-				g.Expect(wallet.FindVolume("USD/2", "").Balance).To(Equal("0")) // Fully drained
+				drainedVol := wallet.FindVolume("USD/2", "")
+				g.Expect(drainedVol.GetBalance()).NotTo(BeNil(), "balance field must be present on drained wallet")
+				g.Expect(drainedVol.GetBalance().DecimalString()).To(Equal("0")) // Fully drained
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -232,7 +234,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(bank.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on bank")
-				g.Expect(bank.FindVolume("USD/2", "").Balance).To(Equal("100")) // 200 - 100 (remainder)
+				g.Expect(bank.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("100")) // 200 - 100 (remainder)
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
@@ -242,7 +244,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(shop.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on shop")
-				g.Expect(shop.FindVolume("USD/2", "").Balance).To(Equal("150"))
+				g.Expect(shop.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("150"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
@@ -288,7 +290,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(charlie.FindVolume("EUR/2", "")).NotTo(BeNil(), "expected EUR/2 entry on charlie")
-				g.Expect(charlie.FindVolume("EUR/2", "").Balance).To(Equal("-300"))
+				g.Expect(charlie.FindVolume("EUR/2", "").GetBalance().DecimalString()).To(Equal("-300"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
@@ -364,7 +366,7 @@ send $amount (
 				})
 				g.Expect(err).To(Succeed())
 				g.Expect(creditLine.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on creditLine")
-				g.Expect(creditLine.FindVolume("USD/2", "").Balance).To(Equal("-100000"))
+				g.Expect(creditLine.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("-100000"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 
@@ -475,7 +477,7 @@ send [USD/2 1000] (
 				Address: "escrow:order-12345",
 			})
 			Expect(err).To(Succeed())
-			Expect(escrow.FindVolume("USD/2", "").Balance).To(Equal("500"))
+			Expect(escrow.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("500"))
 		})
 
 		It("Should fail with invalid Numscript syntax", func() {
@@ -557,7 +559,7 @@ send $amount (
 					})
 					g.Expect(err).To(Succeed())
 					g.Expect(account.FindVolume("USD/2", "")).NotTo(BeNil(), "expected USD/2 entry on account")
-					g.Expect(account.FindVolume("USD/2", "").Balance).To(Equal(expectedBalance))
+					g.Expect(account.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal(expectedBalance))
 				}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 			}
 		})
@@ -684,7 +686,7 @@ send [USD/2 200] (
 				g.Expect(err).To(Succeed())
 				usdVol := account.FindVolume("USD/2", "")
 				g.Expect(usdVol).NotTo(BeNil())
-				g.Expect(usdVol.GetBalance()).To(Equal("300"))
+				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("300"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 		})
 	})

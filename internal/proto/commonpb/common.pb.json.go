@@ -219,6 +219,22 @@ func (x *PostCommitVolumes) MarshalJSON() ([]byte, error) {
 // onto the tuple (not nested under a `volumes` key) so a post-commit-volume
 // entry reads as one flat `{asset, color, input, output}` row.
 func (x *VolumeEntry) MarshalJSON() ([]byte, error) {
+	vols := x.GetVolumes()
+	if vols == nil {
+		return nil, errors.New("VolumeEntry.MarshalJSON: missing Volumes container")
+	}
+	if err := vols.Validate(); err != nil {
+		return nil, fmt.Errorf("VolumeEntry.MarshalJSON: %w", err)
+	}
+	input, err := vols.GetInput().Dec()
+	if err != nil {
+		return nil, err
+	}
+	output, err := vols.GetOutput().Dec()
+	if err != nil {
+		return nil, err
+	}
+
 	return json.Marshal(&struct {
 		Asset  string `json:"asset"`
 		Color  string `json:"color"`
@@ -227,8 +243,8 @@ func (x *VolumeEntry) MarshalJSON() ([]byte, error) {
 	}{
 		Asset:  x.GetAsset(),
 		Color:  x.GetColor(),
-		Input:  x.GetVolumes().GetInput(),
-		Output: x.GetVolumes().GetOutput(),
+		Input:  input,
+		Output: output,
 	})
 }
 

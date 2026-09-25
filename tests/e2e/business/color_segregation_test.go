@@ -56,9 +56,9 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 			g.Expect(grants).NotTo(BeNil())
 			g.Expect(ops).NotTo(BeNil())
 
-			g.Expect(uncolored.GetBalance()).To(Equal("100"))
-			g.Expect(grants.GetBalance()).To(Equal("50"))
-			g.Expect(ops.GetBalance()).To(Equal("25"))
+			g.Expect(uncolored.GetBalance().DecimalString()).To(Equal("100"))
+			g.Expect(grants.GetBalance().DecimalString()).To(Equal("50"))
+			g.Expect(ops.GetBalance().DecimalString()).To(Equal("25"))
 
 			// volumes list must be sorted deterministically by (asset, color)
 			vols := acct.GetVolumes()
@@ -82,7 +82,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 		entry := acct.GetVolumes()[0]
 		Expect(entry.GetAsset()).To(Equal("USD/2"))
 		Expect(entry.GetColor()).To(Equal(""))
-		Expect(entry.GetVolumes().GetBalance()).To(Equal("175")) // 100 + 50 + 25
+		Expect(entry.GetVolumes().GetBalance().DecimalString()).To(Equal("175")) // 100 + 50 + 25
 	})
 
 	It("Should reject a draw from a color that has insufficient funds", func() {
@@ -123,9 +123,18 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 			g.Expect(err).To(Succeed())
 
 			// GRANTS is drained; other buckets are untouched.
-			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance()).To(Equal("0"))
-			g.Expect(alice.FindVolume("USD/2", "").GetBalance()).To(Equal("100"))
-			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance()).To(Equal("25"))
+			grantsVol := alice.FindVolume("USD/2", "GRANTS")
+			g.Expect(grantsVol).NotTo(BeNil(), "expected GRANTS bucket on alice")
+			g.Expect(grantsVol.GetBalance()).NotTo(BeNil(), "GRANTS balance must be present")
+			g.Expect(grantsVol.GetBalance().DecimalString()).To(Equal("0"))
+			uncoloredAlice := alice.FindVolume("USD/2", "")
+			g.Expect(uncoloredAlice).NotTo(BeNil(), "expected uncolored bucket on alice")
+			g.Expect(uncoloredAlice.GetBalance()).NotTo(BeNil(), "uncolored balance must be present")
+			g.Expect(uncoloredAlice.GetBalance().DecimalString()).To(Equal("100"))
+			opsVol := alice.FindVolume("USD/2", "OPS")
+			g.Expect(opsVol).NotTo(BeNil(), "expected OPS bucket on alice")
+			g.Expect(opsVol.GetBalance()).NotTo(BeNil(), "OPS balance must be present")
+			g.Expect(opsVol.GetBalance().DecimalString()).To(Equal("25"))
 
 			// bob received under GRANTS, color preserved on the destination side.
 			bob, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -133,7 +142,7 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 				Address: "bob",
 			})
 			g.Expect(err).To(Succeed())
-			g.Expect(bob.FindVolume("USD/2", "GRANTS").GetBalance()).To(Equal("50"))
+			g.Expect(bob.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("50"))
 			g.Expect(bob.FindVolume("USD/2", "")).To(BeNil(),
 				"bob must not have an uncolored USD/2 bucket — color stays with the funds")
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
