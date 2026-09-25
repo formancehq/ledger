@@ -87,16 +87,13 @@ func (s *Snapshotter) Close() error {
 // the WAL snapshot record is persisted to avoid losing the only valid
 // snap file on a crash between Save and WAL write.
 //
-// A WAL directory that went away, whether before or during the write, is
-// reported as ErrWALDirectoryMissing.
+// A WAL directory that went away, or moved away from the path the node was
+// configured with, is reported as ErrWALDirectoryMissing — including when it
+// happens partway through the write.
 func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 	data, err := proto.Marshal(snap)
 	if err != nil {
 		return fmt.Errorf("marshaling snapshot: %w", err)
-	}
-
-	if err := s.checkWALDir(); err != nil {
-		return err
 	}
 
 	if err := s.ensureDir(); err != nil {
@@ -107,7 +104,11 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 		return s.classify(err)
 	}
 
-	return nil
+	// The snapshot is durable, but only inside the directory the handle holds.
+	// Reporting success is what lets the caller publish it, so the configured path
+	// is confirmed once the write is complete: a move landing mid-write must not
+	// be published as persisted.
+	return s.checkWALDir()
 }
 
 // checkWALDir reports whether the WAL directory still answers to the path the
