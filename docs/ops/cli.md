@@ -13,7 +13,7 @@
 Releases publish platform archives on
 [GitHub](https://github.com/formancehq/ledger/releases):
 
-- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
+- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`, except `ledger_darwin-amd64.tar.gz`, which contains `ledgerctl` only (`ledger-server` is not built for Intel macOS).
 - Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
 
 Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
