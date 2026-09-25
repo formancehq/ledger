@@ -2,6 +2,7 @@ package connectionconfig
 
 import (
 	"errors"
+	"net/url"
 	"strings"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -28,7 +29,13 @@ func normalizeNatsSink(input *commonpb.NatsSinkConfigInput) (*commonpb.NatsSinkC
 		// Preserve the scheme delimiter so an empty host is rejected rather
 		// than reinterpreted as a hostname.
 		if !strings.HasSuffix(raw, "://") {
-			raw = strings.TrimSuffix(raw, "/")
+			// Only strip the trailing slash when it is a bare root slash on
+			// scheme://host/. A path such as /nats/ is significant for WebSocket
+			// NATS endpoints; stripping it would connect to a different resource.
+			u, uErr := url.Parse(raw)
+			if uErr == nil && (u.Path == "/" || u.Path == "") {
+				raw = strings.TrimSuffix(raw, "/")
+			}
 		}
 		server, err := parseURL(raw, "nats")
 		if err != nil {

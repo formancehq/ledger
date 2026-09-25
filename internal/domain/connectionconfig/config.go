@@ -243,9 +243,11 @@ func parseDatabase(raw string, postgres bool) (*commonpb.DatabaseConnection, err
 				normalized = "user"
 			}
 			if !postgres && key != "username" && key != "password" && key != "database" {
-				extras[key] = values[key][0]
+				// Last-wins matches libpq and the ClickHouse driver when a query
+				// parameter appears more than once in the DSN.
+				extras[key] = values[key][len(values[key])-1]
 			} else {
-				settings[normalized] = values[key][0]
+				settings[normalized] = values[key][len(values[key])-1]
 			}
 		}
 	}
@@ -263,8 +265,12 @@ func parseDatabase(raw string, postgres bool) (*commonpb.DatabaseConnection, err
 	ports, hasPorts := settings["port"]
 	if hasPorts {
 		for port := range strings.SplitSeq(ports, ",") {
-			if _, err := strconv.ParseUint(port, 10, 16); err != nil {
+			// Empty port entries are accepted by pgx and default to 5432; reject
+			// only non-empty entries that are not valid port numbers.
+			if port != "" {
+				if _, err := strconv.ParseUint(port, 10, 16); err != nil {
 				return nil, errors.New("invalid database port")
+			}
 			}
 		}
 	}
