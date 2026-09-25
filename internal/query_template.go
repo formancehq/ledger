@@ -43,16 +43,26 @@ func (p *QueryTemplateParams[Opts]) UnmarshalJSON(b []byte) error {
 		OOT      *time.Time `json:"startTime"`
 		Expand   []string   `json:"expand,omitempty"`
 		Sort     string     `json:"sort"`
-		PageSize uint       `json:"pageSize"`
+		PageSize *uint      `json:"pageSize"`
 	}
 	err := json.Unmarshal(b, &x)
 	if err != nil {
 		return err
 	}
-	p.PIT = x.PIT
-	p.OOT = x.OOT
-	p.Expand = x.Expand
-	p.PageSize = x.PageSize
+	// Only overwrite the fields that are set, so Overwrite can layer
+	// call params on top of template params and defaults.
+	if x.PIT != nil {
+		p.PIT = x.PIT
+	}
+	if x.OOT != nil {
+		p.OOT = x.OOT
+	}
+	if x.Expand != nil {
+		p.Expand = x.Expand
+	}
+	if x.PageSize != nil {
+		p.PageSize = *x.PageSize
+	}
 
 	if x.Sort != "" {
 		parts := strings.SplitN(x.Sort, ":", 2)
