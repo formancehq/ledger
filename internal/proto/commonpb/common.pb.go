@@ -5365,7 +5365,7 @@ func (x *SinkStatus) GetError() *SinkError {
 	return nil
 }
 
-// SinkError records a sink failure.
+// SinkError records a sink failure. Drivers must remove credentials before returning errors.
 type SinkError struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Message       string                 `protobuf:"bytes,1,opt,name=message,proto3" json:"message,omitempty"`
@@ -12929,6 +12929,14 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "varint,50125,opt,name=ledger_log_is_history",
 		Filename:      "common.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50126,
+		Name:          "common.sensitive",
+		Tag:           "varint,50126,opt,name=sensitive",
+		Filename:      "common.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
@@ -12954,6 +12962,11 @@ var (
 	//
 	// optional bool ledger_log_is_history = 50125;
 	E_LedgerLogIsHistory = &file_common_proto_extTypes[3]
+	// sensitive marks fields that must not appear verbatim in a detached public
+	// projection. Strings are replaced with a marker; other field kinds are cleared.
+	//
+	// optional bool sensitive = 50126;
+	E_Sensitive = &file_common_proto_extTypes[4]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -13113,11 +13126,11 @@ const file_common_proto_rawDesc = "" +
 	"\vIdempotency\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\x06R\texpiresAt\"\x94\x01\n" +
+	"expires_at\x18\x02 \x01(\x06R\texpiresAt\"\x9a\x01\n" +
 	"\x03Log\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12,\n" +
-	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12C\n" +
-	"\x12response_signature\x18\x03 \x01(\v2\x14.signature.SignedLogR\x11responseSignature\"\xd7\r\n" +
+	"\apayload\x18\x02 \x01(\v2\x12.common.LogPayloadR\apayload\x12I\n" +
+	"\x12response_signature\x18\x03 \x01(\v2\x14.signature.SignedLogB\x04\xf0\xbc\x18\x01R\x11responseSignature\"\xd7\r\n" +
 	"\n" +
 	"LogPayload\x12?\n" +
 	"\rcreate_ledger\x18\x01 \x01(\v2\x18.common.CreatedLedgerLogH\x00R\fcreateLedger\x12?\n" +
@@ -13283,30 +13296,30 @@ const file_common_proto_rawDesc = "" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\">\n" +
 	"\x14ClickHouseSinkConfig\x12\x10\n" +
 	"\x03dsn\x18\x01 \x01(\tR\x03dsn\x12\x14\n" +
-	"\x05table\x18\x02 \x01(\tR\x05table\"\xc4\x01\n" +
+	"\x05table\x18\x02 \x01(\tR\x05table\"\xca\x01\n" +
 	"\x0fKafkaSinkConfig\x12\x18\n" +
 	"\abrokers\x18\x01 \x03(\tR\abrokers\x12\x14\n" +
 	"\x05topic\x18\x02 \x01(\tR\x05topic\x12\x10\n" +
 	"\x03tls\x18\x03 \x01(\bR\x03tls\x12%\n" +
 	"\x0esasl_mechanism\x18\x04 \x01(\tR\rsaslMechanism\x12#\n" +
-	"\rsasl_username\x18\x05 \x01(\tR\fsaslUsername\x12#\n" +
-	"\rsasl_password\x18\x06 \x01(\tR\fsaslPassword\"D\n" +
+	"\rsasl_username\x18\x05 \x01(\tR\fsaslUsername\x12)\n" +
+	"\rsasl_password\x18\x06 \x01(\tB\x04\xf0\xbc\x18\x01R\fsaslPassword\"J\n" +
 	"\x0eHttpSinkConfig\x12\x1a\n" +
-	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret\"\x93\x02\n" +
+	"\bendpoint\x18\x01 \x01(\tR\bendpoint\x12\x1c\n" +
+	"\x06secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\x06secret\"\x99\x02\n" +
 	"\x14DatabricksSinkConfig\x12'\n" +
 	"\x0fserver_hostname\x18\x01 \x01(\tR\x0eserverHostname\x12\x1b\n" +
 	"\thttp_path\x18\x02 \x01(\tR\bhttpPath\x12\x18\n" +
 	"\acatalog\x18\x03 \x01(\tR\acatalog\x12\x16\n" +
 	"\x06schema\x18\x04 \x01(\tR\x06schema\x12\x14\n" +
 	"\x05table\x18\x05 \x01(\tR\x05table\x12\x12\n" +
-	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x16\n" +
-	"\x05token\x18\a \x01(\tH\x00R\x05token\x129\n" +
+	"\x04port\x18\x06 \x01(\x05R\x04port\x12\x1c\n" +
+	"\x05token\x18\a \x01(\tB\x04\xf0\xbc\x18\x01H\x00R\x05token\x129\n" +
 	"\toauth_m2m\x18\b \x01(\v2\x1a.common.DatabricksOAuthM2MH\x00R\boauthM2mB\x06\n" +
-	"\x04auth\"V\n" +
+	"\x04auth\"\\\n" +
 	"\x12DatabricksOAuthM2M\x12\x1b\n" +
-	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12#\n" +
-	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\"\x91\x04\n" +
+	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12)\n" +
+	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\"\x91\x04\n" +
 	"\x10CreatedLedgerLog\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x120\n" +
 	"\n" +
@@ -13497,10 +13510,10 @@ const file_common_proto_rawDesc = "" +
 	"DropAction\"\x90\x01\n" +
 	"\x16HttpMirrorSourceConfig\x12\x19\n" +
 	"\bbase_url\x18\x01 \x01(\tR\abaseUrl\x12[\n" +
-	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials\"\x9a\x01\n" +
+	"\x19oauth2_client_credentials\x18\x02 \x01(\v2\x1f.common.OAuth2ClientCredentialsR\x17oauth2ClientCredentials\"\xa0\x01\n" +
 	"\x17OAuth2ClientCredentials\x12\x1b\n" +
-	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12#\n" +
-	"\rclient_secret\x18\x02 \x01(\tR\fclientSecret\x12%\n" +
+	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12)\n" +
+	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\x12%\n" +
 	"\x0etoken_endpoint\x18\x03 \x01(\tR\rtokenEndpoint\x12\x16\n" +
 	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"l\n" +
 	"\x1aPostgresMirrorSourceConfig\x12\x10\n" +
@@ -13509,9 +13522,9 @@ const file_common_proto_rawDesc = "" +
 	"awsIamAuth\"T\n" +
 	"\x12PostgresAwsIamAuth\x12\x16\n" +
 	"\x06region\x18\x01 \x01(\tR\x06region\x12&\n" +
-	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn\"_\n" +
-	"\x0fMirrorSyncError\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessage\x122\n" +
+	"\x0fassume_role_arn\x18\x02 \x01(\tR\rassumeRoleArn\"e\n" +
+	"\x0fMirrorSyncError\x12\x1e\n" +
+	"\amessage\x18\x01 \x01(\tB\x04\xf0\xbc\x18\x01R\amessage\x122\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
 	"occurredAt\"\xdb\x01\n" +
 	"\x12MirrorSyncProgress\x12-\n" +
@@ -13967,7 +13980,8 @@ const file_common_proto_rawDesc = "" +
 	"authPolicy:h\n" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
-	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistoryB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
+	"\tsensitive\x12\x1d.google.protobuf.FieldOptions\x18·\x03 \x01(\bR\tsensitiveB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -14455,12 +14469,13 @@ var file_common_proto_depIdxs = []int32{
 	198, // 267: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
 	198, // 268: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
 	198, // 269: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	18,  // 270: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 271: common.allowed_query_targets:type_name -> common.QueryTarget
-	272, // [272:272] is the sub-list for method output_type
-	272, // [272:272] is the sub-list for method input_type
-	270, // [270:272] is the sub-list for extension type_name
-	266, // [266:270] is the sub-list for extension extendee
+	198, // 270: common.sensitive:extendee -> google.protobuf.FieldOptions
+	18,  // 271: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 272: common.allowed_query_targets:type_name -> common.QueryTarget
+	273, // [273:273] is the sub-list for method output_type
+	273, // [273:273] is the sub-list for method input_type
+	271, // [271:273] is the sub-list for extension type_name
+	266, // [266:271] is the sub-list for extension extendee
 	0,   // [0:266] is the sub-list for field type_name
 }
 
@@ -14664,7 +14679,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   178,
-			NumExtensions: 4,
+			NumExtensions: 5,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,
