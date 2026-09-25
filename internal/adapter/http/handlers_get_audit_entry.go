@@ -7,6 +7,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/formancehq/ledger/v3/internal/adapter/readprojection"
 )
 
 // handleGetAuditEntry handles GET /v3/_/audit-entries/{sequence}.
@@ -21,6 +23,13 @@ func (s *Server) handleGetAuditEntry(w http.ResponseWriter, r *http.Request) {
 	}
 
 	entry, err := s.backend.GetAuditEntry(r.Context(), sequence)
+	if err != nil {
+		handleError(w, r, err)
+
+		return
+	}
+
+	entry, err = readprojection.Audit(entry)
 	if err != nil {
 		handleError(w, r, err)
 

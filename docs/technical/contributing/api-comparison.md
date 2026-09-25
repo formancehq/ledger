@@ -1093,3 +1093,17 @@ Admission rejects the exact names `_` (system API routes) and `_system`
 (system events) on every ledger-scoped write, before proposing to Raft.
 This applies equally to HTTP and gRPC. Other underscore-prefixed names,
 including `_systemx` and `_System`, remain valid.
+
+## Sink and mirror credential reads (EN-1632, EN-1634, EN-1635)
+
+HTTP and gRPC share the [credential projection contract](../architecture/subsystems/api/secret-redaction.md).
+Get/list ledger, event sink, audit, and log responses mask reusable sink/mirror
+credentials on deep clones. Sink/mirror status errors retain their timestamp
+and error presence, but their diagnostic message is masked. Write requests and
+internal consumers still use the original credentials.
+
+Read audit hashes identify original stored records. Modified order/batch bytes
+are display projections; they cannot reproduce the original hash. Signature
+bytes are omitted only for a modified signed payload; unchanged evidence
+retains its exact encoding. This applies to HTTP hex-encoded serializedOrder
+and base64 signed payloads as well as binary gRPC responses.

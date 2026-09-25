@@ -21,6 +21,10 @@ func protoFieldJSON(msg proto.Message) json.RawValue {
 		return nil
 	}
 
+	if !msg.ProtoReflect().IsValid() {
+		return nil
+	}
+
 	b, err := protojson.Marshal(msg)
 	if err != nil {
 		return nil
