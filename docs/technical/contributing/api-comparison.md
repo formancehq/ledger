@@ -297,7 +297,7 @@ The effective limits are fields of the Raft-replicated `common.ClusterPolicy`:
 | `metadata_max_key_bytes` | 256 | Bytes per key, including deletion/schema keys |
 | `metadata_max_value_bytes` | 16384 | Measured bytes per value |
 | `metadata_max_entity_bytes` | 65536 | Key and value bytes per entity |
-| `metadata_max_command_bytes` | 262144 | Key and value bytes across the command |
+| `metadata_max_command_bytes` | 1048576 | Key and value bytes across the command |
 
 Mirror workers enforce the same ceilings on translated batches before proposal,
 and mirror FSM apply rechecks the committed policy before mutation. A rejected

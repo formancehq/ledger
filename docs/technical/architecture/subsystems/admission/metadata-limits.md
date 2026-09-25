@@ -17,7 +17,7 @@ ingest, and the metadata a Numscript program produces.
 | Key size | 256 B | `--metadata-max-key-bytes` | `metadata_max_key_bytes` |
 | Value size | 16 KiB | `--metadata-max-value-bytes` | `metadata_max_value_bytes` |
 | Total per entity | 64 KiB | `--metadata-max-entity-bytes` | `metadata_max_entity_bytes` |
-| Total per command | 256 KiB | `--metadata-max-command-bytes` | `metadata_max_command_bytes` |
+| Total per command | 1 MiB | `--metadata-max-command-bytes` | `metadata_max_command_bytes` |
 
 An *entity* is one transaction, one account, or one ledger. A *command* is one
 atomic, signed Raft proposal (an `ApplyBatch` or mirror batch), so
@@ -159,6 +159,29 @@ The ceilings must also be mutually satisfiable: `key ≤ entity`,
 unreachable, so an operator raising it would observe no effect; both
 `Config.Validate` and the FSM reject the combination instead. Both use
 the shared `MetadataLimits.Validate` helper for configuration diagnostics.
+
+### Kubernetes operator
+
+When running via the Kubernetes operator the six cluster-policy fields are
+exposed as typed fields on the `ClusterSpec` CRD instead of `spec.extraEnv`.
+The fields map directly to their CLI flags through the uppercase-with-underscores
+convention (e.g. `spec.metadataMaxCommandBytes` sets `METADATA_MAX_COMMAND_BYTES`).
+
+| CRD field | CLI flag | Default |
+|---|---|---|
+| `spec.clusterPolicyRevision` | `--cluster-policy-revision` | *(must be set explicitly)* |
+| `spec.metadataMaxEntries` | `--metadata-max-entries` | 128 |
+| `spec.metadataMaxKeyBytes` | `--metadata-max-key-bytes` | 256 |
+| `spec.metadataMaxValueBytes` | `--metadata-max-value-bytes` | 16384 (16 KiB) |
+| `spec.metadataMaxEntityBytes` | `--metadata-max-entity-bytes` | 65536 (64 KiB) |
+| `spec.metadataMaxCommandBytes` | `--metadata-max-command-bytes` | 1048576 (1 MiB) |
+
+All fields are optional; an unset field lets the server apply its built-in
+default. When changing any limit, bump `spec.clusterPolicyRevision` above its
+current value in the same manifest update — otherwise the server logs a
+divergence error and the policy is not updated. The mutual-satisfiability rule
+(`key <= entity <= command`) is validated at boot and rejected by the FSM;
+the CRD webhook does not enforce it independently.
 
 ## Client contract
 
