@@ -479,6 +479,8 @@ Snapshots are created automatically by a periodic background maintenance timer (
 
 The two are told apart by a handle on `<wal-dir>` opened at startup and held for the life of the node. Every snapshot read, write and directory creation resolves from that handle rather than from the pathname, so a `<wal-dir>` that has been unlinked — including one replaced by another directory at the same path — fails the operation instead of resolving to a tree etcd does not hold open. The classification is taken from the failing operation itself, not only from the check that precedes it, so a removal landing mid-write is terminal too.
 
+The handle follows the directory across a rename, which a restart does not: it reads the configured `--wal-dir` and finds neither the WAL nor the identity markers there. Each save therefore also verifies that the configured path still resolves to the directory the handle holds, and reports a `<wal-dir>` that was moved away, or replaced after being moved, as the same terminal condition.
+
 A snapshot whose file fails to save for any other reason is not published: the WAL keeps reporting the previous snapshot, so the next maintenance tick retries at the same or a newer index.
 
 ### Snapshot Contents

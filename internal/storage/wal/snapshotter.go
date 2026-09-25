@@ -32,6 +32,8 @@ var ErrWALDirectoryMissing = errors.New("WAL directory is missing")
 // another directory occupies the path.
 type Snapshotter struct {
 	root   *os.Root
+	pinned os.FileInfo
+	walDir string
 	name   string
 	dir    string
 	logger logging.Logger
@@ -46,12 +48,31 @@ func NewSnapshotter(dir string, logger logging.Logger) (*Snapshotter, error) {
 		return nil, fmt.Errorf("creating snapshot directory: %w", err)
 	}
 
-	root, err := os.OpenRoot(filepath.Dir(dir))
+	walDir, err := filepath.Abs(filepath.Dir(dir))
+	if err != nil {
+		return nil, fmt.Errorf("resolving WAL directory: %w", err)
+	}
+
+	root, err := os.OpenRoot(walDir)
 	if err != nil {
 		return nil, fmt.Errorf("opening WAL directory: %w", err)
 	}
 
-	return &Snapshotter{root: root, name: filepath.Base(dir), dir: dir, logger: logger}, nil
+	pinned, err := root.Stat(".")
+	if err != nil {
+		_ = root.Close()
+
+		return nil, fmt.Errorf("identifying WAL directory: %w", err)
+	}
+
+	return &Snapshotter{
+		root:   root,
+		pinned: pinned,
+		walDir: walDir,
+		name:   filepath.Base(dir),
+		dir:    dir,
+		logger: logger,
+	}, nil
 }
 
 // Close releases the handle on the WAL directory.
@@ -74,6 +95,10 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 		return fmt.Errorf("marshaling snapshot: %w", err)
 	}
 
+	if err := s.checkWALDir(); err != nil {
+		return err
+	}
+
 	if err := s.ensureDir(); err != nil {
 		return err
 	}
@@ -83,6 +108,23 @@ func (s *Snapshotter) Save(snap *raftpb.Snapshot) error {
 	}
 
 	return nil
+}
+
+// checkWALDir reports whether the WAL directory still answers to the path the
+// node was configured with. The handle keeps writes inside the directory etcd
+// opened even after that directory is moved, and a moved directory is as
+// unrecoverable as a deleted one: a restart reads the configured path, finds no
+// WAL and no identity there, and rejoins as a new member.
+func (s *Snapshotter) checkWALDir() error {
+	current, err := os.Stat(s.walDir)
+	switch {
+	case err == nil && os.SameFile(s.pinned, current):
+		return nil
+	case err != nil && !errors.Is(err, os.ErrNotExist):
+		return fmt.Errorf("checking WAL directory: %w", err)
+	}
+
+	return s.walDirLost(err)
 }
 
 // writeSnapFile performs the crash-safe write. Its errors are classified by the
@@ -196,14 +238,7 @@ func (s *Snapshotter) recreateDir() error {
 	// empty WAL and rejoins as a new member. Recreating on top of that would keep
 	// acknowledging unrecoverable writes.
 	if errors.Is(err, os.ErrNotExist) {
-		walDir := s.root.Name()
-		details := map[string]any{"dir": s.dir, "walDir": walDir}
-
-		assert.Unreachable("WAL directory disappeared underneath a running node", details)
-
-		s.logger.WithFields(details).Errorf("WAL directory is missing, consensus state cannot be recovered")
-
-		return fmt.Errorf("%w: %s is gone along with %s, so consensus state cannot be recovered: %w", ErrWALDirectoryMissing, s.dir, walDir, err)
+		return s.walDirLost(err)
 	}
 
 	// A directory that appeared since the check is usable; anything else
@@ -213,6 +248,22 @@ func (s *Snapshotter) recreateDir() error {
 	}
 
 	return fmt.Errorf("recreating snapshot directory: %w", err)
+}
+
+// walDirLost reports the WAL directory as unrecoverable. cause is the failure
+// that revealed it, and is nil when the loss was found by the identity check.
+func (s *Snapshotter) walDirLost(cause error) error {
+	details := map[string]any{"dir": s.dir, "walDir": s.walDir}
+
+	assert.Unreachable("WAL directory disappeared underneath a running node", details)
+
+	s.logger.WithFields(details).Errorf("WAL directory is missing, consensus state cannot be recovered")
+
+	if cause == nil {
+		return fmt.Errorf("%w: %s no longer holds the directory this node opened, so consensus state cannot be recovered", ErrWALDirectoryMissing, s.walDir)
+	}
+
+	return fmt.Errorf("%w: %s is gone along with %s, so consensus state cannot be recovered: %w", ErrWALDirectoryMissing, s.dir, s.walDir, cause)
 }
 
 // path returns name inside the snapshot directory, relative to the WAL directory.

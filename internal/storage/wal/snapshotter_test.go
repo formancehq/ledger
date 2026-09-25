@@ -33,11 +33,24 @@ func newSnapshotterAt(t *testing.T, dir string) *Snapshotter {
 func snapshotterOver(t *testing.T, dir string) *Snapshotter {
 	t.Helper()
 
-	root, err := os.OpenRoot(filepath.Dir(dir))
+	walDir, err := filepath.Abs(filepath.Dir(dir))
+	require.NoError(t, err)
+
+	root, err := os.OpenRoot(walDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = root.Close() })
 
-	return &Snapshotter{root: root, name: filepath.Base(dir), dir: dir, logger: logging.Testing()}
+	pinned, err := root.Stat(".")
+	require.NoError(t, err)
+
+	return &Snapshotter{
+		root:   root,
+		pinned: pinned,
+		walDir: walDir,
+		name:   filepath.Base(dir),
+		dir:    dir,
+		logger: logging.Testing(),
+	}
 }
 
 func TestSnapshotter_SaveAndLoad(t *testing.T) {
@@ -194,6 +207,47 @@ func TestSnapshotter_SaveRefusesAWALDirectoryReplacedByAFile(t *testing.T) {
 		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(12), Term: proto.Uint64(2)},
 	})
 	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryMovedAway renames the WAL directory
+// with its snapshot child intact. The handle follows the directory to its new
+// location, so the write would still land in the right tree — but a restart
+// reads the configured path, finds nothing, and rejoins as a new member.
+func TestSnapshotter_SaveRefusesAWALDirectoryMovedAway(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	walDir := filepath.Join(base, "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.Rename(walDir, filepath.Join(base, "moved")))
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(21), Term: proto.Uint64(4)},
+	})
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+
+	entries, err := os.ReadDir(filepath.Join(base, "moved", snapDir))
+	require.NoError(t, err)
+	require.Empty(t, entries, "the moved directory must not receive snapshot files")
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryMovedAndReplaced puts a usable
+// directory back at the configured path after the move, so every pathname the
+// node was given resolves — to the wrong directory.
+func TestSnapshotter_SaveRefusesAWALDirectoryMovedAndReplaced(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	walDir := filepath.Join(base, "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.Rename(walDir, filepath.Join(base, "moved")))
+	require.NoError(t, os.MkdirAll(filepath.Join(walDir, snapDir), 0755))
+
+	require.ErrorIs(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(22), Term: proto.Uint64(4)},
+	}), ErrWALDirectoryMissing)
 }
 
 // TestSnapshotter_ReadsDoNotFollowAWALDirectoryReplacement pins the read side to
