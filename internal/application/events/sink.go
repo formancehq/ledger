@@ -10,6 +10,9 @@ import (
 
 // Sink publishes events to an external system.
 // Implementations must be safe for concurrent use.
+// Errors returned by adapters must contain publishable diagnostics: redact their
+// connection credentials before returning, retaining operation and failure cause.
+// The emitter persists Publish errors verbatim for clients to inspect.
 type Sink interface {
 	// Publish sends events to the external system.
 	// It must return promptly when ctx is canceled, including while I/O is in flight.

@@ -35,6 +35,7 @@ type NATSSinkConfig struct {
 
 // NATSSink publishes events to NATS JetStream.
 type NATSSink struct {
+	errors sinkErrorSanitizer
 	conn   *nats.Conn
 	js     jetstream.JetStream
 	topic  string
@@ -42,7 +43,23 @@ type NATSSink struct {
 }
 
 // NewNATSSink creates a new NATS JetStream sink.
-func NewNATSSink(cfg NATSSinkConfig) (*NATSSink, error) {
+func NewNATSSink(cfg NATSSinkConfig) (_ *NATSSink, retErr error) {
+	// The driver trims entries and accepts endpoints without an explicit scheme.
+	// Retain raw echoes and register credentials from the driver's accepted form.
+	var connectionURLs []string
+	for raw := range strings.SplitSeq(cfg.URL, ",") {
+		connectionURLs = append(connectionURLs, raw)
+		normalized := strings.TrimSuffix(strings.TrimSpace(raw), "/")
+		if normalized == "" {
+			continue
+		}
+		if !strings.Contains(normalized, "://") {
+			normalized = "nats://" + normalized
+		}
+		connectionURLs = append(connectionURLs, normalized)
+	}
+	sanitizer := newSinkErrorSanitizer(connectionURLs)
+	defer sanitizer.sanitizeReturned(&retErr)
 	conn, err := nats.Connect(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("connecting to NATS: %w", err)
@@ -56,6 +73,7 @@ func NewNATSSink(cfg NATSSinkConfig) (*NATSSink, error) {
 	}
 
 	return &NATSSink{
+		errors: sanitizer,
 		conn:   conn,
 		js:     js,
 		topic:  cfg.Topic,
@@ -63,7 +81,8 @@ func NewNATSSink(cfg NATSSinkConfig) (*NATSSink, error) {
 	}, nil
 }
 
-func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) error {
+func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
 	for _, event := range events {
 		data, err := SerializeEvent(event, s.format)
 		if err != nil {
@@ -79,7 +98,8 @@ func (s *NATSSink) Publish(ctx context.Context, events []*eventspb.Event) error 
 	return nil
 }
 
-func (s *NATSSink) Close() error {
+func (s *NATSSink) Close() (retErr error) {
+	defer s.errors.sanitizeReturned(&retErr)
 	s.conn.Close()
 
 	return nil
