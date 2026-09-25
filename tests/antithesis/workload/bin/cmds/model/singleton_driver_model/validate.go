@@ -53,7 +53,7 @@ func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyRes
 		case req.GetApply() != nil && i < len(resp.GetLogs()) && isSuccessfulBusinessWrite(req, resp.GetLogs()[i]):
 			ledger := req.GetApply().GetLedger()
 			if _, pending := c.pendingPromoted[ledger]; pending {
-				emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": ledger}, coverageHit)
+				emitCoverage(true, coveragePromotionMessage, internal.Details{"ledger": ledger})
 				delete(c.pendingPromoted, ledger)
 			}
 		}
@@ -522,13 +522,13 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 					continue
 				}
 				if _, pending := c.pendingDeleted[created.GetName()]; pending {
-					emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": created.GetName()}, coverageHit)
+					emitCoverage(true, coverageDeletionMessage, internal.Details{"ledger": created.GetName()})
 					delete(c.pendingDeleted, created.GetName())
 				}
 			}
 		}
 		invalidOptIn := reason == domain.ErrReasonValidation && bulkHasInvalidSkippableReason(failedBulk)
-		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil, coverageHit)
+		emitCoverage(invalidOptIn, invalidSkipCoverageMessage, nil)
 		// Coverage: each deliberately-triggered rejection branch must actually be
 		// exercised — if one stops firing, the generator has stopped emitting that
 		// shape and the branch is no longer tested.

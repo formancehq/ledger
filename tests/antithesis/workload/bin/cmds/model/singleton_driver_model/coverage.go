@@ -27,9 +27,6 @@ import (
 const (
 	coverageClass = "github.com/formancehq/ledger/v3/tests/antithesis/workload/bin/cmds/model/singleton_driver_model"
 	coverageFile  = "tests/antithesis/workload/bin/cmds/model/singleton_driver_model/coverage.go"
-
-	coverageHit    = true
-	coverageNotHit = false
 )
 
 // coveragePrefix marks every probe below. run_model_test.sh keys its
@@ -111,15 +108,26 @@ func coverageMessages() []string {
 // being absent from the output altogether.
 func registerCoverage() {
 	for _, msg := range coverageMessages() {
-		emitCoverage(false, msg, nil, coverageNotHit)
+		assertCoverage(false, msg, nil, false)
 	}
 }
 
-func emitCoverage(cond bool, msg string, details internal.Details, hit bool) {
+// emitCoverage records one evaluation of a probe: the code point was reached,
+// and cond says whether this outcome satisfies it.
+func emitCoverage(cond bool, msg string, details internal.Details) {
+	recordCoverageHit(msg, cond)
+
+	assertCoverage(cond, msg, details, true)
+}
+
+// assertCoverage emits one probe observation. reached distinguishes a
+// registration, which declares the probe without evaluating it, from an
+// evaluation; a registration's cond carries no meaning.
+func assertCoverage(cond bool, msg string, details internal.Details, reached bool) {
 	// The two zeros are line and column: these probes are registered by name,
 	// not discovered at a source location.
 	assert.AssertRaw(cond, msg, details, coverageClass, "noteQueryCoverage", coverageFile, 0, 0,
-		hit, true, "sometimes", "Sometimes", msg)
+		reached, true, "sometimes", "Sometimes", msg)
 }
 
 // noteQueryCoverage records what one validated query outcome proves. Every
@@ -131,7 +139,7 @@ func (c *Checker) noteQueryCoverage(ledger string, target commonpb.QueryTarget, 
 
 	for msg, cond := range coverageHits(target, filter, needed, verified, rows,
 		c.retypeWindowOpenFor(ledger, needed)) {
-		emitCoverage(cond, msg, details, coverageHit)
+		emitCoverage(cond, msg, details)
 	}
 }
 
@@ -213,6 +221,6 @@ const (
 
 func noteCheckpointCoverage(message string) {
 	for _, msg := range checkpointCoverageMessages() {
-		emitCoverage(msg == message, msg, nil, coverageHit)
+		emitCoverage(msg == message, msg, nil)
 	}
 }
