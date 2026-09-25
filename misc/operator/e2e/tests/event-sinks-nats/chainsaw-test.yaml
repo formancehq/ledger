@@ -73,7 +73,7 @@ spec:
               set -eu
               for i in $(seq 1 45); do
                 SINK=$(kubectl get eventsink primary -n "$NAMESPACE" -o json)
-                if echo "$SINK" | jq -e '.status.conditions | any(.type == "Synced" and .status == "True")' >/dev/null && \
+                if echo "$SINK" | jq -e '(.status.conditions // []) | any(.type == "Synced" and .status == "True")' >/dev/null && \
                    echo "$SINK" | jq -e '.metadata.finalizers | length > 0' >/dev/null; then
                   echo "PROOF: EventSink is ready and has a cleanup finalizer"
                   exit 0
