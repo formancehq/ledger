@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -36,3 +37,10 @@ func (e *ErrAggregateOverflow) Metadata() map[string]string {
 // Compile-time assertion that ErrAggregateOverflow satisfies domain.Describable
 // so it keeps flowing through the shared error edge (gRPC/HTTP mapping).
 var _ domain.Describable = (*ErrAggregateOverflow)(nil)
+
+// Query-mode validation is a read-side concern: these failures are produced
+// only while executing a prepared query and can never be emitted by the FSM.
+var (
+	ErrPreparedQueryAggregateTarget = errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+	ErrQueryModeUnsupported         = errors.New("unsupported query mode")
+)

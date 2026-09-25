@@ -1,6 +1,8 @@
 package admission
 
 import (
+	"fmt"
+
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -155,8 +157,8 @@ func (o revertTargetObservation) found() bool { return o.state == revertTargetPr
 // with an empty digest. The FSM refuses that order anyway, but only after a Raft
 // round-trip, and assert.Unreachable is a no-op outside Antithesis — so the
 // assertion alone would let a future producer that skips recordRevertTarget
-// reach consensus before failing. Same reason class either way, so the caller
-// sees no difference beyond the earlier rejection.
+// reach consensus before failing. Returning a plain invariant error here keeps
+// the admission layer free of domain/processing error types.
 func bindRevertTargetDigest(
 	order *raftcmdpb.Order,
 	ledgerName string,
@@ -179,9 +181,7 @@ func bindRevertTargetDigest(
 			"transactionId": revert.RevertTransaction.GetTransactionId(),
 		})
 
-		return &domain.ErrInvalidExecutionPlan{
-			Reason_: "revert order built without a recorded target observation",
-		}
+		return fmt.Errorf("invariant: revert order reached digest binding without a recorded target observation (ledger=%s, transactionId=%d)", ledgerName, revert.RevertTransaction.GetTransactionId())
 	}
 
 	orderTechnical(order).RevertTargetDigest = domain.RevertTargetDigest(observation.postings, observation.found())
