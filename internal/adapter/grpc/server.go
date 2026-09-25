@@ -42,6 +42,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -655,6 +656,13 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	// mapping covers the admin cluster.AddLearner path.
 	if errors.Is(err, node.ErrNodeStaleProgress) {
 		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	// Prepared-query mode validation is owned by the read-side query layer,
+	// outside the FSM business-error contract.
+	if errors.Is(err, query.ErrPreparedQueryAggregateTarget) ||
+		errors.Is(err, query.ErrQueryModeUnsupported) {
+		return status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
