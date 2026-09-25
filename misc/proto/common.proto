@@ -1554,9 +1554,12 @@ message RevertedCondition {
 //
 // Every exposed field is answerable from the readstore audit secondary index
 // (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,
-// proposal_id, log_seq — except AUDIT_FIELD_SEQUENCE, which is the audit-zone
-// key itself and is served by bounding the entry scan. There is deliberately no
-// scan-time predicate fallback: a field the index cannot answer is not exposed.
+// proposal_id, log_seq, idempotency_key — except AUDIT_FIELD_SEQUENCE, which
+// is the audit-zone key itself and is served by bounding the entry scan.
+// idempotency_key supports exact lookup (string_cond) and prefix lookup
+// (string_prefix); prefix operands containing NUL are rejected.
+// There is deliberately no scan-time predicate fallback: a field the index
+// cannot answer is not exposed.
 message AuditCondition {
   AuditField field = 1;
   oneof condition {

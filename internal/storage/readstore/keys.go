@@ -732,15 +732,22 @@ func AuditIndexPrefix() []byte {
 }
 
 // AuditIndexStringKey builds [0xFE][0x05][field][value\x00][seq BE8] for a
-// string-valued field (ledger, caller_subject, order_type).
+// string-valued field (ledger, caller_subject, order_type, idempotency_key).
 //
 // The value is NUL-terminated and matched by prefix scan (AuditSeqsByString),
 // so the encoding is unambiguous only while indexed values are themselves
-// NUL-free — true today for order_type (fixed vocabulary), ledger (validated
-// names) and caller_subject (auth subject). EN-1305, which wires the
-// equality/range filter path over arbitrary caller subjects, MUST disambiguate
-// before relying on it (an exact-length check len(key) == len(prefix)+8, or a
-// length-prefixed string encoding); otherwise an "alice" lookup would also
+// NUL-free, OR while callers enforce additional protections:
+//
+//   - order_type (fixed vocabulary), ledger (validated names), and
+//     caller_subject (auth subject) are NUL-free by admission constraints.
+//   - idempotency_key may contain NUL (admission only enforces valid UTF-8).
+//     Exact lookup uses the len(key)==len(prefix)+8 guard in auditSeqsForPrefix
+//     to reject longer NUL-extended entries. Prefix lookup rejects NUL-bearing
+//     operands in auditSeqsByStringPrefix (see also indexIdempotencyKeyLeaf).
+//
+// EN-1305, which wires the equality/range filter path over arbitrary caller
+// subjects, MUST disambiguate before relying on this encoding (exact-length
+// check or length-prefixed string encoding); otherwise "alice" would also
 // match a value indexed as "alice\x00evil".
 func AuditIndexStringKey(kb *dal.KeyBuilder, field byte, value string, seq uint64) []byte {
 	return kb.Reset().
