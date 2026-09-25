@@ -348,3 +348,33 @@ func TestFilterTemplateResolution(t *testing.T) {
 		}
 	}
 }
+
+func TestFilterTemplateVariableNamesWithDigits(t *testing.T) {
+	t.Parallel()
+
+	// The template parser accepts digits in variable names, so typed
+	// (non-string) fields must accept the same names.
+	varDeclarations := map[string]VarDecl{
+		"min_balance_2": {Type: NewTypeNumeric()},
+		"since2024":     {Type: NewTypeDate()},
+		"flag1":         {Type: NewTypeBoolean()},
+		"account1":      {Type: NewTypeString()},
+	}
+	source := `{"$and": [
+		{"$gte": {"balance[COIN]": "${min_balance_2}"}},
+		{"$gte": {"first_usage": "${since2024}"}},
+		{"$match": {"address": "users:${account1}"}}
+	]}`
+
+	require.NoError(t, ValidateFilterBody(ResourceKindAccount, json.RawMessage(source), varDeclarations))
+
+	builder, err := ResolveFilterTemplate(ResourceKindAccount, json.RawMessage(source), varDeclarations, map[string]any{
+		"min_balance_2": json.Number("100"),
+		"since2024":     "2024-01-01T00:00:00Z",
+		"account1":      "alice",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, builder)
+
+	require.NoError(t, ValidateFilterBody(ResourceKindTransaction, json.RawMessage(`{"$match": {"reverted": "${flag1}"}}`), varDeclarations))
+}
