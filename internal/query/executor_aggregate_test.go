@@ -349,3 +349,43 @@ func TestExecute_NilFilterAggregateValidatesPinnedTarget(t *testing.T) {
 	require.Equal(t, domain.KindValidation, targetErr.Kind())
 	require.Equal(t, uint64(100), rs.Leases().BeginGC(100), "validation failure must release the reservation")
 }
+
+// TestExecute_UnsupportedModeWinsOverFilterCompilation pins the guard ordering:
+// an unsupported QueryMode must surface as ErrQueryModeUnsupported even when the
+// stored filter has an unresolvable parameter that Compile would reject first.
+// If the mode guard ran after Compile the caller would receive FILTER_COMPILATION
+// instead of the mode error — the wrong error for the wrong reason.
+func TestExecute_UnsupportedModeWinsOverFilterCompilation(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	registerLedger(t, store, "l")
+	rs := newTestReadStore(t)
+	attrs := attributes.New()
+
+	// Build a filter with an address param reference that has no binding supplied
+	// at execution time — Compile would return FILTER_COMPILATION_ERROR if reached.
+	filter := &commonpb.QueryFilter{
+		Filter: &commonpb.QueryFilter_Address{
+			Address: &commonpb.AddressMatch{
+				Match: &commonpb.AddressMatch_ParamExact{ParamExact: "unbound_param"},
+			},
+		},
+	}
+	seedPreparedQuery(t, store, attrs, "l", "q", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter)
+
+	resp, err := query.Execute(t.Context(), rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
+		&servicepb.ExecutePreparedQueryRequest{
+			Ledger:    "l",
+			QueryName: "q",
+			Mode:      commonpb.QueryMode(999), // unsupported
+			// no Parameters — Compile would fail on the unbound param if reached
+		}, nil, nil)
+
+	require.Nil(t, resp)
+
+	var modeErr *query.ErrQueryModeUnsupported
+	require.ErrorAs(t, err, &modeErr,
+		"unsupported mode must surface before filter compilation; got: %v", err)
+	require.Equal(t, commonpb.QueryMode(999), modeErr.Mode)
+}
