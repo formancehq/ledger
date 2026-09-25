@@ -88,7 +88,7 @@ needing original evidence must use the protected original store/backup workflow;
 these read endpoints do not offer a scope-dependent raw bypass.
 
 This changes public response semantics and increments service protocol revision
-5 to 6. Deploy matching service clients and servers.
+13 to 14. Deploy matching service clients and servers.
 
 ## Validation
 

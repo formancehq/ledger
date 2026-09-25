@@ -12,7 +12,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
@@ -25,10 +24,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-func credentialReadAuth(scope internalauth.Scope) internalauth.AuthConfig {
-	return internalauth.AuthConfig{Enabled: true, ScopeMapping: internalauth.ScopeMapping{internalauth.ScopeMappingAnonymousKey: {scope}}}
-}
-
 func requireCredentialFreeProto(t *testing.T, message proto.Message) {
 	t.Helper()
 	encoded, err := proto.Marshal(message)
@@ -40,7 +35,6 @@ func requireCredentialFreeProto(t *testing.T, message proto.Message) {
 func TestCredentialProjectionLiveGRPC(t *testing.T) {
 	t.Parallel()
 	impl, backend := newListHandlerHarness(t)
-	impl.authCfg = credentialReadAuth(internalauth.ScopeOpsRead)
 	sink := &commonpb.SinkConfig{Name: "sink", Type: &commonpb.SinkConfig_Http{Http: &commonpb.HttpSinkConfig{Secret: "credentialSentinel", Endpoint: "https://u:urlSentinel@localhost"}}}
 	sinkStatus := &commonpb.SinkStatus{SinkName: "sink", Cursor: 12, Error: &commonpb.SinkError{Message: "dial https://u:credentialSentinel@localhost failed"}}
 	originalSink, originalStatus := sink.CloneVT(), sinkStatus.CloneVT()
@@ -51,7 +45,6 @@ func TestCredentialProjectionLiveGRPC(t *testing.T) {
 	require.Equal(t, uint64(12), response.GetSinkStatuses()[0].GetCursor())
 	require.True(t, proto.Equal(originalSink, sink))
 	require.True(t, proto.Equal(originalStatus, sinkStatus))
-	impl.authCfg = credentialReadAuth(internalauth.ScopeLedgersRead)
 	info := &commonpb.LedgerInfo{Name: "a", MirrorSource: &commonpb.MirrorSourceConfig{Type: &commonpb.MirrorSourceConfig_Postgres{Postgres: &commonpb.PostgresMirrorSourceConfig{Dsn: "postgres://u:credentialSentinel@localhost/db?password=urlSentinel"}}}}
 	original := info.CloneVT()
 	backend.EXPECT().GetLedgerByName(gomock.Any(), "a").Return(info, nil)
@@ -87,7 +80,6 @@ func TestCredentialProjectionHistoryGRPC(t *testing.T) {
 		t.Run(config.name, func(t *testing.T) {
 			t.Parallel()
 			impl, backend := newListHandlerHarness(t)
-			impl.authCfg = credentialReadAuth(internalauth.ScopeAuditRead)
 			order := &raftcmdpb.Order{}
 			require.NoError(t, protojson.Unmarshal([]byte(config.order), order))
 			orderBytes, err := proto.Marshal(order)
@@ -119,7 +111,6 @@ func TestCredentialProjectionHistoryGRPC(t *testing.T) {
 			require.NoError(t, protojson.Unmarshal([]byte(config.log), log))
 			log.Sequence = 9
 			originalLog := log.CloneVT()
-			impl.authCfg = credentialReadAuth(internalauth.ScopeOpsRead)
 			backend.EXPECT().GetLog(gomock.Any(), uint64(9)).Return(log, nil)
 			gotLog, err := impl.GetLog(context.Background(), &servicepb.GetLogRequest{Sequence: 9})
 			require.NoError(t, err)
@@ -127,7 +118,6 @@ func TestCredentialProjectionHistoryGRPC(t *testing.T) {
 			// Current ListLogs only yields Apply records; this additional synthetic
 			// creation-log case guards the shared response boundary if that scope grows.
 			// GetLog above independently covers the currently reachable system history.
-			impl.authCfg = credentialReadAuth(internalauth.ScopeLedgersRead)
 			backend.EXPECT().ListLogs(gomock.Any(), "mirror", uint64(0), uint32(3), gomock.Any()).Return(&upstreamCursor[commonpb.Log]{items: []*commonpb.Log{log}, nextCursor: "19"}, nil)
 			logStream := newFakeServerStream[commonpb.Log](t)
 			require.NoError(t, impl.ListLogs(&servicepb.ListLogsRequest{Ledger: "mirror", Options: &commonpb.ListOptions{PageSize: 2}}, logStream))
@@ -142,7 +132,6 @@ func TestCredentialProjectionHistoryGRPC(t *testing.T) {
 func TestCredentialProjectionMalformedAuditGRPC(t *testing.T) {
 	t.Parallel()
 	impl, backend := newListHandlerHarness(t)
-	impl.authCfg = credentialReadAuth(internalauth.ScopeAuditRead)
 	entry := &auditpb.AuditEntry{Sequence: 7, Items: []*auditpb.AuditItem{{SerializedOrder: []byte("credentialSentinel")}}}
 	backend.EXPECT().GetAuditEntry(gomock.Any(), uint64(7)).Return(entry, nil)
 	got, err := impl.GetAuditEntry(context.Background(), &servicepb.GetAuditEntryRequest{Sequence: 7})
@@ -159,7 +148,6 @@ func TestCredentialProjectionMalformedAuditGRPC(t *testing.T) {
 // even after live state changes. Projection belongs after controller selection,
 // while both live and checkpoint storage retain their authoritative payloads.
 func TestCredentialProjectionCheckpointGRPC(t *testing.T) {
-	t.Skip("requires node infrastructure: openCheckpointStores panics on nil node")
 	t.Parallel()
 	logger := logging.NopZap()
 	meter := noop.NewMeterProvider().Meter("credential-projection")
@@ -178,6 +166,10 @@ func TestCredentialProjectionCheckpointGRPC(t *testing.T) {
 	const checkpointID uint64 = 42
 	_, err = store.CreateQueryCheckpoint(checkpointID)
 	require.NoError(t, err)
+	// Write the Pebble record so queryCheckpointExists finds it (normally written by FSM apply).
+	cpBatch := store.OpenWriteSession()
+	require.NoError(t, state.SaveQueryCheckpoint(cpBatch, &raftcmdpb.QueryCheckpointState{CheckpointId: checkpointID}))
+	require.NoError(t, cpBatch.Commit())
 	require.NoError(t, index.CreateCheckpoint(store.QueryCheckpointReadIndexDir(checkpointID)))
 	require.NoError(t, dal.MarkCheckpointReady(store.QueryCheckpointReadIndexDir(checkpointID)))
 	// Remove the source from live data to uniquely identify the checkpoint path.
@@ -190,7 +182,7 @@ func TestCredentialProjectionCheckpointGRPC(t *testing.T) {
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{liveLog}))
 	require.NoError(t, batch.Commit())
 	local := ctrl.NewDefaultController(nil, store, logger, attributes.New(), index, nil, meter)
-	impl := &BucketServiceServerImpl{logger: logger, ctrl: local, localCtrl: local, store: store, authCfg: credentialReadAuth(internalauth.ScopeLedgersRead)}
+	impl := &BucketServiceServerImpl{logger: logger, ctrl: local, localCtrl: local, store: store}
 	got, err := impl.GetLedger(context.Background(), &servicepb.GetLedgerRequest{Ledger: "mirror", Read: &commonpb.ReadOptions{CheckpointId: checkpointID}})
 	require.NoError(t, err)
 	require.NotNil(t, got.GetMirrorSource())
@@ -198,7 +190,6 @@ func TestCredentialProjectionCheckpointGRPC(t *testing.T) {
 	live, err := impl.GetLedger(context.Background(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
 	require.Nil(t, live.GetMirrorSource())
-	impl.authCfg = credentialReadAuth(internalauth.ScopeOpsRead)
 	gotLog, err := impl.GetLog(context.Background(), &servicepb.GetLogRequest{Sequence: 9, CheckpointId: checkpointID})
 	require.NoError(t, err)
 	require.NotNil(t, gotLog.GetPayload().GetCreateLedger().GetMirrorSource())
