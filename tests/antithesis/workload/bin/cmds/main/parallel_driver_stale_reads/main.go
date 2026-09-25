@@ -149,10 +149,23 @@ func main() {
 			}
 
 			var (
-				input   = parseAmount(vol.GetInput().DecimalString())
-				output  = parseAmount(vol.GetOutput().DecimalString())
-				balance = parseAmount(vol.GetBalance().DecimalString())
+				input   *big.Int
+				output  *big.Int
+				balance *big.Int
 			)
+
+			if vol.GetInput() == nil || vol.GetOutput() == nil || vol.GetBalance() == nil {
+				assert.Unreachable("stale read returned volume with absent required field",
+					details.With(internal.Details{
+						"hasInput":   vol.GetInput() != nil,
+						"hasOutput":  vol.GetOutput() != nil,
+						"hasBalance": vol.GetBalance() != nil,
+					}))
+				continue
+			}
+			input = parseAmount(vol.GetInput().DecimalString())
+			output = parseAmount(vol.GetOutput().DecimalString())
+			balance = parseAmount(vol.GetBalance().DecimalString())
 
 			if input == nil || output == nil || balance == nil {
 				assert.Unreachable("stale read returned unparsable volume strings",
@@ -161,7 +174,6 @@ func main() {
 						"output":  vol.GetOutput().DecimalString(),
 						"balance": vol.GetBalance().DecimalString(),
 					}))
-
 				continue
 			}
 
