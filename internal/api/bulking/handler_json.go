@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/types/pointer"
 	"github.com/formancehq/numscript"
 
+	ledger "github.com/formancehq/ledger/internal"
 	"github.com/formancehq/ledger/internal/api/common"
 	ledgercontroller "github.com/formancehq/ledger/internal/controller/ledger"
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
@@ -25,8 +26,7 @@ type JsonBulkHandler struct {
 
 func (h *JsonBulkHandler) GetChannels(w http.ResponseWriter, r *http.Request) (Bulk, chan BulkElementResult, bool) {
 	h.bulkElements = make([]BulkElement, 0)
-	if err := json.NewDecoder(r.Body).Decode(&h.bulkElements); err != nil {
-		api.BadRequest(w, common.ErrValidation, err)
+	if !common.DecodeBody(w, r, &h.bulkElements) {
 		return nil, nil, false
 	}
 
@@ -156,6 +156,8 @@ func mapBulkElementError(err error) string {
 		return common.ErrInterpreterRuntime
 	case errors.Is(err, ledgercontroller.ErrAlreadyReverted{}):
 		return common.ErrAlreadyRevert
+	case errors.Is(err, ledger.ErrMetadataLimitExceeded{}):
+		return common.ErrMetadataLimitExceeded
 	case errors.Is(err, ledgercontroller.ErrInvalidIdempotencyInput{}), errors.Is(err, ledgercontroller.ErrSchemaValidationError{}):
 		return common.ErrValidation
 	case errors.Is(err, ledgercontroller.ErrSchemaNotSpecified{}):

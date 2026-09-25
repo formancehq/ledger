@@ -70,7 +70,7 @@ func readVolumes(paginationConfig storagecommon.PaginationConfig) http.HandlerFu
 			},
 		)
 		if err != nil {
-			api.BadRequest(w, common.ErrValidation, err)
+			common.HandleRequestParsingErrors(w, err)
 			return
 		}
 

@@ -36,7 +36,10 @@ type PostTransaction struct {
 	Script *PostTransactionScript `json:"script,omitempty"`
 	// Optional caller-supplied identifier, unique within the ledger, used to deduplicate transactions
 	Reference *string `json:"reference,omitempty"`
-	// Arbitrary key/value pairs attached to the resource
+	// Metadata accepted by transaction and account write commands. A metadata object
+	// is limited to 128 entries, 256 UTF-8 bytes per key, 16 KiB of UTF-8 bytes per
+	// value, and 64 KiB total across keys and values.
+	//
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
