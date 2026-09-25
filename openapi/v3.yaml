@@ -2252,8 +2252,8 @@ components:
           example: "[VALIDATION] invalid 'cursor' query param"
         details:
           type: string
-          example: >-
-            https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+          description: Optional, human-readable details providing additional context about certain validation errors.
+          example: 'invalid account address: user:john:'
     V2ErrorsEnum:
       type: string
       enum:
