@@ -3226,7 +3226,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Optional metadata for the ledger (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Optional metadata for the ledger (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         mode:
           type: string
           enum:
@@ -3427,7 +3427,7 @@ components:
               $ref: '#/components/schemas/MetadataValue'
           description: >-
             Metadata for accounts involved in the transaction (supports typed
-            values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            values). Each account's map is bounded independently. Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         timestamp:
           type: string
           format: date-time
@@ -3437,7 +3437,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Transaction metadata (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Transaction metadata (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
         reference:
           type: string
           description: Transaction reference
@@ -3601,7 +3601,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Metadata to add (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Metadata to add (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     RevertTransactionRequest:
       type: object
@@ -3625,7 +3625,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     RevertTransactionRequestBody:
       type: object
@@ -3643,7 +3643,7 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/MetadataValue'
           description: >-
-            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 262144 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
+            Metadata for the revert transaction (supports typed values). Cluster policy defaults allow 128 entries per entity, 256 bytes per key, 16384 bytes per value, 65536 bytes per entity, and 1048576 bytes per request. Effective ceilings are configurable through the replicated cluster policy.
 
     DeleteMetadataRequest:
       type: object
