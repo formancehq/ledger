@@ -219,16 +219,28 @@ func decodeCanonicalDecimal(data []byte, signed bool) (string, error) {
 	if err := json.Unmarshal(data, &decimal); err != nil {
 		return "", fmt.Errorf("integer must be a quoted decimal string: %w", err)
 	}
-	if decimal == "" || decimal == "-0" || strings.HasPrefix(decimal, "+") ||
-		(strings.HasPrefix(decimal, "0") && len(decimal) > 1) ||
-		(strings.HasPrefix(decimal, "-0") && len(decimal) > 2) ||
-		(!signed && strings.HasPrefix(decimal, "-")) {
+	if !signed && strings.HasPrefix(decimal, "-") {
 		return "", fmt.Errorf("invalid non-canonical integer %q", decimal)
 	}
-	digits := strings.TrimPrefix(decimal, "-")
-	if digits == "" || strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
-		return "", fmt.Errorf("invalid integer %q", decimal)
+	if err := validateCanonicalDecimalString(decimal, signed); err != nil {
+		return "", err
 	}
 
 	return decimal, nil
+}
+
+// validateCanonicalDecimalString validates that s is a canonical decimal integer
+// string (no JSON quoting). It is the single source of truth shared by JSON and
+// SQL decoders so the two paths cannot diverge.
+func validateCanonicalDecimalString(s string, signed bool) error {
+	if s == "" || s == "-0" || strings.HasPrefix(s, "+") ||
+		(strings.HasPrefix(s, "0") && len(s) > 1) ||
+		(strings.HasPrefix(s, "-0") && len(s) > 2) {
+		return fmt.Errorf("invalid non-canonical integer %q", s)
+	}
+	digits := strings.TrimPrefix(s, "-")
+	if digits == "" || strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+		return fmt.Errorf("invalid integer %q", s)
+	}
+	return nil
 }

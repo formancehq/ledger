@@ -319,8 +319,14 @@ var _ = Describe("ColorRevert", Ordered, func() {
 			g.Expect(err).To(Succeed())
 
 			// GRANTS bucket back to 0 (200 - 200); uncolored untouched at 100.
-			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("0"))
-			g.Expect(alice.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("100"))
+			grantsVol := alice.FindVolume("USD/2", "GRANTS")
+			g.Expect(grantsVol).NotTo(BeNil(), "expected GRANTS bucket on alice")
+			g.Expect(grantsVol.GetBalance()).NotTo(BeNil(), "GRANTS balance field must be present")
+			g.Expect(grantsVol.GetBalance().DecimalString()).To(Equal("0"))
+			uncoloredVol := alice.FindVolume("USD/2", "")
+			g.Expect(uncoloredVol).NotTo(BeNil(), "expected uncolored bucket on alice")
+			g.Expect(uncoloredVol.GetBalance()).NotTo(BeNil(), "uncolored balance field must be present")
+			g.Expect(uncoloredVol.GetBalance().DecimalString()).To(Equal("100"))
 		}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 	})
 })
