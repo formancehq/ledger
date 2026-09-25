@@ -181,6 +181,8 @@ spec:
             timeout: 90s
             content: |
               set -eu
+              EXPECTED_OWNER=$(kubectl get eventsink primary -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              test -n "$EXPECTED_OWNER"
               for i in $(seq 1 30); do
                 STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                   /bin/sh -c './ledgerctl events list \
@@ -189,6 +191,11 @@ spec:
                     --insecure \
                     --auth-token "$CLUSTER_SECRET"')
                 echo "$STATUS"
+                ACTUAL_OWNER=$(echo "$STATUS" | jq -r '.sinks[] | select(.name == "primary") | .controllerId // empty')
+                test "$ACTUAL_OWNER" = "$EXPECTED_OWNER" || {
+                  echo "FAIL: Ledger sink primary is not owned by this EventSink UID"
+                  exit 1
+                }
                 CURSOR=$(echo "$STATUS" | jq -r '.sinkStatuses[] | select(.sinkName == "primary") | .cursor')
                 ERROR=$(echo "$STATUS" | jq -r '.sinkStatuses[] | select(.sinkName == "primary") | .error')
                 if [ -n "$CURSOR" ] && [ "$CURSOR" -gt 0 ] && [ "$ERROR" = "null" ]; then
