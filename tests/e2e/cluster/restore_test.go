@@ -20,7 +20,7 @@ import (
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -751,7 +751,7 @@ var _ = Describe("Restore", Ordered, func() {
 
 			entries, err := actions.ListAuditEntries(ctx, client, false)
 			Expect(err).To(Succeed())
-			var deltaEntry *auditpb.AuditEntry
+			var deltaEntry *publicauditpb.AuditEntry
 			for _, entry := range entries {
 				if entry.GetIdempotency().GetKey() == deltaCallerKey {
 					deltaEntry = entry
