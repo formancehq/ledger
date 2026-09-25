@@ -78,8 +78,9 @@ func TestRebuildYieldsIdenticalIndex(t *testing.T) {
 	for s := uint64(1); s <= 5; s++ {
 		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
 			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
-			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
-			Ledgers: []string{"main"},
+			Outcome:     &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
+			Ledgers:     []string{"main"},
+			Idempotency: &commonpb.Idempotency{Key: "retry-key"},
 		})
 	}
 
@@ -92,6 +93,10 @@ func TestRebuildYieldsIdenticalIndex(t *testing.T) {
 	after := dumpAuditIndexKeys(t, rs)
 
 	require.Equal(t, before, after, "rebuild must yield a byte-identical index")
+	seqs, err := rs.AuditSeqsByString(readstore.AuditFieldIdempotencyKey, "retry-key")
+	require.NoError(t, err)
+	require.Equal(t, []uint64{1, 2, 3, 4, 5}, seqs,
+		"rebuild must retain every use of a historical idempotency key")
 
 	cursor, err := rs.ReadAuditProgress()
 	require.NoError(t, err)

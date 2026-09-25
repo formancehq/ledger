@@ -1554,14 +1554,20 @@ message RevertedCondition {
 //
 // Every exposed field is answerable from the readstore audit secondary index
 // (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,
-// proposal_id, log_seq — except AUDIT_FIELD_SEQUENCE, which is the audit-zone
-// key itself and is served by bounding the entry scan. There is deliberately no
-// scan-time predicate fallback: a field the index cannot answer is not exposed.
+// proposal_id, log_seq, idempotency_key — except AUDIT_FIELD_SEQUENCE, which
+// is the audit-zone key itself and is served by bounding the entry scan.
+// idempotency_key supports exact lookup (string_cond) and prefix lookup
+// (string_prefix); prefix operands containing NUL are rejected.
+// There is deliberately no scan-time predicate fallback: a field the index
+// cannot answer is not exposed.
 message AuditCondition {
   AuditField field = 1;
   oneof condition {
     StringCondition string_cond = 2;
     UintCondition   uint_cond   = 3;
+    // Prefix match for indexed string fields. Currently accepted only for
+    // idempotency_key, whose historical values live in the audit projection.
+    string          string_prefix = 4;
   }
 }
 
@@ -1579,6 +1585,7 @@ enum AuditField {
   AUDIT_FIELD_CALLER_SUBJECT = 6;  // string -> caller_snapshot.authenticated.identity.subject (index)
   AUDIT_FIELD_LEDGER         = 7;  // string -> AuditEntry.ledgers, match-any (index)
   AUDIT_FIELD_ORDER_TYPE     = 8;  // string -> order payload variant, match-any (index)
+  AUDIT_FIELD_IDEMPOTENCY_KEY = 9; // string -> AuditEntry.idempotency.key (index, exact or prefix)
 }
 
 // LedgerCondition filters logs by ledger name (exact match).
