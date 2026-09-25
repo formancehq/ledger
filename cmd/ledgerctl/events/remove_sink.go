@@ -30,6 +30,7 @@ Examples:
 	}
 
 	cmd.Flags().String("name", "", "Name of the sink to remove (required)")
+	cmd.Flags().String("controller-id", "", "Remove only if the current sink has this controller identity")
 	cmdutil.AddOutputFlags(cmd)
 	cmd.Flags().Duration("timeout", cmdutil.DefaultTimeout, "Request timeout")
 
@@ -38,6 +39,7 @@ Examples:
 
 func runRemoveSink(cmd *cobra.Command, _ []string) error {
 	name, _ := cmd.Flags().GetString("name")
+	controllerID, _ := cmd.Flags().GetString("controller-id")
 	if name == "" {
 		return errors.New("--name is required")
 	}
@@ -58,7 +60,8 @@ func runRemoveSink(cmd *cobra.Command, _ []string) error {
 		{
 			Type: &servicepb.Request_RemoveEventsSink{
 				RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{
-					Name: name,
+					Name:         name,
+					ControllerId: controllerID,
 				},
 			},
 		},

@@ -20,10 +20,10 @@ func NewAddSinkCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "add-sink",
 		Aliases: []string{"add", "upsert"},
-		Short:   "Add or update an event sink configuration",
-		Long: `Add or update a named event sink configuration.
+		Short:   "Add an event sink configuration",
+		Long: `Add a named event sink configuration.
 
-If a sink with the same name already exists, it is replaced (upsert).
+If a sink with the same name already exists, the request fails.
 The sink configuration is replicated via Raft consensus.
 
 Currently supported sink types: NATS JetStream, ClickHouse, Kafka, HTTP.
@@ -72,6 +72,7 @@ Examples:
 	}
 
 	cmd.Flags().String("name", "", "Unique name for this sink (required)")
+	cmd.Flags().String("controller-id", "", "Opaque controller identity (EventSink CR UID); empty for manual sinks")
 	cmd.Flags().String("nats-url", "", "NATS server URL")
 	cmd.Flags().String("nats-topic", "", "NATS topic/subject for events")
 	cmd.Flags().String("clickhouse-dsn", "", "ClickHouse DSN (e.g. clickhouse://user:pass@host:9000/db)")
@@ -108,6 +109,7 @@ Examples:
 
 func runAddSink(cmd *cobra.Command, _ []string) error {
 	name, _ := cmd.Flags().GetString("name")
+	controllerID, _ := cmd.Flags().GetString("controller-id")
 	if name == "" {
 		return errors.New("--name is required")
 	}
@@ -202,6 +204,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	config := &commonpb.SinkConfig{
 		Name:         name,
+		ControllerId: controllerID,
 		Format:       format,
 		BatchSize:    batchSize,
 		BatchDelayMs: batchDelayMs,

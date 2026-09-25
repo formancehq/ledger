@@ -205,6 +205,7 @@ const (
 	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
 	ErrReasonSinkNotFound                  = "SINK_NOT_FOUND"
+	ErrReasonSinkControllerMismatch        = "SINK_CONTROLLER_MISMATCH"
 	ErrReasonSinkBatchSizeTooLarge         = "SINK_BATCH_SIZE_TOO_LARGE"
 	ErrReasonMetadataNotFound              = "METADATA_NOT_FOUND"
 	ErrReasonMaintenanceMode               = "MAINTENANCE_MODE"
@@ -858,6 +859,21 @@ type ErrSinkNotFound struct {
 func (e *ErrSinkNotFound) Error() string               { return "event sink not found: " + e.Name }
 func (*ErrSinkNotFound) Reason() string                { return ErrReasonSinkNotFound }
 func (e *ErrSinkNotFound) Metadata() map[string]string { return map[string]string{"name": e.Name} }
+
+// ErrSinkControllerMismatch rejects a conditional removal whose controller
+// does not own the currently applied sink. The current owner is not disclosed.
+type ErrSinkControllerMismatch struct {
+	Name         string
+	ControllerID string
+}
+
+func (e *ErrSinkControllerMismatch) Error() string {
+	return fmt.Sprintf("event sink %q is not owned by controller %q", e.Name, e.ControllerID)
+}
+func (*ErrSinkControllerMismatch) Reason() string { return ErrReasonSinkControllerMismatch }
+func (e *ErrSinkControllerMismatch) Metadata() map[string]string {
+	return map[string]string{"name": e.Name, "controllerId": e.ControllerID}
+}
 
 // ErrInvalidCronExpression — cron expression is invalid.
 type ErrInvalidCronExpression struct {

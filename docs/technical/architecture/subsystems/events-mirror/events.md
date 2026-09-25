@@ -402,15 +402,16 @@ message SinkConfig {
   string name = 1;                       // Stable identifier for per-sink cursor/status keys
   oneof type {
     NatsSinkConfig nats = 2;             // NATS JetStream sink
-    ClickHouseSinkConfig clickhouse = 6; // ClickHouse analytics sink
-    KafkaSinkConfig kafka = 7;           // Apache Kafka sink
-    HttpSinkConfig http = 8;             // HTTP webhook sink
-    DatabricksSinkConfig databricks = 10; // Databricks SQL Warehouse sink
+    ClickHouseSinkConfig clickhouse = 3; // ClickHouse analytics sink
+    KafkaSinkConfig kafka = 4;           // Apache Kafka sink
+    HttpSinkConfig http = 5;             // HTTP webhook sink
+    DatabricksSinkConfig databricks = 6; // Databricks SQL Warehouse sink
   }
-  string format = 3;                     // "json" or "protobuf" (default: "json")
-  int32 batch_size = 4;                  // Max events per batch (default: 64)
-  int64 batch_delay_ms = 5;              // Max delay before flush in ms (default: 10)
-  repeated EventType event_types = 9;    // Empty = all events (default)
+  string format = 7;                     // "json" or "protobuf" (default: "json")
+  int32 batch_size = 8;                  // Max events per batch (default: 64)
+  int64 batch_delay_ms = 9;              // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 10;   // Empty = all events (default)
+  string controller_id = 11;             // Opaque EventSink CR UID; empty for manual sinks
 }
 
 message NatsSinkConfig {
@@ -456,7 +457,7 @@ message DatabricksOAuthM2M {
 }
 ```
 
-Each `SinkConfig` carries its own `format`, `batch_size`, `batch_delay_ms`, and `event_types` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x06][0x08][name]`) and status (`[0x06][0x0A][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
+Each `SinkConfig` carries its own `format`, `batch_size`, `batch_delay_ms`, and `event_types` — there is no global events config. `controller_id` stores the opaque identity of the EventSink CR that created the sink; manually added sinks leave it empty. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x06][0x08][name]`) and status (`[0x06][0x0A][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
 
 #### Adding and Removing Sinks
 
@@ -465,6 +466,9 @@ Use `AddEventsSink` and `RemoveEventsSink` via the `Apply` RPC:
 ```bash
 # Add a NATS sink with default settings
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events
+
+# Associate a sink with its EventSink CR
+ledgerctl events add-sink --name controlled --nats-url nats://localhost:4222 --nats-topic ledger.events --controller-id <event-sink-cr-uid>
 
 # Add a NATS sink with custom batch settings and protobuf format
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events \
@@ -491,6 +495,9 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 
 # Remove a sink (events implicitly disabled when all sinks removed)
 ledgerctl events remove-sink --name streaming
+
+# Remove only the sink owned by this EventSink CR (atomic Raft guard)
+ledgerctl events remove-sink --name controlled --controller-id <event-sink-cr-uid>
 ```
 
 #### Reading Sink Configuration
@@ -501,7 +508,7 @@ Use `ledgerctl events list` to read all sink configurations and per-sink statuse
 ledgerctl events list
 ```
 
-The response includes a list of `SinkConfig` entries and a list of `SinkStatus` entries showing each sink's cursor position and any active error.
+The response includes a list of `SinkConfig` entries (including `controller_id`) and a list of `SinkStatus` entries showing each sink's cursor position and any active error. `add-sink` rejects an existing name. A guarded `remove-sink` compares the requested identity with the current config during FSM apply; a mismatch rejects the removal and leaves the sink intact. Without an identity the command retains unconditional removal semantics.
 
 #### Kubernetes Operator Configuration
 

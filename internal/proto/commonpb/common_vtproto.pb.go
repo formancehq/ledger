@@ -1496,6 +1496,7 @@ func (m *SinkConfig) CloneVT() *SinkConfig {
 	r.Format = m.Format
 	r.BatchSize = m.BatchSize
 	r.BatchDelayMs = m.BatchDelayMs
+	r.ControllerId = m.ControllerId
 	if m.Type != nil {
 		r.Type = m.Type.(interface{ CloneVT() isSinkConfig_Type }).CloneVT()
 	}
@@ -6959,6 +6960,9 @@ func (this *SinkConfig) EqualVT(that *SinkConfig) bool {
 		if vx != vy {
 			return false
 		}
+	}
+	if this.ControllerId != that.ControllerId {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -15874,6 +15878,13 @@ func (m *SinkConfig) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		}
 		i -= size
 	}
+	if len(m.ControllerId) > 0 {
+		i -= len(m.ControllerId)
+		copy(dAtA[i:], m.ControllerId)
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.ControllerId)))
+		i--
+		dAtA[i] = 0x5a
+	}
 	if len(m.EventTypes) > 0 {
 		var pksize2 int
 		for _, num := range m.EventTypes {
@@ -24749,6 +24760,10 @@ func (m *SinkConfig) SizeVT() (n int) {
 			l += protohelpers.SizeOfVarint(uint64(e))
 		}
 		n += 1 + protohelpers.SizeOfVarint(uint64(l)) + l
+	}
+	l = len(m.ControllerId)
+	if l > 0 {
+		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -36984,6 +36999,38 @@ func (m *SinkConfig) UnmarshalVT(dAtA []byte) error {
 			} else {
 				return fmt.Errorf("proto: wrong wireType = %d for field EventTypes", wireType)
 			}
+		case 11:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ControllerId", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return protohelpers.ErrInvalidLength
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.ControllerId = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

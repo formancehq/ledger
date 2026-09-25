@@ -44,6 +44,11 @@ func processRemoveEventsSink(order *raftcmdpb.RemoveEventsSinkOrder, ctx *Contex
 	if existing == nil {
 		return nil, &domain.ErrSinkNotFound{Name: order.GetName()}
 	}
+	if order.GetControllerId() != "" && existing.GetControllerId() != order.GetControllerId() {
+		return nil, &domain.ErrSinkControllerMismatch{
+			Name: order.GetName(), ControllerID: order.GetControllerId(),
+		}
+	}
 
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_RemovedEventsSink{

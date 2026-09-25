@@ -22,7 +22,8 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	require.NoError(t, err)
 
 	sinkConfig := &commonpb.SinkConfig{
-		Name: "my-nats-sink",
+		Name:         "my-nats-sink",
+		ControllerId: "cr-uid-1",
 		Type: &commonpb.SinkConfig_Nats{
 			Nats: &commonpb.NatsSinkConfig{
 				Url:   "nats://localhost:4222",
@@ -53,6 +54,7 @@ func TestProcessAddEventsSink_Success(t *testing.T) {
 	addedLog := result.GetAddedEventsSink()
 	require.NotNil(t, addedLog)
 	require.Equal(t, "my-nats-sink", addedLog.GetConfig().GetName())
+	require.Equal(t, "cr-uid-1", addedLog.GetConfig().GetControllerId())
 }
 
 func TestProcessAddEventsSink_BatchSizeTooLarge(t *testing.T) {
@@ -213,7 +215,8 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 			SystemScoped: &raftcmdpb.SystemScopedOrder{
 				Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
 					RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-						Name: "my-nats-sink",
+						Name:         "my-nats-sink",
+						ControllerId: "uid-1",
 					},
 				},
 			},
@@ -227,4 +230,43 @@ func TestProcessRemoveEventsSink_NotFound(t *testing.T) {
 	var sinkNotFound *domain.ErrSinkNotFound
 	require.ErrorAs(t, err, &sinkNotFound)
 	require.Equal(t, "my-nats-sink", sinkNotFound.Name)
+}
+
+func TestProcessRemoveEventsSink_ControllerGuard(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, current, requested string
+		wantRemoved              bool
+	}{
+		{name: "matching owner", current: "uid-1", requested: "uid-1", wantRemoved: true},
+		{name: "different owner", current: "uid-2", requested: "uid-1"},
+		{name: "manual sink", current: "", requested: "uid-1"},
+		{name: "unguarded manual removal", current: "uid-2", requested: "", wantRemoved: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+			store := NewMockScope(ctrl)
+			store.EXPECT().GetSinkConfig("sink").Return((&commonpb.SinkConfig{Name: "sink", ControllerId: tc.current}).AsReader(), nil)
+			processor, err := NewRequestProcessor(nil, 0)
+			require.NoError(t, err)
+			order := &raftcmdpb.Order{Type: &raftcmdpb.Order_SystemScoped{SystemScoped: &raftcmdpb.SystemScopedOrder{
+				Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
+					Name: "sink", ControllerId: tc.requested,
+				}},
+			}}}
+			result, err := processor.ProcessOrder(order, store)
+			if tc.wantRemoved {
+				require.NoError(t, err)
+				require.Equal(t, "sink", result.GetRemovedEventsSink().GetName())
+
+				return
+			}
+			require.Nil(t, result)
+			var mismatch *domain.ErrSinkControllerMismatch
+			require.ErrorAs(t, err, &mismatch)
+			require.Equal(t, tc.requested, mismatch.ControllerID)
+		})
+	}
 }

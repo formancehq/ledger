@@ -382,12 +382,12 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "remove_events_sink",
 			req: &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{
-				RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{Name: "s"},
+				RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{Name: "s", ControllerId: "uid-1"},
 			}},
 			expect: expect{
 				kind: wrapSystem,
 				payloadAssert: func(t *testing.T, o *raftcmdpb.Order) {
-					require.NotNil(t, mustSystemScoped(t, o).GetRemoveEventsSink())
+					require.Equal(t, "uid-1", mustSystemScoped(t, o).GetRemoveEventsSink().GetControllerId())
 				},
 			},
 		},

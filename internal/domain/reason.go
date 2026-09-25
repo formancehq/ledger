@@ -121,6 +121,7 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS:
 		return KindAlreadyExists
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_DELETED,
+		commonpb.ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED,
 		commonpb.ErrorReason_ERROR_REASON_LEDGER_IN_MIRROR_MODE,
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS,
