@@ -85,6 +85,12 @@ func TestRetryUnaryInterceptor_MaintenanceRequiresAmbiguousAttempt(t *testing.T)
 			wantAttempts: 2,
 		},
 		{
+			name:          "ambiguous peer close then maintenance",
+			errors:        []error{status.Error(codes.Unavailable, "grpc: the client connection is closing"), maintenance},
+			wantAttempts:  2,
+			wantAmbiguous: true,
+		},
+		{
 			name:          "ambiguous deadline then maintenance",
 			errors:        []error{status.Error(codes.DeadlineExceeded, "response lost"), maintenance},
 			wantAttempts:  2,
@@ -113,5 +119,48 @@ func TestRetryUnaryInterceptor_MaintenanceRequiresAmbiguousAttempt(t *testing.T)
 				t.Fatalf("final error = %v, want maintenance reason", err)
 			}
 		})
+	}
+}
+
+func TestUnaryTransportClassificationRemainsNarrow(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		code       codes.Code
+		transient  bool
+		classified bool
+	}{
+		{codes.Unavailable, true, true},
+		{codes.Canceled, false, true},
+		{codes.Unknown, false, false},
+		{codes.Internal, false, false},
+		{codes.Aborted, false, false},
+		{codes.FailedPrecondition, false, true},
+	} {
+		t.Run(test.code.String(), func(t *testing.T) {
+			t.Parallel()
+			err := status.Error(test.code, "grpc: the client connection is closing")
+			if got := IsTransient(err); got != test.transient {
+				t.Fatalf("IsTransient(%v) = %t, want %t", err, got, test.transient)
+			}
+			if got := IsClassified(err); got != test.classified {
+				t.Fatalf("IsClassified(%v) = %t, want %t", err, got, test.classified)
+			}
+		})
+	}
+}
+
+func TestIsAmbiguousCommit_ExcludesStructuredCloseLookalike(t *testing.T) {
+	t.Parallel()
+	st, err := status.New(codes.Unavailable, "grpc: the client connection is closing").WithDetails(&errdetails.ErrorInfo{Reason: "FUTURE_REASON"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if IsAmbiguousCommit(st.Err()) {
+		t.Fatal("structured status is not the bare connection-close category")
+	}
+	for _, code := range []codes.Code{codes.Canceled, codes.Unknown, codes.Internal, codes.Aborted, codes.FailedPrecondition} {
+		if IsAmbiguousCommit(status.Error(code, "grpc: the client connection is closing")) {
+			t.Fatalf("unexpected ambiguous code: %v", code)
+		}
 	}
 }

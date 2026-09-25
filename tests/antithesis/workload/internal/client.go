@@ -30,20 +30,20 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		target = "localhost:15100"
 	}
 
-	// LEDGER_NO_RETRY disables the automatic UNAVAILABLE retry entirely (both the
-	// service-config policy and the interceptors). Useful for isolating whether a
+	// LEDGER_NO_RETRY disables automatic application retries in the interceptors.
+	// Useful for isolating whether a
 	// divergence is caused by retried (and thus possibly double-applied, when the
 	// request is non-idempotent) Apply calls.
 	retryDisabled := os.Getenv("LEDGER_NO_RETRY") != ""
 
-	// LEDGER_RETRY_FOREVER raises the retry budget to ~infinite (off by default —
-	// master keeps MaxAttempts 50, which grpc-go silently caps to 5 because no
-	// WithMaxCallAttempts is set). The model-based driver sets it so the
+	// LEDGER_RETRY_FOREVER raises the interceptor retry budgets to ~infinite.
+	// The model-based driver sets it so the
 	// "ambiguous commit" class of errors becomes eventually-definitive: combined
 	// with the idempotency key on every Request, a retry that lands after the
-	// cluster recovers hits the server's idempotency cache and returns the cached
-	// log reference, so the validator never has to model "may have committed".
-	// MaxBackoff caps each interval at 2s, so 1M attempts is ~23 days of budget.
+	// cluster recovers hits the server's idempotency cache and returns the recorded
+	// outcome. A later maintenance refusal still surfaces with its ambiguity
+	// marker so the driver can arrange recovery instead of assuming non-commit.
+	// retryMaxDelay caps each interval at 5s.
 	retryForever := os.Getenv("LEDGER_RETRY_FOREVER") != ""
 
 	maxAttempts := 50
@@ -76,8 +76,8 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		// MUST use the Chain* dial options: WithUnaryInterceptor (singular)
 		// stores ONE interceptor per dial and a second call overwrites the
 		// first silently. Order inside the chain matters: gRPC applies
-		// interceptors left-to-right (retry runs first, classify wraps the
-		// final post-retry error). The classify interceptor stays here even
+		// interceptors left-to-right (retry owns the loop and classify sees each
+		// invoked attempt before retry decides what to do). It stays here even
 		// in retry-on mode because it asserts the workload's classification
 		// map is complete.
 		opts = append(opts,
@@ -90,13 +90,6 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 				classifyStreamInterceptor(),
 			),
 		)
-
-		if retryForever {
-			// grpc-go's WithMaxCallAttempts default is 5 — the service-config
-			// MaxAttempts is silently capped to that otherwise. Only lifted in
-			// retry-forever mode so the default path matches master exactly.
-			opts = append(opts, grpc.WithMaxCallAttempts(maxAttempts))
-		}
 	} else {
 		// Retry disabled (LEDGER_NO_RETRY) — classify stays on; same Chain*
 		// option for consistency, even with a single member.
@@ -144,11 +137,10 @@ func retryDelay(attempt int) time.Duration {
 }
 
 // retryUnaryInterceptor retries unary RPCs on the transient set (IsTransient)
-// to a definitive outcome — each code either clears (Unavailable: no leader
-// → elected; ExternalServiceError: external service recovers) or is an
-// ambiguous commit (DeadlineExceeded — see
-// IsAmbiguousCommit) that a retry resolves via the idempotency cache. None is
-// a permanent business answer, so retrying is safe and cannot loop forever.
+// toward a definitive outcome. Unavailable and DeadlineExceeded can both
+// follow a commit whose response was lost; a write is safe to replay only
+// with the original idempotency key and payload. IsAmbiguousCommit is not
+// an exhaustive classifier of those outcomes.
 // maxAttempts bounds the loop (~infinite in retry-forever mode); ctx
 // cancellation (shutdown / MODEL_MAX_SECONDS) ends it regardless.
 //
@@ -348,11 +340,11 @@ func IsAborted(err error) bool {
 	return ok && st.Code() == codes.Aborted
 }
 
-// IsCanceled returns true if the error is a gRPC Canceled status. Emitted
-// when the local ctx is dead — the parent driver is shutting down (global
-// deadline reached, composer kill propagated). Not retry-safe (the next
-// retry would see ctx.Done() immediately) and not a finding: the driver
-// just exits.
+// IsCanceled recognizes the wire code, not its origin. A driver can treat it as
+// its own shutdown only when its caller context is done. The unary forwarding
+// boundary maps the exact bare close status to Unavailable when the raw local
+// connection is shut down and the caller remains live. A matching server status
+// racing that shutdown is indistinguishable; unrelated Canceled stays visible.
 func IsCanceled(err error) bool {
 	if err == nil {
 		return false
@@ -361,18 +353,23 @@ func IsCanceled(err error) bool {
 	return ok && st.Code() == codes.Canceled
 }
 
-// IsAmbiguousCommit returns true if the error indicates the request may have
-// committed despite the error code — the retry resolves the ambiguity via
-// the idempotency cache. Today: DeadlineExceeded only (Unavailable surfaces
-// before the server sees the request and ExternalServiceError happens before
-// the audit ack).
+// IsAmbiguousCommit identifies deadline expiry and the exact bare Unavailable
+// status emitted when a forwarding connection closes. Either can follow a
+// committed write whose response was lost, including before a later maintenance
+// rejection. The wire status identifies a potentially ambiguous outcome, not
+// proof of its physical origin or of a commit. This is not an exhaustive
+// non-commit test; every retried write still needs its original key and payload.
 //
 // IsAmbiguousCommit is a STRICT SUBSET of IsTransient — every member is
 // already retried by the interceptors. The separation exists so drivers
 // asserting on post-commit state can decide whether to verify
 // read-after-write even on the "error" branch.
 func IsAmbiguousCommit(err error) bool {
-	return IsDeadlineExceeded(err)
+	if IsDeadlineExceeded(err) {
+		return true
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.Unavailable && st.Message() == "grpc: the client connection is closing" && len(st.Proto().Details) == 0
 }
 
 // IsWritesBlockedDiskFull returns true for the write gate's disk-pressure
@@ -497,8 +494,9 @@ func IsNoFullCheckpoint(err error) bool {
 // IsTransient returns true for a retry-safe infrastructure error — not a
 // definitive business answer, not a local-lifecycle event. Retrying reaches a
 // definitive outcome: the condition clears (no leader → elected) or — since
-// DeadlineExceeded can follow a commit — the retry resolves the ambiguity via
-// the idempotency cache. The retry interceptors
+// transport interruption can follow a commit — a keyed retry resolves the
+// ambiguity via the idempotency cache. Unkeyed writes are not replay-safe.
+// The retry interceptors
 // retry exactly this set. Covers:
 //   - Unavailable (cluster unhealthy / no leader / Raft transients)
 //   - DeadlineExceeded (wire-level timeout, also see IsAmbiguousCommit)
@@ -508,7 +506,7 @@ func IsNoFullCheckpoint(err error) bool {
 //
 // NOT in IsTransient:
 //   - Aborted (see IsAborted comment — surfaced loud, not retried)
-//   - Canceled (see IsCanceled — local lifecycle, not a server transient)
+//   - Canceled (see IsCanceled — the wire code alone does not prove its origin)
 //   - All business outcomes (NotFound, AlreadyExists, LedgerDeleted, generic
 //     FailedPrecondition) — definitive, validated rather than skipped.
 func IsTransient(err error) bool {
