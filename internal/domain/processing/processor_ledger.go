@@ -7,9 +7,12 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
+
+var errInvalidMirrorConnection = domain.NewValidationSentinel("invalid mirror connection configuration")
 
 func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
 	s := ctx.Scope
@@ -56,9 +59,16 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		canonicalAccountTypes[name] = clone
 	}
 
+	// Parse only committed input: node-local defaults and credentials belong to workers.
+	mirrorSource, err := connectionconfig.Mirror(order.GetMirrorSource())
+	if err != nil {
+		return nil, errInvalidMirrorConnection
+	}
+
 	if _, exhausted := domain.CheckedNextLedgerID(s.GetNextLedgerID()); exhausted != nil {
 		return nil, exhausted
 	}
+
 	createdAt := s.GetDate().Mutate()
 	ledgerID := s.IncrementNextLedgerID()
 
@@ -68,7 +78,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		CreatedAt:              createdAt,
 		MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
 		Mode:                   order.GetMode(),
-		MirrorSource:           order.GetMirrorSource(),
+		MirrorSource:           mirrorSource,
 		AccountTypes:           canonicalAccountTypes,
 		DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 	}
@@ -104,7 +114,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 				CreatedAt:              createdAt,
 				MetadataSchema:         populateInitialSchema(order.GetInitialSchema()),
 				Mode:                   order.GetMode(),
-				MirrorSource:           order.GetMirrorSource(),
+				MirrorSource:           mirrorSource.CloneVT(),
 				AccountTypes:           logAccountTypes,
 				DefaultEnforcementMode: order.GetDefaultEnforcementMode(),
 			},

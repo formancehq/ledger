@@ -76,7 +76,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	// Repeated delete still operates on the retained LedgerInfo tombstone.
 	apply(actions.DeleteLedgerAction("L"))
 
-	apply(&servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
+	apply(&servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfigInput{LedgerName: "unconfigured", Type: &commonpb.MirrorSourceConfigInput_Http{Http: &commonpb.HttpMirrorSourceConfigInput{BaseUrl: "http://localhost:9999"}}}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
 	mirrorAccountsBefore, err := actions.ListAccountsFiltered(sc.Ctx(), sc.Client, "mirror", 100, "", nil)
 	require.NoError(t, err)
 	mirrorTransactionsBefore, err := actions.ListTransactionsFiltered(sc.Ctx(), sc.Client, "mirror", 100, 0, nil)

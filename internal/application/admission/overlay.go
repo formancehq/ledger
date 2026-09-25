@@ -79,7 +79,7 @@ func (o *overlay[K, V]) Range(fn func(K, V) bool) {
 type bulkOverlay struct {
 	numscriptEntries *overlay[numscriptEntryKey, string]
 	numscriptLatest  *overlay[numscriptNameKey, string]
-	sinks            *overlay[string, *commonpb.SinkConfig]
+	sinks            *overlay[string, *commonpb.SinkConfigInput]
 	// What admission observed of each revert target, resolved once at
 	// order-build time from the transaction attribute and reused by the preload
 	// and intra-bulk effect passes. The postings stay off the wire order: the
@@ -193,7 +193,7 @@ func newBulkOverlay() *bulkOverlay {
 	return &bulkOverlay{
 		numscriptEntries: newOverlay[numscriptEntryKey, string](),
 		numscriptLatest:  newOverlay[numscriptNameKey, string](),
-		sinks:            newOverlay[string, *commonpb.SinkConfig](),
+		sinks:            newOverlay[string, *commonpb.SinkConfigInput](),
 		revertTargets:    make(map[domain.TransactionKey]revertTargetObservation),
 	}
 }

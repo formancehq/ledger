@@ -370,7 +370,7 @@ func TestRequestToOrder_WrapsEveryRequestVariant(t *testing.T) {
 		{
 			name: "add_events_sink",
 			req: &servicepb.Request{Type: &servicepb.Request_AddEventsSink{
-				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfig{Name: "s"}},
+				AddEventsSink: &servicepb.AddEventsSinkRequest{Config: &commonpb.SinkConfigInput{Name: "s"}},
 			}},
 			expect: expect{
 				kind: wrapSystem,

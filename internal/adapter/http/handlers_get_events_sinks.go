@@ -6,6 +6,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
@@ -25,10 +26,10 @@ func (s *Server) handleGetEventsSinks(w http.ResponseWriter, r *http.Request) {
 	// configs) serialize in camelCase — the sonic default would leak snake_case
 	// proto tags (sink_name) and the untagged oneof wrapper field. Reusing the
 	// gRPC GetEventsSinksResponse gives both transports an identical shape.
-	raw, err := protojson.Marshal(&servicepb.GetEventsSinksResponse{
+	raw, err := protojson.Marshal(sensitive.Clone(&servicepb.GetEventsSinksResponse{
 		Sinks:        sinks,
 		SinkStatuses: statuses,
-	})
+	}))
 	if err != nil {
 		handleError(w, r, err)
 

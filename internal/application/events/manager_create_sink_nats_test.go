@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -19,8 +20,8 @@ func TestCreateSink_NATS_FailsWithoutServer(t *testing.T) {
 		Name: "nats-sink",
 		Type: &commonpb.SinkConfig_Nats{
 			Nats: &commonpb.NatsSinkConfig{
-				Url:   "nats://localhost:99999",
-				Topic: "test-events",
+				Servers: []*commonpb.ConnectionURL{{Scheme: "nats", Address: &commonpb.ConnectionAddress{Host: "localhost", Port: proto.Uint32(99999)}}},
+				Topic:   "test-events",
 			},
 		},
 		Format: "json",

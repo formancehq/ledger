@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/connectionconfig"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
@@ -200,7 +201,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		return fmt.Errorf("--batch-size must be in [0, %d] (got %d)", domain.MaxSinkBatchSize, batchSize)
 	}
 
-	config := &commonpb.SinkConfig{
+	config := &commonpb.SinkConfigInput{
 		Name:         name,
 		Format:       format,
 		BatchSize:    batchSize,
@@ -225,16 +226,16 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 			return errors.New("--nats-url and --nats-topic are both required for NATS sinks")
 		}
 
-		config.Type = &commonpb.SinkConfig_Nats{
-			Nats: &commonpb.NatsSinkConfig{
+		config.Type = &commonpb.SinkConfigInput_Nats{
+			Nats: &commonpb.NatsSinkConfigInput{
 				Url:   natsURL,
 				Topic: natsTopic,
 			},
 		}
 		sinkType = "NATS"
 	case hasCH:
-		config.Type = &commonpb.SinkConfig_Clickhouse{
-			Clickhouse: &commonpb.ClickHouseSinkConfig{
+		config.Type = &commonpb.SinkConfigInput_Clickhouse{
+			Clickhouse: &commonpb.ClickHouseSinkConfigInput{
 				Dsn:   chDSN,
 				Table: chTable,
 			},
@@ -246,7 +247,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		}
 
 		brokers := strings.Split(kafkaBrokersStr, ",")
-		config.Type = &commonpb.SinkConfig_Kafka{
+		config.Type = &commonpb.SinkConfigInput_Kafka{
 			Kafka: &commonpb.KafkaSinkConfig{
 				Brokers:       brokers,
 				Topic:         kafkaTopic,
@@ -258,8 +259,8 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		}
 		sinkType = "Kafka"
 	case hasHTTP:
-		config.Type = &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{
+		config.Type = &commonpb.SinkConfigInput_Http{
+			Http: &commonpb.HttpSinkConfigInput{
 				Endpoint: httpEndpoint,
 				Secret:   httpSecret,
 			},
@@ -316,7 +317,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 			}
 		}
 
-		config.Type = &commonpb.SinkConfig_Databricks{
+		config.Type = &commonpb.SinkConfigInput_Databricks{
 			Databricks: dbConfig,
 		}
 		sinkType = "Databricks"
@@ -351,6 +352,16 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(err)
 	}
 
+	// Normalize the sink config for display before committing. This is deterministic
+	// and fails early — the user sees the error before the sink is committed.
+	normalized, err := connectionconfig.Sink(config)
+	if err != nil {
+		spinner.Fail("Failed to normalize sink config for display")
+
+		return err
+	}
+	publicConfig := redactSinkConfig(normalized)
+
 	_, err = client.Apply(ctx, applyReq)
 	if err != nil {
 		_ = spinner.Stop()
@@ -359,9 +370,7 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 	}
 
 	spinner.Success("Added")
-
-	displayConfig := redactSinkConfig(config)
-	if handled, err := cmdutil.EncodeStructured(cmd, displayConfig); handled || err != nil {
+	if handled, err := cmdutil.EncodeStructured(cmd, publicConfig); handled || err != nil {
 		return err
 	}
 
@@ -372,16 +381,16 @@ func runAddSink(cmd *cobra.Command, _ []string) error {
 
 	switch {
 	case hasNATS:
-		pterm.Printf("URL:    %s\n", displayConfig.GetNats().GetUrl())
+		pterm.Printf("Connection: %s\n", protoCompact(publicConfig.GetNats()))
 		pterm.Printf("Topic:  %s\n", natsTopic)
 	case hasCH:
-		pterm.Printf("DSN:    %s\n", displayConfig.GetClickhouse().GetDsn())
+		pterm.Printf("Connection: %s\n", protoCompact(publicConfig.GetClickhouse().GetConnection()))
 		pterm.Printf("Table:  %s\n", chTable)
 	case hasKafka:
 		pterm.Printf("Brokers: %s\n", kafkaBrokersStr)
 		pterm.Printf("Topic:   %s\n", kafkaTopic)
 	case hasHTTP:
-		pterm.Printf("Endpoint: %s\n", displayConfig.GetHttp().GetEndpoint())
+		pterm.Printf("Endpoint: %s\n", protoCompact(publicConfig.GetHttp().GetEndpoint()))
 
 		if httpSecret != "" {
 			pterm.Printf("Secret:   (set)\n")
