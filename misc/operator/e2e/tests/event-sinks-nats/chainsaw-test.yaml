@@ -78,6 +78,11 @@ spec:
                   echo "PROOF: EventSink is ready and has a cleanup finalizer"
                   exit 0
                 fi
+                if echo "$SINK" | jq -e '.status.conditions[]? | select(.type == "Synced" and .status == "False" and (.message | contains("unknown flag: --controller-id")))' >/dev/null; then
+                  echo "$SINK" | jq '{conditions: .status.conditions}'
+                  echo "FAIL: Ledger image does not support the EventSink controller identity flag"
+                  exit 1
+                fi
                 sleep 2
               done
               echo "$SINK" | jq '{finalizers: .metadata.finalizers, conditions: .status.conditions}'
