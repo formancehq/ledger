@@ -1909,4 +1909,3 @@ message ListOptions {
   // rejects unsupported variants with InvalidArgument.
   QueryFilter filter = 5;
 }
-

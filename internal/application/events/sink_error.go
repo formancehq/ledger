@@ -23,8 +23,14 @@ type sinkErrorSanitizer struct {
 func newSinkErrorSanitizer(connectionURLs []string, credentials ...string) sinkErrorSanitizer {
 	secrets := slices.Clone(credentials)
 	for _, raw := range connectionURLs {
-		parsed, err := url.Parse(raw)
+		// Trim whitespace: the NATS driver accepts leading/trailing spaces around
+		// individual server addresses; url.Parse rejects them, so we trim before parsing.
+		parsed, err := url.Parse(strings.TrimSpace(raw))
 		if err != nil {
+			// Extract userinfo from malformed URLs (e.g. proxy URLs with invalid ports).
+			// The driver may echo the full URL text in errors, so credentials must be
+			// registered even when the URL cannot be fully parsed.
+			secrets = append(secrets, rawUserinfoCredentials(strings.TrimSpace(raw))...)
 			continue
 		}
 		if parsed.User != nil {
@@ -176,3 +182,35 @@ type sinkDiagnosticError struct {
 
 func (e *sinkDiagnosticError) Error() string { return e.message }
 func (e *sinkDiagnosticError) Unwrap() error { return e.cause }
+
+// rawUserinfoCredentials extracts the password and, for NATS scheme, the username
+// from a URL string that url.Parse refuses to parse (e.g. due to an invalid port).
+// It uses conservative string splitting: extract the fragment between "://" and "@host",
+// registering only the password or NATS token so other scheme usernames are not over-redacted.
+func rawUserinfoCredentials(raw string) []string {
+	// Find the authority portion: everything after "://" up to the next "/" or end.
+	afterScheme, hasScheme := strings.CutPrefix(raw, strings.SplitN(raw, "://", 2)[0]+"://")
+	if !hasScheme {
+		return nil
+	}
+	isNATS := strings.HasPrefix(strings.ToLower(raw), "nats://")
+	// Authority ends at the first "/" (path).
+	authority := strings.SplitN(afterScheme, "/", 2)[0]
+	// Userinfo is the part before the last "@".
+	atIdx := strings.LastIndex(authority, "@")
+	if atIdx < 0 {
+		return nil
+	}
+	userinfo := authority[:atIdx]
+	// Split into username:password.
+	if _, password, ok := strings.Cut(userinfo, ":"); ok {
+		if password != "" {
+			return []string{password}
+		}
+	} else if isNATS && userinfo != "" {
+		// NATS token in username position, no password.
+		return []string{userinfo}
+	}
+
+	return nil
+}
