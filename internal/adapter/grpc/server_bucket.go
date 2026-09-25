@@ -66,6 +66,7 @@ type BucketServiceServerImpl struct {
 	info                  version.Info
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
+	authCfg               internalauth.AuthConfig
 	checkpointStores      checkpointStoreCache
 }
 
