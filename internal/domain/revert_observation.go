@@ -3,8 +3,6 @@ package domain
 import (
 	"encoding/binary"
 
-	"github.com/zeebo/blake3"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
@@ -40,49 +38,32 @@ import (
 // reversed posting nor the volume coverage. Adding a presence byte would turn
 // that representation difference into a spurious stale-observation rejection.
 func RevertTargetDigest(postings []*commonpb.Posting, found bool) []byte {
-	h := blake3.New()
-
-	// Every h.Write below is intentionally unchecked: blake3.Hasher satisfies
-	// hash.Hash, whose Write never returns an error, and it writes to memory
-	// with no capacity bound. Checking would add a branch that cannot be taken
-	// and cannot be tested.
-	writeField := func(b []byte) {
-		var lenBuf [binary.MaxVarintLen64]byte
-
-		n := binary.PutUvarint(lenBuf[:], uint64(len(b)))
-		_, _ = h.Write(lenBuf[:n])
-		_, _ = h.Write(b)
-	}
+	h := NewObservationHasher()
 
 	if !found {
-		writeField([]byte("absent"))
+		h.WriteField([]byte("absent"))
 
-		return h.Sum(nil)
+		return h.Sum()
 	}
 
-	writeField([]byte("present"))
-
-	var cntBuf [binary.MaxVarintLen64]byte
-
-	n := binary.PutUvarint(cntBuf[:], uint64(len(postings)))
-	_, _ = h.Write(cntBuf[:n])
+	h.WriteField([]byte("present"))
+	h.WriteCount(len(postings))
 
 	for _, p := range postings {
-		writeField([]byte(p.GetSource()))
-		writeField([]byte(p.GetDestination()))
-		writeField([]byte(p.GetAsset()))
-		writeField([]byte(p.GetColor()))
+		h.WriteField([]byte(p.GetSource()))
+		h.WriteField([]byte(p.GetDestination()))
+		h.WriteField([]byte(p.GetAsset()))
+		h.WriteField([]byte(p.GetColor()))
 
 		amount := p.GetAmount()
 
 		var limbs [32]byte
-
 		binary.LittleEndian.PutUint64(limbs[0:8], amount.GetV0())
 		binary.LittleEndian.PutUint64(limbs[8:16], amount.GetV1())
 		binary.LittleEndian.PutUint64(limbs[16:24], amount.GetV2())
 		binary.LittleEndian.PutUint64(limbs[24:32], amount.GetV3())
-		_, _ = h.Write(limbs[:])
+		h.WriteRaw(limbs[:])
 	}
 
-	return h.Sum(nil)
+	return h.Sum()
 }
