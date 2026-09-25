@@ -1,10 +1,14 @@
 package check
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -148,4 +152,60 @@ func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
 	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE, events[0].GetErrorType())
+}
+
+// TestCheck_ClusterPolicyProjection_EmptyAuditWiring pins that the cluster
+// policy comparison runs when the store holds no logs. Until EN-1526 the only
+// zero-log call site was inside the removed lastSequence == 0 branch, so the
+// wiring had no Check()-level coverage of its own — unlike the signing, query
+// checkpoint and reverse-map passes that branch also carried. The policy is
+// cluster-global, so a store with no logs can still hold a row, and no log means
+// no audited SetClusterPolicy order behind it.
+func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
+	t.Parallel()
+
+	runCheck := func(t *testing.T, seed func(*dal.Store)) []*servicepb.CheckStoreError {
+		t.Helper()
+
+		store := createTestStore(t)
+		if seed != nil {
+			seed(store)
+		}
+
+		// No readstore handle: the reverse-map pass skips itself, keeping the
+		// events attributable to the policy comparison alone.
+		checker := NewChecker(store, attributes.New(), "test-cluster", nil, logging.Testing())
+
+		var got []*servicepb.CheckStoreError
+
+		require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+				got = append(got, e.Error)
+			}
+		}))
+
+		return got
+	}
+
+	t.Run("injected policy row is reported", func(t *testing.T) {
+		t.Parallel()
+
+		got := runCheck(t, func(store *dal.Store) {
+			writeClusterPolicyRow(t, store, &commonpb.ClusterPolicy{
+				Revision:             3,
+				IdempotencyTtlMicros: 1000,
+				QueryCheckpointLimit: 5,
+			})
+		})
+
+		require.Len(t, got, 1, "a cluster policy row with no audited order behind it must be reported")
+		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, got[0].GetErrorType())
+	})
+
+	t.Run("untouched store stays clean", func(t *testing.T) {
+		t.Parallel()
+
+		require.Empty(t, runCheck(t, nil),
+			"an empty store holds no policy row, so the empty expectation must match it exactly")
+	})
 }

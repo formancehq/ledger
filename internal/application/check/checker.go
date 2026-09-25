@@ -72,12 +72,83 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 
 // Check verifies the store integrity and calls the callback for each event.
 // It verifies:
-// 1. Log sequence continuity (no gaps)
+// 1. Log sequence continuity: no interior gaps, log key/value sequence agreement, and the stored log bound against the audited log range
 // 2. BLAKE3 hash chain integrity
 // 3. Reversion invariants (no double reverts, valid revert targets)
 // 4. Volume consistency (input/output per account/asset)
 // 5. Account metadata consistency
 // 6. Transaction update consistency.
+//
+// Every pass runs whatever the log count: a history made only of rejected
+// proposals holds audit entries and no logs, and its chain must still be
+// verified (EN-1526).
+// logPrefixUpperBound is the exclusive upper bound covering EVERY Log row.
+//
+// Named here because the log loop and its fixtures both need it, but the rule
+// is the DAL's: never bound a sequence-keyed prefix scan with a run of 0xFF
+// bytes. Pebble's IterOptions.UpperBound is exclusive, so such a bound is
+// byte-identical to the key at math.MaxUint64 and excludes exactly that row —
+// which for this pass meant a row planted at the top of the key space was
+// invisible to the one pass built to see planted rows, the twin of the reserved
+// sequence 0 the log loop reports below. See dal.PrefixUpperBound.
+func logPrefixUpperBound() []byte {
+	return dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryLog)
+}
+
+// readHighestLogKey returns the greatest Log KEY sequence in the store, or 0
+// when it holds no Log row. Read off the key, never off the value's `sequence`
+// field — see the head comment in Check.
+func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
+	iter, err := reader.NewIter(&pebble.IterOptions{
+		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
+		UpperBound: logPrefixUpperBound(),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("creating log head iterator: %w", err)
+	}
+
+	defer func() { _ = iter.Close() }()
+
+	if !iter.Last() {
+		return 0, iter.Error()
+	}
+
+	return binary.BigEndian.Uint64(iter.Key()[2:10]), nil
+}
+
+// auditComparableLog removes fields that are themselves post-processing
+// projections injected by WriteSet.Merge. They are checked independently by
+// the exclusion/usage passes and have changed across storage versions; the
+// business payload, ledger-log id and date are the stable audit-derived part.
+func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
+	ret := log.CloneVT()
+	ret.Sequence = sequence
+	if apply := ret.GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
+		apply.Log.PurgedVolumes = nil
+		apply.Log.NewKeptVolumes = nil
+		apply.Log.EphemeralVolumes = nil
+		apply.Log.PurgedAccounts = nil
+	}
+
+	return ret
+}
+
+// emitSequenceGapRun reports one contiguous run of missing log sequences as a
+// single event. The single-sequence wording is kept verbatim: an isolated hole
+// is the common case, and it reads better than a range of one.
+func emitSequenceGapRun(first, last uint64, callback func(*servicepb.CheckStoreEvent)) {
+	if first == last {
+		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+			fmt.Sprintf("log sequence %d is missing", first), first, "", "", ""))
+
+		return
+	}
+
+	callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+		fmt.Sprintf("log sequences %d..%d are missing (%d logs)", first, last, last-first+1),
+		first, "", "", ""))
+}
+
 func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the
@@ -121,62 +192,31 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = snap.Close() }()
 
-	lastSequence, err := query.ReadLastSequence(snap)
+	// The store head, read off the Pebble KEY of the last Log row rather than
+	// off the value's `sequence` field (query.ReadLastSequence). ONE head, used
+	// for everything: progress sizing, the reverse-map alignment oracle and the
+	// audit-derived bound comparison below.
+	//
+	// The value's field is not hash-bound, and editing it is itself a reported
+	// finding (CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH), so a head taken
+	// from it could be moved by the same edit this run is meant to catch — it
+	// would move the progress total, and it would move the alignment the
+	// reverse-map pass reaches its verdict under. Both now sit on the key.
+	//
+	// Read here rather than accumulated in the log loop below because progress
+	// needs the total before the first row is read. `snap` is a pinned
+	// snapshot, so this read and the loop see the same rows and cannot disagree.
+	storedMaxLogSeq, err := readHighestLogKey(snap)
 	if err != nil {
 		return fmt.Errorf("getting last sequence: %w", err)
 	}
 
-	if lastSequence == 0 {
-		// An empty audit does not make the peer store trustworthy: the read
-		// index folds FROM the log stream, so any reverse-map row over a
-		// zero-log store is unaudited by definition. Malformed keys and rows
-		// for ledgers the audit never created are exactly the classes this pass
-		// exists to report, and returning clean here would hide them. Every
-		// oracle term is legitimately empty — there is nothing to replay.
-		c.compareReverseMapOrphans(reverseMapOrphanScope{
-			reader: snap,
-			peer:   peerSnap,
-		}, callback)
-
-		// The signing projections are cluster-global, not per-ledger, so they can
-		// hold rows over a store with no logs at all — and every successful signing
-		// order writes a log (processOrder gives each returned payload a global
-		// sequence), so a zero-log store proves the audit registered no key. The
-		// expectation is therefore legitimately empty and every stored row is
-		// unaudited: returning clean here would hide exactly the injected-key class
-		// this pass exists to report.
-		signing := newSigningVerifier()
-		if err := signing.compare(snap, callback); err != nil {
-			return fmt.Errorf("comparing signing projections: %w", err)
-		}
-
-		// The cluster policy is cluster-global too: a zero-log store proves no
-		// SetClusterPolicy order was audited, so a stored policy row is unaudited.
-		policy := newClusterPolicyVerifier()
-		if err := policy.compare(snap, callback); err != nil {
-			return fmt.Errorf("comparing cluster policy projection: %w", err)
-		}
-
-		// Query checkpoints are cluster-global too: a zero-log store proves no
-		// CreateQueryCheckpoint order was audited, so the live set is empty and
-		// every stored SubGlobQueryCheckpoint row is unaudited. Diffing against an
-		// empty derived set reports it — otherwise the injected row is loaded into
-		// LiveQueryCheckpointIDs unchecked.
-		if err := c.compareQueryCheckpoints(snap, nil, callback); err != nil {
-			return fmt.Errorf("comparing query checkpoint projection: %w", err)
-		}
-
-		callback(&servicepb.CheckStoreEvent{
-			Type: &servicepb.CheckStoreEvent_Progress{
-				Progress: &servicepb.CheckStoreProgress{
-					LogsChecked: 0,
-					TotalLogs:   0,
-				},
-			},
-		})
-
-		return nil
-	}
+	// No early return for a zero head. A store can hold a complete audit
+	// history and no logs at all — every proposal in it failed, so each one
+	// wrote an AuditEntry (plus one AuditItem per order) and no Log. Returning
+	// clean there left the hash chain of such a history unverified, since
+	// verifyAuditHashChain runs below (EN-1526). The head is still used to size
+	// progress and to align the reverse-map oracle; both handle 0.
 
 	// Create replay store (replaces in-memory maps + txStateStore)
 	replay, err := newReplayStore()
@@ -192,21 +232,21 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// of ledgers whose CreateLedger was observed.
 	chainBound := newChainBoundState()
 
-	// Signing key/config expectations, re-derived from chain-bound signing orders
-	// (invariant #8). Never seeded from the live projection — see signingVerifier.
-	signing := newSigningVerifier()
-
-	// Cluster policy: re-derived from chain-bound SetClusterPolicy orders.
-	policy := newClusterPolicyVerifier()
+	// The coverage verifiers the audit walk folds into. Grouped because they
+	// share one suppression contract, not merely because they travel together —
+	// see chainVerifierFolds.
+	folds := newChainVerifierFolds()
+	signing, policy, bounds := folds.signing, folds.policy, folds.bounds
 
 	// Verify the audit hash chain before log replay. This iterates every
 	// audit entry and recomputes each hash from the stored orders. Populates
 	// expectedSkippable + layers the audit-chain mutations onto chainBound
 	// and the signing orders onto `signing`.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chainBound, signing, policy, callback)
+	auditExpected, err := c.verifyAuditHashChain(ctx, snap, chainBound, folds, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
+	expectedSkippable := auditExpected.skippable
 
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap)
 	if err != nil {
@@ -329,7 +369,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// Pass 1: Single forward iterator over all logs.
 	logIter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
-		UpperBound: []byte{dal.ZoneHistory, dal.SubHistoryLog, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+		UpperBound: logPrefixUpperBound(),
 	})
 	if err != nil {
 		return fmt.Errorf("creating log iterator: %w", err)
@@ -339,6 +379,33 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	expectedSeq := uint64(1)
 
+	// What the loop measures about the stored rows, for logBoundsVerifier.compare
+	// below. Every field is read off the Pebble key and recorded BEFORE the
+	// row's value is examined, so a row skipped as LOG_SEQUENCE_MISMATCH still
+	// counts as a position the store occupies.
+	//
+	// highestKey is filled in from the pre-loop read rather than accumulated:
+	// same pinned snapshot, same bounds, so the two cannot disagree, and
+	// progress needs the value before the loop starts.
+	observed := storedLogObservations{highestKey: storedMaxLogSeq}
+
+	// The audit fold ran above, so the bound is already final here and every
+	// row can be classified as it is read. `boundSound` is false once the
+	// derivation was suppressed; the bound is then unknown rather than 0, so
+	// nothing below may classify against it — compare() short-circuits to
+	// LOG_VERIFICATION_INCOMPLETE and never reads these counts.
+	auditedBound, boundSound := bounds.auditedBound()
+
+	// Position reported by the most recent in-loop progress event, and whether
+	// any fired. The final event after the loop is emitted only when it would
+	// report a position no in-loop event already reported: the highest log key
+	// can itself be a multiple of progressInterval, and then both emits carry
+	// the same LogsChecked and a consumer sees the head arrive twice.
+	var (
+		lastProgressSeq uint64
+		progressEmitted bool
+	)
+
 	for logIter.First(); logIter.Valid(); logIter.Next() {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -346,6 +413,39 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 		// Extract sequence from key: [ZoneHistory(1)][SubHistoryLog(1)][sequence(8)]
 		seq := binary.BigEndian.Uint64(logIter.Key()[2:10])
+
+		// Rows above the bound are COUNTED, not measured by the width of the
+		// interval they sit in: a sparse injection occupies a wide range with
+		// few rows. Rows at or below it carry the deleted-tail comparison, which
+		// is why a planted row above the bound cannot move that comparison to
+		// the other side and erase a genuine missing tail.
+		if seq > auditedBound {
+			observed.rowsAboveBound++
+		} else {
+			observed.highestWithinBound = seq
+		}
+
+		// Sequence 0 is not a position the FSM can allocate: FSMState.NextSequenceID
+		// is seeded at 1 (internal/infra/state/fsmstate.go) and recovery only ever
+		// raises it, so the audited interval starts at 1 —
+		// logBoundsVerifier.observeSuccess pins the first range's minimum — and no
+		// audit success range can account for a row here.
+		//
+		// That also makes such a row invisible to every other pass: storedMaxLogSeq
+		// stays 0 and reads as an empty store, the interior gap scan below is seeded
+		// at expectedSeq 1 and never looks beneath it, and logBoundsVerifier.compare
+		// bounds the interval from above only. This is where its lower end is pinned.
+		//
+		// Reported off the KEY and unconditionally: the audit fold has not run at this
+		// point, and a row at sequence 0 is unaudited whether or not the chain later
+		// verifies. The row is still replayed, on the same grounds as a divergent
+		// `sequence` field below.
+		if seq == 0 {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
+				"log sequence 0 has no audited origin: audited log sequences form an interval "+
+					"starting at 1, so a log at sequence 0 was allocated by no proposal",
+				seq, "", "", ""))
+		}
 
 		for ephemeralPurgeBuffer != nil && hasProposalEnd && seq > nextProposalEnd {
 			if err := flushEphemeralPurges(nextProposalEnd); err != nil {
@@ -358,19 +458,47 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			}
 		}
 
-		// 1. Detect gaps
-		for expectedSeq < seq {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
-				fmt.Sprintf("log sequence %d is missing", expectedSeq), expectedSeq, "", "", ""))
-
-			expectedSeq++
+		// 1. Detect gaps. Reported as one event per contiguous RUN, not one per
+		// sequence. Per-sequence emission is unbounded in the size of the hole,
+		// and the hole is attacker-chosen: a single Log row forged at a high key
+		// makes the run emit that many events before it can reach any other
+		// finding. Aggregating bounds the emission by the number of runs, which
+		// is bounded by the number of stored rows.
+		//
+		// A hole is INTERIOR only when the row closing it is itself inside the
+		// audited range. That is what makes this scan's claim — these positions
+		// held rows and no longer do — evidence rather than guesswork: the chain
+		// accounts for the row above the hole, so it accounts for the hole too.
+		//
+		// A row ABOVE the bound closes nothing. The FSM allocated nothing up
+		// there, so the run beneath it is not a hole between two audited rows;
+		// it is the audited tail, and logBoundsVerifier.compare owns that,
+		// measuring it from the highest row still inside the bound. Letting this
+		// scan report it as well would describe the same missing tail twice, and
+		// would describe positions the chain never allocated as lost rows — one
+		// forged row near the top of the key space would report almost the whole
+		// uint64 range as missing logs.
+		//
+		// A bound of 0 is not a bound. It means the chain accounts for no log at
+		// all — a store with no audit history, or one whose successes were all
+		// log-less — so there is no audited range to be inside of, and the holes
+		// are reported as they are found. Same when the derivation was
+		// suppressed: the bound is unknown, not zero, and the pre-existing
+		// behaviour is the honest one. Neither case is unbounded, because the
+		// aggregation above makes each run a single event either way.
+		if expectedSeq < seq && (!boundSound || auditedBound == 0 || seq <= auditedBound) {
+			emitSequenceGapRun(expectedSeq, seq-1, callback)
 		}
 
-		nextExpectedSeq, exhausted := domain.CheckedNextSequence(seq, domain.SequenceCounterLog)
-		if exhausted != nil {
-			return fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
+		if seq == ^uint64(0) {
+			expectedSeq = seq
+		} else {
+			nextExpectedSeq, exhausted := domain.CheckedNextSequence(seq, domain.SequenceCounterLog)
+			if exhausted != nil {
+				return fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
+			}
+			expectedSeq = nextExpectedSeq
 		}
-		expectedSeq = nextExpectedSeq
 
 		value, err := logIter.ValueAndErr()
 		if err != nil {
@@ -380,6 +508,63 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		log := &commonpb.Log{}
 		if err := log.UnmarshalVT(value); err != nil {
 			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
+		}
+		storedLog := log
+
+		// A Log row states its own sequence twice: in the Pebble key and in the
+		// value's `sequence` field. Nothing binds the two — Log rows are not
+		// part of the audit hash chain — and query.ReadLastSequence reads the
+		// field off the last row, so editing that one field moves the head the
+		// whole run is sized against. That is why the divergence is reported,
+		// and why logBoundsVerifier derives the stored head from the KEY.
+		//
+		// The row is still replayed, under its key sequence. The field is not an
+		// input to replay: every consumer below takes the key-derived `seq`. And
+		// no Log row is hash-bound, so a divergent `sequence` field is evidence
+		// that one field was edited, not evidence that the payload is
+		// untrustworthy — skipping the row would suppress the elision check and
+		// emit a cascade of volume, boundary and transaction findings that
+		// misdescribe a store whose log is present and readable.
+		if log.GetSequence() != seq {
+			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
+				fmt.Sprintf("log at key sequence %d carries sequence %d in its stored value", seq, log.GetSequence()),
+				seq, "", "", ""))
+		}
+
+		// The audit chain is the business oracle. Replaying its verified orders
+		// through the canonical processor produced the expected Log projection
+		// before this scan began. Compare the stored row to that result, then use
+		// only the audit-derived log below when building expected projections.
+		// This prevents a coordinated edit of a Log payload and its derived rows
+		// from validating itself circularly.
+		if expectedLog, ok := auditExpected.logs[seq]; ok {
+			if !auditComparableLog(storedLog, seq).EqualVT(auditComparableLog(expectedLog, seq)) {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH,
+					fmt.Sprintf("stored log %d payload differs from the log derived from its chain-verified audit order", seq),
+					seq, "", "", ""))
+			}
+			log = expectedLog
+		}
+
+		// Exclusion annotations are themselves stored projections. Collect them
+		// from the actual row before the audit-derived replacement above is replayed.
+		if apply := storedLog.GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
+			ledgerName := apply.GetLedgerName()
+			for _, v := range apply.GetLog().GetPurgedVolumes() {
+				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+			}
+			for _, v := range apply.GetLog().GetEphemeralVolumes() {
+				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+			}
+			for _, account := range apply.GetLog().GetPurgedAccounts() {
+				key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+				if prior, exists := storedPurgedAccounts[key]; exists {
+					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+						fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
+						seq, ledgerName, account, ""))
+				}
+				storedPurgedAccounts[key] = seq
+			}
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
@@ -575,21 +760,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// the same "excluded from normal state" semantics
 						// — the split exists to compact log payloads on
 						// ephemeral-heavy workloads (EN-1422).
-						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
-							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
-						}
-						for _, v := range payload.Apply.GetLog().GetEphemeralVolumes() {
-							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
-						}
-						for _, account := range payload.Apply.GetLog().GetPurgedAccounts() {
-							key := domain.AccountKey{LedgerName: ledgerName, Account: account}
-							if prior, exists := storedPurgedAccounts[key]; exists {
-								callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-									fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
-									seq, ledgerName, account, ""))
-							}
-							storedPurgedAccounts[key] = seq
-						}
 					}
 				}
 			}
@@ -612,13 +782,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			}
 		}
 
-		// Emit progress periodically
-		if seq%progressInterval == 0 || seq == lastSequence {
+		// Emit progress periodically. The run's final position is emitted after
+		// the loop, so there is no `seq == storedMaxLogSeq` case here — it would
+		// only duplicate that event. Record what was reported so the final
+		// emit can tell whether it still has anything to say.
+		if seq%progressInterval == 0 {
+			lastProgressSeq, progressEmitted = seq, true
+
 			callback(&servicepb.CheckStoreEvent{
 				Type: &servicepb.CheckStoreEvent_Progress{
 					Progress: &servicepb.CheckStoreProgress{
 						LogsChecked: seq,
-						TotalLogs:   lastSequence,
+						TotalLogs:   storedMaxLogSeq,
 					},
 				},
 			})
@@ -629,8 +804,26 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return fmt.Errorf("log iterator error: %w", err)
 	}
 
+	// Final position. A store with no logs reports (0, 0) here: the loop body
+	// never ran, no in-loop event fired, and a run that produces no progress
+	// event at all is indistinguishable from a run that never started.
+	//
+	// Skipped only when an in-loop event already reported this exact position,
+	// which is what happens whenever the highest log key is a multiple of
+	// progressInterval.
+	if !progressEmitted || lastProgressSeq != storedMaxLogSeq {
+		callback(&servicepb.CheckStoreEvent{
+			Type: &servicepb.CheckStoreEvent_Progress{
+				Progress: &servicepb.CheckStoreProgress{
+					LogsChecked: storedMaxLogSeq,
+					TotalLogs:   storedMaxLogSeq,
+				},
+			},
+		})
+	}
+
 	if ephemeralPurgeBuffer != nil {
-		if err := flushEphemeralPurges(lastSequence); err != nil {
+		if err := flushEphemeralPurges(storedMaxLogSeq); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
@@ -673,15 +866,28 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		deletedInReplay: deletedInReplay,
 	}, callback)
 
+	// Runs over every store, a zero-log one included: an empty log stream does
+	// not make the peer store trustworthy. The read index folds FROM the log
+	// stream, so a reverse-map row over a store with no logs is unaudited by
+	// definition, and malformed keys plus rows for ledgers the audit never
+	// created are exactly the classes this pass exists to report (EN-1458).
+	// With no logs every oracle term below is legitimately empty and the head
+	// is 0, which the alignment rule in reverse_map_orphans.go already handles.
 	c.compareReverseMapOrphans(reverseMapOrphanScope{
 		reader:          snap,
 		peer:            peerSnap,
-		lastSequence:    lastSequence,
+		lastSequence:    storedMaxLogSeq,
 		liveLedgers:     knownLedgers,
 		replayedSchemas: expectedSchemas,
 	}, callback)
 
 	c.compareMirrorV2LogID(snap, chainBound, deletedInReplay, callback)
+
+	// Compare the highest stored log key against the range the audit chain
+	// accounts for. This is the only pass that can see a deleted log TAIL: the
+	// interior gap scan above needs a surviving row above the hole, and every
+	// projection rebuilt from the surviving prefix is self-consistent.
+	bounds.compare(observed, callback)
 
 	if err := c.compareSchema(ctx, snap, expectedSchemas, callback); err != nil {
 		return err
@@ -714,10 +920,20 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		return err
 	}
 
+	// The signing projections are cluster-global, not per-ledger, so they can
+	// hold rows over a store with no logs at all — and every successful signing
+	// order writes a log (processOrder gives each returned payload a global
+	// sequence), so a log-less store proves the audit registered no key. The
+	// expectation is then legitimately empty and every stored row is unaudited:
+	// skipping the comparison would hide exactly the injected-key class this
+	// pass exists to report.
 	if err := signing.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing signing projections: %w", err)
 	}
 
+	// The cluster policy is cluster-global too, and verified on the same
+	// grounds: no log means no audited SetClusterPolicy order, so a stored
+	// policy row is unaudited.
 	if err := policy.compare(snap, callback); err != nil {
 		return fmt.Errorf("comparing cluster policy projection: %w", err)
 	}
@@ -728,6 +944,10 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	c.compareNumscripts(snap, expectedNumscriptContent, expectedNumscriptLatest, deletedInReplay, callback)
 
+	// Cluster-global too. Over a store with no logs derivedLiveCheckpoints is
+	// empty and every stored SubGlobQueryCheckpoint row is therefore unaudited;
+	// diffing against the empty derived set reports it, where skipping would
+	// load the injected row into LiveQueryCheckpointIDs unchecked (EN-1515).
 	if err := c.compareQueryCheckpoints(snap, derivedLiveCheckpoints, callback); err != nil {
 		return err
 	}
@@ -2219,20 +2439,70 @@ func compareTransactionPostCommitVolumes(
 // The LedgerLog projection is not hash-chain bound, so without these
 // checks a tampered skip log could let a fabricated outcome slip past
 // Check().
+// chainVerifierFolds groups the coverage verifiers verifyAuditHashChain folds
+// into. They are one parameter and one truncation call rather than three
+// because they share a single suppression contract: a chain break leaves every
+// one of their expectations a prefix of the real history, so a break must
+// suppress all of them or none. Threading them separately made that contract a
+// convention maintained by hand at each early exit, where adding a fourth exit
+// — or a fourth verifier — silently leaves one fold comparing a partial
+// expectation against a whole store, reporting false findings after an
+// already-reported break rather than staying quiet.
+type chainVerifierFolds struct {
+	// signing re-derives the signing key/config expectation from chain-bound
+	// signing orders (invariant #8). Never seeded from the live projection.
+	signing *signingVerifier
+	// policy re-derives the cluster policy from chain-bound SetClusterPolicy
+	// orders.
+	policy *clusterPolicyVerifier
+	// bounds re-derives the highest log sequence the chain accounts for, from
+	// the chain-verified AuditSuccess ranges. Compared against the stored Log
+	// keys after the log loop — see logBoundsVerifier for the premise and for
+	// why a deleted tail is invisible to every other pass.
+	bounds *logBoundsVerifier
+}
+
+func newChainVerifierFolds() chainVerifierFolds {
+	return chainVerifierFolds{
+		signing: newSigningVerifier(),
+		policy:  newClusterPolicyVerifier(),
+		bounds:  newLogBoundsVerifier(),
+	}
+}
+
+// markLiveTruncated records on every fold that the live audit walk stopped
+// short of the end of the range. Called from each non-error early exit in
+// verifyAuditHashChain.
+func (f chainVerifierFolds) markLiveTruncated() {
+	f.signing.markLiveTruncated()
+	f.policy.markLiveTruncated()
+	f.bounds.markLiveTruncated()
+}
+
+type auditVerification struct {
+	skippable map[uint64]*expectedSkippableOrder
+	logs      map[uint64]*commonpb.Log
+}
+
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
 	chainBound *chainBoundState,
-	signing *signingVerifier,
-	policy *clusterPolicyVerifier,
+	folds chainVerifierFolds,
 	callback func(*servicepb.CheckStoreEvent),
-) (map[uint64]*expectedSkippableOrder, error) {
+) (*auditVerification, error) {
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
 		return nil, fmt.Errorf("reading audit entries: %w", err)
 	}
 
 	defer func() { _ = auditCursor.Close() }()
+
+	replayer, err := state.NewAuditReplayer(c.logger, c.clusterID)
+	if err != nil {
+		return nil, fmt.Errorf("creating audit-derived replay: %w", err)
+	}
+	defer func() { _ = replayer.Close() }()
 
 	var (
 		lastHash   []byte
@@ -2247,11 +2517,13 @@ func (c *Checker) verifyAuditHashChain(
 		// re-derived from the chain-bound Order. Consumed by
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
+		expectedLogs      = make(map[uint64]*commonpb.Log)
 		// hasVerifiedRange records whether any entry was verified — the gate
 		// for the idempotency comparison, whose expectation is only complete
 		// once the audit range has been folded.
 		hasVerifiedRange bool
 	)
+	result := &auditVerification{skippable: expectedSkippable, logs: expectedLogs}
 
 	for {
 		entry, err := auditCursor.Next()
@@ -2287,18 +2559,18 @@ func (c *Checker) verifyAuditHashChain(
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
 			//
-			// The signing fold below stops here with the rest of the walk,
-			// leaving its expectation a prefix of the real history. Unlike
-			// the maps above — which are consulted per log sequence, so an
-			// absent entry simply yields no expectation — the signing
-			// comparison is over whole key SETS in both directions, and a
-			// prefix reports every later registration as injected and every
-			// later revocation as a lost row. Mark it incomplete so it
-			// reports the gap instead of those false positives.
-			signing.markLiveTruncated()
-			policy.markLiveTruncated()
+			// The coverage folds stop here with the rest of the walk, leaving
+			// each expectation a prefix of the real history. Unlike the maps
+			// above — which are consulted per log sequence, so an absent
+			// entry simply yields no expectation — each fold compares whole
+			// SETS or a single derived bound, and a prefix reports every later
+			// signing registration as injected, every later revocation as a
+			// lost row, and every log above the break as unaudited. Mark them
+			// incomplete so they report the gap instead of those false
+			// positives.
+			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		// Read the audit items for this entry, then rebuild the canonical
@@ -2327,18 +2599,18 @@ func (c *Checker) verifyAuditHashChain(
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
 			//
-			// The signing fold below stops here with the rest of the walk,
-			// leaving its expectation a prefix of the real history. Unlike
-			// the maps above — which are consulted per log sequence, so an
-			// absent entry simply yields no expectation — the signing
-			// comparison is over whole key SETS in both directions, and a
-			// prefix reports every later registration as injected and every
-			// later revocation as a lost row. Mark it incomplete so it
-			// reports the gap instead of those false positives.
-			signing.markLiveTruncated()
-			policy.markLiveTruncated()
+			// The coverage folds stop here with the rest of the walk, leaving
+			// each expectation a prefix of the real history. Unlike the maps
+			// above — which are consulted per log sequence, so an absent
+			// entry simply yields no expectation — each fold compares whole
+			// SETS or a single derived bound, and a prefix reports every later
+			// signing registration as injected, every later revocation as a
+			// lost row, and every log above the break as unaudited. Mark them
+			// incomplete so they report the gap instead of those false
+			// positives.
+			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		hashSlices := make([][]byte, 0, 1+len(items))
@@ -2372,18 +2644,18 @@ func (c *Checker) verifyAuditHashChain(
 			// Check() keeps running after a chain break to surface
 			// other projection errors.
 			//
-			// The signing fold below stops here with the rest of the walk,
-			// leaving its expectation a prefix of the real history. Unlike
-			// the maps above — which are consulted per log sequence, so an
-			// absent entry simply yields no expectation — the signing
-			// comparison is over whole key SETS in both directions, and a
-			// prefix reports every later registration as injected and every
-			// later revocation as a lost row. Mark it incomplete so it
-			// reports the gap instead of those false positives.
-			signing.markLiveTruncated()
-			policy.markLiveTruncated()
+			// The coverage folds stop here with the rest of the walk, leaving
+			// each expectation a prefix of the real history. Unlike the maps
+			// above — which are consulted per log sequence, so an absent
+			// entry simply yields no expectation — each fold compares whole
+			// SETS or a single derived bound, and a prefix reports every later
+			// signing registration as injected, every later revocation as a
+			// lost row, and every log above the break as unaudited. Mark them
+			// incomplete so they report the gap instead of those false
+			// positives.
+			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		lastHash = entry.GetHash()
@@ -2412,12 +2684,42 @@ func (c *Checker) verifyAuditHashChain(
 		// the success [Min,Max] range so each referenced log is folded once.
 		// Failure-side entries get LogSequence=0 and contribute nothing.
 		if success := entry.GetSuccess(); success != nil {
+			// Widen the expected log bound with this entry's fresh-log range,
+			// before anything below can fail: the range is a property of the
+			// entry the hash just verified. `items` goes with it — the range is
+			// a claim about which logs the orders produced, and the items are
+			// the only evidence of that claim the hash also covers.
+			folds.bounds.observeSuccess(entry, items)
+
 			// The decoded orders come back so the signing fold below reuses them
 			// instead of unmarshalling the whole live audit range a second time.
 			// Parallel to `items` by index; nil where the bytes did not decode.
 			decoded, err := collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
 			if err != nil {
-				return expectedSkippable, fmt.Errorf("rebuild chain-bound state: %w", err)
+				return result, fmt.Errorf("rebuild chain-bound state: %w", err)
+			}
+
+			_, replaySound := folds.bounds.auditedBound()
+			orders := make([]*raftcmdpb.Order, len(decoded))
+			for i, order := range decoded {
+				if order == nil || order.Type == nil {
+					replaySound = false
+
+					break
+				}
+				orders[i] = order
+			}
+			if replaySound {
+				logs, replayErr := replayer.Replay(entry.GetTimestamp(), orders)
+				if replayErr != nil {
+					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
+				}
+				for _, log := range logs {
+					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
+						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
+					}
+					expectedLogs[log.GetSequence()] = log
+				}
 			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
@@ -2440,6 +2742,9 @@ func (c *Checker) verifyAuditHashChain(
 			// two items sharing a LogSequence inside [Min,Max] carry the same order,
 			// and register (upsert), revoke (delete) and setConfig (assign) all reach
 			// the same state applied twice.
+			// One entry is one proposal, which is the boundary the FSM's notion of
+			// "committed" is defined against (WriteSet.Reset runs once per proposal).
+			// The signing cascade needs it to reproduce GetSigningKeyChildren.
 			for i, item := range items {
 				logSeq := item.GetLogSequence()
 				if logSeq == 0 {
@@ -2462,8 +2767,8 @@ func (c *Checker) verifyAuditHashChain(
 						logSeq)
 				}
 
-				signing.applyOrder(order)
-				policy.applyOrder(order)
+				folds.signing.applyOrder(order)
+				folds.policy.applyOrder(order)
 			}
 		}
 	}
@@ -2476,7 +2781,7 @@ func (c *Checker) verifyAuditHashChain(
 		return nil, err
 	}
 
-	return expectedSkippable, nil
+	return result, nil
 }
 
 // chainBoundState aggregates the audit-derived state the verifier consults

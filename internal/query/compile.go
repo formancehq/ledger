@@ -2030,7 +2030,7 @@ func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
 		upper = append(upper, maxBytes...)
 	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		upper = dal.PrefixUpperBound(ledgerPrefix)
 	}
 
 	if !bounds.hasMin {
@@ -2059,7 +2059,7 @@ func logIDRangeBounds(prefix []byte, bounds resolvedUintBounds) (lower, upper []
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
 		upper = append(upper, maxBytes...)
 	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		upper = dal.PrefixUpperBound(prefix)
 	}
 
 	if !bounds.hasMin {
