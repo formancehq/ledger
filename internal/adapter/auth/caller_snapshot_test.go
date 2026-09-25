@@ -132,6 +132,16 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 	require.Equal(t, []string{"ledger:TransactionWrite"}, got.GetAuthenticated().GetScopes())
 }
 
+func TestResolveCallerSnapshot_ClusterInternalWithoutForwardedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	ctx := withAuthenticationState(context.Background(), true, false, allScopes())
+	ctx = WithClusterInternal(ctx, true)
+
+	require.Nil(t, ResolveCallerSnapshot(ctx),
+		"the peer's cluster-secret grant must not be attributed to the original caller")
+}
+
 func TestResolveCallerSnapshot_SystemActor(t *testing.T) {
 	t.Parallel()
 
