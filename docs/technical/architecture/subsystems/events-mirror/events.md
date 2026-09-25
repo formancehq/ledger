@@ -512,29 +512,28 @@ The response includes a list of `SinkConfig` entries (including `controller_id`)
 
 #### Kubernetes Operator Configuration
 
-The Ledger Operator can maintain NATS sinks declaratively through the
-`Cluster.spec.sinks.nats` list. It waits for the StatefulSet rollout to converge,
-compares the desired entries with `ledgerctl events list --json`, and applies
-changes through the same Raft-replicated add/remove operations described above.
-Changing this field does not change the pod-template hash or restart Ledger.
-This first declarative CRD surface covers NATS only. NATS URLs containing
-userinfo are rejected so credentials are not persisted in a non-secret
-Kubernetes resource.
+The Ledger Operator maintains each NATS sink through a namespaced `EventSink`
+resource that references a `Cluster` in the same namespace. The resource name
+is the runtime sink name, and `spec.clusterRef` is immutable. The controller
+waits for the StatefulSet rollout, compares the desired configuration with
+`ledgerctl events list --json`, and uses the Raft-replicated add/remove API.
+Creating or editing an `EventSink` does not change the pod-template hash or
+restart Ledger. This first CRD surface covers NATS only. NATS URLs containing
+userinfo are rejected because CR specs are not secret storage.
 
-The operator records only the sink names it created in
-`Cluster.status.appliedSinks`. This ownership boundary has three consequences:
+The Raft-replicated `SinkConfig.controller_id` stores the EventSink UID. A
+matching name or configuration without that UID never grants ownership. The
+controller uses a conditional remove that checks the UID during FSM apply, so
+an ambiguous response can be retried from a fresh list without deleting an
+external sink. A finalizer retains the EventSink during deletion until its
+runtime sink is removed or the parent runtime has disappeared. A foreign
+same-name sink is reported as a `Synced=False` conflict and left untouched.
 
-- omitting `spec.sinks` leaves all runtime sink configuration unmanaged;
-- an explicitly empty `spec.sinks: {}` removes only operator-owned sinks; and
-- an existing, externally managed sink with a different configuration produces
-  a `SinksSynced=False` conflict instead of being overwritten.
-
-An operator-owned configuration change is a two-pass remove-and-recreate. The
-per-name cursor is retained by Ledger, so committed events are delayed during
-the update but remain eligible for at-least-once delivery after recreation.
-`SinksSynced=True` proves that the Raft configuration matches the CR; delivery
-progress and transport errors must still be monitored with
-`ledgerctl events list`.
+An owned configuration change removes the old sink and recreates it on the
+next pass. Ledger retains the per-name cursor, so committed events remain
+eligible for at-least-once delivery after recreation. `Synced=True` means the
+Raft configuration matches the EventSink; `status.cursor`, `status.error`, and
+the `Delivering` condition expose the delivery state observed by the operator.
 
 NATS JetStream provisioning remains external to Ledger. A stream must already
 capture `<topic>.>` (Ledger publishes to
