@@ -269,8 +269,8 @@ func parseDatabase(raw string, postgres bool) (*commonpb.DatabaseConnection, err
 			// only non-empty entries that are not valid port numbers.
 			if port != "" {
 				if _, err := strconv.ParseUint(port, 10, 16); err != nil {
-				return nil, errors.New("invalid database port")
-			}
+					return nil, errors.New("invalid database port")
+				}
 			}
 		}
 	}
