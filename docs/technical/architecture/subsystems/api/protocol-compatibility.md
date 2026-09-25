@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"13"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"14"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -65,7 +65,7 @@ Revision 8 (EN-1771) removes `CreatedIndexLog.initial` and renumbers the
 remaining exposed fields. Clients and servers built against revision 7 would
 therefore decode the same varint fields with different meanings.
 
-Revision 11 (EN-1926) requires an explicit per-deployment JWT audience for
+Revision 14 (EN-1926) requires an explicit per-deployment JWT audience for
 OIDC authentication. Static Ed25519 tokens are exempt. Tokens missing that audience are rejected
 before scope authorization. Servers with an OIDC issuer require `--auth-audience`. This changes authentication semantics without
 changing protobuf fields. Configure every node and issuer consistently and
@@ -83,10 +83,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 13:
+leader. For example, with a schema implementing revision 14:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 13' \
+grpcurl -plaintext -H 'ledger-protocol-version: 14' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
