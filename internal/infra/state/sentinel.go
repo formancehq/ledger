@@ -50,6 +50,8 @@ func (e *ErrVolumeCachePebbleDivergence) Error() string {
 // earlier entry's expected value would fail with "volume missing from pebble".
 // Ledger deletion likewise removes all volume writes at or before its result,
 // including writes in the same proposal: Merge stages its deletion cascade last.
+// The result index matters: same-name recreation is rejected, so a later write
+// for a deleted ledger is an error that post-commit checks must still detect.
 func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	lastDeletion := make(map[string]int)
 	for i, r := range results {
@@ -395,14 +397,19 @@ func collectLedgerNames(orders []*raftcmdpb.Order) []string {
 	return names
 }
 
-// collectLedgerNamesFromResults extracts the unique ledger names from all
-// ApplyResults in the batch. Used for post-commit aggregated balance checks.
-func collectLedgerNamesFromResults(results []ApplyResult) []string {
+// collectSentinelLedgerNames extracts every ledger to check after commit and
+// identifies successful deletion cascades, including deletion-only batches.
+func collectSentinelLedgerNames(results []ApplyResult) ([]string, map[string]struct{}) {
 	seen := make(map[string]struct{})
+	deleted := make(map[string]struct{})
 
 	for _, r := range results {
 		for _, name := range r.ledgerNames {
 			seen[name] = struct{}{}
+		}
+		for _, name := range r.deletedLedgerNames {
+			seen[name] = struct{}{}
+			deleted[name] = struct{}{}
 		}
 	}
 
@@ -411,17 +418,17 @@ func collectLedgerNamesFromResults(results []ApplyResult) []string {
 		names = append(names, name)
 	}
 
-	return names
+	return names, deleted
 }
 
-// verifyAggregatedVolumesBalanced checks that for every ledger touched by the
-// current proposal, the global aggregated volumes satisfy input == output per
-// asset (double-entry invariant). This is a heavy but thorough check that
-// catches any volume corruption regardless of root cause.
+// verifyAggregatedVolumesBalanced checks that touched surviving ledgers balance
+// and deleted ledgers have no remaining volume rows. The latter catches a
+// partial deletion cascade even when the leftover rows are balanced.
 func verifyAggregatedVolumesBalanced(
 	store dal.PebbleReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerNames []string,
+	deletedLedgerNames map[string]struct{},
 	raftIndex uint64,
 	logger logging.Logger,
 ) error {
@@ -429,6 +436,9 @@ func verifyAggregatedVolumesBalanced(
 		result, err := query.AggregateAllVolumes(store, volumeAttr, ledgerName, query.AggregateOptions{})
 		if err != nil {
 			return fmt.Errorf("aggregating volumes for ledger %q at raft index %d: %w", ledgerName, raftIndex, err)
+		}
+		if _, deleted := deletedLedgerNames[ledgerName]; deleted && len(result.GetVolumes()) > 0 {
+			return fmt.Errorf("deleted ledger %q still has volumes after commit at raft index %d", ledgerName, raftIndex)
 		}
 
 		for _, vol := range result.GetVolumes() {

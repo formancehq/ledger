@@ -160,6 +160,52 @@ func TestDeleteLedgerSentinelDetectsSurvivorCorruption(t *testing.T) {
 	}
 }
 
+// A broken deletion cascade can leave balanced volumes behind. Their totals
+// still satisfy double-entry accounting, but no volume may survive deletion.
+func TestDeleteLedgerSentinelDetectsBalancedDeletedVolumeLeftovers(t *testing.T) {
+	t.Parallel()
+	for _, mode := range []string{"same_batch", "delete_only_batch"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			fsm, store, attrs := newTestMachine(t)
+			fsm.sentinel = dal.NewSentinelFactory(store, true)
+			fsm.sentinelMode = true
+			ctx := context.Background()
+			const ledger = "deleted-with-leftovers"
+			_, err := fsm.ApplyEntries(ctx, store, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledger))))
+			require.NoError(t, err)
+			tx := makeEntry(t, 2, makeProposal(2,
+				createTransactionOrder(ledger, true, newPosting("world", "treasury", "EUR", 100))))
+			if mode == "delete_only_batch" {
+				_, err = fsm.ApplyEntries(ctx, store, tx)
+				require.NoError(t, err)
+			}
+			entries := []*raftpb.Entry{makeEntry(t, 3, makeProposal(3, deleteLedgerOrder(ledger)))}
+			if mode == "same_batch" {
+				entries = append([]*raftpb.Entry{tx}, entries...)
+			}
+			pb, err := fsm.PrepareEntries(ctx, store, entries...)
+			require.NoError(t, err)
+			for _, result := range pb.Result.Results {
+				require.NoError(t, result.Error)
+			}
+			require.Empty(t, pb.sentinelUpdates, "deleted volumes have no individual expectations")
+			for _, account := range []string{"world", "treasury"} {
+				pair := &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(0), Output: commonpb.NewUint256FromUint64(0)}
+				if account == "world" {
+					pair.Output = commonpb.NewUint256FromUint64(100)
+				} else {
+					pair.Input = commonpb.NewUint256FromUint64(100)
+				}
+				_, err = attrs.Volume.Set(pb.batch, domain.NewVolumeKey(ledger, account, "EUR", "").Bytes(), pair)
+				require.NoError(t, err)
+			}
+			err = fsm.CommitPreparedBatch(ctx, pb)
+			require.ErrorContains(t, err, `deleted ledger "deleted-with-leftovers" still has volumes`)
+		})
+	}
+}
+
 // A deletion rolled back with its proposal must not remove earlier expectations
 // or change the existing prohibition on recreating a deleted ledger name.
 func TestDeleteLedgerSentinelRejectedProposal(t *testing.T) {

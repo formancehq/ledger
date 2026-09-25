@@ -98,11 +98,14 @@ staged after projection writes. Ephemeral purges invalidate individual keys;
 unrelated ledgers and later surviving updates retain their exact expected
 values. Captured deletion names must not alias the next proposal's reused
 `WriteSet` slice, and rejected orders must not be treated as deletion effects.
+The aggregate scan must reject any volume rows left by a successful deletion,
+even when those rows balance or the deletion is the only order in its batch.
 
 Use `TestDeleteLedgerSentinel*` in state and node as focused entry points:
 require successful same-proposal, multi-entry and separate-batch deletion,
 multiple deletions and unchanged surviving balances. Deliberately missing or
-changed surviving rows must still fail. The node regression reopens real
+changed surviving rows and balanced leftover rows of a deleted ledger must
+still fail. The node regression reopens real
 WAL/Pebble stores and calls `Applier.RecoverAndReplay`, and separately drives
 asynchronous follower catch-up. It establishes those paths, not an OS-process
 restart or a new remote Antithesis campaign. A fixture rejected by policy or

@@ -726,7 +726,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	if fsm.sentinelMode {
 		pb.sentinelMode = true
 		pb.sentinelUpdates = deduplicateVolumeUpdates(ret.Results)
-		pb.sentinelLedgerNames = collectLedgerNamesFromResults(ret.Results)
+		pb.sentinelLedgerNames, pb.sentinelDeletedLedgerNames = collectSentinelLedgerNames(ret.Results)
 		pb.sentinelTracer = fsm.sentinelTracer
 	}
 
@@ -798,7 +798,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 			}
 
 			if err := verifyAggregatedVolumesBalanced(
-				sentinelHandle, fsm.Registry.Attrs.Volume, pb.sentinelLedgerNames, pb.lastAppliedIndex, fsm.logger,
+				sentinelHandle, fsm.Registry.Attrs.Volume, pb.sentinelLedgerNames, pb.sentinelDeletedLedgerNames, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
 				dumpCacheVsPebbleCoherence(sentinelHandle, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
@@ -1813,10 +1813,11 @@ type PreparedBatch struct {
 	checkpointDeletes   []uint64
 
 	// Sentinel data (captured during prepare, validated after commit).
-	sentinelMode        bool
-	sentinelUpdates     []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
-	sentinelLedgerNames []string
-	sentinelTracer      *SentinelTracer
+	sentinelMode               bool
+	sentinelUpdates            []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
+	sentinelLedgerNames        []string
+	sentinelDeletedLedgerNames map[string]struct{}
+	sentinelTracer             *SentinelTracer
 
 	entryCount int
 }
