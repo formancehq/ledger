@@ -19,7 +19,7 @@ import (
 func NewAddSinkCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "add-sink",
-		Aliases: []string{"add", "upsert"},
+		Aliases: []string{"add"},
 		Short:   "Add an event sink configuration",
 		Long: `Add a named event sink configuration.
 

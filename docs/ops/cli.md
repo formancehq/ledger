@@ -4868,7 +4868,7 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 ```
 
-**Aliases:** `add`, `upsert` (legacy alias; still rejects existing names)
+**Alias:** `add`
 
 | Flag | Default | Description |
 |------|---------|-------------|
