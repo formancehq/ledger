@@ -1397,26 +1397,6 @@ func compileTimestampRangeCondition(
 
 	lower, upper, entityOffset, entityLen := timestampRangeBounds(ledgerPrefix, bounds)
 
-	if bounds.hasMin {
-		minBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(minBytes, bounds.min)
-		lower = append(lower, minBytes...)
-	}
-
-	if bounds.hasMax {
-		maxBytes := make([]byte, 8)
-		binary.BigEndian.PutUint64(maxBytes, bounds.max)
-		upper = append(upper, maxBytes...)
-	} else {
-		// Unbounded above: the successor of the ledger prefix, not a 0xFF run.
-		// Pebble's upper bound is exclusive, so appending eight 0xFF bytes
-		// excludes every row whose 8-byte suffix is MaxUint64 — here a whole
-		// timestamp bucket, since the key carries a further entity id. The
-		// prefix starts with a prefix byte below 0xFF, so the successor exists.
-		upper = dal.PrefixUpperBound(ledgerPrefix)
-	}
-
-
 	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
 	if rErr != nil {
 		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
@@ -2050,7 +2030,7 @@ func timestampRangeBounds(ledgerPrefix []byte, bounds resolvedUintBounds) (lower
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
 		upper = append(upper, maxBytes...)
 	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		upper = dal.PrefixUpperBound(ledgerPrefix)
 	}
 
 	if !bounds.hasMin {
@@ -2079,7 +2059,7 @@ func logIDRangeBounds(prefix []byte, bounds resolvedUintBounds) (lower, upper []
 		binary.BigEndian.PutUint64(maxBytes, bounds.max)
 		upper = append(upper, maxBytes...)
 	} else {
-		upper = append(upper, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF)
+		upper = dal.PrefixUpperBound(prefix)
 	}
 
 	if !bounds.hasMin {

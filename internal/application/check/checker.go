@@ -116,6 +116,23 @@ func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
 	return binary.BigEndian.Uint64(iter.Key()[2:10]), nil
 }
 
+// auditComparableLog removes fields that are themselves post-processing
+// projections injected by WriteSet.Merge. They are checked independently by
+// the exclusion/usage passes and have changed across storage versions; the
+// business payload, ledger-log id and date are the stable audit-derived part.
+func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
+	ret := log.CloneVT()
+	ret.Sequence = sequence
+	if apply := ret.GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
+		apply.Log.PurgedVolumes = nil
+		apply.Log.NewKeptVolumes = nil
+		apply.Log.EphemeralVolumes = nil
+		apply.Log.PurgedAccounts = nil
+	}
+
+	return ret
+}
+
 // emitSequenceGapRun reports one contiguous run of missing log sequences as a
 // single event. The single-sequence wording is kept verbatim: an isolated hole
 // is the common case, and it reads better than a range of one.
@@ -225,10 +242,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// audit entry and recomputes each hash from the stored orders. Populates
 	// expectedSkippable + layers the audit-chain mutations onto chainBound
 	// and the signing orders onto `signing`.
-	expectedSkippable, err := c.verifyAuditHashChain(ctx, snap, chainBound, folds, callback)
+	auditExpected, err := c.verifyAuditHashChain(ctx, snap, chainBound, folds, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
+	expectedSkippable := auditExpected.skippable
 
 	proposalBoundaries, err := c.newProposalBoundaryReader(ctx, snap)
 	if err != nil {
@@ -472,11 +490,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			emitSequenceGapRun(expectedSeq, seq-1, callback)
 		}
 
-		nextExpectedSeq, exhausted := domain.CheckedNextSequence(seq, domain.SequenceCounterLog)
-		if exhausted != nil {
-			return fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
+		if seq == ^uint64(0) {
+			expectedSeq = seq
+		} else {
+			nextExpectedSeq, exhausted := domain.CheckedNextSequence(seq, domain.SequenceCounterLog)
+			if exhausted != nil {
+				return fmt.Errorf("checking log sequence %d: %w", seq, exhausted)
+			}
+			expectedSeq = nextExpectedSeq
 		}
-		expectedSeq = nextExpectedSeq
 
 		value, err := logIter.ValueAndErr()
 		if err != nil {
@@ -487,6 +509,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if err := log.UnmarshalVT(value); err != nil {
 			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
 		}
+		storedLog := log
 
 		// A Log row states its own sequence twice: in the Pebble key and in the
 		// value's `sequence` field. Nothing binds the two — Log rows are not
@@ -506,6 +529,42 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
 				fmt.Sprintf("log at key sequence %d carries sequence %d in its stored value", seq, log.GetSequence()),
 				seq, "", "", ""))
+		}
+
+		// The audit chain is the business oracle. Replaying its verified orders
+		// through the canonical processor produced the expected Log projection
+		// before this scan began. Compare the stored row to that result, then use
+		// only the audit-derived log below when building expected projections.
+		// This prevents a coordinated edit of a Log payload and its derived rows
+		// from validating itself circularly.
+		if expectedLog, ok := auditExpected.logs[seq]; ok {
+			if !auditComparableLog(storedLog, seq).EqualVT(auditComparableLog(expectedLog, seq)) {
+				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH,
+					fmt.Sprintf("stored log %d payload differs from the log derived from its chain-verified audit order", seq),
+					seq, "", "", ""))
+			}
+			log = expectedLog
+		}
+
+		// Exclusion annotations are themselves stored projections. Collect them
+		// from the actual row before the audit-derived replacement above is replayed.
+		if apply := storedLog.GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
+			ledgerName := apply.GetLedgerName()
+			for _, v := range apply.GetLog().GetPurgedVolumes() {
+				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+			}
+			for _, v := range apply.GetLog().GetEphemeralVolumes() {
+				addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
+			}
+			for _, account := range apply.GetLog().GetPurgedAccounts() {
+				key := domain.AccountKey{LedgerName: ledgerName, Account: account}
+				if prior, exists := storedPurgedAccounts[key]; exists {
+					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+						fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
+						seq, ledgerName, account, ""))
+				}
+				storedPurgedAccounts[key] = seq
+			}
 		}
 
 		// Hash chain verification is now done via audit entries (see audit hash pass below).
@@ -701,21 +760,6 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// the same "excluded from normal state" semantics
 						// — the split exists to compact log payloads on
 						// ephemeral-heavy workloads (EN-1422).
-						for _, v := range payload.Apply.GetLog().GetPurgedVolumes() {
-							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
-						}
-						for _, v := range payload.Apply.GetLog().GetEphemeralVolumes() {
-							addStored(ledgerName, v.GetAccount(), v.GetAsset(), v.GetColor())
-						}
-						for _, account := range payload.Apply.GetLog().GetPurgedAccounts() {
-							key := domain.AccountKey{LedgerName: ledgerName, Account: account}
-							if prior, exists := storedPurgedAccounts[key]; exists {
-								callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
-									fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
-									seq, ledgerName, account, ""))
-							}
-							storedPurgedAccounts[key] = seq
-						}
 					}
 				}
 			}
@@ -779,7 +823,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	if ephemeralPurgeBuffer != nil {
-		if err := flushEphemeralPurges(lastSequence); err != nil {
+		if err := flushEphemeralPurges(storedMaxLogSeq); err != nil {
 			return fmt.Errorf("flushing final replay ephemeral purge: %w", err)
 		}
 	}
@@ -2435,19 +2479,30 @@ func (f chainVerifierFolds) markLiveTruncated() {
 	f.bounds.markLiveTruncated()
 }
 
+type auditVerification struct {
+	skippable map[uint64]*expectedSkippableOrder
+	logs      map[uint64]*commonpb.Log
+}
+
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
 	chainBound *chainBoundState,
 	folds chainVerifierFolds,
 	callback func(*servicepb.CheckStoreEvent),
-) (map[uint64]*expectedSkippableOrder, error) {
+) (*auditVerification, error) {
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
 		return nil, fmt.Errorf("reading audit entries: %w", err)
 	}
 
 	defer func() { _ = auditCursor.Close() }()
+
+	replayer, err := state.NewAuditReplayer(c.logger, c.clusterID)
+	if err != nil {
+		return nil, fmt.Errorf("creating audit-derived replay: %w", err)
+	}
+	defer func() { _ = replayer.Close() }()
 
 	var (
 		lastHash   []byte
@@ -2462,11 +2517,13 @@ func (c *Checker) verifyAuditHashChain(
 		// re-derived from the chain-bound Order. Consumed by
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
+		expectedLogs      = make(map[uint64]*commonpb.Log)
 		// hasVerifiedRange records whether any entry was verified — the gate
 		// for the idempotency comparison, whose expectation is only complete
 		// once the audit range has been folded.
 		hasVerifiedRange bool
 	)
+	result := &auditVerification{skippable: expectedSkippable, logs: expectedLogs}
 
 	for {
 		entry, err := auditCursor.Next()
@@ -2513,7 +2570,7 @@ func (c *Checker) verifyAuditHashChain(
 			// positives.
 			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		// Read the audit items for this entry, then rebuild the canonical
@@ -2553,7 +2610,7 @@ func (c *Checker) verifyAuditHashChain(
 			// positives.
 			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		hashSlices := make([][]byte, 0, 1+len(items))
@@ -2598,7 +2655,7 @@ func (c *Checker) verifyAuditHashChain(
 			// positives.
 			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		lastHash = entry.GetHash()
@@ -2639,7 +2696,30 @@ func (c *Checker) verifyAuditHashChain(
 			// Parallel to `items` by index; nil where the bytes did not decode.
 			decoded, err := collectExpectedSkippable(items, success.GetMinLogSequence(), success.GetMaxLogSequence(), expectedSkippable, chainBound)
 			if err != nil {
-				return expectedSkippable, fmt.Errorf("rebuild chain-bound state: %w", err)
+				return result, fmt.Errorf("rebuild chain-bound state: %w", err)
+			}
+
+			_, replaySound := folds.bounds.auditedBound()
+			orders := make([]*raftcmdpb.Order, len(decoded))
+			for i, order := range decoded {
+				if order == nil || order.Type == nil {
+					replaySound = false
+
+					break
+				}
+				orders[i] = order
+			}
+			if replaySound {
+				logs, replayErr := replayer.Replay(entry.GetTimestamp(), orders)
+				if replayErr != nil {
+					return nil, fmt.Errorf("replaying chain-verified audit entry %d: %w", entry.GetSequence(), replayErr)
+				}
+				for _, log := range logs {
+					if _, duplicate := expectedLogs[log.GetSequence()]; duplicate {
+						return nil, fmt.Errorf("invariant: audit replay produced duplicate log sequence %d", log.GetSequence())
+					}
+					expectedLogs[log.GetSequence()] = log
+				}
 			}
 
 			// Fold signing orders from this successful entry, over the SAME fresh-log
@@ -2665,7 +2745,6 @@ func (c *Checker) verifyAuditHashChain(
 			// One entry is one proposal, which is the boundary the FSM's notion of
 			// "committed" is defined against (WriteSet.Reset runs once per proposal).
 			// The signing cascade needs it to reproduce GetSigningKeyChildren.
-			folds.signing.beginProposal()
 			for i, item := range items {
 				logSeq := item.GetLogSequence()
 				if logSeq == 0 {
@@ -2702,7 +2781,7 @@ func (c *Checker) verifyAuditHashChain(
 		return nil, err
 	}
 
-	return expectedSkippable, nil
+	return result, nil
 }
 
 // chainBoundState aggregates the audit-derived state the verifier consults

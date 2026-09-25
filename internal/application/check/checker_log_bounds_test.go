@@ -372,7 +372,7 @@ func TestCheck_LogBounds_HealthyHistoryIsContiguous(t *testing.T) {
 		}},
 	})
 
-	engine.processAndCommit(revertTransactionOrder("bounds", 2))
+	engine.processAndCommit(engine.revertTransactionOrder("bounds", 2))
 	engine.processAndCommit(deleteLedgerOrder("scratch"))
 
 	// --- the premise, read straight off the audit entries ---
