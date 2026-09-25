@@ -952,8 +952,8 @@ func TestRequestToOrder_RevertTransaction(t *testing.T) {
 
 		err := bindRevertTargetDigest(order, testLedgerName, applyOrder, newBulkOverlay())
 
-		var invalidPlan *domain.ErrInvalidExecutionPlan
-		require.ErrorAs(t, err, &invalidPlan)
+		require.ErrorContains(t, err, "invariant:")
+		require.ErrorContains(t, err, "revert order reached digest binding without a recorded target observation")
 		require.Empty(t, order.GetTechnical().GetRevertTargetDigest(),
 			"the order must be rejected, not stamped with a digest for a lookup that never happened")
 	})

@@ -522,6 +522,10 @@ func transactionWindowRows(ls oracle.LedgerState, filter *commonpb.QueryFilter, 
 // content-matching its model record), optional rows may, nothing else does, and
 // a required row may only be missing past a full (truncated) page.
 func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) bool {
+	return txRowsMatch(ls, transactionWindowRows(ls, filter, afterID, reverse), pageSize, serverTxs)
+}
+
+func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, serverTxs []*commonpb.Transaction) bool {
 	if len(serverTxs) > pageSize {
 		return false
 	}
@@ -529,7 +533,7 @@ func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterI
 	txs := ls.Txs()
 	j := 0
 
-	for _, row := range transactionWindowRows(ls, filter, afterID, reverse) {
+	for _, row := range rows {
 		if j == len(serverTxs) {
 			if len(serverTxs) == pageSize {
 				return true // full page — the remaining rows were truncated
@@ -851,9 +855,14 @@ func (c *Checker) sampleTxFilterSeeds(ledger string) txFilterSeeds {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	return txFilterSeedsOf(c.modelState.Ledger(ledger))
+}
+
+// txFilterSeedsOf is the lock-free core of sampleTxFilterSeeds, for callers
+// that already hold a committed state snapshot (the bulk generator).
+func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 	var seeds txFilterSeeds
 
-	ls := c.modelState.Ledger(ledger)
 	for ref := range ls.TxByRef().All() {
 		seeds.refs = append(seeds.refs, ref)
 		if len(seeds.refs) == 4 {
