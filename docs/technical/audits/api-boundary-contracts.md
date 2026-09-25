@@ -24,6 +24,15 @@ presence, command flags, implementation comments and tests at the audited SHA.
 A stale table is not proof of a missing route. Conflicting sources or unspecified
 null/unknown-field/trailing-input policies become **questions**, not assumed bugs.
 
+Establish which error tier a failure belongs to before asserting that its
+presentation is wrong. The three contracts in `internal/domain` — `Classifiable`,
+`Describable`, `SerializableError` — are described in the "Three Error Contract
+Tiers" section of `http-api.md`. An error that declares only a kind owns no wire
+reason by design: the absence of an `ErrorInfo` on gRPC, and a coarse
+`errorCode` such as `INVALID_REQUEST` on HTTP, are the contract rather than a
+lost identifier. A reason that is declared and then dropped, changed or
+renamed across the boundary remains a defect.
+
 A reproduction plan must name the input, entry path, guard crossed, failure point
 and distinguishing observation: exact outgoing value, status, header, body,
 terminal stream error or trailer. Reject helper-only states that production
