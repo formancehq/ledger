@@ -11,7 +11,7 @@ import (
 )
 
 // processAddAccountType adds a new account type to a ledger.
-func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -74,7 +74,7 @@ func processAddAccountType(ledger string, order *raftcmdpb.AddAccountTypeOrder, 
 }
 
 // processRemoveAccountType removes an account type from a ledger.
-func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processRemoveAccountType(ledger string, order *raftcmdpb.RemoveAccountTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -116,7 +116,7 @@ func validatePostingsAgainstAccountTypes(
 	postings []*commonpb.Posting,
 	compiled []accounttype.CompiledType,
 	defaultMode commonpb.ChartEnforcementMode,
-) domain.Describable {
+) domain.SerializableError {
 	if len(compiled) == 0 {
 		return nil
 	}
@@ -154,7 +154,7 @@ func validateAccountAgainstAccountTypes(
 	address string,
 	compiled []accounttype.CompiledType,
 	defaultMode commonpb.ChartEnforcementMode,
-) domain.Describable {
+) domain.SerializableError {
 	if len(compiled) == 0 || address == "world" {
 		return nil
 	}
@@ -169,7 +169,7 @@ func validateAccountAgainstAccountTypes(
 }
 
 // processUpdateDefaultEnforcementMode updates the ledger's default enforcement mode.
-func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processUpdateDefaultEnforcementMode(ledger string, order *raftcmdpb.UpdateDefaultEnforcementModeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedger(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr

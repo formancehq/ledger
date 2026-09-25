@@ -137,7 +137,7 @@ Business errors (validation, not-found, conflict, etc.) map to specific status c
 Three paths need correlated server-side diagnostics because the raw value can contain filesystem paths, wrapped Pebble/storage errors, or internal invariant strings:
 
 1. **Panic recovery** (`jsonRecoverer`) — a panic in any handler.
-2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Describable` or a known sentinel.
+2. **Unmapped errors** (`handleError` fallthrough → `writeInternalServerError`) — any error that is not a domain `Classifiable` or a known sentinel.
 3. **`KindInternal` domain errors** — recognized internal failures whose status and reason are preserved. `INDEX_INCONSISTENT` and `COVERAGE_MISS` supply public messages (`index is inconsistent` and `preload coverage miss`) that omit internal identifiers and storage details, including when wrapped. Other recognized errors retain their type-owned message, with outer diagnostic prefixes omitted.
 
 Type-owned public details are selected through `domain.PublicErrorDetails` at the response boundary. Diagnostic `Error()` and `Metadata()` values remain unchanged, including the coverage failure context in the authoritative audit chain.
@@ -238,6 +238,34 @@ Forwarded **reads** cross the same seam, but only while a node is syncing
 (`readCtrl` falls back to the leader on `ErrNodeSyncing`/`ErrNotLeader`), so
 they are not reachable deterministically from a healthy cluster.
 
+### The Three Error Contract Tiers
+
+`internal/domain` splits what an error promises into three nested interfaces,
+so a layer commits only to what it can actually honour (EN-2081):
+
+| Interface | Adds | Who implements it | What an adapter does with it |
+|---|---|---|---|
+| `Classifiable` | `Kind() ErrorKind` | anything that needs a status code and nothing more — the gRPC envelope guard, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
+| `Describable` | `Reason() string` | every domain business error, plus the transport-layer validation guard | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
+| `SerializableError` | `Metadata() map[string]string` | every error the FSM can emit | is written into the hash-chained `AuditFailure`, frozen into the idempotency projection and replayed |
+
+The tiers are enforced by the type system rather than by convention. The FSM
+apply path (`internal/domain/processing`, `internal/infra/state`) types its
+error returns as `SerializableError`, and `buildAuditFailure` accepts nothing
+else, so an error that cannot serialise its context cannot reach the audit
+chain. Conversely, an error raised before a proposal exists — the write gate's
+`WRITES_BLOCKED_*` sentinels, `AUDIT_DISABLED`, the gRPC envelope guard — sheds
+`Metadata()` and stops being admissible there at all.
+
+A `Reason` is a versioned wire contract: once shipped, clients match on it and
+it can never be renamed. `Classifiable` exists so a layer can classify a
+failure correctly without minting one. A `Describable` declares its own
+`Kind()`, but that kind must equal `KindForReason(ReasonCode(Reason()))` — the
+switch stays the single source of reason→kind truth, because a frozen failure
+replays from the persisted reason alone and must re-derive the same
+classification. `TestEveryDomainErrorImplementsDescribable` and the
+`buildAuditFailure` table both pin that agreement.
+
 ### The Error Boundary Contract
 
 `internal/adapter/apierr` is the contract every business-facing surface reads a
@@ -248,13 +276,20 @@ provenances a failure can have:
 
 | Provenance | Classification |
 |---|---|
-| Raised locally (a `domain.Describable` from admission, the FSM, a read path) | `domain.Kind(d)`, a pure function of the reason |
+| Raised locally (a `domain.Describable` from admission, the FSM, a read path) | `d.Kind()`, which the type declares and `KindForReason` pins to its reason |
 | Decoded from a peer (`*apierr.Remote`, produced only by `grpcerr`) | the kind the wire carried |
 
 The order matters. An `*apierr.Remote` is checked first, because a reason from a
 newer server is absent from this build's `ErrorReason` enum: re-deriving its
 kind would yield `KindInternal` and answer `500` for what the sender classified
-as a caller error.
+as a caller error. `Remote.Kind()` returns that carried classification too, so
+a consumer reading it as a plain `Describable` no longer loses it either.
+
+A failure that is only `Classifiable` has no `Reason` for `Describe` to
+normalise, so `handleError` answers it from its kind directly, with the coarse
+error code it already uses for a reason-less classified status
+(`INVALID_REQUEST`, `UNAVAILABLE`, …). `KindInternal` still goes to the
+sanitizer.
 
 `Message` and `Metadata` are the client-safe presentation, not the diagnostic
 identity. A locally raised failure uses `domain.PublicErrorDetails` when its

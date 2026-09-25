@@ -107,8 +107,8 @@ func TestProcessUpdatePreparedQuery_RejectsFilterInvalidForStoredTarget(t *testi
 	_, derr := processUpdatePreparedQuery("test-ledger", order, &Context{Scope: mockStore})
 	require.NotNil(t, derr, "a transaction-only condition must be rejected on an ACCOUNTS prepared query")
 
-	var business *domain.BusinessError
-	require.ErrorAs(t, derr, &business)
+	var compilation *domain.ErrFilterCompilation
+	require.ErrorAs(t, derr, &compilation)
 	require.Contains(t, derr.Error(), "accounts")
 }
 

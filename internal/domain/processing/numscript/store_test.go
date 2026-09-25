@@ -102,7 +102,7 @@ func TestStore_AllowsUncoloredQueries(t *testing.T) {
 func TestStore_ScopedRejectionIsValidationError(t *testing.T) {
 	t.Parallel()
 
-	var d domain.Describable
+	var d domain.SerializableError
 	require.True(t, errors.As(domain.ErrScopedBalanceUnsupported, &d))
 	require.Equal(t, domain.ErrReasonValidation, d.Reason())
 }

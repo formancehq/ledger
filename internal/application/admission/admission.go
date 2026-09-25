@@ -1341,17 +1341,17 @@ type errIdempotencyKeyTooLong struct{}
 func (errIdempotencyKeyTooLong) Error() string {
 	return "idempotency key exceeds maximum length of 256 characters"
 }
-func (errIdempotencyKeyTooLong) Reason() string              { return domain.ErrReasonValidation }
-func (errIdempotencyKeyTooLong) Metadata() map[string]string { return nil }
+func (errIdempotencyKeyTooLong) Kind() domain.ErrorKind { return domain.KindValidation }
+func (errIdempotencyKeyTooLong) Reason() string         { return domain.ErrReasonValidation }
 
 var ErrIdempotencyKeyTooLong domain.Describable = errIdempotencyKeyTooLong{}
 
 // ErrIdempotencyKeyInvalidUTF8 is returned when an idempotency key contains invalid UTF-8.
 type errIdempotencyKeyInvalidUTF8 struct{}
 
-func (errIdempotencyKeyInvalidUTF8) Error() string               { return "idempotency key contains invalid UTF-8" }
-func (errIdempotencyKeyInvalidUTF8) Reason() string              { return domain.ErrReasonValidation }
-func (errIdempotencyKeyInvalidUTF8) Metadata() map[string]string { return nil }
+func (errIdempotencyKeyInvalidUTF8) Error() string          { return "idempotency key contains invalid UTF-8" }
+func (errIdempotencyKeyInvalidUTF8) Kind() domain.ErrorKind { return domain.KindValidation }
+func (errIdempotencyKeyInvalidUTF8) Reason() string         { return domain.ErrReasonValidation }
 
 var ErrIdempotencyKeyInvalidUTF8 domain.Describable = errIdempotencyKeyInvalidUTF8{}
 
@@ -1370,8 +1370,8 @@ type errCheckpointOrderNotLast struct{}
 func (errCheckpointOrderNotLast) Error() string {
 	return "checkpoint trigger (CreateQueryCheckpoint) must be the last order in a bulk request"
 }
-func (errCheckpointOrderNotLast) Reason() string              { return domain.ErrReasonValidation }
-func (errCheckpointOrderNotLast) Metadata() map[string]string { return nil }
+func (errCheckpointOrderNotLast) Kind() domain.ErrorKind { return domain.KindValidation }
+func (errCheckpointOrderNotLast) Reason() string         { return domain.ErrReasonValidation }
 
 var ErrCheckpointOrderNotLast domain.Describable = errCheckpointOrderNotLast{}
 

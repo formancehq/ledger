@@ -44,7 +44,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		err  domain.Describable
+		err  domain.SerializableError
 	}{
 		{
 			// Every field distinct and non-zero, so a projection bug cannot
@@ -124,7 +124,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 // error type but one (EN-1772).
 type auditFailureCase struct {
 	name        string
-	err         domain.Describable
+	err         domain.SerializableError
 	wantReason  string
 	wantContext map[string]string
 }
@@ -669,15 +669,9 @@ func auditFailureCases() []auditFailureCase {
 		},
 		// The stateless sentinels below all return nil from Metadata(), so their
 		// projected Context is the empty-but-non-nil map buildAuditFailure
-		// allocates. They are reached through their exported Describable var —
-		// the concrete type is unexported, and that var IS the identity every
-		// call site compares against with errors.Is.
-		{
-			name:        "AuditDisabled",
-			err:         domain.ErrAuditDisabled,
-			wantReason:  domain.ErrReasonAuditDisabled,
-			wantContext: map[string]string{},
-		},
+		// allocates. They are reached through their exported SerializableError
+		// var — the concrete type is unexported, and that var IS the identity
+		// every call site compares against with errors.Is.
 		{
 			name:        "StaleProposal",
 			err:         domain.ErrStaleProposal,
@@ -697,18 +691,6 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{},
 		},
 		{
-			name:        "WritesBlockedDiskFull",
-			err:         domain.ErrWritesBlockedDiskFull,
-			wantReason:  domain.ErrReasonWritesBlockedDiskFull,
-			wantContext: map[string]string{},
-		},
-		{
-			name:        "WritesBlockedClockSkew",
-			err:         domain.ErrWritesBlockedClockSkew,
-			wantReason:  domain.ErrReasonWritesBlockedClockSkew,
-			wantContext: map[string]string{},
-		},
-		{
 			name:        "CheckpointIDRequired",
 			err:         domain.ErrCheckpointIDRequired,
 			wantReason:  domain.ErrReasonCheckpointIDRequired,
@@ -722,15 +704,6 @@ func auditFailureCases() []auditFailureCase {
 			err:         domain.ErrLedgerNameRequired,
 			wantReason:  domain.ErrReasonValidation,
 			wantContext: map[string]string{},
-		},
-		{
-			// BusinessError delegates Error/Reason/Metadata to the wrapped
-			// Describable (errors.go:256-259), so the projection must be
-			// indistinguishable from projecting the inner error directly.
-			name:        "BusinessErrorDelegatesToInner",
-			err:         &domain.BusinessError{Err: &domain.ErrLedgerNotFound{Name: "wrapped-ledger"}},
-			wantReason:  domain.ErrReasonLedgerNotFound,
-			wantContext: map[string]string{"name": "wrapped-ledger"},
 		},
 		{
 			// ErrMetadataKeyValidation adds {"key": Key} and merges the Cause's
@@ -829,21 +802,30 @@ type describableTypeKey struct {
 
 func (k describableTypeKey) String() string { return k.pkg + "." + k.name }
 
-// describableScanDirs are the packages whose Describable implementations can
-// reach buildAuditFailure. This is a deliberate boundary, not an oversight:
-// internal/domain holds the business errors the FSM returns and internal/infra/state
-// holds the FSM-local ones (ErrCoverageMiss). Every other implementation in the
-// tree — admission's errIdempotencyKeyTooLong / errIdempotencyKeyInvalidUTF8 /
-// errCheckpointOrderNotLast, query.ErrAggregateOverflow, grpc.validationError — is
-// produced before a proposal exists or on the read path, so it never reaches the
-// audit chain. If one of them ever becomes FSM-reachable, add its directory here.
+// describableScanDirs are the packages whose SerializableError implementations
+// can reach buildAuditFailure. This is a deliberate boundary, not an oversight:
+// internal/domain holds the business errors the FSM returns and
+// internal/infra/state holds the FSM-local ones (ErrCoverageMiss). Every other
+// implementation in the tree — admission's errIdempotencyKeyTooLong /
+// errIdempotencyKeyInvalidUTF8 / errCheckpointOrderNotLast,
+// query.ErrAggregateOverflow, grpc.validationError — is produced before a
+// proposal exists or on the read path, so it never reaches the audit chain. If
+// one of them ever becomes FSM-reachable, add its directory here.
 var describableScanDirs = map[string]string{
 	"../../domain": "github.com/formancehq/ledger/v3/internal/domain",
 	".":            "github.com/formancehq/ledger/v3/internal/infra/state",
 }
 
 // TestBuildAuditFailureCoversEveryDescribable is the forcing function: adding a
-// Describable without adding a row to auditFailureCases fails this test.
+// SerializableError without adding a row to auditFailureCases fails this test.
+//
+// Since EN-2081 the scan predicate is the SerializableError contract rather
+// than "any typed error". That is what buildAuditFailure now accepts, so a
+// domain error that sheds Metadata() — because it is raised at admission or on
+// the read path and can no longer reach the FSM — drops out of both the scan
+// and the table together. ErrAuditDisabled and the two write-gate sentinels
+// left this way: the write gate and the audit-read controller raise them before
+// any proposal exists.
 //
 // The table covers only types with a production path to the audit chain. A
 // failure decoded from a peer has none by construction — it lives outside
@@ -854,10 +836,10 @@ var describableScanDirs = map[string]string{
 //
 // Discovery is by METHOD SET, not by type name. It collects every receiver type
 // declaring both Reason() string and Metadata() map[string]string — which is the
-// Describable contract itself. The name-prefix scan used by
+// SerializableError contract itself. The name-prefix scan used by
 // TestEveryDomainErrorImplementsDescribable (internal/domain/errors_test.go:318)
-// would miss domain.ReplayedFailure and domain.BusinessError, both of which do
-// reach buildAuditFailure, and it would need a hand-maintained
+// would miss domain.ReplayedFailure, which does reach buildAuditFailure, and it
+// would need a hand-maintained
 // exclusion list for the Err* types in this package that are NOT Describable
 // (ErrNodeOutOfSync, ErrInvalidEntryIndex, ErrDoubleEntryInvariantViolated,
 // ErrVolumeCachePebbleDivergence). The method-set predicate needs neither.
@@ -873,7 +855,7 @@ func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 	}
 
 	require.NotEmpty(t, discovered,
-		"the AST scan found no Describable implementations at all — the scan is broken, not the table")
+		"the AST scan found no SerializableError implementations at all — the scan is broken, not the table")
 
 	covered := make(map[describableTypeKey]bool)
 
@@ -887,13 +869,14 @@ func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 	}
 
 	require.Equal(t, sortedKeys(discovered), sortedKeys(covered),
-		"auditFailureCases must hold exactly one row per Describable reachable from the FSM failure path:\n"+
+		"auditFailureCases must hold exactly one row per SerializableError reachable from the FSM failure path:\n"+
 			"  a MISSING entry means a new error type landed with no assertion on what buildAuditFailure writes\n"+
-			"  an EXTRA entry means a row references a type that is no longer a Describable")
+			"  an EXTRA entry means a row references a type that is no longer a SerializableError")
 }
 
 // describableTypesIn returns the names of every type declared in dir whose
-// method set includes both Reason() string and Metadata() map[string]string.
+// method set includes both Reason() string and Metadata() map[string]string —
+// the SerializableError contract, and so exactly what buildAuditFailure accepts.
 func describableTypesIn(t *testing.T, dir string) map[string]bool {
 	t.Helper()
 
@@ -995,6 +978,13 @@ func TestBuildAuditFailure(t *testing.T) {
 			reason, message := describeFailure(tc.err)
 			require.Equal(t, reason, failure.GetReason())
 			require.Equal(t, message, failure.GetMessage())
+
+			// A frozen failure replays from the persisted reason alone, so the
+			// kind the type declares must be the kind that reason re-derives.
+			// Asserting it here covers the FSM-reachable set exactly — the same
+			// types whose classification a replay has to reproduce.
+			require.Equal(t, domain.KindForReason(failure.GetReason()), tc.err.Kind(),
+				"the declared kind must match the one KindForReason derives from the audited reason")
 		})
 	}
 }

@@ -287,7 +287,7 @@ func TestProcessOrder_DispatchEverySystemScopedVariant(t *testing.T) {
 
 			_, processErr := processor.ProcessOrder(order, mockStore)
 
-			// processErr is a domain.Describable; convert to plain error for assertions.
+			// processErr is a domain.SerializableError; convert to plain error for assertions.
 			var asErr error
 			if processErr != nil {
 				asErr = processErr

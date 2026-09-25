@@ -342,6 +342,10 @@ func TestExecute_NilFilterAggregateValidatesPinnedTarget(t *testing.T) {
 	resp, err := query.Execute(t.Context(), rs, opener, attrs.Volume, attrs.PreparedQuery, attrs.Index,
 		&servicepb.ExecutePreparedQueryRequest{Ledger: "l", QueryName: "q", Mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES}, nil, nil)
 	require.Nil(t, resp)
-	require.EqualError(t, err, "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+
+	var targetErr *query.ErrPreparedQueryAggregateTarget
+	require.ErrorAs(t, err, &targetErr)
+	require.Equal(t, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, targetErr.Target)
+	require.Equal(t, domain.KindValidation, targetErr.Kind())
 	require.Equal(t, uint64(100), rs.Leases().BeginGC(100), "validation failure must release the reservation")
 }

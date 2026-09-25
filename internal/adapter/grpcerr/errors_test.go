@@ -412,7 +412,7 @@ func TestFromStatusError_BusinessErrorBecomesDescribable(t *testing.T) {
 	require.True(t, ok, "the reconstructed error must satisfy the contract handleError dispatches on")
 	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema, d.Reason())
 	require.Equal(t, domain.KindPrecondition, domain.Kind(d))
-	require.Equal(t, "type", d.Metadata()["field"])
+	require.Equal(t, "type", domain.MetadataOf(d)["field"])
 
 	// The message must be the leader's, with no transport wrapper in front of
 	// it: it becomes the client-visible errorMessage.

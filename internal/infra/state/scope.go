@@ -29,7 +29,7 @@ import (
 // violation; the cache stays in lockstep with Pebble because gatedScope
 // refuses to forward the read before any mutation lands.
 //
-// Implements domain.Describable (KindInternal) so applyProposal can wrap
+// Implements domain.SerializableError (KindInternal) so applyProposal can wrap
 // it in a domain.BusinessError and surface it via ApplyResult.Error
 // without killing the FSM apply loop.
 type ErrCoverageMiss struct {
@@ -44,7 +44,8 @@ func (e *ErrCoverageMiss) Error() string {
 		e.Attribute, e.IDHex, e.RaftIndex)
 }
 
-func (*ErrCoverageMiss) Reason() string { return domain.ErrReasonCoverageMiss }
+func (*ErrCoverageMiss) Kind() domain.ErrorKind { return domain.KindInternal }
+func (*ErrCoverageMiss) Reason() string         { return domain.ErrReasonCoverageMiss }
 
 // Metadata keys are camelCase, matching every other Describable and the
 // repo-wide wire convention (CLAUDE.md). This map was NOT unreachable before
@@ -55,10 +56,12 @@ func (*ErrCoverageMiss) Reason() string { return domain.ErrReasonCoverageMiss }
 //     flattens the chain via errors.As), and a ProcessOrders failure feeds
 //     buildAuditFailure, which copies Metadata() into the hash-chained
 //     AuditFailure.Context. The snake_case keys were already in the audit.
-//   - planInvariantDescribable returns the bare miss to applyProposal, which
-//     surfaces it as a domain.BusinessError whose Metadata() delegates through
-//     to the miss. That metadata used to reach the gRPC ErrorInfo; API error
-//     responses now use PublicDetails while the audit identity stays intact.
+//   - planInvariantFailure returns the bare miss to applyProposal, which
+//     surfaces it wrapped in a domain.BusinessError. The carrier declares no
+//     Metadata() of its own, so the context is read off the miss itself through
+//     domain.PublicErrorDetails. That metadata used to reach the gRPC ErrorInfo;
+//     API error responses now use PublicDetails while the audit identity stays
+//     intact.
 //
 // So operator tooling keyed on canonical_hex / id_hex / raft_index stops
 // matching at this deploy, and audit entries for this failure class carry

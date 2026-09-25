@@ -101,7 +101,7 @@ func TestDeleteLedger_MissingBoundaryCoverageSurfacesCoverageMiss(t *testing.T) 
 
 	// The real FSM result retains the diagnostic key for audit and operators,
 	// while its public presentation must not expose that key to the caller.
-	var described domain.Describable
+	var described domain.SerializableError
 	require.ErrorAs(t, result.Results[0].Error, &described)
 	message, metadata, overridden := domain.PublicErrorDetails(described)
 	require.True(t, overridden)

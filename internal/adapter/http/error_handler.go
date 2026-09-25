@@ -44,11 +44,42 @@ func kindToHTTPStatus(k domain.ErrorKind) int {
 	return http.StatusInternalServerError
 }
 
+// classifiedErrorCode is the coarse error code for a failure that classifies
+// itself but owns no public Reason. It names the class and nothing finer: a
+// domain.Classifiable never committed to a wire identifier, so deriving a
+// reason-shaped code from its Go type here would ship a contract the error
+// deliberately declined to make. These are the same generic codes this handler
+// already answers reason-less statuses with.
+func classifiedErrorCode(k domain.ErrorKind) string {
+	switch k { //exhaustive:enforce
+	case domain.KindValidation, domain.KindPrecondition:
+		return "INVALID_REQUEST"
+	case domain.KindNotFound:
+		return "NOT_FOUND"
+	case domain.KindAlreadyExists, domain.KindConflict:
+		return "CONFLICT"
+	case domain.KindUnavailable:
+		return "UNAVAILABLE"
+	case domain.KindUnauthenticated:
+		return "UNAUTHENTICATED"
+	case domain.KindPermissionDenied:
+		return "PERMISSION_DENIED"
+	case domain.KindResourceExhausted:
+		return "RESOURCE_EXHAUSTED"
+	case domain.KindInternal:
+		return "INTERNAL_ERROR"
+	}
+
+	// Unreachable when the exhaustive linter is enabled.
+	return "INTERNAL_ERROR"
+}
+
 // handleError converts a server-side error into a JSON-formatted HTTP
-// response. The bulk of the work is delegated to the domain.Describable
-// contract: any *Err* type or sentinel from internal/domain flows through
-// kindToHTTPStatus + Reason(). The few branches below handle errors that
-// are not domain Describables — the leader-discovery sentinel from
+// response. The bulk of the work is delegated to the domain error contract:
+// any *Err* type or sentinel from internal/domain flows through
+// kindToHTTPStatus + Reason(), and an error that classifies itself without
+// declaring a reason answers from its kind alone. The few branches below
+// handle errors that carry neither — the leader-discovery sentinel from
 // commonpb and the generic NotFoundError used by route lookups.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
 	// commonpb.ErrNoLeader carries its own retry hint (Retry-After) — keep
@@ -126,6 +157,24 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		// Render the same public message selected by the originating gRPC
 		// encoder; routing wrappers belong to diagnostics, not the response.
 		writeErrorResponse(w, httpStatus, d.Reason, errors.New(d.Message))
+
+		return
+	}
+
+	// A failure that classifies itself but owns no public reason: today the
+	// read path's prepared-query argument checks. Describe cannot normalise it
+	// — there is no Reason to normalise — but the kind still selects the
+	// status, so a caller mistake answers 400 here exactly as it answers
+	// codes.InvalidArgument on the gRPC surface, instead of degrading to a 500.
+	// KindInternal keeps the sanitiser: a server fault must not echo its
+	// message to the client.
+	if c, ok := errors.AsType[domain.Classifiable](err); ok && c.Kind() != domain.KindInternal {
+		httpStatus := kindToHTTPStatus(c.Kind())
+		if httpStatus == http.StatusServiceUnavailable {
+			w.Header().Set("Retry-After", "1")
+		}
+
+		writeErrorResponse(w, httpStatus, classifiedErrorCode(c.Kind()), errors.New(c.Error()))
 
 		return
 	}

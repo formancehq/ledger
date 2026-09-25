@@ -82,10 +82,9 @@ type Descriptor struct {
 // for a follower decoding a status from the leader while forwarding.
 //
 // Remote satisfies domain.Describable so a consumer not yet migrated to
-// Describe still sees a typed error rather than an unrecognised one; such a
-// consumer re-derives the kind from the reason and loses the wire's
-// classification for a reason this build does not know. Describe is the
-// contract that does not.
+// Describe still sees a typed error rather than an unrecognised one. Kind()
+// returns the classification the wire carried, so even that consumer keeps a
+// reason this build's enum does not know classified as the sender described it.
 type Remote struct {
 	// KindValue is the semantic kind observed off the wire.
 	KindValue domain.ErrorKind
@@ -103,6 +102,7 @@ type Remote struct {
 var _ domain.Describable = (*Remote)(nil)
 
 func (e *Remote) Error() string               { return e.Msg }
+func (e *Remote) Kind() domain.ErrorKind      { return e.KindValue }
 func (e *Remote) Reason() string              { return e.ReasonValue }
 func (e *Remote) Metadata() map[string]string { return e.Meta }
 
@@ -112,11 +112,13 @@ func (e *Remote) Metadata() map[string]string { return e.Meta }
 // business outcome, so nothing received is trusted — the reason, message and
 // metadata are dropped rather than answered to the client.
 //
-// It deliberately implements neither domain.Describable nor GRPCStatus, so it
+// It deliberately implements neither domain.Classifiable nor GRPCStatus, so it
 // reaches the internal-error sanitizer on every surface: an HTTP 500 with a
 // correlation ID and a server-side log, and codes.Unknown with a correlation
-// ID on gRPC. Error() names the offending pair for that log and withholds the
-// untrusted payload.
+// ID on gRPC. Classifiable is the weaker of the two domain contracts and the
+// one both adapters now dispatch on, so failing it is what keeps the untrusted
+// payload off every answer. Error() names the offending pair for that log and
+// withholds it.
 type InvalidWireError struct {
 	// ReasonValue is the reason received, recorded for the server-side log.
 	ReasonValue string
@@ -145,7 +147,7 @@ func (e *InvalidWireError) Error() string {
 // them. Error() above is the safe rendering: it names the reason and codes,
 // which are this build's own enum values, and carries no peer text.
 //
-// The type deliberately implements neither Describable nor GRPCStatus, so a
+// The type deliberately implements neither Classifiable nor GRPCStatus, so a
 // surface that omits this check still degrades to its internal-error path
 // rather than answering the pair as a business outcome. This function makes
 // that guarantee explicit rather than incidental to the method set.

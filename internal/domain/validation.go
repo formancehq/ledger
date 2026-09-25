@@ -42,17 +42,21 @@ const maxSigningKeyIDLength = 256
 const MaxFilterDepth = 100
 
 // ErrFilterTooDeep is returned when a QueryFilter recursion exceeds
-// MaxFilterDepth. Typed Describable (Kind=Validation via ErrFilterCompilation)
-// so the gRPC adapter maps it to InvalidArgument with the depth in the message.
-// Single source of truth: both query.Compile (execute time) and
+// MaxFilterDepth. It is an ErrFilterCompilation (Kind=Validation) so the gRPC
+// adapter maps it to InvalidArgument with the depth in the message. Single
+// source of truth: both query.Compile (execute time) and
 // ValidateFilterForTarget (prepared-query write time) return this sentinel.
-var ErrFilterTooDeep Describable = &BusinessError{Err: &ErrFilterCompilation{
+//
+// The prepared-query FSM handler re-runs the same validation during apply, so
+// the sentinel must serialise its own context — it is the concrete error rather
+// than a BusinessError carrier, which cannot.
+var ErrFilterTooDeep SerializableError = &ErrFilterCompilation{
 	Detail: fmt.Sprintf("query filter exceeds maximum nesting depth (%d)", MaxFilterDepth),
-}}
+}
 
 // errValidation wraps a primitive validation error from
 // github.com/formancehq/invariants so it satisfies the local
-// Describable contract (Kind=KindValidation, Reason=ErrReasonValidation)
+// SerializableError contract (Kind=KindValidation, Reason=ErrReasonValidation)
 // without duplicating message strings. Each sentinel below is
 // pre-instantiated once, so errors.Is comparisons on the exported variables
 // remain stable.
@@ -62,6 +66,7 @@ type errValidation struct {
 
 func (e *errValidation) Error() string             { return e.err.Error() }
 func (e *errValidation) Unwrap() error             { return e.err }
+func (*errValidation) Kind() ErrorKind             { return KindValidation }
 func (*errValidation) Reason() string              { return ErrReasonValidation }
 func (*errValidation) Metadata() map[string]string { return nil }
 
@@ -71,34 +76,34 @@ func (*errValidation) Metadata() map[string]string { return nil }
 // inside every volume key.
 const maxColorLength = 32
 
-// Storage-safety validation sentinels. All are Describable so they flow
+// Storage-safety validation sentinels. All are SerializableError so they flow
 // through BusinessError. Each one wraps the matching primitive sentinel from
 // github.com/formancehq/invariants; the wrapping preserves
 // errors.Is identity against the primitive (via Unwrap) and against the
 // local sentinel (via pointer identity in wrapValidationErr).
 var (
-	ErrLedgerNameRequired    Describable = &errValidation{err: invariants.ErrLedgerNameRequired}
-	ErrLedgerNameInvalidChar Describable = &errValidation{err: invariants.ErrLedgerNameInvalidChar}
-	ErrLedgerNameTooLong     Describable = &errValidation{err: invariants.ErrLedgerNameTooLong}
+	ErrLedgerNameRequired    SerializableError = &errValidation{err: invariants.ErrLedgerNameRequired}
+	ErrLedgerNameInvalidChar SerializableError = &errValidation{err: invariants.ErrLedgerNameInvalidChar}
+	ErrLedgerNameTooLong     SerializableError = &errValidation{err: invariants.ErrLedgerNameTooLong}
 
-	ErrMetadataKeyEmpty              Describable = &errValidation{err: invariants.ErrMetadataKeyEmpty}
-	ErrMetadataKeyInvalidChar        Describable = &errValidation{err: invariants.ErrMetadataKeyInvalidChar}
-	ErrMetadataValueContainsNullByte Describable = &errValidation{err: invariants.ErrMetadataValueContainsNullByte}
+	ErrMetadataKeyEmpty              SerializableError = &errValidation{err: invariants.ErrMetadataKeyEmpty}
+	ErrMetadataKeyInvalidChar        SerializableError = &errValidation{err: invariants.ErrMetadataKeyInvalidChar}
+	ErrMetadataValueContainsNullByte SerializableError = &errValidation{err: invariants.ErrMetadataValueContainsNullByte}
 
-	ErrAccountAddressEmpty        Describable = &errValidation{err: invariants.ErrLedgerAccountAddressEmpty}
-	ErrAccountAddressInvalidChar  Describable = &errValidation{err: invariants.ErrLedgerAccountAddressInvalidChar}
-	ErrAccountAddressEmptySegment Describable = &errValidation{err: invariants.ErrLedgerAccountAddressEmptySegment}
-	ErrAccountAddressTooLong      Describable = &errValidation{err: invariants.ErrLedgerAccountAddressTooLong}
+	ErrAccountAddressEmpty        SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressEmpty}
+	ErrAccountAddressInvalidChar  SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressInvalidChar}
+	ErrAccountAddressEmptySegment SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressEmptySegment}
+	ErrAccountAddressTooLong      SerializableError = &errValidation{err: invariants.ErrLedgerAccountAddressTooLong}
 
-	ErrAssetInvalid Describable = &errValidation{err: invariants.ErrAssetInvalid}
+	ErrAssetInvalid SerializableError = &errValidation{err: invariants.ErrAssetInvalid}
 )
 
 // wrapValidationErr maps a primitive validation error returned by
-// github.com/formancehq/invariants to the matching Describable
+// github.com/formancehq/invariants to the matching SerializableError
 // sentinel exported above. Returning the pre-instantiated sentinel
 // preserves errors.Is identity for call sites that compare against the
 // local variable.
-func wrapValidationErr(err error) Describable {
+func wrapValidationErr(err error) SerializableError {
 	if err == nil {
 		return nil
 	}
@@ -138,8 +143,8 @@ func wrapValidationErr(err error) Describable {
 }
 
 // ValidateLedgerName delegates to invariants and maps the primitive sentinel
-// back to the local Describable counterpart.
-func ValidateLedgerName(name string) Describable {
+// back to the local SerializableError counterpart.
+func ValidateLedgerName(name string) SerializableError {
 	return wrapValidationErr(invariants.ValidateLedgerName(name))
 }
 
@@ -150,7 +155,7 @@ func ValidateLedgerName(name string) Describable {
 //
 // Names land in the `x-next-cursor` trailer of the `numscripts list` stream,
 // so they must be printable ASCII (0x20–0x7E) and bounded.
-func ValidateNumscriptName(name string) Describable {
+func ValidateNumscriptName(name string) SerializableError {
 	if name == "" {
 		return ErrNumscriptNameRequired
 	}
@@ -177,7 +182,7 @@ func ValidateNumscriptName(name string) Describable {
 // ledger but a missing/empty `query` no longer fails at `loadLedger("")`;
 // it would silently persist an empty-named prepared query. Calling this
 // validator at admission/FSM closes that hole loudly.
-func ValidatePreparedQueryName(name string) Describable {
+func ValidatePreparedQueryName(name string) SerializableError {
 	if name == "" {
 		return ErrPreparedQueryNameRequired
 	}
@@ -228,7 +233,7 @@ func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 // enforces at execute time — so a maliciously (or accidentally) deep tree is
 // rejected at write time with ErrFilterTooDeep instead of being persisted (only
 // to fail every execution) or overflowing the Go stack on the write path (#341).
-func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) Describable {
+func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) SerializableError {
 	return validateFilterForTarget(f, target, 0)
 }
 
@@ -242,7 +247,7 @@ func ValidateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 // unexecutable prepared query be persisted; a deeper one would overflow the
 // stack here before Compile's guard is ever reached — the exact fatal DoS,
 // invariant #7).
-func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) Describable {
+func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget, depth int) SerializableError {
 	if f == nil {
 		return nil
 	}
@@ -277,10 +282,10 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 		return nil
 	}
 
-	return &BusinessError{Err: &ErrFilterCompilation{
+	return &ErrFilterCompilation{
 		Detail: fmt.Sprintf("condition %q is not valid on %s queries",
 			kind.String(), commonpb.TargetHumanName(target)),
-	}}
+	}
 }
 
 // ValidateSigningKeyID checks a signing-key identifier against the same
@@ -289,7 +294,7 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 // github.com/formancehq/invariants. Parent key IDs go through the
 // same rule so revoke/cascade traversals cannot smuggle in an unsafe
 // identifier either.
-func ValidateSigningKeyID(id string) Describable {
+func ValidateSigningKeyID(id string) SerializableError {
 	if id == "" {
 		return ErrSigningKeyIDRequired
 	}
@@ -321,29 +326,29 @@ func isPrintableASCII(s string) bool {
 }
 
 // ValidateAccountAddress delegates to invariants and maps the primitive
-// sentinel back to the local Describable counterpart.
-func ValidateAccountAddress(address string) Describable {
+// sentinel back to the local SerializableError counterpart.
+func ValidateAccountAddress(address string) SerializableError {
 	return wrapValidationErr(invariants.ValidateLedgerAccountAddress(address))
 }
 
 // ValidateMetadataKey delegates to invariants and maps the primitive sentinel
-// back to the local Describable counterpart.
-func ValidateMetadataKey(key string) Describable {
+// back to the local SerializableError counterpart.
+func ValidateMetadataKey(key string) SerializableError {
 	return wrapValidationErr(invariants.ValidateMetadataKey(key))
 }
 
 // ValidateMetadataString validates a string-bearing metadata payload (e.g. a
 // numscript-emitted string value before it is wrapped in a MetadataValue).
 // It delegates to invariants and maps the primitive sentinel back to the
-// local Describable counterpart.
-func ValidateMetadataString(value string) Describable {
+// local SerializableError counterpart.
+func ValidateMetadataString(value string) SerializableError {
 	return wrapValidationErr(invariants.ValidateMetadataString(value))
 }
 
 // ValidateMetadataValue inspects the proto MetadataValue and validates the
 // string-bearing variants against the same null-byte rule as keys. Non-string
 // variants are accepted unchanged.
-func ValidateMetadataValue(value *commonpb.MetadataValue) Describable {
+func ValidateMetadataValue(value *commonpb.MetadataValue) SerializableError {
 	switch v := value.GetType().(type) {
 	case *commonpb.MetadataValue_StringValue:
 		return wrapValidationErr(invariants.ValidateMetadataString(v.StringValue))
@@ -359,8 +364,8 @@ func ValidateMetadataValue(value *commonpb.MetadataValue) Describable {
 }
 
 // ValidateAsset delegates to invariants and maps the primitive sentinel back
-// to the local Describable counterpart.
-func ValidateAsset(asset string) Describable {
+// to the local SerializableError counterpart.
+func ValidateAsset(asset string) SerializableError {
 	return wrapValidationErr(invariants.ValidateAsset(asset))
 }
 
@@ -375,7 +380,7 @@ func ValidateAsset(asset string) Describable {
 // The rule is ^[A-Z]*$: uppercase letters only. Empty is allowed (the
 // "uncolored" bucket) but anything else must be uppercase ASCII. Length is
 // capped to keep the key short.
-func ValidateColor(color string) Describable {
+func ValidateColor(color string) SerializableError {
 	if len(color) > maxColorLength {
 		return ErrColorTooLong
 	}

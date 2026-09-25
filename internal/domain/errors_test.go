@@ -27,7 +27,14 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, inner, bErr.Unwrap())
 	require.Equal(t, KindNotFound, Kind(bErr))
 	require.Equal(t, ErrReasonLedgerNotFound, bErr.Reason())
-	require.Equal(t, map[string]string{"name": "missing"}, bErr.Metadata())
+	// BusinessError is a carrier, not a SerializableError: it exposes no
+	// Metadata() of its own. The inner context still reaches the API edge
+	// through the presentation helper, and errors.As reaches the inner type.
+	require.Equal(t, map[string]string{"name": "missing"}, MetadataOf(inner))
+
+	message, metadata, _ := PublicErrorDetails(bErr)
+	require.Equal(t, "ledger does not exist: missing", message)
+	require.Equal(t, map[string]string{"name": "missing"}, metadata)
 }
 
 func TestIsFreezableFailure(t *testing.T) {
@@ -295,6 +302,13 @@ func TestNewFilterCompilationError(t *testing.T) {
 // reached via a BusinessError construction site (which would catch it at
 // compile time). The reflection-based discovery means the test catches new
 // additions automatically — no hand-maintained list to forget about.
+//
+// It also pins the EN-2081 agreement rule: a Describable declares its own
+// Kind(), but that kind must equal the one KindForReason derives from its
+// reason. The switch stays the single source of reason→kind truth because a
+// failure replayed from the idempotency projection carries only a reason, so a
+// type whose declared kind drifted from the switch would classify differently
+// on the replay than it did on the original apply.
 func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 	t.Parallel()
 
@@ -449,11 +463,11 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 			"type %s in internal/domain does not implement Describable — every domain error type must declare Kind(), Reason(), and Metadata() so the gRPC and HTTP adapters can route it",
 			name)
 
-		// Every domain reason must resolve to an ErrorReason enum value — kind
-		// is derived from it (domain.Kind / KindForReason), so a reason with no
-		// enum value would silently classify as Internal. The two wrapper types
-		// delegate Reason() to a Cause and panic on a nil zero-value; their
-		// reason is the cause's, covered by the cause's own entry.
+		// Every domain reason must resolve to an ErrorReason enum value —
+		// KindForReason derives from it, so a reason with no enum value would
+		// silently classify as Internal. The two wrapper types delegate
+		// Reason() to a Cause and panic on a nil zero-value; their reason is
+		// the cause's, covered by the cause's own entry.
 		switch name {
 		case "ErrMetadataKeyValidation", "ErrAccountValidation":
 			continue
@@ -463,6 +477,11 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 
 		require.NotEqualf(t, commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, ReasonCode(d.Reason()),
 			"reason %q of %s has no ErrorReason enum value — add ERROR_REASON_%s to common.proto", d.Reason(), name, d.Reason())
+
+		require.Equalf(t, KindForReason(ReasonCode(d.Reason())), d.Kind(),
+			"%s declares Kind() = %s but its reason %q classifies as %s in KindForReason — "+
+				"a frozen failure replays from the reason alone, so the two must agree",
+			name, d.Kind(), d.Reason(), KindForReason(ReasonCode(d.Reason())))
 	}
 
 	// And conversely: every entry in instances must correspond to a

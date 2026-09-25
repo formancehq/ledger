@@ -256,7 +256,7 @@ func TestProcessRegisterSigningKey_RejectsInvalidIDs(t *testing.T) {
 		name        string
 		keyID       string
 		parentKeyID string
-		wantErr     domain.Describable
+		wantErr     domain.SerializableError
 	}{
 		{name: "empty key id", keyID: "", parentKeyID: "parent", wantErr: domain.ErrSigningKeyIDRequired},
 		{name: "key id with newline", keyID: "key\n001", parentKeyID: "", wantErr: domain.ErrSigningKeyIDInvalidChar},
@@ -307,7 +307,7 @@ func TestProcessRevokeSigningKey_RejectsInvalidIDs(t *testing.T) {
 	tests := []struct {
 		name    string
 		keyID   string
-		wantErr domain.Describable
+		wantErr domain.SerializableError
 	}{
 		{name: "empty key id", keyID: "", wantErr: domain.ErrSigningKeyIDRequired},
 		{name: "key id with control byte", keyID: "key\x07id", wantErr: domain.ErrSigningKeyIDInvalidChar},
