@@ -98,6 +98,12 @@ func NewAuditReplayer(logger logging.Logger, clusterID string) (*AuditReplayer, 
 
 		return nil, fmt.Errorf("creating audit replay machine: %w", err)
 	}
+	if err := NewRecovery(machine, store).RecoverState(); err != nil {
+		_ = store.Close()
+		_ = os.RemoveAll(dir)
+
+		return nil, fmt.Errorf("initializing audit replay state: %w", err)
+	}
 
 	return &AuditReplayer{machine: machine, store: store, dir: dir}, nil
 }
