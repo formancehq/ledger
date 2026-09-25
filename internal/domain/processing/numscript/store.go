@@ -2,11 +2,8 @@ package numscript
 
 import (
 	"context"
-	"encoding/binary"
 	"math/big"
 	"sort"
-
-	"github.com/zeebo/blake3"
 
 	numscriptlib "github.com/formancehq/numscript"
 
@@ -270,41 +267,25 @@ func (s *RecordingStore) Hash() []byte {
 		return nil
 	}
 
-	h := blake3.New()
+	h := domain.NewObservationHasher()
 
-	// Length-delimited encoding: every field is a uvarint byte-length followed by
-	// its raw bytes, and every section is prefixed by its record count. Plain
-	// `key=value\n` framing was ambiguous — metadata values are arbitrary client
-	// bytes (only NUL is rejected; `=` and `\n` are valid), so a crafted value
-	// could make a *changed* input set serialize to the same stream and evade
-	// stale detection. Length + count prefixes make the encoding injective, so
-	// distinct record sets always hash distinctly.
-	writeField := func(b string) {
-		var lenBuf [binary.MaxVarintLen64]byte
-		n := binary.PutUvarint(lenBuf[:], uint64(len(b)))
-		_, _ = h.Write(lenBuf[:n])
-		_, _ = h.WriteString(b)
-	}
 	writeSection := func(label string, records map[string]string) {
-		writeField(label)
+		h.WriteStringField(label)
 		keys := make([]string, 0, len(records))
 		for k := range records {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 
-		var cntBuf [binary.MaxVarintLen64]byte
-		n := binary.PutUvarint(cntBuf[:], uint64(len(keys)))
-		_, _ = h.Write(cntBuf[:n])
-
+		h.WriteCount(len(keys))
 		for _, k := range keys {
-			writeField(k)
-			writeField(records[k])
+			h.WriteStringField(k)
+			h.WriteStringField(records[k])
 		}
 	}
 
 	writeSection("balances", s.balanceRecords)
 	writeSection("metadata", s.metadataRecords)
 
-	return h.Sum(nil)
+	return h.Sum()
 }
