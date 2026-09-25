@@ -180,6 +180,14 @@ integrity gap, not a documented exemption; a checker pass comparing the stored
 counter to `max(CreatedLedgerLog.id) + 1` over the primary-store history is a
 follow-up.
 
+Event sink configuration is likewise a rebuilt projection. The checkpoint's
+sink keyset seeds the fold; post-checkpoint `AddedEventsSink` logs assign a
+configuration and `RemovedEventsSink` logs delete it. Both mutations are staged
+in the rebuild batch and become durable only when that batch commits. An error
+before commit cancels the current batch, leaving the last committed rebuild
+prefix for the restore lifecycle to reject rather than activating a stale
+partially rebuilt store.
+
 After the restore, the node rejoins (or initialises) the Raft cluster as a fresh peer. The standard config validation (`internal/bootstrap/config_validation.go`) verifies that the restored `cluster-id` matches the cluster the node is supposed to be joining.
 
 The indexbuilder's `EMPTY`/`NON_EMPTY` ledger-history bytes are peer read-store state, not primary-store backup content. A restored node with a fresh read store reconstructs them by replaying the restored global log from zero; registry entries remain inactive until their `CreatedIndexLog` is reached. EMPTY ledgers promote their indexes without backfill, while NON_EMPTY ledgers schedule the normal replay. This state therefore needs no `RebuildDelta` branch: the exported log is its reconstruction evidence. Normal same-node restarts retain the byte atomically with the read-index cursor, and query checkpoints include it because they checkpoint the read store itself.

@@ -41,7 +41,9 @@ func RebuildDelta(
 	fromLogSeq uint64,
 	fromAuditSeq uint64,
 ) error {
-	return rebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq, state.DeleteQueryCheckpointScheduleFromBatch)
+	attrs := attributes.New()
+
+	return rebuildDelta(ctx, logger, store, fromLogSeq, fromAuditSeq, state.DeleteQueryCheckpointScheduleFromBatch, attrs.SinkConfig.Delete)
 }
 
 func rebuildDelta(
@@ -51,6 +53,7 @@ func rebuildDelta(
 	fromLogSeq uint64,
 	fromAuditSeq uint64,
 	deleteQueryCheckpointSchedule func(*dal.WriteSession) error,
+	deleteSinkConfig func(*dal.WriteSession, []byte) error,
 ) error {
 	attrs := attributes.New()
 	batch := store.OpenWriteSession()
@@ -385,6 +388,16 @@ func rebuildDelta(
 				}
 			}
 
+		case *commonpb.LogPayload_RemovedEventsSink:
+			if p.RemovedEventsSink != nil {
+				key := domain.SinkConfigKey{Name: p.RemovedEventsSink.GetName()}
+				if err := deleteSinkConfig(batch, key.Bytes()); err != nil {
+					_ = batch.Cancel()
+
+					return fmt.Errorf("deleting events sink at log %d: %w", seq, err)
+				}
+			}
+
 		case *commonpb.LogPayload_SavedLedgerMetadata:
 			if p.SavedLedgerMetadata != nil {
 				for key, value := range p.SavedLedgerMetadata.GetMetadata() {
@@ -539,7 +552,6 @@ func rebuildDelta(
 			}
 
 		// Log types with no persistent state to rebuild:
-		case *commonpb.LogPayload_RemovedEventsSink:
 		case *commonpb.LogPayload_DeletedPreparedQuery:
 			if deleted := p.DeletedPreparedQuery; deleted != nil {
 				if err := state.DeletePreparedQuery(batch, deleted.GetLedger(), deleted.GetName()); err != nil {

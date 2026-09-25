@@ -741,7 +741,7 @@ func TestRebuildDelta_DeletedQueryCheckpointScheduleErrorKeepsCheckpointSeed(t *
 		attempts.Add(1)
 
 		return injectedErr
-	})
+	}, attributes.New().SinkConfig.Delete)
 	require.ErrorIs(t, err, injectedErr)
 	require.Equal(t, int32(1), attempts.Load())
 
@@ -2195,4 +2195,59 @@ func TestBackup_IdempotencyExpiresAtRestoreParity(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, dstHashes, 1, "restored time-index has the outcome at its expires_at")
 	require.Equal(t, len(srcHashes), len(dstHashes), "source and restored eviction schedules match")
+}
+
+// TestRebuildDelta_RemovedEventSinkDeleteErrorCancels pins the error-path
+// contract for the RemovedEventsSink log replay: a failing sink deletion must
+// propagate the error and must not commit a partially-updated rebuild batch.
+func TestRebuildDelta_RemovedEventSinkDeleteErrorCancels(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+
+	attrs := attributes.New()
+	sink := &commonpb.SinkConfig{
+		Name:   "sink-to-delete",
+		Format: "json",
+	}
+
+	// Seed the store with a pre-existing sink so the checkpoint holds it.
+	pre := store.OpenWriteSession()
+	require.NoError(t, pre.SetProto(coldLogKey(1), &commonpb.Log{
+		Sequence: 1,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_AddedEventsSink{
+			AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: sink},
+		}},
+	}))
+	require.NoError(t, pre.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	_, err := attrs.SinkConfig.Set(pre, domain.SinkConfigKey{Name: "sink-to-delete"}.Bytes(), sink)
+	require.NoError(t, err)
+	require.NoError(t, pre.Commit())
+
+	// Delta: removal log at sequence 2.
+	delta := store.OpenWriteSession()
+	require.NoError(t, delta.SetProto(coldLogKey(2), &commonpb.Log{
+		Sequence: 2,
+		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
+			RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "sink-to-delete"},
+		}},
+	}))
+	require.NoError(t, delta.SetProto(coldAuditKey(2), auditSuccess(2, 2, 2)))
+	require.NoError(t, delta.Commit())
+
+	injectedErr := errors.New("injected sink deletion failure")
+	err = rebuildDelta(context.Background(), testLogger(), store, 1, 0,
+		state.DeleteQueryCheckpointScheduleFromBatch,
+		func(*dal.WriteSession, []byte) error { return injectedErr },
+	)
+	require.ErrorIs(t, err, injectedErr, "a failing sink deletion must propagate the error")
+
+	// The batch must have been cancelled — the sink must still be present.
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { require.NoError(t, handle.Close()) }()
+
+	configs, err := query.ReadAllSinkConfigs(attrs.SinkConfig, handle)
+	require.NoError(t, err)
+	require.Len(t, configs, 1, "a failed rebuild must leave the pre-existing sink intact")
 }
