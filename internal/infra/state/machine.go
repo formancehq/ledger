@@ -1741,7 +1741,7 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 	}
 
 	var d domain.SerializableError
-	if !errors.As(bizErr, &d) || !domain.IsFreezableFailure(domain.Kind(d)) {
+	if !errors.As(bizErr, &d) || !domain.IsFreezableFailure(d.Kind()) {
 		return nil
 	}
 

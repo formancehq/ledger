@@ -52,7 +52,7 @@ func TestCheckQueryCheckpointProjectionReady(t *testing.T) {
 			var describable domain.Describable
 			require.ErrorAs(t, err, &describable)
 			require.Equal(t, tc.wantReason, describable.Reason())
-			require.Equal(t, tc.wantKind, domain.Kind(describable))
+			require.Equal(t, tc.wantKind, describable.Kind())
 		})
 	}
 }

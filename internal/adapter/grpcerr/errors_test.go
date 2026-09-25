@@ -213,7 +213,7 @@ func TestBusinessErrorRoundTrip(t *testing.T) {
 			require.True(t, ok, "expected a decoded remote failure")
 			require.Equal(t, tt.err.Error(), remote.Error())
 			require.Equal(t, tt.err.Reason(), remote.Reason())
-			require.Equal(t, domain.Kind(tt.err), remote.KindValue,
+			require.Equal(t, tt.err.Kind(), remote.KindValue,
 				"the decoded kind must equal the kind the server classified")
 		})
 	}
@@ -411,7 +411,7 @@ func TestFromStatusError_BusinessErrorBecomesDescribable(t *testing.T) {
 	d, ok := errors.AsType[domain.Describable](converted)
 	require.True(t, ok, "the reconstructed error must satisfy the contract handleError dispatches on")
 	require.Equal(t, domain.ErrReasonMetadataFieldNotInSchema, d.Reason())
-	require.Equal(t, domain.KindPrecondition, domain.Kind(d))
+	require.Equal(t, domain.KindPrecondition, d.Kind())
 	require.Equal(t, "type", domain.MetadataOf(d)["field"])
 
 	// The message must be the leader's, with no transport wrapper in front of

@@ -185,12 +185,12 @@ send $amt (
 
 	require.ErrorIs(t, err, domain.ErrNumscriptScalingUnsupported,
 		"an unsupported scaling source must surface as the freezable scaling sentinel")
-	require.True(t, domain.IsFreezableFailure(domain.Kind(func() domain.SerializableError {
+	require.True(t, domain.IsFreezableFailure(func() domain.SerializableError {
 		var target domain.SerializableError
 		_ = errors.As(dre.Cause, &target)
 
 		return target
-	}())),
+	}().Kind()),
 		"the carried cause must be freezable so admission terminates instead of forwarding")
 
 	var runtimeErr *domain.ErrNumscriptRuntime

@@ -70,7 +70,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			require.True(t, domain.IsFreezableFailure(domain.Kind(tc.err)),
+			require.True(t, domain.IsFreezableFailure(tc.err.Kind()),
 				"the fixture must be freezable or recordIdempotencyFailure is a no-op and this test proves nothing")
 
 			machine, dataStore, _ := newTestMachine(t)

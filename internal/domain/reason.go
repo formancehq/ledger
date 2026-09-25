@@ -49,17 +49,6 @@ func ReasonString(code commonpb.ErrorReason) string {
 	return strings.TrimPrefix(code.String(), errorReasonPrefix)
 }
 
-// Kind returns the semantic ErrorKind a Classifiable reports. Every error in
-// the pipeline now answers its own classification — BusinessError forwards to
-// the error it wraps, ReplayedFailure re-derives from the persisted reason, and
-// apierr.Remote returns the kind it read off the wire — so this is a thin
-// accessor kept for call-site stability rather than a second derivation.
-//
-// Prefer c.Kind() in new code.
-func Kind(c Classifiable) ErrorKind {
-	return c.Kind()
-}
-
 // KindForReason returns the semantic ErrorKind for a reason. It re-derives the
 // kind a typed error reports from its reason alone, so a frozen idempotency
 // failure replays under the error's current classification and the checker can

@@ -245,8 +245,8 @@ so a layer commits only to what it can actually honour (EN-2081):
 
 | Interface | Adds | Who implements it | What an adapter does with it |
 |---|---|---|---|
-| `Classifiable` | `Kind() ErrorKind` | anything that needs a status code and nothing more — the gRPC envelope guard, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
-| `Describable` | `Reason() string` | every domain business error, plus the transport-layer validation guard | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
+| `Classifiable` | `Kind() ErrorKind` | anything that names no business outcome — the gRPC envelope guard, the admission idempotency-key and checkpoint-order guards, the read path's prepared-query argument checks | selects the status code; sends no `ErrorInfo` and no `errorCode` beyond the coarse kind-level one |
+| `Describable` | `Reason() string` | every domain business error | adds the `ErrorInfo` / `errorCode` clients pattern-match on |
 | `SerializableError` | `Metadata() map[string]string` | every error the FSM can emit | is written into the hash-chained `AuditFailure`, frozen into the idempotency projection and replayed |
 
 The tiers are enforced by the type system rather than by convention. The FSM
@@ -259,7 +259,9 @@ chain. Conversely, an error raised before a proposal exists — the write gate's
 
 A `Reason` is a versioned wire contract: once shipped, clients match on it and
 it can never be renamed. `Classifiable` exists so a layer can classify a
-failure correctly without minting one. A `Describable` declares its own
+failure correctly without minting one — and a guard whose only candidate reason
+would be the generic `VALIDATION` is precisely such a layer, since that reason
+restates the kind rather than adding to it. A `Describable` declares its own
 `Kind()`, but that kind must equal `KindForReason(ReasonCode(Reason()))` — the
 switch stays the single source of reason→kind truth, because a frozen failure
 replays from the persisted reason alone and must re-derive the same

@@ -247,7 +247,7 @@ func TestValidateCommandMetadata_EveryOrderShape(t *testing.T) {
 			var d domain.SerializableError
 			require.ErrorAs(t, err, &d)
 			require.Equal(t, domain.ErrReasonMetadataLimitExceeded, d.Reason())
-			require.Equal(t, domain.KindValidation, domain.Kind(d))
+			require.Equal(t, domain.KindValidation, d.Kind())
 			require.Equal(t, tc.wantDimension, domain.MetadataOf(d)["dimension"])
 		})
 	}

@@ -46,7 +46,7 @@ func TestValidateWrapping(t *testing.T) {
 			t.Parallel()
 
 			require.Same(t, tt.want, tt.got, "wrapper must return the pre-instantiated sentinel")
-			require.Equal(t, KindValidation, Kind(tt.got))
+			require.Equal(t, KindValidation, tt.got.Kind())
 			require.Equal(t, ErrReasonValidation, tt.got.Reason())
 			require.Nil(t, MetadataOf(tt.got))
 		})

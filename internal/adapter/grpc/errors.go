@@ -13,15 +13,17 @@ const errorDomain = "ledger"
 
 // validationError is a transport-layer validation error for request guards
 // whose vocabulary is gRPC-specific (e.g. "envelope") and therefore must not
-// live in the domain layer. It is a domain.Describable and not a
-// domain.SerializableError: it keeps the shipped VALIDATION reason clients
-// already match on, but it is raised before a proposal exists, so it has no
-// audit context to serialise and cannot reach the FSM.
+// live in the domain layer. It is a domain.Classifiable and nothing more.
+//
+// It used to declare the generic VALIDATION reason, which told a client
+// strictly nothing its InvalidArgument status did not already say, while
+// committing the server to a wire identifier it could never rename. A
+// transport guard has no business outcome to name: the status code is the
+// whole contract.
 type validationError struct{ msg string }
 
 func (e *validationError) Error() string        { return e.msg }
 func (*validationError) Kind() domain.ErrorKind { return domain.KindValidation }
-func (*validationError) Reason() string         { return domain.ErrReasonValidation }
 
 // errEnvelopesRequired guards Apply against an empty batch. "Envelope" is a
 // servicepb transport carrier (a signed/unsigned request wrapper), not a

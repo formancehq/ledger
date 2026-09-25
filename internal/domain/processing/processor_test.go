@@ -188,7 +188,7 @@ func TestProcessOrder_PreloadUnavailableRejected(t *testing.T) {
 	require.NotNil(t, derr)
 	require.ErrorIs(t, derr, domain.ErrPreloadUnavailable)
 	require.Equal(t, domain.ErrReasonPreloadUnavailable, derr.Reason())
-	require.Equal(t, domain.KindUnavailable, domain.Kind(derr),
+	require.Equal(t, domain.KindUnavailable, derr.Kind(),
 		"preload_unavailable is retryable and must never be frozen")
 }
 

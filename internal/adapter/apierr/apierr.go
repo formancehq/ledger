@@ -186,7 +186,7 @@ func Describe(err error) (Descriptor, bool) {
 		message, metadata, overridden := domain.PublicErrorDetails(d)
 
 		return Descriptor{
-			Kind:           domain.Kind(d),
+			Kind:           d.Kind(),
 			Reason:         d.Reason(),
 			Message:        message,
 			Metadata:       metadata,

@@ -278,7 +278,7 @@ func TestConvertNumscriptError_Scaling(t *testing.T) {
 	require.Equal(t, domain.ErrNumscriptScalingUnsupported, got,
 		"scaling must convert to the freezable validation sentinel")
 	require.Equal(t, domain.ErrReasonValidation, got.Reason())
-	require.True(t, domain.IsFreezableFailure(domain.Kind(got)),
+	require.True(t, domain.IsFreezableFailure(got.Kind()),
 		"scaling is deterministic and state-independent, so it must be freezable (terminal)")
 
 	var runtimeErr *domain.ErrNumscriptRuntime

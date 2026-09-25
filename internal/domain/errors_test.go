@@ -25,7 +25,7 @@ func TestBusinessError(t *testing.T) {
 	require.Equal(t, "ledger does not exist: missing", bErr.Error())
 	require.ErrorIs(t, bErr, inner)
 	require.Equal(t, inner, bErr.Unwrap())
-	require.Equal(t, KindNotFound, Kind(bErr))
+	require.Equal(t, KindNotFound, bErr.Kind())
 	require.Equal(t, ErrReasonLedgerNotFound, bErr.Reason())
 	// BusinessError is a carrier, not a SerializableError: it exposes no
 	// Metadata() of its own. The inner context still reaches the API edge
@@ -48,13 +48,13 @@ func TestIsFreezableFailure(t *testing.T) {
 		&ErrLedgerAlreadyExists{},
 	}
 	for _, d := range freezable {
-		require.Truef(t, IsFreezableFailure(Kind(d)), "%T should be freezable", d)
+		require.Truef(t, IsFreezableFailure(d.Kind()), "%T should be freezable", d)
 	}
 
 	// A preload miss is a transient server-side gap, not a definitive business
 	// outcome — it must never be frozen, or a retry replays the cache miss
 	// until TTL instead of rebuilding preload and re-executing.
-	require.False(t, IsFreezableFailure(Kind(new(ErrBalanceNotPreloaded))),
+	require.False(t, IsFreezableFailure(new(ErrBalanceNotPreloaded).Kind()),
 		"preload miss must not be freezable")
 }
 
@@ -497,9 +497,9 @@ func TestWriteGateErrorsDescribable(t *testing.T) {
 
 	// Kind is derived from the reason via the KindForReason switch (master's
 	// single source of truth), not declared per type — read it through Kind().
-	require.Equal(t, KindResourceExhausted, Kind(ErrWritesBlockedDiskFull))
+	require.Equal(t, KindResourceExhausted, ErrWritesBlockedDiskFull.Kind())
 	require.Equal(t, ErrReasonWritesBlockedDiskFull, ErrWritesBlockedDiskFull.Reason())
-	require.Equal(t, KindUnavailable, Kind(ErrWritesBlockedClockSkew))
+	require.Equal(t, KindUnavailable, ErrWritesBlockedClockSkew.Kind())
 	require.Equal(t, ErrReasonWritesBlockedClockSkew, ErrWritesBlockedClockSkew.Reason())
 
 	wrapped := fmt.Errorf("admission: %w", ErrWritesBlockedDiskFull)

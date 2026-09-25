@@ -346,7 +346,6 @@ func TestBusinessErrorToGRPCStatus_ValidationErrors(t *testing.T) {
 		{"script required", domain.ErrScriptRequired},
 		{"transaction target missing", domain.ErrTransactionTargetMissing},
 		{"ledger name required", domain.ErrLedgerNameRequired},
-		{"envelopes required", errEnvelopesRequired},
 	}
 
 	for _, tt := range tests {
@@ -660,7 +659,6 @@ func TestConvertToGRPCError_BareValidationSentinels(t *testing.T) {
 		err  error
 	}{
 		{"ledger name required", domain.ErrLedgerNameRequired},
-		{"envelopes required", errEnvelopesRequired},
 		{"metadata key required", domain.ErrMetadataKeyRequired},
 	}
 
@@ -680,6 +678,25 @@ func TestConvertToGRPCError_BareValidationSentinels(t *testing.T) {
 			require.Equal(t, errorDomain, info.GetDomain())
 		})
 	}
+}
+
+// TestConvertToGRPCError_TransportGuardHasNoReason is the counterpart for the
+// guards whose vocabulary is gRPC-specific. They classify themselves as
+// validation failures and stop there: the caller gets InvalidArgument with the
+// guard's message and no ErrorInfo, because a transport guard names no business
+// outcome a client could branch on.
+func TestConvertToGRPCError_TransportGuardHasNoReason(t *testing.T) {
+	t.Parallel()
+
+	st, ok := status.FromError(convertToGRPCError(errEnvelopesRequired, testLogger()))
+	require.True(t, ok)
+	require.Equal(t, codes.InvalidArgument, st.Code())
+	require.Equal(t, "at least one envelope is required", st.Message())
+	require.Empty(t, st.Details(), "a Classifiable ships no ErrorInfo")
+
+	_, describable := any(errEnvelopesRequired).(domain.Describable)
+	require.False(t, describable,
+		"the envelope guard must not declare a reason: it would be a wire contract with no business meaning")
 }
 
 // TestConvertToGRPCError_BackupInProgress pins the mapping of the

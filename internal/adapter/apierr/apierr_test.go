@@ -112,7 +112,7 @@ func TestDescribe_RemoteWinsOverTheDescribableBranch(t *testing.T) {
 
 	// Remote.Kind() carries the same wire classification, so even a consumer
 	// that reads it as a plain Describable no longer loses it.
-	require.Equal(t, domain.KindAlreadyExists, domain.Kind(remote))
+	require.Equal(t, domain.KindAlreadyExists, remote.Kind())
 }
 
 // TestDescribe_UnrecognisedError: an infrastructure failure has no business

@@ -1302,11 +1302,11 @@ func validateIdempotencyKey(key string) error {
 	}
 
 	if len(key) > maxIdempotencyKeyLength {
-		return &domain.BusinessError{Err: ErrIdempotencyKeyTooLong}
+		return ErrIdempotencyKeyTooLong
 	}
 
 	if !utf8.ValidString(key) {
-		return &domain.BusinessError{Err: ErrIdempotencyKeyInvalidUTF8}
+		return ErrIdempotencyKeyInvalidUTF8
 	}
 
 	return nil
@@ -1342,18 +1342,21 @@ func (errIdempotencyKeyTooLong) Error() string {
 	return "idempotency key exceeds maximum length of 256 characters"
 }
 func (errIdempotencyKeyTooLong) Kind() domain.ErrorKind { return domain.KindValidation }
-func (errIdempotencyKeyTooLong) Reason() string         { return domain.ErrReasonValidation }
 
-var ErrIdempotencyKeyTooLong domain.Describable = errIdempotencyKeyTooLong{}
+// The three admission guards in this file are domain.Classifiable and nothing
+// more. Each used to carry the generic VALIDATION reason, which duplicated its
+// kind without adding information, and none of them can reach the FSM — they
+// reject the request before a proposal exists, so there is no audit context to
+// serialise and no frozen outcome to replay.
+var ErrIdempotencyKeyTooLong domain.Classifiable = errIdempotencyKeyTooLong{}
 
 // ErrIdempotencyKeyInvalidUTF8 is returned when an idempotency key contains invalid UTF-8.
 type errIdempotencyKeyInvalidUTF8 struct{}
 
 func (errIdempotencyKeyInvalidUTF8) Error() string          { return "idempotency key contains invalid UTF-8" }
 func (errIdempotencyKeyInvalidUTF8) Kind() domain.ErrorKind { return domain.KindValidation }
-func (errIdempotencyKeyInvalidUTF8) Reason() string         { return domain.ErrReasonValidation }
 
-var ErrIdempotencyKeyInvalidUTF8 domain.Describable = errIdempotencyKeyInvalidUTF8{}
+var ErrIdempotencyKeyInvalidUTF8 domain.Classifiable = errIdempotencyKeyInvalidUTF8{}
 
 // ErrMaintenanceMode is returned when maintenance mode is active and the request is not a maintenance mode toggle.
 // Distinct from domain.ErrMaintenanceMode (FSM-level): this one is admission-level (caller hit the gate before the
@@ -1371,9 +1374,8 @@ func (errCheckpointOrderNotLast) Error() string {
 	return "checkpoint trigger (CreateQueryCheckpoint) must be the last order in a bulk request"
 }
 func (errCheckpointOrderNotLast) Kind() domain.ErrorKind { return domain.KindValidation }
-func (errCheckpointOrderNotLast) Reason() string         { return domain.ErrReasonValidation }
 
-var ErrCheckpointOrderNotLast domain.Describable = errCheckpointOrderNotLast{}
+var ErrCheckpointOrderNotLast domain.Classifiable = errCheckpointOrderNotLast{}
 
 // allRequestsAreMaintenanceMode returns true if every request in the batch is a SetMaintenanceMode request.
 func allRequestsAreMaintenanceMode(reqs []*servicepb.Request) bool {
@@ -1922,7 +1924,7 @@ func (a *Admission) classifyResolutionFailure(order *raftcmdpb.Order, cause erro
 	// successful balance()/meta() read set MutableReadAttempted, because the
 	// freezable check runs before the provenance branch (EN-1557).
 	var d domain.Describable
-	if errors.As(cause, &d) && domain.IsFreezableFailure(domain.Kind(d)) {
+	if errors.As(cause, &d) && domain.IsFreezableFailure(d.Kind()) {
 		// Terminating on a freezable failure is sound only when the script content
 		// is immutable (inline or exact version): re-running is guaranteed to fail
 		// identically, so there is no frozen outcome to preserve. A `latest`
@@ -2844,7 +2846,7 @@ func (a *Admission) requestsToOrders(ctx context.Context, reqs []*servicepb.Requ
 	}
 
 	if state.ClassifyCheckpointOrderPosition(orders) == state.CheckpointOrderInvalid {
-		return nil, nil, &domain.BusinessError{Err: ErrCheckpointOrderNotLast}
+		return nil, nil, ErrCheckpointOrderNotLast
 	}
 
 	return orders, overlay, nil
