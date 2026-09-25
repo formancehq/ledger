@@ -74,8 +74,9 @@ type EventSinkStatus struct {
 type EventSink struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              EventSinkSpec   `json:"spec,omitempty"`
-	Status            EventSinkStatus `json:"status,omitempty"`
+
+	Spec   EventSinkSpec   `json:"spec,omitempty"`
+	Status EventSinkStatus `json:"status,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -83,7 +84,8 @@ type EventSink struct {
 type EventSinkList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []EventSink `json:"items"`
+
+	Items []EventSink `json:"items"`
 }
 
 func init() {

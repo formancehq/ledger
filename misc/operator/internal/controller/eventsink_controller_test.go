@@ -1,13 +1,18 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
@@ -19,6 +24,35 @@ func testEventSink() *ledgerv1alpha1.EventSink {
 			ClusterRef: ledgerv1alpha1.EventSinkClusterRef{Name: "cluster"},
 			NATS:       ledgerv1alpha1.EventSinkNATSSpec{URL: "nats://nats:4222", Topic: "ledger.events"},
 		},
+	}
+}
+
+func TestEventSinkDeletionWaitsForOrphanedStatefulSet(t *testing.T) {
+	t.Parallel()
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+	sink := testEventSink()
+	sink.Namespace = "test"
+	sink.Finalizers = []string{eventSinkFinalizer}
+	now := metav1.Now()
+	sink.DeletionTimestamp = &now
+	sts := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: resourceName("cluster"), Namespace: "test"}}
+	kube := fake.NewClientBuilder().WithScheme(scheme).WithObjects(sink, sts).Build()
+	r := &EventSinkReconciler{Client: kube, Scheme: scheme}
+	key := types.NamespacedName{Name: sink.Name, Namespace: sink.Namespace}
+	result, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+	require.Positive(t, result.RequeueAfter)
+	var stored ledgerv1alpha1.EventSink
+	require.NoError(t, kube.Get(context.Background(), key, &stored))
+	require.Contains(t, stored.Finalizers, eventSinkFinalizer)
+
+	require.NoError(t, kube.Delete(context.Background(), sts))
+	_, err = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: key})
+	require.NoError(t, err)
+	if err := kube.Get(context.Background(), key, &stored); err == nil {
+		require.NotContains(t, stored.Finalizers, eventSinkFinalizer)
 	}
 }
 
@@ -38,6 +72,7 @@ func TestEventSinkNeverMutatesAnExternalName(t *testing.T) {
 	actual := actualEventSink{kind: "nats", nats: desiredEventSink(sink)}
 	action, err := reconcileSinkRuntime(sink, actual, true, func(...string) (string, error) {
 		t.Fatal("external sink was mutated")
+
 		return "", nil
 	})
 	require.Error(t, err)
@@ -47,6 +82,7 @@ func TestEventSinkNeverMutatesAnExternalName(t *testing.T) {
 	sink.DeletionTimestamp = &now
 	action, err = reconcileSinkRuntime(sink, actual, true, func(...string) (string, error) {
 		t.Fatal("external sink was deleted")
+
 		return "", nil
 	})
 	require.NoError(t, err)
@@ -59,6 +95,7 @@ func TestEventSinkRecoversAnAmbiguousAddByReadingOwner(t *testing.T) {
 	var calls [][]string
 	exec := func(args ...string) (string, error) {
 		calls = append(calls, slices.Clone(args))
+
 		return "", errors.New("response lost")
 	}
 	action, err := reconcileSinkRuntime(sink, actualEventSink{}, false, exec)
@@ -70,6 +107,7 @@ func TestEventSinkRecoversAnAmbiguousAddByReadingOwner(t *testing.T) {
 	actual := actualEventSink{kind: "nats", controllerID: "sink-uid", nats: desiredEventSink(sink)}
 	action, err = reconcileSinkRuntime(sink, actual, true, func(...string) (string, error) {
 		t.Fatal("confirmed sink was added again")
+
 		return "", nil
 	})
 	require.NoError(t, err)
@@ -84,6 +122,7 @@ func TestEventSinkUpdateAndDeletionUseGuardedRemove(t *testing.T) {
 	var calls [][]string
 	exec := func(args ...string) (string, error) {
 		calls = append(calls, slices.Clone(args))
+
 		return "", nil
 	}
 	action, err := reconcileSinkRuntime(sink, actual, true, exec)

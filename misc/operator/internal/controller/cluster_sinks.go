@@ -88,6 +88,7 @@ func (v *protoJSONUint64) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("parsing protobuf JSON uint64 %q: %w", value, err)
 	}
 	*v = protoJSONUint64(parsed)
+
 	return nil
 }
 

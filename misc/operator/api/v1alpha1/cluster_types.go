@@ -1265,7 +1265,6 @@ type ClusterStatus struct {
 	// exposes the intermediate "optional" mode used during a toggle.
 	// +optional
 	TLSMigrationPhase string `json:"tlsMigrationPhase,omitempty"`
-
 }
 
 // EndpointsStatus contains the resolved endpoints for a Cluster.

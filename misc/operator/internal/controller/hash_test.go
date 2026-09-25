@@ -48,7 +48,6 @@ func TestComputeSpecHash_ExcludesNonPodFields(t *testing.T) {
 	optOut := false
 	withDeletionProtection.Persistence.DeletionProtection = &optOut
 	assert.Equal(t, baseHash, computeSpecHash(withDeletionProtection), "DeletionProtection change should not affect hash")
-
 }
 
 func TestComputeSpecHash_IncludesPodFields(t *testing.T) {

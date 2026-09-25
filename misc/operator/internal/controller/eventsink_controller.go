@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -26,6 +27,7 @@ const eventSinkFinalizer = "ledger.formance.com/event-sink-cleanup"
 // EventSinkReconciler owns only runtime sinks stamped with the EventSink UID.
 type EventSinkReconciler struct {
 	client.Client
+
 	Scheme    *runtime.Scheme
 	Config    *rest.Config
 	Clientset kubernetes.Interface
@@ -48,6 +50,7 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// The finalizer must exist before any Ledger mutation, including an ambiguous add.
 	if sink.DeletionTimestamp.IsZero() && !controllerutil.ContainsFinalizer(&sink, eventSinkFinalizer) {
 		controllerutil.AddFinalizer(&sink, eventSinkFinalizer)
+
 		return ctrl.Result{}, r.Update(ctx, &sink)
 	}
 
@@ -55,23 +58,37 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	clusterKey := types.NamespacedName{Namespace: sink.Namespace, Name: sink.Spec.ClusterRef.Name}
 	if err := r.Get(ctx, clusterKey, &cluster); err != nil {
 		if apierrors.IsNotFound(err) && !sink.DeletionTimestamp.IsZero() {
-			// The parent Cluster no longer exists, so it has no runtime to clean up.
+			// A deleted Cluster can leave its StatefulSet running briefly. Wait for
+			// the runtime to disappear before releasing cleanup ownership.
+			var sts appsv1.StatefulSet
+			stsKey := types.NamespacedName{Namespace: sink.Namespace, Name: resourceName(sink.Spec.ClusterRef.Name)}
+			if stsErr := r.Get(ctx, stsKey, &sts); stsErr == nil {
+				return ctrl.Result{RequeueAfter: sinkRequeueInterval}, nil
+			} else if !apierrors.IsNotFound(stsErr) {
+				return ctrl.Result{}, stsErr
+			}
 			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
+
 			return ctrl.Result{}, r.Update(ctx, &sink)
 		}
+
 		return r.sinkFailure(ctx, &sink, "ClusterUnavailable", fmt.Errorf("getting Cluster %q: %w", clusterKey, err), sinkDriftCheckInterval)
 	}
 	if !cluster.DeletionTimestamp.IsZero() {
-		if !sink.DeletionTimestamp.IsZero() {
-			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
-			return ctrl.Result{}, r.Update(ctx, &sink)
+		if sink.DeletionTimestamp.IsZero() {
+			return r.sinkFailure(ctx, &sink, "ClusterDeleting", fmt.Errorf("cluster %q is deleting", cluster.Name), sinkDriftCheckInterval)
 		}
-		return r.sinkFailure(ctx, &sink, "ClusterDeleting", fmt.Errorf("Cluster %q is deleting", cluster.Name), sinkDriftCheckInterval)
 	}
 	applyDefaults(&cluster)
 
 	var sts appsv1.StatefulSet
 	if err := r.Get(ctx, types.NamespacedName{Namespace: cluster.Namespace, Name: resourceName(cluster.Name)}, &sts); err != nil {
+		if apierrors.IsNotFound(err) && !sink.DeletionTimestamp.IsZero() {
+			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
+
+			return ctrl.Result{}, r.Update(ctx, &sink)
+		}
+
 		return r.sinkFailure(ctx, &sink, "WaitingForCluster", fmt.Errorf("getting StatefulSet: %w", err), sinkRequeueInterval)
 	}
 	desiredReplicas := int32(3)
@@ -79,13 +96,14 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		desiredReplicas = *cluster.Spec.Replicas
 	}
 	if sts.Status.ReadyReplicas != desiredReplicas || !rolloutConverged(&sts) {
-		return r.sinkFailure(ctx, &sink, "WaitingForCluster", fmt.Errorf("waiting for Ledger StatefulSet rollout"), sinkRequeueInterval)
+		return r.sinkFailure(ctx, &sink, "WaitingForCluster", errors.New("waiting for Ledger StatefulSet rollout"), sinkRequeueInterval)
 	}
 
 	exec := func(args ...string) (string, error) {
 		execCtx, cancel := context.WithTimeout(ctx, ledgerExecTimeout)
 		defer cancel()
 		delegate := ClusterReconciler{Client: r.Client, Config: r.Config, Clientset: r.Clientset}
+
 		return delegate.ledgerctlExecOutput(execCtx, cluster.Namespace, cluster.Name, podName(cluster.Name, 0), cluster.Spec.GrpcPort, args...)
 	}
 	stdout, err := exec("events", "list", "--json")
@@ -97,10 +115,11 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return r.sinkFailure(ctx, &sink, "ListFailed", err, sinkRequeueInterval)
 	}
 	observed, exists := actual[sink.Name]
-	if exists {
+	if exists && observed.controllerID == string(sink.UID) {
 		sink.Status.Cursor = observed.cursor
 		sink.Status.Error = observed.deliveryError
 	} else {
+		sink.Status.Cursor = 0
 		sink.Status.Error = ""
 	}
 
@@ -110,17 +129,20 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		if action == sinkActionConflict {
 			interval = sinkDriftCheckInterval
 		}
+
 		return r.sinkFailure(ctx, &sink, string(action), err, interval)
 	}
 	if !sink.DeletionTimestamp.IsZero() {
 		if action == sinkActionAbsent {
 			controllerutil.RemoveFinalizer(&sink, eventSinkFinalizer)
+
 			return ctrl.Result{}, r.Update(ctx, &sink)
 		}
+
 		return ctrl.Result{RequeueAfter: sinkRequeueInterval}, nil
 	}
 	if action != sinkActionSynced {
-		return r.sinkFailure(ctx, &sink, string(action), fmt.Errorf("waiting for runtime sink confirmation"), sinkRequeueInterval)
+		return r.sinkFailure(ctx, &sink, string(action), errors.New("waiting for runtime sink confirmation"), sinkRequeueInterval)
 	}
 
 	meta.SetStatusCondition(&sink.Status.Conditions, metav1.Condition{
@@ -141,6 +163,7 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.persistSinkStatus(ctx, &sink); err != nil {
 		return ctrl.Result{}, err
 	}
+
 	return ctrl.Result{RequeueAfter: sinkDriftCheckInterval}, nil
 }
 
@@ -165,6 +188,7 @@ func reconcileSinkRuntime(sink *ledgerv1alpha1.EventSink, actual actualEventSink
 			// The CR no longer owns this name; leave the foreign sink alone.
 			return sinkActionAbsent, nil
 		}
+
 		return sinkActionConflict, fmt.Errorf("runtime sink %q is owned by another controller", sink.Name)
 	}
 	if !sink.DeletionTimestamp.IsZero() {
@@ -175,6 +199,7 @@ func reconcileSinkRuntime(sink *ledgerv1alpha1.EventSink, actual actualEventSink
 		if err != nil {
 			return sinkActionFailed, err
 		}
+
 		return sinkActionRemoved, nil
 	}
 	if exists {
@@ -185,12 +210,14 @@ func reconcileSinkRuntime(sink *ledgerv1alpha1.EventSink, actual actualEventSink
 		if err != nil {
 			return sinkActionFailed, err
 		}
+
 		return sinkActionRemoved, nil
 	}
 	args := append(addNATSSinkArgs(desiredEventSink(sink)), "--controller-id", owner)
 	if _, err := exec(args...); err != nil {
 		return sinkActionFailed, err
 	}
+
 	return sinkActionAdded, nil
 }
 
@@ -204,6 +231,7 @@ func (r *EventSinkReconciler) sinkFailure(ctx context.Context, sink *ledgerv1alp
 			return ctrl.Result{}, statusErr
 		}
 	}
+
 	return ctrl.Result{RequeueAfter: interval}, nil
 }
 
@@ -216,6 +244,7 @@ func (r *EventSinkReconciler) persistSinkStatus(ctx context.Context, sink *ledge
 		return nil
 	}
 	sink.ResourceVersion = live.ResourceVersion
+
 	return r.Status().Update(ctx, sink)
 }
 
