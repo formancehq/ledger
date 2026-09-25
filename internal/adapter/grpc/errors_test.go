@@ -423,6 +423,19 @@ func TestBusinessErrorToGRPCStatus_SinkNotFound(t *testing.T) {
 	require.Equal(t, "missing-sink", info.GetMetadata()["name"])
 }
 
+func TestBusinessErrorToGRPCStatus_SinkControllerMismatch(t *testing.T) {
+	t.Parallel()
+
+	st := businessErrorToGRPCStatus(&domain.BusinessError{Err: &domain.ErrSinkControllerMismatch{
+		Name: "my-sink", ControllerID: "uid-1",
+	}})
+	require.Equal(t, codes.FailedPrecondition, st.Code())
+	info := extractErrorInfo(t, st)
+	require.Equal(t, domain.ErrReasonSinkControllerMismatch, info.GetReason())
+	require.Equal(t, "my-sink", info.GetMetadata()["name"])
+	require.Equal(t, "uid-1", info.GetMetadata()["controllerId"])
+}
+
 func TestBusinessErrorToGRPCStatus_MetadataNotFound(t *testing.T) {
 	t.Parallel()
 

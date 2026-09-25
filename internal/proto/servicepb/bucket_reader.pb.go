@@ -1594,6 +1594,7 @@ func NewAddEventsSinkRequestListReader(s []*AddEventsSinkRequest) AddEventsSinkR
 // Call Mutate() to obtain a mutable clone.
 type RemoveEventsSinkRequestReader interface {
 	GetName() string
+	GetControllerId() string
 	Mutate() *RemoveEventsSinkRequest
 }
 
@@ -1601,6 +1602,10 @@ type removeEventsSinkRequestReadonly RemoveEventsSinkRequest
 
 func (r *removeEventsSinkRequestReadonly) GetName() string {
 	return (*RemoveEventsSinkRequest)(r).GetName()
+}
+
+func (r *removeEventsSinkRequestReadonly) GetControllerId() string {
+	return (*RemoveEventsSinkRequest)(r).GetControllerId()
 }
 
 func (r *removeEventsSinkRequestReadonly) Mutate() *RemoveEventsSinkRequest {

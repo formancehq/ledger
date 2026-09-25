@@ -4822,7 +4822,7 @@ ledgerctl events list
 
 ### `events add-sink`
 
-Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
+Add a named event sink configuration. An existing name is rejected; the configuration is replicated via Raft consensus.
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
@@ -4868,11 +4868,12 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 ```
 
-**Aliases:** `add`, `upsert`
+**Alias:** `add`
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name` | *(required)* | Unique name for this sink |
+| `--controller-id` | | Opaque EventSink controller identity (CR UID); omit for a manually managed sink |
 | `--nats-url` | | NATS server URL (required for NATS sinks) |
 | `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
 | `--clickhouse-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
@@ -4911,10 +4912,11 @@ The HTTP sink sends each event as an individual POST request with headers:
 
 ### `events remove-sink`
 
-Remove a named event sink. If this is the last sink, event emission is implicitly disabled.
+Remove a named event sink. If this is the last sink, event emission is implicitly disabled. With `--controller-id`, removal succeeds only if the current Raft-applied configuration carries the exact same identity; a missing sink or different owner returns an error without removing anything. Omit the flag for ordinary unconditional removal.
 
 ```bash
 ledgerctl events remove-sink --name primary
+ledgerctl events remove-sink --name primary --controller-id <event-sink-cr-uid>
 ```
 
 **Aliases:** `rm`, `delete-sink`
@@ -4922,6 +4924,7 @@ ledgerctl events remove-sink --name primary
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name` | *(required)* | Name of the sink to remove |
+| `--controller-id` | | Require the current sink to belong to this controller before removal |
 | `--timeout` | `10s` | Request timeout |
 
 See [Event System Architecture](../technical/architecture/subsystems/events-mirror/events.md) for details on the event system design.

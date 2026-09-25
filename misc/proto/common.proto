@@ -421,7 +421,7 @@ message SetSigningConfigLog {
   bool require_signatures = 1;
 }
 
-// AddedEventsSinkLog records the addition (or update) of a named sink config.
+// AddedEventsSinkLog records the addition of a named sink config.
 message AddedEventsSinkLog {
   SinkConfig config = 1;
 }
@@ -625,6 +625,7 @@ message SinkConfig {
   int32 batch_size = 8;       // Max events per batch (default: 64)
   int64 batch_delay_ms = 9;   // Max delay before flush in ms (default: 10)
   repeated EventType event_types = 10;  // Empty = all events (default)
+  string controller_id = 11;  // Opaque owner identity (EventSink CR UID); empty for manually managed sinks
 }
 
 // SinkStatus tracks per-sink operational state (replicated via Raft).
@@ -1324,6 +1325,7 @@ enum ErrorReason {
   // and re-admitting the identical batch reproduces the same observation.
   // Submit the revert in a later batch.
   ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
+  ERROR_REASON_SINK_CONTROLLER_MISMATCH = 71;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

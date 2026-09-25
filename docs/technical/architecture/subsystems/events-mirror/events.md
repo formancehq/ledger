@@ -402,15 +402,16 @@ message SinkConfig {
   string name = 1;                       // Stable identifier for per-sink cursor/status keys
   oneof type {
     NatsSinkConfig nats = 2;             // NATS JetStream sink
-    ClickHouseSinkConfig clickhouse = 6; // ClickHouse analytics sink
-    KafkaSinkConfig kafka = 7;           // Apache Kafka sink
-    HttpSinkConfig http = 8;             // HTTP webhook sink
-    DatabricksSinkConfig databricks = 10; // Databricks SQL Warehouse sink
+    ClickHouseSinkConfig clickhouse = 3; // ClickHouse analytics sink
+    KafkaSinkConfig kafka = 4;           // Apache Kafka sink
+    HttpSinkConfig http = 5;             // HTTP webhook sink
+    DatabricksSinkConfig databricks = 6; // Databricks SQL Warehouse sink
   }
-  string format = 3;                     // "json" or "protobuf" (default: "json")
-  int32 batch_size = 4;                  // Max events per batch (default: 64)
-  int64 batch_delay_ms = 5;              // Max delay before flush in ms (default: 10)
-  repeated EventType event_types = 9;    // Empty = all events (default)
+  string format = 7;                     // "json" or "protobuf" (default: "json")
+  int32 batch_size = 8;                  // Max events per batch (default: 64)
+  int64 batch_delay_ms = 9;              // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 10;   // Empty = all events (default)
+  string controller_id = 11;             // Opaque EventSink CR UID; empty for manual sinks
 }
 
 message NatsSinkConfig {
@@ -456,7 +457,7 @@ message DatabricksOAuthM2M {
 }
 ```
 
-Each `SinkConfig` carries its own `format`, `batch_size`, `batch_delay_ms`, and `event_types` — there is no global events config. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x06][0x08][name]`) and status (`[0x06][0x0A][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
+Each `SinkConfig` carries its own `format`, `batch_size`, `batch_delay_ms`, and `event_types` — there is no global events config. `controller_id` stores the opaque identity of the EventSink CR that created the sink; manually added sinks leave it empty. The Manager creates **one Emitter per named sink**, each with its own cursor (`[0x06][0x08][name]`) and status (`[0x06][0x0A][name]`). Sinks progress independently — a failing sink does not block others. New sink types can be added as additional variants in the `SinkConfig.oneof type`.
 
 #### Adding and Removing Sinks
 
@@ -465,6 +466,9 @@ Use `AddEventsSink` and `RemoveEventsSink` via the `Apply` RPC:
 ```bash
 # Add a NATS sink with default settings
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events
+
+# Associate a sink with its EventSink CR
+ledgerctl events add-sink --name controlled --nats-url nats://localhost:4222 --nats-topic ledger.events --controller-id <event-sink-cr-uid>
 
 # Add a NATS sink with custom batch settings and protobuf format
 ledgerctl events add-sink --name primary --nats-url nats://localhost:4222 --nats-topic ledger.events \
@@ -491,6 +495,9 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 
 # Remove a sink (events implicitly disabled when all sinks removed)
 ledgerctl events remove-sink --name streaming
+
+# Remove only the sink owned by this EventSink CR (atomic Raft guard)
+ledgerctl events remove-sink --name controlled --controller-id <event-sink-cr-uid>
 ```
 
 #### Reading Sink Configuration
@@ -501,7 +508,41 @@ Use `ledgerctl events list` to read all sink configurations and per-sink statuse
 ledgerctl events list
 ```
 
-The response includes a list of `SinkConfig` entries and a list of `SinkStatus` entries showing each sink's cursor position and any active error.
+The response includes a list of `SinkConfig` entries (including `controller_id`) and a list of `SinkStatus` entries showing each sink's cursor position and any active error. `add-sink` rejects an existing name. A guarded `remove-sink` compares the requested identity with the current config during FSM apply; a mismatch rejects the removal and leaves the sink intact. Without an identity the command retains unconditional removal semantics.
+
+#### Kubernetes Operator Configuration
+
+The Ledger Operator maintains each NATS sink through a namespaced `EventSink`
+resource that references a `Cluster` in the same namespace. The resource name
+is the runtime sink name, and `spec.clusterRef` is immutable. The controller
+waits for the StatefulSet rollout, compares the desired configuration with
+`ledgerctl events list --json`, and uses the Raft-replicated add/remove API.
+Creating or editing an `EventSink` does not change the pod-template hash or
+restart Ledger. This first CRD surface covers NATS only. NATS URLs containing
+userinfo are rejected because CR specs are not secret storage.
+
+The Raft-replicated `SinkConfig.controller_id` stores the EventSink UID. A
+matching name or configuration without that UID never grants ownership. The
+controller uses a conditional remove that checks the UID during FSM apply, so
+an ambiguous response can be retried from a fresh list without deleting an
+external sink. A finalizer retains the EventSink during deletion until its
+runtime sink is removed or the parent runtime has disappeared. A foreign
+same-name sink is reported as a `Synced=False` conflict and left untouched.
+
+An owned configuration change removes the old sink and recreates it on the
+next pass. Ledger retains the per-name cursor, so committed events remain
+eligible for at-least-once delivery after recreation. `Synced=True` means the
+Raft configuration matches the EventSink; `status.cursor`, `status.error`, and
+the `Delivering` condition expose the delivery state observed by the operator.
+When Ledger lists an owned configuration without a corresponding sink status,
+`Delivering=Unknown` until a status is observed; an empty error alone does not
+establish delivery health.
+
+NATS JetStream provisioning remains external to Ledger. A stream must already
+capture `<topic>.>` (Ledger publishes to
+`<topic>.<ledger>.<event-type-lowercase>`), and any Kubernetes NetworkPolicy must permit
+egress from Ledger pods to the NATS service. Additional sink types can extend
+the CRD without changing the runtime ownership model.
 
 #### Config Persistence
 

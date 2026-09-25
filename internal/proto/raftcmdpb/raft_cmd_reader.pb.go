@@ -594,6 +594,7 @@ func NewAddEventsSinkOrderListReader(s []*AddEventsSinkOrder) AddEventsSinkOrder
 // Call Mutate() to obtain a mutable clone.
 type RemoveEventsSinkOrderReader interface {
 	GetName() string
+	GetControllerId() string
 	Mutate() *RemoveEventsSinkOrder
 }
 
@@ -601,6 +602,10 @@ type removeEventsSinkOrderReadonly RemoveEventsSinkOrder
 
 func (r *removeEventsSinkOrderReadonly) GetName() string {
 	return (*RemoveEventsSinkOrder)(r).GetName()
+}
+
+func (r *removeEventsSinkOrderReadonly) GetControllerId() string {
+	return (*RemoveEventsSinkOrder)(r).GetControllerId()
 }
 
 func (r *removeEventsSinkOrderReadonly) Mutate() *RemoveEventsSinkOrder {

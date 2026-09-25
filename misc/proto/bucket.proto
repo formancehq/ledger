@@ -353,7 +353,7 @@ message DeleteLedgerMetadataRequest {
   string key = 2;
 }
 
-// AddEventsSinkRequest adds or updates a named sink configuration.
+// AddEventsSinkRequest adds a named sink configuration; existing names are rejected.
 message AddEventsSinkRequest {
   common.SinkConfig config = 1;
 }
@@ -361,6 +361,7 @@ message AddEventsSinkRequest {
 // RemoveEventsSinkRequest removes a named sink configuration.
 message RemoveEventsSinkRequest {
   string name = 1;
+  string controller_id = 2;  // When set, remove only the sink owned by this controller
 }
 
 // ============================================================================

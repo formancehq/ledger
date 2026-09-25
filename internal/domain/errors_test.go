@@ -146,6 +146,11 @@ func TestErrorTypes(t *testing.T) {
 			expected: "event sink not found: nats-1",
 		},
 		{
+			name:     "ErrSinkControllerMismatch",
+			err:      &ErrSinkControllerMismatch{Name: "nats-1", ControllerID: "uid-1"},
+			expected: `event sink "nats-1" is not owned by controller "uid-1"`,
+		},
+		{
 			name:     "ErrMetadataNotFound",
 			err:      &ErrMetadataNotFound{Target: "users:123", Key: "status"},
 			expected: `metadata key "status" not found on users:123`,
@@ -327,6 +332,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrSinkBatchSizeTooLarge":         &ErrSinkBatchSizeTooLarge{},
 		"ErrMetadataNotFound":              &ErrMetadataNotFound{},
 		"ErrSinkNotFound":                  &ErrSinkNotFound{},
+		"ErrSinkControllerMismatch":        &ErrSinkControllerMismatch{},
 		"ErrInvalidCronExpression":         &ErrInvalidCronExpression{},
 		"ErrLedgerInMirrorMode":            &ErrLedgerInMirrorMode{},
 		"ErrLedgerNotInMirrorMode":         &ErrLedgerNotInMirrorMode{},

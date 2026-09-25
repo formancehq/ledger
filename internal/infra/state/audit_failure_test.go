@@ -321,6 +321,12 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"name": "missing-sink"},
 		},
 		{
+			name:        "SinkControllerMismatch",
+			err:         &domain.ErrSinkControllerMismatch{Name: "kafka-main", ControllerID: "uid-1"},
+			wantReason:  domain.ErrReasonSinkControllerMismatch,
+			wantContext: map[string]string{"name": "kafka-main", "controllerId": "uid-1"},
+		},
+		{
 			name:        "LedgerDeleted",
 			err:         &domain.ErrLedgerDeleted{Name: "deleted-ledger"},
 			wantReason:  domain.ErrReasonLedgerDeleted,

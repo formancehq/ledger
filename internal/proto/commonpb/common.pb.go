@@ -793,6 +793,7 @@ const (
 	// and re-admitting the identical batch reproduces the same observation.
 	// Submit the revert in a later batch.
 	ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH ErrorReason = 70
+	ErrorReason_ERROR_REASON_SINK_CONTROLLER_MISMATCH       ErrorReason = 71
 )
 
 // Enum value maps for ErrorReason.
@@ -869,6 +870,7 @@ var (
 		68: "ERROR_REASON_INDEX_ALREADY_EXISTS",
 		69: "ERROR_REASON_METADATA_LIMIT_EXCEEDED",
 		70: "ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH",
+		71: "ERROR_REASON_SINK_CONTROLLER_MISMATCH",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -942,6 +944,7 @@ var (
 		"ERROR_REASON_INDEX_ALREADY_EXISTS":             68,
 		"ERROR_REASON_METADATA_LIMIT_EXCEEDED":          69,
 		"ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH":   70,
+		"ERROR_REASON_SINK_CONTROLLER_MISMATCH":         71,
 	}
 )
 
@@ -3875,7 +3878,7 @@ func (x *SetSigningConfigLog) GetRequireSignatures() bool {
 	return false
 }
 
-// AddedEventsSinkLog records the addition (or update) of a named sink config.
+// AddedEventsSinkLog records the addition of a named sink config.
 type AddedEventsSinkLog struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Config        *SinkConfig            `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
@@ -5149,6 +5152,7 @@ type SinkConfig struct {
 	BatchSize     int32             `protobuf:"varint,8,opt,name=batch_size,json=batchSize,proto3" json:"batch_size,omitempty"`                                  // Max events per batch (default: 64)
 	BatchDelayMs  int64             `protobuf:"varint,9,opt,name=batch_delay_ms,json=batchDelayMs,proto3" json:"batch_delay_ms,omitempty"`                       // Max delay before flush in ms (default: 10)
 	EventTypes    []EventType       `protobuf:"varint,10,rep,packed,name=event_types,json=eventTypes,proto3,enum=common.EventType" json:"event_types,omitempty"` // Empty = all events (default)
+	ControllerId  string            `protobuf:"bytes,11,opt,name=controller_id,json=controllerId,proto3" json:"controller_id,omitempty"`                         // Opaque owner identity (EventSink CR UID); empty for manually managed sinks
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5268,6 +5272,13 @@ func (x *SinkConfig) GetEventTypes() []EventType {
 		return x.EventTypes
 	}
 	return nil
+}
+
+func (x *SinkConfig) GetControllerId() string {
+	if x != nil {
+		return x.ControllerId
+	}
+	return ""
 }
 
 type isSinkConfig_Type interface {
@@ -13248,7 +13259,7 @@ const file_common_proto_rawDesc = "" +
 	"created_at\x18\x03 \x01(\v2\x11.common.TimestampR\tcreatedAt\x12#\n" +
 	"\rapplied_index\x18\x04 \x01(\x06R\fappliedIndex\"@\n" +
 	"\x19DeletedQueryCheckpointLog\x12#\n" +
-	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xc6\x03\n" +
+	"\rcheckpoint_id\x18\x01 \x01(\x06R\fcheckpointId\"\xeb\x03\n" +
 	"\n" +
 	"SinkConfig\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12,\n" +
@@ -13267,7 +13278,8 @@ const file_common_proto_rawDesc = "" +
 	"\x0ebatch_delay_ms\x18\t \x01(\x03R\fbatchDelayMs\x122\n" +
 	"\vevent_types\x18\n" +
 	" \x03(\x0e2\x11.common.EventTypeR\n" +
-	"eventTypesB\x06\n" +
+	"eventTypes\x12#\n" +
+	"\rcontroller_id\x18\v \x01(\tR\fcontrollerIdB\x06\n" +
 	"\x04type\"j\n" +
 	"\n" +
 	"SinkStatus\x12\x1b\n" +
@@ -13859,7 +13871,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xb8\x16\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xe3\x16\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13932,7 +13944,8 @@ const file_common_proto_rawDesc = "" +
 	"\x1fERROR_REASON_SEQUENCE_EXHAUSTED\x10C\x12%\n" +
 	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D\x12(\n" +
 	"$ERROR_REASON_METADATA_LIMIT_EXCEEDED\x10E\x12/\n" +
-	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F*Q\n" +
+	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F\x12)\n" +
+	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

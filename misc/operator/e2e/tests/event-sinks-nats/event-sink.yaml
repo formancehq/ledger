@@ -1,0 +1,11 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: EventSink
+metadata:
+  name: primary
+spec:
+  clusterRef:
+    name: operator-sink-e2e
+  nats:
+    url: nats://nats:4222
+    topic: ledger.events
+  format: json

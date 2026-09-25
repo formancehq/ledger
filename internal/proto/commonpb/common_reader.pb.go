@@ -4469,6 +4469,7 @@ type SinkConfigReader interface {
 	GetBatchSize() int32
 	GetBatchDelayMs() int64
 	GetEventTypes() []EventType
+	GetControllerId() string
 	GetType() isSinkConfig_Type
 	Mutate() *SinkConfig
 }
@@ -4493,6 +4494,10 @@ func (r *sinkConfigReadonly) GetBatchDelayMs() int64 {
 
 func (r *sinkConfigReadonly) GetEventTypes() []EventType {
 	return slices.Clone((*SinkConfig)(r).GetEventTypes())
+}
+
+func (r *sinkConfigReadonly) GetControllerId() string {
+	return (*SinkConfig)(r).GetControllerId()
 }
 
 func (r *sinkConfigReadonly) GetType() isSinkConfig_Type {

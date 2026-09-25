@@ -2012,7 +2012,7 @@ func (x *DeleteLedgerMetadataRequest) GetKey() string {
 	return ""
 }
 
-// AddEventsSinkRequest adds or updates a named sink configuration.
+// AddEventsSinkRequest adds a named sink configuration; existing names are rejected.
 type AddEventsSinkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Config        *commonpb.SinkConfig   `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
@@ -2061,6 +2061,7 @@ func (x *AddEventsSinkRequest) GetConfig() *commonpb.SinkConfig {
 type RemoveEventsSinkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ControllerId  string                 `protobuf:"bytes,2,opt,name=controller_id,json=controllerId,proto3" json:"controller_id,omitempty"` // When set, remove only the sink owned by this controller
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2098,6 +2099,13 @@ func (*RemoveEventsSinkRequest) Descriptor() ([]byte, []int) {
 func (x *RemoveEventsSinkRequest) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *RemoveEventsSinkRequest) GetControllerId() string {
+	if x != nil {
+		return x.ControllerId
 	}
 	return ""
 }
@@ -8814,9 +8822,10 @@ const file_bucket_proto_rawDesc = "" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\"B\n" +
 	"\x14AddEventsSinkRequest\x12*\n" +
-	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"-\n" +
+	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"R\n" +
 	"\x17RemoveEventsSinkRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"Q\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
+	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"Q\n" +
 	"\x19RegisterSigningKeyRequest\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +
