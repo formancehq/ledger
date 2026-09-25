@@ -165,7 +165,8 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_GAP,
 		commonpb.ErrorReason_ERROR_REASON_MIRROR_V2_LOG_ID_INVALID,
 		commonpb.ErrorReason_ERROR_REASON_VOLUME_NOT_MATERIALIZED,
-		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT:
+		commonpb.ErrorReason_ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT,
+		commonpb.ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION:
 		return KindInternal
 	default:
 		return KindInternal

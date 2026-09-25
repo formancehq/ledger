@@ -21,13 +21,17 @@ import (
 
 // BucketGrpcClient implements Controller by forwarding requests via gRPC to the leader.
 type BucketGrpcClient struct {
-	client servicepb.BucketServiceClient
+	client                servicepb.BucketServiceClient
+	trustedPeerForwarding bool
 }
 
 // NewLedgerGrpcClient creates a new gRPC-based ledger implementation.
-func NewLedgerGrpcClient(client servicepb.BucketServiceClient) *BucketGrpcClient {
+func NewLedgerGrpcClient(client servicepb.BucketServiceClient, trustedPeerForwarding ...bool) *BucketGrpcClient {
+	trusted := len(trustedPeerForwarding) > 0 && trustedPeerForwarding[0]
+
 	return &BucketGrpcClient{
-		client: client,
+		client:                client,
+		trustedPeerForwarding: trusted,
 	}
 }
 
@@ -57,7 +61,7 @@ func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyReques
 	// the service endpoint cannot distinguish a peer from a public client.
 	// Authenticated and anonymous callers still require the cluster-secret trust
 	// boundary because their original identity/effective scopes must be frozen.
-	if caller.GetAuthDisabled() == nil {
+	if caller.GetAuthDisabled() == nil || g.trustedPeerForwarding {
 		req.ForwardedCallerSnapshot = caller
 	} else {
 		req.ForwardedCallerSnapshot = nil

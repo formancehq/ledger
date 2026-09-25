@@ -363,11 +363,12 @@ func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmd
 	minLogSeq, maxLogSeq := testLogSequenceRange(results)
 
 	entry := &auditpb.AuditEntry{
-		Sequence:    e.nextAuditSequenceID,
-		Timestamp:   proposal.GetDate(),
-		ProposalId:  proposal.GetId(),
-		OrderCount:  uint32(len(proposal.GetOrders())),
-		HashVersion: uint32(hashAlgorithm),
+		Sequence:       e.nextAuditSequenceID,
+		Timestamp:      proposal.GetDate(),
+		ProposalId:     proposal.GetId(),
+		OrderCount:     uint32(len(proposal.GetOrders())),
+		HashVersion:    uint32(hashAlgorithm),
+		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{
 				MinLogSequence: minLogSeq,

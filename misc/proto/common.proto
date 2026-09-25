@@ -1294,6 +1294,10 @@ enum ErrorReason {
   // Creation never evicts; an existing checkpoint must be deleted first. See
   // EN-1501.
   ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 65;
+  // ERROR_REASON_INVALID_CALLER_ATTRIBUTION: a proposal reached admission or
+  // the FSM without a complete canonical caller principal. This is an internal
+  // trust-boundary violation and is never client-correctable.
+  ERROR_REASON_INVALID_CALLER_ATTRIBUTION = 71;
   // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
   // that is not live (never created, or already deleted). See EN-1501.
   ERROR_REASON_CHECKPOINT_NOT_FOUND = 66;

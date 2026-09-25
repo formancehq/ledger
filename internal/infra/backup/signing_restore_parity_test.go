@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -81,10 +82,11 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	t.Helper()
 
 	proposal := &raftcmdpb.Proposal{
-		Id:            index,
-		Orders:        orders,
-		Date:          &commonpb.Timestamp{Data: 1700000000 + index},
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
+		Id:             index,
+		Orders:         orders,
+		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 	}
 
 	data, err := proto.Marshal(proposal)

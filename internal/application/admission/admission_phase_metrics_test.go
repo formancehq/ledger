@@ -133,7 +133,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		// (ErrTransactionTargetMissing) inside requestsToOrders — i.e. during the
 		// orders_preparation phase, after resolve_batch has completed but before
 		// the scripts phase is entered.
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
@@ -170,7 +170,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		// A CreateTransaction referencing a numscript that does not exist fails in
 		// resolveScriptsAndEnrichNeeds (resolveNumscriptReference) — i.e. during
 		// the scripts phase, after orders_preparation has completed.
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
@@ -207,7 +207,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 		store := createTestStore(t)
 		a, reader := createTestAdmissionWithReader(t, store, nil)
 
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,
@@ -250,7 +250,7 @@ func TestAdmitRecordsEnteredPhasesOnFailure(t *testing.T) {
 
 		// A CreateLedger request reaches builder.Run (nothing rejects it earlier),
 		// so Propose is actually attempted and fails.
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},

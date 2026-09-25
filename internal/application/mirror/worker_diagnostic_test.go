@@ -17,6 +17,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/application/admission"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
@@ -29,6 +30,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -55,7 +57,7 @@ func TestWorker_MalformedURLDoesNotDisclosePassword(t *testing.T) {
 	const password = "AUDIT_MIRROR_PASS_52c91"
 	const ledgerName = "audit-mirror"
 	const diagnostic = "parsing URL: invalid mirror source URL"
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(internalauth.WithSystemActor(context.Background(), commands.ComponentMirror), 10*time.Second)
 	defer cancel()
 	var logs bytes.Buffer
 	log := logrus.New()

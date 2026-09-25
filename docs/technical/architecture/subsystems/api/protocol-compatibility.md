@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"13"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"14"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 13:
+ leader. For example, with a schema implementing revision 14:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 13' \
+grpcurl -plaintext -H 'ledger-protocol-version: 14' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -192,6 +192,15 @@ and authentication-disabled actions now have distinct wire representations,
 and authenticated authorization state moved under its principal variant.
 Revision 12 clients and servers would decode these field numbers with different
 types and must not communicate with revision 13 peers.
+
+## Required caller attribution (revision 14)
+
+Revision 14 makes caller attribution mandatory at the common Apply boundary.
+Followers freeze and forward a validated principal, leaders reject missing or
+malformed attribution before preload or proposal, and every FSM replica repeats
+the same validation for replicated writes before mutation. Direct clients cannot provide
+the peer-only forwarding field. This semantic tightening requires revision 14
+clients and servers to communicate together.
 
 ## Maintaining the revision
 

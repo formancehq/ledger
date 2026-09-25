@@ -15,6 +15,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	appctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -1035,6 +1036,28 @@ func TestApply_DoesNotForwardAuthDisabledSnapshot(t *testing.T) {
 	require.Nil(t, capturedApplyReq.GetForwardedCallerSnapshot())
 }
 
+func TestApply_ForwardsAuthDisabledSnapshotToTrustedPeer(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	var capturedApplyReq *servicepb.ApplyRequest
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+			capturedApplyReq = req
+			*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.Pairs(metadataKeyApplyReplayed, "false")
+
+			return &servicepb.ApplyResponse{}, nil
+		})
+
+	ctx, err := auth.EvaluateGRPCCredentials(context.Background(), auth.AuthConfig{})
+	require.NoError(t, err)
+	grpcClient := NewLedgerGrpcClient(mock, true)
+	_, err = grpcClient.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
+	require.NoError(t, err)
+	require.NotNil(t, capturedApplyReq.GetForwardedCallerSnapshot().GetAuthDisabled())
+}
+
 // TestApply_PropagatesExistingForwardedSnapshot verifies that a node
 // receiving an Apply already carrying a forwarded_caller (multi-hop forward)
 // preserves the original snapshot rather than overwriting it with its own
@@ -1065,10 +1088,12 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 			},
 		},
 	}
-	ctx := auth.WithForwardedSnapshot(context.Background(), original)
+	capability, err := attribution.New(original)
+	require.NoError(t, err)
+	ctx := auth.WithForwardedAttribution(context.Background(), capability)
 
 	client := NewLedgerGrpcClient(mock)
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{}))
 	require.NoError(t, err)
 
 	fc := capturedApplyReq.GetForwardedCallerSnapshot()

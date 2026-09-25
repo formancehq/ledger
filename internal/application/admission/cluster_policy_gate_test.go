@@ -111,7 +111,7 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*stdtime.Millisecond)
 		defer cancel()
 
-		_, err := a.Admit(ctx, businessWrite("held-ledger"))
+		_, err := a.Admit(attributedTestContext(ctx), businessWrite("held-ledger"))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "cluster policy readiness")
 	})
@@ -129,7 +129,7 @@ func TestAdmit_ClusterPolicyWriteReadinessGate(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*stdtime.Second)
 		defer cancel()
 
-		_, err := a.Admit(ctx, businessWrite("new-ledger"))
+		_, err := a.Admit(attributedTestContext(ctx), businessWrite("new-ledger"))
 		require.ErrorIs(t, err, sentinel)
 	})
 
