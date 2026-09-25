@@ -59,15 +59,16 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 		canonicalAccountTypes[name] = clone
 	}
 
-	if _, exhausted := domain.CheckedNextLedgerID(s.GetNextLedgerID()); exhausted != nil {
-		return nil, exhausted
-	}
-
 	// Parse only committed input: node-local defaults and credentials belong to workers.
 	mirrorSource, err := connectionconfig.Mirror(order.GetMirrorSource())
 	if err != nil {
 		return nil, errInvalidMirrorConnection
 	}
+
+	if _, exhausted := domain.CheckedNextLedgerID(s.GetNextLedgerID()); exhausted != nil {
+		return nil, exhausted
+	}
+
 	createdAt := s.GetDate().Mutate()
 	ledgerID := s.IncrementNextLedgerID()
 

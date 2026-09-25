@@ -298,6 +298,7 @@ func TestProcessCreateLedger_NormalizesMirrorWithoutMutatingAuditIntent(t *testi
 	}}}
 	before := fullOrder.MarshalDeterministicVT(nil)
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "mirror"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(0))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234}).AsReader())
 	var stored *commonpb.LedgerInfo
