@@ -207,7 +207,13 @@ func redactURL(raw string, kind urlKind) string {
 		for i, value := range values {
 			replacement := value
 			switch {
-			case kind == urlHTTP || kind == urlNATS || kind == urlProxy || strings.EqualFold(key, "password") || strings.EqualFold(key, "sslpassword"):
+			// HTTP and proxy: redact all nonempty query values (they are schema-controlled credentials).
+			// NATS: redact credential-named keys only; operational config such as tls_handshake_first stays.
+			case kind == urlHTTP || kind == urlProxy || strings.EqualFold(key, "password") || strings.EqualFold(key, "sslpassword"):
+				if value != "" {
+					replacement = redactedSecret
+				}
+			case kind == urlNATS && (strings.EqualFold(key, "token") || strings.EqualFold(key, "password") || strings.EqualFold(key, "user_jwt")):
 				if value != "" {
 					replacement = redactedSecret
 				}
