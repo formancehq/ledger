@@ -937,6 +937,26 @@ spec:
 2. Check logs for replication errors
 3. Restart the follower to force resynchronization
 
+#### Node Stops With "WAL directory is missing"
+
+**Symptom**: The node exits with `WAL directory is missing`, naming the WAL
+directory configured by `--wal-dir`
+
+**Cause**: That directory disappeared while the node was running, was moved
+elsewhere, or another directory was put back in its place. It holds the etcd WAL segments,
+`WAL_CREATION_COMPLETED` and `INSTANCE_ID`, so everything the node acknowledged
+as persisted after the removal is unrecoverable and restarting in place would
+rejoin the cluster as a new member. A directory present at the path is not
+evidence the node is healthy: what the node reports missing is the directory it
+opened at startup.
+
+**Solutions**:
+1. Check whether the volume is still mounted and what unmounted or wiped it
+2. Restore the node from a backup, or drop it with `ledgerctl cluster remove-node`
+   and re-join it as a fresh member (see [cluster-operations.md](cluster-operations.md))
+3. A missing `<wal-dir>/snap` alone is not this case — the node recreates it and
+   logs `Snapshot directory was missing, recreated it`
+
 #### Degraded Performance
 
 **Symptom**: High latency, low throughput
