@@ -30,6 +30,16 @@ func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*c
 	return cursor, nil
 }
 
+// readLedgerInfoRow reads one ledger's LedgerInfo row through the given
+// getter. A nil info means the row is absent; a soft-deleted ledger still has
+// one, with DeletedAt stamped. Callers own the interpretation of both.
+func readLedgerInfoRow(reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
+	kb := dal.NewKeyBuilder()
+	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(name)
+
+	return dal.ReadProto[*commonpb.LedgerInfo](reader, kb.Build())
+}
+
 // GetLedgerByName retrieves a ledger by its name from the given reader.
 // Returns domain.ErrNotFound if the ledger does not exist or is soft-deleted.
 func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
@@ -37,10 +47,7 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) 
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
 
-	kb := dal.NewKeyBuilder()
-	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(name)
-
-	info, err := dal.ReadProto[*commonpb.LedgerInfo](reader, kb.Build())
+	info, err := readLedgerInfoRow(reader, name)
 	if err != nil {
 		return nil, fmt.Errorf("getting ledger by name: %w", err)
 	}

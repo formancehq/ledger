@@ -134,9 +134,11 @@ type Builder struct {
 	// range-deleted earlier in the in-flight batch (DeleteLedger). The
 	// account-by-asset dedup must NOT consult committed state for these
 	// ledgers: readstoreKeyExists reads committed Pebble directly and cannot
-	// see the pending range delete, so a stale committed row would suppress the
-	// recreated ledger's Put — which the range delete then wipes at commit,
-	// silently dropping the row. Reset per batch (initBatch).
+	// see the pending range delete, so a stale committed row would suppress a
+	// later Put for that name — which the range delete then wipes at commit,
+	// silently dropping the row. processCreateLedger rejects a create under
+	// a soft-deleted name, so the guard is defensive. Reset per batch
+	// (initBatch).
 	deletedThisBatch map[string]struct{}
 
 	// batchSchema is the per-batch memoization layer over FSM Pebble

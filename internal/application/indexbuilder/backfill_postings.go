@@ -137,6 +137,8 @@ func (b *Builder) processBackfillPostings(ctx context.Context, stop <-chan struc
 			// markLedgerDeletedInBatch call invalidates the in-batch
 			// dedup state so the recreate's writes — queued after the range
 			// delete and ordered after it at commit — are not suppressed.
+			// processCreateLedger rejects a create under a soft-deleted name,
+			// so this branch is defensive.
 			if parsed.DeletedLedger != "" {
 				if parsed.DeletedLedger == task.ledger {
 					if err := b.purgeBackfillTaskGeneration(task); err != nil {
