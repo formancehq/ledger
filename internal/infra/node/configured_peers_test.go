@@ -151,7 +151,6 @@ func TestGetConfiguredPeers_RejectsMissingConfiguredIdentity(t *testing.T) {
 	require.ErrorContains(t, <-results, "invariant: cluster member 2 has no membership row")
 }
 
-
 func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *testing.T) {
 	t.Parallel()
 
@@ -203,6 +202,7 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 	for i := range got.peers {
 		if got.peers[i].ID == 2 {
 			peer2 = &got.peers[i]
+
 			break
 		}
 	}
@@ -220,4 +220,3 @@ func TestGetConfiguredPeers_TopologySnapshotIsAtomicWithConcurrentRehydrate(t *t
 		t.Fatalf("unexpected address for peer 2: %q", peer2.Address)
 	}
 }
-
