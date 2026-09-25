@@ -2672,3 +2672,56 @@ send [COIN *] (
 		})
 	}
 }
+
+// A save past the balance used to leave it negative, so a later bounded
+// overdraft on the same account had less room than its clause allowed. The
+// balance is floored at zero instead, as numscript's interpreter does.
+func TestSaveFloorsBalanceAtZero(t *testing.T) {
+	t.Run("save more than balance then overdraft", func(t *testing.T) {
+		// alice holds 50 and saves 100: -50 before, 0 now, so the whole
+		// overdraft of 100 is available.
+		tc := NewTestCase()
+		tc.compile(t, `
+			save [COIN 100] from @alice
+
+			send [COIN *] (
+				source = @alice allowing overdraft up to [COIN 100]
+				destination = @bob
+			)`)
+		tc.setBalance("alice", "COIN", 50)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{{
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(100),
+				Source:      "alice",
+				Destination: "bob",
+			}},
+		}
+		test(t, tc)
+	})
+
+	t.Run("save on a negative balance", func(t *testing.T) {
+		// alice is at -50; the floor applies to the result, so even a save of
+		// nothing brings her to 0.
+		tc := NewTestCase()
+		tc.compile(t, `
+			save [COIN 0] from @alice
+
+			send [COIN *] (
+				source = @alice allowing overdraft up to [COIN 100]
+				destination = @bob
+			)`)
+		tc.setBalance("alice", "COIN", -50)
+		tc.expected = CaseResult{
+			Printed: []machine.Value{},
+			Postings: []Posting{{
+				Asset:       "COIN",
+				Amount:      machine.NewMonetaryInt(100),
+				Source:      "alice",
+				Destination: "bob",
+			}},
+		}
+		test(t, tc)
+	})
+}

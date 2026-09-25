@@ -454,7 +454,14 @@ func (m *Machine) tick() (bool, error) {
 			}
 			if balances, ok := m.Balances[a]; ok {
 				if balance, ok := balances[v.Asset]; ok {
-					balances[v.Asset] = balance.Sub(v.Amount)
+					// The balance is floored at zero, as numscript's interpreter does: a
+					// save past the balance reserves what is there and no more, so it
+					// cannot eat into a later overdraft, and a negative balance ends at zero.
+					saved := balance.Sub(v.Amount)
+					if saved.Ltz() {
+						saved = machine.Zero
+					}
+					balances[v.Asset] = saved
 				}
 			}
 		default:
