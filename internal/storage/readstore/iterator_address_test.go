@@ -62,30 +62,6 @@ func drainIDs(tb testing.TB, it *AddressTxIterator[Asc]) []uint64 {
 	return got
 }
 
-func TestMappedAccountPrefixIteratorIncludesHistoricalAccounts(t *testing.T) {
-	t.Parallel()
-
-	store := newTestStore(t)
-	kb := dal.NewKeyBuilder()
-	for _, row := range []struct {
-		account string
-		txID    uint64
-	}{{"hold:1", 1}, {"hold:1", 2}, {"hold:2", 3}, {"other:1", 4}} {
-		require.NoError(t, store.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", row.account, row.txID), nil, pebble.NoSync))
-	}
-
-	iter, err := NewMappedAccountPrefixIterator(store.DB(), dal.NewKeyBuilder(), "l", "hold:", PrefixAccountTx)
-	require.NoError(t, err)
-	t.Cleanup(iter.Close)
-
-	var got []string
-	for iter.Next() {
-		got = append(got, string(iter.Current()))
-	}
-	require.NoError(t, iter.Err())
-	require.Equal(t, []string{"hold:1", "hold:2"}, got)
-}
-
 // Seek on AddressTxIterator must be an absolute reposition over the
 // materialized union: repeatable at the same target, seekable backwards, and
 // well-defined after exhaustion (EN-1597, paul-nicolas review of PR #1635).

@@ -23,68 +23,9 @@ type entitySource interface {
 	Close()
 }
 
-// MappedAccountPrefixIterator enumerates distinct account addresses directly
-// from an account-to-transaction mapping keyspace. Unlike the live attribute
-// iterator, it retains addresses whose current account rows were purged while
-// immutable transaction history remains indexed.
-type MappedAccountPrefixIterator struct {
-	iter      *pebble.Iterator
-	keyPrefix []byte
-	current   []byte
-	last      []byte
-	err       error
-	started   bool
-}
-
-func NewMappedAccountPrefixIterator(reader dal.PebbleReader, kb *dal.KeyBuilder, ledgerName, accountPrefix string, mappingPrefix byte) (*MappedAccountPrefixIterator, error) {
-	ledgerPrefix := kb.Reset().PutByte(mappingPrefix).PutLedgerNameFixed(ledgerName).Snapshot()
-	lower := append(append([]byte(nil), ledgerPrefix...), accountPrefix...)
-	upper := IncrementBytes(lower)
-	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
-	if err != nil {
-		return nil, err
-	}
-
-	return &MappedAccountPrefixIterator{iter: iter, keyPrefix: ledgerPrefix}, nil
-}
-
-func (it *MappedAccountPrefixIterator) Next() bool {
-	valid := it.iter.Next()
-	if !it.started {
-		it.started = true
-		valid = it.iter.First()
-	}
-	for ; valid; valid = it.iter.Next() {
-		key := it.iter.Key()
-		if len(key) < len(it.keyPrefix)+1+8 {
-			continue
-		}
-		rest := key[len(it.keyPrefix):]
-		separator := bytes.IndexByte(rest, 0)
-		if separator < 0 || len(rest) != separator+1+8 {
-			continue
-		}
-		account := rest[:separator]
-		if bytes.Equal(account, it.last) {
-			continue
-		}
-		it.current = append(it.current[:0], account...)
-		it.last = append(it.last[:0], account...)
-
-		return true
-	}
-	it.err = it.iter.Error()
-
-	return false
-}
-
-func (it *MappedAccountPrefixIterator) Current() []byte { return it.current }
-func (it *MappedAccountPrefixIterator) Err() error      { return it.err }
-func (it *MappedAccountPrefixIterator) Close()          { _ = it.iter.Close() }
-
 // addressTxUnion is the account→transaction union underlying an address match
 // on the TRANSACTIONS target. It works by:
-//  1. Scanning the account→transaction mapping index for matching addresses
+//  1. Scanning the existence index for matching account addresses
 //  2. For each matching account, scanning the account→tx mapping
 //  3. Unioning all transaction ID sets into a single sorted slice
 //

@@ -1067,27 +1067,26 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 }
 
 func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
-		if err != nil {
-			return nil, fmt.Errorf("creating account prefix iterator: %w", err)
-		}
-		trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
-			Label: fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix), Kind: "PebbleAccount", Prefix: "pebble:attributes",
-		})
+	accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("creating account prefix iterator: %w", err)
+	}
+	trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
+		Label: fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix), Kind: "PebbleAccount", Prefix: "pebble:attributes",
+	})
 
+	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
 		return trackedAccount, nil
 	}
-	accountIter, err := readstore.NewMappedAccountPrefixIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, addrPrefix, addressRolePrefix(role))
-	if err != nil {
-		return nil, fmt.Errorf("creating mapped account prefix iterator: %w", err)
+	var accountStats *IteratorStats
+	if ctx.profile != nil {
+		accountStats = ctx.profile.Root
 	}
-	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, accountIter, addressRolePrefix(role))
+	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedAccount, addressRolePrefix(role))
 
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("AddressTxIterator(%s)", ctx.ledgerName),
-		Kind:   "AddressTx",
-		Prefix: addressRoleBucketLabel(role),
+		Label: fmt.Sprintf("AddressTxIterator(%s)", ctx.ledgerName), Kind: "AddressTx", Prefix: addressRoleBucketLabel(role),
+		Children: []*IteratorStats{accountStats},
 	}), nil
 }
 

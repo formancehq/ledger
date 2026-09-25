@@ -19,6 +19,12 @@ and are deliberately retained. Physical deletion across the main and read-store
 Pebble databases is asynchronous; atomicity is expressed by the committed purge
 signal and by withholding aligned progress until its local cascade commits.
 
+Transaction queries by exact address read those retained mappings and therefore
+include transactions from purged accounts. Address-prefix queries intentionally
+expand only addresses that still exist in current account state, so their cost
+does not grow with every ephemeral address ever created. Use an indexed
+transaction metadata field when a historical flow needs prefix-like grouping.
+
 The background workers (`internal/application/indexbuilder` and
 `internal/application/auditindexer`) that turn committed main-store logs and
 audit entries into queryable read-store keyspaces. They run independently on

@@ -656,34 +656,31 @@ func compileAddressMatchRev(ctx *compileCtx, am *commonpb.AddressMatch) (readsto
 }
 
 func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
-	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		// Accounts are entity-ordered under the address prefix, so this
-		// streams descending.
-		iter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
-		if err != nil {
-			return nil, fmt.Errorf("creating reverse account prefix iterator: %w", err)
-		}
+	accountIter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+	if err != nil {
+		return nil, fmt.Errorf("creating reverse account prefix iterator: %w", err)
+	}
+	trackedAccount := trackReverse(accountIter, ctx.profile, &IteratorStats{
+		Label:  fmt.Sprintf("PebbleReverseAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
+		Kind:   "PebbleReverseAccount",
+		Prefix: "pebble:attributes",
+	})
 
-		return trackReverse(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleReverseAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
-			Kind:   "PebbleReverseAccount",
-			Prefix: "pebble:attributes",
-		}), nil
+	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		return trackedAccount, nil
+	}
+	var accountStats *IteratorStats
+	if ctx.profile != nil {
+		accountStats = ctx.profile.Root
 	}
 
 	// TRANSACTIONS target: the account→tx union is a materializing fallback,
 	// served descending through a borrowed cursor over its one sorted slice.
-	accountIter, err := readstore.NewMappedAccountPrefixIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, addrPrefix, addressRolePrefix(role))
-	if err != nil {
-		return nil, fmt.Errorf("creating mapped account prefix iterator: %w", err)
-	}
-
-	addrTxIter := readstore.NewReverseAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, accountIter, addressRolePrefix(role))
+	addrTxIter := readstore.NewReverseAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedAccount, addressRolePrefix(role))
 
 	return trackReverse(addrTxIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("ReverseAddressTxIterator(%s)", ctx.ledgerName),
-		Kind:   "AddressTx",
-		Prefix: addressRoleBucketLabel(role),
+		Label: fmt.Sprintf("ReverseAddressTxIterator(%s)", ctx.ledgerName), Kind: "AddressTx", Prefix: addressRoleBucketLabel(role),
+		Children: []*IteratorStats{accountStats},
 	}), nil
 }
 
