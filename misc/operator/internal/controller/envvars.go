@@ -300,6 +300,7 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	// `disabled`->`required` migration, where tls.enabled is already true.
 	if targetTLSMode == tlsModeRequired && spec.Auth != nil {
 		envs = appendIfBool(envs, "AUTH_ENABLED", spec.Auth.Enabled)
+		envs = appendIfStr(envs, "AUTH_AUDIENCE", spec.Auth.Audience)
 		envs = appendIfStr(envs, "AUTH_ISSUER", spec.Auth.Issuer)
 		if len(spec.Auth.Issuers) > 0 {
 			envs = append(envs, strEnv("AUTH_ISSUERS", strings.Join(spec.Auth.Issuers, ",")))

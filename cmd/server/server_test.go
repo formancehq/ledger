@@ -8,8 +8,31 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/go-libs/v5/pkg/service"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
+
+func TestLoadConfigAuthAudience(t *testing.T) {
+	// Environment binding changes process state, so this test is not parallel.
+	t.Setenv("AUTH_AUDIENCE", "urn:formance:ledger:from-env")
+	for _, explicit := range []string{"", "urn:formance:ledger:from-flag"} {
+		t.Run(explicit, func(t *testing.T) {
+			cmd := NewRunCommand()
+			if explicit != "" {
+				require.NoError(t, cmd.Flags().Set("auth-audience", explicit))
+			}
+			require.NoError(t, service.BindEnvToCommandWithError(cmd))
+			cfg, err := LoadConfig(t.Context(), cmd)
+			require.NoError(t, err)
+			expected := "urn:formance:ledger:from-env"
+			if explicit != "" {
+				expected = explicit
+			}
+			require.Equal(t, expected, cfg.AuthConfig.Audience)
+		})
+	}
+}
 
 func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
 	t.Parallel()
