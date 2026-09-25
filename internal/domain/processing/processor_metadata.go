@@ -12,7 +12,7 @@ import (
 
 // validateTransactionTarget verifies that txID is non-zero and below the
 // ledger's next-id boundary. Returns the proper Describable on failure.
-func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundaries) domain.Describable {
+func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundaries) domain.SerializableError {
 	if txID == 0 {
 		return domain.ErrTransactionTargetMissing
 	}
@@ -24,7 +24,7 @@ func validateTransactionTarget(txID uint64, boundaries *raftcmdpb.LedgerBoundari
 	return nil
 }
 
-func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
@@ -108,7 +108,7 @@ func processAddMetadata(ledger string, order *raftcmdpb.SaveMetadataOrder, ctx *
 	}, nil
 }
 
-func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processDeleteMetadata(ledger string, order *raftcmdpb.DeleteMetadataOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 

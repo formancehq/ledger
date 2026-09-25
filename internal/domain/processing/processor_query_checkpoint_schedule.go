@@ -16,7 +16,7 @@ var CronParser = cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | 
 // processSetQueryCheckpointSchedule handles the SetQueryCheckpointSchedule order.
 // It validates the cron expression; the schedule-set signal is derived
 // from the produced log by deriveSignals.
-func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, _ *Context) (*commonpb.LogPayload, domain.Describable) {
+func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointScheduleOrder, _ *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	if _, err := CronParser.Parse(order.GetCron()); err != nil {
 		return nil, &domain.ErrInvalidCronExpression{
 			Expression: order.GetCron(),
@@ -35,7 +35,7 @@ func processSetQueryCheckpointSchedule(order *raftcmdpb.SetQueryCheckpointSchedu
 
 // processDeleteQueryCheckpointSchedule handles the DeleteQueryCheckpointSchedule order.
 // The framework derives the schedule-deleted signal from the log.
-func processDeleteQueryCheckpointSchedule(_ *Context) (*commonpb.LogPayload, domain.Describable) {
+func processDeleteQueryCheckpointSchedule(_ *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	return &commonpb.LogPayload{
 		Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
 			DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},

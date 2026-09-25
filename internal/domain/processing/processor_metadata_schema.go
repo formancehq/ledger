@@ -18,7 +18,7 @@ import (
 // If an index covers this field, its forward_encoding_version is bumped so
 // the indexer schedules a rewrite to re-encode forward entries under the
 // new declared_type.
-func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	info, loadErr := loadLedger(s, ledger)
@@ -98,7 +98,7 @@ func processSetMetadataFieldType(ledger string, order *raftcmdpb.SetMetadataFiel
 // O(1) on the apply path: the field is removed from the schema and any index
 // attached to it is dropped. Existing stored values are untouched (they remain
 // in their original type; reads no longer coerce them).
-func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processRemoveMetadataFieldType(ledger string, order *raftcmdpb.RemoveMetadataFieldTypeOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	info, loadErr := loadLedger(s, ledger)

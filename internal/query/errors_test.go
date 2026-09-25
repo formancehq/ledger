@@ -19,5 +19,5 @@ func TestErrAggregateOverflow_Describable(t *testing.T) {
 
 	// The reason must classify as a precondition failure through the shared
 	// domain kind switch, exactly as it did when the type lived in domain.
-	require.Equal(t, domain.KindPrecondition, domain.Kind(err))
+	require.Equal(t, domain.KindPrecondition, err.Kind())
 }

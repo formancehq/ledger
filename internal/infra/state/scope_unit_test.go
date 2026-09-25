@@ -28,7 +28,7 @@ func TestErrCoverageMiss_Describable(t *testing.T) {
 		RaftIndex:    42,
 	}
 
-	require.Equal(t, domain.KindInternal, domain.Kind(miss))
+	require.Equal(t, domain.KindInternal, miss.Kind())
 	require.Equal(t, domain.ErrReasonCoverageMiss, miss.Reason())
 
 	md := miss.Metadata()
@@ -271,22 +271,22 @@ func TestApplyAllPlans_AcceptsValidPlans(t *testing.T) {
 func TestPlanInvariantDescribable(t *testing.T) {
 	t.Parallel()
 
-	require.Nil(t, planInvariantDescribable(nil),
+	require.Nil(t, planInvariantFailure(nil),
 		"nil error must yield no Describable")
 
-	require.Nil(t, planInvariantDescribable(errors.New("pebble write failed")),
+	require.Nil(t, planInvariantFailure(errors.New("pebble write failed")),
 		"unrelated errors must not look like plan invariants")
 
 	miss := &ErrCoverageMiss{Attribute: "ledgers"}
-	require.Equal(t, miss, planInvariantDescribable(miss),
+	require.Equal(t, miss, planInvariantFailure(miss),
 		"ErrCoverageMiss must be returned as-is")
 
 	wrappedMiss := fmt.Errorf("applying technical_updates[0]: %w", miss)
-	require.Equal(t, miss, planInvariantDescribable(wrappedMiss),
+	require.Equal(t, miss, planInvariantFailure(wrappedMiss),
 		"errors.As must unwrap through the FSM dispatch wrapper")
 
 	invalid := &domain.ErrInvalidExecutionPlan{Reason_: "bit 7 past plans length 3"}
-	require.Equal(t, invalid, planInvariantDescribable(invalid),
+	require.Equal(t, invalid, planInvariantFailure(invalid),
 		"ErrInvalidExecutionPlan must be returned as-is")
 }
 

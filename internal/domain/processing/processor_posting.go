@@ -83,7 +83,7 @@ func cachedVolumeKey(ledgerName, account, asset, color string, assetCache map[st
 // Color is carried into both source and destination volume keys, so balances are
 // strictly segregated per (account, asset, color). The empty color is the
 // uncolored bucket and is itself one of these segregated buckets.
-func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.Describable {
+func applyPosting(s Scope, ledgerName string, posting *commonpb.Posting, skipBalanceCheck bool, assetCache map[string]cachedAssetPrecision) domain.SerializableError {
 	color := posting.GetColor()
 	sourceKey := cachedVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), color, assetCache)
 

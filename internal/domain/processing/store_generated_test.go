@@ -822,11 +822,11 @@ func (c *MockScopeIncrementNextQueryCheckpointIDCall) DoAndReturn(f func() uint6
 }
 
 // IncrementNextSequenceID mocks base method.
-func (m *MockScope) IncrementNextSequenceID() (uint64, domain.Describable) {
+func (m *MockScope) IncrementNextSequenceID() (uint64, domain.SerializableError) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IncrementNextSequenceID")
 	ret0, _ := ret[0].(uint64)
-	ret1, _ := ret[1].(domain.Describable)
+	ret1, _ := ret[1].(domain.SerializableError)
 	return ret0, ret1
 }
 
@@ -843,19 +843,19 @@ type MockScopeIncrementNextSequenceIDCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockScopeIncrementNextSequenceIDCall) Return(arg0 uint64, arg1 domain.Describable) *MockScopeIncrementNextSequenceIDCall {
+func (c *MockScopeIncrementNextSequenceIDCall) Return(arg0 uint64, arg1 domain.SerializableError) *MockScopeIncrementNextSequenceIDCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockScopeIncrementNextSequenceIDCall) Do(f func() (uint64, domain.Describable)) *MockScopeIncrementNextSequenceIDCall {
+func (c *MockScopeIncrementNextSequenceIDCall) Do(f func() (uint64, domain.SerializableError)) *MockScopeIncrementNextSequenceIDCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() (uint64, domain.Describable)) *MockScopeIncrementNextSequenceIDCall {
+func (c *MockScopeIncrementNextSequenceIDCall) DoAndReturn(f func() (uint64, domain.SerializableError)) *MockScopeIncrementNextSequenceIDCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

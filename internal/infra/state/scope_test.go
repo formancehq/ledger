@@ -43,7 +43,7 @@ func TestScope_DeclaredAccessAndRejectedAccess(t *testing.T) {
 		"attribute": "ledgers", "canonicalHex": hex.EncodeToString(key.Bytes()),
 		"idHex": id.Hex(), "raftIndex": "42",
 	}, miss.Metadata())
-	require.False(t, domain.IsFreezableFailure(domain.Kind(miss)))
+	require.False(t, domain.IsFreezableFailure(miss.Kind()))
 
 	// The refused access did not delete or alter the staged value.
 	scope, err = factory.NewScope([]byte{1})

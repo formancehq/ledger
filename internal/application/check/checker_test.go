@@ -722,7 +722,7 @@ func (s *scopeImpl) GetNextSequenceID() uint64 {
 	return s.engine.nextSequenceID
 }
 
-func (s *scopeImpl) IncrementNextSequenceID() (uint64, domain.Describable) {
+func (s *scopeImpl) IncrementNextSequenceID() (uint64, domain.SerializableError) {
 	id := s.engine.nextSequenceID
 	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
 	if exhausted != nil {

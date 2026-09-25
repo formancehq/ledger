@@ -13,7 +13,7 @@ import (
 // populates ctx.Boundaries and ctx.LedgerInfo before dispatching to apply-
 // child handlers so children receive everything through a single uniform
 // Context.
-func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	// Check deletion status before boundaries: MarkLedgerForCleanup removes
@@ -75,7 +75,7 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 
 	var (
 		logPayload *commonpb.LedgerLogPayload
-		err        domain.Describable
+		err        domain.SerializableError
 	)
 
 	switch applyData := apply.GetData().(type) {

@@ -25,7 +25,7 @@ const balanceReadingScript = `
 `
 
 // TestSafeResolveDependencies_DescribableSurvivesLibrary verifies that a typed
-// domain.Describable returned by the store is NOT stringified/lost passing
+// domain.SerializableError returned by the store is NOT stringified/lost passing
 // through numscriptlib.ResolveDependencies: errors.As reaches the concrete type
 // and the Reason survives. This is what lets the FSM apply path recognise a
 // coverage-contract violation and surface it loudly (invariant #7) instead of
@@ -66,7 +66,7 @@ func TestSafeResolveDependencies_DescribableSurvivesLibrary(t *testing.T) {
 // TestSafeResolveDependencies_RecoversPanic proves the finding-#1 fix: a panic
 // raised while resolving dependencies (here injected at the ValueSource layer,
 // reachable on the FSM apply path and at admission) is recovered and returned as
-// a domain.Describable ErrNumscriptRuntime, never escaping the wrapper. An
+// a domain.SerializableError ErrNumscriptRuntime, never escaping the wrapper. An
 // escaped panic on the Raft apply loop would crash the node / diverge the
 // cluster (invariant #7).
 //
@@ -90,7 +90,7 @@ func TestSafeResolveDependencies_RecoversPanic(t *testing.T) {
 
 	store := NewStore(source, false)
 
-	var recovered domain.Describable
+	var recovered domain.SerializableError
 	require.NotPanics(t, func() {
 		_, recovered = SafeResolveDependencies(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
 	})
@@ -278,7 +278,7 @@ func TestConvertNumscriptError_Scaling(t *testing.T) {
 	require.Equal(t, domain.ErrNumscriptScalingUnsupported, got,
 		"scaling must convert to the freezable validation sentinel")
 	require.Equal(t, domain.ErrReasonValidation, got.Reason())
-	require.True(t, domain.IsFreezableFailure(domain.Kind(got)),
+	require.True(t, domain.IsFreezableFailure(got.Kind()),
 		"scaling is deterministic and state-independent, so it must be freezable (terminal)")
 
 	var runtimeErr *domain.ErrNumscriptRuntime

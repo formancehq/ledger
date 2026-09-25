@@ -15,9 +15,12 @@ type stubDescribable struct {
 	msg    string
 }
 
-func (s *stubDescribable) Error() string               { return s.msg }
-func (s *stubDescribable) Reason() string              { return s.reason }
-func (s *stubDescribable) Metadata() map[string]string { return map[string]string{"stub": s.reason} }
+func (s *stubDescribable) Error() string   { return s.msg }
+func (s *stubDescribable) Kind() ErrorKind { return KindForReason(ReasonCode(s.reason)) }
+func (s *stubDescribable) Reason() string  { return s.reason }
+func (s *stubDescribable) Metadata() map[string]string {
+	return map[string]string{"stub": s.reason}
+}
 
 func TestCoverageContractViolation(t *testing.T) {
 	t.Parallel()

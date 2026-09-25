@@ -143,11 +143,14 @@ func TestMatchOrderSkip_UnspecifiedReason(t *testing.T) {
 
 type unknownReasonErr struct{}
 
-func (unknownReasonErr) Error() string               { return "unknown" }
+func (unknownReasonErr) Error() string { return "unknown" }
+func (unknownReasonErr) Kind() domain.ErrorKind {
+	return domain.KindForReason(domain.ReasonCode("THIS_IS_NOT_A_KNOWN_REASON"))
+}
 func (unknownReasonErr) Reason() string              { return "THIS_IS_NOT_A_KNOWN_REASON" }
 func (unknownReasonErr) Metadata() map[string]string { return nil }
 
-var _ domain.Describable = unknownReasonErr{}
+var _ domain.SerializableError = unknownReasonErr{}
 
 // TestAssignSkipLogIDAndDate_AllocatesLogIDAndDateOnParent pins the contract
 // that the skip log gets a real per-ledger Log.Id (the read-side index keys

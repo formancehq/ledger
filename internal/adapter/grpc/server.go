@@ -42,7 +42,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/query"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -515,11 +514,11 @@ func errorConversionStreamInterceptor(logger logging.Logger) ggrpc.StreamServerI
 }
 
 // convertToGRPCError converts known errors to proper gRPC status errors.
-// The bulk of the work is delegated to describableToGRPCStatus: any domain
-// error that implements Describable (every typed *Err* and BusinessError
-// itself) flows through a single exhaustive Kind switch. The remaining
-// branches below cover non-domain errors (signing, raft, AWS smithy, etc.)
-// that don't fit the domain Describable model.
+// The bulk of the work is delegated to classifiableToGRPCStatus: any error
+// that declares its own ErrorKind (every typed *Err* and BusinessError itself,
+// plus the transport and read-path guards that carry no public reason) flows
+// through a single exhaustive Kind switch. The remaining branches below cover
+// unclassified errors (signing, raft, AWS smithy, etc.).
 // Unmapped errors are logged with a correlation ID and replaced with a
 // generic codes.Unknown so internal implementation details (Pebble
 // strings, file paths, invariant messages) are not disclosed to API
@@ -658,13 +657,6 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
-	// Prepared-query mode validation is owned by the read-side query layer,
-	// outside the FSM business-error contract.
-	if errors.Is(err, query.ErrPreparedQueryAggregateTarget) ||
-		errors.Is(err, query.ErrQueryModeUnsupported) {
-		return status.Error(codes.InvalidArgument, err.Error())
-	}
-
 	// Convert ErrNodeRemoved to FailedPrecondition (EN-1045 blacklist).
 	if errors.Is(err, node.ErrNodeRemoved) {
 		return status.Error(codes.FailedPrecondition, err.Error())
@@ -675,15 +667,18 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		return status.Error(codes.NotFound, notFoundErr.Error())
 	}
 
-	// Domain errors: any *Err* type or sentinel that implements Describable,
-	// whether wrapped in BusinessError or returned raw, flows through one
-	// exhaustive Kind switch in describableToGRPCStatus.
-	if d, ok := errors.AsType[domain.Describable](err); ok {
-		if domain.Kind(d) == domain.KindInternal {
+	// Classified errors: anything that can name its own ErrorKind — every
+	// typed *Err* and sentinel from the domain, a BusinessError carrying one,
+	// a transport guard, a read-path argument check — flows through one
+	// exhaustive Kind switch in classifiableToGRPCStatus. Kind is all the
+	// status code needs; the Reason and its metadata are read there only from
+	// the errors that own a public wire contract.
+	if c, ok := errors.AsType[domain.Classifiable](err); ok {
+		if c.Kind() == domain.KindInternal {
 			recordGRPCInternalError(ctx, logger, err)
 		}
 
-		return describableToGRPCStatus(d).Err()
+		return classifiableToGRPCStatus(c).Err()
 	}
 
 	// Convert AWS S3/infrastructure errors to FailedPrecondition so clients

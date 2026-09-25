@@ -85,7 +85,7 @@ func (s *benchScope) GetNextSequenceID() uint64 {
 	return s.nextSequence
 }
 
-func (s *benchScope) IncrementNextSequenceID() (uint64, domain.Describable) {
+func (s *benchScope) IncrementNextSequenceID() (uint64, domain.SerializableError) {
 	id := s.nextSequence
 	next, exhausted := domain.CheckedNextSequence(id, domain.SequenceCounterLog)
 	if exhausted != nil {

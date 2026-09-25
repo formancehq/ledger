@@ -1057,7 +1057,7 @@ func authorizedInMaintenanceMode(orders []*raftcmdpb.Order) bool {
 // checkStaleProposal rejects proposals whose predicted index or cache epoch
 // doesn't match the current state. This detects stale proposals admitted with
 // an inflated IndexTracker or before a cache reset.
-func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.Describable {
+func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Proposal) domain.SerializableError {
 	if predicted := proposal.GetPredictedIndex(); predicted != 0 && predicted != raftIndex {
 		if fsm.logger.Enabled(logging.TraceLevel) {
 			fsm.logger.WithFields(map[string]any{
@@ -1114,18 +1114,18 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // technical-only proposals (cluster config, idempotency eviction,
 // index-ready) silently ignored any PredictedIndex or Preload they
 // carried.
-// planInvariantDescribable extracts the Describable wrapped in err when
+// planInvariantFailure extracts the typed failure wrapped in err when
 // it is a coverage / execution-plan invariant violation. Returns nil
 // when err is some other kind of error (Pebble write failure, etc.) so
 // the caller can fall through to the FSM-killing path.
 //
 // Admission ships bits that don't match the AttributeCoverage slice →
-// *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both implement
-// Describable with KindInternal. Surfacing them via ApplyResult.Error
-// rejects the proposal as a business error instead of wedging the FSM
-// apply loop; the proposal is malformed, but the FSM state is not (no
-// cache mutation lands before Merge).
-func planInvariantDescribable(err error) domain.Describable {
+// *ErrCoverageMiss or *domain.ErrInvalidExecutionPlan. Both are
+// SerializableErrors with KindInternal, so they can be audited. Surfacing
+// them via ApplyResult.Error rejects the proposal as a business error instead
+// of wedging the FSM apply loop; the proposal is malformed, but the FSM state
+// is not (no cache mutation lands before Merge).
+func planInvariantFailure(err error) domain.SerializableError {
 	if miss, ok := errors.AsType[*ErrCoverageMiss](err); ok {
 		return miss
 	}
@@ -1188,7 +1188,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// Preload is a no-op when the proposal carries no ExecutionPlan.
 	genByte := byte(fsm.Registry.Cache.CurrentGeneration() % 2)
 	if err := fsm.Preload(proposal.GetExecutionPlan(), batch, genByte); err != nil {
-		if invariant := planInvariantDescribable(err); invariant != nil {
+		if invariant := planInvariantFailure(err); invariant != nil {
 			// Malformed AttributeCoverage caught before any MirrorPreload
 			// — no cache mutation landed. Surface as a business rejection
 			// in the same shape as scope-level plan invariants so the
@@ -1219,7 +1219,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	scopeFactory := NewScopeFactory(buffer, proposal.GetExecutionPlan(), fsm.logger, fsm.preloadMissCounter, raftIndex)
 
 	if err := fsm.applyTechnicalUpdates(scopeFactory, batch, raftIndex, proposal); err != nil {
-		if invariant := planInvariantDescribable(err); invariant != nil {
+		if invariant := planInvariantFailure(err); invariant != nil {
 			// Coverage miss or malformed execution plan in a TU handler
 			// — same model as orders: surface as a business rejection,
 			// not as an FSM-killing error. The overlay accumulated by
@@ -1240,7 +1240,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// surface per-job rejections (ErrBackupInProgress, ErrBackupJobNotFound,
 		// ErrBackupJobIDCollision) as the typed sentinels. The caller wants
 		// these back as proposal-level errors (so the orchestrator can decide
-		// whether to retry, abort, etc.) — same model as planInvariantDescribable
+		// whether to retry, abort, etc.) — same model as planInvariantFailure
 		// above. Anything else returned from a TU handler is FSM-fatal.
 		if errors.Is(err, ErrBackupInProgress) ||
 			errors.Is(err, ErrBackupJobIDCollision) ||
@@ -1328,7 +1328,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	var (
 		proposalHash []byte
 		logs         []*raftcmdpb.CreatedLogOrReference
-		err          domain.Describable
+		err          domain.SerializableError
 		replayed     bool
 	)
 
@@ -1740,8 +1740,8 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 		return nil
 	}
 
-	var d domain.Describable
-	if !errors.As(bizErr, &d) || !domain.IsFreezableFailure(domain.Kind(d)) {
+	var d domain.SerializableError
+	if !errors.As(bizErr, &d) || !domain.IsFreezableFailure(d.Kind()) {
 		return nil
 	}
 

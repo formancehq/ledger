@@ -268,7 +268,7 @@ func TestMetadataLimitsValidateMapBoundaries(t *testing.T) {
 
 			require.NotNil(t, err)
 			require.Equal(t, ErrReasonMetadataLimitExceeded, err.Reason())
-			require.Equal(t, KindValidation, Kind(err))
+			require.Equal(t, KindValidation, err.Kind())
 
 			meta := err.Metadata()
 			require.Equal(t, tc.wantDimension, meta["dimension"])
@@ -362,7 +362,7 @@ func TestMetadataLimitsValidateCommandBytes(t *testing.T) {
 	require.Equal(t, MetadataLimitDimensionCommand, err.Metadata()["dimension"])
 	require.Equal(t, "100", err.Metadata()["limit"])
 	require.Equal(t, "101", err.Metadata()["actual"])
-	require.Equal(t, KindValidation, Kind(err))
+	require.Equal(t, KindValidation, err.Kind())
 }
 
 func TestMetadataLimitsValidateKey(t *testing.T) {

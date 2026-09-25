@@ -1031,6 +1031,22 @@ The REST adapter uses the same `Describable.Reason()` as the JSON `errorCode` fi
 
 Every response the table maps to 503 also carries `Retry-After: 1` — the kind is by definition retry-now, so the header covers the whole class, not just the no-leader sentinel.
 
+**Classified failures with no reason (EN-2081).** A `domain.Classifiable` declares a `Kind` and nothing else, so it has no `Reason()` to publish. The status code comes from the same table, but the response carries a coarse kind-level `errorCode` — `INVALID_REQUEST`, `UNAVAILABLE`, `CONFLICT`, … — and the gRPC surface sends no `ErrorInfo` at all.
+
+This is the tier for failures that name no business outcome a client could branch on:
+
+| Failure | Previously | Now |
+|---|---|---|
+| `AGGREGATE_VOLUMES` on a non-`ACCOUNTS` prepared query | `UNKNOWN` / 500 (bare `errors.New`) | `INVALID_ARGUMENT` / 400, no `ErrorInfo` |
+| Unsupported `QueryMode` | `UNKNOWN` / 500 (bare `errors.New`) | `INVALID_ARGUMENT` / 400, no `ErrorInfo` |
+| Empty envelope list (gRPC `Apply` guard) | `INVALID_ARGUMENT` + `VALIDATION` | `INVALID_ARGUMENT`, no `ErrorInfo` |
+| Idempotency key too long / invalid UTF-8 | `INVALID_ARGUMENT` + `VALIDATION` | `INVALID_ARGUMENT`, no `ErrorInfo` |
+| Checkpoint trigger not last in a bulk request | `INVALID_ARGUMENT` + `VALIDATION` | `INVALID_ARGUMENT`, no `ErrorInfo` |
+
+The last three previously carried the generic `VALIDATION` reason, which told a client nothing its status code did not already say while committing the server to an identifier it could never rename. Domain validation sentinels are unaffected and keep `VALIDATION`: they are FSM-reachable, and the audit chain persists a reason.
+
+Clients must treat the HTTP status as the primary signal and `errorCode` as a refinement; a coarse code is not a reason and is not a stable identifier to pattern-match on.
+
 **Bare gRPC statuses at the HTTP boundary.** A handler can surface a `google.golang.org/grpc/status` error that is not a domain `Describable`; `handleError` translates exactly two codes and deliberately lets every other one fall through to the sanitized 500:
 
 | gRPC code | HTTP response |
