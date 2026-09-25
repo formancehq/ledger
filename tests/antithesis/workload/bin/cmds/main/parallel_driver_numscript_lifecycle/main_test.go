@@ -9,6 +9,7 @@ import (
 	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/v3/internal/adapter/auth"
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
@@ -201,5 +202,5 @@ func numscriptNames(count int) []*commonpb.NumscriptInfo {
 
 func numscriptServer(controller *ctrlmock.MockController) servicepb.BucketServiceServer {
 	return ledgergrpc.NewBucketServiceServer(logging.Testing(), controller, nil, nil, nil, nil, nil, nil,
-		0, "", noop.NewMeterProvider(), nil, nil, version.Info{})
+		auth.AuthConfig{}, 0, "", noop.NewMeterProvider(), nil, nil, version.Info{})
 }
