@@ -147,6 +147,7 @@ var _ = Describe("EphemeralPurge", Ordered, func() {
 				g.Expect(usdVol).NotTo(BeNil(), "expected USD volumes on non-ephemeral account")
 				g.Expect(usdVol.GetInput().DecimalString()).To(Equal("100"))
 				g.Expect(usdVol.GetOutput().DecimalString()).To(Equal("100"))
+				g.Expect(usdVol.GetBalance()).NotTo(BeNil(), "USD balance field must be present")
 				g.Expect(usdVol.GetBalance().DecimalString()).To(Equal("0"))
 			}).Within(5 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 		})
