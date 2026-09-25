@@ -1,5 +1,30 @@
 # Indexer
 
+## Ephemeral account purge
+
+`LedgerLog.purged_accounts` is the durable boundary between atomic primary
+deletion and the per-replica read projection. For each address, the indexer
+removes current account metadata memberships (forward, existence, and reverse
+limbs) and has-asset rows in the same local batch that advances projection.
+Has-asset writes maintain an account-first purge companion, so lifecycle cleanup
+scans only the purged account's asset cells rather than the ledger-wide
+asset-first query index. This guarantees atomic publication within the read
+projection. An
+aligned snapshot may use a projection already ahead of its main-store pin, so
+the has-asset exception and its mixed-horizon implications remain as documented
+in [read-consistency-projections.md](../../../audits/read-consistency-projections.md).
+
+Account-to-transaction, source, and destination mappings are immutable history
+and are deliberately retained. Physical deletion across the main and read-store
+Pebble databases is asynchronous; atomicity is expressed by the committed purge
+signal and by withholding aligned progress until its local cascade commits.
+
+Transaction queries by exact address read those retained mappings and therefore
+include transactions from purged accounts. Address-prefix queries intentionally
+expand only addresses that still exist in current account state, so their cost
+does not grow with every ephemeral address ever created. Use an indexed
+transaction metadata field when a historical flow needs prefix-like grouping.
+
 The background workers (`internal/application/indexbuilder` and
 `internal/application/auditindexer`) that turn committed main-store logs and
 audit entries into queryable read-store keyspaces. They run independently on

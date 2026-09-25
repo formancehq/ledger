@@ -657,59 +657,53 @@ func compileAddressMatchRev(ctx *compileCtx, am *commonpb.AddressMatch) (readsto
 
 func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		// Accounts are entity-ordered under the address prefix, so this
-		// streams descending.
-		iter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+		accountIter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse account prefix iterator: %w", err)
 		}
-
-		return trackReverse(iter, ctx.profile, &IteratorStats{
+		trackedAccount := trackReverse(accountIter, ctx.profile, &IteratorStats{
 			Label:  fmt.Sprintf("PebbleReverseAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
 			Kind:   "PebbleReverseAccount",
 			Prefix: "pebble:attributes",
-		}), nil
+		})
+
+		return trackedAccount, nil
 	}
 
-	// TRANSACTIONS target: the account→tx union is a materializing fallback,
-	// served descending through a borrowed cursor over its one sorted slice.
-	accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+	accountIter, err := readstore.NewReverseAccountTxAddressPrefixIterator(
+		ctx.indexReader, ctx.kb, ctx.ledgerName, addrPrefix, addressRolePrefix(role),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("creating account prefix iterator: %w", err)
+		return nil, fmt.Errorf("creating reverse account transaction address prefix iterator: %w", err)
 	}
-
-	trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
-		Kind:   "PebbleAccount",
-		Prefix: "pebble:attributes",
+	trackedAccount := trackReverse(accountIter, ctx.profile, &IteratorStats{
+		Label: fmt.Sprintf("ReverseAccountTxAddressPrefixIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
+		Kind:  "AccountTxAddressPrefix", Prefix: addressRoleBucketLabel(role),
 	})
-
 	var accountStats *IteratorStats
 	if ctx.profile != nil {
 		accountStats = ctx.profile.Root
 	}
 
+	// TRANSACTIONS target: the account→tx union is a materializing fallback,
+	// served descending through a borrowed cursor over its one sorted slice.
 	addrTxIter := readstore.NewReverseAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedAccount, addressRolePrefix(role))
 
 	return trackReverse(addrTxIter, ctx.profile, &IteratorStats{
-		Label:    fmt.Sprintf("ReverseAddressTxIterator(%s)", ctx.ledgerName),
-		Kind:     "AddressTx",
-		Prefix:   addressRoleBucketLabel(role),
+		Label: fmt.Sprintf("ReverseAddressTxIterator(%s)", ctx.ledgerName), Kind: "AddressTx", Prefix: addressRoleBucketLabel(role),
 		Children: []*IteratorStats{accountStats},
 	}), nil
 }
 
 func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
-	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
-	if err != nil {
-		return nil, fmt.Errorf("checking account existence: %w", err)
-	}
-
-	if !exists {
-		return emptyReverse(), nil
-	}
-
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+		if err != nil {
+			return nil, fmt.Errorf("checking account existence: %w", err)
+		}
+		if !exists {
+			return emptyReverse(), nil
+		}
 		iter := readstore.NewReverseSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{

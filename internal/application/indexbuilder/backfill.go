@@ -1380,9 +1380,10 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 		}
 
 		var (
-			batchCount int
-			lastSeq    uint64
-			eof        bool
+			batchCount     int
+			lastSeq        uint64
+			eof            bool
+			purgedAccounts = make(map[string]struct{})
 		)
 
 		batch := b.readStore.NewBatch()
@@ -1454,14 +1455,31 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
 			}
 			if !isHistoryLog(log) {
+				b.wb.SetEventSequence(log.GetSequence())
+				if err := b.collectPurgedAccounts(cfg, task.ledger, ledgerLog.GetPurgedAccounts(), purgedAccounts); err != nil {
+					_ = batch.Cancel()
+
+					return err
+				}
+
 				continue
 			}
 
-			if err := b.indexLogEntry(cfg, log, proposals); err != nil {
+			if err := b.indexLogEntryWithAccountPurge(cfg, log, proposals, false); err != nil {
 				_ = batch.Cancel()
 
 				return err
 			}
+			if err := b.collectPurgedAccounts(cfg, task.ledger, ledgerLog.GetPurgedAccounts(), purgedAccounts); err != nil {
+				_ = batch.Cancel()
+
+				return err
+			}
+		}
+		if err := b.flushCollectedPurgedAccounts(cfg, task.ledger, purgedAccounts); err != nil {
+			_ = batch.Cancel()
+
+			return err
 		}
 
 		// AppliedProposal cursor errors set during indexLogEntry must be
@@ -1588,7 +1606,11 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 			return fmt.Errorf("invariant: unsupported account backfill index %v", kind.AccountBuiltin)
 		}
 
-		return deletePrefix(readstore.PrefixAccountByAsset)
+		if err := deletePrefix(readstore.PrefixAccountByAsset); err != nil {
+			return err
+		}
+
+		return deletePrefix(readstore.PrefixAssetsByAccount)
 	case *commonpb.IndexID_LogBuiltin:
 		if kind.LogBuiltin != commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE {
 			return fmt.Errorf("invariant: unsupported log backfill index %v", kind.LogBuiltin)

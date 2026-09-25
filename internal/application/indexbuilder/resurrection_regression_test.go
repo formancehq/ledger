@@ -188,7 +188,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 	batch = b.readStore.NewBatch()
 	b.initBatch(batch)
 	require.NoError(t, b.indexPayload(b.kb, b.ledgerConfig(ledger), ledger,
-		makeAcctDeletedMetadataLog(2, ledger, 2, account, metaKey).GetPayload().GetApply().GetLog().GetData().GetPayload(), nil))
+		makeAcctDeletedMetadataLog(2, ledger, 2, account, metaKey).GetPayload().GetApply().GetLog().GetData().GetPayload(), nil, nil))
 	require.NoError(t, b.wb.Flush())
 
 	// The retype lands while dropped, so the recreate's replay re-encodes the

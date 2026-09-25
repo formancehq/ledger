@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"math/big"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -1053,9 +1054,11 @@ func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
 		createdTransactionPayload(1, rebuildTestPosting("world", "orders:1", "USD", 5)),
 	)))
-	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger",
+	drain := applyLedgerLog(3, "ledger",
 		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
-	)))
+	)
+	drain.GetPayload().GetApply().Log.PurgedAccounts = []string{"orders:1"}
+	require.NoError(t, batch.SetProto(coldLogKey(3), drain))
 	// logs 2-3 form one proposal, so orders:1 nets to zero at the boundary.
 	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
 	require.NoError(t, batch.SetProto(coldAuditKey(2), auditSuccess(2, 2, 3)))
@@ -1076,6 +1079,49 @@ func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
 	require.Nil(t, pair, "balanced ephemeral account should have been purged")
 }
 
+func TestRebuildDelta_PurgesCheckpointEraEphemeralAccountState(t *testing.T) {
+	t.Parallel()
+
+	store := newRebuildTestStore(t)
+	attrs := attributes.New()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	metadataKey := domain.MetadataKey{AccountKey: volumeKey.AccountKey, Key: "holdId"}
+
+	batch := store.OpenWriteSession()
+	require.NoError(t, state.SaveLedger(batch, "ledger", &commonpb.LedgerInfo{
+		Name: "ledger",
+		AccountTypes: map[string]*commonpb.AccountType{
+			"orders": {
+				Name:        "orders",
+				Pattern:     "orders:{id}",
+				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+			},
+		},
+	}))
+	_, err := attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(5)})
+	require.NoError(t, err)
+	_, err = attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("hold-1"))
+	require.NoError(t, err)
+	purge := applyLedgerLog(2, "ledger",
+		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
+	)
+	purge.GetPayload().GetApply().Log.PurgedAccounts = []string{"orders:1"}
+	require.NoError(t, batch.SetProto(coldLogKey(2), purge))
+	require.NoError(t, batch.SetProto(coldAuditKey(1), auditSuccess(1, 2, 2)))
+	require.NoError(t, batch.Commit())
+
+	require.NoError(t, RebuildDelta(context.Background(), testLogger(), store, 1, 0))
+	handle, err := store.NewDirectReadHandle()
+	require.NoError(t, err)
+	defer func() { _ = handle.Close() }()
+	volume, err := attrs.Volume.Get(handle, volumeKey.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, volume)
+	metadata, err := attrs.Metadata.Get(handle, metadataKey.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, metadata)
+}
+
 // newAttributeReplayWriter builds an isolated writer for regression tests of
 // EN-1425: an in-batch create followed by a mutate must produce the merged
 // state, not overwrite it with a fresh zero-value TransactionState.
@@ -1090,27 +1136,73 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 	t.Cleanup(func() { _ = readHandle.Close() })
 
 	writer := &attributeReplayWriter{
-		store:           store,
-		batch:           store.OpenWriteSession(),
-		volume:          attrs.Volume,
-		metadata:        attrs.Metadata,
-		tx:              attrs.Transaction,
-		ledger:          attrs.Ledger,
-		references:      attrs.References,
-		boundary:        attrs.Boundary,
-		pendingVolumes:  make(map[string]*raftcmdpb.VolumePair),
-		pendingTx:       make(map[string]*commonpb.TransactionState),
-		ledgerInfos:     make(map[string]*commonpb.LedgerInfo),
-		boundaries:      make(map[string]*raftcmdpb.LedgerBoundaries),
-		reversions:      make(map[string]*bitset.Bitset),
-		dirtyReversions: make(map[string]struct{}),
-		readHandle:      readHandle,
-		index:           attrs.Index,
-		pendingIndexes:  make(map[string]*commonpb.Index),
+		store:                  store,
+		batch:                  store.OpenWriteSession(),
+		volume:                 attrs.Volume,
+		metadata:               attrs.Metadata,
+		tx:                     attrs.Transaction,
+		ledger:                 attrs.Ledger,
+		references:             attrs.References,
+		boundary:               attrs.Boundary,
+		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
+		pendingMetadata:        make(map[string]*commonpb.MetadataValue),
+		pendingTx:              make(map[string]*commonpb.TransactionState),
+		purgedVolumePrefixes:   make(map[string]struct{}),
+		purgedMetadataPrefixes: make(map[string]struct{}),
+		ledgerInfos:            make(map[string]*commonpb.LedgerInfo),
+		boundaries:             make(map[string]*raftcmdpb.LedgerBoundaries),
+		reversions:             make(map[string]*bitset.Bitset),
+		dirtyReversions:        make(map[string]struct{}),
+		readHandle:             readHandle,
+		index:                  attrs.Index,
+		pendingIndexes:         make(map[string]*commonpb.Index),
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
 	return writer, attrs, store
+}
+
+func TestAttributeReplayWriterPurgeShadowsCheckpointRowsUntilRefund(t *testing.T) {
+	t.Parallel()
+
+	writer, attrs, store := newAttributeReplayWriter(t)
+	volumeKey := domain.NewVolumeKey("ledger", "hold:1", "USD", "")
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "hold:1"},
+		Key:        "note",
+	}
+	movedMetadataKey := metadataKey
+	movedMetadataKey.Key = "moved"
+
+	seed := store.OpenWriteSession()
+	_, err := attrs.Volume.Set(seed, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input: commonpb.NewUint256FromUint64(5),
+	})
+	require.NoError(t, err)
+	_, err = attrs.Metadata.Set(seed, metadataKey.Bytes(), commonpb.NewStringValue("checkpoint"))
+	require.NoError(t, err)
+	require.NoError(t, seed.Commit())
+
+	require.NoError(t, writer.PurgeAccount("ledger", "hold:1", nil))
+	require.NoError(t, writer.verifyPurgedAccounts(map[domain.AccountKey]struct{}{
+		volumeKey.AccountKey: {},
+	}))
+	volume, err := writer.GetVolume(volumeKey.Bytes())
+	require.NoError(t, err)
+	require.Nil(t, volume, "range tombstone must shadow the checkpoint volume after proposal verification")
+	require.NoError(t, writer.MoveMetadata(metadataKey.Bytes(), movedMetadataKey.Bytes()))
+	require.NotContains(t, writer.pendingMetadata, string(movedMetadataKey.Bytes()),
+		"purged checkpoint metadata must not be resurrected by a same-batch read")
+
+	// A later refund is an exact pending value and therefore supersedes the
+	// prefix shadow without exposing the purged checkpoint value.
+	require.NoError(t, writer.AddVolumeDelta(volumeKey.Bytes(), big.NewInt(2), big.NewInt(0)))
+	volume, err = writer.GetVolume(volumeKey.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, big.NewInt(2), volume.GetInput().ToBigInt())
+	require.NoError(t, writer.SetMetadata(metadataKey.Bytes(), commonpb.NewStringValue("fresh")))
+	require.NoError(t, writer.MoveMetadata(metadataKey.Bytes(), movedMetadataKey.Bytes()))
+	require.Equal(t, "fresh", writer.pendingMetadata[string(movedMetadataKey.Bytes())].GetStringValue())
 }
 
 func TestAttributeReplayWriterRejectsExhaustedBoundariesWithoutWrap(t *testing.T) {

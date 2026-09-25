@@ -20,7 +20,12 @@ type writerStub struct {
 	dropIndex   func(ledger string, id *commonpb.IndexID) error
 
 	removedFieldTypes int
+	purgedAccounts    []string
 }
+
+type livenessWriterStub struct{ writerStub }
+
+func (w *livenessWriterStub) AccountHasNonZeroVolume(string, string) (bool, error) { return false, nil }
 
 func (w *writerStub) AddVolumeDelta([]byte, *big.Int, *big.Int) error { return nil }
 func (w *writerStub) GetVolume([]byte) (*raftcmdpb.VolumePair, error) { return nil, nil }
@@ -29,7 +34,12 @@ func (w *writerStub) MoveVolume([]byte, []byte) error                 { return n
 func (w *writerStub) SetMetadata([]byte, *commonpb.MetadataValue) error {
 	return nil
 }
-func (w *writerStub) DeleteMetadata([]byte) error       { return nil }
+func (w *writerStub) DeleteMetadata([]byte) error { return nil }
+func (w *writerStub) PurgeAccount(_ string, account string, _ replay.ExclusionCollector) error {
+	w.purgedAccounts = append(w.purgedAccounts, account)
+
+	return nil
+}
 func (w *writerStub) MoveMetadata([]byte, []byte) error { return nil }
 func (w *writerStub) CreateTransaction([]byte, uint64, *commonpb.Timestamp, map[string]*commonpb.MetadataValue, []*commonpb.Posting, uint64) error {
 	return nil
@@ -85,10 +95,92 @@ func metaIndexID(key string) *commonpb.IndexID {
 	}
 }
 
+func TestReplayLedgerLog_DefersExplicitAccountPurgeToProposalBoundary(t *testing.T) {
+	t.Parallel()
+
+	w := &writerStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	err := replay.ReplayLedgerLog(
+		"ledger",
+		1,
+		&commonpb.LedgerLogPayload{},
+		[]string{"ephemeral:1"},
+		nil,
+		w,
+		nil,
+		nil,
+		buffer,
+	)
+	require.NoError(t, err)
+	require.Empty(t, w.purgedAccounts, "transaction post-commit volumes are checked before the proposal boundary")
+
+	require.NoError(t, buffer.Flush(w, nil, nil))
+	require.Equal(t, []string{"ephemeral:1"}, w.purgedAccounts)
+}
+
+func TestReplayLedgerLogEmptyMetadataDoesNotCreatePurgeCandidate(t *testing.T) {
+	t.Parallel()
+
+	w := &livenessWriterStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"ephemeral": {Name: "ephemeral", Pattern: "ephemeral:{id}", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		}),
+	}
+	require.NoError(t, replay.ReplayLedgerLog(
+		"ledger", 1,
+		&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+			Target: &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "ephemeral:1"}}},
+		}}},
+		nil, nil, w, map[string]map[string]*commonpb.AccountType{}, types, buffer,
+	))
+	require.NoError(t, buffer.Flush(w, types, nil))
+	require.Empty(t, w.purgedAccounts)
+}
+
+func TestReplayLedgerLogWorldMetadataCreatesPurgeCandidate(t *testing.T) {
+	t.Parallel()
+
+	w := &livenessWriterStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"world": {Name: "world", Pattern: "world", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		}),
+	}
+	require.NoError(t, replay.ReplayLedgerLog(
+		"ledger", 1,
+		&commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
+			Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "world"}}},
+			Metadata: map[string]*commonpb.MetadataValue{"status": commonpb.NewStringValue("active")},
+		}}},
+		nil, nil, w, map[string]map[string]*commonpb.AccountType{}, types, buffer,
+	))
+	require.NoError(t, buffer.Flush(w, types, nil))
+	require.Equal(t, []string{"world"}, w.purgedAccounts)
+}
+
+func TestPostingOnlyWorldCreatesPurgeCandidate(t *testing.T) {
+	t.Parallel()
+
+	w := &livenessWriterStub{}
+	buffer := replay.NewEphemeralPurgeBuffer()
+	types := map[string][]accounttype.CompiledType{
+		"ledger": accounttype.CompileTypes(map[string]*commonpb.AccountType{
+			"world": {Name: "world", Pattern: "world", Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL},
+		}),
+	}
+	postings := []*commonpb.Posting{{Source: "world", Destination: "alice", Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}}
+	buffer.Add("ledger", postings)
+	require.NoError(t, buffer.Flush(w, types, nil))
+	require.Equal(t, []string{"world"}, w.purgedAccounts)
+}
+
 func replayOne(t *testing.T, w replay.Writer, date *commonpb.Timestamp, payload *commonpb.LedgerLogPayload) error {
 	t.Helper()
 
-	return replay.ReplayLedgerLog("ledger", 1, payload, date, w,
+	return replay.ReplayLedgerLog("ledger", 1, payload, nil, date, w,
 		map[string]map[string]*commonpb.AccountType{},
 		map[string][]accounttype.CompiledType{}, nil)
 }

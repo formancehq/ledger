@@ -135,7 +135,7 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 						Id:       21,
 						Metadata: map[string]*commonpb.MetadataValue{metaKey: value},
 					},
-				}, nil)
+				}, nil, nil)
 			},
 		},
 		{
@@ -147,7 +147,7 @@ func TestRetypeDuringBackfill_NewTransactionMetadataReplaysIntoFreshVersion(t *t
 						Id:       22,
 						Metadata: map[string]*commonpb.MetadataValue{metaKey: value},
 					},
-				}, nil)
+				}, nil, nil)
 			},
 		},
 	}

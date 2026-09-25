@@ -4894,9 +4894,18 @@ type AttributeCoverage struct {
 	Id       *AttributeID           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	AttrCode uint32                 `protobuf:"varint,2,opt,name=attr_code,json=attrCode,proto3" json:"attr_code,omitempty"`
 	// Optional seed: nil = coverage-only; non-nil = seed into the FSM cache.
-	Value         *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Value *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// Canonical key bytes retained for proposal-wide deterministic lifecycle
+	// operations that must enumerate only the keys admission declared.
+	CanonicalKey []byte `protobuf:"bytes,4,opt,name=canonical_key,json=canonicalKey,proto3" json:"canonical_key,omitempty"`
+	// True when admission proved the row exists in the primary attribute zone.
+	// Cache-only zero placeholders are never marked persisted.
+	Persisted bool `protobuf:"varint,5,opt,name=persisted,proto3" json:"persisted,omitempty"`
+	// True when an account-type transition makes this row's owner an explicit
+	// proposal-boundary lifecycle candidate even without a row mutation.
+	LifecycleCandidate bool `protobuf:"varint,6,opt,name=lifecycle_candidate,json=lifecycleCandidate,proto3" json:"lifecycle_candidate,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *AttributeCoverage) Reset() {
@@ -4948,6 +4957,27 @@ func (x *AttributeCoverage) GetValue() *AttributeValue {
 		return x.Value
 	}
 	return nil
+}
+
+func (x *AttributeCoverage) GetCanonicalKey() []byte {
+	if x != nil {
+		return x.CanonicalKey
+	}
+	return nil
+}
+
+func (x *AttributeCoverage) GetPersisted() bool {
+	if x != nil {
+		return x.Persisted
+	}
+	return false
+}
+
+func (x *AttributeCoverage) GetLifecycleCandidate() bool {
+	if x != nil {
+		return x.LifecycleCandidate
+	}
+	return false
 }
 
 // AttributeValue carries the typed value to seed the FSM-side cache for
@@ -5681,11 +5711,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x03 \x03(\v2\x17.raft.AttributeCoverageR\n" +
 	"attributes\x12E\n" +
-	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\x7f\n" +
+	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\xf3\x01\n" +
 	"\x11AttributeCoverage\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1b\n" +
 	"\tattr_code\x18\x02 \x01(\rR\battrCode\x12*\n" +
-	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\"-\n" +
+	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\x12#\n" +
+	"\rcanonical_key\x18\x04 \x01(\fR\fcanonicalKey\x12\x1c\n" +
+	"\tpersisted\x18\x05 \x01(\bR\tpersisted\x12/\n" +
+	"\x13lifecycle_candidate\x18\x06 \x01(\bR\x12lifecycleCandidate\"-\n" +
 	"\x0eAttributeValue\x12\x1b\n" +
 	"\traw_value\x18\x01 \x01(\fR\brawValue\"[\n" +
 	"\x14ReloadIdempotencyKey\x12\x10\n" +

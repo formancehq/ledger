@@ -722,6 +722,37 @@ var _ = Describe("CheckStore", Ordered, func() {
 		})
 	})
 
+	Context("After purging an ephemeral account", Ordered, func() {
+		const ledgerName = "check-ephemeral-purge"
+
+		BeforeAll(func() {
+			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateLedgerAction(ledgerName, nil),
+				actions.AddEphemeralAccountTypeAction(ledgerName, "hold", "hold:{id}"),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("world", "hold:1", big.NewInt(100), "USD"),
+				}, nil),
+				actions.SaveAccountMetadataAction(ledgerName, "hold:1", map[string]string{"payment": "1"}),
+			))
+			Expect(err).To(Succeed())
+
+			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+					actions.NewPosting("hold:1", "world", big.NewInt(100), "USD"),
+				}, nil, nil),
+			))
+			Expect(err).To(Succeed())
+		})
+
+		It("Should replay the purge without integrity errors", func() {
+			expectStoreValid(sharedCtx, sharedClient)
+		})
+	})
+
 	// Account types declared at ledger creation (CreateLedgerRequest.account_types)
 	// are logged in CreatedLedgerLog, not via a runtime AddAccountType. The checker
 	// must seed them from the CreateLedger log or it false-positives an

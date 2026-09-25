@@ -1581,6 +1581,10 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		return result, nil
 	}
 
+	if err := buffer.PrepareEphemeralAccountPurge(validateScope, proposal.GetExecutionPlan().GetAttributes()); err != nil {
+		return nil, fmt.Errorf("preparing ephemeral account purge: %w", err)
+	}
+
 	sinkConfigChanged := buffer.SinkConfigChanged()
 	mirrorConfigChanged := buffer.MirrorConfigChanged()
 

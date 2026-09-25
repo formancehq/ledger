@@ -18,3 +18,17 @@ The deterministic state machine (`internal/infra/state`, `internal/infra/plan`, 
 - [Consensus](../consensus/) — Raft commit pipeline that feeds the FSM.
 - [Attributes](../attributes/) — the cache the FSM reads through.
 - [Admission](../admission/) — declares the `plan.Coverage` the FSM consumes.
+
+## Ephemeral account lifecycle
+
+An `EPHEMERAL` account is current state only while at least one of its
+asset/color volumes is non-zero. Admission expands every touched account into a
+closed set of its persisted volume and metadata keys. At the proposal boundary
+the FSM evaluates that set through the proposal-wide coverage gate. When every
+volume is zero, the same primary-store batch deletes all account volumes and
+metadata and persists `LedgerLog.purged_accounts`.
+
+The rule does not apply to `NORMAL` or `TRANSIENT` accounts. Historical
+transactions and their address/source/destination mappings are not account-owned
+current state and survive the purge. Re-funding the address therefore creates a
+fresh current-state incarnation without restoring old metadata.

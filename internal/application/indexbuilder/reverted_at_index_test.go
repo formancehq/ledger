@@ -51,7 +51,7 @@ func TestIndexRevertedTransaction_WritesRevertedAtIndex(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, b.indexRevertedTransaction(b.kb, cfg, "test", rt, nil))
+	require.NoError(t, b.indexRevertedTransaction(b.kb, cfg, "test", rt, nil, nil))
 	require.NoError(t, b.wb.Flush())
 
 	// Entry keyed to the original transaction by the revert timestamp.
