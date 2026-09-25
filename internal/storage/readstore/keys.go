@@ -745,10 +745,10 @@ func AuditIndexPrefix() []byte {
 //     to reject longer NUL-extended entries. Prefix lookup rejects NUL-bearing
 //     operands in auditSeqsByStringPrefix (see also indexIdempotencyKeyLeaf).
 //
-// EN-1305, which wires the equality/range filter path over arbitrary caller
-// subjects, MUST disambiguate before relying on this encoding (exact-length
-// check or length-prefixed string encoding); otherwise "alice" would also
-// match a value indexed as "alice\x00evil".
+// AuditSeqsByString already passes the exact-length guard (len(lower)+8) to
+// auditSeqsForPrefix for every string field, so exact lookups are unambiguous
+// across all current callers. Any future prefix-capable field that contains NUL
+// must additionally guard the prefix operand (see auditSeqsByStringPrefix).
 func AuditIndexStringKey(kb *dal.KeyBuilder, field byte, value string, seq uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixInternal).
