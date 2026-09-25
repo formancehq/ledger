@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -41,39 +42,101 @@ func (failures checkpointSetupProbeFailures) allTransient() bool {
 	return true
 }
 
-// The cluster metadata RPCs read local storage without a consistency fence.
-// Callers must supply bucket and cluster clients pinned to the same node:
-// completing a linearizable ledger read first advances that node's applied
-// state before its registry or schedule snapshot is opened.
-func readCheckpointRegistry(ctx context.Context, bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient, ledger string) (*clusterpb.ListQueryCheckpointsResponse, error) {
-	if err := fenceCheckpointMetadata(ctx, bucket, ledger); err != nil {
+// Cluster metadata RPCs read local storage. A routed GetLedger can succeed on
+// the leader while this node still lags, so fence the pinned node's durably
+// persisted cursor before opening its registry or schedule snapshot.
+func readCheckpointRegistry(ctx context.Context, node *internal.PerNodeConn) (*clusterpb.ListQueryCheckpointsResponse, error) {
+	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err
 	}
-	return cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
+	return node.Cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 }
 
-func readCheckpointSchedule(ctx context.Context, bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient, ledger string) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
-	if err := fenceCheckpointMetadata(ctx, bucket, ledger); err != nil {
+func readCheckpointSchedule(ctx context.Context, node *internal.PerNodeConn) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
+	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err
 	}
-	return cluster.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
+	return node.Cluster.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
 }
 
-func fenceCheckpointMetadata(ctx context.Context, bucket servicepb.BucketServiceClient, ledger string) error {
-	headers, _ := metadata.FromOutgoingContext(ctx)
-	headers = headers.Copy()
-	headers.Set("x-consistency", "linearizable")
-	_, err := bucket.GetLedger(metadata.NewOutgoingContext(ctx, headers), &servicepb.GetLedgerRequest{Ledger: ledger})
-	return err
+func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) error {
+	nodeID, err := checkpointMetadataNodeID(ctx, node)
+	if err != nil {
+		return err
+	}
+	barrier, err := node.Bucket.Barrier(ctx, &servicepb.BarrierRequest{})
+	if err != nil {
+		return err
+	}
+	target := barrier.GetCommitIndex()
+	if target == 0 {
+		return fmt.Errorf("checkpoint metadata barrier returned zero index")
+	}
+	// Capture one watermark. Concurrent writes may advance beyond it; chasing
+	// the moving leader head would unnecessarily starve this bounded read.
+	ticker := time.NewTicker(20 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		state, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{NodeId: nodeID})
+		if err != nil {
+			return err
+		}
+		if state.GetLocalNode() != nodeID || state.GetRaftStatus() == nil {
+			return fmt.Errorf("checkpoint metadata node %q: expected state for node %d with durable progress, got node %d", node.Addr, nodeID, state.GetLocalNode())
+		}
+		persisted := state.GetRaftStatus().GetLastPersistedIndex()
+		syncStatus := state.GetSyncProgress().GetStatus()
+		if persisted >= target && (syncStatus == "" || syncStatus == "normal") {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("checkpoint metadata node %d at %q: durable index %d below barrier %d or sync status %q: %w", nodeID, node.Addr, persisted, target, syncStatus, status.FromContextError(ctx.Err()).Err())
+		case <-ticker.C:
+		}
+	}
 }
 
-// Probe before any setup mutation: an unavailable first address must not consume
+// Follower state has no Nodes list. Use the leader's topology ONLY to verify
+// identity; its progress must never authorize a read of the pinned local store.
+// Refresh unresolved best-effort dial identities under the caller's deadline,
+// without mutating the PerNodeConn shared by concurrent model workers.
+func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (uint32, error) {
+	if node.Addr == "" {
+		return 0, fmt.Errorf("checkpoint metadata node has no pinned address")
+	}
+	topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+	if err != nil {
+		return 0, err
+	}
+	// Leadership can change between the RPC's routing decision and the
+	// orchestrator sampling status. A demoted node legitimately omits Nodes.
+	switch topology.GetState() {
+	case "Leader":
+	case "Follower", "Candidate", "PreCandidate", "Shutdown":
+		return 0, status.Error(codes.Unavailable, "checkpoint metadata leader changed during identity discovery")
+	default:
+		return 0, fmt.Errorf("checkpoint metadata discovery returned invalid node state %q", topology.GetState())
+	}
+	for _, peer := range topology.GetNodes() {
+		if peer.GetServiceAddress() != node.Addr || peer.GetId() == 0 {
+			continue
+		}
+		if node.NodeID != 0 && node.NodeID != peer.GetId() {
+			return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
+		}
+		return peer.GetId(), nil
+	}
+	return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology", node.Addr)
+}
+
+// Probe before changing the checkpoint baseline: an unavailable first address must not consume
 // the complete workload lifetime when another node can serve the baseline.
-func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns, ledger string) (*internal.PerNodeConn, error) {
+func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns) (*internal.PerNodeConn, error) {
 	failures := make(checkpointSetupProbeFailures, 0, len(nodes))
 	for _, node := range nodes {
 		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		err := fenceCheckpointMetadata(probeCtx, node.Bucket, ledger)
+		err := fenceCheckpointMetadata(probeCtx, node)
 		cancel()
 		if err == nil {
 			return node, nil
@@ -89,9 +152,9 @@ func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns,
 	return nil, failures
 }
 
-func waitForCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns, ledger string) (*internal.PerNodeConn, error) {
+func waitForCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns) (*internal.PerNodeConn, error) {
 	for {
-		node, err := selectCheckpointSetupNode(ctx, nodes, ledger)
+		node, err := selectCheckpointSetupNode(ctx, nodes)
 		if err == nil {
 			return node, nil
 		}

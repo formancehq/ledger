@@ -59,7 +59,7 @@ func buildAuditFailure(d domain.Describable) *auditpb.AuditFailure {
 // chain and (b) AuditItem.SerializedOrder, so verifiers re-hash the exact bytes
 // that were persisted instead of re-marshalling an Order proto — and the chain
 // proves only accepted intent, never admission-derived execution metadata
-// (coverage_bits, inputs_resolution_hash, preload_unavailable). The chain is
+// (every OrderTechnical field). The chain is
 // immune to vtprotobuf or Order schema evolution. Symmetric with the idempotency
 // hash (processor.hashOrder), which binds the identical projection.
 func marshalOrdersForAudit(orders []*raftcmdpb.Order) [][]byte {

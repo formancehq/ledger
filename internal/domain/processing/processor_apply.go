@@ -53,6 +53,17 @@ func processApply(ledger string, apply *raftcmdpb.LedgerApplyOrder, ctx *Context
 	// Stage per-apply context fields for child handlers.
 	ctx.Boundaries = boundaries
 
+	// Record the ledger's transaction-id horizon as it stood before this batch
+	// touched it. The first apply for a ledger reads the committed value, and
+	// later orders in the batch see their predecessors' mutations, so only the
+	// first observation is the pre-batch one. processRevertTransaction uses it
+	// to tell a target this batch creates from one that already existed.
+	// ProcessOrders and ProcessOrder, the only Context constructors, both
+	// allocate the map.
+	if _, seen := ctx.batchInitialNextTxID[ledger]; !seen {
+		ctx.batchInitialNextTxID[ledger] = boundaries.GetNextTransactionId()
+	}
+
 	// Every successful ledger-scoped apply emits one per-ledger log. Check the
 	// next-ID transition before dispatch so exhaustion rejects without leaving
 	// any staged child-handler mutation behind (EN-1860).

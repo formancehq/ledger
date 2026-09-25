@@ -14,11 +14,25 @@ import (
 func metadataPolicyChangeOrder(kind string) *raftcmdpb.Order {
 	metadata := map[string]*commonpb.MetadataValue{"k": commonpb.NewStringValue("12345")}
 	scoped := &raftcmdpb.LedgerScopedOrder{Ledger: "test-ledger"}
+
+	var technical *raftcmdpb.OrderTechnical
 	switch kind {
 	case "ledger":
 		scoped.Payload = &raftcmdpb.LedgerScopedOrder_SaveLedgerMetadata{SaveLedgerMetadata: &raftcmdpb.SaveLedgerMetadataOrder{Metadata: metadata}}
 	case "revert":
 		scoped.Payload = &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: &raftcmdpb.RevertTransactionOrder{TransactionId: 3, Metadata: metadata}}}}
+
+		// Every revert order admission emits binds what it observed of the
+		// target; apply rejects one that does not. Match the state the fixture
+		// serves below so the order reaches the metadata check under test.
+		technical = &raftcmdpb.OrderTechnical{
+			RevertTargetDigest: domain.RevertTargetDigest([]*commonpb.Posting{{
+				Source:      "world",
+				Destination: "users:alice",
+				Asset:       "USD",
+				Amount:      commonpb.NewUint256FromUint64(1),
+			}}, true),
+		}
 	default:
 		target := &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "users:alice"}}}
 		if kind == "transaction" {
@@ -27,7 +41,7 @@ func metadataPolicyChangeOrder(kind string) *raftcmdpb.Order {
 		scoped.Payload = &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{Target: target, Metadata: metadata}}}}
 	}
 
-	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: scoped}}
+	return &raftcmdpb.Order{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: scoped}, Technical: technical}
 }
 
 func TestProcessOrdersMetadataPolicyTightenedAfterAdmission(t *testing.T) {

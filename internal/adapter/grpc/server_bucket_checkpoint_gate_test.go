@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,7 +25,7 @@ const gateCheckpointID = uint64(3)
 
 // newCheckpointGateFixture registers query checkpoint gateCheckpointID and
 // materializes both of its halves, each marked ready.
-func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
+func newCheckpointGateFixture(t *testing.T, seed ...func(*dal.Store)) *BucketServiceServerImpl {
 	t.Helper()
 
 	store, err := dal.NewStore(t.TempDir(), testLogger(), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
@@ -34,6 +35,10 @@ func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveQueryCheckpoint(batch, &raftcmdpb.QueryCheckpointState{CheckpointId: gateCheckpointID}))
 	require.NoError(t, batch.Commit())
+
+	for _, populate := range seed {
+		populate(store)
+	}
 
 	_, err = store.CreateQueryCheckpoint(gateCheckpointID)
 	require.NoError(t, err)
@@ -46,7 +51,7 @@ func newCheckpointGateFixture(t *testing.T) *BucketServiceServerImpl {
 	require.NoError(t, readIndex.CreateCheckpoint(readIndexPath))
 	require.NoError(t, dal.MarkCheckpointReady(readIndexPath))
 
-	return &BucketServiceServerImpl{logger: testLogger(), store: store}
+	return &BucketServiceServerImpl{logger: testLogger(), store: store, readStore: readIndex}
 }
 
 func unmark(t *testing.T, dir string) {
@@ -130,4 +135,79 @@ func TestOpenCheckpointStoresSurfacesDamagedMainStore(t *testing.T) {
 	var notFound *commonpb.NotFoundError
 	require.False(t, errors.As(err, &notFound), "the checkpoint exists; only this replica's copy is damaged")
 	require.Equal(t, codes.Unknown, status.Code(convertToGRPCError(err, testLogger())))
+}
+
+// A checkpoint is frozen and every one of these opens is read-only, so any
+// number of concurrent reads of one checkpoint must be served. The lease taken
+// by openCheckpointStores guards the directory against deletion; it is not
+// mutual exclusion over the open, and pebble's directory lock is per-process.
+func TestOpenCheckpointStoresServesConcurrentReaders(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	const readers = 8
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		failed  []error
+		release = make(chan struct{})
+	)
+
+	// Outcomes are recorded and asserted on the test goroutine: require's FailNow
+	// is a runtime.Goexit, which testify does not support off it.
+	bothStores := make([]bool, readers)
+
+	for i := range readers {
+		wg.Go(func() {
+			<-release
+
+			main, readIndex, cleanup, err := impl.openCheckpointStores(context.Background(), gateCheckpointID)
+			if err != nil {
+				mu.Lock()
+				failed = append(failed, err)
+				mu.Unlock()
+
+				return
+			}
+
+			defer cleanup()
+
+			bothStores[i] = main != nil && readIndex != nil
+		})
+	}
+
+	close(release)
+	wg.Wait()
+
+	require.Empty(t, failed, "concurrent readers of one frozen checkpoint must all be served")
+	for i, served := range bothStores {
+		require.True(t, served, "reader %d must receive both stores", i)
+	}
+}
+
+// The read index opens second, so its failure has to unwind the main store the
+// same call already opened. Leaking it would leave Pebble holding the directory
+// lock, and the next reader of this checkpoint would fail to open a directory
+// that is not damaged at all.
+func TestOpenCheckpointStoresUnwindsMainStoreWhenReadIndexIsDamaged(t *testing.T) {
+	t.Parallel()
+
+	impl := newCheckpointGateFixture(t)
+
+	manifests, err := filepath.Glob(filepath.Join(impl.store.QueryCheckpointReadIndexDir(gateCheckpointID), "MANIFEST-*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, manifests)
+	require.NoError(t, os.Truncate(manifests[0], 0))
+
+	main, readIndex, cleanup, err := impl.openCheckpointStores(context.Background(), gateCheckpointID)
+	require.Nil(t, main)
+	require.Nil(t, readIndex)
+	require.Nil(t, cleanup)
+	require.ErrorContains(t, err, "opening checkpoint read index")
+
+	reopened, err := dal.OpenReadOnly(impl.store.QueryCheckpointMainDir(gateCheckpointID), testLogger())
+	require.NoError(t, err, "the main store opened by the failed call must have been closed")
+	require.NoError(t, reopened.Close())
 }

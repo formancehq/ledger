@@ -14,23 +14,23 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-// Every index the generator churns needs its own sonde, or a run can serve
+// Every index the generator churns needs its own probe, or a run can serve
 // pages from some of them and still look fully covered.
-func TestCoverageMessages_OneSondePerWorkloadIndex(t *testing.T) {
+func TestCoverageMessages_OneProbePerWorkloadIndex(t *testing.T) {
 	t.Parallel()
 
 	msgs := coverageMessages()
 
 	for _, wi := range workloadIndexes() {
 		require.Contains(t, msgs, coverageIndexMessage(wi.canonical),
-			"index %s is churned but has no coverage sonde", wi.canonical)
+			"index %s is churned but has no coverage probe", wi.canonical)
 	}
 
 	require.Len(t, msgs, len(workloadIndexes())+15+len(applyCoverageMessages()),
-		"index, metadata, retype, Apply, checkpoint, and lifecycle sondes")
+		"index, metadata, retype, Apply, checkpoint, and lifecycle probes")
 }
 
-// Antithesis keys properties by message, so two sondes sharing a name collapse
+// Antithesis keys properties by message, so two probes sharing a name collapse
 // into one signal and a starved index hides behind a covered one.
 func TestCoverageMessages_AreUniqueAndPrefixed(t *testing.T) {
 	t.Parallel()
@@ -42,12 +42,12 @@ func TestCoverageMessages_AreUniqueAndPrefixed(t *testing.T) {
 			"%q escapes the prefix run_model_test.sh keys its gate on", msg)
 
 		_, dup := seen[msg]
-		require.False(t, dup, "duplicate sonde name %q", msg)
+		require.False(t, dup, "duplicate probe name %q", msg)
 		seen[msg] = struct{}{}
 	}
 }
 
-// The two entity targets must not collapse onto one another's sonde.
+// The two entity targets must not collapse onto one another's probe.
 func TestCoverageMetadataMessage_DistinguishesTargets(t *testing.T) {
 	t.Parallel()
 
@@ -56,8 +56,8 @@ func TestCoverageMetadataMessage_DistinguishesTargets(t *testing.T) {
 		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS))
 }
 
-// The metadata sonde is satisfied by a metadata-field leaf and nothing else: a
-// builtin-index leaf is served by a sonde of its own, and an index-free one by
+// The metadata probe is satisfied by a metadata-field leaf and nothing else: a
+// builtin-index leaf is served by a probe of its own, and an index-free one by
 // none.
 func TestFilterNeedsMetadataIndex(t *testing.T) {
 	t.Parallel()
@@ -73,7 +73,7 @@ func TestFilterNeedsMetadataIndex(t *testing.T) {
 	require.False(t, filterNeedsMetadataIndex(nil))
 }
 
-// The retype sonde reads the committed model, so it must see a window the fold
+// The retype probe reads the committed model, so it must see a window the fold
 // opened — and only for an index the query actually needed.
 func TestRetypeWindowOpenFor(t *testing.T) {
 	t.Parallel()
@@ -121,7 +121,7 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 		"a query that did not need the retyped index proves nothing about the window")
 }
 
-// A sonde needs an accepted outcome, a returned row, and the filter to have
+// A probe needs an accepted outcome, a returned row, and the filter to have
 // needed that index. Any one missing and it stays unsatisfied — an empty page
 // in particular proves the index was consulted, never that it can produce a
 // matching record, and the generator emits unmatchable filters on purpose.
@@ -129,22 +129,22 @@ func TestCoverageHits_NeedsAcceptedNonEmptyAndNeeded(t *testing.T) {
 	t.Parallel()
 
 	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
-	assetSonde := coverageIndexMessage(assetIndexCanonical)
+	assetProbe := coverageIndexMessage(assetIndexCanonical)
 	needed := map[string]struct{}{assetIndexCanonical: {}}
 	filter := filterMetaExists("k1")
 
 	hits := coverageHits(accounts, filter, needed, true, 3, true)
-	require.True(t, hits[assetSonde], "accepted, non-empty, and needed")
+	require.True(t, hits[assetProbe], "accepted, non-empty, and needed")
 	require.True(t, hits[coverageMetadataMessage(accounts)])
 	require.True(t, hits[coverageRetypeMessage])
 
-	require.False(t, coverageHits(accounts, filter, needed, true, 0, true)[assetSonde],
-		"a verified but empty page must not satisfy a sonde")
-	require.False(t, coverageHits(accounts, filter, needed, false, 3, true)[assetSonde],
+	require.False(t, coverageHits(accounts, filter, needed, true, 0, true)[assetProbe],
+		"a verified but empty page must not satisfy a probe")
+	require.False(t, coverageHits(accounts, filter, needed, false, 3, true)[assetProbe],
 		"an outcome the oracle rejected proves nothing")
 
 	other := map[string]struct{}{logDateIndexCanonical: {}}
-	require.False(t, coverageHits(accounts, filter, other, true, 3, true)[assetSonde],
+	require.False(t, coverageHits(accounts, filter, other, true, 3, true)[assetProbe],
 		"a page served through another index cannot vouch for this one")
 
 	require.False(t, coverageHits(accounts, filter, needed, true, 3, false)[coverageRetypeMessage],
@@ -153,9 +153,9 @@ func TestCoverageHits_NeedsAcceptedNonEmptyAndNeeded(t *testing.T) {
 		"no metadata leaf, no metadata-index claim")
 }
 
-// Every registered query sonde must be decided on every query, or one could never be
+// Every registered query probe must be decided on every query, or one could never be
 // evaluated false and Antithesis would get no gradient for it.
-func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
+func TestCoverageHits_DecidesEveryEntityProbe(t *testing.T) {
 	t.Parallel()
 
 	accounts := commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS
@@ -163,10 +163,10 @@ func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
 	hits := coverageHits(accounts, filterMetaExists("k1"), nil, true, 1, false)
 	for _, msg := range queryCoverageMessages() {
 		if slices.Contains(applyCoverageMessages(), msg) {
-			continue // Apply sondes are decided below from Apply outcomes.
+			continue // Apply probes are decided below from Apply outcomes.
 		}
 		if msg == coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS) {
-			continue // the other target's sonde is decided by its own queries
+			continue // the other target's probe is decided by its own queries
 		}
 
 		_, decided := hits[msg]
@@ -174,7 +174,7 @@ func TestCoverageHits_DecidesEveryEntitySonde(t *testing.T) {
 	}
 }
 
-func TestApplyCoverageHits_DecidesEveryApplySonde(t *testing.T) {
+func TestApplyCoverageHits_DecidesEveryApplyProbe(t *testing.T) {
 	t.Parallel()
 
 	hits := applyCoverageHits(oracle.Bulk{}, oracle.ApplyResult{})

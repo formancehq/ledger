@@ -299,7 +299,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				quiescentCommitIndex = newCommitIndex
 
 				// No proposal other than our own barrier crossed the observation.
-				assert.Always(false, "list/get balance divergence persisted past quiescence", details.With(internal.Details{
+				assert.Unreachable("list/get balance divergence persisted past quiescence", details.With(internal.Details{
 					"account":       account.Address,
 					"asset":         asset,
 					"listBalance":   balance.String(),

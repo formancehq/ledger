@@ -92,7 +92,7 @@ type Checker struct {
 	replayable []replayEntry
 
 	// Lifecycle coverage is credited only after the follow-up promised by the
-	// sonde has itself been observed and model-validated.
+	// probe has itself been observed and model-validated.
 	pendingDeleted  map[string]struct{}
 	pendingPromoted map[string]struct{}
 

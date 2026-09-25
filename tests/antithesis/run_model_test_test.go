@@ -33,7 +33,7 @@ func TestRunModelTestRequiresVerifiedOutcome(t *testing.T) {
 		{name: "setup assertions only", scenario: "setup-only", wantOutput: "NO VERIFIED MODEL OUTCOMES"},
 		{name: "output without verified hit", scenario: "unverified-output", wantOutput: "NO VERIFIED MODEL OUTCOMES"},
 		{name: "completed model result", scenario: "verified", wantPass: true, wantOutput: "RESULT: PASS"},
-		{name: "missing stochastic coverage", scenario: "verified-missing-coverage", wantPass: true, wantOutput: "COVERAGE SONDES NOT SATISFIED IN THIS RUN"},
+		{name: "missing stochastic coverage", scenario: "verified-missing-coverage", wantPass: true, wantOutput: "COVERAGE PROBES NOT SATISFIED IN THIS RUN"},
 	}
 
 	for _, tt := range tests {

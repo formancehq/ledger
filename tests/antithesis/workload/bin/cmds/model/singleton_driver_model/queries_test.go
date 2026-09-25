@@ -16,13 +16,25 @@ import (
 // buildLedger applies reqs as one committed bulk on an empty-chart ledger "L"
 // and returns its state. An empty chart disables account-type enforcement, so
 // transactions to arbitrary addresses commit and populate volumes.
+//
+// One bulk is the default because the fixtures are written against end-of-bulk
+// semantics — a shared proposal date, and ephemeral cells judged once at the end
+// of the bulk. A fixture that reverts a transaction the same bulk creates must
+// use buildLedgerSeparateBulks instead.
 func buildLedger(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
 	t.Helper()
 
-	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
-	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
+	return buildGlobal(t, reqs...).Ledger("L")
+}
 
-	return res.State.Ledger("L")
+// buildLedgerSeparateBulks commits each request as its own bulk. Reserved for
+// fixtures that revert a transaction an earlier request creates: the server
+// rejects that within one bulk, because admission cannot declare the volume
+// coverage the revert needs when the target is not yet in the local store.
+func buildLedgerSeparateBulks(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
+	t.Helper()
+
+	return buildGlobalSeparateBulks(t, reqs...).Ledger("L")
 }
 
 const (
@@ -145,8 +157,9 @@ func TestMatchTxFilter(t *testing.T) {
 	t.Parallel()
 
 	// Two funding transactions, then revert the first: tx 1 is reverted, tx 3 is
-	// the compensating transaction (tx 2 is the second funding tx).
-	ls := buildLedger(t,
+	// the compensating transaction (tx 2 is the second funding tx). Separate
+	// bulks because the revert targets a transaction this setup creates.
+	ls := buildLedgerSeparateBulks(t,
 		oracletest.TxReq("world", "acc:1", "USD", 5),
 		oracletest.TxReq("world", "acc:2", "USD", 5),
 		oracletest.RevertReqL("L", 1, true),
@@ -258,7 +271,8 @@ func TestTransactionWindow(t *testing.T) {
 func stamp(v uint64) *commonpb.Timestamp { return &commonpb.Timestamp{Data: v} }
 
 // buildGlobal applies reqs as one bulk and returns the global state, for tests
-// that need LearnTxStamps on top of the applied records.
+// that need LearnTxStamps on top of the applied records. See buildLedger for
+// why one bulk is the default.
 func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	t.Helper()
 
@@ -266,6 +280,29 @@ func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 	require.True(t, res.OK, "setup bulk rejected: %s", res.Reason)
 
 	return res.State
+}
+
+// buildGlobalSeparateBulks commits each request as its own bulk — the global
+// counterpart of buildLedgerSeparateBulks, and reserved for the same reason.
+//
+// Splitting is not free: end-of-bulk semantics stop applying. Each request gets
+// its own proposal date, and an ephemeral cell washed back to zero across two
+// bulks is indexed by the first and then only dropped from the query universe by
+// the second, which is a different mechanism (TestMatchTxAddress_UniverseDrop).
+// Do not move a fixture here to make it pass.
+func buildGlobalSeparateBulks(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
+	t.Helper()
+
+	state := oracle.NewGlobalState()
+
+	for i, req := range reqs {
+		res := state.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+		require.True(t, res.OK, "setup request %d rejected: %s", i, res.Reason)
+
+		state = res.State
+	}
+
+	return state
 }
 
 // serverTxFromRec builds the wire transaction the server would return for a
@@ -323,7 +360,8 @@ func TestMatchTxFilter_TxBuiltinLeaves(t *testing.T) {
 
 	// tx 1 (ref r1), tx 2, tx 3 = revert of 2. Stamps learned as the checker
 	// would from the commit response; tx 2's reverted_at is tx 3's timestamp.
-	gs := buildGlobal(t,
+	// Separate bulks because the revert targets a transaction this setup creates.
+	gs := buildGlobalSeparateBulks(t,
 		oracletest.TxReqRefL("L", "r1", "world", "acc:1", "USD", 5),
 		oracletest.TxReqL("L", "world", "acc:2", "USD", 5),
 		oracletest.RevertReqL("L", 2, true),
@@ -430,8 +468,11 @@ func TestTxWindowMatches_OptionalRows(t *testing.T) {
 func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 	t.Parallel()
 
-	// Bulk: an ephemeral wash on e:1 (its cell is excluded at end of bulk) and a
-	// normal funding of a:1. tx 1 is the wash, tx 2 the funding.
+	// One bulk on purpose: an ephemeral wash on e:1 (its cell is zero, and so
+	// excluded, at end of bulk) and a normal funding of a:1. tx 1 is the wash,
+	// tx 2 the funding. Splitting the wash across bulks would index e:1 on the
+	// funding leg and exercise the universe drop instead — see
+	// buildGlobalSeparateBulks.
 	gs := buildGlobal(t,
 		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 		oracletest.AddTypeReqP("a", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
@@ -451,7 +492,13 @@ func TestMatchTxAddress_RolesAndExclusions(t *testing.T) {
 		return f.GetFilter().(*commonpb.QueryFilter_Address).Address
 	}
 
-	// The excluded ephemeral cell strips e:1 membership from both wash txs.
+	// The excluded ephemeral cell strips e:1 membership from both wash txs. The
+	// membership assertion is what separates this from the universe drop
+	// (TestMatchTxAddress_UniverseDrop), where the rows stay indexed and only
+	// the address match stops resolving — matchTxAddress alone would be false
+	// under either mechanism.
+	require.Zero(t, txs.Get(int(0)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
+	require.Zero(t, txs.Get(int(1)).IndexedAddrs()["e:1"], "same-bulk exclusion suppresses index membership")
 	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(0))))
 	require.False(t, matchTxAddress(ls, addr(filterAddrExactRole("e:1", anyRole)), txs.Get(int(1))))
 

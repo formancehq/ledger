@@ -57,14 +57,11 @@ func applyOrder(ledger string, data *raftcmdpb.LedgerApplyOrder) *raftcmdpb.Orde
 // store at order-build time), so the FSM's reversed-posting balance
 // effect is deterministic in tests.
 func revertOrder(overlay *bulkOverlay, ledger string, txID uint64, original ...*commonpb.Posting) *raftcmdpb.Order {
-	overlay.recordRevertOriginalPostings(domain.TransactionKey{LedgerName: ledger, ID: txID}, original)
+	revert := &raftcmdpb.RevertTransactionOrder{TransactionId: txID}
+	overlay.recordRevertTarget(ledger, revert, presentRevertTarget(original))
 
 	return applyOrder(ledger, &raftcmdpb.LedgerApplyOrder{
-		Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId: txID,
-			},
-		},
+		Data: &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: revert},
 	})
 }
 

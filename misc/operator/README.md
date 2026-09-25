@@ -10,7 +10,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Persistent storage** for WAL and data volumes
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
-- **Backups** to S3-compatible backends
+- **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
 - **Credentials** for application-level access control
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
@@ -43,7 +43,14 @@ already removed.
 
 ## Declarative ledger indexes
 
-For a Ledger with `spec.indexes`, reconciliation lists the current registry and
+Initial provisioning sends the ledger, metadata schema and all `spec.indexes`
+in one atomic `ledgerctl ledgers create` batch. Mirror ingestion cannot commit
+between creation and these initial indexes. A UID/generation idempotency key
+allows identical retries after response loss or a failed status update; only a
+successful response records initial ownership. A pre-existing ledger is not
+proof of index ownership.
+
+For later changes to `spec.indexes`, reconciliation lists the current registry and
 creates only missing indexes. Creation is strict: if another writer creates the
 index after the list, `INDEX_ALREADY_EXISTS` is reported through
 `IndexesSynced=False` and reconciliation is retried. The failed creation adds
@@ -51,8 +58,19 @@ no entry to `status.appliedIndexes`; successful earlier operations in the same
 pass remain recorded. For an identity that was not previously tracked, the next
 pass lists the registry again and leaves the external index unowned. Existing
 ownership entries are retained: replacement of a previously tracked index and
-recovery after a lost successful create response or status update remain
+recovery after a lost successful standalone index-create response or status update remain
 separate ownership concerns.
+
+## Pyroscope credentials
+
+`spec.monitoring.pyroscope.authTokenFrom` and `basicAuthPasswordFrom` accept
+`{name, key}` references to Secrets in the Cluster namespace. The operator
+renders required `valueFrom.secretKeyRef` entries only when profiling is enabled;
+it never copies those credential bytes into the Cluster or Pod template.
+Plaintext `authToken` and `basicAuthPassword` fields are not supported.
+Reference changes trigger a rollout; rotating Secret contents requires a Pod
+restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
+for examples and missing-reference behavior.
 
 ## Backup scheduling
 

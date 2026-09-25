@@ -27,6 +27,7 @@ and the pipeline pages.
 
 ## Related
 
+- [Internal Antithesis assertions](../../../contributing/antithesis-assertions.md) — read-barrier guards, successful projection-wait coverage and campaign applicability.
 - [Indexer](../indexer/) — populates the read store the query path consumes.
 - [Consensus](../consensus/) — `ReadIndex` quorum that gates default live reads (with stale/checkpoint exceptions).
 - [FSM](../fsm/) — durable applied index used as the common projection horizon.

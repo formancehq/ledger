@@ -51,8 +51,25 @@ against live candidate states.
 The driver exercises account and transaction point reads and index-free first
 pages against retained snapshots, even while live writes continue. Listing and
 schedule reads must match a possible ordering of in-flight lifecycle writes.
-These node-local metadata APIs are preceded by a linearizable ledger read over
-the same pinned node connection, establishing a lower bound for comparison.
+Before these node-local metadata reads, the harness obtains a fixed Raft index
+from `BucketService.Barrier`, then polls the pinned node's explicit `NodeId`
+until its `LastPersistedIndex` reaches that index (or passes it) and sync is
+normal. The leader's topology verifies the advertised address/ID association
+and resolves IDs left unknown by initial best-effort dialing; its progress is
+never used as local evidence. Follower state need not contain a topology list.
+The explicit response must identify the expected node and carry durable progress;
+an unresolved identity, malformed response, or deadline cannot authorize a read.
+A successful routed `GetLedger` is insufficient: it may run on the leader while
+the original node still lags. Raft `Commit`/`Applied` and a default
+`GetClusterState{NodeId:0}` response do not prove local Pebble progress.
+The registry/schedule read then uses the same pinned connection. Candidate
+states and the existing read-drain gate remain unchanged. The response-frontier
+lock covers discovery, the fence, and the metadata response, so writes cannot
+register between that response and its ticket snapshot. Registry and schedule
+reads are global: they remain valid when all live ledgers have been deleted and
+do not excuse metadata errors using ledger lifecycle states. Frozen checkpoint
+reads retain their lifecycle checks. Barrier no-ops add no business logs. Setup
+uses the same fence before seeding the registry.
 Deleted-checkpoint reads accept gRPC `NotFound` or a success matching the original
 frozen snapshot: a replica may lag deletion, and committed deletion precedes
 filesystem cleanup. Successful reads never count as deleted-read coverage;
@@ -246,8 +263,85 @@ if err != nil {
 }
 ```
 
+### Reference-claim retries
+
+The `parallel_driver_reference_conflict_skip` driver assigns distinct stable
+idempotency keys to its initial claim, intentional duplicate, and fresh claim.
+Automatic retries must return each operation's original outcome: without a key,
+a successful creation followed by a lost response can legitimately retry as a
+reference-conflict skip. The fresh reference uses the initial transaction's ID
+under a driver-owned prefix, so separate successful claims cannot share it in
+one ledger. A returned skip still fails the fresh-claim assertion, with the key,
+skip context, and log sequence recorded for diagnosis.
+
+Its local regression starts a real Ledger node and drops one committed response
+at each step through a gRPC forwarding fixture using the normal workload client.
+It checks original response replay, persisted transaction uniqueness, and no
+extra business log, alongside an unkeyed create-then-skip control. Run it with:
+
+```sh
+go -C tests/antithesis/workload test ./bin/cmds/main/parallel_driver_reference_conflict_skip
+```
+
+### Backup destination contention and recovery
+
+Full and incremental backups share a replicated destination slot. A committed
+Start with a lost acknowledgment, or a lost terminal Fail/Complete proposal,
+can leave that slot RUNNING after the local executor has exited. The next RPC
+then correctly returns `FailedPrecondition` with
+`backup: destination already has a running job`. This protects the shared
+manifest; a short busy observation does not prove a deadlock. The leader's
+orphan cleanup normally scans every 30 seconds and skips live executors.
+
+Both backup drivers use `internal.RetryBackup` for all four stages: standalone
+full, pre-incremental full, first incremental and second incremental. It matches
+that exact busy suffix and status code, then waits using the existing bounded
+backoff. A two-minute window starts at the first busy result and bounds starting
+further retries. Admitted RPCs retain the caller's deadline, so a healthy large
+backup is not cut short by the contention budget. Caller cancellation ends the
+wait. Transport retry classification remains unchanged; job-ID collision,
+unrelated preconditions and server failures are not turned into busy outcomes.
+Drivers tolerate cancellation only when the caller context has ended and the
+returned error represents that cancellation. A concurrent caller cancellation
+does not make an `Unknown` or `Internal` server response inconclusive, and a
+remote `Canceled` response with a live caller remains an unexpected error.
+
+The `backup recovery after destination busy succeeds` Sometimes property records
+false on contention and true only after an actual successful retry. Its details
+identify the stage and stage-attempt count (an RPC's automatic transport retries
+can add more wire attempts). Exhaustion retains the last busy error and is logged
+as inconclusive: it is neither a completed backup nor proof of engine liveness
+failure under continuing faults. This reach claim does not prove every busy
+episode recovered. The existing backup result and sequence invariants still run
+only after successful RPCs.
+
+Local regressions separate the two seams: workload tests commit and reload Start,
+lose its acknowledgment, cross the real client retry interceptor, receive a real
+busy rejection and recover after the cleanup cadence using a simulated clock.
+Application tests drive the real Orchestrator and Cleanup through lost Fail,
+lost Complete and lost Start acknowledgments, including one failed cleanup
+proposal before recovery. They verify attempts, durable history, executor/slot
+and temporary-checkpoint cleanup, and exact restored history/projections from a
+full checkpoint plus non-empty incremental exports. A committed Complete with
+only its acknowledgment lost is a separate control: its slot is already free.
+These are deterministic proposal-seam tests, not a replay of Raft elections or
+network faults. Driver subprocess tests also inspect actual SDK assertions to
+verify that concurrent caller cancellation cannot hide server errors in any of
+the four stages. Run them with:
+
+```bash
+go test -race ./internal/application/backup -run TestBackupRecovery -count=1
+go -C tests/antithesis/workload test -race ./internal -run TestRetryBackup -count=1
+go -C tests/antithesis/workload test -race ./bin/cmds/main/singleton_driver_backup ./bin/cmds/main/singleton_driver_incremental_backup -count=1
+```
+
 ### Lifecycle & context
 
+- The voter, pod, StatefulSet, and cluster-configuration polling helpers apply
+  their timeout to the entire wait, including each in-flight gRPC or Kubernetes
+  request. An earlier caller deadline or cancellation still wins. A response
+  arriving after that context expires is not reported as convergence, and
+  finishing a helper does not cancel its caller's context.
 - Parallel drivers should go through `internal.RunDriver(name, fn)` — it sets up
   the gRPC client, picks a random ledger, and bounds the run with the standard
   10 min deadline.
@@ -300,13 +394,13 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   globally-unique name.** Antithesis indexes assertions by name; two sites
   sharing one name collapse into one signal and the triage UI shows you a
   single average instead of three failure modes.
-- `Sometimes` is a coverage sonde — Antithesis prioritizes paths that make
+- `Sometimes` is a coverage probe — Antithesis prioritizes paths that make
   more `Sometimes` calls satisfied. Use it to mark expected outcomes (`err
   == nil || IsTransient(err)`) even when no invariant is at stake; it tells
   the fuzzer "this branch matters."
 - A `Reachable("X")` with no upstream `Sometimes` that fires when X is true
   is passive: Antithesis cannot bias toward making X happen. Prefer pairing
-  them when the path is fragile. When the sonde and the `Reachable` would
+  them when the path is fragile. When the probe and the `Reachable` would
   carry the same predicate, drop the `Reachable` — both are `mustHit`, so the
   `Sometimes` alone enforces it and additionally gives the fuzzer a gradient.
   `singleton_driver_model/coverage.go` is the worked example.
@@ -315,10 +409,49 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for
   client-construction failures, since they are infrastructure errors, not
   findings.
+- A streaming list EOF completes one page, not necessarily the whole list.
+  Presence/absence checks must follow `x-next-cursor` trailers until pagination
+  completes. The Numscript lifecycle driver uses the routed client's
+  `ListNumscripts` helper and keeps the default page size; its regression tests
+  exercise more than 100 names through the production handler and real gRPC
+  trailers. A failure on any page remains an error, even if the target was
+  already seen.
+- A forbidden branch uses `Unreachable`, not `Always(false)`: `Always` also
+  requires an evaluation, so a correct run would report the failure-only site
+  as missed. Sentinel survival and list/get balance consistency retain separate
+  required `Reachable` observations for successful reads and nonempty matching
+  pairs. Empty results and transient errors do not satisfy that success coverage.
+  Other classified Sentinel errors are evaluated by the global RPC classifier
+  and intentionally produce neither survival nor success observations:
+  an unsuccessful read does not establish whether the transaction survived.
+  Their regression tests capture real SDK JSON in isolated subprocesses because
+  the SDK initializes its output at startup and deduplicates observations by name.
 - Stream errors deserve classification, not blanket swallow: `if err != nil
   && !IsTransient(err) { assert.Unreachable(...) }` before skipping is the
   minimum bar. Otherwise an `InvalidArgument` on a `Recv()` is undistinguishable
   from a partition-induced `Aborted`.
+- Evaluate stream-content invariants only after clean `io.EOF`. Every other
+  receive error must return before validating counts or reporting a completed
+  cycle, even when some entries were received. Unexpected receive failures
+  must include the status code, error string (including any correlation ID),
+  ledger and received count in assertion details; a raw error object may
+  serialize without its message. `Unknown` is not a normal transient.
+- A receive status of `Canceled` is local teardown only when the caller's
+  context is itself done. Keep remote `Canceled` under a live caller visible,
+  and never suppress another status such as `Unknown` merely because the
+  caller was canceled concurrently.
+
+The audit driver has a local regression suite that invokes its real entrypoint
+against a controlled gRPC stream and inspects the SDK assertion output. It
+covers failures before and after a received prefix, known transients, and clean
+empty/nonempty results without needing an Antithesis run. Cancellation cases
+exercise the same cycle callback with a controlled caller context and real gRPC
+receives, including a server error observed concurrently with local cancellation:
+
+```sh
+cd tests/antithesis/workload
+go test -race ./bin/cmds/main/parallel_driver_audit -run '^TestAuditDriverStream' -count=1
+```
 
 ### What *not* to do
 
@@ -346,9 +479,10 @@ just compose-down
 just k8s-push-images
 ```
 
-`run_model_test.sh` only exercises `singleton_driver_model` — the 60+
-property drivers under `main/` are tested exclusively by the Antithesis
-hypervisor.
+`run_model_test.sh` only exercises `singleton_driver_model`. The 60+
+property drivers under `main/` run their chaos scenarios on the Antithesis
+hypervisor; focused driver regressions can also run locally, as in the audit
+stream test above.
 
 ## Adding a new driver
 

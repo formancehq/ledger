@@ -75,33 +75,8 @@ func listIsEmpty(
 	ledger string,
 	filter *commonpb.QueryFilter,
 ) (bool, []uint64, bool) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger: ledger,
-		Options: &commonpb.ListOptions{
-			PageSize: 10,
-			Filter:   filter,
-		},
-	})
-	if err != nil {
-		return false, nil, false
-	}
-
-	var ids []uint64
-
-	for {
-		tx, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return false, nil, false
-		}
-
-		ids = append(ids, tx.GetId())
-	}
-
-	return len(ids) == 0, ids, true
+	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, filter)
+	return len(ids) == 0, ids, err == nil
 }
 
 func main() {
@@ -110,7 +85,7 @@ func main() {
 
 		run := r.Uint64()
 		ledger := internal.PrefixBulkAtomicity.WithSeed(run)
-		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS); err != nil {
 			return
 		}
 
@@ -222,21 +197,7 @@ func main() {
 
 		// Business effects: none of the earlier orders' references or account
 		// activity may be visible — the whole proposal failed.
-		for i, ref := range refs {
-			empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref))
-			if conclusive {
-				assert.Always(empty,
-					"failed atomic bulk leaves no partial transaction effects",
-					details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
-			}
-
-			empty, ids, conclusive = listIsEmpty(ctx, client, ledger, actions.AddressExactFilter(accounts[i]))
-			if conclusive {
-				assert.Always(empty,
-					"failed atomic bulk leaves no partial account activity",
-					details.With(internal.Details{"account": accounts[i], "txIds": fmt.Sprintf("%v", ids)}))
-			}
-		}
+		assertBulkEffectsAbsent(ctx, client, ledger, refs, accounts, details)
 
 		// Audit-side contract: the owned ledger's audit stream may contain at
 		// most one Success entry (the CreateLedger proposal — a retried
@@ -323,4 +284,22 @@ func main() {
 			"failure audit entry observed for failed atomic bulk",
 			auditDetails)
 	})
+}
+
+func assertBulkEffectsAbsent(ctx context.Context, client servicepb.BucketServiceClient, ledger string, refs, accounts []string, details internal.Details) {
+	for i, ref := range refs {
+		empty, ids, conclusive := listIsEmpty(ctx, client, ledger, actions.ReferenceFilter(ref))
+		if conclusive {
+			assert.Always(empty,
+				"failed atomic bulk leaves no partial transaction effects",
+				details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
+		}
+
+		empty, ids, conclusive = listIsEmpty(ctx, client, ledger, actions.AddressExactFilter(accounts[i]))
+		if conclusive {
+			assert.Always(empty,
+				"failed atomic bulk leaves no partial account activity",
+				details.With(internal.Details{"account": accounts[i], "txIds": fmt.Sprintf("%v", ids)}))
+		}
+	}
 }

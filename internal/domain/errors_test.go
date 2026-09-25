@@ -111,6 +111,11 @@ func TestErrorTypes(t *testing.T) {
 			expected: "transaction 42 is already reverted",
 		},
 		{
+			name:     "ErrRevertTargetCreatedInBatch",
+			err:      &ErrRevertTargetCreatedInBatch{TransactionID: 42},
+			expected: "transaction 42 is created by this batch and cannot be reverted in it; submit the revert separately",
+		},
+		{
 			name:     "ErrTransactionReferenceNotFound",
 			err:      &ErrTransactionReferenceNotFound{Reference: "invoice:42"},
 			expected: `transaction with reference "invoice:42" does not exist`,
@@ -313,6 +318,7 @@ func TestEveryDomainErrorImplementsDescribable(t *testing.T) {
 		"ErrTransactionReferenceNotFound":  &ErrTransactionReferenceNotFound{},
 		"ErrTransactionNotFound":           &ErrTransactionNotFound{},
 		"ErrTransactionAlreadyReverted":    &ErrTransactionAlreadyReverted{},
+		"ErrRevertTargetCreatedInBatch":    &ErrRevertTargetCreatedInBatch{},
 		"ErrInsufficientFunds":             &ErrInsufficientFunds{},
 		"ErrVolumeOverflow":                &ErrVolumeOverflow{},
 		"ErrSequenceExhausted":             &ErrSequenceExhausted{},

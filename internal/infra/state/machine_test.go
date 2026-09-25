@@ -148,8 +148,15 @@ func sealProposal(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 		bits[i/8] |= 1 << (i % 8)
 	}
 
+	// Set only the coverage bits: replacing the sub-message would drop the
+	// other admission-derived fields a test stamped, such as a revert's
+	// target observation digest.
 	for _, order := range p.GetOrders() {
-		order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: bits}
+		if order.GetTechnical() == nil {
+			order.Technical = &raftcmdpb.OrderTechnical{}
+		}
+
+		order.Technical.CoverageBits = bits
 	}
 
 	for _, tu := range p.GetTechnicalUpdates() {
@@ -414,8 +421,24 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 	}
 }
 
+// revertTransactionOrder builds a revert whose target admission observed as
+// absent, the digest admission binds for an id with no stored transaction.
+// Use revertObservedTransactionOrder for a target that exists: apply compares
+// the bound digest with the postings it reads and rejects a mismatch.
 func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
+	return revertOrderWithDigest(ledger, txID, domain.RevertTargetDigest(nil, false))
+}
+
+// revertObservedTransactionOrder builds a revert whose target admission
+// observed with these postings. Pass the postings the FSM stored for the
+// target, so the bound digest matches what apply re-derives.
+func revertObservedTransactionOrder(ledger string, txID uint64, postings []*commonpb.Posting) *raftcmdpb.Order {
+	return revertOrderWithDigest(ledger, txID, domain.RevertTargetDigest(postings, true))
+}
+
+func revertOrderWithDigest(ledger string, txID uint64, digest []byte) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
+		Technical: &raftcmdpb.OrderTechnical{RevertTargetDigest: digest},
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,

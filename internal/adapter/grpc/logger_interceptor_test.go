@@ -15,6 +15,8 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 )
 
 const (
@@ -78,7 +80,7 @@ func TestServiceServer_InjectsLoggerIntoRequestContexts(t *testing.T) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	srv, err := NewServiceServer(ServiceAuthPolicyRestore, "", 0, logger, false, time.Second, nil, true, WithListener(listener))
+	srv, err := NewServiceServer(ServiceAuthPolicyRestore, internalauth.AuthConfig{}, "", 0, logger, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 
 	healthpb.RegisterHealthServer(srv.GetServer(), contextLoggingHealth{})
