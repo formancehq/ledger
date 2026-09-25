@@ -4,7 +4,7 @@ Kubernetes operator for deploying and managing high-availability [Formance Ledge
 
 ## Overview
 
-The Ledger Operator manages `Cluster` custom resources to automate the lifecycle of distributed ledger clusters on Kubernetes. It handles:
+The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
 
 - **StatefulSet management** with Raft-based consensus (odd replica counts)
 - **Persistent storage** for WAL and data volumes
@@ -93,6 +93,7 @@ for runtime delivery, missing-key behavior and ambient authentication.
 | Resource | Scope | Description |
 |----------|-------|-------------|
 | `Cluster` | Namespaced | Main resource - deploys a ledger cluster |
+| `EventSink` | Namespaced | Configures a runtime event sink for a Cluster |
 | `Credentials` | Cluster | Cluster-level API credentials |
 
 ## Quick Start
@@ -167,49 +168,41 @@ spec:
 
 ### Configure a NATS Event Sink
 
-The operator can maintain NATS JetStream sinks directly from the `Cluster` CR.
-This initial declarative API covers NATS sinks; other Ledger sink transports
-remain configurable through `ledgerctl`.
-The NATS stream must exist before Ledger starts publishing and must capture the
-subjects derived from the configured topic
-(`<topic>.<ledger>.<event-type-lowercase>`):
+Create an `EventSink` in the same namespace as its referenced `Cluster`. The
+resource name is the Ledger sink name. Create the NATS JetStream stream first;
+its subjects must include the topics derived from the configured prefix
+(`<topic>.<ledger>.<event-type-lowercase>`). For this example, the stream should
+capture `ledger.events.>`:
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1
-kind: Cluster
+kind: EventSink
 metadata:
-  name: my-ledger
+  name: primary
 spec:
-  sinks:
-    nats:
-      - name: primary
-        url: nats://nats.default.svc.cluster.local:4222
-        topic: ledger.events
-        format: json
-        batchSize: 64
-        batchDelayMs: 10
-        eventTypes:
-          - CREATED_LEDGER
-          - COMMITTED_TRANSACTION
+  clusterRef:
+    name: my-ledger
+  nats:
+    url: nats://nats.default.svc.cluster.local:4222
+    topic: ledger.events
+  format: json
 ```
 
-For this example, create a JetStream stream matching `ledger.events.>`. The
-operator applies sink changes at runtime through Ledger's replicated API; it
-does not restart the StatefulSet. `status.conditions[type=SinksSynced]` reports
-whether the declared configuration has converged. Sink delivery health remains
-available through `ledgerctl events list`.
+A ready to apply example is in
+[`config/samples/ledger_v1alpha1_eventsink.yaml`](config/samples/ledger_v1alpha1_eventsink.yaml).
 
-Omitting `spec.sinks` leaves sinks unmanaged, so sinks created directly through
-the Ledger API are preserved. Setting `spec.sinks: {}` opts into management and
-removes only sinks previously created by this operator. A sink with the same
-name but a different configuration is never overwritten unless it is already
-operator-owned.
+The operator applies creation and edits through Ledger's replicated runtime
+API without restarting the StatefulSet. `status.conditions` reports
+reconciliation state; `status.cursor` and `status.error` expose delivery
+progress and the current delivery error. The operator adds a finalizer and
+removes the runtime sink before the `EventSink` can be deleted. A sink with the
+same name that is not owned by this resource is not overwritten or removed.
 
 The published Ledger image includes NATS sink support. When
-`spec.networkPolicy.enabled` restricts egress, allow TCP access to the NATS
-service with `spec.networkPolicy.additionalEgress`. Do not embed credentials in
-the NATS URL: the CRD rejects URL userinfo because Kubernetes custom resource
-specs are not secret storage.
+`Cluster.spec.networkPolicy.enabled` restricts egress, allow TCP access to the
+NATS service with `Cluster.spec.networkPolicy.additionalEgress`. Do not embed
+credentials in the NATS URL: Kubernetes custom resource specs are not secret
+storage.
 
 ## Helm Values
 

@@ -35,7 +35,7 @@ spec:
               status:
                 phase: Running
 
-    - name: Deploy the Ledger cluster without managed sinks
+    - name: Deploy the Ledger cluster
       try:
         - apply:
             file: cluster.yaml
@@ -44,7 +44,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-sink-cluster
+                name: ledger-operator-sink-e2e
               status:
                 readyReplicas: 1
 
@@ -53,8 +53,8 @@ spec:
         - script:
             content: |
               set -eu
-              POD_UID=$(kubectl get pod ledger-sink-cluster-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              SPEC_HASH=$(kubectl get statefulset ledger-sink-cluster -n "$NAMESPACE" \
+              POD_UID=$(kubectl get pod ledger-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              SPEC_HASH=$(kubectl get statefulset ledger-operator-sink-e2e -n "$NAMESPACE" \
                 -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
               test -n "$POD_UID"
               test -n "$SPEC_HASH"
@@ -63,37 +63,42 @@ spec:
                 e2e-sink-initial-spec-hash="$SPEC_HASH" \
                 --overwrite
 
-    - name: Configure the NATS sink through the Cluster CRD
+    - name: Create an EventSink for the cluster
       try:
         - apply:
-            file: cluster-with-sink.yaml
-        - assert:
-            resource:
-              apiVersion: ledger.formance.com/v1alpha1
-              kind: Cluster
-              metadata:
-                name: sink-cluster
-              status:
-                appliedSinks:
-                  - primary
-                (conditions[?type == 'SinksSynced'].status): ['True']
+            file: event-sink.yaml
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              for i in $(seq 1 45); do
+                SINK=$(kubectl get eventsink primary -n "$NAMESPACE" -o json)
+                if echo "$SINK" | jq -e '.status.conditions | any(.type == "Synced" and .status == "True")' >/dev/null && \
+                   echo "$SINK" | jq -e '.metadata.finalizers | length > 0' >/dev/null; then
+                  echo "PROOF: EventSink is ready and has a cleanup finalizer"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: EventSink did not become ready with a finalizer"
+              exit 1
 
-    - name: Prove the sink change did not roll the StatefulSet
+    - name: Prove EventSink creation did not roll the StatefulSet
       try:
         - script:
             content: |
               set -eu
               INITIAL_UID=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-pod-uid}')
               INITIAL_HASH=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-spec-hash}')
-              CURRENT_UID=$(kubectl get pod ledger-sink-cluster-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              CURRENT_HASH=$(kubectl get statefulset ledger-sink-cluster -n "$NAMESPACE" \
+              CURRENT_UID=$(kubectl get pod ledger-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              CURRENT_HASH=$(kubectl get statefulset ledger-operator-sink-e2e -n "$NAMESPACE" \
                 -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
               test "$CURRENT_UID" = "$INITIAL_UID" || {
-                echo "FAIL: sink-only change replaced the pod ($INITIAL_UID -> $CURRENT_UID)"
+                echo "FAIL: EventSink creation replaced the pod ($INITIAL_UID -> $CURRENT_UID)"
                 exit 1
               }
               test "$CURRENT_HASH" = "$INITIAL_HASH" || {
-                echo "FAIL: sink-only change altered spec hash ($INITIAL_HASH -> $CURRENT_HASH)"
+                echo "FAIL: EventSink creation altered spec hash ($INITIAL_HASH -> $CURRENT_HASH)"
                 exit 1
               }
               echo "PROOF: sink config converged without a pod rollout (uid=$CURRENT_UID hash=$CURRENT_HASH)"
@@ -121,13 +126,13 @@ spec:
         - script:
             content: |
               set -eu
-              kubectl exec ledger-sink-cluster-0 -n "$NAMESPACE" -c ledger -- \
+              kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers create \
                   --name operator-sink-e2e \
                   --server 127.0.0.1:8888 \
                   --insecure \
                   --auth-token "$CLUSTER_SECRET"'
-              kubectl exec ledger-sink-cluster-0 -n "$NAMESPACE" -c ledger -- \
+              kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl transactions create \
                   --ledger operator-sink-e2e \
                   --posting world,bank,1000,USD \
@@ -171,7 +176,7 @@ spec:
             content: |
               set -eu
               for i in $(seq 1 30); do
-                STATUS=$(kubectl exec ledger-sink-cluster-0 -n "$NAMESPACE" -c ledger -- \
+                STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                   /bin/sh -c './ledgerctl events list \
                     --json \
                     --server 127.0.0.1:8888 \
@@ -189,6 +194,23 @@ spec:
               echo "FAIL: sink cursor did not advance without an error"
               exit 1
 
+    - name: Prove EventSink status exposes delivery progress
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              for i in $(seq 1 45); do
+                SINK=$(kubectl get eventsink primary -n "$NAMESPACE" -o json)
+                if echo "$SINK" | jq -e '(.status.cursor | tonumber) > 0 and (.status.error == null or .status.error == "")' >/dev/null; then
+                  echo "PROOF: EventSink status has an advanced cursor and no delivery error"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: EventSink status did not reflect healthy delivery"
+              exit 1
+
     - name: Prove JetStream persisted the messages
       try:
         - script:
@@ -204,3 +226,109 @@ spec:
                 exit 1
               }
               echo "PROOF: JetStream LEDGER_EVENTS persisted $MESSAGES messages"
+
+    - name: Update the EventSink topic
+      try:
+        - apply:
+            file: event-sink-updated.yaml
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              for i in $(seq 1 45); do
+                STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl events list \
+                    --json \
+                    --server 127.0.0.1:8888 \
+                    --insecure \
+                    --auth-token "$CLUSTER_SECRET"')
+                if echo "$STATUS" | jq -e '.sinks[] | select(.name == "primary" and .nats.topic == "ledger.events.updated")' >/dev/null; then
+                  echo "PROOF: Ledger applied the EventSink topic update"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: updated sink topic did not reach Ledger"
+              exit 1
+
+    - name: Prove the EventSink update did not roll the StatefulSet
+      try:
+        - script:
+            content: |
+              set -eu
+              INITIAL_UID=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-pod-uid}')
+              INITIAL_HASH=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-spec-hash}')
+              CURRENT_UID=$(kubectl get pod ledger-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              CURRENT_HASH=$(kubectl get statefulset ledger-operator-sink-e2e -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              test "$CURRENT_UID" = "$INITIAL_UID"
+              test "$CURRENT_HASH" = "$INITIAL_HASH"
+              echo "PROOF: EventSink update kept the pod and StatefulSet template"
+
+    - name: Prove events use the updated JetStream subject
+      try:
+        - apply:
+            file: updated-observer.yaml
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+                /bin/sh -c './ledgerctl transactions create \
+                  --ledger operator-sink-e2e \
+                  --posting world,bank,1000,USD \
+                  --force \
+                  --server 127.0.0.1:8888 \
+                  --insecure \
+                  --auth-token "$CLUSTER_SECRET"'
+              for i in $(seq 1 60); do
+                PHASE=$(kubectl get pod nats-updated-event-observer -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+                [ "$PHASE" = "Succeeded" ] && break
+                [ "$PHASE" = "Failed" ] && break
+                sleep 1
+              done
+              EVENTS=$(kubectl logs nats-updated-event-observer -n "$NAMESPACE")
+              echo "$EVENTS" | grep -q 'COMMITTED_TRANSACTION' || {
+                echo "FAIL: updated JetStream subject did not carry COMMITTED_TRANSACTION"
+                exit 1
+              }
+              echo "PROOF: updated sink topic delivered COMMITTED_TRANSACTION to JetStream"
+
+    - name: Remove the EventSink and wait for finalizer cleanup
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              kubectl delete eventsink primary -n "$NAMESPACE" --wait=false
+              for i in $(seq 1 45); do
+                if ! kubectl get eventsink primary -n "$NAMESPACE" >/dev/null 2>&1; then
+                  echo "PROOF: EventSink finalizer completed cleanup"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: EventSink remained after deletion"
+              exit 1
+
+    - name: Prove the runtime sink configuration disappeared
+      try:
+        - script:
+            timeout: 90s
+            content: |
+              set -eu
+              for i in $(seq 1 45); do
+                STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+                  /bin/sh -c './ledgerctl events list \
+                    --json \
+                    --server 127.0.0.1:8888 \
+                    --insecure \
+                    --auth-token "$CLUSTER_SECRET"')
+                if echo "$STATUS" | jq -e '[.sinks[] | select(.name == "primary")] | length == 0' >/dev/null; then
+                  echo "PROOF: EventSink primary is absent from Ledger runtime configuration"
+                  exit 0
+                fi
+                sleep 2
+              done
+              echo "FAIL: Ledger still has EventSink primary after CR deletion"
+              exit 1

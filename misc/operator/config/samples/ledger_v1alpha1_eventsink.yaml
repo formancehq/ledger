@@ -1,0 +1,12 @@
+# Apply after creating the referenced Cluster and a JetStream stream for ledger.events.>.
+apiVersion: ledger.formance.com/v1alpha1
+kind: EventSink
+metadata:
+  name: primary
+spec:
+  clusterRef:
+    name: ledger-with-nats
+  nats:
+    url: nats://nats.default.svc.cluster.local:4222
+    topic: ledger.events
+  format: json
