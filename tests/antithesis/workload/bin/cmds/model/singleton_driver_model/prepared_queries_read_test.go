@@ -130,12 +130,10 @@ func TestAggregateTargetRejectionUsesCandidateDefinition(t *testing.T) {
 		"a candidate where the query was recreated on a non-account target explains the rejection")
 }
 
-func TestClassifyAggregateTargetRejectionByCodeAndReason(t *testing.T) {
+func TestClassifyAggregateTargetRejectionByCode(t *testing.T) {
 	t.Parallel()
 
-	target, err := status.New(codes.InvalidArgument, "invalid aggregate target").WithDetails(
-		&errdetails.ErrorInfo{Domain: "ledger", Reason: "VALIDATION"})
-	require.NoError(t, err)
+	target := status.New(codes.InvalidArgument, "invalid aggregate target")
 	other, err := status.New(codes.NotFound, "ledger missing").WithDetails(
 		&errdetails.ErrorInfo{Domain: "ledger", Reason: "LEDGER_NOT_FOUND"})
 	require.NoError(t, err)

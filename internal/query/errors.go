@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -39,8 +40,7 @@ var _ domain.Describable = (*ErrAggregateOverflow)(nil)
 
 // Query-mode validation is a read-side concern: these failures are produced
 // only while executing a prepared query and can never be emitted by the FSM.
-// They implement domain.Describable solely to reuse the shared wire conversion.
 var (
-	ErrPreparedQueryAggregateTarget = domain.NewValidationSentinel("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
-	ErrQueryModeUnsupported         = domain.NewValidationSentinel("unsupported query mode")
+	ErrPreparedQueryAggregateTarget = errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+	ErrQueryModeUnsupported         = errors.New("unsupported query mode")
 )

@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -155,8 +154,9 @@ const (
 	pqErrOther
 )
 
-// classifyPreparedExecError buckets err by its error reason — the same stable
-// surface classifyIndexedQueryError uses — never by message text.
+// classifyPreparedExecError buckets err by stable wire signals, never by
+// message text. Query-mode validation has no ErrorInfo reason and is identified
+// by its InvalidArgument status code.
 func classifyPreparedExecError(err error) pqErrKind {
 	switch {
 	case err == nil:
@@ -167,7 +167,7 @@ func classifyPreparedExecError(err error) pqErrKind {
 		return pqErrIndex
 	case internal.HasErrorReason(err, "FILTER_COMPILATION_ERROR"):
 		return pqErrCompilation
-	case status.Code(err) == codes.InvalidArgument && internal.HasErrorReason(err, "VALIDATION"):
+	case status.Code(err) == codes.InvalidArgument:
 		return pqErrAggregateTarget
 	case internal.HasErrorReason(err, "LEDGER_NOT_FOUND"):
 		return pqErrLedgerNotFound
@@ -383,9 +383,9 @@ func uint64EntityKey(v uint64) []byte {
 
 // runAggregateTargetMisuse issues AGGREGATE_VOLUMES against a query whose
 // stored target is not ACCOUNTS. The executor rejects that combination
-// outright, so the only assertion is that it did reject: the rejection carries
-// no error reason, and matching its message text would pin the driver to a
-// string the server is free to reword.
+// outright, so the only assertion is that it did reject with InvalidArgument;
+// matching its message text would pin the driver to a string the server is free
+// to reword.
 func runAggregateTargetMisuse(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
@@ -751,21 +751,6 @@ func filterPreparedRows[T any](rows []T, after []byte, key func(T) []byte) []T {
 	}
 
 	return kept
-}
-
-// parseAfterUint reads the model-side cursor for the id-keyed targets; "" means
-// a first page, which starts after id 0.
-func parseAfterUint(after string) (uint64, bool) {
-	if after == "" {
-		return 0, true
-	}
-
-	v, err := strconv.ParseUint(after, 10, 64)
-	if err != nil {
-		return 0, false
-	}
-
-	return v, true
 }
 
 // --- AGGREGATE_VOLUMES validation ----------------------------------------

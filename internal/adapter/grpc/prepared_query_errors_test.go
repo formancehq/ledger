@@ -31,7 +31,7 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 		mode    commonpb.QueryMode
 		filter  *commonpb.QueryFilter
 		missing bool
-		want    domain.Describable
+		want    error
 		code    codes.Code
 	}{
 		{
@@ -89,9 +89,9 @@ func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 			st := status.Convert(err)
 			require.Equal(t, tc.code, st.Code())
 			require.Equal(t, tc.want.Error(), st.Message())
-			info := extractErrorInfo(t, st)
-			require.Equal(t, errorDomain, info.GetDomain())
-			require.Equal(t, tc.want.Reason(), info.GetReason())
+			if !tc.missing {
+				require.Empty(t, st.Details())
+			}
 		})
 	}
 }
