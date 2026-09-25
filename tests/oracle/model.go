@@ -1366,8 +1366,8 @@ func (s *LedgerState) appendLog(req *servicepb.Request, txID uint64) {
 // of bulk (write_set_new_volumes.go): a purged cell that held a non-zero value
 // before the bulk drained to zero, one that was created and zeroed inside the
 // bulk is ephemeral, and a surviving cell that did not exist before is newly
-// kept. "Did not exist" covers an absent cell and a zero placeholder alike,
-// matching isNewVolumeUpdate.
+// kept. Existence comes from map membership rather than the numeric value: a
+// persisted {0, 0} cell already exists, while a purged cell is absent.
 type volumeAnnotations struct {
 	purged    map[VolumeKey]bool
 	newKept   map[VolumeKey]bool
@@ -1393,8 +1393,8 @@ func (s *LedgerState) classifyVolumes(base *LedgerState, touched, purged map[Vol
 	compiled := s.compiled()
 
 	for key := range touched {
-		prior := base.vol(key)
-		newCell := prior.Input.IsZero() && prior.Output.IsZero()
+		_, existed := base.volumes.Get(key)
+		newCell := !existed
 
 		if newCell {
 			if t := s.match(key.Address, compiled); t != nil &&

@@ -9,25 +9,11 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// isVolumePreloadZero returns true if the volume pair is the zero placeholder
-// injected by the preloader for keys that don't exist in Pebble. Unlike
-// isVolumeZeroBalance (input == output), this checks input == 0 AND output == 0
-// — the exact seed the preloader emits so admission's `Needs` can be planned
-// deterministically.
-func isVolumePreloadZero(v *raftcmdpb.VolumePair) bool {
-	return v.GetInput().IsZero() && v.GetOutput().IsZero()
-}
-
-// isNewVolumeUpdate reports whether a volume update represents a
-// first-time write to that (account, asset) key. "New" is defined by the
-// preloaded prior value: absent or the zero placeholder → new; a defined
-// non-zero prior value → pre-existing.
+// isNewVolumeUpdate reports whether a volume update represents a first-time
+// persistent write. Absent and deliberately purged cache cells are tombstones,
+// so a defined Old always represents a persisted row, even when it is {0, 0}.
 func isNewVolumeUpdate(u attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) bool {
-	if !u.Old.IsDefined() {
-		return true
-	}
-
-	return isVolumePreloadZero(u.Old.Value())
+	return !u.Old.IsDefined()
 }
 
 // volumeSetKey is the (ledger, account, asset, color) tuple used by the per-log
@@ -43,22 +29,20 @@ type volumeSetKey struct {
 	Color   string
 }
 
-// makeNewKeptKeySet builds the set of (ledger, account, asset) tuples that
-// were newly created AND survived past commit — i.e. persistent-new volumes
-// that are NOT ephemeral. Consumed by buildNewKeptByLog.
-func makeNewKeptKeySet(kept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
+// makeNewKeptKeySet builds the set of already-classified persistent-new
+// (ledger, account, asset) tuples that survived past commit. Classification is
+// performed by partitionVolumes because it alone knows the account persistence
+// policy and can distinguish a persisted normal {0, 0} row from an
+// absent/purged cache cell.
+func makeNewKeptKeySet(newKept []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]) map[volumeSetKey]struct{} {
 	set := make(map[volumeSetKey]struct{})
 
-	for i := range kept {
-		if !isNewVolumeUpdate(kept[i]) {
-			continue
-		}
-
+	for i := range newKept {
 		set[volumeSetKey{
-			Ledger:  kept[i].Key.LedgerName,
-			Account: kept[i].Key.Account,
-			Asset:   kept[i].Key.Asset,
-			Color:   kept[i].Key.Color,
+			Ledger:  newKept[i].Key.LedgerName,
+			Account: newKept[i].Key.Account,
+			Asset:   newKept[i].Key.Asset,
+			Color:   newKept[i].Key.Color,
 		}] = struct{}{}
 	}
 

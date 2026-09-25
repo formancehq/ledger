@@ -1500,7 +1500,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		// so this SubAttrBoundary declaration is consumed on the gated
 		// path and the coverage gate IS enforced on the cascade
 		// (invariants #6 and #9). The delete flushes at Merge to
-		// KeyStore.Delete → AttributeCache.Del, which still
+		// KeyStore.Tombstone, which still
 		// lazy-fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// write raced with the rotation.
 		p.Add(dal.SubAttrBoundary, ledgerBytes)
@@ -1556,7 +1556,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			case *commonpb.Target_Account:
 				// Mirror-ingested v2 DELETE_METADATA log applies via
 				// processMirrorDeletedMetadata → AccountMetadata.Delete
-				// → AttributeCache.Del. Declare coverage; Del itself
+				// → KeyStore.Tombstone. Declare coverage; Tombstone
 				// lazy-fabricates a Gen0 tombstone from Gen1's tag when
 				// only Gen1 has the entry.
 				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
@@ -1565,7 +1565,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 				}.Bytes())
 			case *commonpb.Target_TransactionId:
 				// Transaction metadata lives inside the TransactionState
-				// map — no strict-Del path, no extra coverage needed.
+				// map — no strict-tombstone path, no extra coverage needed.
 				addTransactionTargetNeeds(p, ledgerName, target.TransactionId)
 			}
 		}
@@ -1582,7 +1582,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 	case *raftcmdpb.LedgerScopedOrder_DeletePreparedQuery:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
 		// processDeletePreparedQuery calls PreparedQueries.Delete →
-		// AttributeCache.Del. Declare coverage; Del itself lazy-
+		// KeyStore.Tombstone. Declare coverage; Tombstone lazy-
 		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// Create + rotation raced with admission.
 		p.Add(dal.SubAttrPreparedQuery, domain.PreparedQueryKey{LedgerName: ledgerName, Name: payload.DeletePreparedQuery.GetName()}.Bytes())
@@ -1600,8 +1600,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		}
 	case *raftcmdpb.LedgerScopedOrder_DeleteLedgerMetadata:
 		p.Add(dal.SubAttrLedger, ledgerBytes)
-		// Delete's apply calls KeyStore.Delete → AttributeCache.Del.
-		// Declare coverage (invariant #6 / #9); Del itself lazy-
+		// Delete's apply calls KeyStore.Tombstone.
+		// Declare coverage (invariant #6 / #9); Tombstone lazy-
 		// fabricates a Gen0 tombstone from Gen1's tag if a concurrent
 		// Save + rotation raced with admission.
 		p.Add(dal.SubAttrLedgerMetadata, domain.LedgerMetadataKey{LedgerName: ledgerName, Key: payload.DeleteLedgerMetadata.GetKey()}.Bytes())
@@ -1687,8 +1687,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		case *raftcmdpb.LedgerApplyOrder_DeleteMetadata:
 			if target, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_Account); ok {
 				// Account-metadata Delete's apply routes through
-				// KeyStore.Delete → AttributeCache.Del. Declare
-				// coverage (invariant #6 / #9); Del itself lazy-
+				// KeyStore.Tombstone. Declare
+				// coverage (invariant #6 / #9); Tombstone lazy-
 				// fabricates a Gen0 tombstone from Gen1's tag if a
 				// concurrent Save + rotation raced with admission.
 				p.Add(dal.SubAttrMetadata, domain.MetadataKey{
@@ -1700,7 +1700,7 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			if tx, ok := applyData.DeleteMetadata.GetTarget().GetTarget().(*commonpb.Target_TransactionId); ok {
 				// Transaction metadata lives inside the transaction state
 				// (a TransactionState.Metadata map, not a separate cache
-				// attribute), so strict-Del does not apply.
+				// attribute), so strict-tombstone does not apply.
 				addTransactionTargetNeeds(p, ledgerName, tx.TransactionId)
 			}
 
@@ -1712,8 +1712,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 
 		case *raftcmdpb.LedgerApplyOrder_DropIndex:
 			// processDropIndex calls DeleteIndex unconditionally.
-			// indexes.Remove → w.Delete → AttributeCache.Del.
-			// Declare coverage; Del itself lazy-fabricates a Gen0
+			// indexes.Remove → w.Delete → KeyStore.Tombstone.
+			// Declare coverage; Tombstone lazy-fabricates a Gen0
 			// tombstone from Gen1's tag across a
 			// CreateIndex→DropIndex race.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{
@@ -1733,8 +1733,8 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 		case *raftcmdpb.LedgerApplyOrder_RemoveMetadataFieldType:
 			// Removing a schema field cascades into dropping the index;
 			// processRemoveMetadataFieldType probes the registry first.
-			// The cascade Find→indexes.Remove reaches Del on hit.
-			// Declare coverage; Del itself lazy-fabricates a Gen0
+			// The cascade Find→indexes.Remove reaches Tombstone on hit.
+			// Declare coverage; Tombstone lazy-fabricates a Gen0
 			// tombstone from Gen1's tag across a
 			// CreateIndex→RemoveMetadataFieldType race.
 			p.Add(dal.SubAttrIndex, domain.IndexKey{
@@ -1772,11 +1772,11 @@ func extractSystemScopedNeeds(p *plan.Coverage, ss *raftcmdpb.SystemScopedOrder)
 		// LogPayload_RemovedEventsSink cascades via WriteSet.Absorb into
 		// b.Derived.SinkConfigs.Delete(...) directly (NOT via
 		// gatedAccessor.Delete — the Absorb path calls the concrete
-		// DerivedKeyStore), then flushes at Merge to KeyStore.Delete →
-		// AttributeCache.Del. The coverage gate is therefore NOT enforced
+		// DerivedKeyStore), then flushes at Merge to KeyStore.Tombstone →
+		// KeyStore.Tombstone. The coverage gate is therefore NOT enforced
 		// on this cascade; the SinkConfig preload declared here is what
 		// makes the FSM's cache read horizon match admission's intent
-		// under invariant #6. Del itself lazy-fabricates a Gen0 tombstone
+		// under invariant #6. Tombstone lazy-fabricates a Gen0 tombstone
 		// from Gen1's tag across an Add→Remove race.
 		p.Add(dal.SubAttrSinkConfig, domain.SinkConfigKey{Name: payload.RemoveEventsSink.GetName()}.Bytes())
 
