@@ -218,6 +218,26 @@ if err != nil {
 }
 ```
 
+### Reference-claim retries
+
+The `parallel_driver_reference_conflict_skip` driver assigns distinct stable
+idempotency keys to its initial claim, intentional duplicate, and fresh claim.
+Automatic retries must return each operation's original outcome: without a key,
+a successful creation followed by a lost response can legitimately retry as a
+reference-conflict skip. The fresh reference uses the initial transaction's ID
+under a driver-owned prefix, so separate successful claims cannot share it in
+one ledger. A returned skip still fails the fresh-claim assertion, with the key,
+skip context, and log sequence recorded for diagnosis.
+
+Its local regression starts a real Ledger node and drops one committed response
+at each step through a gRPC forwarding fixture using the normal workload client.
+It checks original response replay, persisted transaction uniqueness, and no
+extra business log, alongside an unkeyed create-then-skip control. Run it with:
+
+```sh
+go -C tests/antithesis/workload test ./bin/cmds/main/parallel_driver_reference_conflict_skip
+```
+
 ### Backup destination contention and recovery
 
 Full and incremental backups share a replicated destination slot. A committed
