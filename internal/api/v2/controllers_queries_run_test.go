@@ -2,6 +2,7 @@ package v2
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"math/big"
 	"net/http"
@@ -60,7 +61,7 @@ func TestQueriesRun(t *testing.T) {
 		RunQuery(gomock.Any(), "1.2.3", "QUERY_ID", storagecommon.RunQuery{
 			Params: json.RawMessage(`{ "pageSize": 42 }`),
 			Vars: map[string]any{
-				"foo": float64(123.0),
+				"foo": json.Number("123"),
 				"bar": "barnacle",
 			},
 		}, storagecommon.PaginationConfig{
@@ -86,4 +87,46 @@ func TestQueriesRun(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 
 	require.JSONEq(t, rec.Body.String(), string(expectedResponse))
+}
+
+func TestQueriesRunPreservesLargeIntegerVars(t *testing.T) {
+	t.Parallel()
+
+	systemController, ledgerController := newTestingSystemController(t, true)
+	router := NewRouter(systemController, jwt.NewNoAuth(), "develop")
+
+	expectedResourceKind := queries.ResourceKindAccount
+	var received storagecommon.RunQuery
+	ledgerController.EXPECT().
+		RunQuery(gomock.Any(), "1.2.3", "QUERY_ID", gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ string, _ string, q storagecommon.RunQuery, _ storagecommon.PaginationConfig) (*queries.ResourceKind, *paginate.Cursor[any], error) {
+			received = q
+			return &expectedResourceKind, &paginate.Cursor[any]{Data: []any{}}, nil
+		})
+
+	// 2^53 + 1 cannot be represented exactly as a float64.
+	req := httptest.NewRequest(http.MethodPost, "/xxx/queries/QUERY_ID/run?schemaVersion=1.2.3", bytes.NewBufferString(`{
+		"vars": {"minimum_balance": 9007199254740993}
+	}`))
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	// Resolve the variable the same way the ledger controller does.
+	builder, err := queries.ResolveFilterTemplate(
+		queries.ResourceKindAccount,
+		json.RawMessage(`{"$gte": {"balance[COIN]": "${minimum_balance}"}}`),
+		map[string]queries.VarDecl{"minimum_balance": {Type: queries.NewTypeNumeric()}},
+		received.Vars,
+	)
+	require.NoError(t, err)
+
+	var resolved any
+	require.NoError(t, builder.Walk(func(_ string, _ string, value *any) error {
+		resolved = *value
+		return nil
+	}))
+	expected, _ := new(big.Int).SetString("9007199254740993", 10)
+	require.Equal(t, expected.String(), resolved.(*big.Int).String())
 }
