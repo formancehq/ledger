@@ -353,13 +353,17 @@ func revertedIDForLog(ls oracle.LedgerState, row oracle.LogRow) uint64 {
 // nothing else does, and a required row may only be missing past a full
 // (truncated) page.
 func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow) bool {
+	return logRowsMatch(ledger, logWindowRows(ls, ledger, filter, afterSeq), pageSize, page)
+}
+
+func logRowsMatch(ledger string, rows []logWindowRow, pageSize int, page []serverLogRow) bool {
 	if len(page) > pageSize {
 		return false
 	}
 
 	j := 0
 
-	for _, row := range logWindowRows(ls, ledger, filter, afterSeq) {
+	for _, row := range rows {
 		if j == len(page) {
 			if len(page) == pageSize {
 				return true // full page — the remaining rows were truncated

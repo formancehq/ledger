@@ -262,7 +262,7 @@ func TestValidateLifecycleLogCanonicalizesAccountTypeNames(t *testing.T) {
 		AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset"}},
 	}}}
 
-	require.NoError(t, validateLifecycleLog(req, payload))
+	require.NoError(t, validateLifecycleLog(req, nil, payload))
 }
 
 func TestGenerateLifecycleHonorsConfiguredLiveTarget(t *testing.T) {
