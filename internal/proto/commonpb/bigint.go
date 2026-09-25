@@ -242,5 +242,6 @@ func validateCanonicalDecimalString(s string, signed bool) error {
 	if digits == "" || strings.IndexFunc(digits, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
 		return fmt.Errorf("invalid integer %q", s)
 	}
+
 	return nil
 }
