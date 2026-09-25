@@ -273,8 +273,6 @@ spec:
 
     - name: Prove events use the updated JetStream subject
       try:
-        - apply:
-            file: updated-observer.yaml
         - script:
             timeout: 90s
             content: |
@@ -283,22 +281,26 @@ spec:
                 /bin/sh -c './ledgerctl transactions create \
                   --ledger operator-sink-e2e \
                   --posting world,bank,1000,USD \
+                  --reference e2e-updated-proof \
                   --force \
                   --server 127.0.0.1:8888 \
                   --insecure \
                   --auth-token "$CLUSTER_SECRET"'
+              SUBJECT=ledger.events.updated.operator-sink-e2e.committed_transaction
               for i in $(seq 1 60); do
-                PHASE=$(kubectl get pod nats-updated-event-observer -n "$NAMESPACE" -o jsonpath='{.status.phase}' 2>/dev/null || true)
-                [ "$PHASE" = "Succeeded" ] && break
-                [ "$PHASE" = "Failed" ] && break
+                MESSAGE=$(kubectl exec nats-toolbox -n "$NAMESPACE" -- \
+                  nats --server nats://nats:4222 stream get LEDGER_EVENTS \
+                    --last-for "$SUBJECT" --json 2>/dev/null || true)
+                if echo "$MESSAGE" | jq -e --arg subject "$SUBJECT" \
+                  '.subject == $subject and ((.data | @base64d) | contains("e2e-updated-proof") and contains("COMMITTED_TRANSACTION"))' >/dev/null; then
+                  echo "PROOF: JetStream stored this transaction on $SUBJECT"
+                  exit 0
+                fi
                 sleep 1
               done
-              EVENTS=$(kubectl logs nats-updated-event-observer -n "$NAMESPACE")
-              echo "$EVENTS" | grep -q 'COMMITTED_TRANSACTION' || {
-                echo "FAIL: updated JetStream subject did not carry COMMITTED_TRANSACTION"
-                exit 1
-              }
-              echo "PROOF: updated sink topic delivered COMMITTED_TRANSACTION to JetStream"
+              echo "FAIL: JetStream has no e2e-updated-proof transaction on $SUBJECT"
+              echo "$MESSAGE"
+              exit 1
 
     - name: Remove the EventSink and wait for finalizer cleanup
       try:
