@@ -490,8 +490,9 @@ paths:
             containing `-`, `:`, spaces, or other non-identifier characters
             must be single- or double-quoted; keys containing both `"` and `'`
             cannot be expressed in the textual DSL and require the gRPC API
-            directly: use `AuditCondition.string_cond` for exact/`in` lookups
-            and `AuditCondition.string_prefix` for prefix lookups). Bare audit fields are resolved against the audit query
+            directly: use `AuditCondition.string_cond` (one value per leaf) for
+            exact lookups, an `OrFilter` of such leaves for `in` lookups, and
+            `AuditCondition.string_prefix` for prefix lookups). Bare audit fields are resolved against the audit query
             target: `timestamp` and `ledger` collide with the transaction
             `timestamp` field and the top-level `ledger` condition, so on the
             audit target they resolve to the audit condition (and only there —
