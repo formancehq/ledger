@@ -234,17 +234,17 @@ does. Keep diagnostic exemptions usable without a revision. Exercise the real
 client/server paths, restoration without Discovery, and internal service
 forwarding so the gate cannot make the repository's own clients incompatible.
 
-Structured connection input/output messages require revision 11 on top of the
-revision 10 gate: existing connection configuration fields changed to structured message types.
+Structured connection input/output messages require revision 13 on top of the
+revision 12 gate: existing connection configuration fields changed to structured message types.
 
 
-## Structured connection input/output messages (revision 11)
+## Structured connection input/output messages (revision 13)
 
-Revision 11 is required when the client uses structured connection configuration
+Revision 13 is required when the client uses structured connection configuration
 messages (SinkConfigInput, MirrorSourceConfigInput) for write requests and reads
 structured SinkConfig/MirrorSourceConfig output from GetEventsSinks, GetLedger,
 ListLedgers, GetLog, and ListLogs. Existing configuration fields changed message
 types; clients and servers at different revisions decode them incorrectly.
 
-Typed public audit views require revision 12 on top of structured connections:
+Typed public audit views require revision 14 on top of structured connections:
 ListAuditEntries and GetAuditEntry return the public audit message contract.
