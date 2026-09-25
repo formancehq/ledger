@@ -1076,15 +1076,15 @@ func (AccountTypePersistence) EnumDescriptor() ([]byte, []int) {
 type AuditField int32
 
 const (
-	AuditField_AUDIT_FIELD_UNSPECIFIED    AuditField = 0
-	AuditField_AUDIT_FIELD_SEQUENCE       AuditField = 1 // uint   -> AuditEntry.sequence (audit-zone key range)
-	AuditField_AUDIT_FIELD_PROPOSAL_ID    AuditField = 2 // uint   -> AuditEntry.proposal_id (index range)
-	AuditField_AUDIT_FIELD_TIMESTAMP      AuditField = 3 // uint   -> AuditEntry.timestamp.data, unix micros (index range)
-	AuditField_AUDIT_FIELD_LOG_SEQUENCE   AuditField = 4 // uint   -> item log_sequence, match-any (index range)
-	AuditField_AUDIT_FIELD_OUTCOME        AuditField = 5 // string in {success, failure} (index)
-	AuditField_AUDIT_FIELD_CALLER_SUBJECT AuditField = 6 // string -> caller_snapshot.authenticated.identity.subject (index)
-	AuditField_AUDIT_FIELD_LEDGER         AuditField = 7 // string -> AuditEntry.ledgers, match-any (index)
-	AuditField_AUDIT_FIELD_ORDER_TYPE     AuditField = 8 // string -> order payload variant, match-any (index)
+	AuditField_AUDIT_FIELD_UNSPECIFIED     AuditField = 0
+	AuditField_AUDIT_FIELD_SEQUENCE        AuditField = 1 // uint   -> AuditEntry.sequence (audit-zone key range)
+	AuditField_AUDIT_FIELD_PROPOSAL_ID     AuditField = 2 // uint   -> AuditEntry.proposal_id (index range)
+	AuditField_AUDIT_FIELD_TIMESTAMP       AuditField = 3 // uint   -> AuditEntry.timestamp.data, unix micros (index range)
+	AuditField_AUDIT_FIELD_LOG_SEQUENCE    AuditField = 4 // uint   -> item log_sequence, match-any (index range)
+	AuditField_AUDIT_FIELD_OUTCOME         AuditField = 5 // string in {success, failure} (index)
+	AuditField_AUDIT_FIELD_CALLER_SUBJECT  AuditField = 6 // string -> caller_snapshot.authenticated.identity.subject (index)
+	AuditField_AUDIT_FIELD_LEDGER          AuditField = 7 // string -> AuditEntry.ledgers, match-any (index)
+	AuditField_AUDIT_FIELD_ORDER_TYPE      AuditField = 8 // string -> order payload variant, match-any (index)
 	AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY AuditField = 9 // string -> AuditEntry.idempotency.key (index, exact or prefix)
 )
 
