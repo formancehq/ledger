@@ -131,6 +131,32 @@ initial cache histories, but their own durability defects belong to adjacent
 domains. This audit owns the defect when the next committed apply fails to
 normalize or safely tolerate an otherwise valid local history.
 
+## Post-commit lifecycle expectations
+
+The volume sentinel must reduce successful effects in commit order. A ledger
+deletion invalidates earlier and same-proposal updates because its cascade is
+staged after projection writes. Ephemeral purges invalidate individual keys;
+unrelated ledgers and later surviving updates retain their exact expected
+values. Captured deletion names must not alias the next proposal's reused
+`WriteSet` slice, and rejected orders must not be treated as deletion effects.
+The aggregate scan must reject any volume rows left by a successful deletion,
+even when those rows balance or the deletion is the only order in its batch.
+
+Use `TestDeleteLedgerSentinel*` in state and node as focused entry points:
+require successful same-proposal, multi-entry and separate-batch deletion,
+multiple deletions and unchanged surviving balances. Deliberately missing or
+changed surviving rows and balanced leftover rows of a deleted ledger must
+still fail. The node regression reopens real
+WAL/Pebble stores and calls `Applier.RecoverAndReplay`, and separately drives
+asynchronous follower catch-up. It establishes those paths, not an OS-process
+restart or a new remote Antithesis campaign. A fixture rejected by policy or
+coverage guards never establishes the sentinel failure.
+
+Preparation mutates the in-memory FSM before durable commit; sentinel reads
+occur after that commit, so a failed check leaves the writes durable and
+propagates a fatal error. This domain owns the expectation reduction; durable
+WAL layout and checkpoint reconstruction remain with the recovery domain.
+
 ## Hot-path capability proof
 
 Do not stop at names such as `WriteSession` or `Scope`. Inspect concrete fields,

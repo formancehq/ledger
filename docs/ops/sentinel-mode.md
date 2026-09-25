@@ -1,6 +1,6 @@
 # Sentinel Mode
 
-Sentinel mode enables **runtime volume consistency assertions** that verify the correctness of the ledger's volume tracking at every Raft apply. When enabled, four independent checks run in the critical path to detect bugs, cache/storage divergence, and accounting invariant violations as early as possible.
+Sentinel mode enables **runtime volume consistency assertions** that verify the correctness of the ledger's volume tracking at every Raft apply. Two checks run during proposal preparation and two run after the batch commits, detecting bugs, cache/storage divergence, and accounting invariant violations as early as possible.
 
 This mode is designed for **testing environments** (e.g., Antithesis chaos testing) and **staging deployments** where catching bugs early is more important than raw throughput. It adds overhead to every write operation.
 
@@ -15,7 +15,7 @@ Environment variable: `SENTINEL_MODE=true`
 
 ## Checks Performed
 
-Sentinel mode runs four checks, in order, during every `applyProposal()`:
+Sentinel mode runs two checks during proposal preparation and two after the batch commits:
 
 ### 1. Volume Update Monotonicity
 
@@ -33,23 +33,38 @@ When a check fails it names one offender — the lowest-sorting `(ledger, accoun
 - **Where**: `applyProposal()`, after `Merge()`
 - **Catches**: Wrong amount applied, wrong account credited/debited, missed posting, unrelated balanced pair
 
-### 3. Aggregated Volume Balance
+### 3. Post-Commit Volume Verification
 
-For every ledger touched by the proposal, reads back the full aggregated volumes from Pebble and verifies the **double-entry invariant**: for each asset, the global sum of inputs must equal the global sum of outputs.
+After the Pebble batch commits, `CommitPreparedBatch()` reads a snapshot pinned
+to that commit and compares the surviving volume rows with values captured by
+`Merge()`. Repeated updates use the last value for each canonical key. Ephemeral
+purges invalidate that key's earlier updates; a successful ledger deletion
+invalidates every update for that ledger at or before the deletion, including
+updates in the same proposal. A later update would still be checked: recreating
+a deleted ledger name is rejected. Other ledgers remain checked, and unexpected
+missing rows or different values still fail.
 
-- **Where**: `applyProposal()`, after delta cross-check
-- **Catches**: Any form of volume corruption, regardless of root cause
+The deletion list is captured from the successful `WriteSet`, with independent
+slice ownership before the next proposal resets it. Rejected deletion orders do
+not invalidate expectations. Same-name ledger recreation remains rejected by
+the ledger tombstone contract.
 
-### 4. Post-Commit Cache/Pebble Verification
+### 4. Aggregated Volume Balance
 
-After the Pebble batch is committed, reads back the volume values from Pebble and compares them to the expected values written during `Merge()`. When multiple entries in the same `ApplyEntries` batch touch the same volume key, only the last entry's value is verified (earlier values are overwritten).
+On the same post-commit snapshot, every touched surviving ledger's aggregate
+volumes must satisfy the **double-entry invariant**: total inputs equal total
+outputs for each asset. A successfully deleted ledger must have no volume rows,
+even when its deletion is the only order in the batch. This also detects an
+incomplete cascade that leaves balanced rows behind.
 
-- **Where**: `ApplyEntries()`, after Pebble batch commit
-- **Catches**: Pebble write failures, cache/storage divergence, snapshot inconsistencies
+Both post-commit checks run for live apply, follower catch-up, and WAL replay.
+Preparation has already mutated the in-memory FSM and staged its writes; the
+Pebble commit happens before verification. A failed check therefore returns an
+error after those writes are durable; it does not roll back the committed batch.
 
 ## Antithesis Integration
 
-All checks use the Antithesis SDK's `assert.Unreachable()` to report detected invariant violations. This allows Antithesis to flag these as property violations during chaos testing, even if the node subsequently crashes or recovers.
+Some invariant branches also call the Antithesis SDK's `assert.Unreachable()`. All check failures propagate as errors; the missing-volume post-commit branch, for example, returns an error without a dedicated assertion.
 
 ## Performance Impact
 
@@ -57,8 +72,8 @@ Sentinel mode adds measurable overhead:
 
 - **Monotonicity check**: O(n) over volume updates — negligible
 - **Delta/posting cross-check**: O(n) over volume updates + log postings — negligible
-- **Aggregated volume balance**: Full Pebble scan per touched ledger — **significant for large ledgers**
 - **Post-commit verification**: One Pebble read per volume update — moderate
+- **Aggregated volume balance/deletion check**: Full Pebble scan per touched or deleted ledger — **significant for large ledgers**
 
 **Recommendation**: Enable in testing/staging. Disable in production unless actively investigating a suspected volume corruption issue.
 

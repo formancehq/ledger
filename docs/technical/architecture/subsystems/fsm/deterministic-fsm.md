@@ -638,7 +638,25 @@ we enforce:
 Result: every `PrepareEntries` → `CommitPreparedBatch` pair commits exactly
 one Pebble batch, and the post-commit sentinel reads a snapshot pinned to
 that commit. There is no concurrent commit path on the main store; any
-cache/pebble divergence reported by the sentinel is a genuine FSM bug.
+unexpected cache/pebble divergence remains fatal.
+
+The sentinel's expected-volume reduction follows the durable batch's lifecycle
+order: a successful `WriteSet` deletion cascade invalidates that ledger's
+updates from earlier results and the same result (the cascade is staged after
+projection writes). Ephemeral purges invalidate individual keys; surviving
+keys retain their latest expected values. `ApplyResult` owns a copy of the
+deleted ledger names because the next proposal reuses the `WriteSet` backing
+array. Rejected proposals supply no successful deletion cascade.
+The post-commit aggregate scan also requires a successfully deleted ledger to
+have no volume rows. This catches a partial cascade whose remaining volumes
+are balanced, including when deletion is the only order in a batch.
+
+`PrepareEntries` mutates the in-memory FSM, stages writes and captures these
+expectations. `CommitPreparedBatch` commits first, then verifies the pinned
+snapshot. A verification failure leaves the committed writes durable and
+propagates as a fatal apply/replay error; there is no post-commit rollback.
+The same reduction is used for live application, follower catch-up and startup
+WAL replay. See [Sentinel mode](../../../../ops/sentinel-mode.md).
 
 See issue [#424 / EN-1235](https://github.com/formancehq/ledger/issues/424)
 for the race this design eliminated.
