@@ -175,3 +175,30 @@ func TestQueryTemplateValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryTemplateParamsOverwriteKeepsUnsetFields(t *testing.T) {
+	t.Parallel()
+
+	params, err := QueryTemplateParams[any]{
+		PageSize:   15,
+		SortColumn: "id",
+	}.Overwrite(
+		json.RawMessage(`{"endTime": "2024-01-01T00:00:00Z", "startTime": "2023-01-01T00:00:00Z", "expand": ["volumes"], "pageSize": 5}`),
+		json.RawMessage(`{"sort": "id:asc"}`),
+	)
+	require.NoError(t, err)
+
+	require.Equal(t, uint(5), params.PageSize)
+	require.NotNil(t, params.PIT)
+	require.Equal(t, "2024-01-01T00:00:00Z", params.PIT.Format("2006-01-02T15:04:05Z07:00"))
+	require.NotNil(t, params.OOT)
+	require.Equal(t, "2023-01-01T00:00:00Z", params.OOT.Format("2006-01-02T15:04:05Z07:00"))
+	require.Equal(t, []string{"volumes"}, params.Expand)
+	require.Equal(t, "id", params.SortColumn)
+	require.NotNil(t, params.SortOrder)
+
+	// A template without pageSize keeps the configured default.
+	params, err = QueryTemplateParams[any]{PageSize: 15}.Overwrite(json.RawMessage(`{"sort": "id:asc"}`))
+	require.NoError(t, err)
+	require.Equal(t, uint(15), params.PageSize)
+}
