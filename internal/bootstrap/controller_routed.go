@@ -16,8 +16,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -264,7 +264,7 @@ func (b *RoutedController) GetLog(ctx context.Context, sequence uint64) (*common
 	return c.GetLog(ctx, sequence)
 }
 
-func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*publicauditpb.AuditEntry], error) {
 	c, barrier, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err
@@ -273,7 +273,7 @@ func (b *RoutedController) ListAuditEntries(ctx context.Context, pageSize uint32
 	return c.ListAuditEntries(b.withLocalBarrierHorizon(ctx, c, barrier), pageSize, afterSequence, filter, reverse)
 }
 
-func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (b *RoutedController) GetAuditEntry(ctx context.Context, sequence uint64) (*publicauditpb.AuditEntry, error) {
 	c, _, err := b.readCtrl(ctx)
 	if err != nil {
 		return nil, err

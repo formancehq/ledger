@@ -6,7 +6,7 @@ package ledger;
 option go_package = "github.com/formancehq/ledger/v3/internal/proto/servicepb";
 
 import "common.proto";
-import "audit.proto";
+import "audit_view.proto";
 import "signature.proto";
 import "google/protobuf/descriptor.proto";
 
@@ -77,11 +77,11 @@ service BucketService {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
   }
   // ListAuditEntries streams audit trail entries (success and failure)
-  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream audit.AuditEntry) {
+  rpc ListAuditEntries(ListAuditEntriesRequest) returns (stream publicaudit.AuditEntry) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_AUDIT_READ };
   }
   // GetAuditEntry returns a single audit entry by sequence number
-  rpc GetAuditEntry(GetAuditEntryRequest) returns (audit.AuditEntry) {
+  rpc GetAuditEntry(GetAuditEntryRequest) returns (publicaudit.AuditEntry) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_AUDIT_READ };
   }
   // GetEventsSinks returns the current per-sink configurations and statuses

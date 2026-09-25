@@ -6,13 +6,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"google.golang.org/protobuf/proto"
 )
 
 // EN-2070: exercise the real CLI, Raft admission, mirror worker and each local
@@ -60,16 +58,12 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 			detail, err := actions.GetAuditEntry(ctx, servers[0].Client, entry.GetSequence())
 			Expect(err).To(Succeed())
 			for _, item := range detail.GetItems() {
-				order := new(raftcmdpb.Order)
-				Expect(proto.Unmarshal(item.GetSerializedOrder(), order)).To(Succeed())
-				scoped := order.GetLedgerScoped()
+				scoped := item.GetOrder().GetLedgerScoped()
 				if scoped.GetCreateLedger() != nil {
 					Expect(detail.GetItems()).To(HaveLen(4), "creation and all three indexes must share one audited proposal")
 					Expect(item.GetOrderIndex()).To(BeZero())
 					for _, indexItem := range detail.GetItems()[1:] {
-						indexOrder := new(raftcmdpb.Order)
-						Expect(proto.Unmarshal(indexItem.GetSerializedOrder(), indexOrder)).To(Succeed())
-						Expect(indexOrder.GetLedgerScoped().GetApply().GetCreateIndex()).NotTo(BeNil())
+						Expect(indexItem.GetOrder().GetLedgerScoped().GetApply().GetCreateIndex()).NotTo(BeNil())
 					}
 					creationEnd = entry.GetSuccess().GetMaxLogSequence()
 				}
