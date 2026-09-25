@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicauditpb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -248,7 +248,7 @@ func (s *auditStreamServer) Apply(_ context.Context, request *servicepb.ApplyReq
 	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 1}}}, nil
 }
 
-func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[auditpb.AuditEntry]) error {
+func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[publicauditpb.AuditEntry]) error {
 	if request.GetOptions().GetPageSize() != 10 || s.applyCalls.Load() != 1 {
 		return status.Error(codes.InvalidArgument, "fixture expected audit page after the confirmed transaction")
 	}
@@ -259,7 +259,7 @@ func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntries
 		return err
 	}
 	for i := 0; i < s.entries; i++ {
-		if err := stream.Send(&auditpb.AuditEntry{Sequence: uint64(i + 1)}); err != nil {
+		if err := stream.Send(&publicauditpb.AuditEntry{Sequence: uint64(i + 1)}); err != nil {
 			return err
 		}
 		s.sentEntries.Add(1)
