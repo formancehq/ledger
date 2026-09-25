@@ -135,6 +135,14 @@ func runGet(cmd *cobra.Command, args []string) error {
 		// server-side, so we just render in-order.
 		for _, entry := range account.GetVolumes() {
 			vol := entry.GetVolumes()
+			if vol == nil {
+				return fmt.Errorf("account %s: volume entry for %s/%s has no Volumes container",
+					account.GetAddress(), entry.GetAsset(), entry.GetColor())
+			}
+			if err := vol.Validate(); err != nil {
+				return fmt.Errorf("account %s: volume entry for %s/%s is malformed: %w",
+					account.GetAddress(), entry.GetAsset(), entry.GetColor(), err)
+			}
 			balance, err := vol.GetBalance().Dec()
 			if err != nil {
 				return err

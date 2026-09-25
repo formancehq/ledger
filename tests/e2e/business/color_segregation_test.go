@@ -123,9 +123,18 @@ var _ = Describe("ColorSegregation", Ordered, func() {
 			g.Expect(err).To(Succeed())
 
 			// GRANTS is drained; other buckets are untouched.
-			g.Expect(alice.FindVolume("USD/2", "GRANTS").GetBalance().DecimalString()).To(Equal("0"))
-			g.Expect(alice.FindVolume("USD/2", "").GetBalance().DecimalString()).To(Equal("100"))
-			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance().DecimalString()).To(Equal("25"))
+			grantsVol := alice.FindVolume("USD/2", "GRANTS")
+			g.Expect(grantsVol).NotTo(BeNil(), "expected GRANTS bucket on alice")
+			g.Expect(grantsVol.GetBalance()).NotTo(BeNil(), "GRANTS balance must be present")
+			g.Expect(grantsVol.GetBalance().DecimalString()).To(Equal("0"))
+			uncoloredAlice := alice.FindVolume("USD/2", "")
+			g.Expect(uncoloredAlice).NotTo(BeNil(), "expected uncolored bucket on alice")
+			g.Expect(uncoloredAlice.GetBalance()).NotTo(BeNil(), "uncolored balance must be present")
+			g.Expect(uncoloredAlice.GetBalance().DecimalString()).To(Equal("100"))
+			opsVol := alice.FindVolume("USD/2", "OPS")
+			g.Expect(opsVol).NotTo(BeNil(), "expected OPS bucket on alice")
+			g.Expect(opsVol.GetBalance()).NotTo(BeNil(), "OPS balance must be present")
+			g.Expect(opsVol.GetBalance().DecimalString()).To(Equal("25"))
 
 			// bob received under GRANTS, color preserved on the destination side.
 			bob, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
