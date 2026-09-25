@@ -68,7 +68,7 @@ spec:
         - apply:
             file: event-sink.yaml
         - script:
-            timeout: 90s
+            timeout: 120s
             content: |
               set -eu
               for i in $(seq 1 45); do
@@ -80,6 +80,7 @@ spec:
                 fi
                 sleep 2
               done
+              echo "$SINK" | jq '{finalizers: .metadata.finalizers, conditions: .status.conditions}'
               echo "FAIL: EventSink did not become ready with a finalizer"
               exit 1
 
