@@ -130,6 +130,7 @@ rules:
   - backups/finalizers
   - clusters/finalizers
   - credentials/finalizers
+  - eventsinks/finalizers
   - ledgers/finalizers
   verbs:
   - update
@@ -140,11 +141,22 @@ rules:
   - backups/status
   - clusters/status
   - credentials/status
+  - eventsinks/status
   - ledgers/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - ledger.formance.com
+  resources:
+  - eventsinks
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - networking.k8s.io
   resources:

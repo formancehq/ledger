@@ -22,69 +22,78 @@ type managedNATSSink struct {
 	eventTypes   []string
 }
 
+type ledgerctlSinkExec func(args ...string) (string, error)
+
 type actualEventSink struct {
-	kind string
-	nats managedNATSSink
+	kind          string
+	controllerID  string
+	nats          managedNATSSink
+	cursor        uint64
+	deliveryError string
 }
 
-type eventSinkDiff struct {
-	toCreate []managedNATSSink
-	toDrop   []string
-	conflict []string
-}
-
-func desiredEventSinks(spec *ledgerv1alpha1.EventSinksSpec) []managedNATSSink {
-	if spec == nil {
-		return nil
+func desiredEventSink(resource *ledgerv1alpha1.EventSink) managedNATSSink {
+	spec := resource.Spec
+	format := spec.Format
+	if format == "" {
+		format = "json"
 	}
 
-	desired := make([]managedNATSSink, 0, len(spec.NATS))
-	for _, sink := range spec.NATS {
-		format := sink.Format
-		if format == "" {
-			format = "json"
-		}
-
-		var batchSize int32
-		if sink.BatchSize != nil {
-			batchSize = *sink.BatchSize
-		}
-
-		var batchDelayMS int64
-		if sink.BatchDelayMs != nil {
-			batchDelayMS = *sink.BatchDelayMs
-		}
-
-		eventTypes := slices.Clone(sink.EventTypes)
-		slices.Sort(eventTypes)
-
-		desired = append(desired, managedNATSSink{
-			name:         sink.Name,
-			url:          sink.URL,
-			topic:        sink.Topic,
-			format:       format,
-			batchSize:    batchSize,
-			batchDelayMS: batchDelayMS,
-			eventTypes:   eventTypes,
-		})
+	var batchSize int32
+	if spec.BatchSize != nil {
+		batchSize = *spec.BatchSize
 	}
 
-	slices.SortFunc(desired, func(a, b managedNATSSink) int {
-		return strings.Compare(a.name, b.name)
-	})
+	var batchDelayMS int64
+	if spec.BatchDelayMs != nil {
+		batchDelayMS = *spec.BatchDelayMs
+	}
 
-	return desired
+	eventTypes := slices.Clone(spec.EventTypes)
+	slices.Sort(eventTypes)
+
+	return managedNATSSink{
+		name:         resource.Name,
+		url:          spec.NATS.URL,
+		topic:        spec.NATS.Topic,
+		format:       format,
+		batchSize:    batchSize,
+		batchDelayMS: batchDelayMS,
+		eventTypes:   eventTypes,
+	}
 }
 
 // listedEventSinksResponse mirrors only the stable, non-secret fields emitted
 // by `ledgerctl events list --json`. Other sink variants are retained as raw
 // JSON solely so name conflicts are detected and never overwritten.
 type listedEventSinksResponse struct {
-	Sinks []listedEventSink `json:"sinks"`
+	Sinks        []listedEventSink  `json:"sinks"`
+	SinkStatuses []listedSinkStatus `json:"sinkStatuses"`
+}
+
+type listedSinkStatus struct {
+	SinkName string          `json:"sinkName"`
+	Cursor   protoJSONUint64 `json:"cursor"`
+	Error    *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+type protoJSONUint64 uint64
+
+func (v *protoJSONUint64) UnmarshalJSON(data []byte) error {
+	value := strings.Trim(string(data), `"`)
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parsing protobuf JSON uint64 %q: %w", value, err)
+	}
+	*v = protoJSONUint64(parsed)
+	return nil
 }
 
 type listedEventSink struct {
 	Name         string          `json:"name"`
+	ControllerID string          `json:"controllerId"`
 	Format       string          `json:"format"`
 	BatchSize    int32           `json:"batchSize"`
 	BatchDelayMS protoJSONInt64  `json:"batchDelayMs"`
@@ -130,6 +139,10 @@ func parseActualEventSinks(stdout string) (map[string]actualEventSink, error) {
 	}
 
 	actual := make(map[string]actualEventSink, len(response.Sinks))
+	statuses := make(map[string]listedSinkStatus, len(response.SinkStatuses))
+	for _, status := range response.SinkStatuses {
+		statuses[status.SinkName] = status
+	}
 	for _, sink := range response.Sinks {
 		format := sink.Format
 		if format == "" {
@@ -139,7 +152,13 @@ func parseActualEventSinks(stdout string) (map[string]actualEventSink, error) {
 		eventTypes := slices.Clone(sink.EventTypes)
 		slices.Sort(eventTypes)
 
-		entry := actualEventSink{kind: listedSinkKind(sink)}
+		entry := actualEventSink{kind: listedSinkKind(sink), controllerID: sink.ControllerID}
+		if status, ok := statuses[sink.Name]; ok {
+			entry.cursor = uint64(status.Cursor)
+			if status.Error != nil {
+				entry.deliveryError = status.Error.Message
+			}
+		}
 		if sink.NATS != nil {
 			entry.nats = managedNATSSink{
 				name:         sink.Name,
@@ -186,57 +205,6 @@ func eventSinksEqual(desired managedNATSSink, actual actualEventSink) bool {
 		slices.Equal(desired.eventTypes, actual.nats.eventTypes)
 }
 
-// diffEventSinks computes an ownership-scoped reconciliation plan. An
-// externally-owned sink is always a conflict, even if its configuration is an
-// exact match: only names durably reserved in status.appliedSinks may be
-// mutated or removed. Mismatched sinks owned by this operator are removed
-// first and recreated on the next pass; Ledger retains the per-name cursor, so
-// the two-pass update delays delivery without losing committed events.
-func diffEventSinks(desired []managedNATSSink, actual map[string]actualEventSink, applied []string) eventSinkDiff {
-	desiredByName := make(map[string]managedNATSSink, len(desired))
-	owned := make(map[string]struct{}, len(applied))
-	for _, name := range applied {
-		owned[name] = struct{}{}
-	}
-
-	var diff eventSinkDiff
-	for _, sink := range desired {
-		desiredByName[sink.name] = sink
-		actualSink, exists := actual[sink.name]
-		if !exists {
-			diff.toCreate = append(diff.toCreate, sink)
-
-			continue
-		}
-		if eventSinksEqual(sink, actualSink) {
-			if _, operatorOwned := owned[sink.name]; !operatorOwned {
-				diff.conflict = append(diff.conflict, sink.name)
-			}
-
-			continue
-		}
-		if _, operatorOwned := owned[sink.name]; operatorOwned {
-			diff.toDrop = append(diff.toDrop, sink.name)
-		} else {
-			diff.conflict = append(diff.conflict, sink.name)
-		}
-	}
-
-	for _, name := range applied {
-		if _, stillDesired := desiredByName[name]; stillDesired {
-			continue
-		}
-		// Include absent sinks too: the caller must relinquish stale ownership.
-		diff.toDrop = append(diff.toDrop, name)
-	}
-
-	slices.Sort(diff.toDrop)
-	diff.toDrop = slices.Compact(diff.toDrop)
-	slices.Sort(diff.conflict)
-
-	return diff
-}
-
 func addNATSSinkArgs(sink managedNATSSink) []string {
 	args := []string{
 		"events", "add-sink",
@@ -252,33 +220,4 @@ func addNATSSinkArgs(sink managedNATSSink) []string {
 	}
 
 	return args
-}
-
-func removeEventSinkArgs(name string) []string {
-	return []string{"events", "remove-sink", "--name", name}
-}
-
-func nextAppliedSinks(current, created, dropped []string) []string {
-	owned := make(map[string]struct{}, len(current)+len(created))
-	for _, name := range current {
-		owned[name] = struct{}{}
-	}
-	for _, name := range created {
-		owned[name] = struct{}{}
-	}
-	for _, name := range dropped {
-		delete(owned, name)
-	}
-
-	if len(owned) == 0 {
-		return nil
-	}
-
-	next := make([]string, 0, len(owned))
-	for name := range owned {
-		next = append(next, name)
-	}
-	slices.Sort(next)
-
-	return next
 }
