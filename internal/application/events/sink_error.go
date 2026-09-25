@@ -31,6 +31,7 @@ func newSinkErrorSanitizer(connectionURLs []string, credentials ...string) sinkE
 			// The driver may echo the full URL text in errors, so credentials must be
 			// registered even when the URL cannot be fully parsed.
 			secrets = append(secrets, rawUserinfoCredentials(strings.TrimSpace(raw))...)
+
 			continue
 		}
 		if parsed.User != nil {
@@ -195,7 +196,7 @@ func rawUserinfoCredentials(raw string) []string {
 	}
 	isNATS := strings.HasPrefix(strings.ToLower(raw), "nats://")
 	// Authority ends at the first "/" (path).
-	authority := strings.SplitN(afterScheme, "/", 2)[0]
+	authority, _, _ := strings.Cut(afterScheme, "/")
 	// Userinfo is the part before the last "@".
 	atIdx := strings.LastIndex(authority, "@")
 	if atIdx < 0 {
