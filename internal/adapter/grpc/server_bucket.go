@@ -739,10 +739,6 @@ func (impl *BucketServiceServerImpl) CheckStore(_ *servicepb.CheckStoreRequest, 
 }
 
 func (impl *BucketServiceServerImpl) GetAuditEntry(ctx context.Context, req *servicepb.GetAuditEntryRequest) (*publicauditpb.AuditEntry, error) {
-	if _, err := internalauth.Authenticate(ctx, impl.authCfg, internalauth.ScopeAuditRead); err != nil {
-		return nil, err
-	}
-
 	return impl.ctrl.GetAuditEntry(ctx, req.GetSequence())
 }
 
