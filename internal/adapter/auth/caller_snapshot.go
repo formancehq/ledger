@@ -78,9 +78,8 @@ func IsSystemActor(ctx context.Context) bool {
 //  1. an explicit system actor (WithSystemActor) — a background action;
 //  2. an explicitly forwarded snapshot (set by a follower that already
 //     validated the user JWT/Ed25519 token);
-//  3. one built from the claims attached locally by Authenticate.
-//
-// Returns nil only when the request is an unauthenticated user request.
+//  3. one built from the immutable authentication state attached locally by
+//     EvaluateGRPCCredentials.
 //
 // Use this from both the follower (when forwarding to the leader, to keep the
 // original snapshot intact across hops) and the leader (when building the
@@ -94,22 +93,40 @@ func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		return forwarded
 	}
 
+	// A cluster-internal request is authenticated as the peer, not as the
+	// original caller. Without a forwarded snapshot, attributing the write from
+	// the peer's local authentication state would fabricate an anonymous caller
+	// with the cluster secret's scopes and hide the attribution gap.
+	if IsClusterInternal(ctx) {
+		return nil
+	}
+
 	return buildCallerSnapshot(ctx)
 }
 
 // buildCallerSnapshot freezes the admission-time auth state of the current
-// context into a CallerSnapshot. Returns nil when no claims are present.
-//
-// The result conflates two concerns on purpose — caller identity (subject +
-// source) and the authorization granted at admission (scopes + god) —
-// because the FSM persists the whole thing into AuditEntry so the audit log
-// records both who did the operation and what they were allowed to do at
-// that moment. Downstream code MUST NOT re-derive permissions from this
-// struct: it is a frozen admission-time snapshot.
+// context into exactly one principal variant. Downstream code MUST NOT
+// re-derive permissions from this audit-only snapshot.
 func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 	claims := ClaimsFromContext(ctx)
 	if claims == nil {
-		return nil
+		state, ok := authenticationStateFromContext(ctx)
+		if !ok {
+			return nil
+		}
+		if state.enabled {
+			return &commonpb.CallerSnapshot{
+				Principal: &commonpb.CallerSnapshot_Anonymous{
+					Anonymous: &commonpb.AnonymousCaller{Scopes: sortedScopeStrings(state.scopes)},
+				},
+			}
+		}
+
+		return &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_AuthDisabled{
+				AuthDisabled: &commonpb.AuthDisabledCaller{},
+			},
+		}
 	}
 
 	identity := &commonpb.CallerIdentity{
@@ -123,24 +140,31 @@ func buildCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 		identity.Source = &commonpb.CallerIdentity_Issuer{Issuer: claims.Issuer}
 	}
 
-	snapshot := &commonpb.CallerSnapshot{
+	authenticated := &commonpb.AuthenticatedCaller{
 		Identity: identity,
 	}
 
 	if god, ok := claims.Claims["god"].(bool); ok && god {
-		snapshot.God = true
+		authenticated.God = true
 	}
 
-	// Sorted scopes for deterministic FSM serialization.
-	if expanded := ExpandedScopesFromContext(ctx); len(expanded) > 0 {
-		scopes := make([]string, 0, len(expanded))
-		for s := range expanded {
-			scopes = append(scopes, string(s))
-		}
+	authenticated.Scopes = sortedScopeStrings(ExpandedScopesFromContext(ctx))
 
-		sort.Strings(scopes)
-		snapshot.Scopes = scopes
+	return &commonpb.CallerSnapshot{
+		Principal: &commonpb.CallerSnapshot_Authenticated{Authenticated: authenticated},
+	}
+}
+
+func sortedScopeStrings(expanded map[Scope]struct{}) []string {
+	if len(expanded) == 0 {
+		return nil
 	}
 
-	return snapshot
+	scopes := make([]string, 0, len(expanded))
+	for scope := range expanded {
+		scopes = append(scopes, string(scope))
+	}
+	sort.Strings(scopes)
+
+	return scopes
 }

@@ -969,7 +969,7 @@ func TestApply_Error(t *testing.T) {
 
 // TestApply_ForwardsCallerSnapshot verifies that when a follower forwards an
 // Apply to the leader, it captures the admission-time caller snapshot
-// (identity + scopes + god) from the local context and includes it on the
+// (principal plus effective authorization) from the local context and includes it on the
 // wire so the leader can attribute the audit entry to the original user
 // despite the cluster-secret hop.
 //
@@ -1002,8 +1002,37 @@ func TestApply_ForwardsCallerSnapshot(t *testing.T) {
 
 	fc := capturedApplyReq.GetForwardedCallerSnapshot()
 	require.NotNil(t, fc, "follower must forward the caller snapshot")
-	require.Equal(t, "alice", fc.GetIdentity().GetSubject())
-	require.Equal(t, "https://idp.example.com", fc.GetIdentity().GetIssuer())
+	require.Equal(t, "alice", fc.GetAuthenticated().GetIdentity().GetSubject())
+	require.Equal(t, "https://idp.example.com", fc.GetAuthenticated().GetIdentity().GetIssuer())
+}
+
+func TestApply_DoesNotForwardAuthDisabledSnapshot(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mock := NewMockBucketServiceClient(ctrl)
+	var capturedApplyReq *servicepb.ApplyRequest
+	mock.EXPECT().Apply(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, req *servicepb.ApplyRequest, opts ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+			capturedApplyReq = req
+			*opts[0].(grpc.TrailerCallOption).TrailerAddr = metadata.Pairs(metadataKeyApplyReplayed, "false")
+
+			return &servicepb.ApplyResponse{}, nil
+		})
+
+	ctx, err := auth.EvaluateGRPCCredentials(context.Background(), auth.AuthConfig{})
+	require.NoError(t, err)
+	grpcClient := NewLedgerGrpcClient(mock)
+	_, err = grpcClient.Apply(ctx, &servicepb.ApplyRequest{
+		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_Anonymous{
+				Anonymous: &commonpb.AnonymousCaller{},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, capturedApplyReq)
+	require.Nil(t, capturedApplyReq.GetForwardedCallerSnapshot())
 }
 
 // TestApply_PropagatesExistingForwardedSnapshot verifies that a node
@@ -1026,11 +1055,15 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 
 	// Simulate a node that received the request via cluster-internal forward.
 	original := &commonpb.CallerSnapshot{
-		Identity: &commonpb.CallerIdentity{
-			Subject: "original-user",
-			Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{
+					Subject: "original-user",
+					Source:  &commonpb.CallerIdentity_KeyId{KeyId: "ed25519-7"},
+				},
+				Scopes: []string{"ledger:TransactionWrite"},
+			},
 		},
-		Scopes: []string{"ledger:TransactionWrite"},
 	}
 	ctx := auth.WithForwardedSnapshot(context.Background(), original)
 
@@ -1040,9 +1073,9 @@ func TestApply_PropagatesExistingForwardedSnapshot(t *testing.T) {
 
 	fc := capturedApplyReq.GetForwardedCallerSnapshot()
 	require.NotNil(t, fc)
-	require.Equal(t, "original-user", fc.GetIdentity().GetSubject())
-	require.Equal(t, "ed25519-7", fc.GetIdentity().GetKeyId())
-	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetScopes())
+	require.Equal(t, "original-user", fc.GetAuthenticated().GetIdentity().GetSubject())
+	require.Equal(t, "ed25519-7", fc.GetAuthenticated().GetIdentity().GetKeyId())
+	require.Equal(t, []string{"ledger:TransactionWrite"}, fc.GetAuthenticated().GetScopes())
 }
 
 func TestApply_RequiresLeaderExecutionProvenance(t *testing.T) {

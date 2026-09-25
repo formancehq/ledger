@@ -19,6 +19,26 @@ func TestResolveCallerSnapshot_Unauthenticated(t *testing.T) {
 	require.Nil(t, ResolveCallerSnapshot(context.Background()))
 }
 
+func TestResolveCallerSnapshot_Anonymous(t *testing.T) {
+	t.Parallel()
+
+	ctx := withAuthenticationState(context.Background(), true, false, map[Scope]struct{}{
+		ScopeTransactionsWrite: {},
+		ScopeTransactionsRead:  {},
+	})
+
+	got := ResolveCallerSnapshot(ctx)
+	require.NotNil(t, got.GetAnonymous())
+	require.Equal(t, []string{string(ScopeTransactionsRead), string(ScopeTransactionsWrite)}, got.GetAnonymous().GetScopes())
+}
+
+func TestResolveCallerSnapshot_AuthDisabled(t *testing.T) {
+	t.Parallel()
+
+	ctx := withAuthenticationState(context.Background(), false, false, nil)
+	require.NotNil(t, ResolveCallerSnapshot(ctx).GetAuthDisabled())
+}
+
 func TestResolveCallerSnapshot_FromClaims_OIDC(t *testing.T) {
 	t.Parallel()
 
@@ -36,11 +56,13 @@ func TestResolveCallerSnapshot_FromClaims_OIDC(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, "user-1", got.GetIdentity().GetSubject())
-	require.False(t, got.GetGod())
-	require.Equal(t, "https://issuer.example.com", got.GetIdentity().GetIssuer())
+	authenticated := got.GetAuthenticated()
+	require.NotNil(t, authenticated)
+	require.Equal(t, "user-1", authenticated.GetIdentity().GetSubject())
+	require.False(t, authenticated.GetGod())
+	require.Equal(t, "https://issuer.example.com", authenticated.GetIdentity().GetIssuer())
 	// Scopes must be sorted for deterministic Raft serialization.
-	require.Equal(t, []string{string(ScopeTransactionsRead), string(ScopeTransactionsWrite)}, got.GetScopes())
+	require.Equal(t, []string{string(ScopeTransactionsRead), string(ScopeTransactionsWrite)}, authenticated.GetScopes())
 }
 
 func TestResolveCallerSnapshot_FromClaims_Ed25519_PrefersKeyID(t *testing.T) {
@@ -57,8 +79,8 @@ func TestResolveCallerSnapshot_FromClaims_Ed25519_PrefersKeyID(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, "ed25519-key-7", got.GetIdentity().GetKeyId())
-	require.Empty(t, got.GetIdentity().GetIssuer())
+	require.Equal(t, "ed25519-key-7", got.GetAuthenticated().GetIdentity().GetKeyId())
+	require.Empty(t, got.GetAuthenticated().GetIdentity().GetIssuer())
 }
 
 func TestResolveCallerSnapshot_GodClaim(t *testing.T) {
@@ -72,10 +94,10 @@ func TestResolveCallerSnapshot_GodClaim(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.True(t, got.GetGod())
+	require.True(t, got.GetAuthenticated().GetGod())
 	// God still carries an identity — auditors need to know *who* the
 	// godly caller was.
-	require.Equal(t, "admin", got.GetIdentity().GetSubject())
+	require.Equal(t, "admin", got.GetAuthenticated().GetIdentity().GetSubject())
 }
 
 func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
@@ -88,11 +110,15 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 		TokenClaims: oidc.TokenClaims{Subject: "peer-node"},
 	}
 	forwarded := &commonpb.CallerSnapshot{
-		Identity: &commonpb.CallerIdentity{
-			Subject: "original-user",
-			Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{
+					Subject: "original-user",
+					Source:  &commonpb.CallerIdentity_Issuer{Issuer: "https://idp.example.com"},
+				},
+				Scopes: []string{"ledger:TransactionWrite"},
+			},
 		},
-		Scopes: []string{"ledger:TransactionWrite"},
 	}
 
 	ctx := WithClaims(context.Background(), claims)
@@ -100,10 +126,20 @@ func TestResolveCallerSnapshot_ForwardedShortCircuitsClaims(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, "original-user", got.GetIdentity().GetSubject(),
+	require.Equal(t, "original-user", got.GetAuthenticated().GetIdentity().GetSubject(),
 		"forwarded snapshot must win over local peer claims")
-	require.Equal(t, "https://idp.example.com", got.GetIdentity().GetIssuer())
-	require.Equal(t, []string{"ledger:TransactionWrite"}, got.GetScopes())
+	require.Equal(t, "https://idp.example.com", got.GetAuthenticated().GetIdentity().GetIssuer())
+	require.Equal(t, []string{"ledger:TransactionWrite"}, got.GetAuthenticated().GetScopes())
+}
+
+func TestResolveCallerSnapshot_ClusterInternalWithoutForwardedSnapshot(t *testing.T) {
+	t.Parallel()
+
+	ctx := withAuthenticationState(context.Background(), true, false, allScopes())
+	ctx = WithClusterInternal(ctx, true)
+
+	require.Nil(t, ResolveCallerSnapshot(ctx),
+		"the peer's cluster-secret grant must not be attributed to the original caller")
 }
 
 func TestResolveCallerSnapshot_SystemActor(t *testing.T) {
@@ -113,10 +149,7 @@ func TestResolveCallerSnapshot_SystemActor(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, commands.ComponentQueryCheckpoint, got.GetIdentity().GetSystemComponent())
-	require.Empty(t, got.GetIdentity().GetSubject())
-	require.Empty(t, got.GetScopes())
-	require.False(t, got.GetGod())
+	require.Equal(t, commands.ComponentQueryCheckpoint, got.GetSystem().GetComponent())
 }
 
 func TestResolveCallerSnapshot_SystemActorWinsOverForwardedAndClaims(t *testing.T) {
@@ -128,21 +161,23 @@ func TestResolveCallerSnapshot_SystemActorWinsOverForwardedAndClaims(t *testing.
 		TokenClaims: oidc.TokenClaims{Subject: "user-1"},
 	})
 	ctx = WithForwardedSnapshot(ctx, &commonpb.CallerSnapshot{
-		Identity: &commonpb.CallerIdentity{Subject: "forwarded-user"},
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{Subject: "forwarded-user"},
+			},
+		},
 	})
 	ctx = WithSystemActor(ctx, commands.ComponentMirror)
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Equal(t, commands.ComponentMirror, got.GetIdentity().GetSystemComponent())
-	require.Empty(t, got.GetIdentity().GetSubject())
+	require.Equal(t, commands.ComponentMirror, got.GetSystem().GetComponent())
 }
 
 func TestResolveCallerSnapshot_EmptySystemComponentFallsThrough(t *testing.T) {
 	t.Parallel()
 
-	// An empty component must not synthesize a bogus system snapshot; with no
-	// claims it resolves to nil like any unauthenticated request.
+	// An empty component falls through to the missing-state result.
 	ctx := WithSystemActor(context.Background(), "")
 
 	require.Nil(t, ResolveCallerSnapshot(ctx))
@@ -159,8 +194,8 @@ func TestResolveCallerSnapshot_Ed25519WithoutSubject(t *testing.T) {
 
 	got := ResolveCallerSnapshot(ctx)
 	require.NotNil(t, got)
-	require.Empty(t, got.GetIdentity().GetSubject())
-	require.Equal(t, "ed25519-key-9", got.GetIdentity().GetKeyId())
+	require.Empty(t, got.GetAuthenticated().GetIdentity().GetSubject())
+	require.Equal(t, "ed25519-key-9", got.GetAuthenticated().GetIdentity().GetKeyId())
 }
 
 func TestIsClusterInternal_DefaultsFalse(t *testing.T) {
@@ -189,7 +224,11 @@ func TestWithForwardedSnapshot_RoundTrip(t *testing.T) {
 	t.Parallel()
 
 	snapshot := &commonpb.CallerSnapshot{
-		Identity: &commonpb.CallerIdentity{Subject: "abc"},
+		Principal: &commonpb.CallerSnapshot_Authenticated{
+			Authenticated: &commonpb.AuthenticatedCaller{
+				Identity: &commonpb.CallerIdentity{Subject: "abc"},
+			},
+		},
 	}
 	ctx := WithForwardedSnapshot(context.Background(), snapshot)
 

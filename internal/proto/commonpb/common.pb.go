@@ -1082,7 +1082,7 @@ const (
 	AuditField_AUDIT_FIELD_TIMESTAMP      AuditField = 3 // uint   -> AuditEntry.timestamp.data, unix micros (index range)
 	AuditField_AUDIT_FIELD_LOG_SEQUENCE   AuditField = 4 // uint   -> item log_sequence, match-any (index range)
 	AuditField_AUDIT_FIELD_OUTCOME        AuditField = 5 // string in {success, failure} (index)
-	AuditField_AUDIT_FIELD_CALLER_SUBJECT AuditField = 6 // string -> caller_snapshot.identity.subject (index)
+	AuditField_AUDIT_FIELD_CALLER_SUBJECT AuditField = 6 // string -> caller_snapshot.authenticated.identity.subject (index)
 	AuditField_AUDIT_FIELD_LEDGER         AuditField = 7 // string -> AuditEntry.ledgers, match-any (index)
 	AuditField_AUDIT_FIELD_ORDER_TYPE     AuditField = 8 // string -> order payload variant, match-any (index)
 )
@@ -12105,20 +12105,18 @@ func (x *PersistedConfig) GetStorageSchemaVersion() uint32 {
 // authorization decision based on it: the admission point that issued
 // it already vetted the call.
 //
-// source distinguishes a user (issuer or key_id) from a system action
-// (system_component). An absent source means the identity is a bare
-// subject with no known origin.
+// source records the credential mechanism. An absent source means the
+// authenticated identity is a bare subject with no known origin.
 type CallerIdentity struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Subject string                 `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
-	// scopes and god live on CallerSnapshot, not here: CallerIdentity is
+	// scopes and god live on AuthenticatedCaller, not here: CallerIdentity is
 	// identification only and carries no authorization decision.
 	//
 	// Types that are valid to be assigned to Source:
 	//
 	//	*CallerIdentity_Issuer
 	//	*CallerIdentity_KeyId
-	//	*CallerIdentity_SystemComponent
 	Source        isCallerIdentity_Source `protobuf_oneof:"source"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12186,15 +12184,6 @@ func (x *CallerIdentity) GetKeyId() string {
 	return ""
 }
 
-func (x *CallerIdentity) GetSystemComponent() string {
-	if x != nil {
-		if x, ok := x.Source.(*CallerIdentity_SystemComponent); ok {
-			return x.SystemComponent
-		}
-	}
-	return ""
-}
-
 type isCallerIdentity_Source interface {
 	isCallerIdentity_Source()
 }
@@ -12207,27 +12196,11 @@ type CallerIdentity_KeyId struct {
 	KeyId string `protobuf:"bytes,3,opt,name=key_id,json=keyId,proto3,oneof"` // Ed25519 signing key ID
 }
 
-type CallerIdentity_SystemComponent struct {
-	SystemComponent string `protobuf:"bytes,4,opt,name=system_component,json=systemComponent,proto3,oneof"` // system/internal actor (no user); names the subsystem
-}
-
 func (*CallerIdentity_Issuer) isCallerIdentity_Source() {}
 
 func (*CallerIdentity_KeyId) isCallerIdentity_Source() {}
 
-func (*CallerIdentity_SystemComponent) isCallerIdentity_Source() {}
-
-// CallerSnapshot is the *admission-time* record of who initiated an
-// action and what authorization was granted to them at that moment.
-// It exists for audit trail purposes only: scopes and god MUST NOT be
-// re-evaluated downstream (FSM, leader after a follower forward,
-// etc.).
-//
-// Carried on Proposals through Raft, then copied to AuditEntry by the
-// FSM. Nil when authentication is disabled. System-initiated proposals
-// carry a non-nil identity whose source is system_component (never nil),
-// so an audit entry is never ambiguously blank.
-type CallerSnapshot struct {
+type AuthenticatedCaller struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Identity      *CallerIdentity        `protobuf:"bytes,1,opt,name=identity,proto3" json:"identity,omitempty"`
 	Scopes        []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"`
@@ -12236,9 +12209,205 @@ type CallerSnapshot struct {
 	sizeCache     protoimpl.SizeCache
 }
 
+func (x *AuthenticatedCaller) Reset() {
+	*x = AuthenticatedCaller{}
+	mi := &file_common_proto_msgTypes[149]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthenticatedCaller) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthenticatedCaller) ProtoMessage() {}
+
+func (x *AuthenticatedCaller) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[149]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthenticatedCaller.ProtoReflect.Descriptor instead.
+func (*AuthenticatedCaller) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{149}
+}
+
+func (x *AuthenticatedCaller) GetIdentity() *CallerIdentity {
+	if x != nil {
+		return x.Identity
+	}
+	return nil
+}
+
+func (x *AuthenticatedCaller) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *AuthenticatedCaller) GetGod() bool {
+	if x != nil {
+		return x.God
+	}
+	return false
+}
+
+type AnonymousCaller struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Scopes        []string               `protobuf:"bytes,1,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AnonymousCaller) Reset() {
+	*x = AnonymousCaller{}
+	mi := &file_common_proto_msgTypes[150]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AnonymousCaller) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AnonymousCaller) ProtoMessage() {}
+
+func (x *AnonymousCaller) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[150]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AnonymousCaller.ProtoReflect.Descriptor instead.
+func (*AnonymousCaller) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{150}
+}
+
+func (x *AnonymousCaller) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+type SystemCaller struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Component     string                 `protobuf:"bytes,1,opt,name=component,proto3" json:"component,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SystemCaller) Reset() {
+	*x = SystemCaller{}
+	mi := &file_common_proto_msgTypes[151]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SystemCaller) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SystemCaller) ProtoMessage() {}
+
+func (x *SystemCaller) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[151]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SystemCaller.ProtoReflect.Descriptor instead.
+func (*SystemCaller) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{151}
+}
+
+func (x *SystemCaller) GetComponent() string {
+	if x != nil {
+		return x.Component
+	}
+	return ""
+}
+
+type AuthDisabledCaller struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AuthDisabledCaller) Reset() {
+	*x = AuthDisabledCaller{}
+	mi := &file_common_proto_msgTypes[152]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AuthDisabledCaller) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AuthDisabledCaller) ProtoMessage() {}
+
+func (x *AuthDisabledCaller) ProtoReflect() protoreflect.Message {
+	mi := &file_common_proto_msgTypes[152]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AuthDisabledCaller.ProtoReflect.Descriptor instead.
+func (*AuthDisabledCaller) Descriptor() ([]byte, []int) {
+	return file_common_proto_rawDescGZIP(), []int{152}
+}
+
+// CallerSnapshot is the *admission-time* record of who initiated an action.
+// Its required principal union keeps authenticated users, authorized anonymous
+// callers, system components, and authentication-disabled mode observably
+// distinct. Authorization is frozen here for audit only and MUST NOT be
+// re-evaluated downstream (FSM, leader after a follower forward, etc.).
+//
+// Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
+// Application code must always set exactly one principal variant.
+type CallerSnapshot struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Principal:
+	//
+	//	*CallerSnapshot_Authenticated
+	//	*CallerSnapshot_Anonymous
+	//	*CallerSnapshot_System
+	//	*CallerSnapshot_AuthDisabled
+	Principal     isCallerSnapshot_Principal `protobuf_oneof:"principal"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
 func (x *CallerSnapshot) Reset() {
 	*x = CallerSnapshot{}
-	mi := &file_common_proto_msgTypes[149]
+	mi := &file_common_proto_msgTypes[153]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12250,7 +12419,7 @@ func (x *CallerSnapshot) String() string {
 func (*CallerSnapshot) ProtoMessage() {}
 
 func (x *CallerSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[149]
+	mi := &file_common_proto_msgTypes[153]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12263,29 +12432,79 @@ func (x *CallerSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CallerSnapshot.ProtoReflect.Descriptor instead.
 func (*CallerSnapshot) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{149}
+	return file_common_proto_rawDescGZIP(), []int{153}
 }
 
-func (x *CallerSnapshot) GetIdentity() *CallerIdentity {
+func (x *CallerSnapshot) GetPrincipal() isCallerSnapshot_Principal {
 	if x != nil {
-		return x.Identity
+		return x.Principal
 	}
 	return nil
 }
 
-func (x *CallerSnapshot) GetScopes() []string {
+func (x *CallerSnapshot) GetAuthenticated() *AuthenticatedCaller {
 	if x != nil {
-		return x.Scopes
+		if x, ok := x.Principal.(*CallerSnapshot_Authenticated); ok {
+			return x.Authenticated
+		}
 	}
 	return nil
 }
 
-func (x *CallerSnapshot) GetGod() bool {
+func (x *CallerSnapshot) GetAnonymous() *AnonymousCaller {
 	if x != nil {
-		return x.God
+		if x, ok := x.Principal.(*CallerSnapshot_Anonymous); ok {
+			return x.Anonymous
+		}
 	}
-	return false
+	return nil
 }
+
+func (x *CallerSnapshot) GetSystem() *SystemCaller {
+	if x != nil {
+		if x, ok := x.Principal.(*CallerSnapshot_System); ok {
+			return x.System
+		}
+	}
+	return nil
+}
+
+func (x *CallerSnapshot) GetAuthDisabled() *AuthDisabledCaller {
+	if x != nil {
+		if x, ok := x.Principal.(*CallerSnapshot_AuthDisabled); ok {
+			return x.AuthDisabled
+		}
+	}
+	return nil
+}
+
+type isCallerSnapshot_Principal interface {
+	isCallerSnapshot_Principal()
+}
+
+type CallerSnapshot_Authenticated struct {
+	Authenticated *AuthenticatedCaller `protobuf:"bytes,1,opt,name=authenticated,proto3,oneof"`
+}
+
+type CallerSnapshot_Anonymous struct {
+	Anonymous *AnonymousCaller `protobuf:"bytes,2,opt,name=anonymous,proto3,oneof"`
+}
+
+type CallerSnapshot_System struct {
+	System *SystemCaller `protobuf:"bytes,3,opt,name=system,proto3,oneof"`
+}
+
+type CallerSnapshot_AuthDisabled struct {
+	AuthDisabled *AuthDisabledCaller `protobuf:"bytes,4,opt,name=auth_disabled,json=authDisabled,proto3,oneof"`
+}
+
+func (*CallerSnapshot_Authenticated) isCallerSnapshot_Principal() {}
+
+func (*CallerSnapshot_Anonymous) isCallerSnapshot_Principal() {}
+
+func (*CallerSnapshot_System) isCallerSnapshot_Principal() {}
+
+func (*CallerSnapshot_AuthDisabled) isCallerSnapshot_Principal() {}
 
 // S3StorageConfig configures an S3 / S3-compatible backup backend.
 type S3StorageConfig struct {
@@ -12301,7 +12520,7 @@ type S3StorageConfig struct {
 
 func (x *S3StorageConfig) Reset() {
 	*x = S3StorageConfig{}
-	mi := &file_common_proto_msgTypes[150]
+	mi := &file_common_proto_msgTypes[154]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12313,7 +12532,7 @@ func (x *S3StorageConfig) String() string {
 func (*S3StorageConfig) ProtoMessage() {}
 
 func (x *S3StorageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[150]
+	mi := &file_common_proto_msgTypes[154]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12326,7 +12545,7 @@ func (x *S3StorageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use S3StorageConfig.ProtoReflect.Descriptor instead.
 func (*S3StorageConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{150}
+	return file_common_proto_rawDescGZIP(), []int{154}
 }
 
 func (x *S3StorageConfig) GetBucket() string {
@@ -12377,7 +12596,7 @@ type AzureStorageConfig struct {
 
 func (x *AzureStorageConfig) Reset() {
 	*x = AzureStorageConfig{}
-	mi := &file_common_proto_msgTypes[151]
+	mi := &file_common_proto_msgTypes[155]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12389,7 +12608,7 @@ func (x *AzureStorageConfig) String() string {
 func (*AzureStorageConfig) ProtoMessage() {}
 
 func (x *AzureStorageConfig) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[151]
+	mi := &file_common_proto_msgTypes[155]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12402,7 +12621,7 @@ func (x *AzureStorageConfig) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AzureStorageConfig.ProtoReflect.Descriptor instead.
 func (*AzureStorageConfig) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{151}
+	return file_common_proto_rawDescGZIP(), []int{155}
 }
 
 func (x *AzureStorageConfig) GetAccountName() string {
@@ -12449,7 +12668,7 @@ type BackupStorage struct {
 
 func (x *BackupStorage) Reset() {
 	*x = BackupStorage{}
-	mi := &file_common_proto_msgTypes[152]
+	mi := &file_common_proto_msgTypes[156]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12461,7 +12680,7 @@ func (x *BackupStorage) String() string {
 func (*BackupStorage) ProtoMessage() {}
 
 func (x *BackupStorage) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[152]
+	mi := &file_common_proto_msgTypes[156]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12474,7 +12693,7 @@ func (x *BackupStorage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackupStorage.ProtoReflect.Descriptor instead.
 func (*BackupStorage) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{152}
+	return file_common_proto_rawDescGZIP(), []int{156}
 }
 
 func (x *BackupStorage) GetProvider() isBackupStorage_Provider {
@@ -12533,7 +12752,7 @@ type ReadOptions struct {
 
 func (x *ReadOptions) Reset() {
 	*x = ReadOptions{}
-	mi := &file_common_proto_msgTypes[153]
+	mi := &file_common_proto_msgTypes[157]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12545,7 +12764,7 @@ func (x *ReadOptions) String() string {
 func (*ReadOptions) ProtoMessage() {}
 
 func (x *ReadOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[153]
+	mi := &file_common_proto_msgTypes[157]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12558,7 +12777,7 @@ func (x *ReadOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadOptions.ProtoReflect.Descriptor instead.
 func (*ReadOptions) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{153}
+	return file_common_proto_rawDescGZIP(), []int{157}
 }
 
 func (x *ReadOptions) GetCheckpointId() uint64 {
@@ -12603,7 +12822,7 @@ type ListOptions struct {
 
 func (x *ListOptions) Reset() {
 	*x = ListOptions{}
-	mi := &file_common_proto_msgTypes[154]
+	mi := &file_common_proto_msgTypes[158]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -12615,7 +12834,7 @@ func (x *ListOptions) String() string {
 func (*ListOptions) ProtoMessage() {}
 
 func (x *ListOptions) ProtoReflect() protoreflect.Message {
-	mi := &file_common_proto_msgTypes[154]
+	mi := &file_common_proto_msgTypes[158]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -12628,7 +12847,7 @@ func (x *ListOptions) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOptions.ProtoReflect.Descriptor instead.
 func (*ListOptions) Descriptor() ([]byte, []int) {
-	return file_common_proto_rawDescGZIP(), []int{154}
+	return file_common_proto_rawDescGZIP(), []int{158}
 }
 
 func (x *ListOptions) GetRead() *ReadOptions {
@@ -13508,17 +13727,27 @@ const file_common_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12\x1d\n" +
 	"\n" +
 	"cluster_id\x18\x02 \x01(\tR\tclusterId\x124\n" +
-	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersion\"\x94\x01\n" +
+	"\x16storage_schema_version\x18\x03 \x01(\rR\x14storageSchemaVersion\"g\n" +
 	"\x0eCallerIdentity\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x18\n" +
 	"\x06issuer\x18\x02 \x01(\tH\x00R\x06issuer\x12\x17\n" +
-	"\x06key_id\x18\x03 \x01(\tH\x00R\x05keyId\x12+\n" +
-	"\x10system_component\x18\x04 \x01(\tH\x00R\x0fsystemComponentB\b\n" +
-	"\x06source\"n\n" +
-	"\x0eCallerSnapshot\x122\n" +
+	"\x06key_id\x18\x03 \x01(\tH\x00R\x05keyIdB\b\n" +
+	"\x06source\"s\n" +
+	"\x13AuthenticatedCaller\x122\n" +
 	"\bidentity\x18\x01 \x01(\v2\x16.common.CallerIdentityR\bidentity\x12\x16\n" +
 	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12\x10\n" +
-	"\x03god\x18\x03 \x01(\bR\x03god\"\xad\x01\n" +
+	"\x03god\x18\x03 \x01(\bR\x03god\")\n" +
+	"\x0fAnonymousCaller\x12\x16\n" +
+	"\x06scopes\x18\x01 \x03(\tR\x06scopes\",\n" +
+	"\fSystemCaller\x12\x1c\n" +
+	"\tcomponent\x18\x01 \x01(\tR\tcomponent\"\x14\n" +
+	"\x12AuthDisabledCaller\"\x8e\x02\n" +
+	"\x0eCallerSnapshot\x12C\n" +
+	"\rauthenticated\x18\x01 \x01(\v2\x1b.common.AuthenticatedCallerH\x00R\rauthenticated\x127\n" +
+	"\tanonymous\x18\x02 \x01(\v2\x17.common.AnonymousCallerH\x00R\tanonymous\x12.\n" +
+	"\x06system\x18\x03 \x01(\v2\x14.common.SystemCallerH\x00R\x06system\x12A\n" +
+	"\rauth_disabled\x18\x04 \x01(\v2\x1a.common.AuthDisabledCallerH\x00R\fauthDisabledB\v\n" +
+	"\tprincipal\"\xad\x01\n" +
 	"\x0fS3StorageConfig\x12\x16\n" +
 	"\x06bucket\x18\x01 \x01(\tR\x06bucket\x12\x16\n" +
 	"\x06region\x18\x02 \x01(\tR\x06region\x12\x1a\n" +
@@ -13741,7 +13970,7 @@ func file_common_proto_rawDescGZIP() []byte {
 }
 
 var file_common_proto_enumTypes = make([]protoimpl.EnumInfo, 18)
-var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 174)
+var file_common_proto_msgTypes = make([]protoimpl.MessageInfo, 178)
 var file_common_proto_goTypes = []any{
 	(AuthScope)(0),                                   // 0: common.AuthScope
 	(DynamicAuthResolver)(0),                         // 1: common.DynamicAuthResolver
@@ -13910,63 +14139,67 @@ var file_common_proto_goTypes = []any{
 	(*LedgerStats)(nil),                              // 164: common.LedgerStats
 	(*PersistedConfig)(nil),                          // 165: common.PersistedConfig
 	(*CallerIdentity)(nil),                           // 166: common.CallerIdentity
-	(*CallerSnapshot)(nil),                           // 167: common.CallerSnapshot
-	(*S3StorageConfig)(nil),                          // 168: common.S3StorageConfig
-	(*AzureStorageConfig)(nil),                       // 169: common.AzureStorageConfig
-	(*BackupStorage)(nil),                            // 170: common.BackupStorage
-	(*ReadOptions)(nil),                              // 171: common.ReadOptions
-	(*ListOptions)(nil),                              // 172: common.ListOptions
-	nil,                                              // 173: common.MetadataMap.ValuesEntry
-	nil,                                              // 174: common.Transaction.MetadataEntry
-	nil,                                              // 175: common.Script.VarsEntry
-	nil,                                              // 176: common.PostCommitVolumes.VolumesByAccountEntry
-	nil,                                              // 177: common.Account.MetadataEntry
-	nil,                                              // 178: common.MetadataSchema.AccountFieldsEntry
-	nil,                                              // 179: common.MetadataSchema.TransactionFieldsEntry
-	nil,                                              // 180: common.MetadataSchema.LedgerFieldsEntry
-	nil,                                              // 181: common.SavedLedgerMetadataLog.MetadataEntry
-	nil,                                              // 182: common.CreatedLedgerLog.AccountTypesEntry
-	nil,                                              // 183: common.OrderSkippedLog.ContextEntry
-	nil,                                              // 184: common.CreatedTransaction.AccountMetadataEntry
-	nil,                                              // 185: common.SavedMetadata.MetadataEntry
-	nil,                                              // 186: common.LedgerInfo.AccountTypesEntry
-	nil,                                              // 187: common.LedgerInfo.MetadataEntry
-	nil,                                              // 188: common.SaveMetadataCommand.MetadataEntry
-	nil,                                              // 189: common.TransactionState.MetadataEntry
-	nil,                                              // 190: common.IdempotencyFailure.MetadataEntry
-	nil,                                              // 191: common.AccountType.SegmentTypesEntry
-	(*signaturepb.SignedLog)(nil),                    // 192: signature.SignedLog
-	(*descriptorpb.MethodOptions)(nil),               // 193: google.protobuf.MethodOptions
-	(*descriptorpb.FieldOptions)(nil),                // 194: google.protobuf.FieldOptions
+	(*AuthenticatedCaller)(nil),                      // 167: common.AuthenticatedCaller
+	(*AnonymousCaller)(nil),                          // 168: common.AnonymousCaller
+	(*SystemCaller)(nil),                             // 169: common.SystemCaller
+	(*AuthDisabledCaller)(nil),                       // 170: common.AuthDisabledCaller
+	(*CallerSnapshot)(nil),                           // 171: common.CallerSnapshot
+	(*S3StorageConfig)(nil),                          // 172: common.S3StorageConfig
+	(*AzureStorageConfig)(nil),                       // 173: common.AzureStorageConfig
+	(*BackupStorage)(nil),                            // 174: common.BackupStorage
+	(*ReadOptions)(nil),                              // 175: common.ReadOptions
+	(*ListOptions)(nil),                              // 176: common.ListOptions
+	nil,                                              // 177: common.MetadataMap.ValuesEntry
+	nil,                                              // 178: common.Transaction.MetadataEntry
+	nil,                                              // 179: common.Script.VarsEntry
+	nil,                                              // 180: common.PostCommitVolumes.VolumesByAccountEntry
+	nil,                                              // 181: common.Account.MetadataEntry
+	nil,                                              // 182: common.MetadataSchema.AccountFieldsEntry
+	nil,                                              // 183: common.MetadataSchema.TransactionFieldsEntry
+	nil,                                              // 184: common.MetadataSchema.LedgerFieldsEntry
+	nil,                                              // 185: common.SavedLedgerMetadataLog.MetadataEntry
+	nil,                                              // 186: common.CreatedLedgerLog.AccountTypesEntry
+	nil,                                              // 187: common.OrderSkippedLog.ContextEntry
+	nil,                                              // 188: common.CreatedTransaction.AccountMetadataEntry
+	nil,                                              // 189: common.SavedMetadata.MetadataEntry
+	nil,                                              // 190: common.LedgerInfo.AccountTypesEntry
+	nil,                                              // 191: common.LedgerInfo.MetadataEntry
+	nil,                                              // 192: common.SaveMetadataCommand.MetadataEntry
+	nil,                                              // 193: common.TransactionState.MetadataEntry
+	nil,                                              // 194: common.IdempotencyFailure.MetadataEntry
+	nil,                                              // 195: common.AccountType.SegmentTypesEntry
+	(*signaturepb.SignedLog)(nil),                    // 196: signature.SignedLog
+	(*descriptorpb.MethodOptions)(nil),               // 197: google.protobuf.MethodOptions
+	(*descriptorpb.FieldOptions)(nil),                // 198: google.protobuf.FieldOptions
 }
 var file_common_proto_depIdxs = []int32{
 	0,   // 0: common.MethodAuthPolicy.fixed_scope:type_name -> common.AuthScope
 	1,   // 1: common.MethodAuthPolicy.dynamic_resolver:type_name -> common.DynamicAuthResolver
 	20,  // 2: common.MetadataValue.null_value:type_name -> common.NullValue
-	173, // 3: common.MetadataMap.values:type_name -> common.MetadataMap.ValuesEntry
+	177, // 3: common.MetadataMap.values:type_name -> common.MetadataMap.ValuesEntry
 	24,  // 4: common.Posting.amount:type_name -> common.Uint256
 	25,  // 5: common.Transaction.postings:type_name -> common.Posting
-	174, // 6: common.Transaction.metadata:type_name -> common.Transaction.MetadataEntry
+	178, // 6: common.Transaction.metadata:type_name -> common.Transaction.MetadataEntry
 	19,  // 7: common.Transaction.timestamp:type_name -> common.Timestamp
 	19,  // 8: common.Transaction.inserted_at:type_name -> common.Timestamp
 	19,  // 9: common.Transaction.updated_at:type_name -> common.Timestamp
 	19,  // 10: common.Transaction.reverted_at:type_name -> common.Timestamp
 	32,  // 11: common.Transaction.post_commit_volumes:type_name -> common.PostCommitVolumes
-	175, // 12: common.Script.vars:type_name -> common.Script.VarsEntry
+	179, // 12: common.Script.vars:type_name -> common.Script.VarsEntry
 	31,  // 13: common.VolumesByAssets.volumes:type_name -> common.VolumeEntry
 	28,  // 14: common.VolumeEntry.volumes:type_name -> common.Volumes
-	176, // 15: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
+	180, // 15: common.PostCommitVolumes.volumes_by_account:type_name -> common.PostCommitVolumes.VolumesByAccountEntry
 	29,  // 16: common.AccountVolume.volumes:type_name -> common.VolumesWithBalance
-	177, // 17: common.Account.metadata:type_name -> common.Account.MetadataEntry
+	181, // 17: common.Account.metadata:type_name -> common.Account.MetadataEntry
 	19,  // 18: common.Account.first_usage:type_name -> common.Timestamp
 	19,  // 19: common.Account.insertion_date:type_name -> common.Timestamp
 	19,  // 20: common.Account.updated_at:type_name -> common.Timestamp
 	33,  // 21: common.Account.volumes:type_name -> common.AccountVolume
 	35,  // 22: common.Target.account:type_name -> common.TargetAccount
 	3,   // 23: common.MetadataFieldSchema.type:type_name -> common.MetadataType
-	178, // 24: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
-	179, // 25: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
-	180, // 26: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
+	182, // 24: common.MetadataSchema.account_fields:type_name -> common.MetadataSchema.AccountFieldsEntry
+	183, // 25: common.MetadataSchema.transaction_fields:type_name -> common.MetadataSchema.TransactionFieldsEntry
+	184, // 26: common.MetadataSchema.ledger_fields:type_name -> common.MetadataSchema.LedgerFieldsEntry
 	2,   // 27: common.SetMetadataFieldTypeCommand.target_type:type_name -> common.TargetType
 	3,   // 28: common.SetMetadataFieldTypeCommand.type:type_name -> common.MetadataType
 	2,   // 29: common.MetadataIndexID.target:type_name -> common.TargetType
@@ -13977,7 +14210,7 @@ var file_common_proto_depIdxs = []int32{
 	41,  // 34: common.Index.id:type_name -> common.IndexID
 	19,  // 35: common.Index.created_at:type_name -> common.Timestamp
 	45,  // 36: common.Log.payload:type_name -> common.LogPayload
-	192, // 37: common.Log.response_signature:type_name -> signature.SignedLog
+	196, // 37: common.Log.response_signature:type_name -> signature.SignedLog
 	81,  // 38: common.LogPayload.create_ledger:type_name -> common.CreatedLedgerLog
 	82,  // 39: common.LogPayload.delete_ledger:type_name -> common.DeletedLedgerLog
 	83,  // 40: common.LogPayload.apply:type_name -> common.ApplyLedgerLog
@@ -14018,7 +14251,7 @@ var file_common_proto_depIdxs = []int32{
 	159, // 75: common.CreatedPreparedQueryLog.query:type_name -> common.PreparedQuery
 	139, // 76: common.UpdatedPreparedQueryLog.previous_filter:type_name -> common.QueryFilter
 	139, // 77: common.UpdatedPreparedQueryLog.new_filter:type_name -> common.QueryFilter
-	181, // 78: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
+	185, // 78: common.SavedLedgerMetadataLog.metadata:type_name -> common.SavedLedgerMetadataLog.MetadataEntry
 	19,  // 79: common.NumscriptInfo.created_at:type_name -> common.Timestamp
 	64,  // 80: common.SavedNumscriptLog.info:type_name -> common.NumscriptInfo
 	19,  // 81: common.NumscriptVersionEntry.created_at:type_name -> common.Timestamp
@@ -14037,7 +14270,7 @@ var file_common_proto_depIdxs = []int32{
 	38,  // 94: common.CreatedLedgerLog.metadata_schema:type_name -> common.MetadataSchema
 	9,   // 95: common.CreatedLedgerLog.mode:type_name -> common.LedgerMode
 	97,  // 96: common.CreatedLedgerLog.mirror_source:type_name -> common.MirrorSourceConfig
-	182, // 97: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
+	186, // 97: common.CreatedLedgerLog.account_types:type_name -> common.CreatedLedgerLog.AccountTypesEntry
 	12,  // 98: common.CreatedLedgerLog.default_enforcement_mode:type_name -> common.ChartEnforcementMode
 	19,  // 99: common.DeletedLedgerLog.deleted_at:type_name -> common.Timestamp
 	84,  // 100: common.ApplyLedgerLog.log:type_name -> common.LedgerLog
@@ -14060,15 +14293,15 @@ var file_common_proto_depIdxs = []int32{
 	138, // 117: common.LedgerLogPayload.updated_default_enforcement_mode:type_name -> common.UpdatedDefaultEnforcementModeLog
 	87,  // 118: common.LedgerLogPayload.order_skipped:type_name -> common.OrderSkippedLog
 	11,  // 119: common.OrderSkippedLog.reason:type_name -> common.ErrorReason
-	183, // 120: common.OrderSkippedLog.context:type_name -> common.OrderSkippedLog.ContextEntry
+	187, // 120: common.OrderSkippedLog.context:type_name -> common.OrderSkippedLog.ContextEntry
 	41,  // 121: common.CreatedIndexLog.id:type_name -> common.IndexID
 	3,   // 122: common.CreatedIndexLog.bound_type:type_name -> common.MetadataType
 	41,  // 123: common.DroppedIndexLog.id:type_name -> common.IndexID
 	26,  // 124: common.CreatedTransaction.transaction:type_name -> common.Transaction
-	184, // 125: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
+	188, // 125: common.CreatedTransaction.account_metadata:type_name -> common.CreatedTransaction.AccountMetadataEntry
 	26,  // 126: common.RevertedTransaction.revert_transaction:type_name -> common.Transaction
 	36,  // 127: common.SavedMetadata.target:type_name -> common.Target
-	185, // 128: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
+	189, // 128: common.SavedMetadata.metadata:type_name -> common.SavedMetadata.MetadataEntry
 	36,  // 129: common.DeletedMetadata.target:type_name -> common.Target
 	2,   // 130: common.SetMetadataFieldTypeLog.target_type:type_name -> common.TargetType
 	3,   // 131: common.SetMetadataFieldTypeLog.type:type_name -> common.MetadataType
@@ -14118,24 +14351,24 @@ var file_common_proto_depIdxs = []int32{
 	9,   // 175: common.LedgerInfo.mode:type_name -> common.LedgerMode
 	97,  // 176: common.LedgerInfo.mirror_source:type_name -> common.MirrorSourceConfig
 	122, // 177: common.LedgerInfo.mirror_sync_progress:type_name -> common.MirrorSyncProgress
-	186, // 178: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
+	190, // 178: common.LedgerInfo.account_types:type_name -> common.LedgerInfo.AccountTypesEntry
 	12,  // 179: common.LedgerInfo.default_enforcement_mode:type_name -> common.ChartEnforcementMode
-	187, // 180: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
+	191, // 180: common.LedgerInfo.metadata:type_name -> common.LedgerInfo.MetadataEntry
 	36,  // 181: common.SaveMetadataCommand.target:type_name -> common.Target
-	188, // 182: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
+	192, // 182: common.SaveMetadataCommand.metadata:type_name -> common.SaveMetadataCommand.MetadataEntry
 	36,  // 183: common.DeleteMetadataCommand.target:type_name -> common.Target
-	189, // 184: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
+	193, // 184: common.TransactionState.metadata:type_name -> common.TransactionState.MetadataEntry
 	19,  // 185: common.TransactionState.timestamp:type_name -> common.Timestamp
 	25,  // 186: common.TransactionState.postings:type_name -> common.Posting
 	19,  // 187: common.TransactionState.reverted_at:type_name -> common.Timestamp
 	128, // 188: common.IdempotencyKeyValue.failure:type_name -> common.IdempotencyFailure
 	11,  // 189: common.IdempotencyFailure.reason:type_name -> common.ErrorReason
-	190, // 190: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
+	194, // 190: common.IdempotencyFailure.metadata:type_name -> common.IdempotencyFailure.MetadataEntry
 	132, // 191: common.SegmentType.uuid:type_name -> common.UUIDConstraint
 	133, // 192: common.SegmentType.uint64:type_name -> common.Uint64Constraint
 	134, // 193: common.SegmentType.bytes:type_name -> common.BytesConstraint
 	13,  // 194: common.AccountType.persistence:type_name -> common.AccountTypePersistence
-	191, // 195: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
+	195, // 195: common.AccountType.segment_types:type_name -> common.AccountType.SegmentTypesEntry
 	135, // 196: common.AddedAccountTypeLog.account_type:type_name -> common.AccountType
 	12,  // 197: common.UpdatedDefaultEnforcementModeLog.enforcement_mode:type_name -> common.ChartEnforcementMode
 	152, // 198: common.QueryFilter.field:type_name -> common.FieldCondition
@@ -14181,38 +14414,42 @@ var file_common_proto_depIdxs = []int32{
 	34,  // 238: common.PreparedQueryCursor.account_data:type_name -> common.Account
 	26,  // 239: common.PreparedQueryCursor.transaction_data:type_name -> common.Transaction
 	44,  // 240: common.PreparedQueryCursor.log_data:type_name -> common.Log
-	166, // 241: common.CallerSnapshot.identity:type_name -> common.CallerIdentity
-	168, // 242: common.BackupStorage.s3:type_name -> common.S3StorageConfig
-	169, // 243: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
-	171, // 244: common.ListOptions.read:type_name -> common.ReadOptions
-	139, // 245: common.ListOptions.filter:type_name -> common.QueryFilter
-	21,  // 246: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
-	21,  // 247: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
-	30,  // 248: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
-	21,  // 249: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
-	37,  // 250: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	37,  // 251: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	37,  // 252: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
-	21,  // 253: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
-	135, // 254: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
-	22,  // 255: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
-	21,  // 256: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
-	135, // 257: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
-	21,  // 258: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
-	21,  // 259: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
-	21,  // 260: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
-	131, // 261: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
-	193, // 262: common.auth_policy:extendee -> google.protobuf.MethodOptions
-	194, // 263: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
-	194, // 264: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
-	194, // 265: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
-	18,  // 266: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 267: common.allowed_query_targets:type_name -> common.QueryTarget
-	268, // [268:268] is the sub-list for method output_type
-	268, // [268:268] is the sub-list for method input_type
-	266, // [266:268] is the sub-list for extension type_name
-	262, // [262:266] is the sub-list for extension extendee
-	0,   // [0:262] is the sub-list for field type_name
+	166, // 241: common.AuthenticatedCaller.identity:type_name -> common.CallerIdentity
+	167, // 242: common.CallerSnapshot.authenticated:type_name -> common.AuthenticatedCaller
+	168, // 243: common.CallerSnapshot.anonymous:type_name -> common.AnonymousCaller
+	169, // 244: common.CallerSnapshot.system:type_name -> common.SystemCaller
+	170, // 245: common.CallerSnapshot.auth_disabled:type_name -> common.AuthDisabledCaller
+	172, // 246: common.BackupStorage.s3:type_name -> common.S3StorageConfig
+	173, // 247: common.BackupStorage.azure:type_name -> common.AzureStorageConfig
+	175, // 248: common.ListOptions.read:type_name -> common.ReadOptions
+	139, // 249: common.ListOptions.filter:type_name -> common.QueryFilter
+	21,  // 250: common.MetadataMap.ValuesEntry.value:type_name -> common.MetadataValue
+	21,  // 251: common.Transaction.MetadataEntry.value:type_name -> common.MetadataValue
+	30,  // 252: common.PostCommitVolumes.VolumesByAccountEntry.value:type_name -> common.VolumesByAssets
+	21,  // 253: common.Account.MetadataEntry.value:type_name -> common.MetadataValue
+	37,  // 254: common.MetadataSchema.AccountFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	37,  // 255: common.MetadataSchema.TransactionFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	37,  // 256: common.MetadataSchema.LedgerFieldsEntry.value:type_name -> common.MetadataFieldSchema
+	21,  // 257: common.SavedLedgerMetadataLog.MetadataEntry.value:type_name -> common.MetadataValue
+	135, // 258: common.CreatedLedgerLog.AccountTypesEntry.value:type_name -> common.AccountType
+	22,  // 259: common.CreatedTransaction.AccountMetadataEntry.value:type_name -> common.MetadataMap
+	21,  // 260: common.SavedMetadata.MetadataEntry.value:type_name -> common.MetadataValue
+	135, // 261: common.LedgerInfo.AccountTypesEntry.value:type_name -> common.AccountType
+	21,  // 262: common.LedgerInfo.MetadataEntry.value:type_name -> common.MetadataValue
+	21,  // 263: common.SaveMetadataCommand.MetadataEntry.value:type_name -> common.MetadataValue
+	21,  // 264: common.TransactionState.MetadataEntry.value:type_name -> common.MetadataValue
+	131, // 265: common.AccountType.SegmentTypesEntry.value:type_name -> common.SegmentType
+	197, // 266: common.auth_policy:extendee -> google.protobuf.MethodOptions
+	198, // 267: common.allowed_query_targets:extendee -> google.protobuf.FieldOptions
+	198, // 268: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
+	198, // 269: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
+	18,  // 270: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 271: common.allowed_query_targets:type_name -> common.QueryTarget
+	272, // [272:272] is the sub-list for method output_type
+	272, // [272:272] is the sub-list for method input_type
+	270, // [270:272] is the sub-list for extension type_name
+	266, // [266:270] is the sub-list for extension extendee
+	0,   // [0:266] is the sub-list for field type_name
 }
 
 func init() { file_common_proto_init() }
@@ -14397,9 +14634,14 @@ func file_common_proto_init() {
 	file_common_proto_msgTypes[148].OneofWrappers = []any{
 		(*CallerIdentity_Issuer)(nil),
 		(*CallerIdentity_KeyId)(nil),
-		(*CallerIdentity_SystemComponent)(nil),
 	}
-	file_common_proto_msgTypes[152].OneofWrappers = []any{
+	file_common_proto_msgTypes[153].OneofWrappers = []any{
+		(*CallerSnapshot_Authenticated)(nil),
+		(*CallerSnapshot_Anonymous)(nil),
+		(*CallerSnapshot_System)(nil),
+		(*CallerSnapshot_AuthDisabled)(nil),
+	}
+	file_common_proto_msgTypes[156].OneofWrappers = []any{
 		(*BackupStorage_S3)(nil),
 		(*BackupStorage_Azure)(nil),
 	}
@@ -14409,7 +14651,7 @@ func file_common_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
-			NumMessages:   174,
+			NumMessages:   178,
 			NumExtensions: 4,
 			NumServices:   0,
 		},

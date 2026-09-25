@@ -118,8 +118,10 @@ func TestHandleListAuditEntries_MarshalFailureIsClean500(t *testing.T) {
 		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return cursor.NewSliceCursor([]*auditpb.AuditEntry{
 				{
-					Sequence:       1,
-					CallerSnapshot: &commonpb.CallerSnapshot{Scopes: []string{"\xff\xfe"}},
+					Sequence: 1,
+					CallerSnapshot: &commonpb.CallerSnapshot{Principal: &commonpb.CallerSnapshot_Anonymous{
+						Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"\xff\xfe"}},
+					}},
 				},
 			}), nil
 		}).AnyTimes()

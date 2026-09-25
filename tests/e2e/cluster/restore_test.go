@@ -20,6 +20,7 @@ import (
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/infra/backup"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
@@ -85,11 +86,12 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 
 var _ = Describe("Restore", Ordered, func() {
 	const (
-		ledgerName  = "restore-ledger"
-		ledger2     = "restore-ledger-2"
-		chartLedger = "restore-chart-ledger"
-		deltaLedger = "restore-ledger-delta"
-		deltaRef    = "delta-ref-1"
+		ledgerName     = "restore-ledger"
+		ledger2        = "restore-ledger-2"
+		chartLedger    = "restore-chart-ledger"
+		deltaLedger    = "restore-ledger-delta"
+		deltaRef       = "delta-ref-1"
+		deltaCallerKey = "caller-attribution-delta"
 	)
 
 	// Phase 1 is the source node, Phase 2 brings it back in restore mode on
@@ -296,7 +298,7 @@ var _ = Describe("Restore", Ordered, func() {
 			// This transaction is written AFTER the full checkpoint, so it
 			// lives only in incremental export segments — never in the
 			// checkpoint files. A restore that ignores exports loses it.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(deltaCallerKey, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "dave", big.NewInt(1500), "USD"),
 			}, map[string]string{"type": "post-checkpoint"}, nil)))
 			Expect(err).To(Succeed())
@@ -746,6 +748,20 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(info.GetCheckpointId()).To(Equal(deltaCheckpointID))
 			Expect(info.GetMaxSequence()).To(Equal(deltaCheckpointMaxSequence),
 				"the restored logical projection must match the live source row")
+
+			entries, err := actions.ListAuditEntries(ctx, client, false)
+			Expect(err).To(Succeed())
+			var deltaEntry *auditpb.AuditEntry
+			for _, entry := range entries {
+				if entry.GetIdempotency().GetKey() == deltaCallerKey {
+					deltaEntry = entry
+					break
+				}
+			}
+			Expect(deltaEntry).NotTo(BeNil(),
+				"the post-checkpoint audit entry must survive the non-empty incremental delta")
+			Expect(deltaEntry.GetCallerSnapshot().GetAuthDisabled()).NotTo(BeNil(),
+				"restore must preserve the explicit authentication-disabled principal")
 
 			result, err := actions.CollectCheckStoreEvents(ctx, client)
 			Expect(err).To(Succeed())
