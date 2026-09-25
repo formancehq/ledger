@@ -194,9 +194,11 @@ A ready to apply example is in
 The operator applies creation and edits through Ledger's replicated runtime
 API without restarting the StatefulSet. `status.conditions` reports
 reconciliation state; `status.cursor` and `status.error` expose delivery
-progress and the current delivery error. The operator adds a finalizer and
-removes the runtime sink before the `EventSink` can be deleted. A sink with the
-same name that is not owned by this resource is not overwritten or removed.
+progress and the current delivery error. `Delivering=Unknown` means Ledger has
+not yet reported a sink status, even when its configuration is synced. The
+operator adds a finalizer and removes the runtime sink before the `EventSink`
+can be deleted. A same-name sink that this resource does not own is left
+untouched.
 
 The published Ledger image includes NATS sink support. When
 `Cluster.spec.networkPolicy.enabled` restricts egress, allow TCP access to the

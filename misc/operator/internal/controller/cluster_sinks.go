@@ -30,6 +30,7 @@ type actualEventSink struct {
 	nats          managedNATSSink
 	cursor        uint64
 	deliveryError string
+	hasStatus     bool
 }
 
 func desiredEventSink(resource *ledgerv1alpha1.EventSink) managedNATSSink {
@@ -155,6 +156,7 @@ func parseActualEventSinks(stdout string) (map[string]actualEventSink, error) {
 
 		entry := actualEventSink{kind: listedSinkKind(sink), controllerID: sink.ControllerID}
 		if status, ok := statuses[sink.Name]; ok {
+			entry.hasStatus = true
 			entry.cursor = uint64(status.Cursor)
 			if status.Error != nil {
 				entry.deliveryError = status.Error.Message

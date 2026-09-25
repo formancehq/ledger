@@ -534,6 +534,9 @@ next pass. Ledger retains the per-name cursor, so committed events remain
 eligible for at-least-once delivery after recreation. `Synced=True` means the
 Raft configuration matches the EventSink; `status.cursor`, `status.error`, and
 the `Delivering` condition expose the delivery state observed by the operator.
+When Ledger lists an owned configuration without a corresponding sink status,
+`Delivering=Unknown` until a status is observed; an empty error alone does not
+establish delivery health.
 
 NATS JetStream provisioning remains external to Ledger. A stream must already
 capture `<topic>.>` (Ledger publishes to

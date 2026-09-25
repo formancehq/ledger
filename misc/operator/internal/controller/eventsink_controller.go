@@ -149,22 +149,32 @@ func (r *EventSinkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		Type: "Synced", Status: metav1.ConditionTrue, Reason: "Configured",
 		Message: "runtime sink configuration matches this EventSink", ObservedGeneration: sink.Generation,
 	})
-	if sink.Status.Error == "" {
-		meta.SetStatusCondition(&sink.Status.Conditions, metav1.Condition{
-			Type: "Delivering", Status: metav1.ConditionTrue, Reason: "NoError",
-			Message: "Ledger reports no delivery error", ObservedGeneration: sink.Generation,
-		})
-	} else {
-		meta.SetStatusCondition(&sink.Status.Conditions, metav1.Condition{
-			Type: "Delivering", Status: metav1.ConditionFalse, Reason: "RuntimeError",
-			Message: sink.Status.Error, ObservedGeneration: sink.Generation,
-		})
-	}
+	meta.SetStatusCondition(&sink.Status.Conditions, sinkDeliveryCondition(observed, sink.Generation))
 	if err := r.persistSinkStatus(ctx, &sink); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{RequeueAfter: sinkDriftCheckInterval}, nil
+}
+
+func sinkDeliveryCondition(observed actualEventSink, generation int64) metav1.Condition {
+	condition := metav1.Condition{Type: "Delivering", ObservedGeneration: generation}
+	switch {
+	case !observed.hasStatus:
+		condition.Status = metav1.ConditionUnknown
+		condition.Reason = "StatusUnavailable"
+		condition.Message = "Ledger has not reported delivery status for this sink"
+	case observed.deliveryError != "":
+		condition.Status = metav1.ConditionFalse
+		condition.Reason = "RuntimeError"
+		condition.Message = observed.deliveryError
+	default:
+		condition.Status = metav1.ConditionTrue
+		condition.Reason = "NoError"
+		condition.Message = "Ledger reports no delivery error"
+	}
+
+	return condition
 }
 
 type sinkRuntimeAction string

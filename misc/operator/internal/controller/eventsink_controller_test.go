@@ -61,9 +61,36 @@ func TestEventSinkListIncludesOwnershipAndDeliveryStatus(t *testing.T) {
 	actual, err := parseActualEventSinks(`{"sinks":[{"name":"primary","controllerId":"sink-uid","nats":{"url":"nats://nats:4222","topic":"ledger.events"}}],"sinkStatuses":[{"sinkName":"primary","cursor":"42","error":{"message":"connection refused"}}]}`)
 	require.NoError(t, err)
 	require.Equal(t, "sink-uid", actual["primary"].controllerID)
+	require.True(t, actual["primary"].hasStatus)
 	require.Equal(t, uint64(42), actual["primary"].cursor)
 	require.Equal(t, "connection refused", actual["primary"].deliveryError)
 	require.True(t, eventSinksEqual(desiredEventSink(testEventSink()), actual["primary"]))
+}
+
+func TestEventSinkDeliveryConditionRequiresObservedStatus(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name    string
+		status  string
+		want    metav1.ConditionStatus
+		reason  string
+		message string
+	}{
+		{name: "missing status", want: metav1.ConditionUnknown, reason: "StatusUnavailable", message: "Ledger has not reported delivery status for this sink"},
+		{name: "observed without error", status: `{"sinkName":"primary","cursor":"0"}`, want: metav1.ConditionTrue, reason: "NoError", message: "Ledger reports no delivery error"},
+		{name: "observed with error", status: `{"sinkName":"primary","error":{"message":"unsupported sink type"}}`, want: metav1.ConditionFalse, reason: "RuntimeError", message: "unsupported sink type"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			actual, err := parseActualEventSinks(`{"sinks":[{"name":"primary","controllerId":"sink-uid","nats":{"url":"nats://nats:4222","topic":"ledger.events"}}],"sinkStatuses":[` + test.status + `]}`)
+			require.NoError(t, err)
+			condition := sinkDeliveryCondition(actual["primary"], 3)
+			require.Equal(t, test.want, condition.Status)
+			require.Equal(t, test.reason, condition.Reason)
+			require.Equal(t, test.message, condition.Message)
+			require.Equal(t, int64(3), condition.ObservedGeneration)
+		})
+	}
 }
 
 func TestEventSinkNeverMutatesAnExternalName(t *testing.T) {
