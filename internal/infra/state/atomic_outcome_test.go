@@ -105,7 +105,8 @@ func TestAtomicProposal_StagedRevertDoesNotSurviveLaterRejection(t *testing.T) {
 	result, err := machine.ApplyEntries(ctx, store, makeEntry(t, 1, makeProposal(1, createLedgerOrder(ledger), funding)))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error)
-	originalID := result.Results[0].Logs[1].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
+	originalTx := result.Results[0].Logs[1].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction()
+	originalID := originalTx.GetId()
 	before := readBusinessProjections(t, store, attrs)
 	originalKey := domain.TransactionKey{LedgerName: ledger, ID: originalID}
 	boundary, err := attrs.Boundary.Get(store, domain.LedgerKey{Name: ledger}.Bytes())
@@ -121,7 +122,7 @@ func TestAtomicProposal_StagedRevertDoesNotSurviveLaterRejection(t *testing.T) {
 	}
 
 	result, err = machine.ApplyEntries(ctx, store, makeEntry(t, 2, proposal(2,
-		revertTransactionOrder(ledger, originalID), revertTransactionOrder(ledger, 9999))))
+		revertObservedTransactionOrder(ledger, originalID, originalTx.GetPostings()), revertTransactionOrder(ledger, 9999))))
 	require.NoError(t, err)
 	var missing *domain.ErrTransactionNotFound
 	require.ErrorAs(t, result.Results[0].Error, &missing)
@@ -131,7 +132,7 @@ func TestAtomicProposal_StagedRevertDoesNotSurviveLaterRejection(t *testing.T) {
 		"rejection must leave the original unreverted with no compensating transaction or volume changes")
 	require.False(t, machine.Registry.GetReverted(originalKey), "reverted bitset must also roll back")
 
-	result, err = machine.ApplyEntries(ctx, store, makeEntry(t, 3, proposal(3, revertTransactionOrder(ledger, originalID))))
+	result, err = machine.ApplyEntries(ctx, store, makeEntry(t, 3, proposal(3, revertObservedTransactionOrder(ledger, originalID, originalTx.GetPostings()))))
 	require.NoError(t, err)
 	require.NoError(t, result.Results[0].Error, "an independent revert must still succeed")
 	revert := result.Results[0].Logs[0].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetRevertedTransaction()

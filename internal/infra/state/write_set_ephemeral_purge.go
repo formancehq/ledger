@@ -1,15 +1,159 @@
 package state
 
 import (
+	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
+
+// PrepareEphemeralAccountPurge decides account liveness from the complete
+// admission-declared volume set. It runs under the proposal-wide coverage gate
+// after all orders have staged their effects and before Merge drains overlays.
+func (b *WriteSet) PrepareEphemeralAccountPurge(scope processing.Scope, plans []*raftcmdpb.AttributeCoverage) error {
+	candidates := make(map[domain.AccountKey]struct{})
+	for key := range b.Derived.Volumes.DirtyValues() {
+		candidates[key.AccountKey] = struct{}{}
+	}
+	for key := range b.Derived.AccountMetadata.DirtyValues() {
+		candidates[key.AccountKey] = struct{}{}
+	}
+	for key := range b.Derived.AccountMetadata.DirtyDeletions() {
+		candidates[key.AccountKey] = struct{}{}
+	}
+
+	volumeKeys := make(map[domain.AccountKey][]domain.VolumeKey)
+	persistedVolumes := make(map[domain.VolumeKey]struct{})
+	metadataKeys := make(map[domain.AccountKey][]domain.MetadataKey)
+	for _, plan := range plans {
+		if len(plan.GetCanonicalKey()) == 0 {
+			switch byte(plan.GetAttrCode()) {
+			case dal.SubAttrVolume, dal.SubAttrMetadata:
+				return fmt.Errorf("covered lifecycle attribute 0x%02x has no canonical key", plan.GetAttrCode())
+			}
+
+			continue
+		}
+		switch byte(plan.GetAttrCode()) {
+		case dal.SubAttrVolume:
+			var key domain.VolumeKey
+			if err := key.Unmarshal(plan.GetCanonicalKey()); err != nil {
+				return fmt.Errorf("decoding covered volume key: %w", err)
+			}
+			volumeKeys[key.AccountKey] = append(volumeKeys[key.AccountKey], key)
+			if plan.GetPersisted() {
+				persistedVolumes[key] = struct{}{}
+			}
+			if plan.GetLifecycleCandidate() {
+				candidates[key.AccountKey] = struct{}{}
+			}
+		case dal.SubAttrMetadata:
+			var key domain.MetadataKey
+			if err := key.Unmarshal(plan.GetCanonicalKey()); err != nil {
+				return fmt.Errorf("decoding covered metadata key: %w", err)
+			}
+			metadataKeys[key.AccountKey] = append(metadataKeys[key.AccountKey], key)
+			if plan.GetLifecycleCandidate() {
+				candidates[key.AccountKey] = struct{}{}
+			}
+		}
+	}
+
+	b.purgedAccounts = make(map[domain.AccountKey]struct{})
+	b.purgedAccountVolumeKeys = b.purgedAccountVolumeKeys[:0]
+	b.purgedAccountMetadataKeys = b.purgedAccountMetadataKeys[:0]
+	for account := range candidates {
+		ephemeral, err := b.isEphemeralAccount(scope, account)
+		if err != nil {
+			return err
+		}
+		if !ephemeral {
+			continue
+		}
+		live := false
+		persistedVolumeKeys := make([]domain.VolumeKey, 0, len(volumeKeys[account]))
+		for _, key := range volumeKeys[account] {
+			volume, err := scope.Volumes().Get(key)
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("reading covered volume for account purge: %w", err)
+			}
+			pair := volume.Mutate()
+			if !isVolumeZeroBalance(pair) {
+				live = true
+
+				break
+			}
+			// A successful read proves this is a persisted or in-batch row. Absent
+			// coverage placeholders are normalized to ErrNotFound by the accessor.
+			if _, persisted := persistedVolumes[key]; persisted {
+				persistedVolumeKeys = append(persistedVolumeKeys, key)
+			}
+		}
+		if live {
+			continue
+		}
+		b.purgedAccounts[account] = struct{}{}
+		b.purgedAccountVolumeKeys = append(b.purgedAccountVolumeKeys, persistedVolumeKeys...)
+		b.purgedAccountMetadataKeys = append(b.purgedAccountMetadataKeys, metadataKeys[account]...)
+	}
+
+	sort.Slice(b.purgedAccountVolumeKeys, func(i, j int) bool {
+		return string(b.purgedAccountVolumeKeys[i].Bytes()) < string(b.purgedAccountVolumeKeys[j].Bytes())
+	})
+	sort.Slice(b.purgedAccountMetadataKeys, func(i, j int) bool {
+		return string(b.purgedAccountMetadataKeys[i].Bytes()) < string(b.purgedAccountMetadataKeys[j].Bytes())
+	})
+
+	return nil
+}
+
+func (b *WriteSet) isEphemeralAccount(scope processing.Scope, key domain.AccountKey) (bool, error) {
+	entry, ok := b.gatedLedgerTypes[key.LedgerName]
+	if !ok {
+		info, err := scope.Ledgers().Get(domain.LedgerKey{Name: key.LedgerName})
+		if errors.Is(err, domain.ErrNotFound) {
+			b.gatedLedgerTypes[key.LedgerName] = gatedLedgerType{}
+
+			return false, nil
+		}
+		if err != nil {
+			return false, fmt.Errorf("loading ledger for account purge: %w", err)
+		}
+		entry = gatedLedgerType{compiled: accounttype.CompileTypes(info.Mutate().GetAccountTypes()), found: true}
+		b.gatedLedgerTypes[key.LedgerName] = entry
+	}
+	if !entry.found {
+		return false, nil
+	}
+	matched := accounttype.FindMatchingType(key.Account, entry.compiled)
+
+	return matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL, nil
+}
+
+func (b *WriteSet) stagePurgedAccountRows() error {
+	dirtyVolumes := b.Derived.Volumes.DirtyValues()
+	for _, key := range b.purgedAccountVolumeKeys {
+		if _, touched := dirtyVolumes[key]; touched {
+			continue
+		}
+		b.Derived.Volumes.Delete(key)
+	}
+	for _, key := range b.purgedAccountMetadataKeys {
+		b.Derived.AccountMetadata.Delete(key)
+	}
+
+	return nil
+}
 
 // isVolumeZeroBalance returns true when input == output (all 4 limbs match).
 func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
@@ -32,9 +176,10 @@ func isVolumeZeroBalance(v *raftcmdpb.VolumePair) bool {
 
 // volumePartitionResult holds the result of partitioning volume updates by persistence mode.
 type volumePartitionResult struct {
-	kept      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral + draining-transient
-	purged    []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL or draining-TRANSIENT once back to zero balance
-	transient []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // steady-state TRANSIENT — never written to Pebble
+	kept           []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // NORMAL + non-zero ephemeral + draining-transient
+	purged         []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // EPHEMERAL or draining-TRANSIENT once back to zero balance
+	transient      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // steady-state TRANSIENT — never written to Pebble
+	transientPurge []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] // grandfathered TRANSIENT rows deleted on drain
 }
 
 // partitionVolumes splits volume updates into kept, purged, and transient sets.
@@ -121,6 +266,7 @@ func (b *WriteSet) partitionVolumes(
 			if update.Old.IsDefined() && !isVolumePreloadZero(update.Old.Value()) {
 				if isVolumeZeroBalance(update.New) {
 					result.purged = append(result.purged, update)
+					result.transientPurge = append(result.transientPurge, update)
 				} else {
 					result.kept = append(result.kept, update)
 				}
@@ -163,6 +309,27 @@ func (b *WriteSet) applyEphemeralPurge(
 	}
 
 	return b.zeroVolumeCache(batch, genByte, purged)
+}
+
+func (b *WriteSet) applyCoveredVolumeDeletions(
+	batch *dal.WriteSession,
+	genByte byte,
+	deletions []attributes.Deletion[domain.VolumeKey],
+) error {
+	if len(deletions) == 0 {
+		return nil
+	}
+	updates := make([]attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair], 0, len(deletions))
+	for _, deletion := range deletions {
+		if err := b.attrs.Volume.Delete(batch, deletion.CanonicalKey); err != nil {
+			return err
+		}
+		updates = append(updates, attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{
+			Key: deletion.Key, ID: deletion.ID, Tag: deletion.Tag, CanonicalKey: deletion.CanonicalKey,
+		})
+	}
+
+	return b.zeroVolumeCache(batch, genByte, updates)
 }
 
 // zeroVolumeCache overwrites the in-memory KeyStore and the 0xFF cache zone

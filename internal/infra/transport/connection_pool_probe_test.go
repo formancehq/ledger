@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/connectivity"
 )
 
 // TestProbeTLS_AgainstTLSServer verifies that probing a peer that actually
@@ -179,6 +181,63 @@ func TestConnectionPool_AddressReplacementRetriesCommittedTarget(t *testing.T) {
 			require.Len(t, pool.PeerIDs(), 1)
 		})
 	}
+}
+
+func TestConnectionPool_StaleOptionalMonitorDoesNotRestartReplacement(t *testing.T) {
+	t.Parallel()
+
+	oldServer := newPlaintextEchoServer(t)
+	newServer := newPlaintextEchoServer(t)
+	clientCfg := &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: x509.NewCertPool()}
+
+	pool := NewConnectionPool(TLSPolicy{TLSConfig: clientCfg}, PoolConfig{})
+	pool.failureGrace = time.Nanosecond
+	pool.probeTimeout = 500 * time.Millisecond
+	defer func() { _ = pool.Close() }()
+	require.NoError(t, pool.AddPeer(1, oldServer.addr()))
+
+	pool.mu.Lock()
+	oldEntry := pool.peers[1]
+	oldEntry.stopMonitor()
+	pool.mu.Unlock()
+
+	monitorReady := make(chan struct{})
+	releaseMonitor := make(chan struct{})
+	monitorDone := make(chan struct{})
+	var once sync.Once
+	pool.beforeMonitorRestart = func() {
+		once.Do(func() {
+			close(monitorReady)
+			<-releaseMonitor
+		})
+	}
+
+	go func() {
+		defer close(monitorDone)
+		pool.monitorPeer(context.Background(), 1, oldEntry)
+	}()
+
+	oldConn := oldEntry.conn
+	oldConn.Connect()
+
+	select {
+	case <-monitorReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("old peer monitor did not reach the restart barrier")
+	}
+
+	require.NoError(t, pool.AddPeer(1, newServer.addr()))
+	replacement := pool.GetConnection(1)
+	require.NotSame(t, oldConn, replacement)
+	close(releaseMonitor)
+
+	select {
+	case <-monitorDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("old peer monitor did not finish after its restart attempt")
+	}
+	require.NotEqual(t, connectivity.Shutdown, replacement.GetState())
+	require.Same(t, replacement, pool.GetConnection(1))
 }
 
 // TestConnectionPool_StrictTLSNoProbe verifies that strict mode does NOT

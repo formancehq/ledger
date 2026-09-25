@@ -17,6 +17,59 @@ func txIDBytes(id uint64) []byte {
 	return b
 }
 
+func TestAccountTxAddressPrefixIteratorsUseRetainedMappings(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		prefix byte
+	}{
+		{name: "any role", prefix: PrefixAccountTx},
+		{name: "source", prefix: PrefixSourceAccountTx},
+		{name: "destination", prefix: PrefixDestinationAccountTx},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newTestStore(t)
+			kb := dal.NewKeyBuilder()
+			for _, row := range []struct {
+				account string
+				txID    uint64
+			}{
+				{account: "hold:1", txID: 1},
+				{account: "hold:1", txID: 2},
+				{account: "hold:2", txID: 3},
+				{account: "other:1", txID: 4},
+			} {
+				require.NoError(t, s.DB().Set(AccountTxKey(kb, tc.prefix, "l", row.account, row.txID), nil, pebble.NoSync))
+			}
+
+			forward, err := NewAccountTxAddressPrefixIterator(s.DB(), dal.NewKeyBuilder(), "l", "hold:", tc.prefix)
+			require.NoError(t, err)
+			defer forward.Close()
+
+			var gotForward []string
+			for forward.Next() {
+				gotForward = append(gotForward, string(forward.Current()))
+			}
+			require.NoError(t, forward.Err())
+			require.Equal(t, []string{"hold:1", "hold:2"}, gotForward)
+
+			reverse, err := NewReverseAccountTxAddressPrefixIterator(s.DB(), dal.NewKeyBuilder(), "l", "hold:", tc.prefix)
+			require.NoError(t, err)
+			defer reverse.Close()
+
+			var gotReverse []string
+			for reverse.Next() {
+				gotReverse = append(gotReverse, string(reverse.Current()))
+			}
+			require.NoError(t, reverse.Err())
+			require.Equal(t, []string{"hold:2", "hold:1"}, gotReverse)
+		})
+	}
+}
+
 // newAddressTxFixture writes account→tx rows in the any-role bucket and
 // returns an AddressTxIterator over the given addresses.
 func newAddressTxFixture(t *testing.T, txsByAccount map[string][]uint64, addrs ...string) *AddressTxIterator[Asc] {

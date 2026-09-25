@@ -278,6 +278,20 @@ type OrderTechnical struct {
 	// coverage is empty). See EN-1406. Generic on purpose: any future
 	// "preload could not be built" cause reuses this flag.
 	PreloadUnavailable bool `protobuf:"varint,3,opt,name=preload_unavailable,json=preloadUnavailable,proto3" json:"preload_unavailable,omitempty"`
+	// revert_target_digest binds what admission observed of a revert's target
+	// transaction when it derived that order's volume coverage. Admission reads
+	// the target's postings from the local store with no read barrier, so a
+	// target that is committed but not yet applied locally reads as absent and no
+	// volume key is declared — apply then reads volumes the plan never declared
+	// and the coverage gate rejects a legitimate revert. The FSM re-derives this
+	// digest from the transaction state it already reads through the gate and
+	// rejects a mismatch before it can touch a volume — with
+	// ERROR_REASON_STALE_INPUTS_RESOLUTION (retryable) when the target predates
+	// the batch, ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH (permanent) when the
+	// batch creates it. The comparison runs after the handler's existing target
+	// checks, so a target that is unknown or already reverted keeps returning
+	// those reasons. Empty for every non-revert order.
+	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -331,6 +345,13 @@ func (x *OrderTechnical) GetPreloadUnavailable() bool {
 		return x.PreloadUnavailable
 	}
 	return false
+}
+
+func (x *OrderTechnical) GetRevertTargetDigest() []byte {
+	if x != nil {
+		return x.RevertTargetDigest
+	}
+	return nil
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
@@ -3266,7 +3287,7 @@ type Proposal struct {
 	// receives Unavailable so it can retry with fresh preloads.
 	// A value of 0 means no prediction (e.g. barrier, mirror sync).
 	PredictedIndex uint64                   `protobuf:"fixed64,5,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
-	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,6,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"` // Admission-time auth snapshot (nil for system proposals); persisted into AuditEntry by the FSM.
+	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,6,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"` // Required admission-time principal; persisted into AuditEntry by the FSM.
 	// idempotency is the batch's single idempotency identity (from
 	// ApplyBatch.idempotency_key). The whole proposal dedups/freezes under it —
 	// matching the atomic unit. Empty for system/technical proposals.
@@ -4873,9 +4894,18 @@ type AttributeCoverage struct {
 	Id       *AttributeID           `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	AttrCode uint32                 `protobuf:"varint,2,opt,name=attr_code,json=attrCode,proto3" json:"attr_code,omitempty"`
 	// Optional seed: nil = coverage-only; non-nil = seed into the FSM cache.
-	Value         *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Value *AttributeValue `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	// Canonical key bytes retained for proposal-wide deterministic lifecycle
+	// operations that must enumerate only the keys admission declared.
+	CanonicalKey []byte `protobuf:"bytes,4,opt,name=canonical_key,json=canonicalKey,proto3" json:"canonical_key,omitempty"`
+	// True when admission proved the row exists in the primary attribute zone.
+	// Cache-only zero placeholders are never marked persisted.
+	Persisted bool `protobuf:"varint,5,opt,name=persisted,proto3" json:"persisted,omitempty"`
+	// True when an account-type transition makes this row's owner an explicit
+	// proposal-boundary lifecycle candidate even without a row mutation.
+	LifecycleCandidate bool `protobuf:"varint,6,opt,name=lifecycle_candidate,json=lifecycleCandidate,proto3" json:"lifecycle_candidate,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *AttributeCoverage) Reset() {
@@ -4927,6 +4957,27 @@ func (x *AttributeCoverage) GetValue() *AttributeValue {
 		return x.Value
 	}
 	return nil
+}
+
+func (x *AttributeCoverage) GetCanonicalKey() []byte {
+	if x != nil {
+		return x.CanonicalKey
+	}
+	return nil
+}
+
+func (x *AttributeCoverage) GetPersisted() bool {
+	if x != nil {
+		return x.Persisted
+	}
+	return false
+}
+
+func (x *AttributeCoverage) GetLifecycleCandidate() bool {
+	if x != nil {
+		return x.LifecycleCandidate
+	}
+	return false
 }
 
 // AttributeValue carries the typed value to seed the FSM-side cache for
@@ -5335,11 +5386,12 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
 	"\ttechnical\x18\x03 \x01(\v2\x14.raft.OrderTechnicalR\ttechnicalB\x06\n" +
-	"\x04type\"\x9c\x01\n" +
+	"\x04type\"\xce\x01\n" +
 	"\x0eOrderTechnical\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x124\n" +
 	"\x16inputs_resolution_hash\x18\x02 \x01(\fR\x14inputsResolutionHash\x12/\n" +
-	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\"\xda\x06\n" +
+	"\x13preload_unavailable\x18\x03 \x01(\bR\x12preloadUnavailable\x120\n" +
+	"\x14revert_target_digest\x18\x04 \x01(\fR\x12revertTargetDigest\"\xda\x06\n" +
 	"\x11LedgerScopedOrder\x12\x16\n" +
 	"\x06ledger\x18\x01 \x01(\tR\x06ledger\x12.\n" +
 	"\x05apply\x18\x02 \x01(\v2\x16.raft.LedgerApplyOrderH\x00R\x05apply\x12>\n" +
@@ -5659,11 +5711,14 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
 	"attributes\x18\x03 \x03(\v2\x17.raft.AttributeCoverageR\n" +
 	"attributes\x12E\n" +
-	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\x7f\n" +
+	"\x10idempotency_keys\x18\x04 \x03(\v2\x1a.raft.ReloadIdempotencyKeyR\x0fidempotencyKeys\"\xf3\x01\n" +
 	"\x11AttributeCoverage\x12!\n" +
 	"\x02id\x18\x01 \x01(\v2\x11.raft.AttributeIDR\x02id\x12\x1b\n" +
 	"\tattr_code\x18\x02 \x01(\rR\battrCode\x12*\n" +
-	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\"-\n" +
+	"\x05value\x18\x03 \x01(\v2\x14.raft.AttributeValueR\x05value\x12#\n" +
+	"\rcanonical_key\x18\x04 \x01(\fR\fcanonicalKey\x12\x1c\n" +
+	"\tpersisted\x18\x05 \x01(\bR\tpersisted\x12/\n" +
+	"\x13lifecycle_candidate\x18\x06 \x01(\bR\x12lifecycleCandidate\"-\n" +
 	"\x0eAttributeValue\x12\x1b\n" +
 	"\traw_value\x18\x01 \x01(\fR\brawValue\"[\n" +
 	"\x14ReloadIdempotencyKey\x12\x10\n" +

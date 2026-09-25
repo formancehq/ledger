@@ -742,6 +742,10 @@ message LedgerLog {
   //     (previous encoding carried them in both purged_volumes AND
   //     new_volumes, doubling bytes on ephemeral-heavy workloads).
   repeated TouchedVolume ephemeral_volumes = 6;
+  // Account addresses whose complete EPHEMERAL current state was removed by
+  // this log. Historical transaction mappings remain intact; consumers use
+  // this signal to purge only current-account secondary projections.
+  repeated string purged_accounts = 7;
 }
 
 // TouchedVolume identifies a (ledger-local) volume cell — an account paired
@@ -1258,11 +1262,12 @@ enum ErrorReason {
   ERROR_REASON_CHECKPOINT_NOT_READY = 55;
   ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 56;
   ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 57;
-  // ERROR_REASON_STALE_INPUTS_RESOLUTION: the balance/metadata values that
-  // Numscript dependency resolution read at admission time changed before the
-  // FSM applied the transaction, so the preloaded key set may be wrong.
-  // Retryable (Kind=Unavailable) — a second admission re-resolves against the
-  // new values. See EN-1406.
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION: the state admission read to compute
+  // the order's preload set changed before the FSM applied it, so the preloaded
+  // key set may be wrong. Raised by Numscript dependency resolution when the
+  // balances or metadata it read changed (see EN-1406), and by a revert whose
+  // target read as absent at admission and is present at apply. Retryable
+  // (Kind=Unavailable) — a second admission resolves against the current state.
   ERROR_REASON_STALE_INPUTS_RESOLUTION = 58;
   // ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
   // for an order (e.g. Numscript dependency discovery failed against current
@@ -1310,6 +1315,15 @@ enum ErrorReason {
   // per-command bytes). Permanent (Kind=Validation): the caller must send less
   // metadata, so a retry of the same payload cannot succeed. See EN-1829.
   ERROR_REASON_METADATA_LIMIT_EXCEEDED = 69;
+  // ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH: a revert targeted a
+  // transaction created by an earlier order in the same atomic batch. Admission
+  // resolves a revert's original postings from the local store only, and the
+  // overlay does not carry transactions the batch itself creates, so it cannot
+  // declare the volume coverage that apply needs. Permanent
+  // (Kind=Validation): the whole batch is rejected, so the create never lands
+  // and re-admitting the identical batch reproduces the same observation.
+  // Submit the revert in a later batch.
+  ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1562,7 +1576,7 @@ enum AuditField {
   AUDIT_FIELD_TIMESTAMP      = 3;  // uint   -> AuditEntry.timestamp.data, unix micros (index range)
   AUDIT_FIELD_LOG_SEQUENCE   = 4;  // uint   -> item log_sequence, match-any (index range)
   AUDIT_FIELD_OUTCOME        = 5;  // string in {success, failure} (index)
-  AUDIT_FIELD_CALLER_SUBJECT = 6;  // string -> caller_snapshot.identity.subject (index)
+  AUDIT_FIELD_CALLER_SUBJECT = 6;  // string -> caller_snapshot.authenticated.identity.subject (index)
   AUDIT_FIELD_LEDGER         = 7;  // string -> AuditEntry.ledgers, match-any (index)
   AUDIT_FIELD_ORDER_TYPE     = 8;  // string -> order payload variant, match-any (index)
 }
@@ -1777,34 +1791,49 @@ message PersistedConfig {
 // authorization decision based on it: the admission point that issued
 // it already vetted the call.
 //
-// source distinguishes a user (issuer or key_id) from a system action
-// (system_component). An absent source means the identity is a bare
-// subject with no known origin.
+// source records the credential mechanism. An absent source means the
+// authenticated identity is a bare subject with no known origin.
 message CallerIdentity {
   string subject = 1;
-  // scopes and god live on CallerSnapshot, not here: CallerIdentity is
+  // scopes and god live on AuthenticatedCaller, not here: CallerIdentity is
   // identification only and carries no authorization decision.
   oneof source {
-    string issuer = 2;             // OIDC token issuer URL
-    string key_id = 3;             // Ed25519 signing key ID
-    string system_component = 4;   // system/internal actor (no user); names the subsystem
+    string issuer = 2;  // OIDC token issuer URL
+    string key_id = 3;  // Ed25519 signing key ID
   }
 }
 
-// CallerSnapshot is the *admission-time* record of who initiated an
-// action and what authorization was granted to them at that moment.
-// It exists for audit trail purposes only: scopes and god MUST NOT be
-// re-evaluated downstream (FSM, leader after a follower forward,
-// etc.).
-//
-// Carried on Proposals through Raft, then copied to AuditEntry by the
-// FSM. Nil when authentication is disabled. System-initiated proposals
-// carry a non-nil identity whose source is system_component (never nil),
-// so an audit entry is never ambiguously blank.
-message CallerSnapshot {
+message AuthenticatedCaller {
   CallerIdentity identity = 1;
   repeated string scopes = 2;
   bool god = 3;
+}
+
+message AnonymousCaller {
+  repeated string scopes = 1;
+}
+
+message SystemCaller {
+  string component = 1;
+}
+
+message AuthDisabledCaller {}
+
+// CallerSnapshot is the *admission-time* record of who initiated an action.
+// Its required principal union keeps authenticated users, authorized anonymous
+// callers, system components, and authentication-disabled mode observably
+// distinct. Authorization is frozen here for audit only and MUST NOT be
+// re-evaluated downstream (FSM, leader after a follower forward, etc.).
+//
+// Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
+// Application code must always set exactly one principal variant.
+message CallerSnapshot {
+  oneof principal {
+    AuthenticatedCaller authenticated = 1;
+    AnonymousCaller anonymous = 2;
+    SystemCaller system = 3;
+    AuthDisabledCaller auth_disabled = 4;
+  }
 }
 
 // ============================================================================

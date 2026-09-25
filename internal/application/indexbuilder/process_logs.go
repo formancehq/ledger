@@ -1,12 +1,14 @@
 package indexbuilder
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/cockroachdb/pebble/v2"
@@ -141,6 +143,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			pendingCheckpointHorizon  uint64
 			pendingCheckpointRestored bool
 			pendingCheckpointDelete   uint64
+			purgedAccountsByLedger    = make(map[string]map[string]struct{})
 		)
 
 		noteCheckpointCreate := func(id, appliedIndex uint64) error {
@@ -325,9 +328,9 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			}
 
 			cfg := b.ledgerConfig(ledgerName)
-			var excludedVolumes map[domain.AccountAssetKey]struct{}
+			var excludedVolumes, historyExcludedVolumes map[domain.AccountAssetKey]struct{}
 			if cfg.indexesPostingDerived() {
-				excludedVolumes = proposals.excludedForLog(lastSeq, ledgerName, ledgerLog)
+				excludedVolumes, historyExcludedVolumes = proposals.exclusionsForLog(lastSeq, ledgerName, ledgerLog)
 			}
 
 			b.wb.SetEventSequence(log.GetSequence())
@@ -364,7 +367,24 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				}
 			}
 
-			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedVolumes); err != nil {
+			if err := b.indexPayload(b.kb, cfg, ledgerName, ledgerLog.GetData().GetPayload(), excludedVolumes, historyExcludedVolumes); err != nil {
+				_ = batch.Cancel()
+
+				return cursor, err
+			}
+			accounts := purgedAccountsByLedger[ledgerName]
+			if accounts == nil {
+				accounts = make(map[string]struct{})
+				purgedAccountsByLedger[ledgerName] = accounts
+			}
+			if err := b.collectPurgedAccounts(cfg, ledgerName, ledgerLog.GetPurgedAccounts(), accounts); err != nil {
+				_ = batch.Cancel()
+
+				return cursor, err
+			}
+		}
+		for ledgerName, accountSet := range purgedAccountsByLedger {
+			if err := b.flushCollectedPurgedAccounts(b.ledgerConfig(ledgerName), ledgerName, accountSet); err != nil {
 				_ = batch.Cancel()
 
 				return cursor, err
@@ -610,6 +630,142 @@ func (b *Builder) advanceCursors(lastSeq, appliedProposalSeq uint64, indexed int
 	b.readStore.NotifyProgress()
 }
 
+// purgeCurrentAccountIndexes removes projections describing current account
+// state while deliberately preserving immutable account-to-transaction history.
+func (b *Builder) purgeCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger string, accounts ...string) error {
+	for _, account := range accounts {
+		if err := b.purgeQueuedCurrentAccountIndexes(cfg, ledger, account); err != nil {
+			return err
+		}
+	}
+
+	return b.purgeCommittedAccountAssetIndexes(cfg, ledger, accounts...)
+}
+
+func (b *Builder) collectPurgedAccounts(cfg *ledgerIndexConfig, ledger string, annotated []string, collected map[string]struct{}) error {
+	for _, account := range annotated {
+		if err := b.purgeQueuedCurrentAccountIndexes(cfg, ledger, account); err != nil {
+			return err
+		}
+		collected[account] = struct{}{}
+	}
+
+	return nil
+}
+
+func (b *Builder) flushCollectedPurgedAccounts(cfg *ledgerIndexConfig, ledger string, collected map[string]struct{}) error {
+	accounts := make([]string, 0, len(collected))
+	for account := range collected {
+		accounts = append(accounts, account)
+	}
+	sort.Strings(accounts)
+
+	return b.purgeCommittedAccountAssetIndexes(cfg, ledger, accounts...)
+}
+
+// purgeQueuedCurrentAccountIndexes applies the ordered portion of an account
+// purge immediately. A later log in the same batch can then recreate an index
+// row after this deletion.
+func (b *Builder) purgeQueuedCurrentAccountIndexes(cfg *ledgerIndexConfig, ledger, account string) error {
+	if b.purgedCurrentAccounts == nil {
+		b.purgedCurrentAccounts = make(map[domain.AccountKey]struct{})
+	}
+	b.purgedCurrentAccounts[domain.AccountKey{LedgerName: ledger, Account: account}] = struct{}{}
+	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
+		if b.deletedAcctAsset == nil {
+			b.deletedAcctAsset = make(map[string]struct{})
+		}
+
+		accountKey := domain.AccountKey{LedgerName: ledger, Account: account}
+		for sk := range b.seenAcctAssetByAccount[accountKey] {
+			if err := b.wb.DeleteKey([]byte(sk)); err != nil {
+				return err
+			}
+			if reverseKey := b.seenAcctAssetReverse[sk]; reverseKey != "" {
+				if err := b.wb.DeleteKey([]byte(reverseKey)); err != nil {
+					return err
+				}
+			}
+			b.deletedAcctAsset[sk] = struct{}{}
+			delete(b.seenAcctAsset, sk)
+			delete(b.seenAcctAssetReverse, sk)
+		}
+		delete(b.seenAcctAssetByAccount, accountKey)
+	}
+	if cfg == nil {
+		return nil
+	}
+	for _, index := range cfg.byCanonical {
+		metadata := index.GetId().GetMetadata()
+		if metadata == nil || metadata.GetTarget() != commonpb.TargetType_TARGET_TYPE_ACCOUNT {
+			continue
+		}
+		current, pending := b.metadataIndexVersions(ledger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadata.GetKey())
+		for _, version := range []uint32{current, pending} {
+			if version == 0 {
+				continue
+			}
+			reverseKey := readstore.AccountReverseMapKeyV(b.kb, ledger, account, metadata.GetKey(), version)
+			old, err := b.reverseMapValue(reverseKey)
+			if err != nil {
+				return err
+			}
+			if err := b.wb.DeleteMetadataEntryWithPreviousV(b.kb, reverseKey, ledger, readstore.NamespaceAccount, metadata.GetKey(), version, old, []byte(account)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// purgeCommittedAccountAssetIndexes scans the account-first purge companion for
+// each purged account. Rows recreated later in the same batch remain in
+// seenAcctAsset and must survive the committed-row cleanup.
+func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledger string, accounts ...string) error {
+	if len(accounts) == 0 {
+		return nil
+	}
+	if cfg != nil && cfg.isAccountBuiltinIndexed(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET) {
+		if b.deletedAcctAsset == nil {
+			b.deletedAcctAsset = make(map[string]struct{})
+		}
+		for _, account := range accounts {
+			prefix := readstore.AssetsByAccountPrefix(b.kb, ledger, account)
+			iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+			if err != nil {
+				return err
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				forwardKey := append([]byte(nil), iter.Value()...)
+				if _, recreated := b.seenAcctAsset[string(forwardKey)]; !recreated {
+					if err := b.wb.DeleteKey(forwardKey); err != nil {
+						_ = iter.Close()
+
+						return err
+					}
+					b.deletedAcctAsset[string(forwardKey)] = struct{}{}
+					if err := b.wb.DeleteKey(append([]byte(nil), iter.Key()...)); err != nil {
+						_ = iter.Close()
+
+						return err
+					}
+				}
+			}
+			if err := iter.Error(); err != nil {
+				_ = iter.Close()
+
+				return err
+			}
+			if err := iter.Close(); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
 func (b *Builder) materializePendingCheckpoint(ctx context.Context) error {
 	pending := b.pendingCheckpointMaterialization
 	if pending.id == 0 {
@@ -662,12 +818,13 @@ func (b *Builder) indexPayload(
 	ledgerName string,
 	payload any,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	switch p := payload.(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
+		return b.indexCreatedTransaction(kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
+		return b.indexRevertedTransaction(kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
 		return b.indexSavedMetadata(kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
@@ -868,6 +1025,10 @@ func (b *Builder) backfillLogDateRow(cfg *ledgerIndexConfig, log *commonpb.Log) 
 // cfg is the index configuration to use for this log entry (may differ from
 // b.indexConfig during backfill, where a temporary config is used).
 func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync) error {
+	return b.indexLogEntryWithAccountPurge(cfg, log, proposals, true)
+}
+
+func (b *Builder) indexLogEntryWithAccountPurge(cfg *ledgerIndexConfig, log *commonpb.Log, proposals *appliedProposalSync, purgeAccounts bool) error {
 	if log.GetPayload() == nil {
 		return nil
 	}
@@ -902,7 +1063,10 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 		return nil
 	}
 
-	excludedVolumes := proposals.excludedForLog(log.GetSequence(), ledgerName, ledgerLog)
+	var excludedVolumes, historyExcludedVolumes map[domain.AccountAssetKey]struct{}
+	if proposals != nil {
+		excludedVolumes, historyExcludedVolumes = proposals.exclusionsForLog(log.GetSequence(), ledgerName, ledgerLog)
+	}
 
 	b.wb.SetEventSequence(log.GetSequence())
 
@@ -926,15 +1090,26 @@ func (b *Builder) indexLogEntry(cfg *ledgerIndexConfig, log *commonpb.Log, propo
 	// for CONTROL payloads without also changing their protobuf category
 	// annotation: an unreachable second implementation of the schema rewrite is
 	// what this replaced.
+	var err error
 	switch p := ledgerLog.GetData().GetPayload().(type) {
 	case *commonpb.LedgerLogPayload_CreatedTransaction:
-		return b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes)
+		err = b.indexCreatedTransaction(b.kb, cfg, ledgerName, p.CreatedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_RevertedTransaction:
-		return b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes)
+		err = b.indexRevertedTransaction(b.kb, cfg, ledgerName, p.RevertedTransaction, excludedVolumes, historyExcludedVolumes)
 	case *commonpb.LedgerLogPayload_SavedMetadata:
-		return b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
+		err = b.indexSavedMetadata(b.kb, cfg, ledgerName, p.SavedMetadata)
 	case *commonpb.LedgerLogPayload_DeletedMetadata:
-		return b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
+		err = b.indexDeletedMetadata(b.kb, cfg, ledgerName, p.DeletedMetadata)
+	}
+	if err != nil {
+		return err
+	}
+	if purgeAccounts {
+		for _, account := range ledgerLog.GetPurgedAccounts() {
+			if err := b.purgeCurrentAccountIndexes(cfg, ledgerName, account); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -952,13 +1127,13 @@ func (b *Builder) indexCreatedTransaction(
 	ledger string,
 	ct *commonpb.CreatedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if ct.GetTransaction() == nil {
 		return nil
 	}
 
 	txn := ct.GetTransaction()
-
 	wb := b.wb
 
 	// Collect unique accounts from postings (reuse builder's map)
@@ -974,7 +1149,7 @@ func (b *Builder) indexCreatedTransaction(
 
 		if err := b.indexPostingAddressMappings(
 			kb, cfg, ledger, txn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(), posting.GetColor(),
-			indexAny, indexSource, indexDestination, excludedVolumes,
+			indexAny, indexSource, indexDestination, excludedVolumes, historyExcludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -1067,6 +1242,7 @@ func (b *Builder) indexRevertedTransaction(
 	ledger string,
 	rt *commonpb.RevertedTransaction,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	if rt.GetRevertTransaction() == nil {
 		return nil
@@ -1088,7 +1264,7 @@ func (b *Builder) indexRevertedTransaction(
 
 		if err := b.indexPostingAddressMappings(
 			kb, cfg, ledger, revertTxn.GetId(), posting.GetSource(), posting.GetDestination(), posting.GetAsset(), posting.GetColor(),
-			indexAny, indexSource, indexDestination, excludedVolumes,
+			indexAny, indexSource, indexDestination, excludedVolumes, historyExcludedVolumes,
 		); err != nil {
 			return err
 		}
@@ -1159,10 +1335,13 @@ func (b *Builder) indexPostingAddressMappings(
 	indexSource bool,
 	indexDestination bool,
 	excludedVolumes map[domain.AccountAssetKey]struct{},
+	historyExcludedVolumes map[domain.AccountAssetKey]struct{},
 ) error {
 	wb := b.wb
 	sourceExcluded := isExcluded(excludedVolumes, source, asset, color)
 	destinationExcluded := isExcluded(excludedVolumes, destination, asset, color)
+	sourceHistoryExcluded := isExcluded(historyExcludedVolumes, source, asset, color)
+	destinationHistoryExcluded := isExcluded(historyExcludedVolumes, destination, asset, color)
 
 	// Account has-asset index: record every (account, assetBase, precision) a
 	// posting touches, for both source and destination, skipping excluded
@@ -1185,29 +1364,28 @@ func (b *Builder) indexPostingAddressMappings(
 	}
 
 	if indexAny {
-		if !sourceExcluded {
+		if !sourceHistoryExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, source, txID); err != nil {
 				return err
 			}
 		}
 
-		if !destinationExcluded {
+		if !destinationHistoryExcluded {
 			if err := wb.WriteAccountTxMapping(kb, ledger, destination, txID); err != nil {
 				return err
 			}
 		}
 	}
 
-	// Role-specific mappings skip transient and purged ephemeral volumes —
-	// matched per (account, asset) tuple so a multi-asset account keeps its
-	// mappings for the assets that survived this proposal.
-	if indexSource && !sourceExcluded {
+	// Historical mappings skip only TRANSIENT volumes. An EPHEMERAL purge
+	// removes current state, but the draining transaction remains queryable.
+	if indexSource && !sourceHistoryExcluded {
 		if err := wb.WriteSourceAccountTxMapping(kb, ledger, source, txID); err != nil {
 			return err
 		}
 	}
 
-	if indexDestination && !destinationExcluded {
+	if indexDestination && !destinationHistoryExcluded {
 		if err := wb.WriteDestinationAccountTxMapping(kb, ledger, destination, txID); err != nil {
 			return err
 		}
@@ -1233,6 +1411,18 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	}
 
 	b.seenAcctAsset[sk] = struct{}{}
+	if b.seenAcctAssetByAccount == nil {
+		b.seenAcctAssetByAccount = make(map[domain.AccountKey]map[string]struct{})
+	}
+	if b.seenAcctAssetReverse == nil {
+		b.seenAcctAssetReverse = make(map[string]string)
+	}
+	accountKey := domain.AccountKey{LedgerName: ledger, Account: account}
+	if b.seenAcctAssetByAccount[accountKey] == nil {
+		b.seenAcctAssetByAccount[accountKey] = make(map[string]struct{})
+	}
+	b.seenAcctAssetByAccount[accountKey][sk] = struct{}{}
+	b.seenAcctAssetReverse[sk] = string(readstore.AssetsByAccountKey(kb, ledger, account, assetBase, precision))
 
 	// If this ledger's indexes were range-deleted earlier in the same batch,
 	// the committed-state read is stale: readstoreKeyExists reads committed
@@ -1242,7 +1432,10 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 	// idempotent Put instead; queued after the range delete (later logs for
 	// that name have higher sequences), it wins at commit. processCreateLedger
 	// rejects a create under a soft-deleted name, so this path is defensive.
-	if _, deleted := b.deletedThisBatch[ledger]; !deleted {
+	_, ledgerDeleted := b.deletedThisBatch[ledger]
+	_, exactDeleted := b.deletedAcctAsset[sk]
+	_, accountPurged := b.purgedCurrentAccounts[domain.AccountKey{LedgerName: ledger, Account: account}]
+	if !ledgerDeleted && !exactDeleted && !accountPurged {
 		exists, err := b.readstoreKeyExists(key)
 		if err != nil {
 			return fmt.Errorf("account-by-asset dedup get: %w", err)
@@ -1264,7 +1457,18 @@ func (b *Builder) writeAccountByAssetDedup(kb *dal.KeyBuilder, ledger, account, 
 // (see deletedThisBatch in writeAccountByAssetDedup).
 func (b *Builder) markLedgerDeletedInBatch(name string) {
 	b.deletedThisBatch[name] = struct{}{}
-	b.seenAcctAsset = make(map[string]struct{})
+	prefix := dal.NewKeyBuilder().PutByte(readstore.PrefixAccountByAsset).PutLedgerNameFixed(name).Snapshot()
+	for key := range b.seenAcctAsset {
+		if bytes.HasPrefix([]byte(key), prefix) {
+			delete(b.seenAcctAsset, key)
+			delete(b.seenAcctAssetReverse, key)
+		}
+	}
+	for account := range b.seenAcctAssetByAccount {
+		if account.LedgerName == name {
+			delete(b.seenAcctAssetByAccount, account)
+		}
+	}
 }
 
 // readstoreKeyExists reports whether key is present in committed read-store

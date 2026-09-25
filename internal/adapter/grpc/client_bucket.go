@@ -42,13 +42,26 @@ func (g *BucketGrpcClient) Barrier(ctx context.Context) (uint64, error) {
 	return resp.GetCommitIndex(), nil
 }
 
-// Apply forwards the batch via gRPC to the leader. The authenticated caller is
-// captured from the local context and stamped onto the wrapper, so the leader
-// can populate the audit entry with the original subject even though the
-// inter-node connection authenticates via cluster-secret. The signed/unsigned
-// variant rides through unchanged for leader-side verification.
+// Apply forwards the batch via gRPC to the leader. When authentication is
+// enabled, the caller is captured from the local context and stamped onto the
+// wrapper, so the leader can populate the audit entry with the original
+// subject even though the inter-node connection authenticates via
+// cluster-secret. Auth-disabled attribution is derived locally by every node.
+// The signed/unsigned variant rides through unchanged for leader-side
+// verification.
 func (g *BucketGrpcClient) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
-	req.ForwardedCallerSnapshot = auth.ResolveCallerSnapshot(ctx)
+	caller := auth.ResolveCallerSnapshot(ctx)
+	// Auth-disabled attribution is derived from the leader's immutable local
+	// auth state as well. Do not put it on the wire: clusters may intentionally
+	// run without a cluster secret when TLS is disabled, and in that topology
+	// the service endpoint cannot distinguish a peer from a public client.
+	// Authenticated and anonymous callers still require the cluster-secret trust
+	// boundary because their original identity/effective scopes must be frozen.
+	if caller.GetAuthDisabled() == nil {
+		req.ForwardedCallerSnapshot = caller
+	} else {
+		req.ForwardedCallerSnapshot = nil
+	}
 
 	var trailers metadata.MD
 	resp, err := g.client.Apply(ctx, req, ggrpc.Trailer(&trailers))

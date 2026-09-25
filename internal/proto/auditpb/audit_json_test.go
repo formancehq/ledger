@@ -103,8 +103,10 @@ func TestAuditEntry_MarshalJSON_PropagatesSubmessageError(t *testing.T) {
 	entry := &AuditEntry{
 		Sequence: 7,
 		CallerSnapshot: &commonpb.CallerSnapshot{
-			// Invalid UTF-8: protojson.Marshal rejects it.
-			Scopes: []string{"\xff\xfe"},
+			Principal: &commonpb.CallerSnapshot_Anonymous{
+				// Invalid UTF-8: protojson.Marshal rejects it.
+				Anonymous: &commonpb.AnonymousCaller{Scopes: []string{"\xff\xfe"}},
+			},
 		},
 	}
 

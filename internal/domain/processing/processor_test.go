@@ -255,6 +255,7 @@ func TestProcessOrders_WithoutIdempotencyKey(t *testing.T) {
 	// No idempotency check should be made
 	// Process the order normally
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil)
@@ -305,6 +306,7 @@ func TestCreateLedgerAndTransactInSameBatch(t *testing.T) {
 		storedLedgerInfo = info
 	})
 
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader()).AnyTimes()
 
@@ -414,6 +416,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	// confusion (an off-by-one or last-wins bug on min would still match if
 	// the sequences were consecutive).
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "ledger-a"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-a"}, nil)
@@ -421,6 +424,7 @@ func TestProcessOrders_OrdersResultAccumulator(t *testing.T) {
 	mockStore.EXPECT().IncrementNextSequenceID().Return(uint64(100), nil)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "ledger-b"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(2))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(2))
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "ledger-b"}, nil)
 	expectPutBoundaries(t, mockStore, domain.LedgerKey{Name: "ledger-b"}, nil)

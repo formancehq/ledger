@@ -218,6 +218,26 @@ if err != nil {
 }
 ```
 
+### Reference-claim retries
+
+The `parallel_driver_reference_conflict_skip` driver assigns distinct stable
+idempotency keys to its initial claim, intentional duplicate, and fresh claim.
+Automatic retries must return each operation's original outcome: without a key,
+a successful creation followed by a lost response can legitimately retry as a
+reference-conflict skip. The fresh reference uses the initial transaction's ID
+under a driver-owned prefix, so separate successful claims cannot share it in
+one ledger. A returned skip still fails the fresh-claim assertion, with the key,
+skip context, and log sequence recorded for diagnosis.
+
+Its local regression starts a real Ledger node and drops one committed response
+at each step through a gRPC forwarding fixture using the normal workload client.
+It checks original response replay, persisted transaction uniqueness, and no
+extra business log, alongside an unkeyed create-then-skip control. Run it with:
+
+```sh
+go -C tests/antithesis/workload test ./bin/cmds/main/parallel_driver_reference_conflict_skip
+```
+
 ### Backup destination contention and recovery
 
 Full and incremental backups share a replicated destination slot. A committed
@@ -344,6 +364,13 @@ prefer `internal.CheckCreatedTransaction(resp, details)` over the manual
   `setup` programs (`first_default_ledger` etc.) may use `log.Fatalf` for
   client-construction failures, since they are infrastructure errors, not
   findings.
+- A streaming list EOF completes one page, not necessarily the whole list.
+  Presence/absence checks must follow `x-next-cursor` trailers until pagination
+  completes. The Numscript lifecycle driver uses the routed client's
+  `ListNumscripts` helper and keeps the default page size; its regression tests
+  exercise more than 100 names through the production handler and real gRPC
+  trailers. A failure on any page remains an error, even if the target was
+  already seen.
 - A forbidden branch uses `Unreachable`, not `Always(false)`: `Always` also
   requires an evaluation, so a correct run would report the failure-only site
   as missed. Sentinel survival and list/get balance consistency retain separate

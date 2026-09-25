@@ -422,6 +422,36 @@ driver's template decides who it shares the timeline with:
 
 The split is wired in `tests/antithesis/workload/Dockerfile`.
 
+#### Dedicated-ledger query oracles
+
+The reference-race, definitive-errors and bulk-atomicity drivers declare the
+reference index on their private ledgers; bulk atomicity also declares the
+transaction-address index. `CreateQueryOracleLedger` puts ledger creation and
+index declarations in one idempotent proposal. This preserves the bulk audit
+oracle's limit of one successful setup proposal. A ledger-name collision stops
+the invocation without reusing the existing ledger or reporting a finding.
+
+Every filtered check uses `ReadOracleTransactions`. The actual linearizable
+query gates readiness on the replica serving it. An `INDEX_BUILDING` response
+restarts the complete query within a ten-second context, discarding partial
+rows. A status response from a different replica cannot certify readiness.
+Only clean EOF makes a page conclusive; ten rows suffice for these absence and
+at-most-one checks. Permanent setup/read errors, including missing indexes,
+emit an Unreachable assertion with the ledger, operation, error and gRPC code.
+Read errors also include the filter and partial transaction IDs.
+Transient failures and caller cancellation do not certify a business result.
+The shared RPC classification is unchanged.
+
+Each driver's `TestDriverQueryOracles` invokes its real entry point against a
+local server and captures SDK JSON in a child process. It requires the original
+Always properties to emit `hit:true` and `condition:true`, including both bulk
+effect checks and the separate audit check. False Always or Unreachable hits
+fail these healthy-driver tests. Sensitivity tests use committed
+matching activity for absence checks and an explicitly injected second response
+ID for uniqueness. The latter validates the oracle, not an engine duplicate.
+Run the three driver packages and `./internal` from the nested
+`tests/antithesis/workload` module; root-module tests do not include them.
+
 ### Model-based conformance test (`singleton_driver_model`)
 
 This is an in-memory **model checker**: it runs a deterministic reference model
@@ -454,11 +484,14 @@ both setter forms, transactions and reverts (with post-commit volumes), color
 segregation (postings draw a color geometrically, so the uncolored bucket
 dominates while a long tail of rarely-touched ones keeps appearing),
 account/transaction/ledger metadata, the typed-metadata schema and
-its index lifecycle (create, retype with serving-window closure, remove), and
-the transient/ephemeral persistence classes — and reads them back: account,
-whole-ledger, transaction-by-id, and declared-schema reads, plus the filtered,
-paginated list surface (ListAccounts, ListTransactions, ListLogs, indexed
-metadata-range queries) are all validated against the model.
+its index lifecycle (create, retype with serving-window closure, remove), the
+prepared-query registry (create, update, delete), and the transient/ephemeral
+persistence classes — and reads them back: account, whole-ledger,
+transaction-by-id, and declared-schema reads, the filtered, paginated list
+surface (ListAccounts, ListTransactions, ListLogs, indexed metadata-range
+queries), and the prepared-query surface (ListPreparedQueries, and
+ExecutePreparedQuery in both LIST and AGGREGATE_VOLUMES mode, with generated
+parameter bindings) are all validated against the model.
 
 The Apply workload also opts into each supported skippable reason: reference
 conflicts, already-reverted transactions, missing metadata, and account types
@@ -534,6 +567,8 @@ the harness around it:
 | `queries.go` / `queries_logs.go` (driver) | Filtered, paginated list reads (ListAccounts, ListTransactions, ListLogs) generated against the model's committed state and validated window-by-window. |
 | `indexes.go` (driver) | Metadata-index lifecycle: create/retype/remove generation, readiness polling, retype-window bookkeeping, and indexed range-query validation. |
 | `metadata_filters.go` (driver) | Typed metadata filter generation shared by the query validators. |
+| `prepared_queries.go` (driver) | Prepared-query registry lifecycle generation, and the parameterize/substitute pair: a concrete filter's leaves become parameter references at creation, and binding them back at execution reproduces it — so the query evaluators above are reused unchanged. |
+| `prepared_queries_read.go` (driver) | `ListPreparedQueries` and `ExecutePreparedQuery` (LIST and AGGREGATE_VOLUMES) validation. Each candidate base supplies its OWN stored definition, so a concurrent update or delete is a legal alternative rather than a finding. |
 
 The key primitive is **`candidateBases`**: a committed bulk drains in
 log-sequence order, so the committed model state is its exact predecessor and
@@ -661,7 +696,7 @@ Where to make the matching change:
 | Changed business/validation rule (new rejection condition, enforcement change, volume math) | Update the matching `apply*` predictor in `tests/oracle/model.go`. |
 | New or changed response field the test should check | Update the validator in `validate.go` and the predicted effect it compares against. |
 | New rejection reason | Return the matching `domain.ErrReason*` from the right model branch so `validateFailure` can explain it. |
-| New persisted projection or read surface | Point reads: add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. Filtered/paginated list surfaces: follow the `queries.go` / `queries_logs.go` pattern (generate against committed model state, validate the returned window). Index-backed reads: `indexes.go`. |
+| New persisted projection or read surface | Point reads: add the read in `reads.go` and a validator in `validate.go`, mirroring the account/ledger reads. Filtered/paginated list surfaces: follow the `queries.go` / `queries_logs.go` pattern (generate against committed model state, validate the returned window). Index-backed reads: `indexes.go`. Prepared queries: model the registry op in `tests/oracle/model.go` (`LedgerOf`, `logKindFor`, `applyOne` in lockstep) and validate in `prepared_queries_read.go`. |
 
 To diagnose a finding deterministically, capture the run with
 `MODEL_DUMP_BATCHES=1` and feed the dump back through the model offline:

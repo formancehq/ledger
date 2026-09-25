@@ -522,6 +522,10 @@ func transactionWindowRows(ls oracle.LedgerState, filter *commonpb.QueryFilter, 
 // content-matching its model record), optional rows may, nothing else does, and
 // a required row may only be missing past a full (truncated) page.
 func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction) bool {
+	return txRowsMatch(ls, transactionWindowRows(ls, filter, afterID, reverse), pageSize, serverTxs)
+}
+
+func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, serverTxs []*commonpb.Transaction) bool {
 	if len(serverTxs) > pageSize {
 		return false
 	}
@@ -529,7 +533,7 @@ func txWindowMatches(ls oracle.LedgerState, filter *commonpb.QueryFilter, afterI
 	txs := ls.Txs()
 	j := 0
 
-	for _, row := range transactionWindowRows(ls, filter, afterID, reverse) {
+	for _, row := range rows {
 		if j == len(serverTxs) {
 			if len(serverTxs) == pageSize {
 				return true // full page — the remaining rows were truncated
@@ -851,9 +855,14 @@ func (c *Checker) sampleTxFilterSeeds(ledger string) txFilterSeeds {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	return txFilterSeedsOf(c.modelState.Ledger(ledger))
+}
+
+// txFilterSeedsOf is the lock-free core of sampleTxFilterSeeds, for callers
+// that already hold a committed state snapshot (the bulk generator).
+func txFilterSeedsOf(ls oracle.LedgerState) txFilterSeeds {
 	var seeds txFilterSeeds
 
-	ls := c.modelState.Ledger(ledger)
 	for ref := range ls.TxByRef().All() {
 		seeds.refs = append(seeds.refs, ref)
 		if len(seeds.refs) == 4 {
@@ -1337,7 +1346,7 @@ func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordV
 				// never written to the index, so they can never match.
 				return kleene{match: rec.Reference() != "" && rec.Reference() == x.Reference.GetCond().GetHardcoded(), known: true}
 			case *commonpb.QueryFilter_Address:
-				return kleene{match: matchTxAddress(ls, x.Address, rec), known: true}
+				return kleene{match: matchTxAddress(x.Address, rec), known: true}
 			case *commonpb.QueryFilter_Field:
 				return kleene{match: matchFieldCondition(ls.TransactionFieldTypes(), func(key string) (*commonpb.MetadataValue, bool) {
 					v, ok := rec.Metadata()[key]
@@ -1359,12 +1368,10 @@ func matchTxFilter(ls oracle.LedgerState, f *commonpb.QueryFilter, rec txRecordV
 
 // matchTxAddress evaluates an address leaf on the TRANSACTIONS target: the
 // transaction matches iff some account in its account→tx index membership
-// (IndexedAddrs, role-filtered) matches the prefix/exact pattern AND is still
-// in the merged V+M account universe — the server resolves matching accounts
-// through the attributes zone (pebbleAccountExists / the account prefix
-// iterator), so a purged account with no metadata stops reaching its
-// transactions even though the index rows remain.
-func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txRecordView) bool {
+// (IndexedAddrs, role-filtered) matches the prefix/exact pattern. Membership is
+// immutable history, so purging an account from current state does not make its
+// transactions unreachable through address filters.
+func matchTxAddress(am *commonpb.AddressMatch, rec txRecordView) bool {
 	var roleMask uint8
 	switch am.GetRole() {
 	case commonpb.AddressRole_ADDRESS_ROLE_SOURCE:
@@ -1393,9 +1400,7 @@ func matchTxAddress(ls oracle.LedgerState, am *commonpb.AddressMatch, rec txReco
 			continue // param matches are not generated
 		}
 
-		if ls.HasAccount(addr) {
-			return true
-		}
+		return true
 	}
 
 	return false

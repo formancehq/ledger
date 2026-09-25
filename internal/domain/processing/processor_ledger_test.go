@@ -1,6 +1,7 @@
 package processing
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,6 +27,7 @@ func TestProcessCreateLedger(t *testing.T) {
 
 	// Setup expectations
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 	expectPutLedger(t, mockStore, domain.LedgerKey{Name: "test-ledger"}, nil, func(name string, info *commonpb.LedgerInfo) {
@@ -54,6 +56,21 @@ func TestProcessCreateLedger(t *testing.T) {
 	require.NotNil(t, createLedgerLog)
 	require.Equal(t, "test-ledger", createLedgerLog.GetName())
 	require.Equal(t, uint32(1), createLedgerLog.GetId(), "CreatedLedgerLog should have Id == 1")
+}
+
+func TestProcessCreateLedger_RejectsExhaustedLedgerID(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	mockStore := NewMockScope(ctrl)
+	expectGetLedger(mockStore, domain.LedgerKey{Name: "exhausted"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(math.MaxUint32))
+
+	log, derr := processCreateLedger("exhausted", &raftcmdpb.CreateLedgerOrder{}, &Context{Scope: mockStore})
+	require.Nil(t, log)
+	var exhausted *domain.ErrSequenceExhausted
+	require.ErrorAs(t, derr, &exhausted)
+	require.Equal(t, domain.SequenceCounterLedgerID, exhausted.Counter)
 }
 
 // TestProcessCreateLedger_InvalidPatternSelectionDeterministic pins EN-1521:
@@ -128,6 +145,7 @@ func TestProcessCreateLedger_DoesNotMutateOrderAccountTypes(t *testing.T) {
 	before := fullOrder.MarshalDeterministicVT(nil)
 
 	expectGetLedger(mockStore, domain.LedgerKey{Name: "l"}, nil, domain.ErrNotFound)
+	mockStore.EXPECT().GetNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().IncrementNextLedgerID().Return(uint32(1))
 	mockStore.EXPECT().GetDate().Return(now.AsReader())
 

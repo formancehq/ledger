@@ -148,8 +148,15 @@ func sealProposal(p *raftcmdpb.Proposal) *raftcmdpb.Proposal {
 		bits[i/8] |= 1 << (i % 8)
 	}
 
+	// Set only the coverage bits: replacing the sub-message would drop the
+	// other admission-derived fields a test stamped, such as a revert's
+	// target observation digest.
 	for _, order := range p.GetOrders() {
-		order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: bits}
+		if order.GetTechnical() == nil {
+			order.Technical = &raftcmdpb.OrderTechnical{}
+		}
+
+		order.Technical.CoverageBits = bits
 	}
 
 	for _, tu := range p.GetTechnicalUpdates() {
@@ -167,6 +174,14 @@ func declareTestPlan(id attributes.U128, attrCode byte) *raftcmdpb.AttributeCove
 		Id:       &raftcmdpb.AttributeID{Id: id[:]},
 		AttrCode: uint32(attrCode),
 	}
+}
+
+func declareCanonicalTestPlan(canonical []byte, attrCode byte) *raftcmdpb.AttributeCoverage {
+	id, _ := attributes.MakeKey(canonical)
+	plan := declareTestPlan(id, attrCode)
+	plan.CanonicalKey = canonical
+
+	return plan
 }
 
 // preloadTestPlan wraps an AttributeValue payload into a seeded
@@ -276,17 +291,16 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 	var declared []*raftcmdpb.AttributeCoverage
 
 	for name := range ledgers {
-		ledgerKeyID, _ := attributes.MakeKey(domain.LedgerKey{Name: name}.Bytes())
+		ledgerCanonical := (domain.LedgerKey{Name: name}).Bytes()
 		declared = append(declared,
-			declareTestPlan(ledgerKeyID, dal.SubAttrLedger),
-			declareTestPlan(ledgerKeyID, dal.SubAttrBoundary),
+			declareCanonicalTestPlan(ledgerCanonical, dal.SubAttrLedger),
+			declareCanonicalTestPlan(ledgerCanonical, dal.SubAttrBoundary),
 		)
 	}
 
 	for tk := range txs {
 		txKey := domain.TransactionKey{LedgerName: tk.ledgerName, ID: tk.id}
-		txID, _ := attributes.MakeKey(txKey.Bytes())
-		declared = append(declared, declareTestPlan(txID, dal.SubAttrTransaction))
+		declared = append(declared, declareCanonicalTestPlan(txKey.Bytes(), dal.SubAttrTransaction))
 	}
 
 	for k := range accMeta {
@@ -294,8 +308,7 @@ func buildOrderDeclarations(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCov
 			AccountKey: domain.AccountKey{LedgerName: k.ledgerName, Account: k.account},
 			Key:        k.key,
 		}.Bytes()
-		mkID, _ := attributes.MakeKey(mkBytes)
-		declared = append(declared, declareTestPlan(mkID, dal.SubAttrMetadata))
+		declared = append(declared, declareCanonicalTestPlan(mkBytes, dal.SubAttrMetadata))
 	}
 
 	return declared
@@ -352,8 +365,10 @@ func buildVolumePreloads(orders []*raftcmdpb.Order) []*raftcmdpb.AttributeCovera
 				id, tag := attributes.MakeKey(canonicalKey.Bytes())
 
 				attrID := &raftcmdpb.AttributeID{Id: id[:], Tag: tag}
-				plans = append(plans, preloadTestPlan(attrID, dal.SubAttrVolume,
-					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero})))
+				plan := preloadTestPlan(attrID, dal.SubAttrVolume,
+					rawPreloadNoT(dal.SubAttrVolume, &raftcmdpb.VolumePair{Input: zero, Output: zero}))
+				plan.CanonicalKey = canonicalKey.Bytes()
+				plans = append(plans, plan)
 			}
 		}
 	}
@@ -414,8 +429,24 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 	}
 }
 
+// revertTransactionOrder builds a revert whose target admission observed as
+// absent, the digest admission binds for an id with no stored transaction.
+// Use revertObservedTransactionOrder for a target that exists: apply compares
+// the bound digest with the postings it reads and rejects a mismatch.
 func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
+	return revertOrderWithDigest(ledger, txID, domain.RevertTargetDigest(nil, false))
+}
+
+// revertObservedTransactionOrder builds a revert whose target admission
+// observed with these postings. Pass the postings the FSM stored for the
+// target, so the bound digest matches what apply re-derives.
+func revertObservedTransactionOrder(ledger string, txID uint64, postings []*commonpb.Posting) *raftcmdpb.Order {
+	return revertOrderWithDigest(ledger, txID, domain.RevertTargetDigest(postings, true))
+}
+
+func revertOrderWithDigest(ledger string, txID uint64, digest []byte) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
+		Technical: &raftcmdpb.OrderTechnical{RevertTargetDigest: digest},
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
 				Ledger: ledger,

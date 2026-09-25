@@ -215,7 +215,7 @@ func (impl *BucketServiceServerImpl) queryCheckpointDeleted(id uint64) (deleted 
 // forwarded_caller_snapshot to the context when (and only when) the
 // connection authenticated via the cluster-secret. This is the trust
 // boundary that lets a follower forward a user's admission-time snapshot
-// (identity + scopes + god) to the leader for audit purposes without
+// (principal plus effective authorization) to the leader for audit purposes without
 // letting regular clients spoof it.
 //
 // A forwarded snapshot arriving on a non-cluster-internal connection means the

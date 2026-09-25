@@ -75,6 +75,14 @@ The result is a value the apply path was never authorized to consult. Two failur
 
 Both are catastrophic for an FSM that is supposed to be a pure function of its declared inputs.
 
+### What is *not* a gate violation
+
+A stale admission observation is not one, and must never reach the gate. When a producer derives coverage from a read rather than from request data — a revert's volume keys come from the stored target, not from the request — the declaration is only as good as what the producer saw. Admission reads the local store with no read barrier, so a target that is committed but not yet applied there reads as absent and the order declares no volume keys, while apply reads the real postings.
+
+Left alone that trips the gate, which would report a legitimate revert as a server defect. The producer therefore binds its observation (`OrderTechnical.revert_target_digest`) and the handler re-derives it, from state it is already authorized to read, *before* performing the dependent reads: `processRevertTransaction` compares digests before building the reversed postings. See [preload.md](preload.md#coverage-derived-from-a-read-must-bind-that-read) and the [revert-target observation](../admission/README.md#revert-target-observation).
+
+A mismatch that reaches that comparison is classified by whether re-admission can converge — `STALE_INPUTS_RESOLUTION` when the target predates the batch, `REVERT_TARGET_CREATED_IN_BATCH` when the batch creates it. The comparison sits behind the handler's existing checks on the target, so an unknown, already-reverted or inconsistent target keeps its own reason; see [the revert-target observation](../admission/README.md#revert-target-observation). Neither classification is a softened coverage miss: an order whose digest *matches* and still reads an undeclared key reaches the gate and stays fatal.
+
 ## How a violation surfaces
 
 A refused access also emits the Antithesis safety property

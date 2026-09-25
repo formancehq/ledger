@@ -69,9 +69,8 @@ type AuditEntry struct {
 	Hash []byte `protobuf:"bytes,9,opt,name=hash,proto3" json:"hash,omitempty"`
 	// Hash algorithm version (matches common.HashAlgorithm enum).
 	HashVersion uint32 `protobuf:"varint,10,opt,name=hash_version,json=hashVersion,proto3" json:"hash_version,omitempty"`
-	// Admission-time auth snapshot: caller identification + the
-	// authorization granted at admission. Nil when auth is disabled or
-	// for system-initiated proposals.
+	// Admission-time caller snapshot. Its principal union distinguishes
+	// authenticated, anonymous, system, and authentication-disabled actions.
 	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,11,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"`
 	// Batch identity, bound into the hash chain (header_payload) so it is
 	// tamper-evident. idempotency is the batch dedup key; signature is the
@@ -240,9 +239,8 @@ type AuditItem struct {
 	// Zero-based position of this order within the proposal.
 	OrderIndex uint32 `protobuf:"varint,1,opt,name=order_index,json=orderIndex,proto3" json:"order_index,omitempty"`
 	// Deterministic serialized bytes of the order's BUSINESS INTENT at apply time
-	// (the order with OrderTechnical excluded — coverage_bits,
-	// inputs_resolution_hash, preload_unavailable are admission-derived execution
-	// metadata, not accepted intent). Produced by
+	// (the order with OrderTechnical excluded — every field of that sub-message is
+	// admission-derived execution metadata, not accepted intent). Produced by
 	// processing.MarshalOrderBusinessIntent, symmetric with the idempotency hash.
 	// The audit hash chain on AuditEntry.hash is computed over the concatenation of
 	// these bytes (in order_index order) so verification never re-marshals an Order

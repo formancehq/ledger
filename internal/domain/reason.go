@@ -92,7 +92,14 @@ func KindForReason(code commonpb.ErrorReason) ErrorKind {
 		// HTTP 400), never ResourceExhausted. Retrying the same payload cannot
 		// succeed, and a retryable code would make client retry policies
 		// re-drive a permanent rejection.
-		commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED:
+		commonpb.ErrorReason_ERROR_REASON_METADATA_LIMIT_EXCEEDED,
+		// Reverting a transaction the same batch creates is a property of how
+		// the caller composed the batch, not of ledger state: admission cannot
+		// declare the volume coverage apply will need. The whole batch is
+		// rejected, so the create never lands and re-admitting the identical
+		// batch reproduces the same observation — a retryable code would spin
+		// the client forever.
+		commonpb.ErrorReason_ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH:
 		return KindValidation
 	case commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND,
 		commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND,

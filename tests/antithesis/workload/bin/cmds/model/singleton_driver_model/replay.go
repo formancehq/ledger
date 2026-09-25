@@ -184,6 +184,9 @@ func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*co
 		}
 
 		req := bulk.Requests[i]
+		if err := validateLifecycleLog(req, order.PreparedQueryLog, logs[i].GetPayload()); err != nil {
+			return false
+		}
 		entry := logs[i].GetPayload().GetApply()
 		data := entry.GetLog().GetData()
 		if order.LogID != 0 && (entry.GetLedgerName() != oracle.LedgerOf(req) || entry.GetLog().GetId() != order.LogID) {

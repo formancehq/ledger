@@ -963,6 +963,7 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Transaction reference conflict | `ALREADY_EXISTS` | `TRANSACTION_REFERENCE_CONFLICT` | `ledger`, `reference` |
 | Transaction not found | `NOT_FOUND` | `TRANSACTION_NOT_FOUND` | `transactionId` |
 | Transaction already reverted | `FAILED_PRECONDITION` | `TRANSACTION_ALREADY_REVERTED` | `transactionId` |
+| Revert target created in the same batch | `INVALID_ARGUMENT` | `REVERT_TARGET_CREATED_IN_BATCH` | `transactionId` |
 | Transaction state inconsistent | `INTERNAL` | `TRANSACTION_STATE_INCONSISTENT` | `transactionId`, `operation` |
 | Insufficient funds | `FAILED_PRECONDITION` | `INSUFFICIENT_FUNDS` | `account`, `asset`, `amount`, `balance` |
 | Volume overflow | `FAILED_PRECONDITION` | `VOLUME_OVERFLOW` | `account`, `asset`, `side`, `amount`, `current` |
@@ -978,12 +979,12 @@ Each error response includes a `google.rpc.ErrorInfo` detail with:
 | Audit disabled | `FAILED_PRECONDITION` | `AUDIT_DISABLED` | *(none)* |
 | Maintenance mode | `UNAVAILABLE` | `MAINTENANCE_MODE` | *(none)* |
 | Stale proposal | `UNAVAILABLE` | `STALE_PROPOSAL` | *(none)* |
-| Stale Numscript inputs resolution | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
+| Stale inputs resolution (Numscript inputs, or a revert's target observation) | `UNAVAILABLE` | `STALE_INPUTS_RESOLUTION` | *(none)* |
 | Preload unavailable (discovery failed; forwarded for idempotent replay) | `UNAVAILABLE` | `PRELOAD_UNAVAILABLE` | *(none)* |
 | Raft node already absent during removal | `NOT_FOUND` | `RAFT_NODE_NOT_IN_CLUSTER` | *(none)* |
 | Raft node removal committed; durable FSM apply still pending | `UNAVAILABLE` | `RAFT_NODE_REMOVAL_COMMITTED` | `nodeId`, `committedIndex` |
 | Writes blocked — disk full | `RESOURCE_EXHAUSTED` | `WRITES_BLOCKED_DISK_FULL` | *(none)* |
-| Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
+| Authoritative sequence exhausted | `RESOURCE_EXHAUSTED` | `SEQUENCE_EXHAUSTED` | `counter` (`transactionId`, `ledgerId`, `ledgerLogId`, `logSequence`, `auditSequence`, or `mirrorV2LogId`) |
 | Writes blocked — clock skew | `UNAVAILABLE` | `WRITES_BLOCKED_CLOCK_SKEW` | *(none)* |
 | Metadata limit exceeded | `INVALID_ARGUMENT` | `METADATA_LIMIT_EXCEEDED` | `dimension`, `limit`, `actual` |
 | Metadata not found | `NOT_FOUND` | `METADATA_NOT_FOUND` | `target`, `key` |

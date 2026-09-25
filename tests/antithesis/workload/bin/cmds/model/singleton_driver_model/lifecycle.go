@@ -9,7 +9,11 @@ import (
 
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.
-func validateLifecycleLog(req *servicepb.Request, payload *commonpb.LogPayload) error {
+func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
+	if expectedPreparedQuery != nil && !expectedPreparedQuery.EqualVT(payload) {
+		return fmt.Errorf("prepared-query response does not match committed change")
+	}
+
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_CreateLedger:
 		log := payload.GetCreateLedger()

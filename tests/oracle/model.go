@@ -105,6 +105,13 @@ type LedgerState struct {
 	// linearizable read issued after the drop's response observes it gone).
 	indexes Map[string, bool]
 
+	// preparedQueries is the ledger's prepared-query registry, keyed by name.
+	// The value is the stored definition (name, target, filter) — the exact
+	// shape ListPreparedQueries returns and ExecutePreparedQuery compiles. The
+	// registry is part of the state's identity: two bases differing only in a
+	// query's stored filter predict different execution windows.
+	preparedQueries Map[string, *commonpb.PreparedQuery]
+
 	// logs is the ledger's log stream: index i holds the log with ledger-local
 	// id i+1, dense from 1, mirroring the server's LedgerBoundaries.NextLogId
 	// (initialised to 1 at CreateLedger, so the first apply lands on 1). Every
@@ -129,9 +136,9 @@ type LedgerState struct {
 
 	// everAsset is the account-by-asset index projection: the set of
 	// (account, assetBase, precision) any committed, non-excluded posting has ever
-	// touched, on either side. This is the exact set the has-asset filter serves
-	// (see recordAssetTouches) — a monotonic history, NOT the current volume set:
-	// an account drained to zero and purged from the volume table stays here.
+	// touched, on either side. This is the exact current set the has-asset filter
+	// serves (see recordAssetTouches); account-wide EPHEMERAL purge removes every
+	// membership, while a later re-fund records it again.
 	everAsset Map[assetTouch, struct{}]
 
 	// compiledChart memoizes compiled() for the current types value — nil means
@@ -164,10 +171,11 @@ func NewLedgerState() LedgerState {
 		txByRef:               NewMap[string, int](stringComparer{}, txRefTerm),
 		transactionFieldTypes: NewMap[string, commonpb.MetadataType](stringComparer{}, fieldTypeTerm("TF")),
 
-		indexes:       NewMap[string, bool](stringComparer{}, indexTerm),
-		retypeWindows: NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
-		logs:          NewList[*logRecord](logTerm),
-		everAsset:     NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
+		indexes:         NewMap[string, bool](stringComparer{}, indexTerm),
+		preparedQueries: NewMap[string, *commonpb.PreparedQuery](stringComparer{}, preparedQueryTerm),
+		retypeWindows:   NewMap[string, uint32](stringComparer{}, retypeWindowTerm),
+		logs:            NewList[*logRecord](logTerm),
+		everAsset:       NewMap[assetTouch, struct{}](assetTouchComparer{}, assetTouchTerm),
 	}
 }
 
@@ -190,7 +198,7 @@ func (s *LedgerState) collections() []interface {
 	}{
 		s.types, s.volumes, s.metadata, s.ledgerMeta,
 		s.accountFieldTypes, s.ledgerFieldTypes, s.transactionFieldTypes,
-		s.txs, s.indexes, s.everAsset, s.logs, s.retypeWindows,
+		s.txs, s.indexes, s.preparedQueries, s.everAsset, s.logs, s.retypeWindows,
 	}
 }
 
@@ -306,6 +314,17 @@ func indexTerm(canonical string, active bool) Digest {
 	t := newTerm("IX")
 	t.str(canonical)
 	t.boolean(active)
+
+	return t.sum()
+}
+
+// preparedQueryTerm fingerprints one prepared-query registry entry over the
+// stored definition's deterministic encoding, so a filter rewrite (the only
+// thing an update changes) yields a different term. Two bases differing only
+// in a stored filter predict different execution windows and must not dedup.
+func preparedQueryTerm(name string, pq *commonpb.PreparedQuery) Digest {
+	t := newTerm("PQ")
+	t.str(name, string(pq.MarshalDeterministicVT(nil)))
 
 	return t.sum()
 }
@@ -670,6 +689,10 @@ type OrderResult struct {
 	Skipped *commonpb.OrderSkippedLog
 	// LogID is the independently assigned ledger-local log ID, zero for non-ledger logs.
 	LogID uint64
+	// PreparedQueryLog is the exact top-level audit payload produced by a
+	// committed prepared-query lifecycle order. These orders do not have a
+	// ledger-local LogID, but their echoed definitions are still observable.
+	PreparedQueryLog *commonpb.LogPayload
 }
 
 // metaEffect is a metadata write's predicted effect, for asserting the server's
@@ -785,6 +808,12 @@ func LedgerOf(req *servicepb.Request) string {
 		return r.CreateIndex.GetLedger()
 	case *servicepb.Request_DropIndex:
 		return r.DropIndex.GetLedger()
+	case *servicepb.Request_CreatePreparedQuery:
+		return r.CreatePreparedQuery.GetLedger()
+	case *servicepb.Request_UpdatePreparedQuery:
+		return r.UpdatePreparedQuery.GetLedger()
+	case *servicepb.Request_DeletePreparedQuery:
+		return r.DeletePreparedQuery.GetLedger()
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
 	}
@@ -816,7 +845,7 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 			ls = NewLedgerState()
 		}
 
-		ls.applyOne(req, map[VolumeKey]bool{})
+		ls.applyOne(req, map[VolumeKey]bool{}, uint64(ls.txs.Len()))
 		next.ledgers[name] = ls
 	}
 
@@ -868,6 +897,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
 	retired := map[string]struct{}{}
+	touchedAccounts := map[string]map[string]bool{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -879,6 +909,13 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	}
 
 	var orderTouches []orderTouch
+
+	// Transaction count per ledger as it stood before this bulk, captured on
+	// first touch. The server records the same horizon (processApply stores the
+	// pre-batch NextTransactionId) so it can tell a revert target this batch
+	// creates — which admission could not observe, and which it therefore could
+	// not declare volume coverage for — from one that already existed.
+	batchInitialTxCount := map[string]uint64{}
 
 	for _, req := range bulk.Requests {
 		if oc, handled := next.applyCheckpoint(req); handled {
@@ -920,10 +957,20 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			touched[name] = cells
 		}
 
+		if _, seen := batchInitialTxCount[name]; !seen {
+			batchInitialTxCount[name] = uint64(ls.txs.Len())
+		}
+
 		orderCells := map[VolumeKey]bool{}
+		accounts := touchedAccounts[name]
+		if accounts == nil {
+			accounts = map[string]bool{}
+			touchedAccounts[name] = accounts
+		}
+		orderAccounts := requestAccountTouches(req)
 
 		beforeOrder := ls
-		oc := ls.applyOne(req, orderCells)
+		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
 		if !oc.OK && slices.Contains(req.GetApply().GetSkippableReasons(), domain.ReasonCode(oc.Reason)) {
 			ls = beforeOrder
 			orderCells = map[VolumeKey]bool{}
@@ -937,6 +984,24 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		logsBefore := ls.logs.Len()
 
 		if oc.OK {
+			if oc.Skipped == nil {
+				for account := range orderAccounts {
+					accounts[account] = true
+				}
+				if requestMutatesAccountTypes(req) {
+					// A chart transition can expose an EPHEMERAL fallback without
+					// touching an account row. The server closes lifecycle coverage
+					// over every persisted volume and metadata row for such orders;
+					// mirror that candidate set so end-of-bulk purge semantics stay
+					// serializable in the model.
+					for key := range ls.volumes.All() {
+						accounts[key.Address] = true
+					}
+					for key := range ls.metadata.All() {
+						accounts[key.Address] = true
+					}
+				}
+			}
 			// Appended centrally rather than per handler: every committed
 			// ledger-scoped order produces exactly one log, so a handler that
 			// forgot would silently shorten the stream and mis-id every log
@@ -982,12 +1047,21 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		ls.recordAssetTouches(&base, cells)
 		ls.recordIndexedAddrs(&base, uint64(base.Txs().Len())+1)
 
-		purged := ls.purgeZeroBalance(cells)
+		purged, coveredPurged := ls.purgeZeroBalance(cells, touchedAccounts[name])
 
 		ann := ls.classifyVolumes(&base, cells, purged)
 		for _, ot := range orderTouches {
 			if ot.ledger == name {
 				ls.annotateLog(ot.logIdx, ot.cells, ann)
+			}
+		}
+		if len(coveredPurged) > 0 {
+			for _, orderTouche := range slices.Backward(orderTouches) {
+				if orderTouche.ledger == name && ls.logs.Get(orderTouche.logIdx).kind != "order_skipped" {
+					ls.annotateCoveredPurges(orderTouche.logIdx, coveredPurged)
+
+					break
+				}
 			}
 		}
 
@@ -1008,6 +1082,45 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	}
 
 	return ApplyResult{OK: true, State: next, Orders: orders}
+}
+
+func requestMutatesAccountTypes(req *servicepb.Request) bool {
+	switch req.GetType().(type) {
+	case *servicepb.Request_AddAccountType, *servicepb.Request_RemoveAccountType:
+		return true
+	}
+	switch req.GetApply().GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_AddAccountType, *servicepb.LedgerAction_RemoveAccountType:
+		return true
+	default:
+		return false
+	}
+}
+
+func requestAccountTouches(req *servicepb.Request) map[string]bool {
+	out := map[string]bool{}
+	apply := req.GetApply()
+	if apply == nil {
+		return out
+	}
+	switch action := apply.GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_CreateTransaction:
+		for account, metadata := range action.CreateTransaction.GetAccountMetadata() {
+			if len(metadata.GetValues()) > 0 {
+				out[account] = true
+			}
+		}
+	case *servicepb.LedgerAction_AddMetadata:
+		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil && len(action.AddMetadata.GetMetadata()) > 0 {
+			out[account.GetAddr()] = true
+		}
+	case *servicepb.LedgerAction_DeleteMetadata:
+		if account := action.DeleteMetadata.GetTarget().GetAccount(); account != nil {
+			out[account.GetAddr()] = true
+		}
+	}
+
+	return out
 }
 
 // RequestsEqual compares the modeled business intent of request slices. Chart
@@ -1093,6 +1206,15 @@ func logKindFor(req *servicepb.Request) string {
 		return "create_index"
 	case *servicepb.Request_DropIndex:
 		return "drop_index"
+	case *servicepb.Request_CreatePreparedQuery,
+		*servicepb.Request_UpdatePreparedQuery,
+		*servicepb.Request_DeletePreparedQuery:
+		// Prepared-query orders return a TOP-LEVEL LogPayload arm
+		// (created/updated/deleted_prepared_query), not the Apply arm, so like
+		// ledger metadata they take no ledger-local log id and never appear in
+		// ListLogs. Naming a kind here would consume an id and shift every
+		// subsequent log's id past the server's.
+		return ""
 	case *servicepb.Request_Apply:
 		switch r.Apply.GetAction().GetData().(type) {
 		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
@@ -1348,7 +1470,7 @@ func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeA
 
 // applyOne mutates the (already-forked) working state for one request and
 // returns its predicted outcome, recording touched volume cells.
-func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_SetDefaultEnforcementMode:
@@ -1396,6 +1518,15 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 	case *servicepb.Request_DropIndex:
 		return s.applyDropIndex(r.DropIndex)
 
+	case *servicepb.Request_CreatePreparedQuery:
+		return s.applyCreatePreparedQuery(r.CreatePreparedQuery)
+
+	case *servicepb.Request_UpdatePreparedQuery:
+		return s.applyUpdatePreparedQuery(r.UpdatePreparedQuery)
+
+	case *servicepb.Request_DeletePreparedQuery:
+		return s.applyDeletePreparedQuery(r.DeletePreparedQuery)
+
 	case *servicepb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
 		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
@@ -1409,7 +1540,7 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 		case *servicepb.LedgerAction_DeleteMetadata:
 			return s.applyDeleteMetadata(a.DeleteMetadata)
 		case *servicepb.LedgerAction_RevertTransaction:
-			return s.applyRevert(a.RevertTransaction, touched)
+			return s.applyRevert(a.RevertTransaction, touched, batchInitialTxCount)
 		default:
 			// The generator emits only the actions above; any other is unmodeled
 			// — fail loudly, the generator and model must stay in lockstep.
@@ -1491,7 +1622,11 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 // (swap source/destination), enforces the chart on them, applies the balance
 // floor unless force is set (see applyPostings), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
-func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyRevert(
+	rt *servicepb.RevertTransactionPayload,
+	touched map[VolumeKey]bool,
+	batchInitialTxCount uint64,
+) OrderResult {
 	id := rt.GetTransactionId()
 	if id == 0 || id > uint64(s.txs.Len()) {
 		// Unknown id (past the log frontier); the server rejects with
@@ -1503,8 +1638,25 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 
 	orig := s.txs.Get(int(id - 1))
 
+	// Check order mirrors processRevertTransaction: the already-reverted check
+	// runs before the target-observation comparison that yields
+	// REVERT_TARGET_CREATED_IN_BATCH. No input reaches both today — a target the
+	// batch creates cannot already be reverted, since the first revert rejects
+	// the whole batch — but keeping the model's order aligned means a future
+	// fixture cannot make them disagree.
 	if orig.reverted {
 		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
+	}
+
+	if id > batchInitialTxCount {
+		// The target is created by an earlier order in this same batch. Admission
+		// resolves a revert's original postings from the local store only, and
+		// the bulk overlay does not carry transactions the batch itself creates,
+		// so it cannot declare the volume coverage apply needs. The server
+		// rejects the whole batch permanently rather than retryably: rejecting it
+		// un-creates the target, so an identical retry reproduces the same
+		// observation.
+		return OrderResult{Reason: domain.ErrReasonRevertTargetCreatedInBatch}
 	}
 
 	reversed := make([]*commonpb.Posting, len(orig.postings))
@@ -1716,6 +1868,29 @@ func (s *LedgerState) cellExcluded(base *LedgerState, key VolumeKey, compiled []
 	}
 }
 
+// cellHistoryExcluded preserves the historical exclusion contract: only
+// TRANSIENT cells are absent from account/source/destination transaction
+// mappings. Draining an EPHEMERAL cell removes current state but not the
+// transaction that performed the drain.
+func (s *LedgerState) cellHistoryExcluded(base *LedgerState, key VolumeKey, compiled []accounttype.CompiledType) bool {
+	vp, ok := s.volumes.Get(key)
+	if !ok {
+		return true
+	}
+
+	t := s.match(key.Address, compiled)
+	if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_TRANSIENT {
+		return false
+	}
+
+	bv := base.vol(key)
+	if bv.Input.IsZero() && bv.Output.IsZero() {
+		return true
+	}
+
+	return vp.Input.Cmp(&vp.Output) == 0
+}
+
 // recordIndexedAddrs stamps every transaction this bulk appended (ids in
 // (firstNew-1, len(txs)]) with its account→tx index membership: for each
 // posting side, the (account, role) pair is indexed unless the posting's cell
@@ -1733,11 +1908,11 @@ func (s *LedgerState) recordIndexedAddrs(base *LedgerState, firstNew uint64) {
 		rec.indexedAddrs = map[string]uint8{}
 
 		for _, p := range rec.postings {
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.cellHistoryExcluded(base, VolumeKey{Address: p.GetSource(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetSource()] |= AddrIndexedSource
 			}
 
-			if !s.cellExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
+			if !s.cellHistoryExcluded(base, VolumeKey{Address: p.GetDestination(), Asset: p.GetAsset(), Color: p.GetColor()}, compiled) {
 				rec.indexedAddrs[p.GetDestination()] |= AddrIndexedDestination
 			}
 		}
@@ -1904,6 +2079,115 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 	}
 }
 
+// applyCreatePreparedQuery registers a new prepared query, mirroring
+// processCreatePreparedQuery: payload validation, then ledger load (the caller
+// already routed to an existing ledger), then the duplicate-name check. The
+// validation gates call the very functions the FSM calls, and surface their own
+// Reason, so the two cannot drift.
+//
+// A nil filter is accepted here exactly as the FSM accepts it — only the update
+// path requires one — and executes as the unfiltered universe.
+//
+// The stored definition is cloned so the model never aliases the request
+// message: a later mutation of the submitted proto must not reach committed
+// state.
+func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQueryRequest) OrderResult {
+	q := req.GetQuery()
+	if q == nil {
+		return OrderResult{Reason: domain.ErrPreparedQueryRequired.Reason()}
+	}
+
+	if err := domain.ValidatePreparedQueryName(q.GetName()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	if !domain.IsPreparedQueryExecutableTarget(q.GetTarget()) {
+		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
+	}
+
+	if err := domain.ValidateFilterForTarget(q.GetFilter(), q.GetTarget()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	if s.preparedQueries.Has(q.GetName()) {
+		return OrderResult{Reason: domain.ErrReasonPreparedQueryAlreadyExists}
+	}
+
+	s.preparedQueries = s.preparedQueries.Set(q.GetName(), q.CloneVT())
+
+	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_CreatedPreparedQuery{CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
+			Ledger: req.GetLedger(),
+			Query:  q.CloneVT(),
+		}},
+	}}
+}
+
+// applyUpdatePreparedQuery replaces a stored query's filter, mirroring
+// processUpdatePreparedQuery's order: name validation, existence, then the
+// filter gates. The target is fixed at creation — an update carries no target
+// field and the FSM validates the new filter against the STORED target — so the
+// model keeps it and swaps only the filter.
+func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQueryRequest) OrderResult {
+	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	existing, ok := s.preparedQueries.Get(req.GetName())
+	if !ok {
+		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
+	}
+
+	// An update replaces the stored filter, so a nil one would silently erase
+	// the definition; the FSM rejects it rather than persisting it.
+	if req.GetFilter() == nil {
+		return OrderResult{Reason: domain.ErrPreparedQueryFilterRequired.Reason()}
+	}
+
+	if !domain.IsPreparedQueryExecutableTarget(existing.GetTarget()) {
+		return OrderResult{Reason: domain.ErrPreparedQueryTargetUnsupported.Reason()}
+	}
+
+	if err := domain.ValidateFilterForTarget(req.GetFilter(), existing.GetTarget()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	updated := existing.CloneVT()
+	updated.Filter = req.GetFilter().CloneVT()
+	s.preparedQueries = s.preparedQueries.Set(req.GetName(), updated)
+
+	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_UpdatedPreparedQuery{UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+			Ledger:         req.GetLedger(),
+			Name:           req.GetName(),
+			PreviousFilter: existing.GetFilter().CloneVT(),
+			NewFilter:      req.GetFilter().CloneVT(),
+		}},
+	}}
+}
+
+// applyDeletePreparedQuery removes a stored query, mirroring
+// processDeletePreparedQuery. Unlike DropIndex, deleting an absent query is NOT
+// a no-op: the FSM rejects it with PREPARED_QUERY_NOT_FOUND.
+func (s *LedgerState) applyDeletePreparedQuery(req *servicepb.DeletePreparedQueryRequest) OrderResult {
+	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
+		return OrderResult{Reason: err.Reason()}
+	}
+
+	if !s.preparedQueries.Has(req.GetName()) {
+		return OrderResult{Reason: domain.ErrReasonPreparedQueryNotFound}
+	}
+
+	s.preparedQueries = s.preparedQueries.Delete(req.GetName())
+
+	return OrderResult{OK: true, PreparedQueryLog: &commonpb.LogPayload{
+		Type: &commonpb.LogPayload_DeletedPreparedQuery{DeletedPreparedQuery: &commonpb.DeletedPreparedQueryLog{
+			Ledger: req.GetLedger(),
+			Name:   req.GetName(),
+		}},
+	}}
+}
+
 // applyDropIndex removes an index. Drop is instantaneous: once this order is in
 // the committed prefix, a linearizable read issued after its response observes
 // it gone. Dropping an absent index is a harmless no-op.
@@ -2017,11 +2301,13 @@ func (s *LedgerState) transientViolation(base *LedgerState, touched map[VolumeKe
 
 // purgeZeroBalance drops touched EPHEMERAL/TRANSIENT cells that landed at a zero
 // balance, mirroring the server's post-commit write-set sweep (PR #151).
-func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey]bool {
+func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccounts map[string]bool) (map[VolumeKey]bool, map[VolumeKey]bool) {
 	purged := map[VolumeKey]bool{}
+	coveredPurged := map[VolumeKey]bool{}
 	compiled := s.compiled()
 
 	for key := range touched {
+		touchedAccounts[key.Address] = true
 		vp, ok := s.volumes.Get(key)
 		if !ok {
 			continue
@@ -2042,7 +2328,60 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool) map[VolumeKey
 		}
 	}
 
-	return purged
+	for address := range touchedAccounts {
+		t := s.match(address, compiled)
+		if t == nil || t.Persistence != commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			continue
+		}
+		live := false
+		for key, volume := range s.volumes.All() {
+			if key.Address == address && volume.Input.Cmp(&volume.Output) != 0 {
+				live = true
+
+				break
+			}
+		}
+		if live {
+			continue
+		}
+		for key := range s.volumes.All() {
+			if key.Address == address {
+				volume, _ := s.volumes.Get(key)
+				s.volumes = s.volumes.Delete(key)
+				if touched[key] {
+					purged[key] = true
+				} else if !volume.Input.IsZero() || !volume.Output.IsZero() {
+					coveredPurged[key] = true
+				}
+			}
+		}
+		for key := range s.metadata.All() {
+			if key.Address == address {
+				s.metadata = s.metadata.Delete(key)
+			}
+		}
+		for key := range s.everAsset.All() {
+			if key.address == address {
+				s.everAsset = s.everAsset.Delete(key)
+			}
+		}
+	}
+
+	return purged, coveredPurged
+}
+
+func (s *LedgerState) annotateCoveredPurges(idx int, covered map[VolumeKey]bool) {
+	rec := *s.logs.Get(idx)
+	parts := make([]string, 0, 2)
+	if rec.purged != "" {
+		parts = append(parts, strings.Split(rec.purged, ",")...)
+	}
+	if rendered := renderTouchedVolumes(covered); rendered != "" {
+		parts = append(parts, strings.Split(rendered, ",")...)
+	}
+	sort.Strings(parts)
+	rec.purged = strings.Join(parts, ",")
+	s.logs = s.logs.Set(idx, &rec)
 }
 
 func checkpointTerm(key string, id uint64) Digest {

@@ -90,6 +90,18 @@ Every component that emits a proposal declares its own `Coverage`, next to the c
 
 There is **no central proposal-type → `Coverage` registry**. Such a registry was rejected: it couples the preload package to every proposal type and reliably falls behind reality. The component knows what it reads, so the component declares it.
 
+### Coverage derived from a read must bind that read
+
+Most declarations come from the request itself, so they are correct by construction: a posting-based create names its own accounts. Some do not. A revert's volume keys are only knowable from the *stored* target transaction, so the producer declares them from an **observation** of state rather than from request data.
+
+An observation can be wrong by the time apply runs. Admission reads the local store with no read barrier, so a target that is committed but not yet applied on that node reads as absent and the order declares nothing, while apply reads the real postings and touches undeclared volumes. The producer must therefore bind what it observed — for reverts, `OrderTechnical.revert_target_digest` — and the apply path must re-derive it from state it is *already* authorized to read and reject a mismatch before performing the dependent reads.
+
+Re-deriving from an already-declared key is what keeps this from widening the read horizon: a revert's `TransactionState` is declared unconditionally by `addTransactionTargetNeeds`, so the comparison needs no new coverage and always runs before the volume reads.
+
+Numscript binds its resolved inputs the same way, in `OrderTechnical.inputs_resolution_hash`, but does **not** satisfy the ordering half of the rule. Its re-resolution can derive an account from changed metadata and read it before the hash comparison happens, so that read reaches the coverage gate and is deliberately kept fatal — `processor_transaction_numscript.go` documents why softening it would spin the client against a missing declaration. A fixed, always-declared key like the revert target has no such window, which is what lets its check run first.
+
+Rejecting on mismatch is not the same as tolerating an under-declaration. A coverage miss must stay what [coverage-gate.md](coverage-gate.md) says it is — an admission bug — so the observation check runs *before* the gate can fire for this cause, and never in place of it.
+
 That is a different thing from the `attrCode` → resolver registry described in the next section, which **is** central. Conflating the two is what made the older wording confusing:
 
 - **no** central mapping from *proposal type* to *which keys it needs* — that lives with each producer;

@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ok200 is a simple handler that returns 200.
@@ -114,6 +116,29 @@ func TestHTTPAuthMiddleware_MissingToken_AnonymousReadScopes(t *testing.T) {
 	assert.True(t, HasScope(capturedScopes, ScopeLedgersRead))
 	assert.True(t, HasScope(capturedScopes, ScopeAccountsRead))
 	assert.False(t, HasScope(capturedScopes, ScopeTransactionsWrite))
+}
+
+func TestHTTPAuthMiddleware_AnonymousWriteCallerSnapshot(t *testing.T) {
+	t.Parallel()
+
+	mapping := DefaultMapping("ledger")
+	mapping[ScopeMappingAnonymousKey] = []Scope{ScopeTransactionsWrite}
+
+	var captured *commonpb.CallerSnapshot
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured = ResolveCallerSnapshot(r.Context())
+		w.WriteHeader(http.StatusOK)
+	})
+	cfg := AuthConfig{Enabled: true, ScopeMapping: mapping}
+	handler := HTTPAuthMiddleware(cfg)(RequireScope(cfg, ScopeTransactionsWrite)(inner))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/v3/default/transactions", nil)
+	handler.ServeHTTP(w, r)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.NotNil(t, captured.GetAnonymous())
+	require.Equal(t, []string{string(ScopeTransactionsWrite)}, captured.GetAnonymous().GetScopes())
 }
 
 func TestHTTPAuthMiddleware_ValidToken_ClaimsInContext(t *testing.T) {

@@ -10,7 +10,7 @@ The Ledger Operator manages `Cluster` custom resources to automate the lifecycle
 - **Persistent storage** for WAL and data volumes
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
-- **Backups** to S3-compatible backends
+- **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
 - **Credentials** for application-level access control
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
@@ -60,6 +60,17 @@ pass lists the registry again and leaves the external index unowned. Existing
 ownership entries are retained: replacement of a previously tracked index and
 recovery after a lost successful standalone index-create response or status update remain
 separate ownership concerns.
+
+## Pyroscope credentials
+
+`spec.monitoring.pyroscope.authTokenFrom` and `basicAuthPasswordFrom` accept
+`{name, key}` references to Secrets in the Cluster namespace. The operator
+renders required `valueFrom.secretKeyRef` entries only when profiling is enabled;
+it never copies those credential bytes into the Cluster or Pod template.
+Plaintext `authToken` and `basicAuthPassword` fields are not supported.
+Reference changes trigger a rollout; rotating Secret contents requires a Pod
+restart. See [profiling deployment](../../docs/ops/deployment.md#pyroscope-continuous-profiling)
+for examples and missing-reference behavior.
 
 ## Backup scheduling
 

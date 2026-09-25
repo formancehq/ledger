@@ -36,3 +36,20 @@ func TestCheckedNextSequence(t *testing.T) {
 		require.Equal(t, map[string]string{"counter": "auditSequence"}, err.Metadata())
 	})
 }
+
+func TestCheckedNextLedgerID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("advances", func(t *testing.T) {
+		next, err := CheckedNextLedgerID(41)
+		require.Nil(t, err)
+		require.Equal(t, uint32(42), next)
+	})
+
+	t.Run("rejects wrap", func(t *testing.T) {
+		next, err := CheckedNextLedgerID(math.MaxUint32)
+		require.Zero(t, next)
+		require.NotNil(t, err)
+		require.Equal(t, SequenceCounterLedgerID, err.Counter)
+	})
+}

@@ -1067,49 +1067,49 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 }
 
 func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
-	if err != nil {
-		return nil, fmt.Errorf("creating account prefix iterator: %w", err)
-	}
-
-	trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
-		Kind:   "PebbleAccount",
-		Prefix: "pebble:attributes",
-	})
-
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+		if err != nil {
+			return nil, fmt.Errorf("creating account prefix iterator: %w", err)
+		}
+		trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
+			Label: fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix), Kind: "PebbleAccount", Prefix: "pebble:attributes",
+		})
+
 		return trackedAccount, nil
 	}
-	// TRANSACTIONS target: translate matching accounts -> transaction IDs
+
+	accountIter, err := readstore.NewAccountTxAddressPrefixIterator(
+		ctx.indexReader, ctx.kb, ctx.ledgerName, addrPrefix, addressRolePrefix(role),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating account transaction address prefix iterator: %w", err)
+	}
+	trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
+		Label: fmt.Sprintf("AccountTxAddressPrefixIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
+		Kind:  "AccountTxAddressPrefix", Prefix: addressRoleBucketLabel(role),
+	})
 	var accountStats *IteratorStats
 	if ctx.profile != nil {
 		accountStats = ctx.profile.Root
 	}
-
 	addrTxIter := readstore.NewAddressTxIterator(ctx.indexReader, ctx.kb, ctx.ledgerName, trackedAccount, addressRolePrefix(role))
 
 	return trackIterator(addrTxIter, ctx.profile, &IteratorStats{
-		Label:    fmt.Sprintf("AddressTxIterator(%s)", ctx.ledgerName),
-		Kind:     "AddressTx",
-		Prefix:   addressRoleBucketLabel(role),
+		Label: fmt.Sprintf("AddressTxIterator(%s)", ctx.ledgerName), Kind: "AddressTx", Prefix: addressRoleBucketLabel(role),
 		Children: []*IteratorStats{accountStats},
 	}), nil
 }
 
 func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
-	// Check if the exact account exists in Pebble by looking for any attribute key
-	// with prefix [0xF1][ledger\x00][address\x00]
-	exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
-	if err != nil {
-		return nil, fmt.Errorf("checking account existence: %w", err)
-	}
-
-	if !exists {
-		return readstore.NewSliceIterator(nil), nil
-	}
-
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+		if err != nil {
+			return nil, fmt.Errorf("checking account existence: %w", err)
+		}
+		if !exists {
+			return readstore.NewSliceIterator(nil), nil
+		}
 		iter := readstore.NewSliceIterator([][]byte{[]byte(exactAddr)})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{

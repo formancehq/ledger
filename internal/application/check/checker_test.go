@@ -875,6 +875,21 @@ func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.Acco
 	}
 }
 
+func removeAccountTypeOrder(ledger, name string) *raftcmdpb.Order {
+	return &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: ledger,
+				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
+					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_RemoveAccountType{
+						RemoveAccountType: &raftcmdpb.RemoveAccountTypeOrder{Name: name},
+					}},
+				},
+			},
+		},
+	}
+}
+
 func deleteLedgerOrder(name string) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -931,6 +946,21 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 // revertTransactionOrder builds a revert order carrying only caller intent.
 // The FSM sources the original postings from the target's stored
 // TransactionState, so the transaction must have been created earlier.
+//
+// Technical carries the digest of what admission observed of that target, which
+// apply re-derives and requires; the engine reads its own stored state here for
+// the same reason admission reads the store.
+func (e *testEngine) revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
+	order := revertTransactionOrder(ledger, txID)
+
+	stored := e.transactionStates[string(domain.TransactionKey{LedgerName: ledger, ID: txID}.Bytes())]
+	order.Technical = &raftcmdpb.OrderTechnical{
+		RevertTargetDigest: domain.RevertTargetDigest(stored.GetPostings(), stored != nil),
+	}
+
+	return order
+}
+
 func revertTransactionOrder(ledger string, txID uint64) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
@@ -1134,7 +1164,7 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 8: Revert a transaction ---
 	// Revert the first user:alice USD transfer (tx ID 4 in trading ledger, 0-indexed tx=3 -> 4th tx)
 	// The postings were: bank -> user:alice 1000 USD
-	engine.processAndCommit(revertTransactionOrder("trading", 4))
+	engine.processAndCommit(engine.revertTransactionOrder("trading", 4))
 
 	// --- Step 9: More transactions after revert ---
 	engine.processAndCommit(createTransactionOrder("trading", false,
@@ -1198,6 +1228,139 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	require.Empty(t, errors, "ephemeral purge must use the proposal boundary, not each transaction log")
+}
+
+func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+
+	batch := engine.store.OpenWriteSession()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(5),
+		Output: commonpb.NewUint256FromUint64(5),
+	})
+	require.NoError(t, err)
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Key:        "stale",
+	}
+	_, err = engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var volumeMismatch, metadataMismatch bool
+	for _, checkErr := range errors {
+		if checkErr.GetAccount() != "orders:1" {
+			continue
+		}
+		switch checkErr.GetErrorType() {
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH:
+			volumeMismatch = true
+		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH:
+			metadataMismatch = true
+		}
+	}
+	require.True(t, volumeMismatch, "checker must reject a volume surviving an account-wide purge")
+	require.True(t, metadataMismatch, "checker must reject metadata surviving an account-wide purge")
+}
+
+func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "EUR", 3),
+	))
+
+	batch := engine.store.OpenWriteSession()
+	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
+	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
+		Input:  commonpb.NewUint256FromUint64(0),
+		Output: commonpb.NewUint256FromUint64(0),
+	})
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var found bool
+	for _, checkErr := range errors {
+		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+			checkErr.GetAccount() == "orders:1" && checkErr.GetAsset() == "USD" {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "checker must reject a fabricated row for the previously purged USD cell: %v", errors)
+}
+
+func TestCheckerRejectsMetadataSurvivingDeletionAfterAccountRecreation(t *testing.T) {
+	t.Parallel()
+
+	engine := newTestEngine(t)
+	engine.processAndCommit(createLedgerOrder("ledger"))
+	engine.processAndCommit(addAccountTypeOrder(
+		"ledger", "orders", "orders:{id}",
+		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("world", "orders:1", "USD", 5),
+	))
+	engine.processAndCommit(createTransactionOrder("ledger", true,
+		newPosting("orders:1", "world", "USD", 5),
+	))
+	engine.processAndCommit(removeAccountTypeOrder("ledger", "orders"))
+	engine.processAndCommit(saveAccountMetadataOrder("ledger", "orders:1", map[string]string{
+		"status": "recreated",
+	}))
+	engine.processAndCommit(deleteAccountMetadataOrder("ledger", "orders:1", "status"))
+
+	batch := engine.store.OpenWriteSession()
+	metadataKey := domain.MetadataKey{
+		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
+		Key:        "status",
+	}
+	_, err := engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	require.NoError(t, err)
+	require.NoError(t, batch.Commit())
+
+	errors := collectCheckErrors(t, engine.store, engine.attrs)
+	var found bool
+	for _, checkErr := range errors {
+		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH &&
+			checkErr.GetAccount() == "orders:1" &&
+			strings.Contains(checkErr.GetMessage(), "unexpected metadata for orders:1/status") {
+			found = true
+
+			break
+		}
+	}
+	require.True(t, found, "checker must reject metadata surviving a deletion in the recreated account: %v", errors)
 }
 
 // TestCheckerDetectsSequenceGap verifies the checker detects missing log entries.
@@ -1370,10 +1533,10 @@ func TestCheckerManyOperationTypes(t *testing.T) {
 	}))
 
 	// Revert the user:alpha -> user:beta transfer (tx ID 11: 4 funding + 5 distribution + 1 multi + 1 alpha->beta)
-	engine.processAndCommit(revertTransactionOrder("main", 11))
+	engine.processAndCommit(engine.revertTransactionOrder("main", 11))
 
 	// Revert the escrow -> beneficiary:1 transfer
-	engine.processAndCommit(revertTransactionOrder("secondary", 2))
+	engine.processAndCommit(engine.revertTransactionOrder("secondary", 2))
 
 	// More transactions after reverts
 	engine.processAndCommit(createTransactionOrder("main", false,

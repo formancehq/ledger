@@ -19,7 +19,9 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/application/accountlifecycle"
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -60,7 +62,6 @@ type Admission struct {
 	builder         *plan.Builder
 	attrs           *attributes.Attributes
 	numscriptCache  *numscript.NumscriptCache
-	authEnabled     bool
 	waitLeaderReady func(context.Context) error
 	// auditProjectionState is node-local admission state. It may reject a
 	// checkpoint proposal before Raft, but never affects deterministic apply.
@@ -102,6 +103,7 @@ type Admission struct {
 	ordersPreparationDurationHistogram  metric.Int64Histogram
 	scriptsDurationHistogram            metric.Int64Histogram
 	responseResolutionDurationHistogram metric.Int64Histogram
+	lifecycleSerializer                 *accountlifecycle.Serializer
 }
 
 // phaseBucketBoundaries are the explicit bucket boundaries for the µs-scale
@@ -126,21 +128,18 @@ func WithMetrics() func(*Admission) {
 	}
 }
 
-// WithAuthEnabled marks authentication as enabled, so the admission path can
-// flag user writes committed without an attributable caller (see
-// observeCallerSnapshot).
-func WithAuthEnabled() func(*Admission) {
-	return func(a *Admission) {
-		a.authEnabled = true
-	}
-}
-
 // WithAuditProjectionState prevents every admission trigger (public Apply,
 // ClusterService and the automatic scheduler) from committing a query
 // checkpoint whose audit projection cannot be materialized on this node.
 func WithAuditProjectionState(state func() (disabled, rebuilding bool)) func(*Admission) {
 	return func(a *Admission) {
 		a.auditProjectionState = state
+	}
+}
+
+func WithLifecycleSerializer(serializer *accountlifecycle.Serializer) func(*Admission) {
+	return func(a *Admission) {
+		a.lifecycleSerializer = serializer
 	}
 }
 
@@ -159,16 +158,17 @@ func NewAdmission(
 	opts ...func(*Admission),
 ) *Admission {
 	a := &Admission{
-		store:           store,
-		logger:          logger,
-		proposer:        proposer,
-		builder:         builder,
-		writeGate:       writeGate,
-		keyStore:        keyStore,
-		sharedState:     sharedState,
-		attrs:           attrs,
-		numscriptCache:  numscriptCache,
-		waitLeaderReady: waitLeaderReady,
+		store:               store,
+		logger:              logger,
+		proposer:            proposer,
+		builder:             builder,
+		writeGate:           writeGate,
+		keyStore:            keyStore,
+		sharedState:         sharedState,
+		attrs:               attrs,
+		numscriptCache:      numscriptCache,
+		waitLeaderReady:     waitLeaderReady,
+		lifecycleSerializer: accountlifecycle.NewSerializer(),
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -329,7 +329,7 @@ func NewAdmission(
 
 	missingCallerCounter, err := meter.Int64Counter(
 		"admission.audit.missing_caller",
-		metric.WithDescription("Committed user writes with no caller snapshot while auth is enabled"),
+		metric.WithDescription("Committed writes with a missing caller snapshot or unset principal"),
 		metric.WithUnit("1"),
 	)
 	if err != nil {
@@ -409,25 +409,18 @@ func NewAdmission(
 	return a
 }
 
-// observeCallerSnapshot flags audit-attribution gaps on the write path. With
-// auth enabled, a committed user write should always carry a caller: a nil
-// snapshot means an authenticated identity was lost or an anonymous write
-// slipped through, and a user source (issuer/key_id) with an empty subject is
-// the Ed25519-token-without-`sub` case where only the key id identifies the
-// caller. System actions carry a system_component source and are exempt.
+// observeCallerSnapshot flags attribution gaps while admission remains
+// tolerant of malformed snapshots. EN-2035 makes these conditions hard
+// admission failures.
 func (a *Admission) observeCallerSnapshot(ctx context.Context, snap *commonpb.CallerSnapshot) {
-	if !a.authEnabled {
-		return
-	}
-
-	if snap == nil {
-		a.logger.Errorf("committed write has no caller snapshot while auth is enabled: audit entry will be unattributed")
+	if snap == nil || snap.GetPrincipal() == nil {
+		a.logger.Errorf("committed write has a missing caller snapshot or unset principal: audit entry will be unattributed")
 		a.missingCallerCounter.Add(ctx, 1)
 
 		return
 	}
 
-	id := snap.GetIdentity()
+	id := snap.GetAuthenticated().GetIdentity()
 	switch id.GetSource().(type) {
 	case *commonpb.CallerIdentity_KeyId, *commonpb.CallerIdentity_Issuer:
 		if id.GetSubject() == "" {
@@ -636,6 +629,11 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	if err := a.resolveScriptsAndEnrichNeeds(ctx, orders, overlay, needs, perOrder, batch.key != ""); err != nil {
 		return nil, err
 	}
+	releaseLifecycle, err := a.expandAccountLifecycleCoverage(ctx, needs, perOrder, orders)
+	if err != nil {
+		return nil, fmt.Errorf("expanding account lifecycle coverage: %w", err)
+	}
+	defer func() { releaseLifecycle() }()
 	stopScripts()
 
 	// Step 3-5: Build preloads via shared Builder (no lock)
@@ -659,15 +657,12 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	operations := make([]plan.WriteOperation, len(orders))
 	cmdOrders := cmd.GetOrders()
 	for i := range orders {
-		// coverage_bits lives on OrderTechnical; create it nil-safely (may already
-		// exist from the inputs-resolution-hash pass above) before pointing Build
-		// at the field it fills.
-		if cmdOrders[i].GetTechnical() == nil {
-			cmdOrders[i].Technical = &raftcmdpb.OrderTechnical{}
-		}
+		// coverage_bits lives on OrderTechnical, which may already exist from the
+		// inputs-resolution-hash pass above; orderTechnical is nil-safe either
+		// way, so Build can be pointed straight at the field it fills.
 		operations[i] = plan.WriteOperation{
 			Coverage: perOrder[i],
-			Target:   &cmdOrders[i].Technical.CoverageBits,
+			Target:   &orderTechnical(cmdOrders[i]).CoverageBits,
 		}
 	}
 
@@ -791,6 +786,14 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 		proposeSpan.End()
 		guard.ReleaseLoaders()
 		a.proposeQueueInflight.Add(-1)
+		if ctx.Err() != nil {
+			// Propose already queued the command. Cancellation only stops this
+			// caller's acceptance wait; the FSM can still apply it later. Keep
+			// lifecycle serialization until that definitive completion.
+			release := releaseLifecycle
+			releaseLifecycle = func() {}
+			releaseLifecycleWhenFSMCompletes(fsmFuture, release)
+		}
 
 		return nil, err
 	}
@@ -814,6 +817,15 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	defer stopFSMWait()
 
 	result, err := fsmFuture.Wait(ctx)
+	if err != nil && ctx.Err() != nil {
+		// The proposal was accepted by Raft, so caller cancellation only stops
+		// this request's wait; it does not mean apply has finished. Transfer the
+		// lifecycle-lock release to an uncancellable waiter so a concurrent
+		// admission cannot enumerate the same account against pre-apply state.
+		release := releaseLifecycle
+		releaseLifecycle = func() {}
+		releaseLifecycleWhenFSMCompletes(fsmFuture, release)
+	}
 
 	// Observe caller attribution only when the FSM actually wrote an audit
 	// entry for this proposal — a success or a committed business-rule failure.
@@ -880,6 +892,214 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	}
 
 	return &domain.ApplyResult{Logs: logs, Replayed: result.Replayed}, nil
+}
+
+func releaseLifecycleWhenFSMCompletes(fsmFuture *futures.Future[state.ApplyResult], release func()) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_, _ = fsmFuture.Wait(ctx)
+		release()
+	}()
+}
+
+// expandAccountLifecycleCoverage enumerates every persisted volume and metadata
+// key owned by an account already mentioned by an order's coverage. The FSM
+// uses this closed key set to decide and apply an account-wide EPHEMERAL purge
+// without scanning Pebble or bypassing the coverage gate.
+func (a *Admission) expandAccountLifecycleCoverage(ctx context.Context, aggregate *plan.Coverage, perOrder []*plan.Coverage, orders []*raftcmdpb.Order) (func(), error) {
+	accountsToLock := make(map[domain.AccountKey]struct{})
+	lockAll := false
+	perOrderAccounts := make([]map[domain.AccountKey]struct{}, len(perOrder))
+
+	// Lock every touched account before reading account-type snapshots. Type
+	// mutations take every stripe because a pattern can change the persistence
+	// class of any address in the ledger. This makes the type snapshot and the
+	// subsequent key enumeration one serialized lifecycle operation.
+	for orderIndex, coverage := range perOrder {
+		accounts, err := accountlifecycle.Accounts(coverage)
+		if err != nil {
+			return nil, err
+		}
+		for account := range accounts {
+			accountsToLock[account] = struct{}{}
+		}
+		perOrderAccounts[orderIndex] = accounts
+	}
+	for _, order := range orders {
+		apply := order.GetLedgerScoped().GetApply()
+		if apply == nil {
+			continue
+		}
+		switch apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+			lockAll = true
+		}
+	}
+	release, err := a.lifecycleSerializer.Acquire(ctx, accountsToLock, lockAll)
+	if err != nil {
+		return nil, err
+	}
+	success := false
+	defer func() {
+		if !success {
+			release()
+		}
+	}()
+	compiledByLedger, err := a.accountLifecycleTypeSnapshots(orders)
+	if err != nil {
+		return nil, err
+	}
+	handle, err := a.store.NewReadHandle()
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = handle.Close() }()
+
+	// Account-type mutations can reclassify accounts without directly touching
+	// any account row. Enumerate persisted ledger-scoped rows while all lifecycle
+	// stripes are held so newly EPHEMERAL accounts enter both coverage and the
+	// FSM purge candidate set.
+	for orderIndex, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		apply := ledgerOrder.GetApply()
+		if apply == nil {
+			continue
+		}
+		switch apply.GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType, *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+		default:
+			continue
+		}
+		ledger := ledgerOrder.GetLedger()
+		for _, spec := range []struct{ attrCode byte }{
+			{dal.SubAttrVolume},
+			{dal.SubAttrMetadata},
+		} {
+			canonicalPrefix := domain.LedgerScopedPrefix(ledger)
+			lower := append([]byte{dal.ZoneAttributes, spec.attrCode}, canonicalPrefix...)
+			upper := append([]byte(nil), lower...)
+			upper[len(upper)-1]++
+			iter, iterErr := dal.NewBoundedIter(handle, lower, upper)
+			if iterErr != nil {
+				return nil, iterErr
+			}
+			for iter.First(); iter.Valid(); iter.Next() {
+				canonical := append([]byte(nil), iter.Key()[2:]...)
+				var account domain.AccountKey
+				if spec.attrCode == dal.SubAttrVolume {
+					var key domain.VolumeKey
+					if err := key.Unmarshal(canonical); err != nil {
+						_ = iter.Close()
+
+						return nil, err
+					}
+					account = key.AccountKey
+				} else {
+					var key domain.MetadataKey
+					if err := key.Unmarshal(canonical); err != nil {
+						_ = iter.Close()
+
+						return nil, err
+					}
+					account = key.AccountKey
+				}
+				if accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[ledger]) {
+					perOrder[orderIndex].AddLifecycleCandidate(spec.attrCode, canonical)
+					aggregate.AddLifecycleCandidate(spec.attrCode, append([]byte(nil), canonical...))
+				}
+			}
+			if err := iter.Error(); err != nil {
+				_ = iter.Close()
+
+				return nil, err
+			}
+			if err := iter.Close(); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	for orderIndex, coverage := range perOrder {
+		accounts := perOrderAccounts[orderIndex]
+		for account := range accounts {
+			if !accountMatchesEphemeralSnapshot(account.Account, compiledByLedger[account.LedgerName]) {
+				continue
+			}
+			if err := accountlifecycle.AddPersistedRows(handle, account, coverage, aggregate); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	success = true
+
+	return release, nil
+}
+
+// accountLifecycleTypeSnapshots returns every account-type view that can be
+// observed while the proposal is processed. Keeping the intermediate views is
+// deliberately conservative: a skipped add/remove may leave either side of a
+// transition effective, and coverage must be sufficient for both outcomes.
+func (a *Admission) accountLifecycleTypeSnapshots(orders []*raftcmdpb.Order) (map[string][][]accounttype.CompiledType, error) {
+	typesByLedger := make(map[string]map[string]*commonpb.AccountType)
+	snapshots := make(map[string][][]accounttype.CompiledType)
+	load := func(ledger string) (map[string]*commonpb.AccountType, error) {
+		if types, ok := typesByLedger[ledger]; ok {
+			return types, nil
+		}
+		info, err := a.attrs.Ledger.Get(a.store, domain.LedgerKey{Name: ledger}.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		types := make(map[string]*commonpb.AccountType)
+		if info != nil {
+			for name, accountType := range info.GetAccountTypes() {
+				types[name] = accountType.CloneVT()
+			}
+		}
+		typesByLedger[ledger] = types
+		snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+
+		return types, nil
+	}
+
+	for _, order := range orders {
+		ledgerOrder := order.GetLedgerScoped()
+		if ledgerOrder == nil || ledgerOrder.GetApply() == nil {
+			continue
+		}
+		ledger := ledgerOrder.GetLedger()
+		types, err := load(ledger)
+		if err != nil {
+			return nil, err
+		}
+		switch data := ledgerOrder.GetApply().GetData().(type) {
+		case *raftcmdpb.LedgerApplyOrder_AddAccountType:
+			if accountType := data.AddAccountType.GetAccountType(); accountType != nil {
+				if _, exists := types[accountType.GetName()]; !exists {
+					types[accountType.GetName()] = accountType.CloneVT()
+					snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+				}
+			}
+		case *raftcmdpb.LedgerApplyOrder_RemoveAccountType:
+			delete(types, data.RemoveAccountType.GetName())
+			snapshots[ledger] = append(snapshots[ledger], accounttype.CompileTypes(types))
+		}
+	}
+
+	return snapshots, nil
+}
+
+func accountMatchesEphemeralSnapshot(account string, snapshots [][]accounttype.CompiledType) bool {
+	for _, compiled := range snapshots {
+		matched := accounttype.FindMatchingType(account, compiled)
+		if matched != nil && matched.GetPersistence() == commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *Admission) checkQueryCheckpointProjectionReady(reqs []*servicepb.Request) error {
@@ -1434,10 +1654,18 @@ func extractLedgerScopedNeeds(p *plan.Coverage, ls *raftcmdpb.LedgerScopedOrder,
 			// The reversed postings touch the same accounts as the original;
 			// admission resolved them at order-build time into the overlay
 			// sidecar (the order itself carries only caller intent).
-			originalPostings := overlay.revertOriginalPostingsFor(
-				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
-			)
-			for _, posting := range originalPostings {
+			//
+			// When the target was observed absent there is nothing to declare.
+			// That observation is bound into the order's revert_target_digest,
+			// so if apply finds the transaction after all it rejects the order
+			// before reading an undeclared volume instead of tripping the
+			// coverage gate.
+			// No state test: the loop declares one need per stored posting, and
+			// only a present observation ever carries any, so unobserved and
+			// absent both fall through declaring nothing. bindRevertTargetDigest
+			// refuses the unobserved case before the order can reach Raft.
+			observation := overlay.revertTarget(ledgerName, applyData.RevertTransaction)
+			for _, posting := range observation.postings {
 				addVolumeNeed(p, ledgerName, posting.GetDestination(), posting.GetAsset(), posting.GetColor())
 				addVolumeNeed(p, ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor())
 			}
@@ -1601,15 +1829,30 @@ func (a *Admission) extractPreloadNeeds(ctx context.Context, orders []*raftcmdpb
 	return aggregate, perOrder, nil
 }
 
+// orderTechnical returns the order's OrderTechnical sub-message, creating it on
+// first use.
+//
+// Every admission-derived technical field goes through it — coverage bits, the
+// inputs-resolution hash, the preload-unavailable marker, the revert-target
+// digest — so the passes can run in any order and a new field cannot forget the
+// nil guard. Writing here does not touch the order's logical identity:
+// OrderTechnical is excluded wholesale from the idempotency and business-intent
+// hashes, which is what makes it the one mutation invariant #10 permits on an
+// accepted order before audit capture.
+func orderTechnical(order *raftcmdpb.Order) *raftcmdpb.OrderTechnical {
+	if order.GetTechnical() == nil {
+		order.Technical = &raftcmdpb.OrderTechnical{}
+	}
+
+	return order.GetTechnical()
+}
+
 // markPreloadUnavailable stamps the OrderTechnical PreloadUnavailable flag — the
 // only mutation permitted on an accepted order before audit capture (invariant
 // #10 exempts OrderTechnical) — and reports forwarded=true so the caller
 // forwards the order to the FSM replay gate.
 func (a *Admission) markPreloadUnavailable(order *raftcmdpb.Order) bool {
-	if order.GetTechnical() == nil {
-		order.Technical = &raftcmdpb.OrderTechnical{}
-	}
-	order.Technical.PreloadUnavailable = true
+	orderTechnical(order).PreloadUnavailable = true
 
 	return true
 }
@@ -1818,10 +2061,19 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// delta is the inverse of the original: source +amount, dest
 			// −amount relative to the original posting. The postings come from
 			// the sidecar admission filled at order-build time, not the order.
-			originalPostings := overlay.revertOriginalPostingsFor(
-				domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()},
-			)
-			for _, posting := range originalPostings {
+			//
+			// A target admission observed as absent contributes nothing: apply
+			// will reject this order — as not-found, as a stale observation, or
+			// as a target this batch creates — so it neither moves balances nor
+			// marks the transaction reverted. Folding it as a zero-delta revert
+			// would leave the effect accumulator claiming a reversion that never
+			// happens, and mispredict a later order in the same batch.
+			observation := overlay.revertTarget(ledgerName, applyData.RevertTransaction)
+			if !observation.found() {
+				continue
+			}
+
+			for _, posting := range observation.postings {
 				amount := posting.GetAmount().ToBigInt()
 				effects.addBalanceDelta(
 					domain.NewVolumeKey(ledgerName, posting.GetSource(), posting.GetAsset(), posting.GetColor()),
@@ -1836,7 +2088,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// Record the reverted tx so a later same-batch revert of it is
 			// predicted to skip (TRANSACTION_ALREADY_REVERTED), matching the
 			// FSM's mutated reversion bitset.
-			effects.recordReverted(domain.TransactionKey{LedgerName: ledgerName, ID: applyData.RevertTransaction.GetTransactionId()})
+			effects.recordReverted(revertTargetKey(ledgerName, applyData.RevertTransaction))
 
 			continue
 		case *raftcmdpb.LedgerApplyOrder_AddMetadata:
@@ -2024,10 +2276,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// admission and apply). Nil for fully-static scripts (nothing read) —
 			// the FSM then skips the check. Technical is created nil-safely and
 			// shared with the coverage-bits pass (order-independent).
-			if order.GetTechnical() == nil {
-				order.Technical = &raftcmdpb.OrderTechnical{}
-			}
-			order.Technical.InputsResolutionHash = discovered.InputsHash
+			orderTechnical(order).InputsResolutionHash = discovered.InputsHash
 
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
@@ -2120,6 +2369,15 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		}
 
 		applyOrder.SkippableReasons = skippable
+
+		// Bind what the revert-target lookup above observed. The FSM re-derives
+		// this digest from the transaction state it already reads through the
+		// coverage gate; a mismatch means admission declared coverage against a
+		// view apply does not share, and the order is rejected before it can
+		// read an undeclared volume.
+		if err := bindRevertTargetDigest(order, reqType.Apply.GetLedger(), applyOrder, overlay); err != nil {
+			return nil, err
+		}
 
 		wrapLedgerScoped(order, &raftcmdpb.LedgerScopedOrder{
 			Ledger: reqType.Apply.GetLedger(),
@@ -2484,37 +2742,33 @@ func (a *Admission) convertApplyRequest(ctx context.Context, apply *servicepb.Le
 			return nil, err
 		}
 
-		// Resolve the original postings so admission can declare volume
-		// coverage for each posting account (invariant #9 — the FSM's
-		// applyPosting call reads Volumes().Get through the coverage gate).
-		// They are recorded in the overlay sidecar for the preload and
-		// intra-bulk effect passes, NOT attached to the order: the FSM
-		// re-derives them from the coverage-gated TransactionState, so the
+		// Observe the target so admission can declare volume coverage for each
+		// posting account (invariant #9 — the FSM's applyPosting call reads
+		// Volumes().Get through the coverage gate). The observation is recorded
+		// in the overlay sidecar for the preload, intra-bulk effect and
+		// digest-binding passes, NOT attached to the order: the FSM re-derives
+		// the postings from the coverage-gated TransactionState, so the
 		// audit-bound order carries only caller intent.
 		//
-		// A fetch miss (missing ledger or missing tx) yields nil postings
-		// and the proposal still enters Raft; the FSM apply is the audit
+		// A miss (missing ledger or missing tx) is an absent observation, not an
+		// error, and the proposal still enters Raft; the FSM apply is the audit
 		// authority for the resulting business rejection (invariant #8) —
 		// processApply.loadBoundaries audits missing ledgers,
 		// processRevertTransaction's boundary check audits missing txs.
-		originalPostings, err := a.getTransactionPostings(apply.GetLedger(), txID)
+		observation, err := a.observeRevertTarget(apply.GetLedger(), txID)
 		if err != nil {
-			return nil, fmt.Errorf("getting original transaction postings: %w", err)
+			return nil, fmt.Errorf("observing revert target: %w", err)
 		}
 
-		overlay.recordRevertOriginalPostings(
-			domain.TransactionKey{LedgerName: apply.GetLedger(), ID: txID},
-			originalPostings,
-		)
-
-		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{
-			RevertTransaction: &raftcmdpb.RevertTransactionOrder{
-				TransactionId:   txID,
-				Force:           data.RevertTransaction.GetForce(),
-				AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
-				Metadata:        data.RevertTransaction.GetMetadata(),
-			},
+		revert := &raftcmdpb.RevertTransactionOrder{
+			TransactionId:   txID,
+			Force:           data.RevertTransaction.GetForce(),
+			AtEffectiveDate: data.RevertTransaction.GetAtEffectiveDate(),
+			Metadata:        data.RevertTransaction.GetMetadata(),
 		}
+		overlay.recordRevertTarget(apply.GetLedger(), revert, observation)
+
+		order.Data = &raftcmdpb.LedgerApplyOrder_RevertTransaction{RevertTransaction: revert}
 	default:
 		return nil, fmt.Errorf("unsupported apply data type: %T", apply.GetAction().GetData())
 	}
@@ -2606,32 +2860,37 @@ func (a *Admission) resolveRevertTarget(_ context.Context, _ string, payload *se
 	return id, nil
 }
 
-// getTransactionPostings reads the target transaction's postings directly
+// observeRevertTarget reads the target transaction's postings directly
 // from the Transaction attribute (single Pebble point read, no log scan).
 // Admission needs them to declare volume coverage for the reversed
 // postings' accounts (invariant #9). A missing ledger or missing tx is
 // NOT a business rejection here — invariant #8 says every business
 // decision must appear in the audit chain, and only the FSM apply path
-// writes audit entries. On ErrNotFound the fetch returns (nil, nil) and
-// the proposal proceeds; the FSM apply's processApply → loadBoundaries
-// audits ErrLedgerNotFound, processRevertTransaction's
+// writes audit entries. On ErrNotFound the fetch returns an absent
+// observation and the proposal proceeds; the FSM apply's processApply →
+// loadBoundaries audits ErrLedgerNotFound, processRevertTransaction's
 // `txID >= boundaries.GetNextTransactionId()` check audits
 // ErrTransactionNotFound.
-func (a *Admission) getTransactionPostings(ledgerName string, transactionID uint64) ([]*commonpb.Posting, error) {
+//
+// It returns the observation rather than (postings, found) so no call site can
+// keep the postings and drop the presence bit: the two are one fact, and an
+// absent target must stay distinguishable from a present one for the digest
+// bound into the order (see domain.RevertTargetDigest).
+func (a *Admission) observeRevertTarget(ledgerName string, transactionID uint64) (revertTargetObservation, error) {
 	canonical := domain.TransactionKey{LedgerName: ledgerName, ID: transactionID}.Bytes()
 
 	state, err := a.attrs.Transaction.Get(a.store, canonical)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, nil
+			return absentRevertTarget(), nil
 		}
 
-		return nil, fmt.Errorf("reading transaction state: %w", err)
+		return revertTargetObservation{}, fmt.Errorf("reading transaction state: %w", err)
 	}
 
 	if state == nil {
-		return nil, nil
+		return absentRevertTarget(), nil
 	}
 
-	return state.GetPostings(), nil
+	return presentRevertTarget(state.GetPostings()), nil
 }

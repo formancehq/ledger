@@ -126,3 +126,30 @@ func TestWriteBatchReverseMapRangeOverlayMatchesCommittedOrder(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteBatchSameSequenceDeleteOverridesAdd(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	kb := dal.NewKeyBuilder()
+	const ledger, field, entity = "test", "status", "ephemeral:1"
+	encoded := EncodeMetadataValue(nil, commonpb.NewStringValue("open"))
+	reverseKey := AccountReverseMapKeyV(kb, ledger, entity, field, 1)
+
+	session := store.NewBatch()
+	wb := NewWriteBatch()
+	wb.Init(session)
+	wb.SetEventSequence(7)
+	require.NoError(t, wb.InsertMetadataIndexV(kb, reverseKey, ledger, NamespaceAccount, field, 1, encoded, []byte(entity)))
+	require.NoError(t, wb.DeleteMetadataEntryWithPreviousV(kb, reverseKey, ledger, NamespaceAccount, field, 1, encoded, []byte(entity)))
+	require.NoError(t, wb.Flush())
+
+	_, closer, err := store.DB().Get(MetadataIndexEventKeyV(kb, ledger, NamespaceAccount, field, 1, encoded, []byte(entity), 7, MetadataEventAdd))
+	if closer != nil {
+		require.NoError(t, closer.Close())
+	}
+	require.ErrorIs(t, err, pebble.ErrNotFound)
+	_, closer, err = store.DB().Get(MetadataIndexEventKeyV(kb, ledger, NamespaceAccount, field, 1, encoded, []byte(entity), 7, MetadataEventDel))
+	require.NoError(t, err)
+	require.NoError(t, closer.Close())
+}

@@ -12,6 +12,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
@@ -118,6 +119,16 @@ type Builder struct {
 	// batch skips a redundant Get + Put. Reset per batch (initBatch) so it does
 	// not grow unbounded across a long backfill.
 	seenAcctAsset map[string]struct{}
+	// seenAcctAssetByAccount makes same-batch purge cleanup proportional to the
+	// purged account's asset cells rather than every membership in the batch.
+	seenAcctAssetByAccount map[domain.AccountKey]map[string]struct{}
+	seenAcctAssetReverse   map[string]string
+	// deletedAcctAsset holds exact account-by-asset keys deleted earlier in the
+	// in-flight batch. Committed Pebble still exposes those rows until commit,
+	// so a later re-fund must bypass the committed-state dedup read and queue a
+	// Put after the Delete.
+	deletedAcctAsset      map[string]struct{}
+	purgedCurrentAccounts map[domain.AccountKey]struct{}
 
 	// deletedThisBatch holds the names of ledgers whose read indexes were
 	// range-deleted earlier in the in-flight batch (DeleteLedger). The
@@ -733,6 +744,10 @@ func NewBuilder(
 func (b *Builder) initBatch(batch *dal.WriteSession) {
 	b.wb.Init(batch)
 	b.seenAcctAsset = make(map[string]struct{})
+	b.seenAcctAssetByAccount = make(map[domain.AccountKey]map[string]struct{})
+	b.seenAcctAssetReverse = make(map[string]string)
+	b.deletedAcctAsset = make(map[string]struct{})
+	b.purgedCurrentAccounts = make(map[domain.AccountKey]struct{})
 	b.deletedThisBatch = make(map[string]struct{})
 }
 

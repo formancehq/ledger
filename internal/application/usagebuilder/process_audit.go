@@ -322,6 +322,15 @@ func (b *Builder) dispatchOrder(
 		return b.dispatchRevertTransaction(ctx, handle, ledger, logSeq, state, entry)
 	}
 
+	// Account-wide lifecycle purges can be emitted on metadata or account-type
+	// logs. Those logs carry no transaction counters, but their volume
+	// annotations still update cardinality and eviction counters.
+	ann, err := b.readLog(ctx, handle, logSeq)
+	if err != nil {
+		return err
+	}
+	applyVolumeAnnotations(ledger, ann, state, entry)
+
 	return nil
 }
 
@@ -365,6 +374,15 @@ func (b *Builder) dispatchMirrorIngest(
 		}
 		if ann.postings > 0 {
 			state.addCounter(ledger, usagestore.CounterPosting, counterDelta(ann.postings))
+		}
+		applyVolumeAnnotations(ledger, ann, state, entry)
+	default:
+		// Mirrored metadata and account-type entries can trigger the same
+		// account-wide lifecycle purges as native apply orders. They carry no
+		// transaction counters, but their volume annotations still affect usage.
+		ann, err := b.readLog(ctx, handle, logSeq)
+		if err != nil {
+			return err
 		}
 		applyVolumeAnnotations(ledger, ann, state, entry)
 	}

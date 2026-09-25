@@ -84,10 +84,14 @@ func Execute(
 		}
 	}
 
-	// Validate mode compatibility
-	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES &&
-		pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		return nil, errors.New("AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries")
+	switch req.GetMode() {
+	case commonpb.QueryMode_QUERY_MODE_LIST:
+	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
+		if pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
+			return nil, ErrPreparedQueryAggregateTarget
+		}
+	default:
+		return nil, ErrQueryModeUnsupported
 	}
 
 	// The definition and volumes share the reserved main-store snapshot above.
@@ -168,32 +172,20 @@ func Execute(
 	}
 	defer iter.Close()
 
-	var resp *servicepb.ExecutePreparedQueryResponse
-
-	switch req.GetMode() {
-	case commonpb.QueryMode_QUERY_MODE_LIST:
-		resp, err = executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
-		if err != nil {
-			return nil, err
-		}
-
-	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
-		aggResult, aggErr := AggregateVolumes(handle, volumeAttr, ledgerInfo.GetName(), iter, AggregateOptions{})
-		if aggErr != nil {
-			return nil, aggErr
-		}
-
-		resp = &servicepb.ExecutePreparedQueryResponse{
-			Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
-				Aggregate: aggResult,
-			},
-		}
-
-	default:
-		return nil, fmt.Errorf("unknown query mode: %v", req.GetMode())
+	if req.GetMode() == commonpb.QueryMode_QUERY_MODE_LIST {
+		return executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
-	return resp, nil
+	aggResult, aggErr := AggregateVolumes(handle, volumeAttr, ledgerInfo.GetName(), iter, AggregateOptions{})
+	if aggErr != nil {
+		return nil, aggErr
+	}
+
+	return &servicepb.ExecutePreparedQueryResponse{
+		Result: &servicepb.ExecutePreparedQueryResponse_Aggregate{
+			Aggregate: aggResult,
+		},
+	}, nil
 }
 
 // executeList paginates entities from the iterator, enriches them into full

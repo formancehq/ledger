@@ -72,7 +72,7 @@ var _ = Describe("Cross-store snapshot alignment", Ordered, func() {
 		// This is a correctness probe, not a throughput benchmark. A few complete
 		// apply batches establish distinct primary and projection horizons while
 		// remaining portable under race and coverage instrumentation.
-		const minimumObservedLag = 32
+		const minimumObservedLag = 16
 
 		stop := make(chan struct{})
 

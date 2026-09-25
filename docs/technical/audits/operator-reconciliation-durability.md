@@ -119,6 +119,16 @@ corrections; explain their dependency.
   audit. The native audit and challenge remain read-only. Report diagnostics
   actually executed separately from proposed reproductions.
 
+### Pyroscope reference lifecycle (EN-2061)
+
+`authTokenFrom` and `basicAuthPasswordFrom` refer to externally managed Secrets
+in the Cluster namespace. Reference edits change the desired Pod template and
+trigger the existing rollout mechanism. In-place Secret content rotation requires
+an explicit Pod restart; the operator does not read or own these credentials.
+Missing referenced Secrets/keys prevent container startup. Evaluate transitions
+against that contract rather than assuming automatic content-based rollouts.
+Credential-byte disclosure is owned by `sensitive-data-exposure-boundaries`.
+
 ## Execution and publication
 
 After reviewing the manifest, commit it with a clean worktree. The trusted outer

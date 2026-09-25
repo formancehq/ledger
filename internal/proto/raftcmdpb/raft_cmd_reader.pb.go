@@ -90,6 +90,7 @@ type OrderTechnicalReader interface {
 	GetCoverageBits() []byte
 	GetInputsResolutionHash() []byte
 	GetPreloadUnavailable() bool
+	GetRevertTargetDigest() []byte
 	Mutate() *OrderTechnical
 }
 
@@ -105,6 +106,10 @@ func (r *orderTechnicalReadonly) GetInputsResolutionHash() []byte {
 
 func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
 	return (*OrderTechnical)(r).GetPreloadUnavailable()
+}
+
+func (r *orderTechnicalReadonly) GetRevertTargetDigest() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetRevertTargetDigest())
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {
@@ -5174,6 +5179,9 @@ type AttributeCoverageReader interface {
 	GetId() AttributeIDReader
 	GetAttrCode() uint32
 	GetValue() AttributeValueReader
+	GetCanonicalKey() []byte
+	GetPersisted() bool
+	GetLifecycleCandidate() bool
 	Mutate() *AttributeCoverage
 }
 
@@ -5197,6 +5205,18 @@ func (r *attributeCoverageReadonly) GetValue() AttributeValueReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *attributeCoverageReadonly) GetCanonicalKey() []byte {
+	return bytes.Clone((*AttributeCoverage)(r).GetCanonicalKey())
+}
+
+func (r *attributeCoverageReadonly) GetPersisted() bool {
+	return (*AttributeCoverage)(r).GetPersisted()
+}
+
+func (r *attributeCoverageReadonly) GetLifecycleCandidate() bool {
+	return (*AttributeCoverage)(r).GetLifecycleCandidate()
 }
 
 func (r *attributeCoverageReadonly) Mutate() *AttributeCoverage {

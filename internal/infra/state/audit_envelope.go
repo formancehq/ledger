@@ -38,12 +38,17 @@ var ErrAuditEntryMissingOutcome = errors.New("audit entry has no outcome (neithe
 // hand-rolled golden test in internal/domain/processing/hash_golden_test.go —
 // any drift between code and spec trips the golden test.
 //
-// CallerIdentity.source oneof tags:.
+// CallerSnapshot.principal and CallerIdentity.source oneof tags.
 const (
+	callerPrincipalNone          byte = 0
+	callerPrincipalAuthenticated byte = 1
+	callerPrincipalAnonymous     byte = 2
+	callerPrincipalSystem        byte = 3
+	callerPrincipalAuthDisabled  byte = 4
+
 	callerSourceNone   byte = 0
 	callerSourceIssuer byte = 1
 	callerSourceKeyID  byte = 2
-	callerSourceSystem byte = 3
 )
 
 // outcome_tag values in HashedHeaderPayload.
@@ -201,15 +206,29 @@ func buildAuditFailurePayload(f *auditpb.AuditFailure) []byte {
 func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
 	buf := make([]byte, 0, 64)
 
-	id := snap.GetIdentity()
+	switch principal := snap.GetPrincipal().(type) {
+	case *commonpb.CallerSnapshot_Authenticated:
+		buf = appendU8(buf, callerPrincipalAuthenticated)
+		buf = appendAuthenticatedCallerPayload(buf, principal.Authenticated)
+	case *commonpb.CallerSnapshot_Anonymous:
+		buf = appendU8(buf, callerPrincipalAnonymous)
+		buf = appendScopes(buf, principal.Anonymous.GetScopes())
+	case *commonpb.CallerSnapshot_System:
+		buf = appendU8(buf, callerPrincipalSystem)
+		buf = appendLenString(buf, principal.System.GetComponent())
+	case *commonpb.CallerSnapshot_AuthDisabled:
+		buf = appendU8(buf, callerPrincipalAuthDisabled)
+	default:
+		buf = appendU8(buf, callerPrincipalNone)
+	}
+
+	return buf
+}
+
+func appendAuthenticatedCallerPayload(buf []byte, caller *commonpb.AuthenticatedCaller) []byte {
+	id := caller.GetIdentity()
 	buf = appendLenString(buf, id.GetSubject())
 
-	// Source oneof: tag byte + length-prefixed value. Switch on the
-	// oneof wrapper type, NOT on the inner string value — otherwise a
-	// caller with Source set but value empty (e.g.
-	// CallerIdentity_Issuer{Issuer: ""}) is indistinguishable from
-	// Source absent, and an attacker could swap one for the other
-	// without breaking the envelope.
 	switch src := id.GetSource().(type) {
 	case *commonpb.CallerIdentity_Issuer:
 		buf = appendU8(buf, callerSourceIssuer)
@@ -217,24 +236,24 @@ func buildCallerSnapshotPayload(snap *commonpb.CallerSnapshot) []byte {
 	case *commonpb.CallerIdentity_KeyId:
 		buf = appendU8(buf, callerSourceKeyID)
 		buf = appendLenString(buf, src.KeyId)
-	case *commonpb.CallerIdentity_SystemComponent:
-		buf = appendU8(buf, callerSourceSystem)
-		buf = appendLenString(buf, src.SystemComponent)
 	default:
 		buf = appendU8(buf, callerSourceNone)
 		buf = appendLenBytes(buf, nil)
 	}
 
-	if snap.GetGod() {
+	if caller.GetGod() {
 		buf = appendU8(buf, 1)
 	} else {
 		buf = appendU8(buf, 0)
 	}
 
-	scopes := slices.Clone(snap.GetScopes())
+	return appendScopes(buf, caller.GetScopes())
+}
+
+func appendScopes(buf []byte, values []string) []byte {
+	scopes := slices.Clone(values)
 	slices.Sort(scopes)
 	buf = appendU32(buf, uint32(len(scopes)))
-
 	for _, scope := range scopes {
 		buf = appendLenString(buf, scope)
 	}
