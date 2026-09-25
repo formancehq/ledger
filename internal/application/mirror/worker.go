@@ -29,11 +29,12 @@ import (
 )
 
 const (
-	defaultBatchSize    = 100
-	defaultPollInterval = 5 * time.Second
-	initialBackoff      = 1 * time.Second
-	maxBackoff          = 60 * time.Second
-	backoffMultiplier   = 2.0
+	defaultBatchSize     = 100
+	defaultPollInterval  = 5 * time.Second
+	initialBackoff       = 1 * time.Second
+	maxBackoff           = 60 * time.Second
+	backoffMultiplier    = 2.0
+	lifecycleWaitTimeout = 30 * time.Second
 )
 
 // prefetchResult holds the result of a background log fetch started during
@@ -502,7 +503,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 
 	proposal := runResult.Proposal
 	fsmFuture := runResult.FSMFuture
-	releaseMirrorLifecycleWhenTerminal(ctx, fsmFuture, releaseLifecycle)
+	releaseMirrorLifecycleWhenTerminal(fsmFuture, releaseLifecycle)
 	releaseLifecycle = nil
 
 	// Start prefetching the next batch while waiting for Raft consensus.
@@ -588,12 +589,13 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 // The accepted proposal may still apply after worker cancellation; releasing
 // early would let a replacement snapshot pre-apply state and omit its effects.
 func releaseMirrorLifecycleWhenTerminal(
-	_ context.Context,
 	fsmFuture *futures.Future[state.ApplyResult],
 	release func(),
 ) {
 	go func() {
-		_, _ = fsmFuture.Wait(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), lifecycleWaitTimeout)
+		defer cancel()
+		_, _ = fsmFuture.Wait(ctx)
 		release()
 	}()
 }

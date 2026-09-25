@@ -27,7 +27,7 @@ func TestReleaseMirrorLifecycleWaitsForFSMTerminalResultAfterCancellation(t *tes
 	release, err := serializer.Acquire(ctx, map[domain.AccountKey]struct{}{account: {}}, false)
 	require.NoError(t, err)
 	future := futures.New[state.ApplyResult]()
-	releaseMirrorLifecycleWhenTerminal(ctx, future, release)
+	releaseMirrorLifecycleWhenTerminal(future, release)
 	cancel()
 
 	_, acquired := serializer.TryAcquire(account)

@@ -1184,9 +1184,12 @@ func TestAttributeReplayWriterPurgeShadowsCheckpointRowsUntilRefund(t *testing.T
 	require.NoError(t, seed.Commit())
 
 	require.NoError(t, writer.PurgeAccount("ledger", "hold:1", nil))
+	require.NoError(t, writer.verifyPurgedAccounts(map[domain.AccountKey]struct{}{
+		volumeKey.AccountKey: {},
+	}))
 	volume, err := writer.GetVolume(volumeKey.Bytes())
 	require.NoError(t, err)
-	require.Nil(t, volume, "range tombstone must shadow the checkpoint volume")
+	require.Nil(t, volume, "range tombstone must shadow the checkpoint volume after proposal verification")
 	require.NoError(t, writer.MoveMetadata(metadataKey.Bytes(), movedMetadataKey.Bytes()))
 	require.NotContains(t, writer.pendingMetadata, string(movedMetadataKey.Bytes()),
 		"purged checkpoint metadata must not be resurrected by a same-batch read")

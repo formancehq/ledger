@@ -1634,11 +1634,7 @@ func (w *attributeReplayWriter) GetVolume(canonicalKey []byte) (*raftcmdpb.Volum
 	if pair, ok := w.pendingVolumes[string(canonicalKey)]; ok {
 		return pair, nil
 	}
-	var key domain.VolumeKey
-	if err := key.Unmarshal(canonicalKey); err != nil {
-		return nil, err
-	}
-	if _, purged := w.derivedPurges[key.AccountKey]; purged {
+	if hasCanonicalPrefix(w.purgedVolumePrefixes, canonicalKey) {
 		return nil, nil
 	}
 
