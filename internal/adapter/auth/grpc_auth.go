@@ -308,3 +308,19 @@ func logAuthFailure(ctx context.Context, keyID, reason string, err error) {
 	span.RecordError(err)
 	span.SetStatus(otelcodes.Error, "auth failure: "+reason)
 }
+
+// Authenticate evaluates credentials from ctx using cfg and then checks
+// whether the caller is granted scope. It is a convenience wrapper around
+// EvaluateGRPCCredentials and AuthorizeGRPC for use in RPC handlers.
+func Authenticate(ctx context.Context, cfg AuthConfig, scope Scope) (context.Context, error) {
+	ctx, err := EvaluateGRPCCredentials(ctx, cfg)
+	if err != nil {
+		return ctx, err
+	}
+
+	if err := AuthorizeGRPC(ctx, scope); err != nil {
+		return ctx, err
+	}
+
+	return ctx, nil
+}
