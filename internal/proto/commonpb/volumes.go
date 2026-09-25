@@ -191,18 +191,10 @@ func (v *VolumesWithBalance) MarshalJSON() ([]byte, error) {
 }
 
 func parseCanonicalBigUint(decimal string) (*BigUint, error) {
-	// Validate canonical form: non-empty, no leading zeros (except "0" itself),
-	// no sign, all digits. This mirrors decodeCanonicalDecimal for unsigned integers.
-	if decimal == "" ||
-		(strings.HasPrefix(decimal, "0") && len(decimal) > 1) ||
-		strings.HasPrefix(decimal, "+") ||
-		strings.HasPrefix(decimal, "-") {
-		return nil, fmt.Errorf("invalid non-canonical integer %q", decimal)
-	}
-	for _, ch := range decimal {
-		if ch < '0' || ch > '9' {
-			return nil, fmt.Errorf("invalid integer %q", decimal)
-		}
+	// Delegate to the shared validator so SQL scan and JSON decode
+	// cannot diverge when the canonical rules change.
+	if err := validateCanonicalDecimalString(decimal, false); err != nil {
+		return nil, err
 	}
 	value, ok := new(big.Int).SetString(decimal, 10)
 	if !ok {
