@@ -84,6 +84,27 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 	return restorepb.NewRestoreServiceClient(conn), conn, nil
 }
 
+func validateRestoreWithoutErrors(ctx context.Context, client restorepb.RestoreServiceClient) error {
+	stream, err := client.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
+	if err != nil {
+		return fmt.Errorf("starting restore validation: %w", err)
+	}
+
+	var validationErr error
+	for {
+		event, err := stream.Recv()
+		if err == io.EOF {
+			return validationErr
+		}
+		if err != nil {
+			return fmt.Errorf("receiving restore validation event: %w", err)
+		}
+		if event.GetError() != nil && validationErr == nil {
+			validationErr = fmt.Errorf("restore validation failed: %s", event.GetError().GetMessage())
+		}
+	}
+}
+
 var _ = Describe("Restore", Ordered, func() {
 	const (
 		ledgerName     = "restore-ledger"
@@ -534,24 +555,7 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should validate the backup without errors", func() {
-			stream, err := restoreClient.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
-			Expect(err).To(Succeed())
-
-			var gotErrors bool
-			for {
-				event, err := stream.Recv()
-				if err == io.EOF {
-					break
-				}
-				Expect(err).To(Succeed())
-
-				if event.GetError() != nil {
-					gotErrors = true
-					GinkgoWriter.Printf("Validation error: %s\n", event.GetError().Message)
-				}
-			}
-
-			Expect(gotErrors).To(BeFalse(), "validation should not report errors")
+			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 		})
 
 		It("should preview the backup", func() {

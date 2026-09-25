@@ -250,6 +250,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 				return resp.GetState()
 			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
+			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
+
 			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
