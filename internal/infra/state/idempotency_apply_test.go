@@ -41,7 +41,7 @@ func idempotencyTestPolicy(revision, ttlMicros uint64) *commonpb.ClusterPolicy {
 func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	t.Parallel()
 
-	machine, dataStore, _ := newTestMachine(t)
+	machine, dataStore, attrs := newTestMachine(t)
 	ctx := context.Background()
 
 	const ledgerName = "idem"
@@ -69,6 +69,8 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.False(t, r.Results[0].Replayed)
 	firstSeq := r.Results[0].Logs[0].GetCreatedLog().GetSequence()
 	require.NotZero(t, firstSeq)
+	firstTransaction := r.Results[0].Logs[0].GetCreatedLog().GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction()
+	beforeReplay := readBusinessProjections(t, dataStore, attrs)
 
 	// Duplicate (same key + same orders): replays a REFERENCE to the original
 	// log — no new log is created (no double-apply).
@@ -80,6 +82,12 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	require.Nil(t, r.Results[0].Logs[0].GetCreatedLog(), "duplicate must not create a new log")
 	require.Equal(t, firstSeq, r.Results[0].Logs[0].GetReferenceSequence(),
 		"duplicate replays the original log sequence")
+	replayedLog, err := query.ReadLogBySequence(ctx, dataStore, r.Results[0].Logs[0].GetReferenceSequence())
+	require.NoError(t, err)
+	require.Equal(t, firstTransaction.GetId(), replayedLog.GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId(),
+		"resolving the replay returns the original transaction identity")
+	require.Equal(t, beforeReplay, readBusinessProjections(t, dataStore, attrs),
+		"replay must preserve business transactions, gross volumes, references, and IDs")
 
 	// Same key, DIFFERENT orders: hash mismatch -> conflict.
 	r, err = machine.ApplyEntries(ctx, dataStore, makeEntry(t, 4, withKey(4, "k1",

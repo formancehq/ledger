@@ -61,3 +61,70 @@ of reading `TransactionState`.
   independent challenge, the full e2e business/cluster suites, and the
   Antithesis model driver's retained revert coverage (success, force,
   effective-date, already-reverted, missing-target).
+- **Amendment.** The decision stands — admission still does not
+  reject a missing target, and the FSM apply remains the audit authority — but
+  the fetch miss is no longer left unqualified. Admission's read has no read
+  barrier, so a target that is committed but not yet applied on that node also
+  reads as absent, and the order then declares no volume coverage while apply
+  reads the real postings. Admission now binds what it observed into
+  `OrderTechnical.revert_target_digest`, and the FSM re-derives that digest from
+  the `TransactionState` it already reads through the coverage gate. See
+  [the revert-target observation](#revert-target-observation).
+
+<a id="revert-target-observation"></a>
+## Revert-target observation
+
+Admission declares a revert's volume coverage from the target transaction's
+stored postings, read by `Admission.observeRevertTarget` with
+`Attribute.Get` — a raw point read of the local store. There is no read barrier
+on that path: `waitLeaderReady` covers a leadership transition, not steady-state
+concurrency.
+
+So a target that is committed but not yet applied on the admitting node reads as
+absent. Admission declares no volume keys for it, apply reads the real postings
+through the coverage gate, and the reversed postings touch volumes the plan never
+declared. Left alone that surfaces as `COVERAGE_MISS`, which the
+[coverage gate](../fsm/coverage-gate.md) documents as an admission bug — so a
+legitimate revert would be reported as a server defect and, being
+`codes.Internal`, would not be retried by the client.
+
+Admission therefore binds what it observed into
+`OrderTechnical.revert_target_digest` (`domain.RevertTargetDigest`), and
+`processRevertTransaction` re-derives the same digest from the `TransactionState`
+it already reads through the gate. The check runs **before** the reversed
+postings are built, so this cause can never reach the gate. It sits after the
+handler's existing checks on the target, which keep precedence:
+
+| Target as apply reads it | Outcome | Unchanged because |
+|---|---|---|
+| Id beyond the ledger boundary | `TRANSACTION_NOT_FOUND` | Nothing was allocated, so there is no observation to compare |
+| Already reverted | `TRANSACTION_ALREADY_REVERTED` | The revert is refused on its merits; a retry would be refused the same way |
+| Allocated with no state, or no postings | `TRANSACTION_STATE_INCONSISTENT` | A broken projection must surface as such (invariant #7) rather than be softened |
+
+`TestProcessRevertTransaction_NotFoundBeatsObservationCheck`,
+`…_AlreadyRevertedBeatsObservationCheck` and `…_InconsistentStateNotSoftened`
+pin that ordering.
+
+A mismatch that does reach the observation check is then classified by whether a
+re-admission could ever converge:
+
+| Target | Outcome | Why |
+|---|---|---|
+| Existed before this batch | `STALE_INPUTS_RESOLUTION` (`Unavailable`, retryable, never frozen) | Re-admission reads a view that now includes it |
+| Created by this batch | `REVERT_TARGET_CREATED_IN_BATCH` (`Validation`, permanent, freezable) | The batch is rejected, so the create never lands and every retry reproduces the same observation |
+
+Freezable is not the same as frozen: `recordIdempotencyFailure` retains an outcome
+only when the batch carried an idempotency key. An unkeyed batch is rejected just
+as permanently, but leaves nothing behind to replay.
+
+The same-batch case is decided from the ledger's `NextTransactionId` as it stood
+before the batch, captured by `processApply` on the first apply order for that
+ledger. It is derived from committed state, so every replica computes it
+identically.
+
+Reverting a transaction the same batch creates is therefore not supported today:
+the bulk overlay does not carry transactions the batch itself creates, so
+admission cannot declare their volume coverage. Supporting it needs admission to
+predict the transaction ids apply will allocate, which must share one sequential
+pass with skip prediction and script resolution — see the follow-up ticket rather
+than making the rejection retryable.

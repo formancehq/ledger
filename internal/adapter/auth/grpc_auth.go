@@ -35,27 +35,26 @@ type AuthConfig struct {
 	ClusterSecret        string              // shared secret for inter-node auth bypass (empty = disabled)
 }
 
-// Authenticate validates the JWT from gRPC metadata and checks required scopes.
-// If auth is disabled, returns the original context unchanged.
+// EvaluateGRPCCredentials validates the JWT from gRPC metadata and stores an
+// immutable authentication state in the returned context.
 //
 // Token handling:
 //   - Missing authorization metadata → no error; the request continues with the
-//     "anonymous" scopes (cfg.ScopeMapping["anonymous"]). The per-request scope
-//     check below decides whether anonymous covers the requirement.
+//     "anonymous" scopes (cfg.ScopeMapping["anonymous"]). AuthorizeGRPC decides
+//     whether those scopes cover a later policy requirement.
 //   - Authorization metadata present but invalid → codes.Unauthenticated.
 //   - Valid token → effective scopes = expansion of the token's scopes.
 //
-// Returns the context enriched with claims and expanded scopes, or a gRPC
-// status error (Unauthenticated when no credentials match the requirement,
-// PermissionDenied when a valid token lacks the required scope).
-func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context.Context, error) {
+// Returns the context enriched with claims and expanded scopes. Credential
+// failures return Unauthenticated; scope failures are returned by AuthorizeGRPC.
+func EvaluateGRPCCredentials(ctx context.Context, cfg AuthConfig) (context.Context, error) {
 	ctx, span := authTracer.Start(ctx, "auth.authenticate")
 	defer span.End()
 
 	if !cfg.Enabled {
 		span.SetAttributes(attribute.Bool("auth.enabled", false))
 
-		return ctx, nil
+		return withAuthenticationState(ctx, false, false, nil), nil
 	}
 
 	token, hasToken := bearerTokenFromContext(ctx)
@@ -65,13 +64,7 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 		ctx = WithExpandedScopes(ctx, effective)
 		ctx = WithAuthPresented(ctx, false)
 
-		if HasScope(effective, scopes...) {
-			return ctx, nil
-		}
-
-		logAuthFailure(ctx, "", "missing_token", errors.New("anonymous scopes insufficient"))
-
-		return ctx, status.Errorf(codes.Unauthenticated, "missing required scope (required: %v)", scopes)
+		return withAuthenticationState(ctx, true, false, effective), nil
 	}
 
 	// Fast path: cluster-internal shared secret bypasses JWT validation.
@@ -92,11 +85,12 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 		len(token) == len(cfg.ClusterSecret) &&
 		subtle.ConstantTimeCompare([]byte(token), []byte(cfg.ClusterSecret)) == 1 {
 		span.SetAttributes(attribute.Bool("auth.cluster_internal", true))
-		ctx = WithExpandedScopes(ctx, allScopes())
+		effective := allScopes()
+		ctx = WithExpandedScopes(ctx, effective)
 		ctx = WithAuthPresented(ctx, true)
 		ctx = WithClusterInternal(ctx, true)
 
-		return ctx, nil
+		return withAuthenticationState(ctx, true, true, effective), nil
 	}
 
 	keyID := extractKeyID(token)
@@ -124,14 +118,38 @@ func Authenticate(ctx context.Context, cfg AuthConfig, scopes ...Scope) (context
 	ctx = WithExpandedScopes(ctx, effective)
 	ctx = WithAuthPresented(ctx, true)
 
-	if !HasScope(effective, scopes...) {
-		logAuthFailure(ctx, keyID, "missing_scope", fmt.Errorf("required: %v, have: %v", scopes, claims.Scopes))
+	return withAuthenticationState(ctx, true, true, effective), nil
+}
 
-		return ctx, status.Errorf(codes.PermissionDenied,
-			"missing required scope (required: %v)", scopes)
+// AuthorizeGRPC checks required scopes against the immutable state produced by
+// EvaluateGRPCCredentials. Missing state is an internal wiring error and fails
+// closed.
+func AuthorizeGRPC(ctx context.Context, scopes ...Scope) error {
+	ctx, span := authTracer.Start(ctx, "auth.authorize")
+	defer span.End()
+
+	state, ok := authenticationStateFromContext(ctx)
+	if !ok {
+		return status.Error(codes.Internal, "gRPC authentication state is missing")
+	}
+	if !state.enabled || HasScope(state.scopes, scopes...) {
+		return nil
 	}
 
-	return ctx, nil
+	if !state.presented {
+		logAuthFailure(ctx, "", "missing_token", errors.New("anonymous scopes insufficient"))
+
+		return status.Errorf(codes.Unauthenticated, "missing required scope (required: %v)", scopes)
+	}
+
+	claims := ClaimsFromContext(ctx)
+	var claimedScopes []string
+	if claims != nil {
+		claimedScopes = claims.Scopes
+	}
+	logAuthFailure(ctx, KeyIDFromContext(ctx), "missing_scope", fmt.Errorf("required: %v, have: %v", scopes, claimedScopes))
+
+	return status.Errorf(codes.PermissionDenied, "missing required scope (required: %v)", scopes)
 }
 
 // isGodMode checks whether the token contains the custom "god": true claim,

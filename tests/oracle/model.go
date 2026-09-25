@@ -536,6 +536,8 @@ type GlobalState struct {
 	nextCheckpointID   uint64
 	checkpointLimit    uint64
 	checkpointSchedule string
+	lifecycle          Map[string, LedgerLifecycle]
+	maintenance        bool
 	// idempotency freezes the committed outcome of every keyed bulk, so a later
 	// bulk carrying the same key replays it (Apply). It spans ledgers because a
 	// bulk's key covers the whole atomic batch, whatever ledgers it touched.
@@ -579,6 +581,7 @@ func NewGlobalState() GlobalState {
 		ledgers:          map[string]LedgerState{},
 		checkpoints:      NewMap[string, uint64](stringComparer{}, checkpointTerm),
 		nextCheckpointID: 1,
+		lifecycle:        NewMap[string, LedgerLifecycle](stringComparer{}, lifecycleTerm),
 		idempotency:      NewMap[string, *frozenOutcome](stringComparer{}, frozenOutcomeTerm),
 	}
 }
@@ -612,7 +615,8 @@ func (g GlobalState) Ledger(name string) LedgerState {
 // a ledger entry for any ledger a bulk touches, even when the operation stores
 // nothing (e.g. removing an undeclared field), and a present-but-stateless
 // entry must not change the identity — otherwise candidateBases treats
-// semantically-equal bases as distinct.
+// semantically-equal bases as distinct. Explicit lifecycle records still distinguish
+// a created empty ledger from an absent name, including after deletion.
 func (g GlobalState) Fingerprint() Digest {
 	var d Digest
 	for name, ls := range g.ledgers {
@@ -628,13 +632,20 @@ func (g GlobalState) Fingerprint() Digest {
 
 	// The frozen idempotency table is part of the identity — see
 	// frozenOutcomeTerm. Its terms are domain-tagged, so the plain sum keeps
-	// them disjoint from the ledger terms.
+	// them disjoint from the ledger terms. Lifecycle, maintenance, and checkpoint
+	// state likewise remain observable independently of ledger data projections.
 	t := newTerm("query-checkpoint-state")
 	t.digest(g.checkpoints.Fingerprint())
 	t.u64(g.nextCheckpointID, g.checkpointLimit)
 	t.str(g.checkpointSchedule)
 
-	return d.add(g.idempotency.Fingerprint()).add(t.sum())
+	maintenance := newTerm("maintenance")
+	maintenance.u64(0)
+	if g.maintenance {
+		maintenance.u64(1)
+	}
+
+	return d.add(g.idempotency.Fingerprint()).add(g.lifecycle.Fingerprint()).add(t.sum()).add(maintenance.sum())
 }
 
 // OrderResult is the predicted outcome of one request in a bulk. PCV holds the
@@ -746,7 +757,14 @@ func LedgerOf(req *servicepb.Request) string {
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_SetDefaultEnforcementMode:
 		return r.SetDefaultEnforcementMode.GetLedger()
-	case *servicepb.Request_CreateQueryCheckpoint, *servicepb.Request_DeleteQueryCheckpoint,
+	case *servicepb.Request_CreateLedger:
+		return r.CreateLedger.GetName()
+	case *servicepb.Request_DeleteLedger:
+		return r.DeleteLedger.GetName()
+	case *servicepb.Request_PromoteLedger:
+		return r.PromoteLedger.GetLedger()
+	case *servicepb.Request_SetMaintenanceMode,
+		*servicepb.Request_CreateQueryCheckpoint, *servicepb.Request_DeleteQueryCheckpoint,
 		*servicepb.Request_SetQueryCheckpointSchedule, *servicepb.Request_DeleteQueryCheckpointSchedule:
 		return ""
 	case *servicepb.Request_Apply:
@@ -798,7 +816,7 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 			ls = NewLedgerState()
 		}
 
-		ls.applyOne(req, map[VolumeKey]bool{})
+		ls.applyOne(req, map[VolumeKey]bool{}, uint64(ls.txs.Len()))
 		next.ledgers[name] = ls
 	}
 
@@ -806,6 +824,14 @@ func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
 }
 
 func (g GlobalState) Apply(bulk Bulk) ApplyResult {
+	// The cluster-wide maintenance interceptor rejects non-toggle bulks before
+	// request conversion and structural validation. This ordering matters for a
+	// malformed request observed while maintenance is enabled: the service
+	// reports MAINTENANCE_MODE, not the request's validation error.
+	if g.maintenance && !allMaintenanceRequests(bulk.Requests) {
+		return ApplyResult{OK: false, Reason: domain.ErrReasonMaintenanceMode, State: g}
+	}
+
 	// Admission validates every order's structure and converts the whole batch
 	// before it reaches the FSM, so a single malformed order rejects the entire
 	// bulk ahead of any per-order FSM outcome. Structural rejections include invalid skippable reasons and
@@ -822,8 +848,8 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 	}
 
-	// Per-batch idempotency, checked after admission's structural gate (the
-	// empty-create above) and before any FSM outcome — mirroring the server,
+	// Per-batch idempotency, checked after admission's structural and maintenance
+	// gates and before any other FSM outcome — mirroring the server,
 	// where the dedup runs in the apply path ahead of ProcessOrders. Only
 	// successes are frozen (see the commit return below), so a hit is always a
 	// committed outcome: same body replays it verbatim with no new state; a
@@ -841,6 +867,7 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	next := g.clone()
 	orders := make([]OrderResult, 0, len(bulk.Requests))
 	touched := map[string]map[VolumeKey]bool{}
+	retired := map[string]struct{}{}
 
 	// Per-order cells, kept beside the per-ledger union: the FSM hangs each
 	// log's volume annotations on the cells THAT order touched, so the union
@@ -853,6 +880,13 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 
 	var orderTouches []orderTouch
 
+	// Transaction count per ledger as it stood before this bulk, captured on
+	// first touch. The server records the same horizon (processApply stores the
+	// pre-batch NextTransactionId) so it can tell a revert target this batch
+	// creates — which admission could not observe, and which it therefore could
+	// not declare volume coverage for — from one that already existed.
+	batchInitialTxCount := map[string]uint64{}
+
 	for _, req := range bulk.Requests {
 		if oc, handled := next.applyCheckpoint(req); handled {
 			orders = append(orders, oc)
@@ -863,7 +897,24 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			continue
 		}
 		name := LedgerOf(req)
+		if oc, handled := next.applyLifecycle(req); handled {
+			orders = append(orders, oc)
+			if !oc.OK {
+				return ApplyResult{Reason: oc.Reason, State: g, Orders: orders}
+			}
+			if req.GetDeleteLedger() != nil {
+				retired[name] = struct{}{}
+			}
 
+			continue
+		}
+		if lc, exists := next.lifecycle.Get(name); exists && lc.Deleted {
+			return ApplyResult{Reason: domain.ErrReasonLedgerDeleted, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerDeleted})}
+		}
+
+		if lc, exists := next.lifecycle.Get(name); exists && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR && !mirrorSafeRequest(req) {
+			return ApplyResult{Reason: domain.ErrReasonLedgerInMirrorMode, State: g, Orders: append(orders, OrderResult{Reason: domain.ErrReasonLedgerInMirrorMode})}
+		}
 		ls, ok := next.ledgers[name]
 		if !ok {
 			ls = NewLedgerState()
@@ -876,10 +927,14 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 			touched[name] = cells
 		}
 
+		if _, seen := batchInitialTxCount[name]; !seen {
+			batchInitialTxCount[name] = uint64(ls.txs.Len())
+		}
+
 		orderCells := map[VolumeKey]bool{}
 
 		beforeOrder := ls
-		oc := ls.applyOne(req, orderCells)
+		oc := ls.applyOne(req, orderCells, batchInitialTxCount[name])
 		if !oc.OK && slices.Contains(req.GetApply().GetSkippableReasons(), domain.ReasonCode(oc.Reason)) {
 			ls = beforeOrder
 			orderCells = map[VolumeKey]bool{}
@@ -948,6 +1003,9 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 		}
 
 		next.ledgers[name] = ls
+	}
+	for name := range retired {
+		delete(next.ledgers, name)
 	}
 
 	// Freeze the committed outcome so a later bulk with this key replays it. Only
@@ -1301,7 +1359,7 @@ func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeA
 
 // applyOne mutates the (already-forked) working state for one request and
 // returns its predicted outcome, recording touched volume cells.
-func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
 	case *servicepb.Request_SetDefaultEnforcementMode:
@@ -1362,7 +1420,7 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 		case *servicepb.LedgerAction_DeleteMetadata:
 			return s.applyDeleteMetadata(a.DeleteMetadata)
 		case *servicepb.LedgerAction_RevertTransaction:
-			return s.applyRevert(a.RevertTransaction, touched)
+			return s.applyRevert(a.RevertTransaction, touched, batchInitialTxCount)
 		default:
 			// The generator emits only the actions above; any other is unmodeled
 			// — fail loudly, the generator and model must stay in lockstep.
@@ -1444,7 +1502,11 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 // (swap source/destination), enforces the chart on them, applies the balance
 // floor unless force is set (see applyPostings), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
-func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyRevert(
+	rt *servicepb.RevertTransactionPayload,
+	touched map[VolumeKey]bool,
+	batchInitialTxCount uint64,
+) OrderResult {
 	id := rt.GetTransactionId()
 	if id == 0 || id > uint64(s.txs.Len()) {
 		// Unknown id (past the log frontier); the server rejects with
@@ -1456,8 +1518,25 @@ func (s *LedgerState) applyRevert(rt *servicepb.RevertTransactionPayload, touche
 
 	orig := s.txs.Get(int(id - 1))
 
+	// Check order mirrors processRevertTransaction: the already-reverted check
+	// runs before the target-observation comparison that yields
+	// REVERT_TARGET_CREATED_IN_BATCH. No input reaches both today — a target the
+	// batch creates cannot already be reverted, since the first revert rejects
+	// the whole batch — but keeping the model's order aligned means a future
+	// fixture cannot make them disagree.
 	if orig.reverted {
 		return OrderResult{Reason: domain.ErrReasonTransactionAlreadyReverted}
+	}
+
+	if id > batchInitialTxCount {
+		// The target is created by an earlier order in this same batch. Admission
+		// resolves a revert's original postings from the local store only, and
+		// the bulk overlay does not carry transactions the batch itself creates,
+		// so it cannot declare the volume coverage apply needs. The server
+		// rejects the whole batch permanently rather than retryably: rejecting it
+		// un-creates the target, so an identical retry reproduces the same
+		// observation.
+		return OrderResult{Reason: domain.ErrReasonRevertTargetCreatedInBatch}
 	}
 
 	reversed := make([]*commonpb.Posting, len(orig.postings))
@@ -2082,6 +2161,103 @@ func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool
 	}
 }
 
+// Lifecycle returns an owned snapshot of an explicitly modeled ledger's identity.
+func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
+	lc, ok := g.lifecycle.Get(name)
+	lc.MirrorSource = lc.MirrorSource.CloneVT()
+
+	return lc, ok
+}
+
+// MaintenanceMode is the committed cluster setting. Admission and FSM apply
+// reject business requests while enabled.
+func (g GlobalState) MaintenanceMode() bool { return g.maintenance }
+
+func allMaintenanceRequests(requests []*servicepb.Request) bool {
+	for _, req := range requests {
+		if req.GetSetMaintenanceMode() == nil {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool) {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_SetMaintenanceMode:
+		g.maintenance = r.SetMaintenanceMode.GetEnabled()
+
+		return OrderResult{OK: true}, true
+	case *servicepb.Request_CreateLedger:
+		name := r.CreateLedger.GetName()
+		if lc, exists := g.lifecycle.Get(name); exists {
+			if lc.Deleted {
+				return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
+			}
+
+			return OrderResult{Reason: domain.ErrReasonLedgerAlreadyExists}, true
+		}
+		if _, exists := g.ledgers[name]; exists {
+			return OrderResult{Reason: domain.ErrReasonLedgerAlreadyExists}, true
+		}
+		ls := NewLedgerState()
+		ls.defaultEnforcementMode = r.CreateLedger.GetDefaultEnforcementMode()
+		for _, key := range slices.Sorted(maps.Keys(r.CreateLedger.GetAccountTypes())) {
+			at := r.CreateLedger.GetAccountTypes()[key]
+			if err := accounttype.ValidatePattern(at.GetPattern()); err != nil {
+				return OrderResult{Reason: domain.ErrReasonInvalidPattern}, true
+			}
+			ls.types = ls.types.Set(key, TypeState{Name: key, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
+		}
+		for _, field := range r.CreateLedger.GetInitialSchema() {
+			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
+		}
+		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
+		g.ledgers[name] = ls
+
+		return OrderResult{OK: true}, true
+	case *servicepb.Request_PromoteLedger:
+		name := r.PromoteLedger.GetLedger()
+		lc, exists := g.lifecycle.Get(name)
+		if !exists {
+			if _, implicit := g.ledgers[name]; !implicit {
+				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
+			}
+			lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+		}
+		if lc.Deleted {
+			return OrderResult{Reason: domain.ErrReasonLedgerDeleted}, true
+		}
+		if lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			return OrderResult{Reason: domain.ErrReasonLedgerNotInMirrorMode}, true
+		}
+		lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+		lc.MirrorSource = nil
+		g.lifecycle = g.lifecycle.Set(name, lc)
+
+		return OrderResult{OK: true}, true
+	case *servicepb.Request_DeleteLedger:
+		name := r.DeleteLedger.GetName()
+		lc, exists := g.lifecycle.Get(name)
+		if exists && lc.Deleted {
+			return OrderResult{OK: true}, true
+		}
+		if !exists {
+			if _, implicit := g.ledgers[name]; !implicit {
+				return OrderResult{Reason: domain.ErrReasonLedgerNotFound}, true
+			}
+			lc.Mode = commonpb.LedgerMode_LEDGER_MODE_NORMAL
+		}
+		lc.Deleted = true
+		g.lifecycle = g.lifecycle.Set(name, lc)
+
+		return OrderResult{OK: true}, true
+	default:
+		return OrderResult{}, false
+	}
+}
+
 // SeedQueryCheckpoints initializes the cluster lifecycle baseline before model
 // workers start. Inherited IDs count toward the cap but have no business-state
 // snapshots in the checker. nextID includes deleted historical checkpoints.
@@ -2101,4 +2277,28 @@ func (g GlobalState) SeedQueryCheckpoints(ids []uint64, nextID uint64) GlobalSta
 	g.checkpointSchedule = ""
 
 	return g
+}
+
+func mirrorSafeRequest(req *servicepb.Request) bool {
+	switch req.GetType().(type) {
+	case *servicepb.Request_SetMetadataFieldType,
+		*servicepb.Request_RemoveMetadataFieldType,
+		*servicepb.Request_CreateIndex,
+		*servicepb.Request_DropIndex,
+		*servicepb.Request_SaveLedgerMetadata,
+		*servicepb.Request_DeleteLedgerMetadata,
+		*servicepb.Request_AddAccountType,
+		*servicepb.Request_RemoveAccountType,
+		*servicepb.Request_SetDefaultEnforcementMode:
+		return true
+	}
+
+	switch req.GetApply().GetAction().GetData().(type) {
+	case *servicepb.LedgerAction_AddAccountType,
+		*servicepb.LedgerAction_RemoveAccountType,
+		*servicepb.LedgerAction_SetDefaultEnforcementMode:
+		return true
+	default:
+		return false
+	}
 }

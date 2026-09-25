@@ -1,7 +1,10 @@
 package processing
 
 import (
+	"bytes"
 	"errors"
+
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -29,6 +32,11 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 		return nil, domain.StoreFailure("checking reverted status", err)
 	}
 
+	if assert.Enabled {
+		assert.Sometimes(reverted, "repeat revert rejected", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
+	}
 	if reverted {
 		return nil, &domain.ErrTransactionAlreadyReverted{TransactionID: order.GetTransactionId()}
 	}
@@ -42,6 +50,10 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	// with the invariant-violation error class (invariant #7).
 	origStateReader, err := s.TransactionStates().Get(txKey)
 	if errors.Is(err, domain.ErrNotFound) {
+		assert.Unreachable("revert target has allocated transaction state", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
+
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
@@ -53,13 +65,37 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 
 	originalPostings := origState.GetPostings()
 	if len(originalPostings) == 0 {
+		assert.Unreachable("revert target has nonempty original postings", map[string]any{
+			"ledger": ledger, "transactionId": order.GetTransactionId(),
+		})
 		// Create rejects empty transactions, so a stored state always carries
 		// at least one posting; an empty set here is an inconsistent projection
 		// (invariant #7), not a revertable transaction.
 		return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert"}
 	}
 
+	// Caller metadata is validated before the observation check, for the same
+	// reason TRANSACTION_ALREADY_REVERTED outranks it: a permanently invalid
+	// order is invalid however fresh the view is, so classifying it as a stale
+	// observation would advertise a retry that re-admission refuses identically.
+	// It reads only the committed cluster policy, no coverage-gated key, so
+	// running it first cannot reach the gate ahead of the check below.
 	if err := validateMetadataAtApply(order.GetMetadata(), ctx); err != nil {
+		return nil, err
+	}
+
+	// Admission declared this order's volume coverage from its own read of the
+	// target, taken from the local store with no read barrier. If what it saw
+	// differs from what apply just read through the gate, the declared coverage
+	// does not describe the volumes below and the order must not proceed —
+	// reaching applyPosting would trip the coverage gate, whose contract is that
+	// a miss means an admission bug rather than a stale view.
+	//
+	// This runs after the invariant checks above on purpose: an allocated
+	// transaction with no state, or with no postings, is a broken projection and
+	// must keep surfacing as such rather than being softened into a retryable
+	// mismatch.
+	if err := checkRevertTargetObservation(ledger, order.GetTransactionId(), originalPostings, ctx); err != nil {
 		return nil, err
 	}
 
@@ -119,6 +155,10 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 	revertTimestamp := s.GetDate().Mutate()
 	if order.GetAtEffectiveDate() {
 		if origState.GetTimestamp() == nil {
+			assert.Unreachable("effective-date revert target has a timestamp", map[string]any{
+				"ledger": ledger, "transactionId": order.GetTransactionId(),
+			})
+
 			return nil, &domain.ErrTransactionStateInconsistent{TransactionID: order.GetTransactionId(), Operation: "revert at_effective_date"}
 		}
 
@@ -168,4 +208,77 @@ func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionO
 			},
 		},
 	}, nil
+}
+
+// checkRevertTargetObservation compares the transaction state apply just read
+// through the coverage gate with what admission observed when it declared this
+// order's volume coverage.
+//
+// Admission reads the target from the local store with no read barrier
+// (Admission.observeRevertTarget), so a target that is committed but not yet
+// applied on that node reads as absent and the order declares no volume keys.
+// Apply then finds the real postings and would read volumes the plan never
+// declared. Rejecting here keeps the coverage gate meaning what it documents: a
+// miss is an admission bug, not a stale view.
+//
+// Reaching this function already means the target passed the handler's checks
+// on it, and those keep precedence: an id beyond the ledger boundary is
+// ErrTransactionNotFound, an already-reverted target is
+// ErrTransactionAlreadyReverted, and an allocated target with no state or no
+// postings is ErrTransactionStateInconsistent — a stale observation of any of
+// them answers with that reason, not with a mismatch classification.
+//
+// The two mismatch causes need different answers, and the difference is whether
+// a re-admission could ever see what apply sees:
+//
+//   - the target existed before this batch → the observation was merely stale,
+//     so reject with the retryable ErrStaleInputsResolution and let the client
+//     re-admit against a view that now includes it;
+//   - the target is created by this batch → the whole batch is rejected, so the
+//     create never lands and re-admitting the identical batch reproduces the
+//     same observation forever. Reject permanently instead.
+//
+// A revert order with no digest is not tolerated. Admission is the only producer
+// of one (mirror reverts have their own handler), and it binds the observation
+// unconditionally, so an empty digest is a malformed proposal rather than an
+// older wire format — v3 is unreleased and carries no compatibility fallbacks.
+// Accepting it would silently disable the check and let the stale-target path
+// reach applyPosting again. A missing batch transaction-id horizon is refused
+// the same way, for the same reason: without it the two causes cannot be told
+// apart, and defaulting to the retryable one would re-create the re-admit loop
+// this classification exists to prevent.
+func checkRevertTargetObservation(
+	ledger string,
+	transactionID uint64,
+	originalPostings []*commonpb.Posting,
+	ctx *Context,
+) domain.Describable {
+	expected := ctx.RevertTargetDigest
+	if len(expected) == 0 {
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: "revert order carries no target observation digest",
+		}
+	}
+
+	if bytes.Equal(expected, domain.RevertTargetDigest(originalPostings, true)) {
+		return nil
+	}
+
+	initial, ok := ctx.batchInitialNextTxID[ledger]
+	if !ok {
+		// processApply records the horizon for every ledger it touches before
+		// dispatching, so a revert cannot reach here without one. Falling
+		// through to the retryable answer would be the worst available failure:
+		// a target this batch creates would be classified as merely stale, and
+		// the client would re-admit an identical batch forever (invariant #7).
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: "revert apply reached the observation check with no recorded batch transaction-id horizon",
+		}
+	}
+
+	if transactionID >= initial {
+		return &domain.ErrRevertTargetCreatedInBatch{TransactionID: transactionID}
+	}
+
+	return domain.ErrStaleInputsResolution
 }

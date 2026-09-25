@@ -13,7 +13,6 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -150,7 +149,6 @@ func newCheckpointWaitHarness(t *testing.T) (*BucketServiceServerImpl, *ctrlmock
 		ctrl:          mockCtrl,
 		store:         mainStore,
 		readStore:     rs,
-		authCfg:       internalauth.AuthConfig{}, // disabled → Authenticate is a no-op
 		applyDuration: applyDuration,
 	}, mockCtrl
 }

@@ -24,9 +24,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -105,39 +103,15 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 
 // countTransactionsWithReference lists transactions matching ref after an
 // acknowledged marker. The default linearizable read is aligned to the
-// marker's Raft horizon. Any read error makes the result inconclusive.
+// marker's Raft horizon. Readiness is awaited; permanent errors are reported
+// before returning inconclusive.
 func countTransactionsWithReference(
 	ctx context.Context,
 	client servicepb.BucketServiceClient,
 	ledger, ref string,
 ) ([]uint64, bool) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger: ledger,
-		Options: &commonpb.ListOptions{
-			PageSize: 10,
-			Filter:   actions.ReferenceFilter(ref),
-		},
-	})
-	if err != nil {
-		return nil, false
-	}
-
-	var ids []uint64
-
-	for {
-		tx, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return nil, false
-		}
-
-		ids = append(ids, tx.GetId())
-	}
-
-	return ids, true
+	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(ref))
+	return ids, err == nil
 }
 
 // assertReferenceUnique is the shared end-state oracle for both halves of the
@@ -169,7 +143,7 @@ func main() {
 
 		run := r.Uint64()
 		ledger := internal.PrefixReferenceRace.WithSeed(run)
-		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
+		if err := internal.CreateQueryOracleLedger(ctx, client, ledger, commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE); err != nil {
 			return
 		}
 

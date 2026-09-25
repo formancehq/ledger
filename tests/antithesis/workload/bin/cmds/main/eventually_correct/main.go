@@ -17,14 +17,20 @@ import (
 
 // waitForQuiescence calls Barrier repeatedly until two consecutive barriers
 // return commit indices that differ by exactly 1 (the barrier itself).
+// A nonzero previous index lets a recheck account for its own first barrier.
 // Returns the confirmed commit index, or 0 if quiescence could not be achieved.
-func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
+func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient, lastCommitIndex uint64) uint64 {
 	const maxAttempts = 20
 
-	var lastCommitIndex uint64
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if ctx.Err() != nil {
+			return 0
+		}
 		resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
 		if err != nil {
+			if ctx.Err() != nil {
+				return 0
+			}
 			if internal.IsTransient(err) {
 				log.Printf("composer: barrier #%d transient, retrying: %s", attempt, err)
 				continue
@@ -64,7 +70,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	commitIndex := waitForQuiescence(ctx, client)
+	commitIndex := waitForQuiescence(ctx, client, 0)
 	assert.Sometimes(commitIndex > 0, "barrier quiescence achieved", nil)
 
 	if commitIndex == 0 {
@@ -208,9 +214,21 @@ func checkAccountBalances(ctx context.Context, client servicepb.BucketServiceCli
 
 // checkVolumesConsistent iterates all accounts and cross-checks ListAccounts
 // balances against GetAccount balances. If a mismatch is detected, it re-checks
-// quiescence: if the commit index has advanced (late proposals from killed
-// drivers), the mismatch is expected and ignored.
+// quiescence: additional proposals make the observation inconclusive and require
+// a complete re-read. Both full comparisons and barrier attempts are bounded.
 func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) {
+	const maxAttempts = 20
+	for attempt := 1; attempt <= maxAttempts && ctx.Err() == nil; attempt++ {
+		quiescentCommitIndex = checkVolumesConsistentAttempt(ctx, client, ledger, quiescentCommitIndex)
+		if quiescentCommitIndex == 0 {
+			return
+		}
+	}
+	log.Printf("composer: balance comparison inconclusive for ledger %s: retry budget or context exhausted", ledger)
+}
+
+// Returns a new quiescent index only when the entire comparison must be retried.
+func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketServiceClient, ledger string, quiescentCommitIndex uint64) uint64 {
 	details := internal.Details{"ledger": ledger}
 
 	accounts, err := listAccounts(ctx, client, ledger)
@@ -265,20 +283,23 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 
 			actualBalance := parseBalance(actualVol.GetBalance())
 			if balance.Cmp(actualBalance) != 0 {
-				// Mismatch detected — check if the commit index has advanced
-				// (late proposals from killed drivers arrived after quiescence).
-				newCommitIndex := waitForQuiescence(ctx, client)
-				if newCommitIndex > quiescentCommitIndex+1 {
-					log.Printf("composer: balance mismatch on %s/%s (list=%s, get=%s) but commit index advanced %d→%d, late proposals detected — retrying",
-						account.Address, asset, balance.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
-					// Restart the entire check with the new quiescent state.
-					checkVolumesConsistent(ctx, client, ledger, newCommitIndex)
-
-					return
+				// Reuse the preceding horizon: Q+1 is this recheck's own barrier.
+				// Other barriers and ambiguous RPC retries can also advance the
+				// log; a jump calls for re-reading, not a corruption verdict.
+				newCommitIndex := waitForQuiescence(ctx, client, quiescentCommitIndex)
+				if newCommitIndex == 0 {
+					log.Printf("composer: balance comparison inconclusive for ledger %s: quiescence unavailable", ledger)
+					return 0
 				}
+				if newCommitIndex != quiescentCommitIndex+1 {
+					log.Printf("composer: balance mismatch on %s/%s (list=%s, get=%s), additional proposals at %d→%d — re-reading",
+						account.Address, asset, balance.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+					return newCommitIndex
+				}
+				quiescentCommitIndex = newCommitIndex
 
-				// Commit index didn't advance — this is a real consistency bug.
-				assert.Always(false, "list/get balance divergence persisted past quiescence", details.With(internal.Details{
+				// No proposal other than our own barrier crossed the observation.
+				assert.Unreachable("list/get balance divergence persisted past quiescence", details.With(internal.Details{
 					"account":       account.Address,
 					"asset":         asset,
 					"listBalance":   balance.String(),
@@ -321,6 +342,7 @@ func checkVolumesConsistent(ctx context.Context, client servicepb.BucketServiceC
 
 	assert.Reachable("can check all volumes for consistency", details)
 	log.Printf("composer: volumes_consistent: done for ledger %s", ledger)
+	return 0
 }
 
 // crossCheckMetadata verifies that metadata from ListAccounts matches GetAccount.

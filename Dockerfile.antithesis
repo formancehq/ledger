@@ -3,11 +3,24 @@ FROM golang:1.27-trixie AS compiler
 # nats is included so the NATS event-sink implementation actually exists in
 # the tested binary: the workload's parallel_driver_event_sinks creates NATS
 # sinks against the nats container started by the Antithesis config.
-ARG BUILD_TAGS="s3,nats"
+# enable_antithesis_sdk is what arms the SDK: the pinned fork compiles assert,
+# lifecycle, random and instrumentation to no-ops unless this tag is set.
+# Without it this image would run with an empty assertion catalog and report no
+# violations because nothing was ever registered — a silent pass. The workload
+# image sets it too; released binaries never do.
+ARG BUILD_TAGS="s3,nats,enable_antithesis_sdk"
 
 RUN apt-get update && apt-get install -y bash git gcc
 
-RUN go install github.com/antithesishq/antithesis-sdk-go/tools/antithesis-go-instrumentor@v0.7.0
+# Built from the Formance fork rather than `go install ...@version`: the fork
+# keeps the upstream module path, so it is reachable only through the go.mod
+# replace, which `go install pkg@version` ignores. Keep this SHA equal to the
+# replace in go.mod — the instrumentor must know the assert.Enabled guard shape,
+# or it synthesizes an unreachable coverage edge for every guarded site.
+RUN git clone --quiet https://github.com/formancehq/antithesis-sdk-go /sdk \
+ && git -C /sdk checkout --quiet 1c9afdaf82044c6c7b52d1feb751358034c98506 \
+ && cd /sdk/tools/antithesis-go-instrumentor \
+ && go build -o /usr/local/bin/antithesis-go-instrumentor .
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -17,7 +30,13 @@ COPY cmd cmd
 COPY pkg pkg
 
 RUN mkdir /instrumented
-RUN antithesis-go-instrumentor . /instrumented
+# -instrumentor_version sets the SDK version the generated notifier module
+# requires. The versionless replace above already redirects every selected
+# version to the fork, so this does not change which SDK is built; it keeps
+# the generated require line matching the one we declare, and restores the
+# real guarantee if the replace is ever dropped (upstream stable v0.8.0
+# outranks the prerelease in module resolution).
+RUN antithesis-go-instrumentor -instrumentor_version v0.8.0-default-no-op . /instrumented
 
 WORKDIR /instrumented/customer
 RUN go build -race -tags "${BUILD_TAGS}" -o /ledger-server .

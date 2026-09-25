@@ -6,6 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -60,4 +62,21 @@ func TestAccountVolumesMatch(t *testing.T) {
 	// An account the base doesn't hold: only the empty reading matches.
 	require.True(t, accountVolumesMatch(ls, "t-9:9", nil))
 	require.False(t, accountVolumesMatch(ls, "t-9:9", map[assetColor]oracle.VolumePair{{Asset: "USD/2"}: {}}))
+}
+
+func TestSuccessfulBusinessWriteClassification(t *testing.T) {
+	t.Parallel()
+
+	committed := replayApplyLog("L", 1, &commonpb.LedgerLogPayload{})
+	skipped := replayApplyLog("L", 1, &commonpb.LedgerLogPayload{Payload: &commonpb.LedgerLogPayload_OrderSkipped{
+		OrderSkipped: &commonpb.OrderSkippedLog{},
+	}})
+	tx := oracletest.TxReqRefL("L", "ref", "world", "account", "USD", 1)
+	mode := enforcementModeRequest("L", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)
+	create := &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"}}}
+
+	require.True(t, isSuccessfulBusinessWrite(tx, committed))
+	require.False(t, isSuccessfulBusinessWrite(tx, skipped))
+	require.False(t, isSuccessfulBusinessWrite(mode, committed))
+	require.False(t, isSuccessfulBusinessWrite(create, committed))
 }

@@ -79,44 +79,11 @@ type signingVerifier struct {
 	// comparisons — reporting mismatches we cannot substantiate against a store
 	// whose real problem is the chain break is strictly worse than saying so.
 	liveTruncated bool
-	// proposalParents is the parent relation as it stood BEFORE any of the current
-	// proposal's orders were folded — the checker's stand-in for the FSM's
-	// committed state. Rebuilt lazily (see ensureProposalSnapshot) because most
-	// audit entries carry no signing order at all.
-	proposalParents map[string]string
-	// proposalEdges is every parent edge the current proposal ASSERTED, keyed by
-	// child, including edges a later registration in the same proposal replaced.
-	// GetSigningKeyChildren appends the key of every pending addition whose
-	// parentKeyID matches, so a superseded in-proposal edge still cascades on the
-	// live path — and the running relation alone cannot see it, because the
-	// replacement overwrote it, while proposalParents cannot either, because a key
-	// first registered inside this proposal has no pre-proposal entry. Reset with
-	// proposalParents.
-	proposalEdges map[string][]string
-	// proposalRevoked is every key the current proposal has ALREADY removed — each
-	// revoke target plus every descendant that revoke's cascade reached.
-	//
-	// It reproduces GetSigningKeyChildren's pendingRemovals filter, which is built
-	// over the WHOLE pendingSigningKeyUpdates slice with no ordering awareness: once
-	// a proposal removes a key, that key is excluded from EVERY cascade in the same
-	// proposal, including one evaluated after a later registration put it back.
-	//
-	// Absence from v.keys cannot express that. Absence is a point-in-time fact and a
-	// re-registration restores the row, so the walk would follow the reinstated edge
-	// and cascade a key the FSM left in the store. Reset with proposalParents.
-	proposalRevoked map[string]struct{}
-	// proposalSnapshotValid says whether proposalParents describes the current
-	// proposal. Cleared per entry in O(1); the map is only populated if that entry
-	// turns out to fold a signing order.
-	proposalSnapshotValid bool
 }
 
 func newSigningVerifier() *signingVerifier {
 	return &signingVerifier{
-		keys:            make(map[string]signingKeyExpectation),
-		proposalParents: make(map[string]string),
-		proposalEdges:   make(map[string][]string),
-		proposalRevoked: make(map[string]struct{}),
+		keys: make(map[string]signingKeyExpectation),
 	}
 }
 
@@ -127,35 +94,6 @@ func (v *signingVerifier) markLiveTruncated() {
 	v.liveTruncated = true
 }
 
-// beginProposal marks the start of a new proposal's orders. One proposal is one
-// audit entry, matching WriteSet.Reset, which the FSM calls once per proposal and
-// which is what makes "committed" mean "before this proposal" there too.
-//
-// O(1): it only invalidates the snapshot. Building it is deferred to
-// ensureProposalSnapshot so the overwhelming majority of audit entries — those
-// with no signing order — cost nothing.
-func (v *signingVerifier) beginProposal() {
-	v.proposalSnapshotValid = false
-}
-
-// ensureProposalSnapshot captures the parent relation before the current
-// proposal's first signing order mutates it.
-func (v *signingVerifier) ensureProposalSnapshot() {
-	if v.proposalSnapshotValid {
-		return
-	}
-
-	clear(v.proposalParents)
-	clear(v.proposalEdges)
-	clear(v.proposalRevoked)
-
-	for keyID, expectation := range v.keys {
-		v.proposalParents[keyID] = expectation.parentKeyID
-	}
-
-	v.proposalSnapshotValid = true
-}
-
 // applyOrder folds one order into the expected signing state, ignoring every
 // order shape that is not a system-scoped signing order.
 //
@@ -164,14 +102,10 @@ func (v *signingVerifier) ensureProposalSnapshot() {
 func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 	switch payload := order.GetSystemScoped().GetPayload().(type) {
 	case *raftcmdpb.SystemScopedOrder_RegisterSigningKey:
-		// Taken before the mutation below: a re-registration that moves a key to a
-		// new parent must not erase the old edge the FSM's cascade still sees.
-		v.ensureProposalSnapshot()
-
 		register := payload.RegisterSigningKey
 
 		// Upsert, not insert: the FSM has no duplicate-ID rejection, so
-		// re-registering a key ID legitimately replaces its material and its
+		// re-registering a key ID legitimately replaces its public key and its
 		// parent link. The bytes are copied because the order may be reused or
 		// mutated after this returns — an aliased expectation would follow that
 		// mutation and end up comparing a row against itself.
@@ -179,21 +113,7 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 			publicKey:   append([]byte(nil), register.GetPublicKey()...),
 			parentKeyID: register.GetParentKeyId(),
 		}
-
-		// Recorded even though the line above already holds this edge: a LATER
-		// registration in the same proposal would overwrite it, and the FSM would
-		// still cascade from it (GetSigningKeyChildren walks every pending addition).
-		// Root registrations are skipped because "" is not a cascade source.
-		if parent := register.GetParentKeyId(); parent != "" {
-			v.proposalEdges[register.GetKeyId()] = append(v.proposalEdges[register.GetKeyId()], parent)
-		}
 	case *raftcmdpb.SystemScopedOrder_RevokeSigningKey:
-		// Required here too, not just on the register path: descendantsOf reads
-		// proposalParents, so without this a cascade in a proposal that registered
-		// nothing would walk the snapshot left behind by an EARLIER proposal and
-		// cascade from a parent link that has since been committed away.
-		v.ensureProposalSnapshot()
-
 		revoke := payload.RevokeSigningKey
 
 		revoked := []string{revoke.GetKeyId()}
@@ -205,17 +125,9 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 			revoked = append(revoked, v.descendantsOf(revoke.GetKeyId())...)
 		}
 
-		// proposalRevoked is filled only HERE, after descendantsOf has run, and that
-		// ordering is load-bearing rather than incidental: processRevokeSigningKey
-		// walks the whole child relation before calling RemoveSigningKey, so the
-		// pendingRemovals set a cascade sees holds the removals of the EARLIER orders
-		// in its proposal and none of its own. Filling it first would make a revoke
-		// exclude its own targets from its own cascade.
-		//
 		// Deleting an unknown key is a no-op, matching the FSM.
 		for _, keyID := range revoked {
 			delete(v.keys, keyID)
-			v.proposalRevoked[keyID] = struct{}{}
 		}
 	case *raftcmdpb.SystemScopedOrder_SetSigningConfig:
 		v.requireSignatures = payload.SetSigningConfig.GetRequireSignatures()
@@ -227,43 +139,16 @@ func (v *signingVerifier) applyOrder(order *raftcmdpb.Order) {
 //
 // Traversal ORDER is irrelevant and this deliberately does not reproduce the
 // FSM's: state.WriteSet.GetSigningKeyChildren returns sorted committed children
-// followed by un-re-sorted in-proposal additions, and the comparison is over the
-// final key set, so any traversal visiting the whole subtree agrees.
+// followed by the proposal's pending ones in slice order, and the comparison is
+// over the final key set, so any traversal visiting the whole subtree agrees.
 //
-// The set of EDGES is not irrelevant, and this is where a subtle divergence lives.
-// GetSigningKeyChildren unions two relations: the COMMITTED children of the key
-// (minus those the same proposal removed) and the key of EVERY pending addition in
-// the proposal whose parentKeyID matches. So a key re-registered under a new parent
-// within the same proposal as a cascade revoke of its OLD parent is cascaded from
-// both — the FSM never consults the reassigned pointer to exclude it. Walking only
-// the running relation would drop that key from the cascade, leave it in the
-// expected set, and report a false SIGNING_KEY_MISMATCH against a store that
-// legitimately deleted it.
-//
-// Hence THREE edge sources below, and all three are load-bearing:
-//   - the running relation, for keys whose parent is unchanged in this proposal;
-//   - proposalParents, for a key whose pre-proposal (committed) parent this
-//     proposal reassigned — the FSM still sees the committed edge;
-//   - proposalEdges, for an edge this proposal asserted and then SUPERSEDED with a
-//     later registration of the same key. That case is invisible to the other two:
-//     the replacement overwrote the running pointer, and a key first registered
-//     inside this proposal has no pre-proposal entry at all. "Pending addition"
-//     means every element of pendingSigningKeyUpdates, not just the last one per
-//     key, so register(child→parent) + register(child→root) + cascade-revoke(parent)
-//     in ONE proposal does delete child on the live path.
-//
-// Keys the proposal already removed are excluded through proposalRevoked, which
-// is what reproduces GetSigningKeyChildren's pendingRemovals filter. Absence from
-// v.keys is NOT enough on its own: that filter is a set over the whole proposal,
-// while absence is a point-in-time fact, so revoke(X) + register(X under P) +
-// cascade-revoke(P) in ONE proposal has the FSM keep X — its removal excludes it
-// from the cascade even though the registration came after — while a walk driven
-// by v.keys alone follows the reinstated edge and reports a false mismatch against
-// the surviving row.
-//
-// The exclusion has to skip the candidate ENTIRELY rather than just drop it from
-// the result: GetSigningKeyChildren filters it out of what it returns, so the FSM's
-// BFS never recurses through it and its own subtree survives too.
+// The set of EDGES is what has to match, and v.keys already holds it. Both sides
+// resolve a key to the parent its LAST registration assigned: the FSM folds
+// pendingSigningKeyUpdates over its committed key store, and this fold applies the
+// same orders in the same sequence. So a key revoked and re-registered inside one
+// proposal is a child of whatever parent that re-registration named, exactly as
+// GetSigningKeyChildren reports it, and no separate per-proposal edge or removal
+// bookkeeping is needed to say so.
 //
 // The visited set is what makes the walk terminate: re-registration can point a
 // key at a descendant of itself, and a parent cycle would otherwise loop forever.
@@ -281,18 +166,7 @@ func (v *signingVerifier) descendantsOf(keyID string) []string {
 		// Collected into a slice rather than deleted in place: mutating v.keys
 		// while ranging over it is what this loop must not do.
 		for candidate, expectation := range v.keys {
-			// Checked before the edges: a key this proposal already removed is no
-			// longer a cascade candidate on the live path, whatever edge a later
-			// registration in the same proposal gave it back.
-			if _, removed := v.proposalRevoked[candidate]; removed {
-				continue
-			}
-
-			// Any of the three edges makes it a child, mirroring the union
-			// GetSigningKeyChildren returns.
-			if expectation.parentKeyID != current &&
-				v.proposalParents[candidate] != current &&
-				!slices.Contains(v.proposalEdges[candidate], current) {
+			if expectation.parentKeyID != current {
 				continue
 			}
 

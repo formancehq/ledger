@@ -88,6 +88,33 @@ credentials in the Job are not forwarded by the backup RPC. This unreleased CRD
 replaces the former literal `s3AccessKeyId` and `s3SecretAccessKey` fields; update
 Backup manifests to use the references when upgrading the operator and CRDs.
 
+Each `BackupRun` uses one deterministic Job name and a controller owner reference
+bound to the run UID. To keep a run attached to its actual outcome (EN-2001), the
+controller first checks for a Running sibling, then persists this run as Running
+before attempting Job creation. If that status write fails, it does not submit
+Create. Running therefore includes provisioning and reserves the execution slot
+while a creation outcome is unknown.
+
+A timeout or connection failure after Create may mean the API server committed
+the Job but its response was lost. The run remains nonterminal and Running, so
+siblings continue waiting. Reconciliation retries the same name and accepts an
+existing Job only when its controller owner UID matches the run. `AlreadyExists`
+(including while the read cache catches up) is retryable; it never causes creation
+under another name. A foreign or unowned Job is left untouched and reported as a
+retryable ownership error in `BackupRun.status.message`. The run remains Running
+and keeps siblings waiting; an operator must resolve the conflicting Job's
+ownership or remove that Job before provisioning can resume. The controller never
+adopts or deletes a foreign Job automatically. Retryable provisioning errors are
+persisted in the message without rewriting unchanged diagnostics. If that status
+write fails, the run stays nonterminal and reconciliation retries. The message is
+cleared after the owned Job becomes available, before processing its outcome.
+Definitive local construction errors and API
+`Invalid`/`BadRequest` creation rejections mark the run Failed; other provisioning
+errors retry. Transient reads of the parent Backup or Cluster also retry rather
+than ending the run during recovery. Once the owned Job completes, its outcome
+and valid result payload are persisted on the run, including after a controller
+restart.
+
 The run history limits retain Kubernetes `BackupRun` resources only. They do
 not retain historical backup artifacts or restore points in object storage.
 Setting either limit to zero removes all terminal runs of that outcome without
@@ -430,7 +457,7 @@ The server-side job:
 3. Reads the manifest from S3 and downloads the checkpoint files in parallel
    through an `errgroup` worker pool. The pool size is set by the server flag
    `--restore-download-parallelism` (default 16, clamped to `[1, 64]`).
-4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must contain the explicit stream footer and the complete sequence range advertised by the manifest; physical EOF or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
+4. Applies any incremental export segments on top of the checkpoint and rebuilds derived state (volumes, metadata, transactions, reversion bitsets, prepared queries, the index registry) from the exported logs, starting at the checkpoint's last log sequence. Every object must contain the explicit stream footer and the complete sequence range advertised by the manifest; physical EOF or incomplete coverage fails the download closed. This is the same `ApplyExports` + `RebuildDelta` path used by the offline `ledgerctl store bootstrap` command, so a manifest with incremental backups restores all data written after the last full checkpoint. Prepared-query create, update, and delete logs are folded in order, including multiple mutations within one delta. The index registry fold covers the full lifecycle — create, retype version bump, drop, and the removal cascade — see [Restore Lifecycle](../technical/architecture/subsystems/indexer/indexes.md#restore-lifecycle); per-replica read indexes are deliberately NOT restored and are rebuilt by each node's indexbuilder from the restored registry.
 5. On success, marks the staging as ready.
 
 If the job fails or is cancelled, the staging directory is wiped so the

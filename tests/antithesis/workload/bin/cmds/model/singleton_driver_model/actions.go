@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -135,8 +136,15 @@ func sourceAddress() string {
 // occasionally a bulk spreads its requests across a few, exercising the
 // server's atomic-across-ledgers semantics. Runs lock-free on a state
 // snapshot (a published GlobalState is never mutated — Apply forks first).
-func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
-	picks := pickLedgers(ledgers)
+func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) oracle.Bulk {
+	active := activeLedgers(g, ledgers)
+	if req := generateLifecycle(g, ledgers, newLedger, liveTarget); req != nil {
+		return oracle.Bulk{Requests: []*servicepb.Request{req}}
+	}
+	if len(active) == 0 {
+		return oracle.Bulk{}
+	}
+	picks := pickLedgers(active)
 
 	// Whole-bulk transient shapes fund and drain the same cell, so they only
 	// make sense single-ledger. Gate them by the same back-pressure as
@@ -226,6 +234,66 @@ func generateBulk(g oracle.GlobalState, ledgers []string) oracle.Bulk {
 	}
 
 	return oracle.Bulk{Requests: requests}
+}
+
+func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
+	live := liveLedgerNames(g, ledgers)
+	out := make([]string, 0, len(live))
+	for _, name := range live {
+		if lc, ok := g.Lifecycle(name); ok && lc.Mode != commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// generateLifecycle mixes administrative transitions into the same concurrent
+// stream as business writes. Creation is biased when deletions shrink the live
+// pool, providing the same bounded-state back-pressure as transaction creation.
+func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string, liveTarget int) *servicepb.Request {
+	live, deleted := partitionLifecycleLedgers(g, ledgers)
+	if len(deleted) > 0 && random.RandomChoice(indexPool(32)) == 0 {
+		return actions.CreateLedgerAction(random.RandomChoice(deleted), nil)
+	}
+	if len(live) < liveTarget {
+		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
+			return &servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{
+				Name: newLedger, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
+				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
+			}}}
+		}
+		return actions.CreateLedgerAction(newLedger, nil)
+	}
+	if random.RandomChoice(indexPool(24)) != 0 {
+		return nil
+	}
+
+	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+	case 0:
+		if len(live) > 0 {
+			return actions.DeleteLedgerAction(random.RandomChoice(live))
+		}
+		return nil
+	case 1:
+		mirrors := make([]string, 0, len(live))
+		for _, name := range live {
+			if lc, ok := g.Lifecycle(name); ok && lc.Mode == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+				mirrors = append(mirrors, name)
+			}
+		}
+		if len(mirrors) == 0 {
+			return nil
+		}
+		return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: random.RandomChoice(mirrors)}}}
+	default:
+		// Enables stop every business worker for the recovery window, so generate
+		// them much less often than disables. An active maintenance window still
+		// gets the full toggle probability and closes promptly.
+		if !g.MaintenanceMode() && random.RandomChoice(indexPool(8)) != 0 {
+			return nil
+		}
+		return actions.SetMaintenanceModeAction(!g.MaintenanceMode())
+	}
 }
 
 // rollTransaction reports whether to create a new transaction, tapering with the
@@ -348,6 +416,16 @@ func randomTransientType(ls oracle.LedgerState) *oracle.TypeState {
 func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
 		if req := generateDrainTransaction(ledger, ls); req != nil {
+			return req
+		}
+	}
+
+	// Keep the bounded CI run deterministic enough to exercise the reference-
+	// conflict skip path even after lifecycle operations consume generation
+	// slots. The ordinary malformed branch below still emits unskipped conflicts.
+	if random.RandomChoice(indexPool(16)) == 0 {
+		if req := duplicateReferenceTransaction(ledger, ls); req != nil {
+			req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
 			return req
 		}
 	}

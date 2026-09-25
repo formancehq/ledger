@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -34,6 +35,9 @@ import (
 // Capture actual SDK evaluations in a child: SDK output is opened during init
 // and outcomes are deduplicated for the lifetime of a process.
 func TestLedgerDeletionScenarioContract(t *testing.T) {
+	if !assert.Enabled {
+		t.Skip("requires enable_antithesis_sdk for SDK emission")
+	}
 	if mode := os.Getenv("LEDGER_DELETION_SCENARIO_CHILD"); mode != "" {
 		var injected atomic.Bool
 		ctx, client := deletionTestServer(t, scenarioInterceptor(t, mode, &injected), scenarioStreams(mode, &injected))
