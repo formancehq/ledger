@@ -250,6 +250,7 @@ enum CheckStoreErrorType {
   LOG_SEQUENCE_MISMATCH       = 28;
   LOG_VERIFICATION_INCOMPLETE = 29;
   LOG_UNAUDITED               = 30;
+  LOG_PAYLOAD_MISMATCH        = 31;
 }
 ```
 

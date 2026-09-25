@@ -981,6 +981,10 @@ enum CheckStoreErrorType {
   // the interior gap scan (seeded at 1) and the bound comparison (which bounds
   // the interval from above only). See EN-1526.
   CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED = 30;
+  // Emitted when a persisted Log payload differs from the log deterministically
+  // re-derived by replaying the chain-verified AuditItem orders. Logs are a
+  // projection of the audit chain and never an input to expected-state replay.
+  CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH = 31;
 }
 
 message CheckStoreError {
