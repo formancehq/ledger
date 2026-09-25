@@ -3,7 +3,9 @@ package state
 import (
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math/big"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
@@ -21,6 +23,11 @@ import (
 
 // ErrVolumeCachePebbleDivergence is returned when the cache volume does not
 // match what was persisted to Pebble, indicating a cache/storage inconsistency.
+//
+// Like every sentinel failure and diagnostic it names the full
+// (ledger, account, asset, color) identity: color is part of what makes a
+// volume key unique, so leaving it out merges two distinct offenders into one
+// indistinguishable message.
 type ErrVolumeCachePebbleDivergence struct {
 	Key          domain.VolumeKey
 	CacheInput   string
@@ -32,8 +39,8 @@ type ErrVolumeCachePebbleDivergence struct {
 
 func (e *ErrVolumeCachePebbleDivergence) Error() string {
 	return fmt.Sprintf(
-		"cache/pebble volume divergence for %q/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
-		e.Key.LedgerName, e.Key.Account, e.Key.Asset, e.RaftIndex,
+		"cache/pebble volume divergence for %q/%s/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
+		e.Key.LedgerName, e.Key.Account, e.Key.Asset, e.Key.Color, e.RaftIndex,
 		e.CacheInput, e.CacheOutput, e.PebbleInput, e.PebbleOutput,
 	)
 }
@@ -131,17 +138,28 @@ func verifyPostCommitVolumes(
 		}
 
 		if pebbleValue == nil {
+			assert.Unreachable("committed volume is present in pebble", map[string]any{
+				"ledger":         update.Key.LedgerName,
+				"account":        update.Key.Account,
+				"asset":          update.Key.Asset,
+				"color":          update.Key.Color,
+				"raftIndex":      raftIndex,
+				"expectedInput":  update.New.GetInput().ToBigInt().String(),
+				"expectedOutput": update.New.GetOutput().ToBigInt().String(),
+			})
 			logger.WithFields(map[string]any{
 				"ledger":       update.Key.LedgerName,
 				"account":      update.Key.Account,
 				"asset":        update.Key.Asset,
+				"color":        update.Key.Color,
 				"raftIndex":    raftIndex,
 				"canonicalKey": hex.EncodeToString(update.CanonicalKey),
 				"id":           fmt.Sprintf("%x", update.ID),
 			}).Errorf("SENTINEL DIAG: volume missing from pebble after commit")
 
-			return fmt.Errorf("volume missing from pebble after commit for %q/%s/%s at raft index %d (canonicalKey=%x)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset, raftIndex, update.CanonicalKey)
+			return fmt.Errorf("volume missing from pebble after commit for %q/%s/%s/%s at raft index %d (canonicalKey=%x)",
+				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
+				raftIndex, update.CanonicalKey)
 		}
 
 		// Compare Pebble value with the expected value from Merge
@@ -162,6 +180,7 @@ func verifyPostCommitVolumes(
 				"ledger":         update.Key.LedgerName,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
+				"color":          update.Key.Color,
 				"expectedInput":  expectedInput.String(),
 				"expectedOutput": expectedOutput.String(),
 				"pebbleInput":    pebbleInput.String(),
@@ -175,6 +194,7 @@ func verifyPostCommitVolumes(
 				"ledger":         update.Key.LedgerName,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
+				"color":          update.Key.Color,
 				"expectedInput":  expectedInput.String(),
 				"expectedOutput": expectedOutput.String(),
 				"pebbleInput":    pebbleInput.String(),
@@ -226,13 +246,14 @@ func verifyVolumeUpdateMonotonicity(
 				"ledger":   update.Key.LedgerName,
 				"account":  update.Key.Account,
 				"asset":    update.Key.Asset,
+				"color":    update.Key.Color,
 				"oldInput": oldInput.String(),
 				"newInput": newInput.String(),
 			})
 
 			return fmt.Errorf(
-				"volume input decreased for %q/%s/%s: old=%s, new=%s (stale base value suspected)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
+				"volume input decreased for %q/%s/%s/%s: old=%s, new=%s (stale base value suspected)",
+				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
 				oldInput.String(), newInput.String(),
 			)
 		}
@@ -242,13 +263,14 @@ func verifyVolumeUpdateMonotonicity(
 				"ledger":    update.Key.LedgerName,
 				"account":   update.Key.Account,
 				"asset":     update.Key.Asset,
+				"color":     update.Key.Color,
 				"oldOutput": oldOutput.String(),
 				"newOutput": newOutput.String(),
 			})
 
 			return fmt.Errorf(
-				"volume output decreased for %q/%s/%s: old=%s, new=%s (stale base value suspected)",
-				update.Key.LedgerName, update.Key.Account, update.Key.Asset,
+				"volume output decreased for %q/%s/%s/%s: old=%s, new=%s (stale base value suspected)",
+				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
 				oldOutput.String(), newOutput.String(),
 			)
 		}
@@ -260,7 +282,9 @@ func verifyVolumeUpdateMonotonicity(
 // verifyVolumeDeltasMatchPostings cross-checks that the volume deltas produced
 // by buffer processing match what the postings in the committed logs prescribe.
 // This catches bugs where volumes are updated incorrectly (wrong amount, wrong
-// account, or missed posting).
+// account, or missed posting), including balanced writes not explained by any
+// posting. Call with pre-purge logical updates: cache resets and persisted
+// deletions are lifecycle effects, not posting deltas.
 func verifyVolumeDeltasMatchPostings(
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	logs []*commonpb.Log,
@@ -345,27 +369,126 @@ func verifyVolumeDeltasMatchPostings(
 		actual[update.Key] = &delta{input: inputDelta, output: outputDelta}
 	}
 
-	// Compare expected vs actual
+	// Both scans range a map, so they collect every offender and report the
+	// lowest-sorting one rather than whichever the iteration reached first:
+	// the same divergent input must produce the same assertion details and the
+	// same error string on every replica and every replay, or cross-timeline
+	// triage cannot correlate them. Nothing is appended on the happy path.
+	// Every message below names the full (ledger, account, asset, color)
+	// identity that ordering sorts on, or the representative it names would be
+	// indistinguishable from offenders that differ only by color.
+	var missing, mismatched []domain.VolumeKey
+
 	for key, exp := range expected {
 		act, ok := actual[key]
 		if !ok {
-			return fmt.Errorf(
-				"volume delta missing for %q/%s/%s: expected input_delta=%s output_delta=%s",
-				key.LedgerName, key.Account, key.Asset, exp.input.String(), exp.output.String(),
-			)
+			missing = append(missing, key)
+
+			continue
 		}
 
 		if exp.input.Cmp(act.input) != 0 || exp.output.Cmp(act.output) != 0 {
-			return fmt.Errorf(
-				"volume delta mismatch for %q/%s/%s: expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
-				key.LedgerName, key.Account, key.Asset,
-				exp.input.String(), exp.output.String(),
-				act.input.String(), act.output.String(),
-			)
+			mismatched = append(mismatched, key)
 		}
 	}
 
+	if key, ok := lowestVolumeKey(missing); ok {
+		exp := expected[key]
+
+		return reportVolumeOffense("posting has a volume update", key, len(missing),
+			map[string]any{
+				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+			},
+			"volume delta missing",
+			fmt.Sprintf("expected input_delta=%s output_delta=%s", exp.input, exp.output),
+		)
+	}
+
+	if key, ok := lowestVolumeKey(mismatched); ok {
+		exp, act := expected[key], actual[key]
+
+		return reportVolumeOffense("volume delta matches posting quantities", key, len(mismatched),
+			map[string]any{
+				"expectedInput": exp.input.String(), "expectedOutput": exp.output.String(),
+				"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			},
+			"volume delta mismatch",
+			fmt.Sprintf("expected(input_delta=%s, output_delta=%s), actual(input_delta=%s, output_delta=%s)",
+				exp.input, exp.output, act.input, act.output),
+		)
+	}
+
+	// A conserved but unrelated debit/credit pair must not escape the check.
+	// An unchanged touched key has no business delta and is legitimate.
+	var unexplained []domain.VolumeKey
+
+	for key, act := range actual {
+		if _, ok := expected[key]; ok || (act.input.Sign() == 0 && act.output.Sign() == 0) {
+			continue
+		}
+
+		unexplained = append(unexplained, key)
+	}
+
+	if key, ok := lowestVolumeKey(unexplained); ok {
+		act := actual[key]
+
+		return reportVolumeOffense("nonzero volume delta is explained by postings", key, len(unexplained),
+			map[string]any{
+				"actualInput": act.input.String(), "actualOutput": act.output.String(),
+			},
+			"unexpected volume delta",
+			fmt.Sprintf("input_delta=%s output_delta=%s", act.input, act.output),
+		)
+	}
+
 	return nil
+}
+
+// reportVolumeOffense names one representative offender to both sinks the
+// delta checks report through: the Antithesis property and the returned error.
+//
+// The identity lives here rather than at each call site because it drifted
+// when it did not: `volume delta missing` and `volume delta mismatch` printed
+// three fields while the assertion beside them printed four, so there was no
+// way to tell which offender `lowestVolumeKey` had chosen among any that
+// differed only by color.
+// A fourth check gets the identity, the offender count and the ordering for
+// free; what it supplies is the property, the summary and its own quantities.
+func reportVolumeOffense(
+	property string,
+	key domain.VolumeKey,
+	offenders int,
+	facts map[string]any,
+	summary string,
+	quantities string,
+) error {
+	details := map[string]any{
+		"ledger": key.LedgerName, "account": key.Account,
+		"asset": key.Asset, "color": key.Color,
+		"offenders": offenders,
+	}
+
+	maps.Copy(details, facts)
+
+	assert.Unreachable(property, details)
+
+	return fmt.Errorf(
+		"%s for %q/%s/%s/%s: %s (%d offending keys)",
+		summary, key.LedgerName, key.Account, key.Asset, key.Color, quantities, offenders,
+	)
+}
+
+// lowestVolumeKey names one deterministic representative from a set of
+// offenders discovered through map iteration, using the same
+// (Account, Asset, Color, LedgerName) total order write_set.go picks its
+// storage-fault winner with — one ordering convention for volume keys.
+func lowestVolumeKey(keys []domain.VolumeKey) (domain.VolumeKey, bool) {
+	if len(keys) == 0 {
+		return domain.VolumeKey{}, false
+	}
+
+	return slices.MinFunc(keys, compareVolumeKeys), true
 }
 
 // collectLedgerNames extracts the unique ledger names touched by the given
@@ -522,6 +645,7 @@ func dumpPerAccountVolumes(
 			"ledger":       ledgerName,
 			"account":      vk.Account,
 			"asset":        vk.Asset,
+			"color":        vk.Color,
 			"input":        inputVal.String(),
 			"output":       outputVal.String(),
 			"canonicalKey": hex.EncodeToString(entry.CanonicalKey),

@@ -30,7 +30,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 
 	// Picking runs lock-free on the snapshot; registering the read first only
 	// holds the drain gate a little longer, never less.
-	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, c.ledgerNames)
+	ledger, addr, asset, absentAccount, absentLedger, ok := pickReadTarget(state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
 	if !ok {
 		return
 	}
@@ -53,6 +53,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// property it cares about if the server-side default ever changes.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	responseFrontier := c.beginResponseFrontier()
 	acct, err := client.GetAccount(readCtx, &servicepb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: addr,
@@ -60,14 +61,14 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned. Captured before validation so later
 	// dispatches aren't folded into this read's candidate states.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
 		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
-			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil)
+			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, false)
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetAccount returned unexpected error", internal.Details{
@@ -80,7 +81,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	}
 
 	gotVols, wellFormed := accountVolumeSet(acct)
-	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata())
+	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata(), true)
 }
 
 // isShutdownError reports whether err is a context cancellation/deadline — what
@@ -260,7 +261,7 @@ func absentLedgerName(ledgers []string) string {
 // read can never otherwise detect the server serving a ledger the model never
 // created. An absent ledger must answer NotFound; a served snapshot is a finding.
 func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, absent bool) {
-	if percentChance(absentPct) {
+	if len(ledgers) == 0 || percentChance(absentPct) {
 		return absentLedgerName(ledgers), true
 	}
 
@@ -272,7 +273,7 @@ func pickLedgerReadTarget(ledgers []string, absentPct uint64) (ledger string, ab
 // ledger's whole snapshot (account types and ledger metadata, see
 // validateLedgerRead), or an absent ledger's mandatory NotFound.
 func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
+	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 2)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -280,22 +281,22 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	defer c.finishRead(readID)
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	info, err := client.GetLedger(readCtx, &servicepb.GetLedgerRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: a ledger outside the fleet must resolve NotFound.
-			assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			}
+			c.validateLedgerNotFound(maxTicket, ledger, "GetLedger")
 			return
 		}
-		// A fleet ledger is created at setup and never deleted, so a definitive
-		// error on it — NotFound, Internal — is a real finding; so is any
-		// non-NotFound definitive error on an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetLedger returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"absent": absent,
@@ -305,8 +306,6 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	}
 
 	if absent {
-		// The fleet never grows, so a snapshot for a name outside it is a ledger the
-		// server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: GetLedger served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}
@@ -348,7 +347,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
-	ledger, id, absentLedger, ok := pickTransactionID(state, c.ledgerNames)
+	ledger, id, absentLedger, ok := pickTransactionID(state, liveLedgerNames(state, c.ledgerNamesSnapshot()))
 	if !ok {
 		return
 	}
@@ -361,10 +360,11 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 	}
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.GetTransaction(readCtx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: id})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -391,7 +391,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 // validateSchemaRead) — the read-back that verifies the declared-schema
 // projection, not just the per-op SetMetadataFieldType echo.
 func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 3)
+	ledger, absent := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 3)
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -399,22 +399,22 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	defer c.finishRead(readID)
 
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+	responseFrontier := c.beginResponseFrontier()
 	resp, err := client.GetMetadataSchemaStatus(readCtx, &servicepb.GetMetadataSchemaStatusRequest{Ledger: ledger})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
-	maxTicket := c.ticketSeq.Load()
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
 		}
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: a schema read of a ledger outside the fleet must resolve NotFound.
-			assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+			}
+			c.validateLedgerNotFound(maxTicket, ledger, "GetMetadataSchemaStatus")
 			return
 		}
-		// A fleet ledger is created at setup and never deleted, so a definitive
-		// error on it is a real finding; so is any non-NotFound definitive error on
-		// an absent ledger.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"absent": absent,
@@ -424,8 +424,6 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 	}
 
 	if absent {
-		// The fleet never grows, so a schema for a name outside it is a ledger the
-		// server holds but the model never created.
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus served a ledger outside the fleet", internal.Details{"ledger": ledger})
 		return
 	}

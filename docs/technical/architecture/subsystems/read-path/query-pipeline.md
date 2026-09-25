@@ -123,6 +123,18 @@ see [indexer / Changing a Metadata Key's Type](../indexer/indexer.md#changing-a-
 
 ## Pebble snapshot
 
+The query and audit read paths report distinct Antithesis safety properties
+when a main snapshot violates `H >= R`, preserving their existing errors.
+Projection lag and context expiry remain ordinary wait/error paths. A
+successful `AlignedIndexSnapshot` return after actual projection lag emits
+`indexed snapshot aligned after waiting for projection`; cancellation does
+not satisfy it, and it does not claim that the subsequent query succeeded.
+Every aligned read reaches that evaluation, including the already-aligned fast
+path, so the site sits behind `assert.Enabled` — a constant that is false in an
+unarmed build, which makes the compiler discard the call and its details map
+rather than merely skipping them.
+See the [assertion catalog and applicability](../../../contributing/antithesis-assertions.md).
+
 `store.NewReadHandle()` returns a Pebble snapshot. Within one controller request,
 main-store leaves and enrichment all use that **one** handle. Read-index
 iterators use a separate snapshot certified at the main handle's applied-index

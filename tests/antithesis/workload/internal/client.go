@@ -51,32 +51,19 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		maxAttempts = 1000000
 	}
 
-	// The retry interceptors retry the transient set (IsTransient) to a definitive
-	// outcome; their loop budget is the bounded default unless retry-forever lifts
-	// it.
-	interceptorAttempts := retryMaxAttempts
+	// Unary RPCs keep the previous effective 50-attempt budget (10 interceptor
+	// attempts, each formerly wrapping up to 5 service-config attempts). Streams
+	// never had service-config retries, so their ordinary budget remains 10.
+	// Retry-forever lifts both budgets.
+	unaryInterceptorAttempts := maxAttempts
+	streamInterceptorAttempts := retryMaxAttempts
 	if retryForever {
-		interceptorAttempts = maxAttempts
+		streamInterceptorAttempts = maxAttempts
 	}
 
-	// Service-config retry covers the raw UNAVAILABLE code; the interceptors also
-	// handle deadline and external-service classifications below.
-	methodConfig := ""
-	if !retryDisabled {
-		methodConfig = fmt.Sprintf(`,
-		"methodConfig": [{
-			"name": [{}],
-			"retryPolicy": {
-				"MaxAttempts": %d,
-				"InitialBackoff": "0.2s",
-				"MaxBackoff": "2s",
-				"BackoffMultiplier": 1.5,
-				"RetryableStatusCodes": ["UNAVAILABLE"]
-			}
-		}]`, maxAttempts)
-	}
-	// Round-robin load balancing always applies; only the retry policy is toggled.
-	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]` + methodConfig + `}`
+	// Retry in the interceptor, where business-reason details are visible. A
+	// service-config UNAVAILABLE retry cannot distinguish maintenance rejection.
+	serviceConfig := `{"loadBalancingConfig": [{"round_robin": {}}]}`
 
 	addrs := strings.Split(target, ",")
 	opts := []grpc.DialOption{
@@ -95,11 +82,11 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 		// map is complete.
 		opts = append(opts,
 			grpc.WithChainUnaryInterceptor(
-				retryUnaryInterceptor(interceptorAttempts),
+				retryUnaryInterceptor(unaryInterceptorAttempts),
 				classifyUnaryInterceptor(),
 			),
 			grpc.WithChainStreamInterceptor(
-				retryStreamInterceptor(interceptorAttempts),
+				retryStreamInterceptor(streamInterceptorAttempts),
 				classifyStreamInterceptor(),
 			),
 		)
@@ -178,11 +165,19 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		var err error
+		hadAmbiguousAttempt := false
 		for attempt := range maxAttempts {
 			err = invoker(ctx, method, req, reply, cc, opts...)
-			if !IsTransient(err) {
+			if HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
+				if hadAmbiguousAttempt {
+					return maintenanceAfterAmbiguousCommitError{err: err}
+				}
 				return err
 			}
+			if !retryableRPCError(err) {
+				return err
+			}
+			hadAmbiguousAttempt = hadAmbiguousAttempt || IsAmbiguousCommit(err)
 			select {
 			case <-ctx.Done():
 				return err
@@ -191,6 +186,38 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 		}
 		return err
 	}
+}
+
+// retryableRPCError keeps maintenance as a definitive model outcome even though
+// its transport code is Unavailable. Every other transient retains the existing
+// retry behavior.
+func retryableRPCError(err error) bool {
+	return IsTransient(err) && !HasErrorReason(err, domain.ErrReasonMaintenanceMode)
+}
+
+type maintenanceAfterAmbiguousCommitError struct {
+	err error
+}
+
+func (e maintenanceAfterAmbiguousCommitError) Error() string {
+	return e.err.Error()
+}
+
+func (e maintenanceAfterAmbiguousCommitError) Unwrap() error {
+	return e.err
+}
+
+func (e maintenanceAfterAmbiguousCommitError) GRPCStatus() *status.Status {
+	return status.Convert(e.err)
+}
+
+// IsMaintenanceAfterAmbiguousCommit reports that an RPC may have committed and
+// a later attempt was rejected by the maintenance gate. Callers must preserve
+// the ambiguous request while arranging any recovery needed to leave
+// maintenance mode.
+func IsMaintenanceAfterAmbiguousCommit(err error) bool {
+	var target maintenanceAfterAmbiguousCommitError
+	return errors.As(err, &target)
 }
 
 // classifyUnaryInterceptor asserts that every error escaping an RPC is
@@ -265,7 +292,7 @@ func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
 		)
 		for attempt := range maxAttempts {
 			stream, err = streamer(ctx, desc, cc, method, opts...)
-			if !IsTransient(err) {
+			if !retryableRPCError(err) {
 				return stream, err
 			}
 			select {

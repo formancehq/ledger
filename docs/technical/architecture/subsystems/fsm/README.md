@@ -6,7 +6,7 @@ The deterministic state machine (`internal/infra/state`, `internal/infra/plan`, 
 
 | Document | Description |
 |----------|-------------|
-| [deterministic-fsm.md](deterministic-fsm.md) | Deterministic FSM with generation-based caching, preloading, and authoritative sequence-exhaustion rules, and deletion-aware post-commit sentinel expectations. |
+| [deterministic-fsm.md](deterministic-fsm.md) | Deterministic FSM with generation-based caching, preloading, authoritative sequence-exhaustion rules, and deletion-aware post-commit accounting sentinels. |
 | [cache-layers.md](cache-layers.md) | FSM-side read/write layering and ledger configuration reader/clone ownership: gatedScope → WriteSet → DerivedKeyStore → KeyStore → AttributeCache. |
 | [preload.md](preload.md) | Preload contract: `plan.Coverage` declaration, `MirrorPreload`, `PredictedIndex` stale-detection, and the producer-owns-its-declaration rule. |
 | [coverage-gate.md](coverage-gate.md) | The per-order coverage bits the FSM uses to gate every cache read against admission's declared `plan.Coverage`. |
@@ -14,6 +14,7 @@ The deterministic state machine (`internal/infra/state`, `internal/infra/plan`, 
 
 ## Related
 
+- [Internal Antithesis assertions](../../../contributing/antithesis-assertions.md) — contract reports, commit milestones, local verification and campaign applicability.
 - [Consensus](../consensus/) — Raft commit pipeline that feeds the FSM.
 - [Attributes](../attributes/) — the cache the FSM reads through.
 - [Admission](../admission/) — declares the `plan.Coverage` the FSM consumes.

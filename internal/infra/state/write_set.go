@@ -7,6 +7,7 @@ import (
 	"slices"
 	"sort"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -78,7 +79,10 @@ type WriteSet struct {
 	// deletedLedgers holds ledger names scheduled for data cleanup during Merge.
 	deletedLedgers []string
 
-	// allVolumeUpdates includes kept + purged updates (for delta/posting cross-check).
+	// allVolumeUpdates holds the pre-purge logical updates — kept + purged +
+	// transient — for the delta/posting cross-check, which needs the purged
+	// ephemeral entries and the transient ones too. Keep in step with
+	// AllVolumeUpdates and the sentinel section of deterministic-fsm.md.
 	allVolumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 
 	// keptVolumeUpdates excludes ephemeral purged entries (for post-commit Pebble verification).
@@ -339,6 +343,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 
 	// Defensive check: double-entry invariant (on all updates, including purged).
 	if err := checkDoubleEntryInvariant(volumeUpdates); err != nil {
+		assert.Unreachable("all volume updates conserve double entry", map[string]any{
+			"updates": len(volumeUpdates), "error": err.Error(),
+		})
+
 		return err
 	}
 
@@ -352,6 +360,10 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 		persistedUpdates = append(persistedUpdates, partResult.kept...)
 		persistedUpdates = append(persistedUpdates, partResult.purged...)
 		if err := checkDoubleEntryInvariant(persistedUpdates); err != nil {
+			assert.Unreachable("persisted volume updates conserve double entry", map[string]any{
+				"updates": len(persistedUpdates), "error": err.Error(),
+			})
+
 			for _, u := range persistedUpdates {
 				var oldIn, oldOut string
 				if u.Old.IsDefined() && u.Old.Value() != nil {
@@ -363,6 +375,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 					"ledger":    u.Key.LedgerName,
 					"account":   u.Key.Account,
 					"asset":     u.Key.Asset,
+					"color":     u.Key.Color,
 					"oldInput":  oldIn,
 					"oldOutput": oldOut,
 					"newInput":  u.New.GetInput().ToBigInt().String(),
@@ -375,6 +388,7 @@ func (b *WriteSet) Merge(batch *dal.WriteSession, logsOrRefs []*raftcmdpb.Create
 					"ledger":  u.Key.LedgerName,
 					"account": u.Key.Account,
 					"asset":   u.Key.Asset,
+					"color":   u.Key.Color,
 					"input":   u.New.GetInput().ToBigInt().String(),
 					"output":  u.New.GetOutput().ToBigInt().String(),
 				}).Errorf("TRANSIENT VOLUME at invariant violation")
@@ -1266,39 +1280,71 @@ func (b *WriteSet) RemoveSigningKey(keyID string) {
 	})
 }
 
-// GetSigningKeyChildren returns all key IDs that have keyID as their parent.
-// It checks the committed KeyStore and accounts for pending additions/removals.
+// effectiveSigningKey is one key ID's state after the proposal's pending updates
+// are folded: the parent it ends up under, or the fact that it ends up removed.
+type effectiveSigningKey struct {
+	parentKeyID string
+	removed     bool
+}
+
+// effectiveSigningKeys folds pendingSigningKeyUpdates in slice order, the last
+// entry for a key ID winning, so a caller sees the state Merge will produce.
+//
+// Order is the whole point. The slice mixes additions and removals, and a key ID
+// may appear several times in one proposal — registration is an upsert, so
+// [remove C, save C under P] leaves C under P while the reverse leaves C gone.
+// Merge replays the slice top to bottom, so only a positional fold agrees with
+// what the proposal actually commits.
+func (b *WriteSet) effectiveSigningKeys() map[string]effectiveSigningKey {
+	effective := make(map[string]effectiveSigningKey, len(b.pendingSigningKeyUpdates))
+
+	for _, update := range b.pendingSigningKeyUpdates {
+		effective[update.keyID] = effectiveSigningKey{
+			parentKeyID: update.parentKeyID,
+			removed:     update.remove,
+		}
+	}
+
+	return effective
+}
+
+// GetSigningKeyChildren returns the key IDs whose parent is keyID in the state
+// the proposal has built so far: the committed children it has not touched, plus
+// every key whose folded parent is keyID.
+//
+// The result feeds the revocation cascade, and hence the chain-hashed
+// RevokedSigningKeyLog.cascaded_key_ids, so it must be identical on every replica
+// (invariant #2). Both halves are ordered without a sort: keystore.GetChildren
+// returns sorted committed children, and the pending half walks
+// pendingSigningKeyUpdates, whose order is fixed by the applied proposal.
 func (b *WriteSet) GetSigningKeyChildren(keyID string) []string {
-	// Start from committed state
-	children := b.fsm.keyStore.GetChildren(keyID)
+	effective := b.effectiveSigningKeys()
 
-	// Build a set of pending removals for fast lookup
-	pendingRemovals := make(map[string]struct{})
+	var children []string
+
+	// A key the proposal touched is answered by the fold below, whatever its
+	// committed parent was, so the two halves cannot both yield it.
+	for _, child := range b.fsm.keyStore.GetChildren(keyID) {
+		if _, touched := effective[child]; !touched {
+			children = append(children, child)
+		}
+	}
+
+	seen := make(map[string]struct{}, len(effective))
 
 	for _, update := range b.pendingSigningKeyUpdates {
-		if update.remove {
-			pendingRemovals[update.keyID] = struct{}{}
+		if _, done := seen[update.keyID]; done {
+			continue
+		}
+
+		seen[update.keyID] = struct{}{}
+
+		if state := effective[update.keyID]; !state.removed && state.parentKeyID == keyID {
+			children = append(children, update.keyID)
 		}
 	}
 
-	// Filter out pending removals from committed children
-	filtered := children[:0]
-	for _, child := range children {
-		if _, removed := pendingRemovals[child]; !removed {
-			filtered = append(filtered, child)
-		}
-	}
-
-	// Add pending additions whose parent matches
-	for _, update := range b.pendingSigningKeyUpdates {
-		if !update.remove && update.parentKeyID == keyID {
-			if _, removed := pendingRemovals[update.keyID]; !removed {
-				filtered = append(filtered, update.keyID)
-			}
-		}
-	}
-
-	return filtered
+	return children
 }
 
 func (b *WriteSet) SetRequireSignatures(require bool) {
@@ -1349,7 +1395,7 @@ func (b *WriteSet) SinkConfigChanged() bool {
 	return b.sinkConfigChanged
 }
 
-// AllVolumeUpdates returns all volume updates (kept + purged) captured during Merge.
+// AllVolumeUpdates returns pre-purge logical updates (kept + purged + transient) captured during Merge.
 // Used for delta/posting cross-check which needs purged ephemeral entries too.
 func (b *WriteSet) AllVolumeUpdates() []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair] {
 	return b.allVolumeUpdates

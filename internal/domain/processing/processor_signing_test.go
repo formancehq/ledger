@@ -181,18 +181,16 @@ func TestProcessRevokeSigningKey_CascadeVisitsEachKeyOnce(t *testing.T) {
 			cascaded: []string{"b", "c"},
 		},
 		{
-			// Two in-proposal registrations of the same child under one parent.
 			// Acyclic, so this one is about the duplicate in the audited payload
-			// rather than about termination.
-			name:     "duplicate pending addition under one parent",
+			// rather than about termination. GetSigningKeyChildren reports each key
+			// once, so this pins the walk's own dedup independently of its caller.
+			name:     "the same child reported twice under one parent",
 			revoke:   "parent",
 			children: map[string][]string{"parent": {"child", "child"}, "child": nil},
 			cascaded: []string{"child"},
 		},
 		{
-			// The same key reachable through two distinct branches — a child
-			// re-registered under a second parent within the revoking proposal,
-			// which GetSigningKeyChildren reports for both.
+			// The same key reachable through two distinct branches of the subtree.
 			name:     "key reachable through two branches",
 			revoke:   "root",
 			children: map[string][]string{"root": {"a", "b"}, "a": {"shared"}, "b": {"shared"}, "shared": nil},

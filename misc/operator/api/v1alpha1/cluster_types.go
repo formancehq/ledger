@@ -846,9 +846,10 @@ type PyroscopeConfig struct {
 	// +optional
 	ApplicationName string `json:"applicationName,omitempty"`
 
-	// AuthToken for Pyroscope authentication.
+	// AuthTokenFrom references a Pyroscope authentication token in a Secret in the Cluster namespace.
 	// +optional
-	AuthToken string `json:"authToken,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self.name != '' && self.key != ''",message="secret name and key must be non-empty"
+	AuthTokenFrom *SecretKeyRef `json:"authTokenFrom,omitempty"`
 
 	// TenantID for multi-tenant Pyroscope.
 	// +optional
@@ -858,9 +859,10 @@ type PyroscopeConfig struct {
 	// +optional
 	BasicAuthUser string `json:"basicAuthUser,omitempty"`
 
-	// BasicAuthPassword for basic authentication.
+	// BasicAuthPasswordFrom references a basic-auth password in a Secret in the Cluster namespace.
 	// +optional
-	BasicAuthPassword string `json:"basicAuthPassword,omitempty"`
+	// +kubebuilder:validation:XValidation:rule="self.name != '' && self.key != ''",message="secret name and key must be non-empty"
+	BasicAuthPasswordFrom *SecretKeyRef `json:"basicAuthPasswordFrom,omitempty"`
 
 	// UploadRate is the upload interval.
 	// +optional

@@ -73,6 +73,9 @@ jobs:
       - name: Run internal tests with optional features and coverage
         run: >
           nix develop --command just test-internal-coverage
+      - name: Run Antithesis assertion-emission contract tests
+        run: >
+          nix develop --command just test-antithesis-assertions
       - name: Upload coverage profile
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -81,6 +84,7 @@ jobs:
           path: |
             build/coverage/unit.out
             build/coverage/internal.out
+            build/coverage/antithesis.out
           retention-days: 7
           if-no-files-found: ignore
 
@@ -182,7 +186,8 @@ jobs:
         uses: ./.github/actions/default
       - name: Run deterministic model workload tests with race detection
         run: >
-          nix develop --command go -C tests/antithesis/workload test -race ./...
+          nix develop --command go -C tests/antithesis/workload test -race
+          -tags enable_antithesis_sdk ./...
 
   Tests-Model:
     runs-on: namespace-profile-linux-amd64-4vcpu

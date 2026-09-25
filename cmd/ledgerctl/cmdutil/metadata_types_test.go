@@ -262,3 +262,10 @@ func TestParseTargetTypeRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestParseSchemaEntryPreservesColonInKey(t *testing.T) {
+	t.Parallel()
+	_, key, _, err := ParseSchemaEntry("transaction:external:id:string")
+	require.NoError(t, err)
+	require.Equal(t, "external:id", key)
+}

@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -43,9 +42,10 @@ func checkpointNotFound(err error) bool {
 	return ok && statusValue.Code() == codes.NotFound
 }
 
-// bucket and cluster must address the same node. Bound a read on a down
+// Keep both clients and the Raft identity paired. Bound a read on a down
 // replica so it cannot indefinitely hold the model's ordered drain gate.
-func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient, cluster clusterpb.ClusterServiceClient, c *Checker) {
+func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Checker) {
+	bucket := node.Bucket
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	c.mu.Lock()
@@ -57,23 +57,27 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 	id, frozen, deleted := c.pickCheckpointReadTarget()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
+	ledgerNames := liveLedgerNames(frozen, c.ledgerNamesSnapshot())
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	choice := internal.Rand().Uint64() % 6
 	if choice == 0 || id == 0 {
-		runCheckpointListRead(readCtx, bucket, cluster, c)
+		runCheckpointListRead(readCtx, node, c)
 		return
 	}
 	if choice == 1 {
-		runCheckpointScheduleRead(readCtx, bucket, cluster, c)
+		runCheckpointScheduleRead(readCtx, node, c)
 		return
 	}
 	var err error
 	var matches bool
 	var concrete bool
 	var maxTicket uint64
+	var ledger string
 	details := internal.Details{"checkpoint": id, "readKind": choice}
 	if choice == 2 {
-		ledger, address, _, _, _, ok := pickReadTarget(frozen, c.ledgerNames)
+		var address string
+		var ok bool
+		ledger, address, _, _, _, ok = pickReadTarget(frozen, ledgerNames)
 		if !ok {
 			return
 		}
@@ -84,7 +88,9 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil)
 		concrete = err == nil && account != nil && modelKnowsAccount(frozen.Ledger(ledger), address)
 	} else if choice == 3 {
-		ledger, txID, _, ok := pickTransactionID(frozen, c.ledgerNames)
+		var txID uint64
+		var ok bool
+		ledger, txID, _, ok = pickTransactionID(frozen, ledgerNames)
 		if !ok {
 			return
 		}
@@ -95,7 +101,10 @@ func runCheckpointRead(ctx context.Context, bucket servicepb.BucketServiceClient
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
 		concrete = err == nil && response.GetTransaction() != nil
 	} else {
-		ledger := c.ledgerNames[internal.Rand().Uint64()%uint64(len(c.ledgerNames))]
+		if len(ledgerNames) == 0 {
+			return
+		}
+		ledger = ledgerNames[internal.Rand().Uint64()%uint64(len(ledgerNames))]
 		pageSize := 1 + int(internal.Rand().Uint64()%16)
 		reverse := percentChance(50)
 		details["ledger"], details["pageSize"], details["reverse"] = ledger, pageSize, reverse
@@ -173,7 +182,11 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 	case <-start:
 	}
 
-	ledger := c.ledgerNames[0]
+	ledgerNames := c.liveLedgerNamesSnapshot()
+	if len(ledgerNames) == 0 {
+		return
+	}
+	ledger := ledgerNames[0]
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 	info, err := bucket.GetLedger(readCtx, &servicepb.GetLedgerRequest{
 		Ledger: ledger,
@@ -194,14 +207,22 @@ func runPredictedCheckpointRead(ctx context.Context, bucket servicepb.BucketServ
 
 	c.mu.Lock()
 	matches := c.checkpointCreationMatches(maxTicket, checkpointID, func(state oracle.GlobalState) bool {
-		ls := state.Ledger(ledger)
-
-		return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
+		return predictedCheckpointLedgerMatches(state, ledger, info)
 	})
 	c.mu.Unlock()
 	if !matches {
 		assert.Unreachable("singleton_driver_model: predicted checkpoint read outside creation model", internal.Details{"checkpoint": checkpointID, "ledger": ledger})
 	}
+}
+
+func predictedCheckpointLedgerMatches(state oracle.GlobalState, ledger string, info *commonpb.LedgerInfo) bool {
+	lifecycle, exists := state.Lifecycle(ledger)
+	if !exists || lifecycle.Deleted {
+		return false
+	}
+	ls := state.Ledger(ledger)
+
+	return chartMatches(ls, info.GetAccountTypes()) && ledgerMetaMatches(ls, info.GetMetadata())
 }
 
 // pickCheckpointReadTarget samples uniformly from every retained snapshot.
@@ -226,15 +247,16 @@ func (c *Checker) pickCheckpointReadTarget() (uint64, oracle.GlobalState, bool) 
 	return id, c.deletedCheckpointSnapshots[id].state, true
 }
 
-func runCheckpointListRead(ctx context.Context, bucket servicepb.BucketServiceClient, client clusterpb.ClusterServiceClient, c *Checker) {
+func runCheckpointListRead(ctx context.Context, node *internal.PerNodeConn, c *Checker) {
 	c.mu.Lock()
 	sequences := make(map[uint64]uint64, len(c.checkpoints))
 	for id, snapshot := range c.checkpoints {
 		sequences[id] = snapshot.maxSequence
 	}
 	c.mu.Unlock()
-	response, err := readCheckpointRegistry(ctx, bucket, client, c.ledgerNames[0])
-	maxTicket := c.ticketSeq.Load()
+	responseFrontier := c.beginResponseFrontier()
+	response, err := readCheckpointRegistry(ctx, node)
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -252,15 +274,16 @@ func runCheckpointListRead(ctx context.Context, bucket servicepb.BucketServiceCl
 	}
 	slices.Sort(ids)
 	if !c.matchesModel(maxTicket, "CHECKPOINTLIST", func(base oracle.GlobalState) bool { return slices.Equal(ids, base.QueryCheckpointIDs()) }) {
-		assert.Unreachable("singleton_driver_model: checkpoint list outside model", internal.Details{"ids": ids})
+		assert.Unreachable("singleton_driver_model: checkpoint list outside model", internal.Details{"ids": ids, "nodeID": node.NodeID, "address": node.Addr})
 		return
 	}
 	noteCheckpointCoverage(checkpointListCoverage)
 }
 
-func runCheckpointScheduleRead(ctx context.Context, bucket servicepb.BucketServiceClient, client clusterpb.ClusterServiceClient, c *Checker) {
-	response, err := readCheckpointSchedule(ctx, bucket, client, c.ledgerNames[0])
-	maxTicket := c.ticketSeq.Load()
+func runCheckpointScheduleRead(ctx context.Context, node *internal.PerNodeConn, c *Checker) {
+	responseFrontier := c.beginResponseFrontier()
+	response, err := readCheckpointSchedule(ctx, node)
+	maxTicket := responseFrontier()
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
 			return
@@ -269,7 +292,7 @@ func runCheckpointScheduleRead(ctx context.Context, bucket servicepb.BucketServi
 		return
 	}
 	if !c.matchesModel(maxTicket, "CHECKPOINTSCHEDULE", func(base oracle.GlobalState) bool { return response.GetCron() == base.QueryCheckpointSchedule() }) {
-		assert.Unreachable("singleton_driver_model: checkpoint schedule outside model", internal.Details{"cron": response.GetCron()})
+		assert.Unreachable("singleton_driver_model: checkpoint schedule outside model", internal.Details{"cron": response.GetCron(), "nodeID": node.NodeID, "address": node.Addr})
 		return
 	}
 	noteCheckpointCoverage(checkpointScheduleReadCoverage)

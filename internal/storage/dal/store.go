@@ -705,7 +705,7 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	return keys, nil
 }
 
-// closeDBSafe closes a Pebble DB, recovering from panics.
+// CloseSafe runs a Pebble close, turning a panic out of it into an error.
 // In Pebble v2.1.x, DB.Close panics with "element has outstanding references"
 // in genericcache/shard.Close when a file cache reference is still held.
 //
@@ -726,15 +726,18 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 // This remains a containment net, not a fix: a recovered panic leaves the rest
 // of DB.Close unrun (objProvider.Close and the checks after it), and DB.Close
 // accumulates errors as it goes, so reaching the panic does not prove the
-// earlier steps succeeded. Fix the offending caller; do not rely on this.
-func closeDBSafe(db *pebble.DB) (err error) {
+// earlier steps succeeded. The directory lock is not among the steps left
+// unrun: DB.Close releases it (db.go:1737) before it closes the file cache
+// (db.go:1807), where this panic originates, so a recovered close panic never
+// leaves the directory locked. Fix the offending caller; do not rely on this.
+func CloseSafe(closeFn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("panic during DB close (recovered): %v", r)
 		}
 	}()
 
-	return db.Close()
+	return closeFn()
 }
 
 // Close closes the Pebble database.
@@ -1428,9 +1431,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 			_ = closer.Close()
 		}
 
-		if closeErr := closeDBSafe(oldDB); closeErr != nil {
+		if closeErr := CloseSafe(oldDB.Close); closeErr != nil {
 			// Pebble v2.1.x panics here if a caller still holds a read
-			// resource on this DB (see closeDBSafe). Log and continue — the
+			// resource on this DB (see CloseSafe). Log and continue — the
 			// old data is stale and being replaced. The rename in step 3
 			// still works regardless of close cleanliness.
 			s.logger.WithFields(map[string]any{
@@ -1458,7 +1461,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	rollback := func(reason error) error {
 		// Close the staging DB if it managed to open before failing.
 		if s.db != nil {
-			if closeErr := closeDBSafe(s.db); closeErr != nil {
+			if closeErr := CloseSafe(s.db.Close); closeErr != nil {
 				s.logger.WithFields(map[string]any{
 					"error": closeErr,
 				}).Errorf("Error closing partial staging DB during rollback (continuing)")
@@ -1546,7 +1549,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// This double-open is the price of using rename as the commit
 	// point — it is cheap (warm OS cache, no compactions) and only
 	// happens once per restore.
-	if closeErr := closeDBSafe(newDB); closeErr != nil {
+	if closeErr := CloseSafe(newDB.Close); closeErr != nil {
 		// Same Pebble v2.1.x caveat as above: log and continue. The on-
 		// disk state is durable (Flush + Checkpoint above already synced).
 		s.logger.WithFields(map[string]any{

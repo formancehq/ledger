@@ -372,8 +372,9 @@ func TestLearnTxStamps_RecordsLogDateAndSequence(t *testing.T) {
 	row := gs.Ledger("L").LogRows()[0]
 	require.Nil(t, row.Date)
 	require.Zero(t, row.Sequence)
+	snapshot := gs
 
-	learnTxStamps(gs, bulk, []*commonpb.Log{{
+	learnTxStamps(&gs, bulk, []*commonpb.Log{{
 		Sequence: 17,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 			LedgerName: "L",
@@ -384,6 +385,7 @@ func TestLearnTxStamps_RecordsLogDateAndSequence(t *testing.T) {
 	learned := gs.Ledger("L").LogRows()[0]
 	assert.Equal(t, uint64(99), learned.Date.GetData(), "the date comes from the commit response")
 	assert.Equal(t, uint64(17), learned.Sequence, "so does the global sequence")
+	require.Nil(t, snapshot.Ledger("L").LogRows()[0].Date, "learning must not mutate published snapshots")
 }
 
 // The global sequence spans every ledger and the technical entries between
@@ -532,7 +534,8 @@ func TestLogWindowMatches_ColourSplitIsAMismatch(t *testing.T) {
 func TestLogWindowMatches_ComparesTheEmbeddedTransaction(t *testing.T) {
 	t.Parallel()
 
-	gs := buildGlobal(t,
+	// Separate bulks because the revert targets a transaction this setup creates.
+	gs := buildGlobalSeparateBulks(t,
 		oracletest.TxReqRefL("L", "r1", "world", "acc:1", "USD/2", 5),
 		oracletest.RevertReqL("L", 1, true),
 	)
@@ -582,7 +585,8 @@ func TestLogWindowMatches_ComparesTheEmbeddedTransaction(t *testing.T) {
 func TestLogTxMatches_IgnoresPostCreationMutation(t *testing.T) {
 	t.Parallel()
 
-	gs := buildGlobal(t,
+	// Separate bulks because the revert targets a transaction this setup creates.
+	gs := buildGlobalSeparateBulks(t,
 		oracletest.TxReqL("L", "world", "acc:1", "USD/2", 5),
 		oracletest.RevertReqL("L", 1, true),
 		oracletest.AddTxMetaReq(1, map[string]*commonpb.MetadataValue{"k1": commonpb.NewStringValue("late")}),

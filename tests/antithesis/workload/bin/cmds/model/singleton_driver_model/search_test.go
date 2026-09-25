@@ -8,6 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -132,4 +133,52 @@ func TestModelFailure_NoSelfExplanation(t *testing.T) {
 	withAdd := NewChecker([]string{"L"}, nil)
 	withAdd.inflight[1] = bulkOf(oracletest.AddTypeReq("T"))
 	require.True(t, alreadyExistsExplained(collectBases(withAdd)))
+}
+
+func TestCandidateBasesRejectsIntractableInflightSet(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	for ticket := uint64(1); ticket <= maxCandidateInflight+1; ticket++ {
+		// Every bulk is independently committable. Without the explicit bound,
+		// exhausting this search requires exploring every subset.
+		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
+	}
+
+	require.PanicsWithValue(t, "candidate search exceeded its bounded in-flight set", func() {
+		c.candidateBases(maxCandidateInflight+1, func(oracle.GlobalState) bool { return false })
+	})
+}
+
+func TestCandidateBasesCountsAmbiguousEnableInInflightBound(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	for ticket := uint64(1); ticket <= maxCandidateInflight; ticket++ {
+		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
+	}
+	c.ambiguousBulks[maxCandidateInflight+1] = bulkOf(actions.SetMaintenanceModeAction(true))
+
+	require.PanicsWithValue(t, "candidate search exceeded its bounded in-flight set", func() {
+		c.candidateBases(maxCandidateInflight+1, func(oracle.GlobalState) bool { return false })
+	})
+}
+
+func TestCandidateBasesCompletesAtInflightBound(t *testing.T) {
+	t.Parallel()
+
+	c := NewChecker([]string{"L"}, nil)
+	for ticket := uint64(1); ticket <= maxCandidateInflight; ticket++ {
+		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
+	}
+
+	visited := 0
+	c.candidateBases(maxCandidateInflight, func(oracle.GlobalState) bool {
+		visited++
+
+		return false
+	})
+	// Distinct insertion orders produce distinct fingerprints, so this is the
+	// full sum of partial permutations: sum(8!/(8-k)!, k=0..8).
+	require.Equal(t, 109601, visited)
 }

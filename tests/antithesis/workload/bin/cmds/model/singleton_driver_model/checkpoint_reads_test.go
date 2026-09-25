@@ -87,5 +87,9 @@ func TestLiveCheckpointTransactionAbsenceMatchesFrozenState(t *testing.T) {
 	notFound := status.Error(codes.NotFound, "transaction not found")
 	require.True(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 2, nil, false), notFound), "NotFound also describes a transaction absent from a live frozen checkpoint")
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 1, nil, false), notFound), "a known frozen transaction cannot disappear while the checkpoint remains live")
+	deleted := c.modelState.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"}}}))
+	require.True(t, deleted.OK)
+	c.modelState = deleted.State
+	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 1, nil, false), notFound), "deleting the live ledger cannot make a frozen transaction disappear")
 	require.False(t, c.checkpointReadOutcomeMatches(1, 0, checkpointTransactionReadMatches(frozen, "L", 2, nil, false), status.Error(codes.Internal, "I/O failure")), "absence does not excuse an unrelated error")
 }

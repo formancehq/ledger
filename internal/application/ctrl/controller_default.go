@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -1756,6 +1757,10 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 		return nil, fmt.Errorf("reading main-store applied index: %w", err)
 	}
 	if barrier, ok := query.ReadBarrierHorizon(ctx); ok && mainAppliedIndex < barrier {
+		assert.Unreachable("linearizable audit snapshot covers its read barrier", map[string]any{
+			"appliedIndex": mainAppliedIndex, "readBarrier": barrier,
+		})
+
 		return nil, fmt.Errorf("main-store snapshot applied index %d is behind ReadIndex horizon %d", mainAppliedIndex, barrier)
 	}
 
