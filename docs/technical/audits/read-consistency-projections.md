@@ -62,6 +62,19 @@ rejected (`ErrLedgerNotFound`), never served the wiped keyspace as empty.
 Findings must locate the defect in row folding, certification, activation,
 or reclamation.
 
+Startup dispatch must describe the durable read-store cursor, not the newer
+main registry. Recover the cursor, ledger history, and active index versions
+from one read-store snapshot, and apply later drops or ledger deletions only
+when their logs are folded. An intermediate query-checkpoint certificate can
+wake a live read while checkpoint materialization waits for audit progress;
+it therefore claims complete pre-drop membership even before startup catch-up
+finishes. The regression witness closes and reopens both stores, starts a new
+live read pinned before the drop, and checks a non-empty result at that
+intermediate certificate. Record the actual startup read-admission path and
+audit notification, rather than assuming requests survive a process restart.
+Generic recovery coverage must also preserve backfill/rewrite ownership,
+tombstone high-water marks, and ledger-delete replay obligations after rollback.
+
 An aligned read-index snapshot may legally be ahead of the main handle only
 when target-specific gates project it back to the main pin:
 
