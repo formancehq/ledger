@@ -9,3 +9,10 @@ Format: numbered files (`NNNN-<slug>.md`). Keep each one self-contained;
 prefer being precise over being exhaustive. If the situation changes
 (upstream library adds a feature, workload profile shifts, ...),
 supersede the ADR with a new one that references the previous.
+
+## Index
+
+- [0001 — vtprotobuf unmarshal and unsafe](0001-vtproto-unmarshal-unsafe.md)
+- [0002 — FSM throughput ceiling](0002-fsm-throughput-ceiling.md)
+- [0003 — JSON toolchain](0003-json-toolchain-v2.md)
+- [0004 — Logs and projections integrity](0004-logs-and-projections-integrity.md)
