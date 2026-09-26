@@ -26,17 +26,21 @@ type numscriptPostingProducer struct {
 	// OrderTechnical, staged on Context by the dispatcher) — the baseline the
 	// stale-inputs check re-resolves against. Empty means nothing to check.
 	inputsResolutionHash []byte
+	// compiledProgram/compiledVars/compiledScriptHash are the Numscript VM
+	// artifact admission compiled on the leader's parallel path (from
+	// OrderTechnical, staged like the hash above). When present, execution
+	// decodes and runs the bytecode; absent means admission could not compile
+	// the script (e.g. asset scaling) and the interpreter runs the text. Either
+	// way the engine choice is a function of the committed entry alone, so every
+	// node applies it identically (invariant #2).
+	compiledProgram    []byte
+	compiledVars       []byte
+	compiledScriptHash []byte
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
-	}
-
-	// Parse the script (uses cache to avoid re-parsing)
-	parsed, err := p.cache.GetOrParse(script.GetPlain())
-	if err != nil {
-		return nil, err
 	}
 
 	// Build variables map from script vars
@@ -53,6 +57,13 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// re-admits against the new values. An empty stored hash means admission's
 	// resolution read nothing to bind (fully static script) — nothing to check.
 	if expected := p.inputsResolutionHash; len(expected) > 0 {
+		// Parse the script (uses cache to avoid re-parsing); re-resolution walks
+		// the AST regardless of which engine executes below.
+		parsed, err := p.cache.GetOrParse(script.GetPlain())
+		if err != nil {
+			return nil, err
+		}
+
 		valueSource := &scopeValueSource{store: s, ledgerName: ledgerName}
 		recording := numscript.NewRecordingStore(numscript.NewStore(valueSource, order.GetForce()), order.GetForce())
 
@@ -116,15 +127,53 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 	}
 
-	// Execute the script (experimental features are declared directly in scripts).
-	// When Force is true, the store returns unlimited balances to bypass balance checks.
-	storeAdapter := numscript.NewStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
-	result, err := numscript.SafeRun(parsed, context.Background(), vars, storeAdapter)
-	if err != nil {
-		// SafeRun already converted to Describable: ErrInsufficientFunds
-		// for missing-funds, ErrNumscriptRuntime for panics and unmapped
-		// library errors.
-		return nil, err
+	// Execute the script (experimental features are declared directly in
+	// scripts). When Force is true, the store returns unlimited balances to
+	// bypass balance checks. With an admission-compiled artifact the VM runs the
+	// bytecode; without one the interpreter runs the text. Both engines read
+	// through the same coverage-gated scopeValueSource and produce the same
+	// ExecutionResult contract.
+	var result numscriptlib.ExecutionResult
+
+	if len(p.compiledProgram) > 0 {
+		// The artifact is bound to the exact text admission compiled. The text
+		// resolved here cannot differ — inline scripts travel in the order, exact
+		// library versions are immutable, and an advanced "latest" was
+		// stale-rejected before the producer ran — so a mismatch is a "should not
+		// happen" surfaced loudly (invariant #7), never a silent fallback that
+		// would mask executing the wrong program.
+		scriptHash := numscript.HashScript(script.GetPlain())
+		if !bytes.Equal(scriptHash[:], p.compiledScriptHash) {
+			return nil, &domain.ErrNumscriptRuntime{
+				Detail: "compiled numscript artifact does not match the resolved script text",
+			}
+		}
+
+		vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
+
+		var execErr domain.Describable
+
+		result, execErr = numscript.SafeExecCompiled(p.cache, p.compiledProgram, p.compiledVars, vmStore)
+		if execErr != nil {
+			return nil, execErr
+		}
+	} else {
+		parsed, err := p.cache.GetOrParse(script.GetPlain())
+		if err != nil {
+			return nil, err
+		}
+
+		storeAdapter := numscript.NewStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
+
+		runResult, err := numscript.SafeRun(parsed, context.Background(), vars, storeAdapter)
+		if err != nil {
+			// SafeRun already converted to Describable: ErrInsufficientFunds
+			// for missing-funds, ErrNumscriptRuntime for panics and unmapped
+			// library errors.
+			return nil, err
+		}
+
+		result = runResult
 	}
 
 	// Convert numscript postings to commonpb postings and update buffer
@@ -265,14 +314,9 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
 			}
 
-			value, convErr := numscript.ValueToString(row.Value)
-			if convErr != nil {
-				// A Numscript value that fails to serialise is a library-level
-				// impossibility, not a client error — surface it loudly.
-				return nil, &domain.ErrNumscriptRuntime{
-					Detail: fmt.Sprintf("serialising account metadata %s/%s: %v", row.Account, row.Key, convErr),
-				}
-			}
+			// The library renders metadata values to their stored string form
+			// (identically on the interpreter and the VM).
+			value := row.Value
 
 			if err := domain.ValidateMetadataString(value); err != nil {
 				return nil, &domain.ErrAccountValidation{Account: row.Account, Cause: err}
@@ -288,7 +332,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 	}
 
-	// Convert transaction metadata from Numscript values to typed map.
+	// Transaction metadata arrives already rendered to strings by the library.
 	var txMeta map[string]*commonpb.MetadataValue
 	if len(result.Metadata) > 0 {
 		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
@@ -297,18 +341,11 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				return nil, err
 			}
 
-			stringValue, convErr := numscript.ValueToString(value)
-			if convErr != nil {
-				return nil, &domain.ErrNumscriptRuntime{
-					Detail: fmt.Sprintf("serialising transaction metadata %s: %v", key, convErr),
-				}
-			}
-
-			if err := domain.ValidateMetadataString(stringValue); err != nil {
+			if err := domain.ValidateMetadataString(value); err != nil {
 				return nil, &domain.ErrMetadataKeyValidation{Key: key, Cause: err}
 			}
 
-			txMeta[key] = commonpb.NewStringValue(stringValue)
+			txMeta[key] = commonpb.NewStringValue(value)
 		}
 	}
 

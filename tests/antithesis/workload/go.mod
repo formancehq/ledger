@@ -105,7 +105,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/formancehq/invariants v0.11.0 // indirect
-	github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 // indirect
+	github.com/formancehq/numscript v0.0.27-0.20260926085238-be0d1c923325 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/getkin/kin-openapi v0.144.0 // indirect

@@ -47,6 +47,12 @@ type DiscoveryResult struct {
 	WriteMetadata map[domain.MetadataKey]struct{}
 	InputsHash    []byte
 
+	// Compiled is the VM artifact for this script, bound to the order so the FSM
+	// executes bytecode on every node instead of re-interpreting the text. Nil
+	// when the script cannot be compiled (e.g. asset scaling) — the FSM then
+	// falls back to the interpreter.
+	Compiled *CompiledScript
+
 	NetBalanceDeltas map[domain.VolumeKey]*big.Int
 	MetadataWrites   map[domain.MetadataKey]string
 }
@@ -96,6 +102,7 @@ func DiscoverNumscriptDependencies(
 		ReadMetadata:  make(map[domain.MetadataKey]struct{}, len(resolved.MetaReads)),
 		WriteMetadata: make(map[domain.MetadataKey]struct{}, len(resolved.MetaWrites)),
 		InputsHash:    recording.Hash(),
+		Compiled:      compileScript(parsed, script, vars),
 	}
 
 	// Ledger volumes are keyed by (ledger, account, asset, color): color IS a
@@ -190,15 +197,12 @@ func DiscoverNumscriptDependencies(
 	if len(execResult.AccountsMetadata) > 0 {
 		result.MetadataWrites = make(map[domain.MetadataKey]string, len(execResult.AccountsMetadata))
 		for _, row := range execResult.AccountsMetadata {
-			value, convErr := ValueToString(row.Value)
-			if convErr != nil {
-				return nil, convertNumscriptError(convErr)
-			}
-
+			// The library renders metadata values to their stored string form
+			// (identically on the interpreter and the VM).
 			result.MetadataWrites[domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: row.Account},
 				Key:        row.Key,
-			}] = value
+			}] = row.Value
 		}
 	}
 
