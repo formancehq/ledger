@@ -4792,6 +4792,33 @@ components:
             input: 100
             output: 10
             balance: 90
+    V2DiagnosticPosition:
+      type: object
+      description: Zero-based source coordinates reported by the Numscript parser.
+      required:
+        - line
+        - character
+      properties:
+        line:
+          type: integer
+          minimum: 0
+        character:
+          type: integer
+          minimum: 0
+    V2ParserDiagnostic:
+      type: object
+      description: A Numscript parsing error with its original source range.
+      required:
+        - message
+        - start
+        - end
+      properties:
+        message:
+          type: string
+        start:
+          $ref: "#/components/schemas/V2DiagnosticPosition"
+        end:
+          $ref: "#/components/schemas/V2DiagnosticPosition"
     V2ErrorResponse:
       type: object
       required:
@@ -4810,6 +4837,12 @@ components:
             Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it
           example: >-
             https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9
+        diagnostics:
+          type: array
+          description: >-
+            Structured Numscript parsing errors returned for INTERPRETER_PARSE failures on transaction creation. Existing errorMessage text is preserved.
+          items:
+            $ref: "#/components/schemas/V2ParserDiagnostic"
     V2ErrorsEnum:
       type: string
       description: Machine-readable error code identifying the failure
@@ -5062,6 +5095,12 @@ components:
               type: string
             errorDetails:
               type: string
+            diagnostics:
+              type: array
+              description: >-
+                Structured Numscript parsing errors for this failed operation. Present for INTERPRETER_PARSE errors when diagnostics are available.
+              items:
+                $ref: "#/components/schemas/V2ParserDiagnostic"
           required:
             - errorCode
             - errorDescription
