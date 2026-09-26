@@ -91,6 +91,9 @@ type OrderTechnicalReader interface {
 	GetInputsResolutionHash() []byte
 	GetPreloadUnavailable() bool
 	GetRevertTargetDigest() []byte
+	GetCompiledProgram() []byte
+	GetCompiledVars() []byte
+	GetCompiledScriptHash() []byte
 	Mutate() *OrderTechnical
 }
 
@@ -110,6 +113,18 @@ func (r *orderTechnicalReadonly) GetPreloadUnavailable() bool {
 
 func (r *orderTechnicalReadonly) GetRevertTargetDigest() []byte {
 	return bytes.Clone((*OrderTechnical)(r).GetRevertTargetDigest())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledProgram() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledProgram())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledVars() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledVars())
+}
+
+func (r *orderTechnicalReadonly) GetCompiledScriptHash() []byte {
+	return bytes.Clone((*OrderTechnical)(r).GetCompiledScriptHash())
 }
 
 func (r *orderTechnicalReadonly) Mutate() *OrderTechnical {

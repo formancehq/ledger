@@ -2278,6 +2278,17 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 			// shared with the coverage-bits pass (order-independent).
 			orderTechnical(order).InputsResolutionHash = discovered.InputsHash
 
+			// Bind the VM artifact compiled here on the parallel path: the FSM
+			// decodes and executes it on every node instead of re-interpreting the
+			// text. Nil when the script cannot be compiled (e.g. asset scaling) —
+			// the FSM then falls back to the interpreter.
+			if compiled := discovered.Compiled; compiled != nil {
+				technical := orderTechnical(order)
+				technical.CompiledProgram = compiled.Program
+				technical.CompiledVars = compiled.Vars
+				technical.CompiledScriptHash = compiled.ScriptHash
+			}
+
 			// Fold this script's effects into the batch accumulator so a later
 			// order in the same atomic batch resolves against them (EN-1406 P1-1).
 			effects.mergeDiscovery(discovered.NetBalanceDeltas, discovered.MetadataWrites)

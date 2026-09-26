@@ -84,6 +84,28 @@ message OrderTechnical {
   // checks, so a target that is unknown or already reverted keeps returning
   // those reasons. Empty for every non-revert order.
   bytes revert_target_digest = 4;
+  // compiled_program is the Numscript VM bytecode admission compiled from this
+  // order's script on the leader's parallel path (numscript Compile + Encode).
+  // The FSM decodes, verifies and executes it on every node instead of
+  // interpreting the script text, so compilation happens once per proposal and
+  // apply stays deterministic (the artifact rides the committed entry, so every
+  // node runs the same bytecode — invariant #2). Absent when the script cannot
+  // be compiled (e.g. it uses a feature the compiler does not support, like
+  // asset scaling): the FSM then falls back to the tree-walking interpreter,
+  // whose semantics the VM matches by construction.
+  bytes compiled_program = 5;
+  // compiled_vars is the order's runtime vars encoded against
+  // compiled_program's variable layout (numscript VarsEncoder + Vars.Encode).
+  // Only meaningful next to compiled_program.
+  bytes compiled_vars = 6;
+  // compiled_script_hash is the BLAKE3-256 of the exact script text
+  // compiled_program was compiled from. The FSM refuses to run the artifact
+  // against a different resolved text — inline scripts travel in the order,
+  // exact library versions are immutable, and an advanced "latest" is
+  // stale-rejected before execution, so a mismatch is a "should not happen"
+  // surfaced loudly (invariant #7) rather than silently executing the wrong
+  // program.
+  bytes compiled_script_hash = 7;
 }
 
 // LedgerScopedOrder is the wrapper for every Order variant that targets a
