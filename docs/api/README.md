@@ -302,7 +302,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -426,7 +439,20 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -734,7 +760,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -781,7 +820,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -1075,7 +1127,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -1344,7 +1409,20 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -1403,7 +1481,20 @@ Delete metadata by key
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -1513,7 +1604,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -2063,7 +2167,20 @@ Idempotency-Key: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -2525,7 +2642,20 @@ file: string
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -2572,7 +2702,20 @@ Accept: application/octet-stream
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3077,7 +3220,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3122,7 +3278,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3168,7 +3337,20 @@ Delete a bucket by marking all ledgers in the bucket as deleted (soft delete). A
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3216,7 +3398,20 @@ Restore a deleted bucket by unmarking all ledgers in the bucket as deleted. All 
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3475,7 +3670,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3520,7 +3728,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3565,7 +3786,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -3610,7 +3844,20 @@ Accept: application/json
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 ```
 
@@ -5430,6 +5677,62 @@ Volumes aggregated per account and per asset
 |---|---|---|---|---|
 |**additionalProperties**|[V2Volumes](#schemav2volumes)|false|none|Volumes per asset for a single account|
 
+<h2 id="tocS_V2DiagnosticPosition">V2DiagnosticPosition</h2>
+<!-- backwards compatibility -->
+<a id="schemav2diagnosticposition"></a>
+<a id="schema_V2DiagnosticPosition"></a>
+<a id="tocSv2diagnosticposition"></a>
+<a id="tocsv2diagnosticposition"></a>
+
+```json
+{
+  "line": 0,
+  "character": 0
+}
+
+```
+
+Zero-based source coordinates reported by the Numscript parser.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|line|integer|true|none|none|
+|character|integer|true|none|none|
+
+<h2 id="tocS_V2ParserDiagnostic">V2ParserDiagnostic</h2>
+<!-- backwards compatibility -->
+<a id="schemav2parserdiagnostic"></a>
+<a id="schema_V2ParserDiagnostic"></a>
+<a id="tocSv2parserdiagnostic"></a>
+<a id="tocsv2parserdiagnostic"></a>
+
+```json
+{
+  "message": "string",
+  "start": {
+    "line": 0,
+    "character": 0
+  },
+  "end": {
+    "line": 0,
+    "character": 0
+  }
+}
+
+```
+
+A Numscript parsing error with its original source range.
+
+### Properties
+
+|Name|Type|Required|Restrictions|Description|
+|---|---|---|---|---|
+|message|string|true|none|none|
+|start|[V2DiagnosticPosition](#schemav2diagnosticposition)|true|none|Zero-based source coordinates reported by the Numscript parser.|
+|end|[V2DiagnosticPosition](#schemav2diagnosticposition)|true|none|Zero-based source coordinates reported by the Numscript parser.|
+
 <h2 id="tocS_V2ErrorResponse">V2ErrorResponse</h2>
 <!-- backwards compatibility -->
 <a id="schemav2errorresponse"></a>
@@ -5441,7 +5744,20 @@ Volumes aggregated per account and per asset
 {
   "errorCode": "VALIDATION",
   "errorMessage": "[VALIDATION] invalid 'cursor' query param",
-  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9"
+  "details": "https://play.numscript.org/?payload=eyJlcnJvciI6ImFjY291bnQgaGFkIGluc3VmZmljaWVudCBmdW5kcyJ9",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 
 ```
@@ -5453,6 +5769,7 @@ Volumes aggregated per account and per asset
 |errorCode|[V2ErrorsEnum](#schemav2errorsenum)|true|none|Machine-readable error code identifying the failure|
 |errorMessage|string|true|none|Human-readable description of the error|
 |details|string|false|none|Optional link carrying additional context about the error, such as a Numscript playground URL reproducing it|
+|diagnostics|[[V2ParserDiagnostic](#schemav2parserdiagnostic)]|false|none|Structured Numscript parsing errors returned for INTERPRETER_PARSE failures on transaction creation. Existing errorMessage text is preserved.|
 
 <h2 id="tocS_V2ErrorsEnum">V2ErrorsEnum</h2>
 <!-- backwards compatibility -->
@@ -6533,7 +6850,20 @@ and
   "logID": 0,
   "errorCode": "string",
   "errorDescription": "string",
-  "errorDetails": "string"
+  "errorDetails": "string",
+  "diagnostics": [
+    {
+      "message": "string",
+      "start": {
+        "line": 0,
+        "character": 0
+      },
+      "end": {
+        "line": 0,
+        "character": 0
+      }
+    }
+  ]
 }
 
 ```
@@ -6554,6 +6884,7 @@ and
 |» errorCode|string|true|none|none|
 |» errorDescription|string|true|none|none|
 |» errorDetails|string|false|none|none|
+|» diagnostics|[[V2ParserDiagnostic](#schemav2parserdiagnostic)]|false|none|Structured Numscript parsing errors for this failed operation. Present for INTERPRETER_PARSE errors when diagnostics are available.|
 
 <h2 id="tocS_V2ChartAccountRules">V2ChartAccountRules</h2>
 <!-- backwards compatibility -->

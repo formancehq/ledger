@@ -94,6 +94,7 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 		var (
 			errorCode        string
 			errorDescription string
+			diagnostics      []common.ParserDiagnostic
 			responseType     = actions[index]
 		)
 
@@ -101,11 +102,16 @@ func writeJSONResponse(w http.ResponseWriter, actions []string, results []BulkEl
 			errorCode = mapBulkElementError(result.Error)
 			errorDescription = result.Error.Error()
 			responseType = "ERROR"
+
+			if errorCode == common.ErrInterpreterParse {
+				diagnostics = common.ParserDiagnostics(result.Error)
+			}
 		}
 
 		mappedResults = append(mappedResults, APIResult{
 			ErrorCode:        errorCode,
 			ErrorDescription: errorDescription,
+			Diagnostics:      diagnostics,
 			Data:             result.Data,
 			ResponseType:     responseType,
 			LogID:            result.LogID,
