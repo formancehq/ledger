@@ -104,20 +104,22 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // that parsed, so malformed bytes mean a codec or compiler bug (invariant #7),
 // and the verifier is what entitles the VM to execute wire-supplied bytecode
 // without per-instruction defensive checks.
-func SafeExecCompiled(programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
+//
+// Decode and verification go through cache: the verifier is a static pass over
+// the whole program, orders of magnitude more expensive than execution itself,
+// and its outcome for a given artifact never changes (the vars pool sizes it
+// checks LoadVar indices against are fixed by the program's own variable
+// layout, not by the per-order values). Caching it is what makes the VM path
+// cheaper than the interpreter per apply, exactly as the parse cache does for
+// the interpreter path — and like that cache it only moves work, never
+// results, so apply stays deterministic.
+func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
 			err = panicErr
 		}
 	}()
-
-	program, decErr := numscriptlib.DecodeCompiledProgram(programBytes)
-	if decErr != nil {
-		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
-			Detail: "decoding compiled numscript program: " + decErr.Error(),
-		}
-	}
 
 	vars, decErr := numscriptlib.DecodeVars(varsBytes)
 	if decErr != nil {
@@ -126,10 +128,9 @@ func SafeExecCompiled(programBytes, varsBytes []byte, store *VMStore) (result nu
 		}
 	}
 
-	if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program, &vars); verifyErr != nil {
-		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
-			Detail: "verifying compiled numscript program: " + verifyErr.Error(),
-		}
+	program, err := cache.GetOrDecodeCompiled(programBytes, &vars)
+	if err != nil {
+		return numscriptlib.ExecutionResult{}, err
 	}
 
 	result, execErr := numscriptlib.ExecVm(context.Background(), numscriptlib.NewVm(program), &vars, store)
