@@ -160,6 +160,29 @@ send [USD 100] (
 )
 //end`,
 		},
+		{
+			name:          "script with malformed ik header",
+			expectedError: true,
+			stream: `
+//script ik
+//end`,
+		},
+		{
+			name: "empty script",
+			expectedElements: []BulkElement{
+				{
+					Action: ActionCreateTransaction,
+					Data: TransactionRequest{
+						Script: ledgercontroller.ScriptV1{
+							Script: ledgercontroller.Script{},
+						},
+					},
+				},
+			},
+			stream: `
+//script
+//end`,
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
