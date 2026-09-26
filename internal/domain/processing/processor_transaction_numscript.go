@@ -153,7 +153,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		var execErr domain.Describable
 
-		result, execErr = numscript.SafeExecCompiled(p.compiledProgram, p.compiledVars, vmStore)
+		result, execErr = numscript.SafeExecCompiled(p.cache, p.compiledProgram, p.compiledVars, vmStore)
 		if execErr != nil {
 			return nil, execErr
 		}

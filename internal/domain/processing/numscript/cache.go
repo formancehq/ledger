@@ -13,8 +13,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
-// NumscriptCache stores parsed Numscript programs keyed by their content hash.
-// It uses an LRU eviction policy bounded by maxSize to prevent unbounded memory growth.
+// NumscriptCache stores parsed Numscript programs keyed by their content hash,
+// and decoded+verified VM artifacts keyed by the artifact bytes' hash. Both
+// sides use an LRU eviction policy bounded by maxSize to prevent unbounded
+// memory growth.
 // Thread-safe: an RWMutex allows concurrent cache hits without contention.
 // LRU reordering is approximate — read hits do not call MoveToFront to avoid
 // write-locking on the hot path.
@@ -23,6 +25,10 @@ type NumscriptCache struct {
 	cache   map[[32]byte]*list.Element
 	order   *list.List
 	maxSize int
+
+	compiledMu    sync.RWMutex
+	compiledCache map[[32]byte]*list.Element
+	compiledOrder *list.List
 
 	// Metrics (nil if not initialized)
 	sizeGauge metric.Int64Gauge
@@ -40,6 +46,17 @@ type parsedScript struct {
 	err     domain.Describable
 }
 
+// compiledLruEntry holds one decoded, verified VM artifact. nStr/nInt are the
+// vars pool sizes the verification ran against; they are a property of the
+// program's own variable layout (the encoder appends one slot per declaration),
+// so every order carrying this artifact presents the same sizes and the
+// verification outcome is reusable.
+type compiledLruEntry struct {
+	hash       [32]byte
+	program    numscriptlib.CompiledProgram
+	nStr, nInt int
+}
+
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
 // If maxSize <= 0, it defaults to 1024.
 func NewNumscriptCache(maxSize int) *NumscriptCache {
@@ -48,9 +65,11 @@ func NewNumscriptCache(maxSize int) *NumscriptCache {
 	}
 
 	return &NumscriptCache{
-		cache:   make(map[[32]byte]*list.Element, maxSize),
-		order:   list.New(),
-		maxSize: maxSize,
+		cache:         make(map[[32]byte]*list.Element, maxSize),
+		order:         list.New(),
+		maxSize:       maxSize,
+		compiledCache: make(map[[32]byte]*list.Element, maxSize),
+		compiledOrder: list.New(),
 	}
 }
 
@@ -129,6 +148,85 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 	c.recordSize(int64(c.order.Len()))
 
 	return parsed, parseErr
+}
+
+// GetOrDecodeCompiled returns the decoded, verified VM program for an
+// admission-compiled artifact, decoding and verifying on the first sighting
+// and serving every later apply from cache. The verifier is a whole-program
+// static pass far more expensive than execution, so running it per apply would
+// cost more than interpreting; running it once per artifact keeps its
+// guarantee (ExecVm may assume well-formed bytecode) at parse-cache prices.
+//
+// vars is only consulted for its pool sizes, which VerifyWithVars checks
+// LoadVar indices against. The sizes are fixed by the program's own variable
+// layout, so a cached artifact is valid for every order that carries it; a
+// size mismatch means the artifact and vars were produced by different
+// compilations (a "should not happen") and is re-verified against the actual
+// pools so it fails with the verifier's own error, loudly.
+func (c *NumscriptCache) GetOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (numscriptlib.CompiledProgram, domain.Describable) {
+	hash := blake3.Sum256(programBytes)
+
+	c.compiledMu.RLock()
+	if elem, ok := c.compiledCache[hash]; ok {
+		entry, _ := elem.Value.(*compiledLruEntry)
+		c.compiledMu.RUnlock()
+
+		if entry.nStr == len(vars.StringsPool) && entry.nInt == len(vars.IntsPool) {
+			return entry.program, nil
+		}
+
+		if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.program, vars); verifyErr != nil {
+			return numscriptlib.CompiledProgram{}, &domain.ErrNumscriptRuntime{
+				Detail: "verifying compiled numscript program: " + verifyErr.Error(),
+			}
+		}
+
+		return entry.program, nil
+	}
+
+	c.compiledMu.RUnlock()
+
+	// Decode and verify outside the lock — the expensive part.
+	program, decErr := numscriptlib.DecodeCompiledProgram(programBytes)
+	if decErr != nil {
+		return numscriptlib.CompiledProgram{}, &domain.ErrNumscriptRuntime{
+			Detail: "decoding compiled numscript program: " + decErr.Error(),
+		}
+	}
+
+	if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program, vars); verifyErr != nil {
+		return numscriptlib.CompiledProgram{}, &domain.ErrNumscriptRuntime{
+			Detail: "verifying compiled numscript program: " + verifyErr.Error(),
+		}
+	}
+
+	c.compiledMu.Lock()
+	defer c.compiledMu.Unlock()
+
+	// Double-check: another goroutine may have inserted while we decoded.
+	if elem, ok := c.compiledCache[hash]; ok {
+		entry, _ := elem.Value.(*compiledLruEntry)
+
+		return entry.program, nil
+	}
+
+	if c.compiledOrder.Len() >= c.maxSize {
+		back := c.compiledOrder.Back()
+		if back != nil {
+			evicted, _ := c.compiledOrder.Remove(back).(*compiledLruEntry)
+			delete(c.compiledCache, evicted.hash)
+		}
+	}
+
+	entry := &compiledLruEntry{
+		hash:    hash,
+		program: program,
+		nStr:    len(vars.StringsPool),
+		nInt:    len(vars.IntsPool),
+	}
+	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
+
+	return program, nil
 }
 
 // InitCacheMetrics initializes the cache metrics on the NumscriptCache.

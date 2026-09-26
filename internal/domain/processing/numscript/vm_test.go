@@ -57,7 +57,7 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, "src", result.Postings[0].Source)
@@ -144,7 +144,7 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}}
 
-	_, err := SafeExecCompiled(compiled.Program, compiled.Vars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.NotNil(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
