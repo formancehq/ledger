@@ -57,6 +57,14 @@ type Context struct {
 	// Empty for every non-revert order.
 	RevertTargetDigest []byte
 
+	// CompiledProgram/CompiledVars/CompiledScriptHash are the Numscript VM
+	// artifact admission compiled for THIS order (from OrderTechnical), staged
+	// here like the fields above. Empty when admission attached no artifact —
+	// the numscript producer then interprets the script text instead.
+	CompiledProgram    []byte
+	CompiledVars       []byte
+	CompiledScriptHash []byte
+
 	// batchInitialNextTxID is the NextTransactionId each ledger carried before
 	// this batch mutated it, captured by processApply on the first *apply* order
 	// for that ledger. A revert whose target id is at or above this value targets
@@ -536,6 +544,9 @@ func (p *RequestProcessor) processOrder(order *raftcmdpb.Order, s Scope, ctx *Co
 	// CreateTransactionOrder.
 	ctx.InputsResolutionHash = order.GetTechnical().GetInputsResolutionHash()
 	ctx.RevertTargetDigest = order.GetTechnical().GetRevertTargetDigest()
+	ctx.CompiledProgram = order.GetTechnical().GetCompiledProgram()
+	ctx.CompiledVars = order.GetTechnical().GetCompiledVars()
+	ctx.CompiledScriptHash = order.GetTechnical().GetCompiledScriptHash()
 	// Reset per-apply fields — only processApply/processMirrorIngest set them.
 	ctx.Boundaries = nil
 	ctx.LedgerInfo = nil
