@@ -1,7 +1,7 @@
 # Migration temporary table cleanup
 
-Bucket migrations 11, 17, 18 and 20 use temporary tables named `tmp_volumes`,
-`transactions_ids` and `logs_transactions`. Their cleanup must target `pg_temp`
+Bucket migrations 11, 17, 18, 20 and 42 use temporary tables named `tmp_volumes`,
+`transactions_ids`, `logs_transactions` and `logs_view`. Their cleanup must target `pg_temp`
 explicitly so that a persistent table with the same name is never dropped.
 
 The pre-creation cleanup removes scratch tables left on a reused database session.
