@@ -161,7 +161,7 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 				aggregated[k] = big.NewInt(0)
 			}
 
-			d := internal.Details{"ledger": ledger, "account": entry.GetAsset(), "color": entry.GetColor()}
+			d := internal.Details{"ledger": ledger, "account": account.GetAddress(), "asset": entry.GetAsset(), "color": entry.GetColor()}
 			vwb := entry.GetVolumes()
 			if vwb == nil || vwb.GetBalance() == nil {
 				assert.Always(false, "double-entry: account volume balance field is absent", d)

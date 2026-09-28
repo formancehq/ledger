@@ -44,7 +44,7 @@ Go's `math/big.Int` is the standard arbitrary-precision integer, but it has prop
 | **Arithmetic** | General-purpose (handles arbitrary size) | Unrolled 256-bit operations, ~2-10x faster |
 | **Range** | Unlimited | 0 to 2^256-1 (sufficient for any monetary system) |
 
-The `uint256.Int` library was originally designed for Ethereum's EVM (which uses 256-bit words) and provides constant-time, allocation-free arithmetic. Since individual persisted per-bucket volumes never exceed 256 bits (2^256 ≈ 1.16 × 10^77, far beyond any real-world monetary quantity), this is a safe upper bound for storage. Note that API-layer projections use unbounded `BigUint`/`SignedBigInt` types, because collapsing several color buckets across accounts can legitimately produce totals that exceed 256 bits.
+The `uint256.Int` library was originally designed for Ethereum's EVM (which uses 256-bit words) and provides constant-time, allocation-free arithmetic. Since individual persisted per-bucket volumes never exceed 256 bits (2^256 ≈ 1.16 × 10^77, far beyond any real-world monetary quantity), this is a safe upper bound for storage. Note that `GetAccount` responses use `VolumesWithBalance` (backed by `BigUint`/`SignedBigInt`, unbounded), because collapsing several color buckets for the same account may produce totals beyond 256 bits. By contrast, `AggregatedVolume` (returned by `GET /volumes`) still uses `Uint256`, so the volume aggregation endpoint remains bounded; `collapseColorBuckets` returns `ErrAggregateOverflow` when the sum overflows.
 
 ## Wire format benefits
 
