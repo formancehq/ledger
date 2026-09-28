@@ -116,10 +116,13 @@ func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
 	return binary.BigEndian.Uint64(iter.Key()[2:10]), nil
 }
 
-// auditComparableLog removes fields that are themselves post-processing
-// projections injected by WriteSet.Merge. They are checked independently by
-// the exclusion/usage passes and have changed across storage versions; the
-// business payload, ledger-log id and date are the stable audit-derived part.
+// auditComparableLog removes fields that cannot be reproduced from the
+// chain-bound business order. Post-processing projections injected by
+// WriteSet.Merge are checked independently by the exclusion/usage passes.
+// Query-checkpoint applied_index is Raft execution metadata: it is deliberately
+// excluded from AuditItem.serialized_order, so audit replay has no trustworthy
+// value to compare it with. Its consistency with the checkpoint projection is
+// checked separately by compareQueryCheckpoints.
 func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 	ret := log.CloneVT()
 	ret.Sequence = sequence
@@ -128,6 +131,24 @@ func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 		apply.Log.NewKeptVolumes = nil
 		apply.Log.EphemeralVolumes = nil
 		apply.Log.PurgedAccounts = nil
+	}
+	if cp := ret.GetPayload().GetCreatedQueryCheckpoint(); cp != nil {
+		cp.AppliedIndex = 0
+	}
+
+	return ret
+}
+
+// auditReplayLogWithExecutionMetadata keeps the audit-derived business payload
+// while carrying forward execution metadata that the audit order does not bind.
+// This makes downstream projection checks compare the stored checkpoint row to
+// its source Log row instead of to the audit replayer's necessarily-zero value.
+func auditReplayLogWithExecutionMetadata(expected, stored *commonpb.Log) *commonpb.Log {
+	ret := expected.CloneVT()
+	if expectedCP := ret.GetPayload().GetCreatedQueryCheckpoint(); expectedCP != nil {
+		if storedCP := stored.GetPayload().GetCreatedQueryCheckpoint(); storedCP != nil {
+			expectedCP.AppliedIndex = storedCP.GetAppliedIndex()
+		}
 	}
 
 	return ret
@@ -543,7 +564,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					fmt.Sprintf("stored log %d payload differs from the log derived from its chain-verified audit order", seq),
 					seq, "", "", ""))
 			}
-			log = expectedLog
+			log = auditReplayLogWithExecutionMetadata(expectedLog, storedLog)
 		}
 
 		// Exclusion annotations are themselves stored projections. Collect them
