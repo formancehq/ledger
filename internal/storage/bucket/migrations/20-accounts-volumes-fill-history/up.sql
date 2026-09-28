@@ -5,7 +5,7 @@ do $$
 	begin
 		set search_path = '{{.Schema}}';
 
-		drop table if exists tmp_volumes;
+		drop table if exists pg_temp.tmp_volumes;
 		create temporary table tmp_volumes as
 		select distinct on (ledger, accounts_address, asset)
 			ledger,
@@ -50,6 +50,6 @@ do $$
 
 		end loop;
 
-		drop table tmp_volumes;
+		drop table pg_temp.tmp_volumes;
 	end
 $$;
