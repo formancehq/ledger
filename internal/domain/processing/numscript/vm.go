@@ -100,11 +100,33 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 
 // SafeExecCompiled decodes, verifies and executes an admission-compiled
 // artifact on the FSM apply path, with the same panic-recovery contract as
-// SafeRun. Decode and verification failures are loud internal errors, not
-// client errors: the artifact was produced by our own compiler from a script
-// that parsed, so malformed bytes mean a codec or compiler bug (invariant #7),
-// and the verifier is what entitles the VM to execute wire-supplied bytecode
-// without per-instruction defensive checks.
+// SafeRun. Every failure before execution is a loud internal error
+// (ErrNumscriptRuntime), not a client error and never a fallback to the
+// interpreter: an artifact the FSM cannot execute as-is fails the order the
+// same way on every node running this binary, so the outcome stays a pure
+// function of the committed entry and the running binary (invariant #2) and
+// the defect surfaces instead of being papered over (invariant #7).
+//
+//   - Bytecode version: both halves must carry exactly the bytecode version
+//     (major.minor) the bundled library compiles to,
+//     numscriptlib.CurrentBytecodeVersion. The library's own decoder already
+//     refuses another major (existing encodings changed meaning — its 1→2
+//     bump moved opcode operand banks) and a newer minor (opcodes this build
+//     does not know); it would still read an older minor of the same major,
+//     since a minor bump is additive by contract, and the ledger deliberately
+//     does not execute even that: exact match is the conservative default
+//     until a minor bump has actually been exercised, and relaxing it to the
+//     library's CanRead is a one-line decision. An artifact of another
+//     version came from another binary — a Raft log replayed across a library
+//     upgrade, a rollback, a mixed-binary window — and is rejected rather than
+//     run as foreign bytecode. Both versions come out of the committed entry's
+//     own bytes, and the bundled version is a property of the binary exactly
+//     like the library's execution semantics, so apply stays a pure function
+//     of (committed entry, running binary).
+//   - Decode and verification: the artifact was produced by our own compiler
+//     from a script that parsed, so malformed bytes mean a codec or compiler
+//     bug, and the verifier is what entitles the VM to execute wire-supplied
+//     bytecode without per-instruction defensive checks.
 //
 // Decode and verification go through cache: the verifier is a static pass over
 // the whole program, orders of magnitude more expensive than execution itself,
@@ -131,25 +153,18 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 		}
 	}
 
+	if vars.Version != numscriptlib.CurrentBytecodeVersion {
+		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
+			Detail: fmt.Sprintf(
+				"compiled numscript vars encoded with bytecode version %s; this binary executes %s only",
+				vars.Version, numscriptlib.CurrentBytecodeVersion,
+			),
+		}
+	}
+
 	entry, err := cache.getOrDecodeCompiled(programBytes, &vars)
 	if err != nil {
 		return numscriptlib.ExecutionResult{}, err
-	}
-
-	// The two halves of the artifact must come from one compilation: admission
-	// encodes program and vars in the same pass, so they carry the same wire
-	// format version. Vars decoded against a program of another format version
-	// were produced by a different binary and their layout cannot be trusted —
-	// a mismatch is a "should not happen" surfaced loudly (invariant #7). Both
-	// versions come out of the committed entry's own bytes, so the branch stays
-	// a pure function of the entry (invariant #2).
-	if programVersion := entry.vm.Program.Version; vars.Version != programVersion {
-		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
-			Detail: fmt.Sprintf(
-				"compiled numscript artifact format version mismatch: program encoded with v%d, vars with v%d",
-				programVersion, vars.Version,
-			),
-		}
 	}
 
 	result, execErr := numscriptlib.ExecVm(context.Background(), entry.vm, &vars, store)

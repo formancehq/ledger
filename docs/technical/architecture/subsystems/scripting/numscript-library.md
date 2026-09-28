@@ -190,6 +190,56 @@ FSM Apply: processCreateTransaction
 Normal transaction processing (parse, execute, postings...)
 ```
 
+### Execution Engines — admission compiles, the FSM executes
+
+Once the script text is resolved, two engines of the bundled Numscript library
+can execute it, with identical results by construction:
+
+- **The VM.** Admission compiles each script it could resolve to VM bytecode
+  (`numscript.compileScript`, on the leader's parallel path) and binds the
+  artifact to the order's technical sub-message: `compiled_program`,
+  `compiled_vars` (the order's vars encoded against that program's variable
+  layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled). The
+  FSM decodes and verifies the program once per artifact — `NumscriptCache`
+  keeps one warm VM instance per artifact, keyed by the program bytes' hash —
+  and executes it per apply (`numscript.SafeExecCompiled`). The verifier is
+  what entitles the VM to run wire-supplied bytecode without per-instruction
+  checks, and its cost (several interpreter runs) is why it is cached.
+- **The tree-walking interpreter** (`numscript.SafeRun`) runs the text only
+  when admission produced no artifact: the compiler does not support the
+  script yet (e.g. asset scaling), or a var value the encoder rejects — the
+  interpreter then owns the client-facing error. It is never a fallback for an
+  artifact the FSM cannot execute.
+
+The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
+(invariant #7), identically on every node running the binary, and never
+interpreting the text in its place — when: either half does not carry exactly
+the bytecode version (major.minor) the bundled library compiles to
+(`numscriptlib.CurrentBytecodeVersion`); either half does not decode; the
+program fails verification; or `compiled_script_hash` does not match the
+resolved text. The version check is what keeps foreign bytecode out: an
+artifact of another version came from a different binary — a Raft log
+replayed across a library upgrade, a rollback, a mixed-binary window. The
+library's own decoder already refuses another major (existing encodings
+changed meaning; its 1→2 bump moved opcode operand banks) and a newer minor
+(opcodes this build does not know). It would still read an older minor of the
+same major, since a minor bump is additive by contract, and the ledger
+deliberately does not execute even that: exact match is the conservative
+default until a minor bump has actually been exercised, and relaxing it to the
+library's `CanRead` is a one-line decision. The other three cannot happen by
+construction:
+inline scripts travel in the order, exact library versions are immutable, an
+advanced `"latest"` is stale-rejected first, and our own compiler produced the
+bytecode in this very format.
+
+Either way the engine choice is a function of the committed entry and the
+running binary alone — the same footing as the library's interpreter
+semantics — so every replica on one binary applies the entry identically
+(invariant #2). Technical fields are excluded from business-intent hashing
+(invariant #10), so the artifact never reaches the audit chain. Client
+requests cannot carry technical fields: `ApplyBatch` is made of `Request`
+messages and admission builds the `raftcmdpb.Order` itself.
+
 ### Version Pinning Examples
 
 Given a library with versions `1.0.0`, `1.0.5`, `1.2.0`, `2.0.0`:
