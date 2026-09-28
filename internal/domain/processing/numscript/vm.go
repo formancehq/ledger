@@ -3,6 +3,7 @@ package numscript
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 
 	numscriptlib "github.com/formancehq/numscript"
@@ -135,6 +136,22 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 	entry, err := cache.getOrDecodeCompiled(programBytes, &vars)
 	if err != nil {
 		return numscriptlib.ExecutionResult{}, err
+	}
+
+	// The two halves of the artifact must come from one compilation: admission
+	// encodes program and vars in the same pass, so they carry the same wire
+	// format version. Vars decoded against a program of another format version
+	// were produced by a different binary and their layout cannot be trusted —
+	// a mismatch is a "should not happen" surfaced loudly (invariant #7). Both
+	// versions come out of the committed entry's own bytes, so the branch stays
+	// a pure function of the entry (invariant #2).
+	if programVersion := entry.program.Version; vars.Version != programVersion {
+		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
+			Detail: fmt.Sprintf(
+				"compiled numscript artifact format version mismatch: program encoded with v%d, vars with v%d",
+				programVersion, vars.Version,
+			),
+		}
 	}
 
 	machine, _ := entry.vms.Get().(*numscriptlib.Vm)
