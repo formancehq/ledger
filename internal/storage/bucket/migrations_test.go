@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/extra/bundebug"
 	"go.opentelemetry.io/otel/trace/noop"
 
@@ -26,6 +28,71 @@ import (
 	ledgerstore "github.com/formancehq/ledger/internal/storage/ledger"
 	"github.com/formancehq/ledger/internal/storage/system"
 )
+
+func TestMigrationsPreservePermanentTables(t *testing.T) {
+	t.Parallel()
+
+	migrationNames, err := bucket.WalkMigrations(bucket.MigrationsFS, func(entry fs.DirEntry) (*string, error) {
+		return pointer.For(entry.Name()), nil
+	})
+	require.NoError(t, err)
+
+	for _, testCase := range []struct {
+		migration string
+		table     string
+	}{
+		{migration: "11-make-stateless", table: "tmp_volumes"},
+		{migration: "17-moves-fill-transaction-id", table: "transactions_ids"},
+		{migration: "18-transactions-fill-inserted-at", table: "logs_transactions"},
+		{migration: "20-accounts-volumes-fill-history", table: "tmp_volumes"},
+	} {
+		for _, leftover := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/leftover=%t", testCase.migration, leftover), func(t *testing.T) {
+				t.Parallel()
+
+				ctx := logging.ContextWithLogger(t.Context(), logging.Testing())
+				pgDatabase := srv.NewDatabase(t)
+				options := pgDatabase.ConnectionOptions()
+				options.MaxOpenConns = 1
+				options.MaxIdleConns = 1
+				db, err := connect.OpenSQLDB(ctx, options)
+				require.NoError(t, err)
+				t.Cleanup(func() {
+					require.NoError(t, db.Close())
+				})
+				require.NoError(t, system.Migrate(ctx, db))
+
+				const schema = "testbucket"
+				migrator := bucket.GetMigrator(db, schema)
+				migrationIndex := slices.Index(migrationNames, testCase.migration)
+				require.NotEqual(t, -1, migrationIndex)
+				for range migrationIndex {
+					require.NoError(t, migrator.UpByOne(ctx))
+				}
+
+				persistentTable := bun.Ident(schema + "." + testCase.table)
+				_, err = db.ExecContext(ctx, "CREATE TABLE ? (sentinel text NOT NULL)", persistentTable)
+				require.NoError(t, err)
+				_, err = db.ExecContext(ctx, "INSERT INTO ? VALUES (?)", persistentTable, "preserve me")
+				require.NoError(t, err)
+				if leftover {
+					_, err = db.ExecContext(ctx, "CREATE TEMPORARY TABLE ? (stale boolean)", bun.Ident(testCase.table))
+					require.NoError(t, err)
+				}
+
+				require.NoError(t, migrator.UpByOne(ctx))
+
+				var values []string
+				require.NoError(t, db.NewSelect().TableExpr("?", persistentTable).Column("sentinel").Scan(ctx, &values))
+				require.Equal(t, []string{"preserve me"}, values)
+
+				var temporaryTableRemoved bool
+				require.NoError(t, db.NewRaw("SELECT to_regclass(?) IS NULL", "pg_temp."+testCase.table).Scan(ctx, &temporaryTableRemoved))
+				require.True(t, temporaryTableRemoved)
+			})
+		}
+	}
+}
 
 func TestMigrations(t *testing.T) {
 	t.Parallel()
