@@ -1017,7 +1017,7 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		if value == nil {
 			// Coverage-only entry: nothing to seed. The gen0→gen1 fallback
 			// in AttributeCache.Get and the lazy gen1→gen0 promote in
-			// AttributeCache.Del cover the handler's reads and deletes
+			// KeyStore.Tombstone cover the handler's reads and deletes
 			// respectively; coverage_bits (invariant #9) bounds the read
 			// horizon to admission's declared preload set. Keeps Preload
 			// O(seeds) instead of O(coverage entries).

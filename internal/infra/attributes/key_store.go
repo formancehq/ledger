@@ -157,14 +157,13 @@ func (s *KeyStore[K, T]) GetEntry(canonical []byte) (Entry[T], bool) {
 	return entry, true
 }
 
-// Delete tombstones the entry in the underlying store. On the dual-generation
-// AttributeCache the tombstone lands in Gen0 (in-place when Gen0 has the
-// entry, or lazily fabricated from Gen1's tag when only Gen1 has it) — this
-// mirrors the single-byte writeCacheTombstone the FSM issues in the same
-// batch, keeping the in-memory cache equal to disk for the same applied
-// index (invariant #1). Any pre-existing Gen1 entry is left untouched: the
-// Gen0 tombstone shadows it on every read, and the stale Gen1 row is
-// purged on the next rotation.
+// Tombstone records the entry as deleted in the current generation without
+// removing it from the underlying store. On the dual-generation
+// AttributeCache, Put writes the tombstone to Gen0. Any pre-existing Gen1
+// entry is left untouched: the Gen0 tombstone shadows it on every read, and
+// the stale Gen1 row is purged on the next rotation. This mirrors the
+// single-byte writeCacheTombstone the FSM issues in the same batch, keeping
+// the in-memory cache equal to disk for the same applied index (invariant #1).
 //
 // Returns domain.ErrNotFound only when the key is absent from both
 // generations. The caller (DerivedKeyStore.Merge) treats this as an
@@ -172,8 +171,9 @@ func (s *KeyStore[K, T]) GetEntry(canonical []byte) (Entry[T], bool) {
 // logs without a prior existence check, and safe under invariant #1 (no
 // downstream tombstone is written, so cache and disk stay aligned).
 //
-// Tombstones age out naturally via rotation.
-func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err error) {
+// Tombstones age out naturally via rotation. They remain cache-resident until
+// then, so an admission-side CacheHit remains valid for in-flight proposals.
+func (s *KeyStore[K, T]) Tombstone(canonical []byte) (id U128, tag uint64, err error) {
 	id, tag = s.hasher.MakeKey(canonical)
 
 	entry, ok := s.M.Get(id)
@@ -185,9 +185,8 @@ func (s *KeyStore[K, T]) Delete(canonical []byte) (id U128, tag uint64, err erro
 		return id, tag, newErrCollisionDetected(canonical, entry.Tag, tag)
 	}
 
-	if delErr := s.M.Del(id); delErr != nil {
-		return id, tag, delErr
-	}
+	var zero T
+	s.M.Put(id, Entry[T]{Tag: tag, Data: zero, Deleted: true})
 
 	return id, tag, nil
 }
@@ -283,9 +282,9 @@ func (s *DerivedKeyStore[K, T]) Merge() ([]Update[K, T], []Deletion[K], error) {
 		s.scratch = k.AppendBytes(s.scratch[:0])
 		canonical := append([]byte(nil), s.scratch...)
 
-		id, tag, err := s.writer.Delete(canonical)
+		id, tag, err := s.writer.Tombstone(canonical)
 		if err != nil {
-			// Genuinely absent: writer.Delete returns ErrNotFound when the
+			// Genuinely absent: writer.Tombstone returns ErrNotFound when the
 			// underlying AttributeCache misses on the key in BOTH generations
 			// (Get uses a gen0→gen1 fallback, so ErrNotFound here is a "not
 			// anywhere" signal). Skip the deletion entirely — writing a

@@ -159,9 +159,14 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 			},
 		},
 		{
-			// Non-ephemeral + zero balance → should be kept
+			// A persisted normal zero row must be kept but not classified as
+			// newly created again on a later commit (EN-2051).
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "users:alice"}, Asset: "USD"}).Bytes(),
+			Old: kv.Some(&raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(0),
+				Output: commonpb.NewUint256FromUint64(0),
+			}),
 			New: &raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
@@ -185,6 +190,11 @@ func TestPartitionEphemeralVolumes(t *testing.T) {
 	require.Equal(t, "clearing:tx1", result.purged[0].Key.Account)
 
 	require.Len(t, result.kept, 3)
+	newKeptAccounts := make([]string, 0, len(result.newKept))
+	for _, update := range result.newKept {
+		newKeptAccounts = append(newKeptAccounts, update.Key.Account)
+	}
+	require.ElementsMatch(t, []string{"clearing:tx2", "unknown:addr"}, newKeptAccounts)
 	require.Empty(t, result.transient)
 }
 
@@ -329,17 +339,28 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 			},
 		},
 		{
-			// TRANSIENT + Old all-zero (post-purge placeholder / preload seed)
+			// TRANSIENT + undefined Old (fresh or tombstoned after purge)
 			// → steady-state transient.
 			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"},
 			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:steady"}, Asset: "USD"}).Bytes(),
+			New: &raftcmdpb.VolumePair{
+				Input:  commonpb.NewUint256FromUint64(42),
+				Output: commonpb.NewUint256FromUint64(42),
+			},
+		},
+		{
+			// TRANSIENT + persisted all-zero Old means the account changed from
+			// normal persistence; it must be purged rather than mistaken for an
+			// absence placeholder (EN-2051).
+			Key:          domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:zero-persisted"}, Asset: "USD"},
+			CanonicalKey: (&domain.VolumeKey{AccountKey: domain.AccountKey{LedgerName: "test", Account: "staging:zero-persisted"}, Asset: "USD"}).Bytes(),
 			Old: kv.Some(&raftcmdpb.VolumePair{
 				Input:  commonpb.NewUint256FromUint64(0),
 				Output: commonpb.NewUint256FromUint64(0),
 			}),
 			New: &raftcmdpb.VolumePair{
-				Input:  commonpb.NewUint256FromUint64(42),
-				Output: commonpb.NewUint256FromUint64(42),
+				Input:  commonpb.NewUint256FromUint64(1),
+				Output: commonpb.NewUint256FromUint64(1),
 			},
 		},
 		{
@@ -366,24 +387,24 @@ func TestPartitionVolumesTransient_PreExistingBalance(t *testing.T) {
 	require.Len(t, result.kept, 1)
 	require.Equal(t, "staging:draining", result.kept[0].Key.Account)
 
-	require.Len(t, result.purged, 2)
+	require.Len(t, result.purged, 3)
 	require.Equal(t, "staging:rebalanced", result.purged[0].Key.Account)
-	require.Equal(t, "staging:stranded", result.purged[1].Key.Account)
-	require.Len(t, result.transientPurge, 2)
+	require.Equal(t, "staging:zero-persisted", result.purged[1].Key.Account)
+	require.Equal(t, "staging:stranded", result.purged[2].Key.Account)
+	require.Len(t, result.transientPurge, 3)
 	require.Equal(t, "staging:rebalanced", result.transientPurge[0].Key.Account)
-	require.Equal(t, "staging:stranded", result.transientPurge[1].Key.Account)
+	require.Equal(t, "staging:zero-persisted", result.transientPurge[1].Key.Account)
+	require.Equal(t, "staging:stranded", result.transientPurge[2].Key.Account)
 
 	require.Len(t, result.transient, 1)
 	require.Equal(t, "staging:steady", result.transient[0].Key.Account)
 }
 
-// TestZeroVolumeCache_OverwritesKeyStore guards the invariant that the in-memory
-// KeyStore (b.fsm.Registry.Volumes) ends up with {0, 0} after zeroVolumeCache,
-// regardless of the cumulative value that was Put before it ran. Without this
-// behaviour, a transient cell would silently carry its prior cumulative value
-// into the next batch's GetVolume → PCV, drifting away from the documented
-// "never persisted, must be zero at end of batch" semantic.
-func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
+// TestTombstoneVolumeCache_MarksKeyStoreAbsent guards the invariant that a
+// purged/transient cell remains a cache hit but reads as absent. That both
+// prevents cumulative values leaking into later batches and lets a later
+// default-normal write be classified as newly persisted after a policy change.
+func TestTombstoneVolumeCache_MarksKeyStoreAbsent(t *testing.T) {
 	t.Parallel()
 
 	buf, machine, dataStore := newTestBuffer(t)
@@ -428,28 +449,30 @@ func TestZeroVolumeCache_OverwritesKeyStore(t *testing.T) {
 	}
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, buf.zeroVolumeCache(batch, 0, updates))
+	require.NoError(t, buf.tombstoneVolumeCache(batch, 0, updates))
 	require.NoError(t, batch.Commit())
 
-	// After the call, both keys must read {0, 0} from the in-memory KeyStore.
+	// After the call, both keys remain cache-resident tombstones and read as
+	// absent; readVolumeOrZero is the layer that synthesizes {0, 0}.
 	for _, key := range []domain.VolumeKey{keyA, keyB} {
-		v, _, err := machine.Registry.Volumes.GetKey(key)
-		require.NoError(t, err)
-		require.True(t, isVolumeZeroBalance(v), "expected zero-balance KeyStore entry for %s", key.Account)
-		require.Equal(t, uint64(0), v.GetInput().GetV0())
-		require.Equal(t, uint64(0), v.GetOutput().GetV0())
+		_, _, err := machine.Registry.Volumes.GetKey(key)
+		require.ErrorIs(t, err, domain.ErrNotFound)
+
+		entry, ok := machine.Registry.Volumes.KeyStore().GetEntry(key.Bytes())
+		require.True(t, ok)
+		require.True(t, entry.Deleted, "expected cache tombstone for %s", key.Account)
 	}
 }
 
-// TestZeroVolumeCache_Empty is a no-op early-return guard so callers can hand
+// TestTombstoneVolumeCache_Empty is a no-op early-return guard so callers can hand
 // it an empty slice without an allocated batch write.
-func TestZeroVolumeCache_Empty(t *testing.T) {
+func TestTombstoneVolumeCache_Empty(t *testing.T) {
 	t.Parallel()
 
 	buf, _, dataStore := newTestBuffer(t)
 	batch := dataStore.OpenWriteSession()
 
-	require.NoError(t, buf.zeroVolumeCache(batch, 0, nil))
+	require.NoError(t, buf.tombstoneVolumeCache(batch, 0, nil))
 	require.NoError(t, batch.Commit())
 }
 
