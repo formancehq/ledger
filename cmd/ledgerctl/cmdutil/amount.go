@@ -26,9 +26,26 @@ func RescaleTarget(cmd *cobra.Command) *uint8 {
 		return nil
 	}
 
+	// The lookup cannot fail: --rescale is registered as a persistent uint8 on
+	// the root command and Changed above proves it was parsed as one.
 	v, _ := cmd.Flags().GetUint8(RescaleFlagName)
 
 	return &v
+}
+
+// ParseAsset validates asset and splits it into its base currency and
+// precision. invariants.ParseAssetPrecision alone silently maps a malformed
+// suffix ("USD/x", "USD/256") to precision 0, which would render the wrong unit.
+// The server validates every asset with the same invariants.ValidateAsset rule
+// on write, so a failure here is an invariant violation.
+func ParseAsset(asset string) (string, uint8, error) {
+	if err := invariants.ValidateAsset(asset); err != nil {
+		return "", 0, fmt.Errorf("invariant: asset %q is not a valid asset: %w", asset, err)
+	}
+
+	base, precision := invariants.ParseAssetPrecision(asset)
+
+	return base, precision, nil
 }
 
 // Rescale re-expresses a raw integer amount, recorded at its asset's precision,
@@ -39,11 +56,15 @@ func RescaleTarget(cmd *cobra.Command) *uint8 {
 //	1234 "USD/2" @ scale 2 -> "1234",   "USD/2"
 //	1234 "USD/2" @ scale 4 -> "123400", "USD/4"
 //
-// Server-issued amounts are always canonical integer strings, so an amount that
-// does not parse is an invariant violation and is reported as an error rather
-// than rendered as if it had been rescaled.
+// Server-issued amounts are always canonical integer strings and assets always
+// valid, so an amount that does not parse or an invalid asset is an invariant
+// violation and is reported as an error rather than rendered as if it had been
+// rescaled.
 func Rescale(amount, asset string, toScale uint8) (string, string, error) {
-	base, precision := invariants.ParseAssetPrecision(asset)
+	base, precision, err := ParseAsset(asset)
+	if err != nil {
+		return "", "", err
+	}
 
 	n, ok := new(big.Int).SetString(amount, 10)
 	if !ok {
@@ -103,11 +124,11 @@ type AssetVolumes struct {
 // 2.00000000). Balance is derived as Input - Output. Results are sorted by
 // (currency, color).
 //
-// Server-issued amounts are always canonical integer strings, so an input or
-// output that does not parse (including an empty string from an absent volumes
-// message) is an invariant violation: it fails the whole aggregation rather than
-// silently dropping the bucket, which would render an incomplete balance the
-// caller has no way to detect.
+// Server-issued assets are always valid and amounts always canonical integer
+// strings, so an invalid asset, or an input or output that does not parse
+// (including an empty string from an absent volumes message), is an invariant
+// violation: it fails the whole aggregation rather than silently dropping the
+// bucket, which would render an incomplete balance the caller cannot detect.
 func AggregateVolumes(volumes []RawVolume) ([]AssetVolumes, error) {
 	type bucket struct {
 		base  string
@@ -126,7 +147,10 @@ func AggregateVolumes(volumes []RawVolume) ([]AssetVolumes, error) {
 	entries := make([]entry, 0, len(volumes))
 
 	for _, vol := range volumes {
-		base, precision := invariants.ParseAssetPrecision(vol.Asset)
+		base, precision, err := ParseAsset(vol.Asset)
+		if err != nil {
+			return nil, err
+		}
 
 		input, ok := new(big.Int).SetString(vol.Input, 10)
 		if !ok {

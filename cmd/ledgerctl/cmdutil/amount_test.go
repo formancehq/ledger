@@ -67,6 +67,22 @@ func TestRescale(t *testing.T) {
 			toScale: 0,
 			wantErr: true,
 		},
+		{
+			// ParseAssetPrecision alone would read these as precision 0 and
+			// render the wrong unit.
+			name:    "non-numeric precision suffix is an invariant error",
+			amount:  "1234",
+			asset:   "USD/x",
+			toScale: 0,
+			wantErr: true,
+		},
+		{
+			name:    "out-of-range precision suffix is an invariant error",
+			amount:  "1234",
+			asset:   "USD/256",
+			toScale: 0,
+			wantErr: true,
+		},
 	}
 
 	for _, tc := range tests {
@@ -276,6 +292,26 @@ func TestAggregateVolumes(t *testing.T) {
 
 			if !strings.Contains(err.Error(), `"USD/2"`) || !strings.Contains(err.Error(), `"GREEN"`) {
 				t.Errorf("expected the error to name the offending bucket, got %v", err)
+			}
+		})
+	}
+
+	// An invalid asset would otherwise be parsed as precision 0 and merged into
+	// the wrong bucket, so it must fail too.
+	for _, asset := range []string{"USD/x", "USD/256", "USD/02"} {
+		t.Run("fails on invalid asset "+asset, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AggregateVolumes([]RawVolume{
+				{Asset: "USD/2", Input: "250", Output: "100"},
+				{Asset: asset, Input: "1", Output: "0"},
+			})
+			if err == nil {
+				t.Fatalf("expected an invariant error, got %+v", got)
+			}
+
+			if !strings.Contains(err.Error(), `"`+asset+`"`) {
+				t.Errorf("expected the error to name the offending asset, got %v", err)
 			}
 		})
 	}

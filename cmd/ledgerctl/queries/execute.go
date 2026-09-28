@@ -306,14 +306,18 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 	}
 
 	if topTable != nil {
-		_ = pterm.DefaultTable.WithHasHeader().WithData(topTable).Render()
+		if err := pterm.DefaultTable.WithHasHeader().WithData(topTable).Render(); err != nil {
+			return err
+		}
 	}
 
 	for i, g := range result.GetGroups() {
 		pterm.Println()
 		pterm.Printfln("Group: %s", g.GetPrefix())
 
-		_ = pterm.DefaultTable.WithHasHeader().WithData(groupTables[i]).Render()
+		if err := pterm.DefaultTable.WithHasHeader().WithData(groupTables[i]).Render(); err != nil {
+			return err
+		}
 	}
 
 	return nil

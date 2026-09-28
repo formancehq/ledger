@@ -103,6 +103,18 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to aggregate volumes", err)
 	}
 
+	// Build (and, under --rescale, validate) the human-readable table before
+	// printing anything, including the --analyze profile, so an invariant
+	// failure aborts without partial output.
+	var tableData pterm.TableData
+
+	if !cmdutil.IsStructuredOutput(cmd) {
+		tableData, err = aggregateVolumesTable(result.GetVolumes(), rescale)
+		if err != nil {
+			return err
+		}
+	}
+
 	if showProfile {
 		cmdutil.RenderProfile(cmdutil.ExtractProfile(trailer))
 	}
@@ -142,6 +154,13 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+}
+
+// aggregateVolumesTable builds the ASSET/COLOR/INPUT/OUTPUT/BALANCE table for
+// aggregate-volumes. It fails with an invariant error when --rescale meets an
+// invalid asset rather than rendering it at the wrong precision.
+func aggregateVolumesTable(vols []*commonpb.AggregatedVolume, rescale *uint8) (pterm.TableData, error) {
 	tableData := pterm.TableData{
 		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}
@@ -152,8 +171,12 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	// are part of the server's merge key. The CLI only re-expresses each row at
 	// the requested scale.
 	if rescale != nil {
-		for _, vol := range result.GetVolumes() {
-			base, precision := invariants.ParseAssetPrecision(vol.GetAsset())
+		for _, vol := range vols {
+			base, precision, err := cmdutil.ParseAsset(vol.GetAsset())
+			if err != nil {
+				return nil, err
+			}
+
 			input := vol.GetInput().ToBigInt()
 			output := vol.GetOutput().ToBigInt()
 			balance := new(big.Int).Sub(input, output)
@@ -167,7 +190,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 			})
 		}
 	} else {
-		for _, vol := range result.GetVolumes() {
+		for _, vol := range vols {
 			input := vol.GetInput().ToBigInt()
 			output := vol.GetOutput().ToBigInt()
 			balance := new(big.Int).Sub(input, output)
@@ -182,9 +205,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		}
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-
-	return nil
+	return tableData, nil
 }
 
 // withSign prefixes a positive amount with '+' so credit/debit direction reads

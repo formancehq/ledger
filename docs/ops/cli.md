@@ -190,11 +190,12 @@ Applies to the volume/balance columns of `accounts list`, `accounts get`,
 `accounts aggregate-volumes`, `transactions` post-commit volumes, and
 `queries execute` aggregate results.
 
-Server-issued amounts are always canonical integer strings. If `--rescale` meets
-an amount or volume that does not parse as one (including a volume entry whose
-input/output sub-message is absent), the command fails with an `invariant:`
-error naming the offending asset instead of dropping that row and displaying an
-incomplete balance. An empty volume list is not an error.
+Server-issued amounts are always canonical integer strings, and assets always
+valid. If `--rescale` meets an amount or volume that does not parse as one
+(including a volume entry whose input/output sub-message is absent), or an
+invalid asset such as `USD/x` or `USD/256`, the command fails with an
+`invariant:` error naming the offending asset instead of dropping that row or
+displaying it in the wrong unit. An empty volume list is not an error.
 
 ### Shared Flag Contract
 
