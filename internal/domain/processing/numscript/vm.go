@@ -1,6 +1,7 @@
 package numscript
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -22,34 +23,39 @@ type CompiledScript struct {
 	ScriptHash []byte
 }
 
-// compileScript compiles a parsed script and binds its vars on the admission
-// path. It returns nil on ANY failure — a script the compiler does not support
-// yet (e.g. asset scaling), a var value the encoder rejects, or a recovered
-// panic — because absence of the artifact only means the FSM executes the
-// script with the tree-walking interpreter instead, which produces the
-// authoritative outcome (including the client-facing error for a bad var
-// value). Compilation is an optimization, never an admission verdict.
-func compileScript(parsed numscriptlib.ParseResult, script string, vars map[string]string) (out *CompiledScript) {
+// compileScript binds an order's vars to its script's compile on the admission
+// path. The script-dependent half — compiling and encoding the bytecode — is
+// computed once per cached script (lruEntry.compileParsed) and shared by every
+// order carrying it; only the vars encoding runs per order. It returns nil on
+// ANY failure — a script the compiler does not support yet (e.g. asset
+// scaling), a var value the encoder rejects, or a recovered panic — because
+// absence of the artifact only means the FSM executes the script with the
+// tree-walking interpreter instead, which produces the authoritative outcome
+// (including the client-facing error for a bad var value). Compilation is an
+// optimization, never an admission verdict.
+func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript) {
 	defer func() {
 		if recover() != nil {
 			out = nil
 		}
 	}()
 
-	varsEncoder, program, err := parsed.Compile()
+	compiled := entry.compileParsed()
+	if compiled == nil {
+		return nil
+	}
+
+	encodedVars, err := compiled.varsEncoder.Encode(vars)
 	if err != nil {
 		return nil
 	}
 
-	encodedVars, err := varsEncoder.Encode(vars)
-	if err != nil {
-		return nil
-	}
-
-	hash := HashScript(script)
+	hash := entry.hash
 
 	return &CompiledScript{
-		Program:    program.Encode(),
+		// The order's artifact travels into OrderTechnical; give it its own
+		// bytes rather than aliasing the entry shared by every order of the script.
+		Program:    bytes.Clone(compiled.program),
 		Vars:       encodedVars.Encode(),
 		ScriptHash: hash[:],
 	}
