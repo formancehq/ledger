@@ -2,7 +2,7 @@ package numscript
 
 // Benchmarks the two FSM execution engines against each other, plus the VM
 // path's decode/verify/exec decomposition. The decomposition is what justifies
-// GetOrDecodeCompiled: the verifier is a whole-program static pass costing
+// getOrDecodeCompiled: the verifier is a whole-program static pass costing
 // several times a full interpreter run (and ~30x an execution), so paying it
 // per apply would make the VM path slower than interpreting — cached per
 // artifact, the VM path is roughly twice as fast as the cached-parse
