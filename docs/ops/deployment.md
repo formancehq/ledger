@@ -799,6 +799,11 @@ the same committed entry without the artifact and takes the interpreter path
 with the older library. For a script writing account-typed metadata, an old
 and a new replica applying the same entry then persist different transaction
 and audit bytes — replicated-state divergence, not just a label difference.
+The library bump also changes interpreter semantics for edge-case scripts
+(allotment portions summing past 100% next to `remaining` used to commit and
+now reject; clause evaluation order and negative-portion handling changed), so
+a mixed window can flip a whole order's outcome, the same class as
+"Upgrading across an FSM outcome change" above.
 
 - **Mixed-binary rolling upgrades are not supported across this change.** Stop
   all nodes before deploying the new binary. The Kubernetes operator performs a
