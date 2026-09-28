@@ -391,7 +391,7 @@ func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
 	require.NotEmpty(t, program.Instructions)
 
 	program.Instructions[0].Opcode = 0xFF // no such opcode
-	malformed := program.Encode()          // re-encoded in the bundled format
+	malformed := program.Encode()         // re-encoded in the bundled format
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
