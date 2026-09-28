@@ -155,7 +155,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		vmStore := numscript.NewVMStore(&scopeValueSource{store: s, ledgerName: ledgerName}, order.GetForce())
 
-		var execErr domain.Describable
+		var execErr domain.SerializableError
 
 		// Any failure short of execution — undecodable bytes, another artifact
 		// format version, unverifiable bytecode — is final (see

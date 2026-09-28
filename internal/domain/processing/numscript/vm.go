@@ -138,7 +138,7 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // (see compiledLruEntry for the reuse contract: always safe sequentially,
 // never concurrently). Cache and warm instance alike only move work, never
 // results, so apply stays deterministic.
-func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
+func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -174,12 +174,12 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 
 // convertVMError is convertNumscriptError's counterpart for the VM's error
 // types: the same missing-funds mapping (the VM error carries no account or
-// color either, so ColorKnown stays false), the same Describable pass-through
+// color either, so ColorKnown stays false), the same typed-failure pass-through
 // (the VM wraps store errors, which Unwrap to the domain sentinel a rejected
 // scoped read raises), and the same conservative ErrNumscriptRuntime residue.
 // Asset scaling never reaches here: a scaling script does not compile, so it
 // has no artifact and runs on the interpreter path.
-func convertVMError(err error) domain.Describable {
+func convertVMError(err error) domain.SerializableError {
 	if err == nil {
 		return nil
 	}
@@ -192,7 +192,7 @@ func convertVMError(err error) domain.Describable {
 		}
 	}
 
-	if d, ok := errors.AsType[domain.Describable](err); ok {
+	if d, ok := errors.AsType[domain.SerializableError](err); ok {
 		return d
 	}
 
