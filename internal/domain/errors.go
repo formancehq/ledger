@@ -1836,7 +1836,8 @@ type ErrInvalidCallerAttribution struct {
 func (e *ErrInvalidCallerAttribution) Error() string {
 	return "invalid caller attribution: " + e.Detail
 }
-func (*ErrInvalidCallerAttribution) Reason() string { return ErrReasonInvalidCallerAttribution }
+func (*ErrInvalidCallerAttribution) Kind() ErrorKind { return KindInternal }
+func (*ErrInvalidCallerAttribution) Reason() string  { return ErrReasonInvalidCallerAttribution }
 func (e *ErrInvalidCallerAttribution) Metadata() map[string]string {
 	return map[string]string{"detail": e.Detail}
 }
