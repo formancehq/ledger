@@ -7,7 +7,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	info, loadErr := loadLedgerReader(ctx.Scope, ledger)
 	if loadErr != nil {
 		return nil, loadErr
@@ -46,7 +46,7 @@ func processCreateIndex(ledger string, order *raftcmdpb.CreateIndexOrder, ctx *C
 	return buildCreatedIndexLogPayload(id, boundType, boundTypeDeclared), nil
 }
 
-func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	// The loaded projection is only needed to validate that the ledger exists
 	// and is not soft-deleted; the registry key comes from the envelope below.
 	if _, loadErr := loadLedgerReader(ctx.Scope, ledger); loadErr != nil {
@@ -71,7 +71,7 @@ func processDropIndex(ledger string, order *raftcmdpb.DropIndexOrder, ctx *Conte
 // before an Index entry is persisted. Built-in indexes are always valid by
 // virtue of the enum; metadata indexes require that the schema field has been
 // declared with SetMetadataFieldType first.
-func validateIndexTarget(info commonpb.LedgerInfoReader, id *commonpb.IndexID) domain.Describable {
+func validateIndexTarget(info commonpb.LedgerInfoReader, id *commonpb.IndexID) domain.SerializableError {
 	if id == nil {
 		return nil
 	}

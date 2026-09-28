@@ -157,7 +157,7 @@ func TestReadLedgerLogsCompiled_IndexGetErrorPublicDetails(t *testing.T) {
 	require.Equal(t, "index is inconsistent", message)
 	require.Empty(t, metadata)
 	require.Equal(t, domain.ErrReasonIndexInconsistent, inc.Reason())
-	require.Equal(t, domain.KindInternal, domain.Kind(inc))
+	require.Equal(t, domain.KindInternal, inc.Kind())
 }
 
 // TestReadLedgerLogsCompiled_MalformedIndexValue asserts that an index entry

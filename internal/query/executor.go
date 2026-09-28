@@ -84,14 +84,21 @@ func Execute(
 		}
 	}
 
+	// Validate the mode before any compilation: an unsupported or
+	// incompatible mode must surface as ErrQueryModeUnsupported /
+	// ErrPreparedQueryAggregateTarget regardless of the filter, so the
+	// caller gets the right error even when the stored filter also has
+	// invalid parameters. Compile can only be reached for LIST and
+	// AGGREGATE_VOLUMES.
 	switch req.GetMode() {
 	case commonpb.QueryMode_QUERY_MODE_LIST:
+		// no additional constraint
 	case commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES:
 		if pq.GetTarget() != commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-			return nil, ErrPreparedQueryAggregateTarget
+			return nil, &ErrPreparedQueryAggregateTarget{Target: pq.GetTarget()}
 		}
 	default:
-		return nil, ErrQueryModeUnsupported
+		return nil, &ErrQueryModeUnsupported{Mode: req.GetMode()}
 	}
 
 	// The definition and volumes share the reserved main-store snapshot above.
@@ -176,6 +183,7 @@ func Execute(
 		return executeList(ctx, iter, pq.GetTarget(), req, profile, handle, indexSnap, ledgerInfo.GetName(), enricher)
 	}
 
+	// AGGREGATE_VOLUMES with a non-nil filter (nil-filter path already returned above).
 	aggResult, aggErr := AggregateVolumes(handle, volumeAttr, ledgerInfo.GetName(), iter, AggregateOptions{})
 	if aggErr != nil {
 		return nil, aggErr

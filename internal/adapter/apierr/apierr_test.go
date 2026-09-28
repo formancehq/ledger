@@ -88,9 +88,8 @@ func TestDescribe_RemoteIsFoundThroughAWrapper(t *testing.T) {
 }
 
 // TestDescribe_RemoteWinsOverTheDescribableBranch pins the branch order. A
-// Remote satisfies domain.Describable too, so if the branches were swapped the
-// kind would be silently re-derived from the reason and the wire's
-// classification lost.
+// Remote satisfies domain.Describable too, so the ordering must keep the kind
+// the wire carried rather than one re-derived from the reason.
 func TestDescribe_RemoteWinsOverTheDescribableBranch(t *testing.T) {
 	t.Parallel()
 
@@ -103,12 +102,17 @@ func TestDescribe_RemoteWinsOverTheDescribableBranch(t *testing.T) {
 		Msg:         "ledger deleted: foo",
 	}
 
-	require.Equal(t, domain.KindConflict, domain.Kind(remote),
-		"precondition: the Describable branch would answer KindConflict here")
+	require.Equal(t, domain.KindConflict,
+		domain.KindForReason(domain.ReasonCode(remote.Reason())),
+		"precondition: re-deriving from the reason would answer KindConflict here")
 
 	d, ok := Describe(remote)
 	require.True(t, ok)
 	require.Equal(t, domain.KindAlreadyExists, d.Kind)
+
+	// Remote.Kind() carries the same wire classification, so even a consumer
+	// that reads it as a plain Describable no longer loses it.
+	require.Equal(t, domain.KindAlreadyExists, remote.Kind())
 }
 
 // TestDescribe_UnrecognisedError: an infrastructure failure has no business
@@ -140,7 +144,12 @@ func TestInvalidWireError_IsNotABusinessOutcome(t *testing.T) {
 	require.False(t, ok, "a protocol fault is not a business outcome")
 
 	// A direct assertion on the value, not the chain: the invariant is that
-	// this type never satisfies the domain contract.
+	// this type never satisfies the domain contracts. Classifiable is the
+	// weaker of the two and the one both adapters dispatch on, so it is the
+	// assertion that actually keeps the untrusted payload off the wire.
+	_, isClassifiable := any(invalid).(domain.Classifiable)
+	require.False(t, isClassifiable)
+
 	_, isDescribable := any(invalid).(domain.Describable)
 	require.False(t, isDescribable)
 
@@ -149,8 +158,9 @@ func TestInvalidWireError_IsNotABusinessOutcome(t *testing.T) {
 }
 
 // TestRemote_SatisfiesDescribable: a consumer that has not been migrated to
-// Describe still sees a typed error. It loses the carried kind, which is why
-// Describe exists, but it must not fall through to "unknown error".
+// Describe still sees a typed error rather than falling through to "unknown
+// error", and Kind() hands it the classification the wire carried rather than
+// one re-derived from a reason this build may not know.
 func TestRemote_SatisfiesDescribable(t *testing.T) {
 	t.Parallel()
 
@@ -163,7 +173,8 @@ func TestRemote_SatisfiesDescribable(t *testing.T) {
 
 	require.Equal(t, domain.ErrReasonLedgerDeleted, d.Reason())
 	require.Equal(t, "ledger deleted: foo", d.Error())
-	require.Equal(t, map[string]string{"name": "foo"}, d.Metadata())
+	require.Equal(t, domain.KindConflict, d.Kind())
+	require.Equal(t, map[string]string{"name": "foo"}, domain.MetadataOf(d))
 }
 
 // TestDescribe_LocalDescribableUsesItsPublicPresentation pins the EN-1623

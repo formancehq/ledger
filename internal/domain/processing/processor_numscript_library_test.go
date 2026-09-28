@@ -27,7 +27,7 @@ func TestProcessSaveNumscript_RejectsInvalidNames(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		wantErr domain.Describable
+		wantErr domain.SerializableError
 	}{
 		{name: "empty", input: "", wantErr: domain.ErrNumscriptNameRequired},
 		{name: "with newline", input: "trans\nfer", wantErr: domain.ErrNumscriptNameInvalidChar},

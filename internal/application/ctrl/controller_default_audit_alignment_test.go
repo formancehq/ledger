@@ -171,7 +171,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 	var disabled domain.Describable
 	require.ErrorAs(t, err, &disabled)
 	require.Equal(t, domain.ErrReasonAuditDisabled, disabled.Reason())
-	require.Equal(t, domain.KindPrecondition, domain.Kind(disabled),
+	require.Equal(t, domain.KindPrecondition, disabled.Kind(),
 		"a permanently disabled projection is a precondition, not a retryable build")
 
 	rs.SetAuditProjectionState(false, true)
@@ -180,7 +180,7 @@ func TestListAuditEntriesOnlyWaitsWhenFilterUsesAuditProjection(t *testing.T) {
 	require.ErrorAs(t, err, &rebuilding)
 	require.Equal(t, "audit (rebuilding)", rebuilding.Index)
 	require.Equal(t, domain.ErrReasonIndexBuilding, rebuilding.Reason())
-	require.Equal(t, domain.KindUnavailable, domain.Kind(rebuilding),
+	require.Equal(t, domain.KindUnavailable, rebuilding.Kind(),
 		"a rebuilding projection remains retryable")
 }
 
@@ -252,7 +252,7 @@ func TestListAuditEntriesMapsConcurrentProjectionFailureToUnavailable(t *testing
 	require.ErrorAs(t, err, &rebuilding)
 	require.Equal(t, "audit (rebuilding)", rebuilding.Index)
 	require.Equal(t, domain.ErrReasonIndexBuilding, rebuilding.Reason())
-	require.Equal(t, domain.KindUnavailable, domain.Kind(rebuilding),
+	require.Equal(t, domain.KindUnavailable, rebuilding.Kind(),
 		"a projection failure racing the wait must keep the retryable rebuilding contract")
 }
 

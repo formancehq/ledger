@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processRevertTransaction(ledger string, order *raftcmdpb.RevertTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
@@ -252,7 +252,7 @@ func checkRevertTargetObservation(
 	transactionID uint64,
 	originalPostings []*commonpb.Posting,
 	ctx *Context,
-) domain.Describable {
+) domain.SerializableError {
 	expected := ctx.RevertTargetDigest
 	if len(expected) == 0 {
 		return &domain.ErrInvalidExecutionPlan{

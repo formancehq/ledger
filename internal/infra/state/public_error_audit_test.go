@@ -16,7 +16,7 @@ func TestPublicErrorAuditIdentityUnchanged(t *testing.T) {
 
 	for _, tc := range []struct {
 		name     string
-		err      domain.Describable
+		err      domain.SerializableError
 		message  string
 		metadata map[string]string
 	}{

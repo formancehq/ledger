@@ -14,7 +14,7 @@ import (
 //   - same revision, identical payload: idempotent no-op (no log);
 //   - same revision, different payload: contract violation, rejected;
 //   - lower revision: stale, rejected (a newer policy already won).
-func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	newPolicy := order.GetPolicy()
 	if newPolicy == nil {
 		return nil, &domain.ErrClusterPolicyInvalid{Detail: "missing policy"}
@@ -69,7 +69,7 @@ func processSetClusterPolicy(order *raftcmdpb.SetClusterPolicyOrder, ctx *Contex
 // raising it would observe no effect. Both checks are pure functions of the
 // proposed policy, so every node reaches the same verdict for one committed
 // entry.
-func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.Describable {
+func validateClusterPolicyMetadataLimits(policy *commonpb.ClusterPolicy) domain.SerializableError {
 	if err := domain.MetadataLimitsFromPolicy(policy).Validate(); err != nil {
 		return &domain.ErrClusterPolicyInvalid{Detail: err.Error()}
 	}

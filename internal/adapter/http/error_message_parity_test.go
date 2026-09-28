@@ -30,7 +30,7 @@ func TestErrorMessageParityThroughRoutingWrappers(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			message, metadata, _ := domain.PublicErrorDetails(tc.err)
-			wire := leaderStatusWithMetadata(t, grpcerr.CodeForKind(domain.Kind(tc.err)), message, tc.err.Reason(), metadata)
+			wire := leaderStatusWithMetadata(t, grpcerr.CodeForKind(tc.err.Kind()), message, tc.err.Reason(), metadata)
 			for _, origin := range []struct {
 				name string
 				err  error

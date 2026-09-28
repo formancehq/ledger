@@ -8,7 +8,7 @@ import (
 // validateMetadataAtApply bounds caller metadata before a save or reversal
 // mutates state. Admission may have observed a more permissive policy; only
 // the committed policy on this scope determines the replicated outcome.
-func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *Context) domain.Describable {
+func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *Context) domain.SerializableError {
 	// Empty input stores no metadata and contributes no bytes to the budget.
 	if len(metadata) == 0 {
 		return nil
@@ -32,7 +32,7 @@ func validateMetadataAtApply(metadata map[string]*commonpb.MetadataValue, ctx *C
 
 // validateMetadataKeyAtApply bounds bare caller keys against the committed
 // policy before a delete or schema change mutates state.
-func validateMetadataKeyAtApply(key string, ctx *Context) domain.Describable {
+func validateMetadataKeyAtApply(key string, ctx *Context) domain.SerializableError {
 	limits := domain.MetadataLimitsFromPolicy(ctx.Scope.GetClusterPolicy())
 	if err := limits.ValidateKey(key); err != nil {
 		return err

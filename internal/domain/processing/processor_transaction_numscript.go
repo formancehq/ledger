@@ -28,7 +28,7 @@ type numscriptPostingProducer struct {
 	inputsResolutionHash []byte
 }
 
-func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable) {
+func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError) {
 	if script == nil || script.GetPlain() == "" {
 		return nil, domain.ErrScriptRequired
 	}
@@ -72,7 +72,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 			// resolution derived a key admission never declared, so the gated
 			// Scope refused the read (*state.ErrCoverageMiss) or the plan was
 			// structurally inconsistent (*domain.ErrInvalidExecutionPlan). Both
-			// arrive here as a domain.Describable whose typed error survives the
+			// arrive here as a domain.SerializableError whose typed error survives the
 			// numscript library's error path (the library's QueryBalanceError /
 			// QueryMetadataError implement Unwrap, and convertNumscriptError
 			// returns the Describable as-is). Softening this to retryable stale

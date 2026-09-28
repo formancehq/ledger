@@ -29,17 +29,17 @@ import (
 // cannot produce a false mismatch. On the checker's actual read path it never
 // even shows: a proto3 map with no entries emits no bytes, so an empty Context
 // unmarshals back as nil and both sides read nil out of Pebble.
-func describeFailure(d domain.Describable) (commonpb.ErrorReason, string) {
+func describeFailure(d domain.SerializableError) (commonpb.ErrorReason, string) {
 	return domain.ReasonCode(d.Reason()), d.Error()
 }
 
 // buildAuditFailure projects a typed domain error into an AuditFailure proto.
-// It accepts domain.Describable — not a bare error — so the compiler
+// It accepts domain.SerializableError — not a bare error — so the compiler
 // guarantees only typed, deterministic outcomes reach the audit chain. There
 // is no ERROR_REASON_UNSPECIFIED fallback: a non-Describable failure is an FSM
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
-func buildAuditFailure(d domain.Describable) *auditpb.AuditFailure {
+func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
 	reason, message := describeFailure(d)
 
 	failure := &auditpb.AuditFailure{

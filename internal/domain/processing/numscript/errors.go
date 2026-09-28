@@ -15,7 +15,7 @@ import (
 // errors that have no specific mapping are wrapped as ErrNumscriptRuntime
 // (KindInternal) — the script ran and produced an unhandled failure mode,
 // which is a server bug the user cannot fix.
-func convertNumscriptError(err error) domain.Describable {
+func convertNumscriptError(err error) domain.SerializableError {
 	if err == nil {
 		return nil
 	}
@@ -62,11 +62,11 @@ func convertNumscriptError(err error) domain.Describable {
 	}
 
 	// errors.As walks the chain in case a caller has already wrapped the
-	// numscript-library error in a Describable. This also unwraps
+	// numscript-library error in a typed domain failure. This also unwraps
 	// QueryBalanceError / QueryMetadataError, whose WrappedError is the Store
 	// error — so a rejected scoped read (domain.ErrScopedBalanceUnsupported)
 	// surfaces here as the validation sentinel it already is.
-	if d, ok := errors.AsType[domain.Describable](err); ok {
+	if d, ok := errors.AsType[domain.SerializableError](err); ok {
 		return d
 	}
 
@@ -123,7 +123,7 @@ func IsPanic(err error) bool {
 // deferred closure, as the Go runtime requires — and pass the result here so
 // the panic→Describable conversion lives in one place (DRY) across every Safe*
 // wrapper.
-func numscriptPanicToDescribable(recovered any) domain.Describable {
+func numscriptPanicToDescribable(recovered any) domain.SerializableError {
 	if recovered == nil {
 		return nil
 	}
@@ -133,7 +133,7 @@ func numscriptPanicToDescribable(recovered any) domain.Describable {
 
 // SafeRun wraps ParseResult.Run with a deferred recover to catch panics from the
 // numscript library and convert them into regular errors.
-func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (result numscriptlib.ExecutionResult, err domain.Describable) {
+func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -155,7 +155,7 @@ func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscrip
 // converted into a Describable ErrNumscriptRuntime rather than crashing the
 // request goroutine or the Raft apply loop. Library errors are mapped through
 // the shared convertNumscriptError, identically to SafeRun.
-func SafeResolveDependencies(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (resolved numscriptlib.ResolvedDependencies, err domain.Describable) {
+func SafeResolveDependencies(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (resolved numscriptlib.ResolvedDependencies, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			resolved = numscriptlib.ResolvedDependencies{}

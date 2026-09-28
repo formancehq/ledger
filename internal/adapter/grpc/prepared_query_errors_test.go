@@ -1,97 +1,82 @@
 package grpc
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
-	ggrpc "google.golang.org/grpc"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
+// TestExecutePreparedQueryErrorClassification pins the EN-2081 contract for the
+// classification-only tier. Both errors reject a malformed
+// ExecutePreparedQuery request, so the caller must see InvalidArgument rather
+// than the codes.Unknown the sanitiser answered when they were bare
+// errors.New values.
+//
+// Neither carries an ErrorInfo, and that absence is the point: a Reason is a
+// versioned wire contract, and these two never declared one. Attaching a
+// borrowed reason here would ship an identifier clients could start matching
+// on and the server could then never rename.
 func TestExecutePreparedQueryErrorClassification(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
 		name    string
-		target  commonpb.QueryTarget
-		mode    commonpb.QueryMode
-		filter  *commonpb.QueryFilter
-		missing bool
-		want    error
-		code    codes.Code
+		err     error
+		message string
 	}{
 		{
-			name: "aggregate transactions", target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
-			mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
-			want: query.ErrPreparedQueryAggregateTarget, code: codes.InvalidArgument,
+			name:    "aggregate on a non-accounts target",
+			err:     &query.ErrPreparedQueryAggregateTarget{Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS},
+			message: "AGGREGATE_VOLUMES mode is only valid for ACCOUNTS target queries, this query targets transactions",
 		},
 		{
-			name: "aggregate logs", target: commonpb.QueryTarget_QUERY_TARGET_LOGS,
-			mode: commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES,
-			want: query.ErrPreparedQueryAggregateTarget, code: codes.InvalidArgument,
-		},
-		{
-			name: "unsupported mode", target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
-			mode: commonpb.QueryMode(999),
-			filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{
-				Address: &commonpb.AddressMatch{Match: &commonpb.AddressMatch_ParamExact{ParamExact: "missing"}},
-			}},
-			want: query.ErrQueryModeUnsupported, code: codes.InvalidArgument,
-		},
-		{
-			name: "missing query", missing: true, mode: commonpb.QueryMode_QUERY_MODE_LIST,
-			want: &domain.ErrPreparedQueryNotFound{Ledger: "ledger", Name: "query"}, code: codes.NotFound,
+			name:    "unsupported query mode",
+			err:     &query.ErrQueryModeUnsupported{Mode: commonpb.QueryMode(99)},
+			message: "unsupported query mode: 99",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			logger := logging.Testing()
-			store, err := dal.NewStore(t.TempDir(), logger, noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, store.Close()) })
-			rs, err := readstore.New(t.TempDir(), logger, readstore.DefaultConfig())
-			require.NoError(t, err)
-			t.Cleanup(func() { require.NoError(t, rs.Close()) })
-			attrs := attributes.New()
-			batch := store.OpenWriteSession()
-			require.NoError(t, state.SaveLedger(batch, "ledger", &commonpb.LedgerInfo{Name: "ledger"}))
-			if !tc.missing {
-				_, err = attrs.PreparedQuery.Set(batch, domain.PreparedQueryKey{LedgerName: "ledger", Name: "query"}.Bytes(), &commonpb.PreparedQuery{
-					Name: "query", Target: tc.target, Filter: tc.filter,
-				})
-				require.NoError(t, err)
-			}
-			require.NoError(t, batch.Commit())
+			st := status.Convert(convertToGRPCError(tc.err, testLogger()))
 
-			req := &servicepb.ExecutePreparedQueryRequest{Ledger: "ledger", QueryName: "query", Mode: tc.mode}
-			// Run the real executor through the production unary error boundary:
-			// replacing either validation guard with a bare error must fail here.
-			_, err = errorConversionInterceptor(logger)(t.Context(), req, &ggrpc.UnaryServerInfo{}, func(ctx context.Context, request any) (any, error) {
-				return query.Execute(ctx, rs, store, attrs.Volume, attrs.PreparedQuery, attrs.Index,
-					request.(*servicepb.ExecutePreparedQueryRequest), nil, nil)
-			})
-			require.Error(t, err)
-			st := status.Convert(err)
-			require.Equal(t, tc.code, st.Code())
-			require.Equal(t, tc.want.Error(), st.Message())
-			if !tc.missing {
-				require.Empty(t, st.Details())
+			require.Equal(t, codes.InvalidArgument, st.Code())
+			require.Equal(t, tc.message, st.Message())
+
+			for _, detail := range st.Details() {
+				_, isErrorInfo := detail.(*errdetails.ErrorInfo)
+				require.False(t, isErrorInfo,
+					"a Classifiable owns no public Reason, so it must not ship an ErrorInfo")
 			}
+		})
+	}
+}
+
+// TestQueryArgumentErrorsAreClassifiableOnly states the tier directly, so a
+// later change that quietly adds Reason() to one of these types — and with it a
+// permanent wire contract — fails here rather than shipping.
+func TestQueryArgumentErrorsAreClassifiableOnly(t *testing.T) {
+	t.Parallel()
+
+	for name, err := range map[string]domain.Classifiable{
+		"ErrPreparedQueryAggregateTarget": &query.ErrPreparedQueryAggregateTarget{},
+		"ErrQueryModeUnsupported":         &query.ErrQueryModeUnsupported{},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, domain.KindValidation, err.Kind())
+
+			_, describable := any(err).(domain.Describable)
+			require.False(t, describable,
+				"%s must not declare a Reason: it would become a wire contract this build can never rename", name)
 		})
 	}
 }

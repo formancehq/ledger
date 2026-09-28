@@ -125,7 +125,7 @@ func TestProcessRevertTransaction_TargetCreatedInBatchIsPermanent(t *testing.T) 
 	require.Equal(t, txID, created.TransactionID)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
 		"a target this batch creates can never be resolved by re-admission")
-	require.Equal(t, domain.KindValidation, domain.Kind(err),
+	require.Equal(t, domain.KindValidation, err.Kind(),
 		"the client must see a permanent rejection, not a retryable one")
 }
 
@@ -203,7 +203,7 @@ func TestProcessRevertTransaction_InvalidMetadataBeatsObservationCheck(t *testin
 	require.Nil(t, payload)
 	require.NotErrorIs(t, err, domain.ErrStaleInputsResolution,
 		"a permanently invalid order must not be advertised as retryable")
-	require.Equal(t, domain.KindValidation, domain.Kind(err),
+	require.Equal(t, domain.KindValidation, err.Kind(),
 		"the metadata rejection is the one the caller can act on")
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.Describable) {
+func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionOrder, ctx *Context) (*commonpb.LedgerLogPayload, domain.SerializableError) {
 	boundaries := ctx.Boundaries
 	s := ctx.Scope
 	info := ctx.LedgerInfo
@@ -305,10 +305,10 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 func validateMergedAccountMetadata(
 	accountMetadata map[string]*commonpb.MetadataMap,
 	limits domain.MetadataLimits,
-) domain.Describable {
+) domain.SerializableError {
 	var (
 		worstAccount string
-		worstErr     domain.Describable
+		worstErr     domain.SerializableError
 	)
 
 	for account, mm := range accountMetadata {
@@ -332,7 +332,7 @@ func validateMergedAccountMetadata(
 // validatePostings checks that all account addresses and assets in the postings
 // contain only allowed characters. This runs after Numscript resolution so it
 // covers both explicit and script-resolved values.
-func validatePostings(postings []*commonpb.Posting) domain.Describable {
+func validatePostings(postings []*commonpb.Posting) domain.SerializableError {
 	for _, p := range postings {
 		if err := domain.ValidateAccountAddress(p.GetSource()); err != nil {
 			return err
@@ -363,14 +363,14 @@ type produceResult struct {
 }
 
 type postingProducer interface {
-	produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.Describable)
+	produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError)
 }
 
 type stdPostingProducer struct {
 	assetCache map[string]cachedAssetPrecision
 }
 
-func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.Describable) {
+func (p *stdPostingProducer) produce(s Scope, ledger string, order *raftcmdpb.CreateTransactionOrder, _ *commonpb.Script) (*produceResult, domain.SerializableError) {
 	for _, posting := range order.GetPostings() {
 		// Skip balance check when Force is true
 		err := applyPosting(s, ledger, posting, order.GetForce(), p.assetCache)

@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	existing, err := s.Ledgers().Get(domain.LedgerKey{Name: ledger})
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
@@ -112,7 +112,7 @@ func processCreateLedger(ledger string, order *raftcmdpb.CreateLedgerOrder, ctx 
 	}, nil
 }
 
-func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processDeleteLedger(ledger string, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 	l, loadErr := loadLedger(s, ledger)
 	if loadErr != nil {
