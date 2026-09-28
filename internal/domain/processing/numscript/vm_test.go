@@ -1,7 +1,9 @@
 package numscript
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"math/big"
 	"testing"
 
@@ -220,6 +222,41 @@ func TestSafeExecCompiled_PanicDropsWarmInstance(t *testing.T) {
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
+}
+
+// TestSafeExecCompiled_VersionMismatchRejected: program and vars must be
+// encoded with the same wire format version — admission produces both in one
+// compilation pass, so a pair straddling two versions was assembled by
+// different binaries and its vars layout cannot be trusted against the
+// program. Surfaced loudly, never executed. The mismatch is forged by
+// patching the version header of the encoded vars (bytes [4:6], after the
+// 4-byte magic) to one below the program's, which still decodes (the decoder
+// accepts any version up to its own) but must be refused by the pairing check.
+func TestSafeExecCompiled_VersionMismatchRejected(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`
+	compiled := compileScript(mustParse(t, script), script, nil)
+	require.NotNil(t, compiled)
+
+	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
+	require.NoError(t, decErr)
+	require.Positive(t, program.Version)
+
+	staleVars := bytes.Clone(compiled.Vars)
+	binary.LittleEndian.PutUint16(staleVars[4:], program.Version-1)
+
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+
+	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, staleVars, NewVMStore(source, false))
+	require.NotNil(t, err)
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, err, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "format version mismatch")
 }
 
 // TestSafeExecCompiled_MissingFundsClassification: the VM's missing-funds error
