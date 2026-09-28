@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"13"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"14"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
-leader. For example, with a schema implementing revision 13:
+leader. For example, with a schema implementing revision 14:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 13' \
+grpcurl -plaintext -H 'ledger-protocol-version: 14' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -192,6 +192,30 @@ and authentication-disabled actions now have distinct wire representations,
 and authenticated authorization state moved under its principal variant.
 Revision 12 clients and servers would decode these field numbers with different
 types and must not communicate with revision 13 peers.
+
+## Numscript metadata rendering and VM execution (revision 14)
+
+Revision 14 stores and returns an account-typed Numscript metadata value
+(`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
+the bare account name, `merchants:acme`, where revision 13 returned
+`@merchants:acme`. The rendering now comes from the Numscript library itself,
+identically on both of its engines, and the bare name is the form a later
+`meta()` read can resolve as an account again — the `@`-prefixed form could
+not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
+stays `ASSET amount`, portions and assets keep their canonical forms. The
+`.proto` text of the exposed metadata messages is unchanged, so the difference
+is invisible to a schema comparison; a revision-13 client would read the same
+Apply request back with different metadata bytes.
+
+Revision 14 also changes apply semantics: admission compiles each resolvable
+script to Numscript VM bytecode and binds it to the order's technical
+sub-message, and the FSM executes that artifact instead of re-interpreting the
+script text. Like revision 6, apply semantics must agree across every replica:
+a binary predating these fields silently drops them and interprets with the
+older Numscript library, so a mixed-binary cluster applying the same committed
+entry writes divergent transaction and audit bytes. Deploy this revision with
+all nodes stopped — see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-14).
 
 ## Maintaining the revision
 
