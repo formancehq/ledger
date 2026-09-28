@@ -133,11 +133,11 @@ func TestVMStore_ScopedReadsRejected(t *testing.T) {
 }
 
 // TestSafeExecCompiled_WarmInstanceReuse: repeated applies of the same artifact
-// through one cache run on a warm VM instance recycled via the cache entry's
-// pool. Reuse must be invisible in results: each run sees only its own vars and
-// store (no state leaks across runs, including from a failed run), and a result
-// handed out earlier stays intact after later runs (postings are copied out of
-// the VM, never aliased to its reusable buffers).
+// through one cache run on the entry's single warm VM instance. Reuse must be
+// invisible in results: each run sees only its own vars and store (no state
+// leaks across runs, including from a failed run), and a result handed out
+// earlier stays intact after later runs (postings are copied out of the VM,
+// never aliased to its reusable buffers).
 func TestSafeExecCompiled_WarmInstanceReuse(t *testing.T) {
 	t.Parallel()
 
@@ -158,7 +158,7 @@ send $amt (
 	require.NotNil(t, second)
 
 	// Identical program bytes: both executions resolve to the same cache entry,
-	// so the later runs execute on the instance the first run pooled.
+	// so the later runs execute on the same warm instance as the first.
 	require.Equal(t, first.Program, second.Program)
 
 	cache := NewNumscriptCache(16)
@@ -169,8 +169,8 @@ send $amt (
 	require.Len(t, firstResult.Postings, 1)
 	require.Equal(t, int64(30), firstResult.Postings[0].Amount.Int64())
 
-	// A run that fails normally (missing funds against an empty store) still
-	// returns its instance to the pool for the next apply.
+	// A run that fails normally (missing funds against an empty store) leaves
+	// the instance reusable for the next apply.
 	_, err = SafeExecCompiled(cache, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
 	require.NotNil(t, err)
 
@@ -196,11 +196,12 @@ func (panicValueSource) Metadata(string, string) (string, bool, error) {
 	return "", false, nil
 }
 
-// TestSafeExecCompiled_PanicDropsWarmInstance: a panicking run is recovered
-// into the runtime-error contract and its possibly half-mutated VM instance is
-// dropped rather than pooled; the next apply of the same artifact gets a fresh
-// instance and succeeds.
-func TestSafeExecCompiled_PanicDropsWarmInstance(t *testing.T) {
+// TestSafeExecCompiled_PanicLeavesInstanceReusable: a panicking run is
+// recovered into the runtime-error contract, and the same warm instance —
+// dirty from the aborted run — executes the next apply correctly (registers
+// are write-before-read, the runstate resets on each exec, the program is
+// immutable).
+func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 	t.Parallel()
 
 	script := `send [COIN 30] (

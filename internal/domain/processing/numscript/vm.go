@@ -112,12 +112,10 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // checks LoadVar indices against are fixed by the program's own variable
 // layout, not by the per-order values). Caching it is what makes the VM path
 // cheaper than the interpreter per apply, exactly as the parse cache does for
-// the interpreter path. Execution then checks a warm VM instance out of the
-// cache entry's pool rather than building one per apply, reusing the register
-// banks and RunState allocations across runs of the same program. Cache and
-// pool alike only move work, never results (see compiledLruEntry.vms for why
-// a warm instance is observationally identical to a fresh one), so apply
-// stays deterministic.
+// the interpreter path. Execution reuses the entry's single warm VM instance
+// (see compiledLruEntry for the reuse contract: always safe sequentially,
+// never concurrently). Cache and warm instance alike only move work, never
+// results, so apply stays deterministic.
 func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
@@ -145,7 +143,7 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 	// a mismatch is a "should not happen" surfaced loudly (invariant #7). Both
 	// versions come out of the committed entry's own bytes, so the branch stays
 	// a pure function of the entry (invariant #2).
-	if programVersion := entry.program.Version; vars.Version != programVersion {
+	if programVersion := entry.vm.Program.Version; vars.Version != programVersion {
 		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
 			Detail: fmt.Sprintf(
 				"compiled numscript artifact format version mismatch: program encoded with v%d, vars with v%d",
@@ -154,15 +152,7 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 		}
 	}
 
-	machine, _ := entry.vms.Get().(*numscriptlib.Vm)
-
-	result, execErr := numscriptlib.ExecVm(context.Background(), machine, &vars, store)
-
-	// Deliberately not deferred: a panicking run unwinds past this line, so a
-	// possibly half-mutated instance is dropped instead of recycled. A normal
-	// error return (missing funds, store rejection) leaves the instance
-	// reusable — Exec resets all per-run state on the way in.
-	entry.vms.Put(machine)
+	result, execErr := numscriptlib.ExecVm(context.Background(), entry.vm, &vars, store)
 
 	return result, convertVMError(execErr)
 }
