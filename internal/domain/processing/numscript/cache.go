@@ -16,15 +16,8 @@ import (
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
 // and decoded+verified VM artifacts — each as one warm VM instance — keyed by
-// the same script-content hash (HashScript of the source text), not a fresh
-// hash of the compiled bytes: compilation is a pure function of the script
-// text (TestSafeExecCompiled_WarmInstanceReuse asserts two compiles of the
-// same text with different vars yield byte-identical Program encodings), so
-// the hash the caller already computed and verified against the order
-// (processor_transaction_numscript.go's artifact/text match check) identifies
-// the artifact just as precisely, without hashing the — typically larger —
-// program bytes again on every apply. Both sides use an LRU eviction policy
-// bounded by maxSize to prevent unbounded memory growth.
+// the artifact bytes' hash. Both sides use an LRU eviction policy bounded by
+// maxSize to prevent unbounded memory growth.
 // Thread-safe: an RWMutex allows concurrent cache hits without contention.
 // LRU reordering is approximate — read hits do not call MoveToFront to avoid
 // write-locking on the hot path.
@@ -185,23 +178,8 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 // size mismatch means the artifact and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
 // pools so it fails with the verifier's own error, loudly.
-//
-// scriptHash identifies the artifact: it is the same HashScript(sourceText)
-// value the caller already computed and checked against the order's bound
-// hash (processor_transaction_numscript.go) before reaching here, not a fresh
-// hash of programBytes. That's sound because compilation is a pure function
-// of the script text — the same text always compiles to the same program
-// bytes, regardless of vars (TestSafeExecCompiled_WarmInstanceReuse asserts
-// this directly) — so the already-verified text hash identifies the artifact
-// exactly as precisely as hashing programBytes would, without paying to hash
-// the (typically larger) program bytes again on every apply.
-func (c *NumscriptCache) getOrDecodeCompiled(scriptHash []byte, programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
-	if len(scriptHash) != 32 {
-		return nil, &domain.ErrNumscriptRuntime{
-			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 32", len(scriptHash)),
-		}
-	}
-	hash := [32]byte(scriptHash)
+func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
+	hash := blake3.Sum256(programBytes)
 
 	c.compiledMu.RLock()
 	if elem, ok := c.compiledCache[hash]; ok {

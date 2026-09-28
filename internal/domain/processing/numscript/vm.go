@@ -138,13 +138,7 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // (see compiledLruEntry for the reuse contract: always safe sequentially,
 // never concurrently). Cache and warm instance alike only move work, never
 // results, so apply stays deterministic.
-//
-// scriptHash is the order's already-verified HashScript(sourceText) — the
-// caller (processor_transaction_numscript.go) checked it against the resolved
-// script text before calling this, so it is threaded straight through as the
-// compiled-cache key instead of hashing programBytes again here; see
-// getOrDecodeCompiled for why that's sound.
-func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -168,7 +162,7 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 		}
 	}
 
-	entry, err := cache.getOrDecodeCompiled(scriptHash, programBytes, &vars)
+	entry, err := cache.getOrDecodeCompiled(programBytes, &vars)
 	if err != nil {
 		return numscriptlib.ExecutionResult{}, err
 	}

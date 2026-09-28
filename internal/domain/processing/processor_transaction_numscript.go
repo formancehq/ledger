@@ -161,7 +161,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		// format version, unverifiable bytecode — is final (see
 		// SafeExecCompiled): the order fails on every node running this binary,
 		// and the text is never interpreted in the artifact's place.
-		result, execErr = numscript.SafeExecCompiled(p.cache, scriptHash[:], p.compiledProgram, p.compiledVars, vmStore)
+		result, execErr = numscript.SafeExecCompiled(p.cache, p.compiledProgram, p.compiledVars, vmStore)
 		if execErr != nil {
 			return nil, execErr
 		}
