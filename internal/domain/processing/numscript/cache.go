@@ -3,6 +3,7 @@ package numscript
 import (
 	"container/list"
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/zeebo/blake3"
@@ -158,12 +159,18 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 }
 
 // getOrDecodeCompiled returns the cache entry holding the decoded, verified VM
-// program — and its warm-instance pool — for an admission-compiled artifact,
+// program — as one warm VM instance — for an admission-compiled artifact,
 // decoding and verifying on the first sighting and serving every later apply
 // from cache. The verifier is a whole-program static pass far more expensive
 // than execution, so running it per apply would cost more than interpreting;
 // running it once per artifact keeps its guarantee (ExecVm may assume
 // well-formed bytecode) at parse-cache prices.
+//
+// A program that does not decode, or that does not carry exactly the bundled
+// library's bytecode version (numscriptlib.CurrentBytecodeVersion — see
+// SafeExecCompiled for why), is rejected loudly before verification and never
+// inserted, so every cached entry holds a current-version program and the hit
+// path needs no version check.
 //
 // vars is only consulted for its pool sizes, which VerifyWithVars checks
 // LoadVar indices against. The sizes are fixed by the program's own variable
@@ -199,6 +206,15 @@ func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscrip
 	if decErr != nil {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "decoding compiled numscript program: " + decErr.Error(),
+		}
+	}
+
+	if program.Version != numscriptlib.CurrentBytecodeVersion {
+		return nil, &domain.ErrNumscriptRuntime{
+			Detail: fmt.Sprintf(
+				"compiled numscript program encoded with bytecode version %s; this binary executes %s only",
+				program.Version, numscriptlib.CurrentBytecodeVersion,
+			),
 		}
 	}
 

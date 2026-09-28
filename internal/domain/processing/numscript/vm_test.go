@@ -42,6 +42,23 @@ func mustParse(t *testing.T, script string) numscriptlib.ParseResult {
 	return parsed
 }
 
+// withArtifactVersion returns a copy of an encoded program or vars blob with
+// its bytecode version header rewritten. Both blobs share the library's header
+// layout — a 4-byte magic, then major and minor as two little-endian uint16 —
+// which is the one part of the format that has to stay put for any versioning
+// to work at all; nothing past the header is touched.
+func withArtifactVersion(t *testing.T, encoded []byte, version numscriptlib.BytecodeVersion) []byte {
+	t.Helper()
+
+	require.GreaterOrEqual(t, len(encoded), 8)
+
+	patched := bytes.Clone(encoded)
+	binary.LittleEndian.PutUint16(patched[4:], version.Major)
+	binary.LittleEndian.PutUint16(patched[6:], version.Minor)
+
+	return patched
+}
+
 // TestCompileScript_ArtifactRoundTrips: a compilable script yields an artifact
 // whose program and vars decode and execute.
 func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
@@ -225,15 +242,141 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
 }
 
-// TestSafeExecCompiled_VersionMismatchRejected: program and vars must be
-// encoded with the same wire format version — admission produces both in one
-// compilation pass, so a pair straddling two versions was assembled by
-// different binaries and its vars layout cannot be trusted against the
-// program. Surfaced loudly, never executed. The mismatch is forged by
-// patching the version header of the encoded vars (bytes [4:6], after the
-// 4-byte magic) to one below the program's, which still decodes (the decoder
-// accepts any version up to its own) but must be refused by the pairing check.
-func TestSafeExecCompiled_VersionMismatchRejected(t *testing.T) {
+// TestSafeExecCompiled_ForeignBytecodeVersionRejected: an artifact whose
+// program or vars carry a bytecode version other than the bundled library's —
+// the footprint of a Raft log replayed across a library upgrade, a rollback,
+// or a mixed-binary window — is rejected loudly (ErrNumscriptRuntime, not a
+// panic, never an interpreter fallback) and never cached, for either half.
+// Another major or a newer minor the library itself refuses at decode; an
+// older minor of the same major the library would still read, and the
+// ledger's own exact-match check refuses it — that case is exercised as soon
+// as the bundled version's minor is above zero.
+func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`
+	compiled := compileScript(mustParse(t, script), script, nil)
+	require.NotNil(t, compiled)
+
+	current := numscriptlib.CurrentBytecodeVersion
+	require.Positive(t, current.Major)
+
+	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
+	require.NoError(t, decErr)
+	require.Equal(t, current, program.Version, "a fresh artifact carries the bundled bytecode version")
+
+	const (
+		libraryRefusal = "not readable by this build"    // the decoder's typed error, surfaced as a decode failure
+		ledgerRefusal  = "encoded with bytecode version" // the ledger's exact-match check
+	)
+
+	versions := map[string]struct {
+		v      numscriptlib.BytecodeVersion
+		detail string
+	}{
+		"older major": {numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}, libraryRefusal},
+		"newer major": {numscriptlib.BytecodeVersion{Major: current.Major + 1}, libraryRefusal},
+		"newer minor": {numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor + 1}, libraryRefusal},
+	}
+	if current.Minor > 0 {
+		versions["older minor"] = struct {
+			v      numscriptlib.BytecodeVersion
+			detail string
+		}{numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}, ledgerRefusal}
+	}
+
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+
+	for name, tc := range versions {
+		for _, half := range []string{"program", "vars"} {
+			t.Run(name+" "+half, func(t *testing.T) {
+				t.Parallel()
+
+				programBytes, varsBytes := compiled.Program, compiled.Vars
+				if half == "program" {
+					programBytes = withArtifactVersion(t, programBytes, tc.v)
+				} else {
+					varsBytes = withArtifactVersion(t, varsBytes, tc.v)
+				}
+
+				cache := NewNumscriptCache(16)
+
+				_, err := SafeExecCompiled(cache, programBytes, varsBytes, NewVMStore(source, false))
+				require.NotNil(t, err)
+				require.False(t, IsPanic(err))
+
+				var runtimeErr *domain.ErrNumscriptRuntime
+				require.ErrorAs(t, err, &runtimeErr)
+				require.Contains(t, runtimeErr.Detail, "compiled numscript "+half)
+				require.Contains(t, runtimeErr.Detail, tc.detail)
+				require.Zero(t, cache.compiledOrder.Len(), "a rejected artifact must not be cached")
+
+				// The rejection leaves the cache fit for the genuine artifact.
+				result, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(source, false))
+				require.Nil(t, err)
+				require.Len(t, result.Postings, 1)
+			})
+		}
+	}
+}
+
+// TestSafeExecCompiled_UndecodableArtifactIsLoud: bytes the bundled library
+// cannot read at all are an internal error (our own codec wrote them), not a
+// panic, not a client error and never an interpreter fallback — for either
+// half of the artifact.
+func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`
+	compiled := compileScript(mustParse(t, script), script, nil)
+	require.NotNil(t, compiled)
+
+	garble := func(encoded []byte) []byte {
+		out := bytes.Clone(encoded)
+		for i := range out {
+			out[i] ^= 0xA5
+		}
+
+		return out
+	}
+
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+
+	cases := map[string]struct {
+		program, vars []byte
+		detail        string
+	}{
+		"program": {garble(compiled.Program), compiled.Vars, "decoding compiled numscript program"},
+		"vars":    {compiled.Program, garble(compiled.Vars), "decoding compiled numscript vars"},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := SafeExecCompiled(NewNumscriptCache(16), tc.program, tc.vars, NewVMStore(source, false))
+			require.NotNil(t, err)
+			require.False(t, IsPanic(err))
+
+			var runtimeErr *domain.ErrNumscriptRuntime
+			require.ErrorAs(t, err, &runtimeErr)
+			require.Contains(t, runtimeErr.Detail, tc.detail)
+		})
+	}
+}
+
+// TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud: bytecode in the bundled
+// format that decodes but fails verification is an internal error — our own
+// compiler produced it in this very format, so a malformed program means a
+// compiler or verifier bug (invariant #7). Forged by re-encoding a decoded
+// program with an opcode the VM does not have.
+func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
 	t.Parallel()
 
 	script := `send [COIN 30] (
@@ -245,19 +388,20 @@ func TestSafeExecCompiled_VersionMismatchRejected(t *testing.T) {
 
 	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
 	require.NoError(t, decErr)
-	require.Positive(t, program.Version)
+	require.NotEmpty(t, program.Instructions)
 
-	staleVars := bytes.Clone(compiled.Vars)
-	binary.LittleEndian.PutUint16(staleVars[4:], program.Version-1)
+	program.Instructions[0].Opcode = 0xFF // no such opcode
+	malformed := program.Encode()          // re-encoded in the bundled format
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, staleVars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), malformed, compiled.Vars, NewVMStore(source, false))
 	require.NotNil(t, err)
+	require.False(t, IsPanic(err))
 
 	var runtimeErr *domain.ErrNumscriptRuntime
 	require.ErrorAs(t, err, &runtimeErr)
-	require.Contains(t, runtimeErr.Detail, "format version mismatch")
+	require.Contains(t, runtimeErr.Detail, "verifying compiled numscript program")
 }
 
 // TestSafeExecCompiled_MissingFundsClassification: the VM's missing-funds error

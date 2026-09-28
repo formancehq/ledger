@@ -29,10 +29,13 @@ type numscriptPostingProducer struct {
 	// compiledProgram/compiledVars/compiledScriptHash are the Numscript VM
 	// artifact admission compiled on the leader's parallel path (from
 	// OrderTechnical, staged like the hash above). When present, execution
-	// decodes and runs the bytecode; absent means admission could not compile
-	// the script (e.g. asset scaling) and the interpreter runs the text. Either
-	// way the engine choice is a function of the committed entry alone, so every
-	// node applies it identically (invariant #2).
+	// decodes and runs the bytecode — and fails the order loudly if it was not
+	// encoded in the bundled library's artifact format (another binary's, e.g.
+	// a Raft log replayed across a library upgrade), never falling back to the
+	// interpreter. Absent means admission could not compile the script (e.g.
+	// asset scaling) and the interpreter runs the text. Either way the engine
+	// choice is a function of the committed entry and the running binary alone,
+	// so every node on that binary applies it identically (invariant #2).
 	compiledProgram    []byte
 	compiledVars       []byte
 	compiledScriptHash []byte
@@ -153,6 +156,10 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 
 		var execErr domain.Describable
 
+		// Any failure short of execution — undecodable bytes, another artifact
+		// format version, unverifiable bytecode — is final (see
+		// SafeExecCompiled): the order fails on every node running this binary,
+		// and the text is never interpreted in the artifact's place.
 		result, execErr = numscript.SafeExecCompiled(p.cache, p.compiledProgram, p.compiledVars, vmStore)
 		if execErr != nil {
 			return nil, execErr

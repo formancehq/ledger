@@ -216,6 +216,12 @@ older Numscript library, so a mixed-binary cluster applying the same committed
 entry writes divergent transaction and audit bytes. Deploy this revision with
 all nodes stopped — see
 [Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-14).
+The artifact itself carries the Numscript library's bytecode version
+(major.minor): the FSM executes it only when that version is exactly the
+bundled library's and otherwise fails the order with a Numscript runtime error, so a log
+entry replayed across a later library bump, or after a rollback, is rejected
+rather than run as foreign bytecode — the text is never interpreted in the
+artifact's place.
 
 ## Maintaining the revision
 
