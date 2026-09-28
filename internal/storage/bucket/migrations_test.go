@@ -45,6 +45,7 @@ func TestMigrationsPreservePermanentTables(t *testing.T) {
 		{migration: "17-moves-fill-transaction-id", table: "transactions_ids"},
 		{migration: "18-transactions-fill-inserted-at", table: "logs_transactions"},
 		{migration: "20-accounts-volumes-fill-history", table: "tmp_volumes"},
+		{migration: "42-fix-missing-inserted-at-in-log-data", table: "logs_view"},
 	} {
 		for _, leftover := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/leftover=%t", testCase.migration, leftover), func(t *testing.T) {

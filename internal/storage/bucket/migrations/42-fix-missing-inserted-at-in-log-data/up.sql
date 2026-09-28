@@ -5,6 +5,7 @@ do $$
 	begin
 		set search_path = '{{ .Schema }}';
 
+		drop table if exists pg_temp.logs_view;
 		create temp table logs_view as
 			select row_number() over (order by id) as row_number, id, ledger
 			from logs
@@ -34,7 +35,7 @@ do $$
 			commit;
 		end loop;
 
-		drop table if exists logs_view;
+		drop table if exists pg_temp.logs_view;
 	end
 $$;
 
