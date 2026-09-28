@@ -18,6 +18,7 @@ do $$
 			execute _vsql;
 		end loop;
 
+		drop table if exists pg_temp.logs_transactions;
 		create temporary table logs_transactions as
 		select row_number() over (order by ledger, id) as row_number, ledger, date, (data->'transaction'->>'id')::bigint as transaction_id
 		from logs
@@ -46,7 +47,7 @@ do $$
 			perform pg_notify('migrations-{{ .Schema }}', 'continue: ' || _batch_size);
 		end loop;
 
-		drop table logs_transactions;
+		drop table pg_temp.logs_transactions;
 
 		alter table transactions
 		alter column inserted_at set default transaction_date();
