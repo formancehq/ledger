@@ -224,6 +224,30 @@ every entity in its immutable target. The protobuf wire shape is unchanged, but
 a revision-15 peer interprets the identical request differently, so clients,
 servers, and every Raft replica must agree on revision 16 semantics.
 
+## Numscript metadata rendering and VM execution (revision 14)
+
+Revision 14 stores and returns an account-typed Numscript metadata value
+(`set_tx_meta("k", @merchants:acme)` and its `set_account_meta` counterpart) as
+the bare account name, `merchants:acme`, where revision 13 returned
+`@merchants:acme`. The rendering now comes from the Numscript library itself,
+identically on both of its engines, and the bare name is the form a later
+`meta()` read can resolve as an account again — the `@`-prefixed form could
+not. Scalar values are unchanged: strings and numbers stay verbatim, monetary
+stays `ASSET amount`, portions and assets keep their canonical forms. The
+`.proto` text of the exposed metadata messages is unchanged, so the difference
+is invisible to a schema comparison; a revision-13 client would read the same
+Apply request back with different metadata bytes.
+
+Revision 14 also changes apply semantics: admission compiles each resolvable
+script to Numscript VM bytecode and binds it to the order's technical
+sub-message, and the FSM executes that artifact instead of re-interpreting the
+script text. Like revision 6, apply semantics must agree across every replica:
+a binary predating these fields silently drops them and interprets with the
+older Numscript library, so a mixed-binary cluster applying the same committed
+entry writes divergent transaction and audit bytes. Deploy this revision with
+all nodes stopped — see
+[Upgrading across the Numscript VM execution change](../../../../ops/deployment.md#upgrading-across-the-numscript-vm-execution-change-revision-14).
+
 ## Maintaining the revision
 
 The author of a service contract change must determine whether an existing
