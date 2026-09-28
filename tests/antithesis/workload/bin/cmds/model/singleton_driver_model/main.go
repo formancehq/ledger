@@ -158,6 +158,8 @@ func main() {
 	// No seed type — workers fill the chart organically; early txs at
 	// untyped prefixes fail ACCOUNT_NOT_MATCHING_TYPE and validate fine.
 
+	startCoverageStats()
+
 	log.Printf("starting %d workers across %d ledgers", numWorkers, numLedgers)
 
 	var processors sync.WaitGroup
@@ -206,6 +208,8 @@ func main() {
 	checker.recoveries.Wait()
 	close(checker.incoming)
 	processors.Wait()
+
+	dumpCoverageStats()
 }
 
 // Holds c.mu only to snapshot the state and register the bulk; generation and
