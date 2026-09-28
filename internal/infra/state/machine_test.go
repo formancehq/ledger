@@ -162,6 +162,23 @@ func TestPrepareEntriesRejectsInvalidAttributionBeforeBusinessMutation(t *testin
 	require.Equal(t, uint64(1), machine.LastAppliedIndex(), "Raft progress must advance past the rejected committed entry")
 }
 
+func TestPrepareEntriesRejectsInvalidAttributionWithoutBusinessPayload(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachineWithThreshold(t, 1)
+	installTestClusterPolicy(machine)
+	proposal := makeProposal(42)
+	proposal.CallerSnapshot = &commonpb.CallerSnapshot{}
+
+	prepared, err := machine.PrepareEntries(context.Background(), store, makeEntry(t, 1, proposal))
+	require.NoError(t, err)
+	require.Len(t, prepared.Result.Results, 1)
+
+	var invalid *domain.ErrInvalidCallerAttribution
+	require.ErrorAs(t, prepared.Result.Results[0].Error, &invalid)
+	require.Equal(t, uint64(1), prepared.Result.Results[0].AppliedIndex)
+}
+
 // makeProposal builds a Proposal protobuf with the given orders.
 // It automatically generates a ExecutionPlan that declares every key the FSM
 // will read during apply (simulating what the admission layer does):

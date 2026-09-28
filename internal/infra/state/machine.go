@@ -530,7 +530,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 				return nil, fmt.Errorf("invariant: decoded entry at raft index %d has nil Proposal", entryIndex)
 			}
 
-			if len(cmd.GetOrders()) > 0 || len(cmd.GetTechnicalUpdates()) > 0 {
+			if cmd.GetCallerSnapshot() != nil {
 				if attributionErr := attribution.Validate(cmd.GetCallerSnapshot()); attributionErr != nil {
 					invalid, ok := errors.AsType[*domain.ErrInvalidCallerAttribution](attributionErr)
 					if !ok {
