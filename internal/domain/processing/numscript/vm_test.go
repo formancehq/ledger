@@ -130,6 +130,98 @@ func TestVMStore_ScopedReadsRejected(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrScopedBalanceUnsupported)
 }
 
+// TestSafeExecCompiled_WarmInstanceReuse: repeated applies of the same artifact
+// through one cache run on a warm VM instance recycled via the cache entry's
+// pool. Reuse must be invisible in results: each run sees only its own vars and
+// store (no state leaks across runs, including from a failed run), and a result
+// handed out earlier stays intact after later runs (postings are copied out of
+// the VM, never aliased to its reusable buffers).
+func TestSafeExecCompiled_WarmInstanceReuse(t *testing.T) {
+	t.Parallel()
+
+	script := `vars {
+  monetary $amt
+}
+
+send $amt (
+  source = @src
+  destination = @dst
+)`
+	parsed := mustParse(t, script)
+
+	first := compileScript(parsed, script, map[string]string{"amt": "COIN 30"})
+	require.NotNil(t, first)
+
+	second := compileScript(parsed, script, map[string]string{"amt": "COIN 40"})
+	require.NotNil(t, second)
+
+	// Identical program bytes: both executions resolve to the same cache entry,
+	// so the later runs execute on the instance the first run pooled.
+	require.Equal(t, first.Program, second.Program)
+
+	cache := NewNumscriptCache(16)
+	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
+
+	firstResult, err := SafeExecCompiled(cache, first.Program, first.Vars, store)
+	require.Nil(t, err)
+	require.Len(t, firstResult.Postings, 1)
+	require.Equal(t, int64(30), firstResult.Postings[0].Amount.Int64())
+
+	// A run that fails normally (missing funds against an empty store) still
+	// returns its instance to the pool for the next apply.
+	_, err = SafeExecCompiled(cache, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
+	require.NotNil(t, err)
+
+	secondResult, err := SafeExecCompiled(cache, second.Program, second.Vars, store)
+	require.Nil(t, err)
+	require.Len(t, secondResult.Postings, 1)
+	require.Equal(t, int64(40), secondResult.Postings[0].Amount.Int64())
+
+	// The warm runs above must not have mutated the result handed out first.
+	require.Len(t, firstResult.Postings, 1)
+	require.Equal(t, int64(30), firstResult.Postings[0].Amount.Int64())
+}
+
+// panicValueSource makes the store panic mid-run, standing in for a library or
+// adapter bug surfacing while a run has already mutated the VM instance.
+type panicValueSource struct{}
+
+func (panicValueSource) Balance(string, string, string) (*big.Int, error) {
+	panic("store panic mid-run")
+}
+
+func (panicValueSource) Metadata(string, string) (string, bool, error) {
+	return "", false, nil
+}
+
+// TestSafeExecCompiled_PanicDropsWarmInstance: a panicking run is recovered
+// into the runtime-error contract and its possibly half-mutated VM instance is
+// dropped rather than pooled; the next apply of the same artifact gets a fresh
+// instance and succeeds.
+func TestSafeExecCompiled_PanicDropsWarmInstance(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`
+	compiled := compileScript(mustParse(t, script), script, nil)
+	require.NotNil(t, compiled)
+
+	cache := NewNumscriptCache(16)
+
+	_, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(panicValueSource{}, false))
+	require.NotNil(t, err)
+	require.True(t, IsPanic(err))
+
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+
+	result, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	require.Nil(t, err)
+	require.Len(t, result.Postings, 1)
+	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
+}
+
 // TestSafeExecCompiled_MissingFundsClassification: the VM's missing-funds error
 // maps to the same domain error the interpreter path raises.
 func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {

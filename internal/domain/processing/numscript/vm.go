@@ -111,8 +111,12 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // checks LoadVar indices against are fixed by the program's own variable
 // layout, not by the per-order values). Caching it is what makes the VM path
 // cheaper than the interpreter per apply, exactly as the parse cache does for
-// the interpreter path — and like that cache it only moves work, never
-// results, so apply stays deterministic.
+// the interpreter path. Execution then checks a warm VM instance out of the
+// cache entry's pool rather than building one per apply, reusing the register
+// banks and RunState allocations across runs of the same program. Cache and
+// pool alike only move work, never results (see compiledLruEntry.vms for why
+// a warm instance is observationally identical to a fresh one), so apply
+// stays deterministic.
 func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.Describable) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
@@ -128,12 +132,20 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 		}
 	}
 
-	program, err := cache.GetOrDecodeCompiled(programBytes, &vars)
+	entry, err := cache.getOrDecodeCompiled(programBytes, &vars)
 	if err != nil {
 		return numscriptlib.ExecutionResult{}, err
 	}
 
-	result, execErr := numscriptlib.ExecVm(context.Background(), numscriptlib.NewVm(program), &vars, store)
+	machine, _ := entry.vms.Get().(*numscriptlib.Vm)
+
+	result, execErr := numscriptlib.ExecVm(context.Background(), machine, &vars, store)
+
+	// Deliberately not deferred: a panicking run unwinds past this line, so a
+	// possibly half-mutated instance is dropped instead of recycled. A normal
+	// error return (missing funds, store rejection) leaves the instance
+	// reusable — Exec resets all per-run state on the way in.
+	entry.vms.Put(machine)
 
 	return result, convertVMError(execErr)
 }

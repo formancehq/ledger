@@ -14,9 +14,9 @@ import (
 )
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
-// and decoded+verified VM artifacts keyed by the artifact bytes' hash. Both
-// sides use an LRU eviction policy bounded by maxSize to prevent unbounded
-// memory growth.
+// and decoded+verified VM artifacts — each with a pool of warm VM instances —
+// keyed by the artifact bytes' hash. Both sides use an LRU eviction policy
+// bounded by maxSize to prevent unbounded memory growth.
 // Thread-safe: an RWMutex allows concurrent cache hits without contention.
 // LRU reordering is approximate — read hits do not call MoveToFront to avoid
 // write-locking on the hot path.
@@ -46,15 +46,26 @@ type parsedScript struct {
 	err     domain.SerializableError
 }
 
-// compiledLruEntry holds one decoded, verified VM artifact. nStr/nInt are the
-// vars pool sizes the verification ran against; they are a property of the
-// program's own variable layout (the encoder appends one slot per declaration),
-// so every order carrying this artifact presents the same sizes and the
-// verification outcome is reusable.
+// compiledLruEntry holds one decoded, verified VM artifact and its pool of warm
+// VM instances. nStr/nInt are the vars pool sizes the verification ran against;
+// they are a property of the program's own variable layout (the encoder appends
+// one slot per declaration), so every order carrying this artifact presents the
+// same sizes and the verification outcome is reusable.
 type compiledLruEntry struct {
 	hash       [32]byte
 	program    numscriptlib.CompiledProgram
 	nStr, nInt int
+
+	// vms recycles VM instances for this program so a hot script reuses its
+	// register banks and RunState allocations (balance map, postings buffer)
+	// across applies instead of paying NewVm plus a first-run RunState per
+	// transaction. Reuse cannot change results: Exec resets all per-run state on
+	// a warm instance, the verifier proved every register read is preceded by a
+	// write on every path reaching it (stale register contents are
+	// unobservable), and execution results never alias VM state (postings are
+	// copied out, amounts cloned). Like the caches around it, the pool moves
+	// allocations, never results, so apply stays deterministic (invariant #2).
+	vms sync.Pool
 }
 
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
@@ -150,12 +161,13 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 	return parsed, parseErr
 }
 
-// GetOrDecodeCompiled returns the decoded, verified VM program for an
-// admission-compiled artifact, decoding and verifying on the first sighting
-// and serving every later apply from cache. The verifier is a whole-program
-// static pass far more expensive than execution, so running it per apply would
-// cost more than interpreting; running it once per artifact keeps its
-// guarantee (ExecVm may assume well-formed bytecode) at parse-cache prices.
+// getOrDecodeCompiled returns the cache entry holding the decoded, verified VM
+// program — and its warm-instance pool — for an admission-compiled artifact,
+// decoding and verifying on the first sighting and serving every later apply
+// from cache. The verifier is a whole-program static pass far more expensive
+// than execution, so running it per apply would cost more than interpreting;
+// running it once per artifact keeps its guarantee (ExecVm may assume
+// well-formed bytecode) at parse-cache prices.
 //
 // vars is only consulted for its pool sizes, which VerifyWithVars checks
 // LoadVar indices against. The sizes are fixed by the program's own variable
@@ -163,7 +175,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 // size mismatch means the artifact and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
 // pools so it fails with the verifier's own error, loudly.
-func (c *NumscriptCache) GetOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (numscriptlib.CompiledProgram, domain.Describable) {
+func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.Describable) {
 	hash := blake3.Sum256(programBytes)
 
 	c.compiledMu.RLock()
@@ -172,16 +184,16 @@ func (c *NumscriptCache) GetOrDecodeCompiled(programBytes []byte, vars *numscrip
 		c.compiledMu.RUnlock()
 
 		if entry.nStr == len(vars.StringsPool) && entry.nInt == len(vars.IntsPool) {
-			return entry.program, nil
+			return entry, nil
 		}
 
 		if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.program, vars); verifyErr != nil {
-			return numscriptlib.CompiledProgram{}, &domain.ErrNumscriptRuntime{
+			return nil, &domain.ErrNumscriptRuntime{
 				Detail: "verifying compiled numscript program: " + verifyErr.Error(),
 			}
 		}
 
-		return entry.program, nil
+		return entry, nil
 	}
 
 	c.compiledMu.RUnlock()
@@ -189,13 +201,13 @@ func (c *NumscriptCache) GetOrDecodeCompiled(programBytes []byte, vars *numscrip
 	// Decode and verify outside the lock — the expensive part.
 	program, decErr := numscriptlib.DecodeCompiledProgram(programBytes)
 	if decErr != nil {
-		return numscriptlib.CompiledProgram{}, &domain.ErrNumscriptRuntime{
+		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "decoding compiled numscript program: " + decErr.Error(),
 		}
 	}
 
 	if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program, vars); verifyErr != nil {
-		return numscriptlib.CompiledProgram{}, &domain.ErrNumscriptRuntime{
+		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "verifying compiled numscript program: " + verifyErr.Error(),
 		}
 	}
@@ -207,7 +219,7 @@ func (c *NumscriptCache) GetOrDecodeCompiled(programBytes []byte, vars *numscrip
 	if elem, ok := c.compiledCache[hash]; ok {
 		entry, _ := elem.Value.(*compiledLruEntry)
 
-		return entry.program, nil
+		return entry, nil
 	}
 
 	if c.compiledOrder.Len() >= c.maxSize {
@@ -224,9 +236,10 @@ func (c *NumscriptCache) GetOrDecodeCompiled(programBytes []byte, vars *numscrip
 		nStr:    len(vars.StringsPool),
 		nInt:    len(vars.IntsPool),
 	}
+	entry.vms.New = func() any { return numscriptlib.NewVm(program) }
 	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
 
-	return program, nil
+	return entry, nil
 }
 
 // InitCacheMetrics initializes the cache metrics on the NumscriptCache.
