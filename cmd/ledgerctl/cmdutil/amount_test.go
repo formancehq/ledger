@@ -2,6 +2,7 @@ package cmdutil
 
 import (
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/formancehq/invariants"
@@ -17,6 +18,7 @@ func TestRescale(t *testing.T) {
 		toScale    uint8
 		wantAmount string
 		wantAsset  string
+		wantErr    bool
 	}{
 		{
 			name:       "coarser scale exposes a fractional part",
@@ -59,12 +61,11 @@ func TestRescale(t *testing.T) {
 			wantAsset:  "EUR",
 		},
 		{
-			name:       "unparseable amount is left as-is",
-			amount:     "not-a-number",
-			asset:      "USD/2",
-			toScale:    0,
-			wantAmount: "not-a-number",
-			wantAsset:  "USD/2",
+			name:    "unparseable amount is an invariant error",
+			amount:  "not-a-number",
+			asset:   "USD/2",
+			toScale: 0,
+			wantErr: true,
 		},
 	}
 
@@ -72,7 +73,19 @@ func TestRescale(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			gotAmount, gotAsset := Rescale(tc.amount, tc.asset, tc.toScale)
+			gotAmount, gotAsset, err := Rescale(tc.amount, tc.asset, tc.toScale)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("Rescale(%q, %q, %d) = (%q, %q), want an error", tc.amount, tc.asset, tc.toScale, gotAmount, gotAsset)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Rescale(%q, %q, %d): unexpected error: %v", tc.amount, tc.asset, tc.toScale, err)
+			}
+
 			if gotAmount != tc.wantAmount || gotAsset != tc.wantAsset {
 				t.Errorf("Rescale(%q, %q, %d) = (%q, %q), want (%q, %q)",
 					tc.amount, tc.asset, tc.toScale, gotAmount, gotAsset, tc.wantAmount, tc.wantAsset)
@@ -114,10 +127,13 @@ func TestAggregateVolumesRescaleSpec(t *testing.T) {
 	t.Parallel()
 
 	// The spec example: 1234 USD/2 + 56789 USD/3, summed on real values.
-	got := AggregateVolumes([]RawVolume{
+	got, err := AggregateVolumes([]RawVolume{
 		{Asset: "USD/2", Input: "1234", Output: "0"},
 		{Asset: "USD/3", Input: "56789", Output: "0"},
 	})
+	if err != nil {
+		t.Fatalf("AggregateVolumes: unexpected error: %v", err)
+	}
 
 	if len(got) != 1 {
 		t.Fatalf("expected 1 aggregated currency, got %d: %+v", len(got), got)
@@ -170,10 +186,21 @@ func TestAggregateVolumes(t *testing.T) {
 		}
 	}
 
+	mustAggregate := func(t *testing.T, volumes []RawVolume) []AssetVolumes {
+		t.Helper()
+
+		got, err := AggregateVolumes(volumes)
+		if err != nil {
+			t.Fatalf("AggregateVolumes: unexpected error: %v", err)
+		}
+
+		return got
+	}
+
 	t.Run("sums input/output/balance across precisions at the highest precision", func(t *testing.T) {
 		t.Parallel()
 
-		got := AggregateVolumes([]RawVolume{
+		got := mustAggregate(t, []RawVolume{
 			{Asset: "USD/4", Input: "10000", Output: "0"},     // in 1.0000
 			{Asset: "USD/8", Input: "100000000", Output: "0"}, // in 1.00000000
 			{Asset: "EUR/2", Input: "250", Output: "100"},     // in 2.50, out 1.00 → bal 1.50
@@ -188,7 +215,7 @@ func TestAggregateVolumes(t *testing.T) {
 	t.Run("colors stay segregated and sort after the uncolored bucket", func(t *testing.T) {
 		t.Parallel()
 
-		got := AggregateVolumes([]RawVolume{
+		got := mustAggregate(t, []RawVolume{
 			{Asset: "USD/2", Color: "GREEN", Input: "150", Output: "0"},
 			{Asset: "USD/4", Color: "GREEN", Input: "0", Output: "20000"},
 			{Asset: "USD/2", Input: "1000", Output: "0"},
@@ -204,7 +231,7 @@ func TestAggregateVolumes(t *testing.T) {
 		t.Parallel()
 
 		// 1.50 - 2.0000 = -0.5000 at precision 4.
-		got := AggregateVolumes([]RawVolume{
+		got := mustAggregate(t, []RawVolume{
 			{Asset: "USD/2", Input: "150", Output: "0"},
 			{Asset: "USD/4", Input: "0", Output: "20000"},
 		})
@@ -217,7 +244,7 @@ func TestAggregateVolumes(t *testing.T) {
 	t.Run("bare currency without precision", func(t *testing.T) {
 		t.Parallel()
 
-		got := AggregateVolumes([]RawVolume{
+		got := mustAggregate(t, []RawVolume{
 			{Asset: "JPY", Input: "1000", Output: "400"},
 		})
 
@@ -225,4 +252,31 @@ func TestAggregateVolumes(t *testing.T) {
 			{"JPY", "", 0, "1000", "400", "600"},
 		})
 	})
+
+	// Server-issued amounts are canonical integers by contract, so a bucket that
+	// fails to parse must surface an error rather than vanish from the result.
+	for _, tc := range []struct {
+		name string
+		vol  RawVolume
+	}{
+		{"unparseable input", RawVolume{Asset: "USD/2", Color: "GREEN", Input: "1.5", Output: "0"}},
+		{"unparseable output", RawVolume{Asset: "USD/2", Color: "GREEN", Input: "0", Output: "abc"}},
+		{"absent volumes (empty strings)", RawVolume{Asset: "USD/2", Color: "GREEN"}},
+	} {
+		t.Run("fails on "+tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AggregateVolumes([]RawVolume{
+				{Asset: "EUR/2", Input: "250", Output: "100"},
+				tc.vol,
+			})
+			if err == nil {
+				t.Fatalf("expected an invariant error, got %+v", got)
+			}
+
+			if !strings.Contains(err.Error(), `"USD/2"`) || !strings.Contains(err.Error(), `"GREEN"`) {
+				t.Errorf("expected the error to name the offending bucket, got %v", err)
+			}
+		})
+	}
 }

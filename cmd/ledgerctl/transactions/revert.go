@@ -235,7 +235,12 @@ func runRevert(cmd *cobra.Command, args []string) error {
 		for i, posting := range revertedTx.GetRevertTransaction().GetPostings() {
 			amount, asset := posting.GetAmount().Dec(), posting.GetAsset()
 			if rescale != nil {
-				amount, asset = cmdutil.Rescale(amount, asset, *rescale)
+				var err error
+
+				amount, asset, err = cmdutil.Rescale(amount, asset, *rescale)
+				if err != nil {
+					return err
+				}
 			}
 
 			color := posting.GetColor()

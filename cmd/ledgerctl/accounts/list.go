@@ -141,7 +141,9 @@ func fetchAllAccounts(cmd *cobra.Command, client servicepb.BucketServiceClient, 
 		pterm.Info.Println("No accounts found.")
 		pterm.Println(pterm.Gray("Create transactions to populate accounts."))
 	default:
-		renderAccountsTable(accounts, rescale)
+		if err := renderAccountsTable(accounts, rescale); err != nil {
+			return err
+		}
 	}
 
 	if showProfile && lastTrailer != nil {
@@ -223,7 +225,10 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 			pterm.Println()
 			pterm.Printf("Accounts (Page %d)\n", pageNum)
 			pterm.Println(pterm.Gray("─────────────────────────────────"))
-			renderAccountsTable(accounts, rescale)
+
+			if err := renderAccountsTable(accounts, rescale); err != nil {
+				return err
+			}
 		}
 
 		if showProfile {
@@ -266,7 +271,7 @@ func fetchAccountsWithPager(cmd *cobra.Command, client servicepb.BucketServiceCl
 	}
 }
 
-func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) {
+func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) error {
 	termWidth := pterm.GetTerminalWidth()
 
 	const (
@@ -287,7 +292,10 @@ func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) {
 		metadataCount := strconv.Itoa(len(account.GetMetadata()))
 
 		addressLines := cmdutil.WrapText(account.GetAddress(), maxAddressWidth, ":")
-		balanceLines := formatAccountBalances(account.GetVolumes(), rescale)
+		balanceLines, err := formatAccountBalances(account.GetVolumes(), rescale)
+		if err != nil {
+			return err
+		}
 
 		// An account row spans as many lines as its longest column so wrapped
 		// addresses and multi-asset balances stay vertically aligned.
@@ -316,16 +324,19 @@ func renderAccountsTable(accounts []*commonpb.Account, rescale *uint8) {
 	}
 
 	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+
+	return nil
 }
 
 // formatAccountBalances renders one "ASSET balance" line per (asset, color)
 // bucket, coloring negative balances red and the rest green (matching the
 // accounts get view). Colored buckets carry a "[COLOR]" marker; the uncolored
 // bucket is labelled by its asset alone. Returns a single muted placeholder when
-// there are no volumes.
-func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) []string {
+// there are no volumes, and an error when --rescale meets a volume that is not a
+// canonical integer (see cmdutil.AggregateVolumes).
+func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) ([]string, error) {
 	if len(volumes) == 0 {
-		return []string{pterm.Gray("—")}
+		return []string{pterm.Gray("—")}, nil
 	}
 
 	// With --rescale, currencies that differ only in precision (USD/4, USD/8)
@@ -343,7 +354,10 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) []
 			})
 		}
 
-		aggregated := cmdutil.AggregateVolumes(raw)
+		aggregated, err := cmdutil.AggregateVolumes(raw)
+		if err != nil {
+			return nil, err
+		}
 
 		lines := make([]string, 0, len(aggregated))
 		for _, av := range aggregated {
@@ -357,7 +371,7 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) []
 			lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance)))
 		}
 
-		return lines
+		return lines, nil
 	}
 
 	// volumes is already sorted by (asset, color) ascending server-side, so we
@@ -376,7 +390,7 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) []
 		lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance)))
 	}
 
-	return lines
+	return lines, nil
 }
 
 // balanceLabel names a balance bucket: the asset alone for the uncolored bucket,

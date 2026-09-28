@@ -12,8 +12,9 @@ import (
 )
 
 // renderPostCommitVolumes displays a PostCommitVolumes table in the CLI output.
-// Volumes are listed per (account, asset, color). The "" color is rendered as
-// "-" so the uncolored bucket stands out in the table.
+// Volumes are listed per (account, asset, color); with --rescale, each account's
+// entries are instead merged per (base currency, color). The "" color is rendered
+// as "-" so the uncolored bucket stands out in the table.
 func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) error {
 	if len(pcv.GetVolumesByAccount()) == 0 {
 		return nil
@@ -51,7 +52,12 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 				})
 			}
 
-			for _, av := range cmdutil.AggregateVolumes(raw) {
+			aggregated, err := cmdutil.AggregateVolumes(raw)
+			if err != nil {
+				return err
+			}
+
+			for _, av := range aggregated {
 				displayColor := av.Color
 				if displayColor == "" {
 					displayColor = "-"

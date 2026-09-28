@@ -100,6 +100,32 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// With --rescale, currencies that differ only in precision are summed into
+	// a single base-currency row per color, re-expressed at the requested scale.
+	// Colors stay segregated: they are distinct balance buckets. Aggregate before
+	// printing anything so an invariant failure aborts without a partial view.
+	rescale := cmdutil.RescaleTarget(cmd)
+
+	var aggregated []cmdutil.AssetVolumes
+
+	if rescale != nil && len(account.GetVolumes()) > 0 {
+		raw := make([]cmdutil.RawVolume, 0, len(account.GetVolumes()))
+		for _, entry := range account.GetVolumes() {
+			vol := entry.GetVolumes()
+			raw = append(raw, cmdutil.RawVolume{
+				Asset:  entry.GetAsset(),
+				Color:  entry.GetColor(),
+				Input:  vol.GetInput(),
+				Output: vol.GetOutput(),
+			})
+		}
+
+		aggregated, err = cmdutil.AggregateVolumes(raw)
+		if err != nil {
+			return err
+		}
+	}
+
 	pterm.Println()
 
 	pterm.Printf("Account: %s\n", pterm.Cyan(account.GetAddress()))
@@ -133,23 +159,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 			{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 		}
 
-		// With --rescale, currencies that differ only in precision are summed
-		// into a single base-currency row per color, re-expressed at the
-		// requested scale. Colors stay segregated: they are distinct balance
-		// buckets.
-		if rescale := cmdutil.RescaleTarget(cmd); rescale != nil {
-			raw := make([]cmdutil.RawVolume, 0, len(account.GetVolumes()))
-			for _, entry := range account.GetVolumes() {
-				vol := entry.GetVolumes()
-				raw = append(raw, cmdutil.RawVolume{
-					Asset:  entry.GetAsset(),
-					Color:  entry.GetColor(),
-					Input:  vol.GetInput(),
-					Output: vol.GetOutput(),
-				})
-			}
-
-			for _, av := range cmdutil.AggregateVolumes(raw) {
+		if rescale != nil {
+			for _, av := range aggregated {
 				balanceColor := pterm.Green
 				if av.Balance.Sign() < 0 {
 					balanceColor = pterm.Red

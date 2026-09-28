@@ -238,7 +238,7 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 	// bucket but differ only in precision are summed and re-expressed at the
 	// requested scale (matching accounts aggregate-volumes); otherwise each row is
 	// rendered raw.
-	volumesTable := func(vols []*commonpb.AggregatedVolume) pterm.TableData {
+	volumesTable := func(vols []*commonpb.AggregatedVolume) (pterm.TableData, error) {
 		tableData := pterm.TableData{{"ASSET", "COLOR", "INPUT", "OUTPUT"}}
 
 		if rescale != nil {
@@ -252,7 +252,12 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 				})
 			}
 
-			for _, av := range cmdutil.AggregateVolumes(raw) {
+			aggregated, err := cmdutil.AggregateVolumes(raw)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, av := range aggregated {
 				tableData = append(tableData, []string{
 					invariants.FormatAsset(av.Asset, *rescale),
 					av.Color,
@@ -261,7 +266,7 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 				})
 			}
 
-			return tableData
+			return tableData, nil
 		}
 
 		for _, v := range vols {
@@ -273,18 +278,42 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 			})
 		}
 
-		return tableData
+		return tableData, nil
 	}
+
+	// Build every table before rendering any, so an invariant failure under
+	// --rescale aborts without printing a partial result.
+	var topTable pterm.TableData
 
 	if len(result.GetVolumes()) > 0 {
-		_ = pterm.DefaultTable.WithHasHeader().WithData(volumesTable(result.GetVolumes())).Render()
+		var err error
+
+		topTable, err = volumesTable(result.GetVolumes())
+		if err != nil {
+			return err
+		}
 	}
 
+	groupTables := make([]pterm.TableData, 0, len(result.GetGroups()))
+
 	for _, g := range result.GetGroups() {
+		tableData, err := volumesTable(g.GetVolumes())
+		if err != nil {
+			return err
+		}
+
+		groupTables = append(groupTables, tableData)
+	}
+
+	if topTable != nil {
+		_ = pterm.DefaultTable.WithHasHeader().WithData(topTable).Render()
+	}
+
+	for i, g := range result.GetGroups() {
 		pterm.Println()
 		pterm.Printfln("Group: %s", g.GetPrefix())
 
-		_ = pterm.DefaultTable.WithHasHeader().WithData(volumesTable(g.GetVolumes())).Render()
+		_ = pterm.DefaultTable.WithHasHeader().WithData(groupTables[i]).Render()
 	}
 
 	return nil

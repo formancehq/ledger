@@ -1,6 +1,7 @@
 package accounts
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/pterm/pterm"
@@ -41,10 +42,21 @@ func TestFormatAccountBalances(t *testing.T) {
 		}
 	}
 
+	mustFormat := func(t *testing.T, volumes []*commonpb.AccountVolume, rescale *uint8) []string {
+		t.Helper()
+
+		lines, err := formatAccountBalances(volumes, rescale)
+		if err != nil {
+			t.Fatalf("formatAccountBalances: unexpected error: %v", err)
+		}
+
+		return lines
+	}
+
 	t.Run("no volumes returns a single placeholder", func(t *testing.T) {
 		t.Parallel()
 
-		lines := formatAccountBalances(nil, nil)
+		lines := mustFormat(t, nil, nil)
 		if len(lines) != 1 {
 			t.Fatalf("expected 1 placeholder line, got %d: %v", len(lines), lines)
 		}
@@ -63,7 +75,7 @@ func TestFormatAccountBalances(t *testing.T) {
 			entry("USD/2", "", "", "", "1000"),
 		}
 
-		assertLines(t, formatAccountBalances(volumes, nil), []string{
+		assertLines(t, mustFormat(t, volumes, nil), []string{
 			"EUR/2 " + pterm.Red("-50"),
 			"GBP/2 " + pterm.Green("0"),
 			"USD/2 " + pterm.Green("1000"),
@@ -78,12 +90,12 @@ func TestFormatAccountBalances(t *testing.T) {
 			entry("USD/2", "GREEN", "0", "250", "-250"),
 		}
 
-		assertLines(t, formatAccountBalances(volumes, nil), []string{
+		assertLines(t, mustFormat(t, volumes, nil), []string{
 			"USD/2 " + pterm.Green("1000"),
 			"USD/2[GREEN] " + pterm.Red("-250"),
 		})
 
-		assertLines(t, formatAccountBalances(volumes, scale(0)), []string{
+		assertLines(t, mustFormat(t, volumes, scale(0)), []string{
 			"USD " + pterm.Green("10.00"),
 			"USD[GREEN] " + pterm.Red("-2.50"),
 		})
@@ -98,7 +110,7 @@ func TestFormatAccountBalances(t *testing.T) {
 			entry("USD/8", "", "100000000", "0", "100000000"), // 1.00000000
 		}
 
-		assertLines(t, formatAccountBalances(volumes, scale(0)), []string{
+		assertLines(t, mustFormat(t, volumes, scale(0)), []string{
 			"EUR " + pterm.Green("2.50"),
 			"USD " + pterm.Green("2.00000000"), // summed at the highest precision (8)
 		})
@@ -113,7 +125,7 @@ func TestFormatAccountBalances(t *testing.T) {
 			entry("USD/3", "", "1123456780", "0", "1123456780"),
 		}
 
-		assertLines(t, formatAccountBalances(volumes, scale(0)), []string{
+		assertLines(t, mustFormat(t, volumes, scale(0)), []string{
 			"EUR " + pterm.Red("-0.50"),
 			"JPY " + pterm.Green("1000"),
 			"USD " + pterm.Green("1123456.780"),
@@ -129,8 +141,28 @@ func TestFormatAccountBalances(t *testing.T) {
 			entry("USD/3", "", "56789", "0", "56789"),
 		}
 
-		assertLines(t, formatAccountBalances(volumes, scale(2)), []string{
+		assertLines(t, mustFormat(t, volumes, scale(2)), []string{
 			"USD/2 " + pterm.Green("6912.9"),
 		})
+	})
+
+	t.Run("with --rescale, a non-canonical volume fails instead of dropping the bucket", func(t *testing.T) {
+		t.Parallel()
+
+		// An absent Volumes message yields "" input/output; the non-rescale path
+		// still renders the row, so the rescale path must not silently hide it.
+		volumes := []*commonpb.AccountVolume{
+			entry("EUR/2", "", "250", "100", "150"),
+			{Asset: "USD/2"},
+		}
+
+		lines, err := formatAccountBalances(volumes, scale(0))
+		if err == nil {
+			t.Fatalf("expected an invariant error, got lines %v", lines)
+		}
+
+		if !strings.Contains(err.Error(), `"USD/2"`) {
+			t.Errorf("expected the error to name the offending asset, got %v", err)
+		}
 	})
 }

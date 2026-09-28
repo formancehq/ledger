@@ -1,6 +1,7 @@
 package cmdutil
 
 import (
+	"fmt"
 	"math/big"
 	"sort"
 	"strings"
@@ -38,16 +39,18 @@ func RescaleTarget(cmd *cobra.Command) *uint8 {
 //	1234 "USD/2" @ scale 2 -> "1234",   "USD/2"
 //	1234 "USD/2" @ scale 4 -> "123400", "USD/4"
 //
-// Amounts that do not parse as an integer are returned unchanged.
-func Rescale(amount, asset string, toScale uint8) (string, string) {
+// Server-issued amounts are always canonical integer strings, so an amount that
+// does not parse is an invariant violation and is reported as an error rather
+// than rendered as if it had been rescaled.
+func Rescale(amount, asset string, toScale uint8) (string, string, error) {
 	base, precision := invariants.ParseAssetPrecision(asset)
 
 	n, ok := new(big.Int).SetString(amount, 10)
 	if !ok {
-		return amount, asset
+		return "", "", fmt.Errorf("invariant: amount %q for asset %q is not a canonical integer", amount, asset)
 	}
 
-	return RescaleAmount(n, precision, toScale), invariants.FormatAsset(base, toScale)
+	return RescaleAmount(n, precision, toScale), invariants.FormatAsset(base, toScale), nil
 }
 
 // RescaleAmount renders amount — an integer recorded at fromPrecision — expressed
@@ -98,9 +101,14 @@ type AssetVolumes struct {
 // amounts, not the raw integers — each value is lifted to the group's highest
 // precision first — so no fractional digits are lost (1.0000 + 1.00000000 →
 // 2.00000000). Balance is derived as Input - Output. Results are sorted by
-// (currency, color). An asset whose input or output does not parse as an integer
-// is skipped — server-issued amounts are always canonical integer strings.
-func AggregateVolumes(volumes []RawVolume) []AssetVolumes {
+// (currency, color).
+//
+// Server-issued amounts are always canonical integer strings, so an input or
+// output that does not parse (including an empty string from an absent volumes
+// message) is an invariant violation: it fails the whole aggregation rather than
+// silently dropping the bucket, which would render an incomplete balance the
+// caller has no way to detect.
+func AggregateVolumes(volumes []RawVolume) ([]AssetVolumes, error) {
 	type bucket struct {
 		base  string
 		color string
@@ -120,10 +128,14 @@ func AggregateVolumes(volumes []RawVolume) []AssetVolumes {
 	for _, vol := range volumes {
 		base, precision := invariants.ParseAssetPrecision(vol.Asset)
 
-		input, okIn := new(big.Int).SetString(vol.Input, 10)
-		output, okOut := new(big.Int).SetString(vol.Output, 10)
-		if !okIn || !okOut {
-			continue
+		input, ok := new(big.Int).SetString(vol.Input, 10)
+		if !ok {
+			return nil, fmt.Errorf("invariant: input %q for asset %q (color %q) is not a canonical integer", vol.Input, vol.Asset, vol.Color)
+		}
+
+		output, ok := new(big.Int).SetString(vol.Output, 10)
+		if !ok {
+			return nil, fmt.Errorf("invariant: output %q for asset %q (color %q) is not a canonical integer", vol.Output, vol.Asset, vol.Color)
 		}
 
 		b := bucket{base: base, color: vol.Color}
@@ -179,7 +191,7 @@ func AggregateVolumes(volumes []RawVolume) []AssetVolumes {
 		})
 	}
 
-	return result
+	return result, nil
 }
 
 // lift multiplies amount by 10^shift, used to express a value at a higher
