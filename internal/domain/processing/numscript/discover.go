@@ -78,10 +78,12 @@ func DiscoverNumscriptDependencies(
 	source ValueSource,
 	force bool,
 ) (*DiscoveryResult, error) {
-	parsed, parseErr := cache.GetOrParse(script)
-	if parseErr != nil {
-		return nil, parseErr
+	entry := cache.getOrParseEntry(script)
+	if entry.script.err != nil {
+		return nil, entry.script.err
 	}
+
+	parsed := entry.script.program
 
 	variablesMap := make(numscriptlib.VariablesMap, len(vars))
 	maps.Copy(variablesMap, vars)
@@ -102,7 +104,7 @@ func DiscoverNumscriptDependencies(
 		ReadMetadata:  make(map[domain.MetadataKey]struct{}, len(resolved.MetaReads)),
 		WriteMetadata: make(map[domain.MetadataKey]struct{}, len(resolved.MetaWrites)),
 		InputsHash:    recording.Hash(),
-		Compiled:      compileScript(parsed, script, vars),
+		Compiled:      compileScript(entry, vars),
 	}
 
 	// Ledger volumes are keyed by (ledger, account, asset, color): color IS a

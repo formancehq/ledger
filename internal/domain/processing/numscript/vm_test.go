@@ -33,13 +33,15 @@ func (s mapValueSource) Metadata(account, key string) (string, bool, error) {
 	return v, ok, nil
 }
 
-func mustParse(t *testing.T, script string) numscriptlib.ParseResult {
+// mustEntry parses script through a fresh cache and returns its entry — what
+// compileScript takes on the admission path.
+func mustEntry(t *testing.T, script string) *lruEntry {
 	t.Helper()
 
-	parsed := numscriptlib.Parse(script)
-	require.Empty(t, parsed.GetParsingErrors())
+	entry := NewNumscriptCache(16).getOrParseEntry(script)
+	require.Nil(t, entry.script.err)
 
-	return parsed
+	return entry
 }
 
 // withArtifactVersion returns a copy of an encoded program or vars blob with
@@ -68,7 +70,7 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustParse(t, script), script, nil)
+	compiled := compileScript(mustEntry(t, script), nil)
 	require.NotNil(t, compiled)
 
 	hash := HashScript(script)
@@ -95,7 +97,7 @@ send [COIN/2 100] (
   source = @src with scaling through @swap
   destination = @dst
 )`
-	require.Nil(t, compileScript(mustParse(t, script), script, nil))
+	require.Nil(t, compileScript(mustEntry(t, script), nil))
 }
 
 // TestCompileScript_BadVarValueFallsBack: a var value the encoder rejects also
@@ -111,7 +113,60 @@ send $amt (
   source = @src
   destination = @dst
 )`
-	require.Nil(t, compileScript(mustParse(t, script), script, map[string]string{"amt": "not-a-monetary"}))
+	require.Nil(t, compileScript(mustEntry(t, script), map[string]string{"amt": "not-a-monetary"}))
+}
+
+// TestCompileScript_CompilesOncePerCachedScript: the script-dependent half of
+// an admission compile is computed once per cached script and shared by every
+// order carrying it — so every order of a script gets the same bytecode even
+// though the library's register allocator is not deterministic across
+// separate compiles — while the vars are bound per order and each order gets
+// its own copy of the program bytes.
+func TestCompileScript_CompilesOncePerCachedScript(t *testing.T) {
+	t.Parallel()
+
+	// Several registers die on the same instruction here, which is exactly
+	// where separate compiles of this script diverge byte-for-byte.
+	script := `vars {
+  number $a
+  number $b
+  number $c
+  number $d
+  number $e
+  number $f
+}
+
+send [COIN ($a + $b) + ($c + $d) + ($e + $f)] (
+  source = @world
+  destination = @dst
+)`
+	cache := NewNumscriptCache(16)
+
+	entry := cache.getOrParseEntry(script)
+	require.Nil(t, entry.script.err)
+	require.Same(t, entry.compileParsed(), entry.compileParsed())
+	require.Same(t, entry, cache.getOrParseEntry(script))
+
+	first := compileScript(cache.getOrParseEntry(script), map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"})
+	require.NotNil(t, first)
+
+	second := compileScript(cache.getOrParseEntry(script), map[string]string{"a": "10", "b": "20", "c": "30", "d": "40", "e": "50", "f": "60"})
+	require.NotNil(t, second)
+
+	require.Equal(t, first.Program, second.Program)
+	require.NotSame(t, &first.Program[0], &second.Program[0], "each order carries its own copy of the shared program bytes")
+	require.Equal(t, first.ScriptHash, second.ScriptHash)
+	require.NotEqual(t, first.Vars, second.Vars, "vars are bound per order")
+
+	// An uncompilable script caches its outcome the same way.
+	scaling := cache.getOrParseEntry(`#![feature("experimental-asset-scaling")]
+send [COIN/2 100] (
+  source = @src with scaling through @swap
+  destination = @dst
+)`)
+	require.Nil(t, scaling.compileParsed())
+	require.Nil(t, scaling.compileParsed())
+	require.Nil(t, compileScript(scaling, nil))
 }
 
 // TestVMStore_ForceReturnsUnlimitedBalance mirrors the interpreter-facing
@@ -166,16 +221,17 @@ send $amt (
   source = @src
   destination = @dst
 )`
-	parsed := mustParse(t, script)
+	entry := mustEntry(t, script)
 
-	first := compileScript(parsed, script, map[string]string{"amt": "COIN 30"})
+	first := compileScript(entry, map[string]string{"amt": "COIN 30"})
 	require.NotNil(t, first)
 
-	second := compileScript(parsed, script, map[string]string{"amt": "COIN 40"})
+	second := compileScript(entry, map[string]string{"amt": "COIN 40"})
 	require.NotNil(t, second)
 
-	// Identical program bytes: both executions resolve to the same cache entry,
-	// so the later runs execute on the same warm instance as the first.
+	// Identical program bytes — the script is compiled once per cache entry —
+	// so both executions resolve to the same apply-side cache entry and the
+	// later runs execute on the same warm instance as the first.
 	require.Equal(t, first.Program, second.Program)
 
 	cache := NewNumscriptCache(16)
@@ -225,7 +281,7 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustParse(t, script), script, nil)
+	compiled := compileScript(mustEntry(t, script), nil)
 	require.NotNil(t, compiled)
 
 	cache := NewNumscriptCache(16)
@@ -258,7 +314,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustParse(t, script), script, nil)
+	compiled := compileScript(mustEntry(t, script), nil)
 	require.NotNil(t, compiled)
 
 	current := numscriptlib.CurrentBytecodeVersion
@@ -334,7 +390,7 @@ func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustParse(t, script), script, nil)
+	compiled := compileScript(mustEntry(t, script), nil)
 	require.NotNil(t, compiled)
 
 	garble := func(encoded []byte) []byte {
@@ -383,7 +439,7 @@ func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustParse(t, script), script, nil)
+	compiled := compileScript(mustEntry(t, script), nil)
 	require.NotNil(t, compiled)
 
 	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
@@ -413,7 +469,7 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustParse(t, script), script, nil)
+	compiled := compileScript(mustEntry(t, script), nil)
 	require.NotNil(t, compiled)
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}}

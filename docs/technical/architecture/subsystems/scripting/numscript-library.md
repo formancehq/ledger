@@ -196,15 +196,22 @@ Once the script text is resolved, two engines of the bundled Numscript library
 can execute it, with identical results by construction:
 
 - **The VM.** Admission compiles each script it could resolve to VM bytecode
-  (`numscript.compileScript`, on the leader's parallel path) and binds the
-  artifact to the order's technical sub-message: `compiled_program`,
+  (`numscript.compileScript`, on the leader's parallel path) — once per
+  cached script: the compile and its bytecode encoding hang off the script's
+  `NumscriptCache` parse entry (`lruEntry.compileParsed`), so every order of
+  a script shares one program and only its vars are encoded per order — and
+  binds the artifact to the order's technical sub-message: `compiled_program`,
   `compiled_vars` (the order's vars encoded against that program's variable
   layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled). The
   FSM decodes and verifies the program once per artifact — `NumscriptCache`
-  keeps one warm VM instance per artifact, keyed by the program bytes' hash —
-  and executes it per apply (`numscript.SafeExecCompiled`). The verifier is
-  what entitles the VM to run wire-supplied bytecode without per-instruction
-  checks, and its cost (several interpreter runs) is why it is cached.
+  keeps one warm VM instance per artifact, keyed by the program bytes' hash,
+  never by the script's: the library's register allocator is not
+  deterministic across separate compiles, so one text can legitimately arrive
+  as different (equivalent, not identical) bytecode, and an order must execute
+  exactly the bytes bound to it — and executes it per apply
+  (`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
+  wire-supplied bytecode without per-instruction checks, and its cost (several
+  interpreter runs) is why it is cached.
 - **The tree-walking interpreter** (`numscript.SafeRun`) runs the text only
   when admission produced no artifact: the compiler does not support the
   script yet (e.g. asset scaling), or a var value the encoder rejects — the

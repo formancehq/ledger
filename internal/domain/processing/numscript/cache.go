@@ -35,10 +35,27 @@ type NumscriptCache struct {
 	sizeGauge metric.Int64Gauge
 }
 
-// lruEntry holds the cache key and value for an LRU list element.
+// lruEntry holds the cache key and value for an LRU list element. The
+// admission-side compile of the script hangs off the same entry (compileOnce /
+// compiled): it is computed at most once per cached script, shared by every
+// order carrying that script, and evicted together with the parse. See
+// compileParsed.
 type lruEntry struct {
 	hash   [32]byte
 	script parsedScript
+
+	compileOnce sync.Once
+	compiled    *compiledProgram
+}
+
+// compiledProgram is the script-dependent half of an admission compile: the
+// encoded bytecode and the encoder that binds an order's vars to the program's
+// variable layout. Neither depends on any order's values, so one instance
+// serves every order of the script. program is shared and never mutated —
+// compileScript hands each order its own copy.
+type compiledProgram struct {
+	varsEncoder numscriptlib.VarsEncoder
+	program     []byte
 }
 
 // parsedScript wraps a parsed Numscript program with any parsing errors.
@@ -95,10 +112,19 @@ func HashScript(script string) [32]byte {
 }
 
 // GetOrParse retrieves a parsed script from the cache or parses it if not found.
+func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, domain.SerializableError) {
+	entry := c.getOrParseEntry(script)
+
+	return entry.script.program, entry.script.err
+}
+
+// getOrParseEntry is GetOrParse returning the cache entry itself, for callers
+// in this package that also need what hangs off it: the script's hash and its
+// once-per-script compile.
 // On cache hit the lookup uses a read lock for zero contention under concurrent reads.
 // On cache miss the script is parsed outside the lock, then inserted with a write lock.
 // LRU ordering is approximate: read hits do not reorder to avoid write contention.
-func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, domain.SerializableError) {
+func (c *NumscriptCache) getOrParseEntry(script string) *lruEntry {
 	hash := HashScript(script)
 
 	// Fast path: read lock for cache hits (no contention between readers).
@@ -107,7 +133,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 		entry, _ := elem.Value.(*lruEntry)
 		c.mu.RUnlock()
 
-		return entry.script.program, entry.script.err
+		return entry
 	}
 
 	c.mu.RUnlock()
@@ -130,7 +156,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 	if elem, ok := c.cache[hash]; ok {
 		entry, _ := elem.Value.(*lruEntry)
 
-		return entry.script.program, entry.script.err
+		return entry
 	}
 
 	// Evict least recently used if at capacity
@@ -155,7 +181,38 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 
 	c.recordSize(int64(c.order.Len()))
 
-	return parsed, parseErr
+	return entry
+}
+
+// compileParsed compiles the entry's script at most once and shares the result
+// with every later caller. nil means the compiler cannot lower the script (or
+// panicked on it) — as stable a property of the text as a parse error, and
+// cached the same way so an uncompilable script does not re-run the compiler
+// on every order. Only the script-dependent half is computed here; binding an
+// order's vars (VarsEncoder.Encode) is per-order and stays with the caller.
+// The compile runs outside the cache locks; concurrent callers for the same
+// script block on the Once and share the single result.
+func (e *lruEntry) compileParsed() *compiledProgram {
+	e.compileOnce.Do(func() {
+		defer func() {
+			if recover() != nil {
+				e.compiled = nil
+			}
+		}()
+
+		if e.script.err != nil {
+			return
+		}
+
+		varsEncoder, program, err := e.script.program.Compile()
+		if err != nil {
+			return
+		}
+
+		e.compiled = &compiledProgram{varsEncoder: varsEncoder, program: program.Encode()}
+	})
+
+	return e.compiled
 }
 
 // getOrDecodeCompiled returns the cache entry holding the decoded, verified VM

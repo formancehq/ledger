@@ -60,18 +60,21 @@ func benchSource() mapValueSource {
 }
 
 func benchCase(b *testing.B, script string, vars map[string]string) {
-	parsed := numscriptlib.Parse(script)
-	if len(parsed.GetParsingErrors()) > 0 {
+	cache := NewNumscriptCache(16)
+
+	entry := cache.getOrParseEntry(script)
+	if entry.script.err != nil {
 		b.Fatal("parse errors")
 	}
 
-	compiled := compileScript(parsed, script, vars)
+	parsed := entry.script.program
+
+	compiled := compileScript(entry, vars)
 	if compiled == nil {
 		b.Fatal("compile failed")
 	}
 
 	source := benchSource()
-	cache := NewNumscriptCache(16)
 
 	b.Run("interpreter_cached_parse", func(b *testing.B) {
 		store := NewStore(source, false)
