@@ -14,9 +14,9 @@ import (
 )
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
-// and decoded+verified VM artifacts — each with a pool of warm VM instances —
-// keyed by the artifact bytes' hash. Both sides use an LRU eviction policy
-// bounded by maxSize to prevent unbounded memory growth.
+// and decoded+verified VM artifacts — each as one warm VM instance — keyed by
+// the artifact bytes' hash. Both sides use an LRU eviction policy bounded by
+// maxSize to prevent unbounded memory growth.
 // Thread-safe: an RWMutex allows concurrent cache hits without contention.
 // LRU reordering is approximate — read hits do not call MoveToFront to avoid
 // write-locking on the hot path.
@@ -46,26 +46,22 @@ type parsedScript struct {
 	err     domain.SerializableError
 }
 
-// compiledLruEntry holds one decoded, verified VM artifact and its pool of warm
-// VM instances. nStr/nInt are the vars pool sizes the verification ran against;
-// they are a property of the program's own variable layout (the encoder appends
-// one slot per declaration), so every order carrying this artifact presents the
-// same sizes and the verification outcome is reusable.
+// compiledLruEntry holds one decoded, verified VM artifact as a single warm VM
+// instance (which embeds the program). Every apply of this artifact reuses the
+// instance: a "dirty" one is always safe — registers are write-before-read
+// (verified), the runstate resets on each exec, and the program is immutable —
+// even after a recovered panic. The one hard rule is that the same instance
+// must never execute concurrently; the FSM apply path is single-threaded (see
+// RequestProcessor), which guarantees it.
+//
+// nStr/nInt are the vars pool sizes the verification ran against; they are a
+// property of the program's own variable layout (the encoder appends one slot
+// per declaration), so every order carrying this artifact presents the same
+// sizes and the verification outcome is reusable.
 type compiledLruEntry struct {
 	hash       [32]byte
-	program    numscriptlib.CompiledProgram
+	vm         *numscriptlib.Vm
 	nStr, nInt int
-
-	// vms recycles VM instances for this program so a hot script reuses its
-	// register banks and RunState allocations (balance map, postings buffer)
-	// across applies instead of paying NewVm plus a first-run RunState per
-	// transaction. Reuse cannot change results: Exec resets all per-run state on
-	// a warm instance, the verifier proved every register read is preceded by a
-	// write on every path reaching it (stale register contents are
-	// unobservable), and execution results never alias VM state (postings are
-	// copied out, amounts cloned). Like the caches around it, the pool moves
-	// allocations, never results, so apply stays deterministic (invariant #2).
-	vms sync.Pool
 }
 
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
@@ -187,7 +183,7 @@ func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscrip
 			return entry, nil
 		}
 
-		if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.program, vars); verifyErr != nil {
+		if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.vm.Program, vars); verifyErr != nil {
 			return nil, &domain.ErrNumscriptRuntime{
 				Detail: "verifying compiled numscript program: " + verifyErr.Error(),
 			}
@@ -231,12 +227,11 @@ func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscrip
 	}
 
 	entry := &compiledLruEntry{
-		hash:    hash,
-		program: program,
-		nStr:    len(vars.StringsPool),
-		nInt:    len(vars.IntsPool),
+		hash: hash,
+		vm:   numscriptlib.NewVm(program),
+		nStr: len(vars.StringsPool),
+		nInt: len(vars.IntsPool),
 	}
-	entry.vms.New = func() any { return numscriptlib.NewVm(program) }
 	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
 
 	return entry, nil
