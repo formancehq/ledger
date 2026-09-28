@@ -191,7 +191,7 @@ func scanAccount(
 			"account":     address,
 			"volEntries":  len(volEntries),
 			"metaEntries": len(metaEntries),
-		}).Infof("scanAccount complete")
+		}).Tracef("scanAccount complete")
 	}
 
 	return assembleAccount(address, volEntries, metaEntries, collapseColors)
