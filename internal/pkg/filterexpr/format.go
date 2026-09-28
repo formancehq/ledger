@@ -166,14 +166,15 @@ func upperOp(exclusive bool) string {
 
 // auditFieldNames is the reverse of the parser's auditFieldKeys: enum -> DSL key.
 var auditFieldNames = map[commonpb.AuditField]string{
-	commonpb.AuditField_AUDIT_FIELD_SEQUENCE:       "seq",
-	commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:    "proposal_id",
-	commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:      "timestamp",
-	commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:   "log_seq",
-	commonpb.AuditField_AUDIT_FIELD_OUTCOME:        "outcome",
-	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT: "caller_subject",
-	commonpb.AuditField_AUDIT_FIELD_LEDGER:         "ledger",
-	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:     "order_type",
+	commonpb.AuditField_AUDIT_FIELD_SEQUENCE:        "seq",
+	commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:     "proposal_id",
+	commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:       "timestamp",
+	commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE:    "log_seq",
+	commonpb.AuditField_AUDIT_FIELD_OUTCOME:         "outcome",
+	commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:  "caller_subject",
+	commonpb.AuditField_AUDIT_FIELD_LEDGER:          "ledger",
+	commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:      "order_type",
+	commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY: "idempotency_key",
 }
 
 // formatAuditCondition renders an AuditCondition back into the bare `field OP
@@ -196,6 +197,8 @@ func formatAuditCondition(ac *commonpb.AuditCondition) (string, int) {
 		// Audit ranges always render as `between`/single-bound (never an
 		// `and`-join), so they are always leaf-precedence.
 		return formatAuditUintCondition(key, ac.GetField(), cond.UintCond), precLeaf
+	case *commonpb.AuditCondition_StringPrefix:
+		return fmt.Sprintf("%s ^= %s", key, quoteIfNeeded(cond.StringPrefix)), precLeaf
 	default:
 		return key + " <unknown>", precLeaf
 	}

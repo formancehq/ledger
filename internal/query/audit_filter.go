@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"slices"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -17,6 +18,7 @@ import (
 // substitute a fake.
 type AuditIndexReader interface {
 	AuditSeqsByString(field byte, value string) ([]uint64, error)
+	AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error)
 	AuditSeqsByOutcome(success bool) ([]uint64, error)
 	AuditSeqsByUint64Range(field byte, lo, hi uint64) ([]uint64, error)
 }
@@ -24,6 +26,10 @@ type AuditIndexReader interface {
 type auditValidationIndex struct{}
 
 func (auditValidationIndex) AuditSeqsByString(byte, string) ([]uint64, error) {
+	return nil, nil
+}
+
+func (auditValidationIndex) AuditSeqsByStringPrefix(byte, string) ([]uint64, error) {
 	return nil, nil
 }
 
@@ -208,6 +214,8 @@ func compileAuditLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition) (audi
 		return indexStringLeaf(idx, readstore.AuditFieldCallerSubject, cond)
 	case commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE:
 		return indexStringLeaf(idx, readstore.AuditFieldOrderType, cond)
+	case commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
+		return indexIdempotencyKeyLeaf(idx, cond)
 	case commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID:
 		return indexUintLeaf(idx, readstore.AuditFieldProposalID, cond)
 	case commonpb.AuditField_AUDIT_FIELD_TIMESTAMP:
@@ -218,6 +226,38 @@ func compileAuditLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition) (audi
 		return auditCompiled{}, status.Errorf(codes.InvalidArgument,
 			"unsupported audit field %s", cond.GetField())
 	}
+}
+
+func indexIdempotencyKeyLeaf(idx AuditIndexReader, cond *commonpb.AuditCondition) (auditCompiled, error) {
+	var (
+		seqs []uint64
+		err  error
+	)
+	switch c := cond.GetCondition().(type) {
+	case *commonpb.AuditCondition_StringCond:
+		if c.StringCond.GetParam() != "" {
+			return auditCompiled{}, status.Error(codes.InvalidArgument,
+				"audit field AUDIT_FIELD_IDEMPOTENCY_KEY does not support parameters")
+		}
+		seqs, err = idx.AuditSeqsByString(readstore.AuditFieldIdempotencyKey, c.StringCond.GetHardcoded())
+	case *commonpb.AuditCondition_StringPrefix:
+		// NUL check here (before the readstore call) ensures ValidateAuditFilter
+		// and gRPC callers receive codes.InvalidArgument. auditSeqsByStringPrefix
+		// also guards the same invariant at the storage interface layer.
+		if strings.ContainsRune(c.StringPrefix, '\x00') {
+			return auditCompiled{}, status.Error(codes.InvalidArgument,
+				"idempotency_key prefix operand must not contain NUL")
+		}
+		seqs, err = idx.AuditSeqsByStringPrefix(readstore.AuditFieldIdempotencyKey, c.StringPrefix)
+	default:
+		return auditCompiled{}, status.Error(codes.InvalidArgument,
+			"audit field AUDIT_FIELD_IDEMPOTENCY_KEY requires a string equality or prefix condition")
+	}
+	if err != nil {
+		return auditCompiled{}, fmt.Errorf("audit idempotency-key index lookup: %w", err)
+	}
+
+	return auditCompiled{seqs: seqs, narrowed: true, loSeq: 0, hiSeq: math.MaxUint64}, nil
 }
 
 // compileAuditSeqBound turns an AUDIT_FIELD_SEQUENCE range into inclusive

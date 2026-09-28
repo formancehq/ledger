@@ -28,6 +28,7 @@ type emitFn func(key []byte) error
 //   - AuditFieldProposalID   — 1 key
 //   - AuditFieldOrderType    — 1 key per distinct order type across items
 //   - AuditFieldLogSeq       — 1 key per item whose LogSequence != 0
+//   - AuditFieldIdempotencyKey — 1 key when the batch idempotency key is non-empty
 func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *auditpb.AuditEntry, items []*auditpb.AuditItem) error {
 	seq := entry.GetSequence()
 
@@ -65,6 +66,15 @@ func appendEntryKeys(kb *dal.KeyBuilder, emit emitFn, entry *auditpb.AuditEntry,
 	// Proposal ID.
 	if err := emit(readstore.AuditIndexUint64Key(kb, readstore.AuditFieldProposalID, entry.GetProposalId(), seq)); err != nil {
 		return err
+	}
+
+	// The audit entry is the permanent, hash-bound source. Do not consult the
+	// expiring idempotency deduplication store: one key may legitimately map to
+	// several historical audit sequences after its admission window expires.
+	if key := entry.GetIdempotency().GetKey(); key != "" {
+		if err := emit(readstore.AuditIndexStringKey(kb, readstore.AuditFieldIdempotencyKey, key, seq)); err != nil {
+			return err
+		}
 	}
 
 	// Per-item fields: log_seq (skip zero) and order_type (dedup per entry).

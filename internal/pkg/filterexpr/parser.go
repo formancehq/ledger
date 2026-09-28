@@ -81,7 +81,7 @@ var filterParser = participle.MustBuild[OrExpr](
 // The grammar is context-free, but a handful of bare fields are target-aware:
 // their proto arm depends on the query target. On QUERY_TARGET_AUDIT the bare
 // audit fields (seq, proposal_id, timestamp, log_seq, outcome, caller_subject,
-// ledger, order_type) resolve to the AuditCondition arm; on every other target
+// ledger, order_type, idempotency_key) resolve to the AuditCondition arm; on every other target
 // the intrinsic fields resolve to their own arms — `timestamp` to the
 // transaction builtin range, `date` to the log builtin range, `ledger` to the
 // LedgerCondition — and the audit-only field names are rejected (they carry no
@@ -379,14 +379,15 @@ type auditFieldSpec struct {
 // exactly the fields the audit access path can resolve efficiently (index
 // lookup or key-range bound) — see AuditField in common.proto.
 var auditFieldKeys = map[string]auditFieldSpec{
-	"seq":            {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
-	"proposal_id":    {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
-	"timestamp":      {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
-	"log_seq":        {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
-	"outcome":        {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
-	"caller_subject": {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
-	"ledger":         {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
-	"order_type":     {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
+	"seq":             {commonpb.AuditField_AUDIT_FIELD_SEQUENCE, auditKindUint},
+	"proposal_id":     {commonpb.AuditField_AUDIT_FIELD_PROPOSAL_ID, auditKindUint},
+	"timestamp":       {commonpb.AuditField_AUDIT_FIELD_TIMESTAMP, auditKindDatetime},
+	"log_seq":         {commonpb.AuditField_AUDIT_FIELD_LOG_SEQUENCE, auditKindUint},
+	"outcome":         {commonpb.AuditField_AUDIT_FIELD_OUTCOME, auditKindString},
+	"caller_subject":  {commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, auditKindString},
+	"ledger":          {commonpb.AuditField_AUDIT_FIELD_LEDGER, auditKindString},
+	"order_type":      {commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, auditKindString},
+	"idempotency_key": {commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, auditKindString},
 }
 
 // auditToProto resolves a bare field on the AUDIT target into the matching
@@ -503,6 +504,10 @@ func uintConditionFromOp(op *MetadataOp, parse func(*Value) (uint64, error)) (*c
 	uc := &commonpb.UintCondition{}
 
 	switch {
+	// op.Prefix is routed to auditToProto before reaching this helper for the
+	// one field that supports it (idempotency_key); any remaining Prefix is an error.
+	case op.Prefix != nil:
+		return nil, errors.New("prefix operator ^= is not supported for numeric or datetime fields")
 	case op.Eq != nil:
 		n, err := parse(op.Eq)
 		if err != nil {
@@ -569,6 +574,14 @@ func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 	switch {
 	case op.Eq != nil:
 		return mk(op.Eq)
+	case op.Prefix != nil && field == commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
+		if op.Prefix.Param != "" {
+			return nil, fmt.Errorf("audit field %q does not support parameters", a.Field)
+		}
+
+		return auditQF(field, &commonpb.AuditCondition{Condition: &commonpb.AuditCondition_StringPrefix{
+			StringPrefix: op.Prefix.resolve(),
+		}}), nil
 	case len(op.In) > 0:
 		filters := make([]*commonpb.QueryFilter, len(op.In))
 		for i, v := range op.In {
@@ -581,6 +594,10 @@ func (a *FieldCond) stringToProto(field commonpb.AuditField) (*commonpb.QueryFil
 
 		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Or{Or: &commonpb.OrFilter{Filters: filters}}}, nil
 	default:
+		if field == commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY {
+			return nil, fmt.Errorf("audit field %q supports ==, ^= and in only", a.Field)
+		}
+
 		return nil, fmt.Errorf("audit field %q supports == and in only", a.Field)
 	}
 }
@@ -717,6 +734,7 @@ func (m *MetadataCond) toProto() (*commonpb.QueryFilter, error) {
 
 type MetadataOp struct {
 	Eq      *Value        `parser:"  '==' @@"`
+	Prefix  *Value        `parser:"| '^=' @@"`
 	Ne      *Value        `parser:"| '!=' @@"`
 	Gte     *Value        `parser:"| '>=' @@"`
 	Gt      *Value        `parser:"| '>' @@"`
@@ -739,6 +757,10 @@ func (op *MetadataOp) toProto(field *commonpb.FieldRef) (*commonpb.QueryFilter, 
 	switch {
 	case op.Eq != nil:
 		return metadataEqualityToProto(field, op.Eq)
+	case op.Prefix != nil:
+		// ^= was added to MetadataOp so the audit idempotency_key field can use it
+		// via FieldCond.auditToProto; it is not a valid operator for metadata fields.
+		return nil, errors.New("prefix operator ^= is not supported for metadata conditions")
 	case op.Ne != nil:
 		inner, err := metadataEqualityToProto(field, op.Ne)
 		if err != nil {
