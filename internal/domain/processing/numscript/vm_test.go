@@ -76,7 +76,7 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, "src", result.Postings[0].Source)
@@ -181,17 +181,17 @@ send $amt (
 	cache := NewNumscriptCache(16)
 	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
 
-	firstResult, err := SafeExecCompiled(cache, first.ScriptHash, first.Program, first.Vars, store)
+	firstResult, err := SafeExecCompiled(cache, first.Program, first.Vars, store)
 	require.Nil(t, err)
 	require.Len(t, firstResult.Postings, 1)
 	require.Equal(t, int64(30), firstResult.Postings[0].Amount.Int64())
 
 	// A run that fails normally (missing funds against an empty store) leaves
 	// the instance reusable for the next apply.
-	_, err = SafeExecCompiled(cache, second.ScriptHash, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
+	_, err = SafeExecCompiled(cache, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
 	require.NotNil(t, err)
 
-	secondResult, err := SafeExecCompiled(cache, second.ScriptHash, second.Program, second.Vars, store)
+	secondResult, err := SafeExecCompiled(cache, second.Program, second.Vars, store)
 	require.Nil(t, err)
 	require.Len(t, secondResult.Postings, 1)
 	require.Equal(t, int64(40), secondResult.Postings[0].Amount.Int64())
@@ -230,13 +230,13 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 
 	cache := NewNumscriptCache(16)
 
-	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(panicValueSource{}, false))
+	_, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(panicValueSource{}, false))
 	require.NotNil(t, err)
 	require.True(t, IsPanic(err))
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
@@ -304,7 +304,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 
 				cache := NewNumscriptCache(16)
 
-				_, err := SafeExecCompiled(cache, compiled.ScriptHash, programBytes, varsBytes, NewVMStore(source, false))
+				_, err := SafeExecCompiled(cache, programBytes, varsBytes, NewVMStore(source, false))
 				require.NotNil(t, err)
 				require.False(t, IsPanic(err))
 
@@ -315,7 +315,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 				require.Zero(t, cache.compiledOrder.Len(), "a rejected artifact must not be cached")
 
 				// The rejection leaves the cache fit for the genuine artifact.
-				result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+				result, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(source, false))
 				require.Nil(t, err)
 				require.Len(t, result.Postings, 1)
 			})
@@ -360,7 +360,7 @@ func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, tc.program, tc.vars, NewVMStore(source, false))
+			_, err := SafeExecCompiled(NewNumscriptCache(16), tc.program, tc.vars, NewVMStore(source, false))
 			require.NotNil(t, err)
 			require.False(t, IsPanic(err))
 
@@ -395,7 +395,7 @@ func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, malformed, compiled.Vars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), malformed, compiled.Vars, NewVMStore(source, false))
 	require.NotNil(t, err)
 	require.False(t, IsPanic(err))
 
@@ -418,7 +418,7 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}}
 
-	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.NotNil(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
