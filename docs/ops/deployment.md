@@ -786,6 +786,34 @@ Changes in this release line that fall under this rule:
 |--------|--------------------|----------|
 | EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
 
+### Upgrading across the Numscript VM execution change (revision 14)
+
+Service protocol revision 14 (#2126) makes admission compile each resolvable
+Numscript to VM bytecode carried in the order's technical sub-message, which
+the FSM executes instead of re-interpreting the script text; the bundled
+Numscript library also changes how an account-typed metadata value is rendered
+(`merchants:acme` instead of `@merchants:acme`).
+
+The technical fields are additive protobuf, so a binary predating them decodes
+the same committed entry without the artifact and takes the interpreter path
+with the older library. For a script writing account-typed metadata, an old
+and a new replica applying the same entry then persist different transaction
+and audit bytes — replicated-state divergence, not just a label difference.
+
+- **Mixed-binary rolling upgrades are not supported across this change.** Stop
+  all nodes before deploying the new binary. The Kubernetes operator performs a
+  *rolling* update by default, so this constraint has to be applied
+  deliberately.
+- **No data wipe is required.** No persisted key layout or value encoding
+  changes and `storage-schema-version` is unaffected; existing entries stay
+  verifiable. The exposure is confined to scripted transactions applied inside
+  a mixed-binary window.
+- **`ledgerctl check` does not detect a straddled window** for the usual
+  reason: each replica's audit chain stays internally consistent. Detecting a
+  divergence means comparing transaction metadata and audit entries across
+  replicas; a replica that applied entries inside the window must be
+  resynchronised from the leader.
+
 ### Audit hash keying — threat model
 
 The audit hash chain (`processing.HashGenerator`) is keyed by a value derived from the immutable `cluster-id`. This is **defense in depth against offline grinding from outside the cluster boundary**, not a tamper-evidence guarantee against an attacker with persisted-store access.

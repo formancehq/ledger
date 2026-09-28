@@ -296,11 +296,15 @@ type OrderTechnical struct {
 	// order's script on the leader's parallel path (numscript Compile + Encode).
 	// The FSM decodes, verifies and executes it on every node instead of
 	// interpreting the script text, so compilation happens once per proposal and
-	// apply stays deterministic (the artifact rides the committed entry, so every
-	// node runs the same bytecode — invariant #2). Absent when the script cannot
-	// be compiled (e.g. it uses a feature the compiler does not support, like
-	// asset scaling): the FSM then falls back to the tree-walking interpreter,
-	// whose semantics the VM matches by construction.
+	// the engine choice is a function of the committed entry alone (invariant
+	// #2) — provided every replica runs a binary that knows these fields. A
+	// binary predating them silently drops the artifact and interprets with its
+	// own bundled library, so this change is a stop-all-nodes deployment
+	// boundary (service protocol revision 14; see docs/ops/deployment.md,
+	// "Upgrading across the Numscript VM execution change"). Absent when the
+	// script cannot be compiled (e.g. it uses a feature the compiler does not
+	// support, like asset scaling): the FSM then falls back to the tree-walking
+	// interpreter, whose semantics the VM matches by construction.
 	CompiledProgram []byte `protobuf:"bytes,5,opt,name=compiled_program,json=compiledProgram,proto3" json:"compiled_program,omitempty"`
 	// compiled_vars is the order's runtime vars encoded against
 	// compiled_program's variable layout (numscript VarsEncoder + Vars.Encode).
