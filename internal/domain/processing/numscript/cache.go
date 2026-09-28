@@ -178,7 +178,7 @@ func (c *NumscriptCache) GetOrParse(script string) (numscriptlib.ParseResult, do
 // size mismatch means the artifact and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
 // pools so it fails with the verifier's own error, loudly.
-func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.Describable) {
+func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
 	hash := blake3.Sum256(programBytes)
 
 	c.compiledMu.RLock()

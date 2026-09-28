@@ -81,7 +81,7 @@ func vmTestScope(t *testing.T) *MockScope {
 // produceVMScript runs the producer on vmScript against a fresh test scope,
 // staging the given artifact (all nil for the plain interpreter path) the way
 // the dispatcher would from OrderTechnical.
-func produceVMScript(t *testing.T, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.Describable) {
+func produceVMScript(t *testing.T, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.SerializableError) {
 	t.Helper()
 
 	producer := &numscriptPostingProducer{
@@ -101,7 +101,7 @@ func produceVMScript(t *testing.T, vars map[string]string, programBytes, varsByt
 // requireNumscriptRuntimeError asserts the producer failed with the loud
 // internal classification every artifact defect maps to — not a panic, not a
 // client error — and that its detail names the intended branch.
-func requireNumscriptRuntimeError(t *testing.T, err domain.Describable, detail string) {
+func requireNumscriptRuntimeError(t *testing.T, err domain.SerializableError, detail string) {
 	t.Helper()
 
 	require.NotNil(t, err)
