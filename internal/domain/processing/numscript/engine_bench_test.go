@@ -89,7 +89,7 @@ func benchCase(b *testing.B, script string, vars map[string]string) {
 		store := NewVMStore(source, false)
 		b.ReportAllocs()
 		for b.Loop() {
-			if _, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, store); err != nil {
+			if _, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, store); err != nil {
 				b.Fatal(err)
 			}
 		}
