@@ -32,9 +32,6 @@ builds:
   goarch:
   - amd64
   - arm64
-  ignore:
-  - goos: darwin
-    goarch: amd64
 
 - binary: ledgerctl
   id: ledgerctl
@@ -88,8 +85,6 @@ archives:
   - tar.gz
   name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
-  # ledger-server is not built for darwin/amd64, so that archive holds ledgerctl only.
-  allow_different_binary_count: true
 - id: ledger-windows
   ids:
   - ledgerctl-windows
