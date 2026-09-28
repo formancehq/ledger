@@ -88,7 +88,7 @@ func (a *rawAccessor[K, V, R]) Delete(key K) error {
 // admission's declared preload set (invariants #6, #9). Put is not gated
 // because in-batch writes to keys admission did not preload are still
 // covered by the batch's own mutation overlay (Derived) and never race
-// with the cache-mem/disk equality invariant that strict Del guards.
+// with the cache-mem/disk equality invariant that strict tombstoning guards.
 type gatedAccessor[K accessorKey, V any, R any] struct {
 	processing.Accessor[K, V, R]
 
