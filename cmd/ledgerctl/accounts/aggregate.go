@@ -8,6 +8,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -61,6 +63,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	prefix, _ := cmd.Flags().GetString("prefix")
 	filterExpr, _ := cmd.Flags().GetString("filter")
 	showProfile, _ := cmd.Flags().GetBool("analyze")
+	rescale := cmdutil.RescaleTarget(cmd)
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
 	filter, err := cmdutil.BuildQueryFilter(filterExpr, prefix, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
@@ -79,15 +82,37 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 
 	var trailer metadata.MD
 
+	// With --rescale on the human-readable path, ask the server to merge
+	// same-base assets under the highest precision observed (use_max_precision),
+	// so the group-by-base aggregation is done once, server-side, on the native
+	// uint256 volumes; the CLI then only re-expresses each merged row at the
+	// requested scale for display. Structured output (--json/--yaml) must keep the
+	// raw integer amounts and full "CUR/precision" strings (see the --rescale flag
+	// contract in main.go), so the merge is gated off there.
+	useMaxPrecision := rescale != nil && !cmdutil.IsStructuredOutput(cmd)
+
 	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
-		Ledger:       ledgerName,
-		Filter:       filter,
-		CheckpointId: checkpointID,
+		Ledger:          ledgerName,
+		Filter:          filter,
+		CheckpointId:    checkpointID,
+		UseMaxPrecision: useMaxPrecision,
 	}, grpc.Trailer(&trailer))
 	_ = spinner.Stop()
 
 	if err != nil {
 		return cmdutil.FormatGRPCError("failed to aggregate volumes", err)
+	}
+
+	// Build (and, under --rescale, validate) the human-readable table before
+	// printing anything, including the --analyze profile, so an invariant
+	// failure aborts without partial output.
+	var tableData pterm.TableData
+
+	if !cmdutil.IsStructuredOutput(cmd) {
+		tableData, err = aggregateVolumesTable(result.GetVolumes(), rescale)
+		if err != nil {
+			return err
+		}
 	}
 
 	if showProfile {
@@ -129,33 +154,67 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 
+	return pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+}
+
+// aggregateVolumesTable builds the ASSET/COLOR/INPUT/OUTPUT/BALANCE table for
+// aggregate-volumes. It fails with an invariant error when --rescale meets an
+// invalid asset rather than rendering it at the wrong precision.
+func aggregateVolumesTable(vols []*commonpb.AggregatedVolume, rescale *uint8) (pterm.TableData, error) {
 	tableData := pterm.TableData{
 		{"ASSET", "COLOR", "INPUT", "OUTPUT", "BALANCE"},
 	}
 
-	for _, vol := range result.GetVolumes() {
-		input := vol.GetInput().ToBigInt()
-		output := vol.GetOutput().ToBigInt()
-		balance := new(big.Int).Sub(input, output)
-		tableData = append(tableData, []string{
-			vol.GetAsset(),
-			vol.GetColor(),
-			input.String(),
-			output.String(),
-			formatBalance(balance),
-		})
+	// With --rescale, the server has already merged currencies that differ only
+	// in precision into a single base-currency row expressed at the group's
+	// highest precision (use_max_precision above). Colors stay segregated: they
+	// are part of the server's merge key. The CLI only re-expresses each row at
+	// the requested scale.
+	if rescale != nil {
+		for _, vol := range vols {
+			base, precision, err := cmdutil.ParseAsset(vol.GetAsset())
+			if err != nil {
+				return nil, err
+			}
+
+			input := vol.GetInput().ToBigInt()
+			output := vol.GetOutput().ToBigInt()
+			balance := new(big.Int).Sub(input, output)
+
+			tableData = append(tableData, []string{
+				invariants.FormatAsset(base, *rescale),
+				vol.GetColor(),
+				cmdutil.RescaleAmount(input, precision, *rescale),
+				cmdutil.RescaleAmount(output, precision, *rescale),
+				withSign(cmdutil.RescaleAmount(balance, precision, *rescale), balance.Sign()),
+			})
+		}
+	} else {
+		for _, vol := range vols {
+			input := vol.GetInput().ToBigInt()
+			output := vol.GetOutput().ToBigInt()
+			balance := new(big.Int).Sub(input, output)
+
+			tableData = append(tableData, []string{
+				vol.GetAsset(),
+				vol.GetColor(),
+				input.String(),
+				output.String(),
+				withSign(balance.String(), balance.Sign()),
+			})
+		}
 	}
 
-	_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
-
-	return nil
+	return tableData, nil
 }
 
-// formatBalance formats a balance with a sign indicator.
-func formatBalance(b *big.Int) string {
-	if b.Sign() > 0 {
-		return "+" + b.String()
+// withSign prefixes a positive amount with '+' so credit/debit direction reads
+// at a glance; zero and negative values are returned unchanged (negatives
+// already carry '-').
+func withSign(s string, sign int) string {
+	if sign > 0 {
+		return "+" + s
 	}
 
-	return b.String()
+	return s
 }

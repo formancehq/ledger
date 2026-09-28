@@ -26,7 +26,7 @@ import (
 // divergent PCV payloads for the same applied index, so a non-NotFound store error
 // is always surfaced. This mirrors applyPosting, which reads the same
 // source+destination keys.
-func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.Describable) {
+func buildPostCommitVolumes(s Scope, ledgerName string, postings []*commonpb.Posting) (*commonpb.PostCommitVolumes, domain.SerializableError) {
 	type tuple struct {
 		account string
 		asset   string

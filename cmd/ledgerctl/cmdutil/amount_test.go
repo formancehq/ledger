@@ -1,0 +1,318 @@
+package cmdutil
+
+import (
+	"math/big"
+	"strings"
+	"testing"
+
+	"github.com/formancehq/invariants"
+)
+
+func TestRescale(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		amount     string
+		asset      string
+		toScale    uint8
+		wantAmount string
+		wantAsset  string
+		wantErr    bool
+	}{
+		{
+			name:       "coarser scale exposes a fractional part",
+			amount:     "1234",
+			asset:      "USD/2",
+			toScale:    0,
+			wantAmount: "12.34",
+			wantAsset:  "USD",
+		},
+		{
+			name:       "same scale is a no-op that keeps the suffix",
+			amount:     "1234",
+			asset:      "USD/2",
+			toScale:    2,
+			wantAmount: "1234",
+			wantAsset:  "USD/2",
+		},
+		{
+			name:       "finer scale pads with zeros",
+			amount:     "1234",
+			asset:      "USD/2",
+			toScale:    4,
+			wantAmount: "123400",
+			wantAsset:  "USD/4",
+		},
+		{
+			name:       "bare currency, scale 0",
+			amount:     "1000",
+			asset:      "JPY",
+			toScale:    0,
+			wantAmount: "1000",
+			wantAsset:  "JPY",
+		},
+		{
+			name:       "negative amount keeps its sign",
+			amount:     "-50",
+			asset:      "EUR/2",
+			toScale:    0,
+			wantAmount: "-0.50",
+			wantAsset:  "EUR",
+		},
+		{
+			name:    "unparseable amount is an invariant error",
+			amount:  "not-a-number",
+			asset:   "USD/2",
+			toScale: 0,
+			wantErr: true,
+		},
+		{
+			// ParseAssetPrecision alone would read these as precision 0 and
+			// render the wrong unit.
+			name:    "non-numeric precision suffix is an invariant error",
+			amount:  "1234",
+			asset:   "USD/x",
+			toScale: 0,
+			wantErr: true,
+		},
+		{
+			name:    "out-of-range precision suffix is an invariant error",
+			amount:  "1234",
+			asset:   "USD/256",
+			toScale: 0,
+			wantErr: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			gotAmount, gotAsset, err := Rescale(tc.amount, tc.asset, tc.toScale)
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("Rescale(%q, %q, %d) = (%q, %q), want an error", tc.amount, tc.asset, tc.toScale, gotAmount, gotAsset)
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Rescale(%q, %q, %d): unexpected error: %v", tc.amount, tc.asset, tc.toScale, err)
+			}
+
+			if gotAmount != tc.wantAmount || gotAsset != tc.wantAsset {
+				t.Errorf("Rescale(%q, %q, %d) = (%q, %q), want (%q, %q)",
+					tc.amount, tc.asset, tc.toScale, gotAmount, gotAsset, tc.wantAmount, tc.wantAsset)
+			}
+		})
+	}
+}
+
+func TestRescaleAmount(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		amount        int64
+		fromPrecision uint8
+		toScale       uint8
+		want          string
+	}{
+		{"coarser", 69129, 3, 0, "69.129"},
+		{"coarser by one", 69129, 3, 2, "6912.9"},
+		{"same", 69129, 3, 3, "69129"},
+		{"finer", 69129, 3, 5, "6912900"},
+		{"precision zero", 1000, 0, 0, "1000"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := RescaleAmount(big.NewInt(tc.amount), tc.fromPrecision, tc.toScale); got != tc.want {
+				t.Errorf("RescaleAmount(%d, %d, %d) = %q, want %q",
+					tc.amount, tc.fromPrecision, tc.toScale, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestAggregateVolumesRescaleSpec(t *testing.T) {
+	t.Parallel()
+
+	// The spec example: 1234 USD/2 + 56789 USD/3, summed on real values.
+	got, err := AggregateVolumes([]RawVolume{
+		{Asset: "USD/2", Input: "1234", Output: "0"},
+		{Asset: "USD/3", Input: "56789", Output: "0"},
+	})
+	if err != nil {
+		t.Fatalf("AggregateVolumes: unexpected error: %v", err)
+	}
+
+	if len(got) != 1 {
+		t.Fatalf("expected 1 aggregated currency, got %d: %+v", len(got), got)
+	}
+
+	av := got[0]
+
+	// --rescale (scale 0) → 69.129 USD
+	if bal, asset := RescaleAmount(av.Balance, av.Precision, 0), invariants.FormatAsset(av.Asset, 0); bal != "69.129" || asset != "USD" {
+		t.Errorf("scale 0: got %s %s, want 69.129 USD", bal, asset)
+	}
+
+	// --rescale=2 → 6912.9 USD/2
+	if bal, asset := RescaleAmount(av.Balance, av.Precision, 2), invariants.FormatAsset(av.Asset, 2); bal != "6912.9" || asset != "USD/2" {
+		t.Errorf("scale 2: got %s %s, want 6912.9 USD/2", bal, asset)
+	}
+}
+
+func TestAggregateVolumes(t *testing.T) {
+	t.Parallel()
+
+	type want struct {
+		asset                  string
+		color                  string
+		precision              uint8
+		input, output, balance string
+	}
+
+	// Render aggregated sums at their natural precision (scale 0 keeps every
+	// fractional digit) for comparison.
+	assert := func(t *testing.T, got []AssetVolumes, wants []want) {
+		t.Helper()
+
+		if len(got) != len(wants) {
+			t.Fatalf("expected %d entries, got %d: %+v", len(wants), len(got), got)
+		}
+
+		for i, w := range wants {
+			g := got[i]
+
+			gotInput := RescaleAmount(g.Input, g.Precision, 0)
+			gotOutput := RescaleAmount(g.Output, g.Precision, 0)
+			gotBalance := RescaleAmount(g.Balance, g.Precision, 0)
+
+			if g.Asset != w.asset || g.Color != w.color || g.Precision != w.precision ||
+				gotInput != w.input || gotOutput != w.output || gotBalance != w.balance {
+				t.Errorf("entry %d: got {asset=%s color=%s prec=%d in=%s out=%s bal=%s}, want %+v",
+					i, g.Asset, g.Color, g.Precision, gotInput, gotOutput, gotBalance, w)
+			}
+		}
+	}
+
+	mustAggregate := func(t *testing.T, volumes []RawVolume) []AssetVolumes {
+		t.Helper()
+
+		got, err := AggregateVolumes(volumes)
+		if err != nil {
+			t.Fatalf("AggregateVolumes: unexpected error: %v", err)
+		}
+
+		return got
+	}
+
+	t.Run("sums input/output/balance across precisions at the highest precision", func(t *testing.T) {
+		t.Parallel()
+
+		got := mustAggregate(t, []RawVolume{
+			{Asset: "USD/4", Input: "10000", Output: "0"},     // in 1.0000
+			{Asset: "USD/8", Input: "100000000", Output: "0"}, // in 1.00000000
+			{Asset: "EUR/2", Input: "250", Output: "100"},     // in 2.50, out 1.00 → bal 1.50
+		})
+
+		assert(t, got, []want{
+			{"EUR", "", 2, "2.50", "1.00", "1.50"},
+			{"USD", "", 8, "2.00000000", "0.00000000", "2.00000000"},
+		})
+	})
+
+	t.Run("colors stay segregated and sort after the uncolored bucket", func(t *testing.T) {
+		t.Parallel()
+
+		got := mustAggregate(t, []RawVolume{
+			{Asset: "USD/2", Color: "GREEN", Input: "150", Output: "0"},
+			{Asset: "USD/4", Color: "GREEN", Input: "0", Output: "20000"},
+			{Asset: "USD/2", Input: "1000", Output: "0"},
+		})
+
+		assert(t, got, []want{
+			{"USD", "", 2, "10.00", "0.00", "10.00"},
+			{"USD", "GREEN", 4, "1.5000", "2.0000", "-0.5000"},
+		})
+	})
+
+	t.Run("balance is derived as input minus output and can be negative", func(t *testing.T) {
+		t.Parallel()
+
+		// 1.50 - 2.0000 = -0.5000 at precision 4.
+		got := mustAggregate(t, []RawVolume{
+			{Asset: "USD/2", Input: "150", Output: "0"},
+			{Asset: "USD/4", Input: "0", Output: "20000"},
+		})
+
+		assert(t, got, []want{
+			{"USD", "", 4, "1.5000", "2.0000", "-0.5000"},
+		})
+	})
+
+	t.Run("bare currency without precision", func(t *testing.T) {
+		t.Parallel()
+
+		got := mustAggregate(t, []RawVolume{
+			{Asset: "JPY", Input: "1000", Output: "400"},
+		})
+
+		assert(t, got, []want{
+			{"JPY", "", 0, "1000", "400", "600"},
+		})
+	})
+
+	// Server-issued amounts are canonical integers by contract, so a bucket that
+	// fails to parse must surface an error rather than vanish from the result.
+	for _, tc := range []struct {
+		name string
+		vol  RawVolume
+	}{
+		{"unparseable input", RawVolume{Asset: "USD/2", Color: "GREEN", Input: "1.5", Output: "0"}},
+		{"unparseable output", RawVolume{Asset: "USD/2", Color: "GREEN", Input: "0", Output: "abc"}},
+		{"absent volumes (empty strings)", RawVolume{Asset: "USD/2", Color: "GREEN"}},
+	} {
+		t.Run("fails on "+tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AggregateVolumes([]RawVolume{
+				{Asset: "EUR/2", Input: "250", Output: "100"},
+				tc.vol,
+			})
+			if err == nil {
+				t.Fatalf("expected an invariant error, got %+v", got)
+			}
+
+			if !strings.Contains(err.Error(), `"USD/2"`) || !strings.Contains(err.Error(), `"GREEN"`) {
+				t.Errorf("expected the error to name the offending bucket, got %v", err)
+			}
+		})
+	}
+
+	// An invalid asset would otherwise be parsed as precision 0 and merged into
+	// the wrong bucket, so it must fail too.
+	for _, asset := range []string{"USD/x", "USD/256", "USD/02"} {
+		t.Run("fails on invalid asset "+asset, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := AggregateVolumes([]RawVolume{
+				{Asset: "USD/2", Input: "250", Output: "100"},
+				{Asset: asset, Input: "1", Output: "0"},
+			})
+			if err == nil {
+				t.Fatalf("expected an invariant error, got %+v", got)
+			}
+
+			if !strings.Contains(err.Error(), `"`+asset+`"`) {
+				t.Errorf("expected the error to name the offending asset, got %v", err)
+			}
+		})
+	}
+}

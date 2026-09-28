@@ -15,11 +15,42 @@ import (
 func newTestSnapshotter(t *testing.T) *Snapshotter {
 	t.Helper()
 
-	dir := t.TempDir()
+	return newSnapshotterAt(t, t.TempDir())
+}
+
+func newSnapshotterAt(t *testing.T, dir string) *Snapshotter {
+	t.Helper()
+
 	s, err := NewSnapshotter(dir, logging.Testing())
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = s.Close() })
 
 	return s
+}
+
+// snapshotterOver binds a Snapshotter to dir without creating it, so Save can be
+// driven against a snapshot path that is missing or occupied.
+func snapshotterOver(t *testing.T, dir string) *Snapshotter {
+	t.Helper()
+
+	walDir, err := filepath.Abs(filepath.Dir(dir))
+	require.NoError(t, err)
+
+	root, err := os.OpenRoot(walDir)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = root.Close() })
+
+	pinned, err := root.Stat(".")
+	require.NoError(t, err)
+
+	return &Snapshotter{
+		root:   root,
+		pinned: pinned,
+		walDir: walDir,
+		name:   filepath.Base(dir),
+		dir:    dir,
+		logger: logging.Testing(),
+	}
 }
 
 func TestSnapshotter_SaveAndLoad(t *testing.T) {
@@ -45,6 +76,337 @@ func TestSnapshotter_SaveAndLoad(t *testing.T) {
 	require.Equal(t, uint64(3), loaded.GetMetadata().GetTerm())
 	require.Equal(t, []byte("fsm-state"), loaded.GetData())
 	require.Equal(t, []uint64{1, 2, 3}, loaded.GetMetadata().GetConfState().GetVoters())
+}
+
+func TestSnapshotter_SaveRecreatesMissingDir(t *testing.T) {
+	t.Parallel()
+
+	s := newTestSnapshotter(t)
+	require.NoError(t, os.RemoveAll(s.dir))
+
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(9000), Term: proto.Uint64(7)},
+	}))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, uint64(9000), loaded.GetMetadata().GetIndex())
+	require.Equal(t, uint64(7), loaded.GetMetadata().GetTerm())
+}
+
+func TestSnapshotter_SaveRefusesWhenTheParentIsMissing(t *testing.T) {
+	t.Parallel()
+
+	walDir := filepath.Join(t.TempDir(), "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	// The whole WAL directory, not just the snapshot directory: the etcd WAL and
+	// the node identity went with it, so there is nothing left to recover.
+	require.NoError(t, os.RemoveAll(walDir))
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(11), Term: proto.Uint64(2)},
+	})
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+	require.NoDirExists(t, walDir)
+}
+
+func TestSnapshotter_SaveFailsWhenTheDirCannotBeChecked(t *testing.T) {
+	t.Parallel()
+
+	// An absolute symlink leaves the WAL directory, which the handle refuses to
+	// follow: neither a usable directory nor a missing one.
+	walDir := t.TempDir()
+	dir := filepath.Join(walDir, snapDir)
+	require.NoError(t, os.Symlink(t.TempDir(), dir))
+
+	s := snapshotterOver(t, dir)
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(1), Term: proto.Uint64(1)},
+	})
+	require.ErrorContains(t, err, "checking snapshot directory")
+}
+
+func TestSnapshotter_SaveFailsWhenTheDirCannotBeRecreated(t *testing.T) {
+	t.Parallel()
+
+	walDir := t.TempDir()
+
+	// A dangling symlink reads as missing but cannot be replaced by a directory.
+	dir := filepath.Join(walDir, snapDir)
+	require.NoError(t, os.Symlink("nowhere", dir))
+
+	s := snapshotterOver(t, dir)
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(1), Term: proto.Uint64(1)},
+	})
+	require.ErrorContains(t, err, "recreating snapshot directory")
+}
+
+// TestSnapshotter_SaveClassifiesAWALDirectoryLostDuringTheWrite drives the
+// interleaving Save cannot reach on its own: the directory check passes, then the
+// WAL directory goes away before the file is created. The failure must still be
+// classified as terminal, not absorbed as a retryable write error.
+func TestSnapshotter_SaveClassifiesAWALDirectoryLostDuringTheWrite(t *testing.T) {
+	t.Parallel()
+
+	walDir := filepath.Join(t.TempDir(), "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, s.ensureDir())
+	require.NoError(t, os.RemoveAll(walDir))
+
+	err := s.writeSnapFile(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(5), Term: proto.Uint64(1)},
+	}, nil)
+	require.ErrorContains(t, err, "creating temp snap file")
+	require.NotErrorIs(t, err, ErrWALDirectoryMissing)
+
+	require.ErrorIs(t, s.classify(err), ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryReplacedByADirectory removes the WAL
+// directory and puts a complete one back at the same path. etcd still holds the
+// unlinked tree, so writing into the replacement would acknowledge state the node
+// cannot recover.
+func TestSnapshotter_SaveRefusesAWALDirectoryReplacedByADirectory(t *testing.T) {
+	t.Parallel()
+
+	walDir := filepath.Join(t.TempDir(), "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.RemoveAll(walDir))
+	require.NoError(t, os.MkdirAll(filepath.Join(walDir, snapDir), 0755))
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(11), Term: proto.Uint64(2)},
+	})
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+
+	entries, err := os.ReadDir(filepath.Join(walDir, snapDir))
+	require.NoError(t, err)
+	require.Empty(t, entries, "the replacement must not receive snapshot files")
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryReplacedByAFile covers the same
+// substitution with a regular file, which resolves to ENOTDIR rather than ENOENT
+// when taken from the pathname.
+func TestSnapshotter_SaveRefusesAWALDirectoryReplacedByAFile(t *testing.T) {
+	t.Parallel()
+
+	walDir := filepath.Join(t.TempDir(), "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.RemoveAll(walDir))
+	require.NoError(t, os.WriteFile(walDir, nil, 0600))
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(12), Term: proto.Uint64(2)},
+	})
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryMovedAway renames the WAL directory
+// with its snapshot child intact. The handle follows the directory to its new
+// location, so the write itself lands in the right tree — but a restart reads
+// the configured path, finds nothing, and rejoins as a new member, so the save
+// must not be reported as persisted.
+func TestSnapshotter_SaveRefusesAWALDirectoryMovedAway(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	walDir := filepath.Join(base, "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.Rename(walDir, filepath.Join(base, "moved")))
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(21), Term: proto.Uint64(4)},
+	})
+	require.ErrorIs(t, err, ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryMovedAndReplaced puts a usable
+// directory back at the configured path after the move, so every pathname the
+// node was given resolves — to the wrong directory.
+func TestSnapshotter_SaveRefusesAWALDirectoryMovedAndReplaced(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	walDir := filepath.Join(base, "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.Rename(walDir, filepath.Join(base, "moved")))
+	require.NoError(t, os.MkdirAll(filepath.Join(walDir, snapDir), 0755))
+
+	require.ErrorIs(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(22), Term: proto.Uint64(4)},
+	}), ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_SaveRefusesAWALDirectoryMovedDuringTheWrite drives the
+// interleaving Save cannot reach on its own: the snapshot file is already
+// durable when the WAL directory moves. The handle wrote into the right tree, so
+// nothing failed — but the configured path no longer holds it, and reporting
+// success would let the caller publish a snapshot a restart cannot find.
+func TestSnapshotter_SaveRefusesAWALDirectoryMovedDuringTheWrite(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	walDir := filepath.Join(base, "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, s.ensureDir())
+	require.NoError(t, s.writeSnapFile(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(31), Term: proto.Uint64(5)},
+	}, nil))
+
+	require.NoError(t, os.Rename(walDir, filepath.Join(base, "moved")))
+
+	require.ErrorIs(t, s.checkWALDir(), ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_SaveRefusesAReplacementAppearingDuringTheWrite covers the same
+// interleaving with a usable directory put back at the configured path, so every
+// pathname resolves and only the identity differs.
+func TestSnapshotter_SaveRefusesAReplacementAppearingDuringTheWrite(t *testing.T) {
+	t.Parallel()
+
+	base := t.TempDir()
+	walDir := filepath.Join(base, "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, s.ensureDir())
+	require.NoError(t, s.writeSnapFile(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(32), Term: proto.Uint64(5)},
+	}, nil))
+
+	require.NoError(t, os.Rename(walDir, filepath.Join(base, "moved")))
+	require.NoError(t, os.MkdirAll(filepath.Join(walDir, snapDir), 0755))
+
+	require.ErrorIs(t, s.checkWALDir(), ErrWALDirectoryMissing)
+}
+
+// TestSnapshotter_ReadsDoNotFollowAWALDirectoryReplacement pins the read side to
+// the same directory: a replacement's snapshot files must not be loaded as this
+// node's own.
+func TestSnapshotter_ReadsDoNotFollowAWALDirectoryReplacement(t *testing.T) {
+	t.Parallel()
+
+	walDir := filepath.Join(t.TempDir(), "waldir")
+	s := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+
+	require.NoError(t, os.RemoveAll(walDir))
+
+	// A restart binds to whatever is on disk, so the replacement is usable — for
+	// the reopened snapshotter only.
+	reopened := newSnapshotterAt(t, filepath.Join(walDir, snapDir))
+	require.NoError(t, reopened.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(77), Term: proto.Uint64(3)},
+	}))
+
+	loaded, err := reopened.Load()
+	require.NoError(t, err)
+	require.Equal(t, uint64(77), loaded.GetMetadata().GetIndex())
+
+	_, err = s.Load()
+	require.ErrorContains(t, err, "reading snap directory")
+
+	require.ErrorIs(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(78), Term: proto.Uint64(3)},
+	}), ErrWALDirectoryMissing)
+}
+
+func TestSnapshotter_NewCreatesMissingAncestors(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), "waldir", "nested", snapDir)
+	s, err := NewSnapshotter(dir, logging.Testing())
+	require.NoError(t, err)
+
+	require.NoError(t, s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(4), Term: proto.Uint64(1)},
+	}))
+
+	loaded, err := s.Load()
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	require.Equal(t, uint64(4), loaded.GetMetadata().GetIndex())
+}
+
+func TestSnapshotter_NewFailsWhenThePathIsADanglingSymlink(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, snapDir)
+	require.NoError(t, os.Symlink(filepath.Join(root, "nowhere"), dir))
+
+	_, err := NewSnapshotter(dir, logging.Testing())
+	require.ErrorContains(t, err, "creating snapshot directory")
+}
+
+func TestSnapshotter_NewFailsWhenAnAncestorIsNotADirectory(t *testing.T) {
+	t.Parallel()
+
+	blocker := filepath.Join(t.TempDir(), "not-a-directory")
+	require.NoError(t, os.WriteFile(blocker, nil, 0600))
+
+	_, err := NewSnapshotter(filepath.Join(blocker, snapDir), logging.Testing())
+	require.ErrorContains(t, err, "creating snapshot directory")
+}
+
+func TestSnapshotter_NewFailsWhenThePathIsAFile(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), snapDir)
+	require.NoError(t, os.WriteFile(dir, nil, 0600))
+
+	_, err := NewSnapshotter(dir, logging.Testing())
+	require.ErrorContains(t, err, "is not a directory")
+}
+
+func TestSnapshotter_SaveFailsWhenThePathIsAFile(t *testing.T) {
+	t.Parallel()
+
+	dir := filepath.Join(t.TempDir(), snapDir)
+	require.NoError(t, os.WriteFile(dir, nil, 0600))
+
+	s := snapshotterOver(t, dir)
+
+	err := s.Save(&raftpb.Snapshot{
+		Metadata: &raftpb.SnapshotMetadata{Index: proto.Uint64(1), Term: proto.Uint64(1)},
+	})
+	require.ErrorContains(t, err, "is not a directory")
+}
+
+func TestMkdirSynced_ToleratesAnExistingDirectory(t *testing.T) {
+	t.Parallel()
+
+	// A directory that appeared since the stat is usable.
+	dir := filepath.Join(t.TempDir(), snapDir)
+	require.NoError(t, os.Mkdir(dir, 0755))
+
+	require.NoError(t, mkdirSynced(dir))
+	require.DirExists(t, dir)
+}
+
+func TestMkdirSynced_NormalizesThePath(t *testing.T) {
+	t.Parallel()
+
+	// --wal-dir is operator-supplied, so a trailing separator reaches the walk. An
+	// unnormalized path lists the same directory twice.
+	root := t.TempDir()
+	dir := filepath.Join(root, "waldir", snapDir) + "/"
+
+	missing, err := missingAncestors(dir)
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Join(root, "waldir", snapDir), filepath.Join(root, "waldir")}, missing)
+
+	require.NoError(t, mkdirAllSynced(dir))
+	require.DirExists(t, filepath.Join(root, "waldir", snapDir))
 }
 
 func TestSnapshotter_LoadEmpty(t *testing.T) {

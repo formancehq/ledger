@@ -136,7 +136,7 @@ func (c *Checker) handleObservation(obs observation) {
 		dbg("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
 		if internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode) {
-			emitCoverage(true, coverageMaintenanceMessage, internal.Details{}, coverageHit)
+			emitCoverage(true, coverageMaintenanceMessage, internal.Details{})
 		}
 		markModelOutcomeVerified()
 		markObservationProcessed(obs)

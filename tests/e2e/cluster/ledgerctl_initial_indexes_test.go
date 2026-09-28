@@ -21,6 +21,7 @@ var _ = Describe("LedgerctlInitialIndexes", Ordered, func() {
 	var ctx context.Context
 	var servers []*testutil.ServiceWithClient
 	BeforeAll(func() { ctx, servers, _, _ = testutil.SetupMultiNodeCluster(3) })
+	AfterAll(func() { testutil.StopServers(ctx, servers) })
 
 	It("commits every initial index before ingestion and replays creation idempotently", func() {
 		source := newMockV2Server()

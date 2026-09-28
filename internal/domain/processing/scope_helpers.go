@@ -25,7 +25,7 @@ import (
 // in the same apply), and the apply-children run behind processApply's gate.
 // Handlers whose write must stay closed on a tombstone call
 // loadLiveLedgerReader.
-func loadLedgerReader(s Scope, name string) (commonpb.LedgerInfoReader, domain.Describable) {
+func loadLedgerReader(s Scope, name string) (commonpb.LedgerInfoReader, domain.SerializableError) {
 	info, err := s.Ledgers().Get(domain.LedgerKey{Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrLedgerNotFound{Name: name}
@@ -48,7 +48,7 @@ func loadLedgerReader(s Scope, name string) (commonpb.LedgerInfoReader, domain.D
 // so it consumes the SubAttrLedger coverage those orders declare and widens no
 // read horizon (invariant #6). DeletedAt is replicated FSM state, so the
 // rejection is identical on every replica (invariant #2).
-func loadLiveLedgerReader(s Scope, name string) (commonpb.LedgerInfoReader, domain.Describable) {
+func loadLiveLedgerReader(s Scope, name string) (commonpb.LedgerInfoReader, domain.SerializableError) {
 	info, desc := loadLedgerReader(s, name)
 	if desc != nil {
 		return nil, desc
@@ -64,7 +64,7 @@ func loadLiveLedgerReader(s Scope, name string) (commonpb.LedgerInfoReader, doma
 // loadLiveLedger is the loadLiveLedgerReader counterpart for the
 // Mutate()-clone loader: same tombstone gate, applied before the clone so a
 // rejected order pays no CloneVT.
-func loadLiveLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable) {
+func loadLiveLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.SerializableError) {
 	info, desc := loadLiveLedgerReader(s, name)
 	if desc != nil {
 		return nil, desc
@@ -77,7 +77,7 @@ func loadLiveLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describa
 // freely modify the result and write it back through s.PutLedger without
 // mutating the cached pointer in place. Only configuration-mutating
 // handlers should call this; read-only paths use loadLedgerReader.
-func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable) {
+func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.SerializableError) {
 	info, desc := loadLedgerReader(s, name)
 	if desc != nil {
 		return nil, desc
@@ -87,7 +87,7 @@ func loadLedger(s Scope, name string) (*commonpb.LedgerInfo, domain.Describable)
 }
 
 // loadBoundaries mirrors loadLedger for the LedgerBoundaries channel.
-func loadBoundaries(s Scope, name string) (raftcmdpb.LedgerBoundariesReader, domain.Describable) {
+func loadBoundaries(s Scope, name string) (raftcmdpb.LedgerBoundariesReader, domain.SerializableError) {
 	boundaries, err := s.Boundaries().Get(domain.LedgerKey{Name: name})
 	if errors.Is(err, domain.ErrNotFound) {
 		return nil, &domain.ErrLedgerNotFound{Name: name}

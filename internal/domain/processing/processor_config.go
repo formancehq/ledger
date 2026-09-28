@@ -6,7 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func processSetMaintenanceMode(order *raftcmdpb.SetMaintenanceModeOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processSetMaintenanceMode(order *raftcmdpb.SetMaintenanceModeOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	ctx.Scope.SetMaintenanceMode(order.GetEnabled())
 
 	return &commonpb.LogPayload{

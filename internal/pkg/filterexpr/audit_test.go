@@ -51,6 +51,44 @@ func TestParseAudit_CallerSubjectQuoted(t *testing.T) {
 	assert.Equal(t, "svc:payments", ac.GetStringCond().GetHardcoded())
 }
 
+func TestParseAudit_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
+	t.Parallel()
+
+	exact, err := Parse(`idempotency_key == "retry:1"`, audit)
+	require.NoError(t, err)
+	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, exact.GetAudit().GetField())
+	assert.Equal(t, "retry:1", exact.GetAudit().GetStringCond().GetHardcoded())
+
+	prefix, err := Parse(`idempotency_key ^= "retry:"`, audit)
+	require.NoError(t, err)
+	assert.Equal(t, commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, prefix.GetAudit().GetField())
+	assert.Equal(t, "retry:", prefix.GetAudit().GetStringPrefix())
+	assert.Equal(t, `idempotency_key ^= "retry:"`, Format(prefix))
+
+	_, err = Parse(`idempotency_key ^= $prefix`, audit)
+	require.ErrorContains(t, err, "does not support parameters")
+
+	_, err = Parse(`ledger ^= main`, audit)
+	require.ErrorContains(t, err, "supports == and in only")
+}
+
+func TestParse_MetadataPrefixRejected(t *testing.T) {
+	t.Parallel()
+
+	// ^= is a valid lexer token but not a valid operator for metadata fields.
+	// It must be rejected at the toProto stage, not silently fall through.
+	_, err := Parse(`metadata[k] ^= value`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.ErrorContains(t, err, "prefix operator ^= is not supported for metadata conditions")
+}
+
+func TestParse_TimestampPrefixRejected(t *testing.T) {
+	t.Parallel()
+
+	// ^= on a numeric/datetime field must also be rejected explicitly.
+	_, err := Parse(`timestamp ^= foo`, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	require.ErrorContains(t, err, "prefix operator ^= is not supported for numeric or datetime fields")
+}
+
 func TestParseAudit_TimestampRFC3339(t *testing.T) {
 	t.Parallel()
 

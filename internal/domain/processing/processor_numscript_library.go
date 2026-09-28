@@ -10,7 +10,7 @@ import (
 // processSaveNumscript appends an immutable version to the library. The version
 // must be an explicit full semver; content entries are immutable, and the
 // per-name latest pointer is maintained as the greatest stored semver.
-func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ctx *Context) (*commonpb.LogPayload, domain.Describable) {
+func processSaveNumscript(ledger string, order *raftcmdpb.SaveNumscriptOrder, ctx *Context) (*commonpb.LogPayload, domain.SerializableError) {
 	s := ctx.Scope
 
 	if err := domain.ValidateNumscriptName(order.GetName()); err != nil {

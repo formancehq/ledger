@@ -170,7 +170,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 	// An index create/drop is its own single-request bulk (single-ledger, since
 	// the index is ledger-scoped). Emitting it alone keeps the model's index
 	// lifecycle a clean sequence of committed CreateIndex/DropIndex orders.
-	if len(picks) == 1 && rollIndexOp() {
+	if len(picks) == 1 && rollIndexOp(g.Ledger(picks[0])) {
 		if req := generateIndexOp(g, picks[0]); req != nil {
 			return oracle.Bulk{Requests: []*servicepb.Request{req}}
 		}
@@ -188,8 +188,8 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 
 	size := bulkSize()
 	requests := make([]*servicepb.Request, 0, size)
-	appendRequest := func(req *servicepb.Request) {
-		requests = append(requests, maybeAddSkippableReason(req))
+	appendRequest := func(ls oracle.LedgerState, req *servicepb.Request) {
+		requests = append(requests, maybeAddSkippableReason(ls, req))
 	}
 
 	for i := 0; i < size; i++ {
@@ -197,40 +197,40 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		ls := g.Ledger(ledger)
 
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
-			appendRequest(generateEnforcementMode(ledger))
+			appendRequest(ls, generateEnforcementMode(ledger))
 			continue
 		}
 		if rollChartOp() {
 			if req := generateChartOp(ledger); req != nil {
-				appendRequest(req)
+				appendRequest(ls, req)
 				continue
 			}
 		}
 
 		if rollSchemaOp() {
 			if req := generateSchemaOp(ledger, ls); req != nil {
-				appendRequest(req)
+				appendRequest(ls, req)
 				continue
 			}
 		}
 
 		if rollMetadataOp() {
 			if req := generateMetadataOp(ledger, ls); req != nil {
-				appendRequest(req)
+				appendRequest(ls, req)
 				continue
 			}
 		}
 
 		if rollRevert() {
 			if req := generateRevert(ledger, ls); req != nil {
-				appendRequest(req)
+				appendRequest(ls, req)
 				continue
 			}
 		}
 
 		if rollTransaction(ls) {
 			if req := generateTransaction(ledger, ls); req != nil {
-				appendRequest(req)
+				appendRequest(ls, req)
 				continue
 			}
 		}
@@ -239,8 +239,17 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		// slot stays productive and the workload exercises existing state rather
 		// than creating ever more transactions as the ledger fills up.
 		if req := generateMetadataOp(ledger, ls); req != nil {
-			appendRequest(req)
+			appendRequest(ls, req)
 		}
+	}
+
+	// The "and continued" probes need an order executed after the skip, and most
+	// bulks hold a single order. Half the trailing opt-ins get a successor that
+	// always commits; the rest stay trailing, where the skip proves only that it
+	// did not fail the bulk.
+	if n := len(requests); n > 0 && len(requests[n-1].GetApply().GetSkippableReasons()) > 0 &&
+		random.RandomChoice([]uint8{0, 1}) == 0 {
+		requests = append(requests, generateAddMetadata(requests[n-1].GetApply().GetLedger()))
 	}
 
 	return oracle.Bulk{Requests: requests}
@@ -793,8 +802,9 @@ func generateAddMetadata(ledger string) *servicepb.Request {
 }
 
 // DeleteMetadata of an existing (address, key) from the model — occasionally a
-// freshly-rolled key on that address to exercise METADATA_NOT_FOUND. Returns nil
-// when the model holds no metadata.
+// key outside the write pool, so the miss that exercises METADATA_NOT_FOUND does
+// not depend on a four-key pool failing to collide. Returns nil when the model
+// holds no metadata.
 func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Request {
 	chosen, _, ok := pickAtOrAfter(ls.Metadata(), oracle.MetaKey{Address: poolAddress(), Key: metaKey()})
 	if !ok {
@@ -802,14 +812,22 @@ func generateDeleteMetadata(ledger string, ls oracle.LedgerState) *servicepb.Req
 	}
 
 	addr, key := chosen.Address, chosen.Key
-	if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-		key = metaKey()
+
+	// Half the misses opt into the skip so the reason is reached at the rate the
+	// branch is rolled; the rest stay bare, where the miss rejects the bulk.
+	var skippable []commonpb.ErrorReason
+	if random.RandomChoice([]uint8{0, 1}) == 0 {
+		key = "absent-" + metaKey()
+		if random.RandomChoice([]uint8{0, 1}) == 0 {
+			skippable = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND}
+		}
 	}
 
 	return &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: ledger,
+				Ledger:           ledger,
+				SkippableReasons: skippable,
 				Action: &servicepb.LedgerAction{
 					Data: &servicepb.LedgerAction_DeleteMetadata{
 						DeleteMetadata: &commonpb.DeleteMetadataCommand{
@@ -888,7 +906,7 @@ func generateDeleteTxMetadata(ledger string, ls oracle.LedgerState) *servicepb.R
 
 		key := random.RandomChoice(keys)
 		if random.RandomChoice([]uint8{0, 1, 2, 3}) == 0 {
-			key = metaKey()
+			key = "absent-" + metaKey()
 		}
 
 		return &servicepb.Request{

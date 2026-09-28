@@ -61,13 +61,14 @@ const (
 
 // AuditField discriminates the indexed field within the audit-index keyspace.
 const (
-	AuditFieldOutcome       byte = 0x01 // 1 byte value: 0=failure, 1=success
-	AuditFieldLedger        byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
-	AuditFieldCallerSubject byte = 0x03 // string value
-	AuditFieldOrderType     byte = 0x04 // string token (match-any over items)
-	AuditFieldTimestamp     byte = 0x05 // BE uint64 raw HLC Timestamp.Data (unix microseconds) (range)
-	AuditFieldProposalID    byte = 0x06 // BE uint64 (range)
-	AuditFieldLogSeq        byte = 0x07 // BE uint64 (range, match-any over items)
+	AuditFieldOutcome        byte = 0x01 // 1 byte value: 0=failure, 1=success
+	AuditFieldLedger         byte = 0x02 // string value (match-any over AuditEntry.Ledgers)
+	AuditFieldCallerSubject  byte = 0x03 // string value
+	AuditFieldOrderType      byte = 0x04 // string token (match-any over items)
+	AuditFieldTimestamp      byte = 0x05 // BE uint64 raw HLC Timestamp.Data (unix microseconds) (range)
+	AuditFieldProposalID     byte = 0x06 // BE uint64 (range)
+	AuditFieldLogSeq         byte = 0x07 // BE uint64 (range, match-any over items)
+	AuditFieldIdempotencyKey byte = 0x08 // string value (exact or prefix)
 )
 
 // Namespace prefixes to distinguish accounts, transactions, and logs in shared buckets.
@@ -731,16 +732,23 @@ func AuditIndexPrefix() []byte {
 }
 
 // AuditIndexStringKey builds [0xFE][0x05][field][value\x00][seq BE8] for a
-// string-valued field (ledger, caller_subject, order_type).
+// string-valued field (ledger, caller_subject, order_type, idempotency_key).
 //
 // The value is NUL-terminated and matched by prefix scan (AuditSeqsByString),
 // so the encoding is unambiguous only while indexed values are themselves
-// NUL-free — true today for order_type (fixed vocabulary), ledger (validated
-// names) and caller_subject (auth subject). EN-1305, which wires the
-// equality/range filter path over arbitrary caller subjects, MUST disambiguate
-// before relying on it (an exact-length check len(key) == len(prefix)+8, or a
-// length-prefixed string encoding); otherwise an "alice" lookup would also
-// match a value indexed as "alice\x00evil".
+// NUL-free, OR while callers enforce additional protections:
+//
+//   - order_type (fixed vocabulary), ledger (validated names), and
+//     caller_subject (auth subject) are NUL-free by admission constraints.
+//   - idempotency_key may contain NUL (admission only enforces valid UTF-8).
+//     Exact lookup uses the len(key)==len(prefix)+8 guard in auditSeqsForPrefix
+//     to reject longer NUL-extended entries. Prefix lookup rejects NUL-bearing
+//     operands in auditSeqsByStringPrefix (see also indexIdempotencyKeyLeaf).
+//
+// AuditSeqsByString already passes the exact-length guard (len(lower)+8) to
+// auditSeqsForPrefix for every string field, so exact lookups are unambiguous
+// across all current callers. Any future prefix-capable field that contains NUL
+// must additionally guard the prefix operand (see auditSeqsByStringPrefix).
 func AuditIndexStringKey(kb *dal.KeyBuilder, field byte, value string, seq uint64) []byte {
 	return kb.Reset().
 		PutByte(PrefixInternal).

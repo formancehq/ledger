@@ -10,6 +10,8 @@ import (
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/formancehq/invariants"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -229,9 +231,45 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 		return err
 	}
 
-	if len(result.GetVolumes()) > 0 {
+	rescale := cmdutil.RescaleTarget(cmd)
+
+	// volumesTable builds the ASSET/COLOR/INPUT/OUTPUT table for one set of
+	// aggregated volumes. With --rescale, rows that share a (currency, color)
+	// bucket but differ only in precision are summed and re-expressed at the
+	// requested scale (matching accounts aggregate-volumes); otherwise each row is
+	// rendered raw.
+	volumesTable := func(vols []*commonpb.AggregatedVolume) (pterm.TableData, error) {
 		tableData := pterm.TableData{{"ASSET", "COLOR", "INPUT", "OUTPUT"}}
-		for _, v := range result.GetVolumes() {
+
+		if rescale != nil {
+			raw := make([]cmdutil.RawVolume, 0, len(vols))
+			for _, v := range vols {
+				raw = append(raw, cmdutil.RawVolume{
+					Asset:  v.GetAsset(),
+					Color:  v.GetColor(),
+					Input:  v.GetInput().ToBigInt().String(),
+					Output: v.GetOutput().ToBigInt().String(),
+				})
+			}
+
+			aggregated, err := cmdutil.AggregateVolumes(raw)
+			if err != nil {
+				return nil, err
+			}
+
+			for _, av := range aggregated {
+				tableData = append(tableData, []string{
+					invariants.FormatAsset(av.Asset, *rescale),
+					av.Color,
+					cmdutil.RescaleAmount(av.Input, av.Precision, *rescale),
+					cmdutil.RescaleAmount(av.Output, av.Precision, *rescale),
+				})
+			}
+
+			return tableData, nil
+		}
+
+		for _, v := range vols {
 			tableData = append(tableData, []string{
 				v.GetAsset(),
 				v.GetColor(),
@@ -240,24 +278,46 @@ func renderAggregate(cmd *cobra.Command, result *commonpb.AggregateResult) error
 			})
 		}
 
-		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
+		return tableData, nil
 	}
 
+	// Build every table before rendering any, so an invariant failure under
+	// --rescale aborts without printing a partial result.
+	var topTable pterm.TableData
+
+	if len(result.GetVolumes()) > 0 {
+		var err error
+
+		topTable, err = volumesTable(result.GetVolumes())
+		if err != nil {
+			return err
+		}
+	}
+
+	groupTables := make([]pterm.TableData, 0, len(result.GetGroups()))
+
 	for _, g := range result.GetGroups() {
+		tableData, err := volumesTable(g.GetVolumes())
+		if err != nil {
+			return err
+		}
+
+		groupTables = append(groupTables, tableData)
+	}
+
+	if topTable != nil {
+		if err := pterm.DefaultTable.WithHasHeader().WithData(topTable).Render(); err != nil {
+			return err
+		}
+	}
+
+	for i, g := range result.GetGroups() {
 		pterm.Println()
 		pterm.Printfln("Group: %s", g.GetPrefix())
 
-		tableData := pterm.TableData{{"ASSET", "COLOR", "INPUT", "OUTPUT"}}
-		for _, v := range g.GetVolumes() {
-			tableData = append(tableData, []string{
-				v.GetAsset(),
-				v.GetColor(),
-				v.GetInput().ToBigInt().String(),
-				v.GetOutput().ToBigInt().String(),
-			})
+		if err := pterm.DefaultTable.WithHasHeader().WithData(groupTables[i]).Render(); err != nil {
+			return err
 		}
-
-		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()
 	}
 
 	return nil

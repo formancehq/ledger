@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"math"
 	"testing"
 
@@ -14,12 +15,27 @@ import (
 
 // fakeAuditIndex is a hand-configured AuditIndexReader for compiler tests.
 type fakeAuditIndex struct {
-	byString  map[string][]uint64 // key: string(field)+value
-	byOutcome map[bool][]uint64
-	byRange   func(field byte, lo, hi uint64) []uint64
+	byString       map[string][]uint64 // key: string(field)+value
+	byStringPrefix map[string][]uint64 // key: string(field)+value
+	stringErr      error
+	prefixErr      error
+	byOutcome      map[bool][]uint64
+	byRange        func(field byte, lo, hi uint64) []uint64
+}
+
+func (f *fakeAuditIndex) AuditSeqsByStringPrefix(field byte, value string) ([]uint64, error) {
+	if f.prefixErr != nil {
+		return nil, f.prefixErr
+	}
+
+	return f.byStringPrefix[string(field)+value], nil
 }
 
 func (f *fakeAuditIndex) AuditSeqsByString(field byte, value string) ([]uint64, error) {
+	if f.stringErr != nil {
+		return nil, f.stringErr
+	}
+
 	return f.byString[string(field)+value], nil
 }
 
@@ -61,6 +77,83 @@ func auditUint(field commonpb.AuditField, lo, hi *uint64) *commonpb.QueryFilter 
 			},
 		},
 	}
+}
+
+func auditStringPrefix(field commonpb.AuditField, value string) *commonpb.QueryFilter {
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+		Field: field, Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: value},
+	}}}
+}
+
+func TestCompileAuditFilter_IdempotencyKeyEqualityAndPrefix(t *testing.T) {
+	t.Parallel()
+
+	idx := &fakeAuditIndex{
+		byString: map[string][]uint64{
+			string(readstore.AuditFieldIdempotencyKey) + "retry-1": {3, 9},
+		},
+		byStringPrefix: map[string][]uint64{
+			string(readstore.AuditFieldIdempotencyKey) + "retry-": {3, 7, 9},
+		},
+	}
+
+	seqs, _, _, narrowed, err := CompileAuditFilter(idx,
+		auditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-1"))
+	require.NoError(t, err)
+	require.True(t, narrowed)
+	require.Equal(t, []uint64{3, 9}, seqs, "an expired then reused key keeps every historical sequence")
+
+	seqs, _, _, narrowed, err = CompileAuditFilter(idx,
+		auditStringPrefix(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-"))
+	require.NoError(t, err)
+	require.True(t, narrowed, "prefix lookup must return index candidates, never request a global audit scan")
+	require.Equal(t, []uint64{3, 7, 9}, seqs)
+	require.NoError(t, ValidateAuditFilter(
+		auditStringPrefix(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-")))
+}
+
+func TestCompileAuditFilter_IdempotencyKeyValidationAndLookupErrors(t *testing.T) {
+	t.Parallel()
+
+	param := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+		Field: commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+		Condition: &commonpb.AuditCondition_StringCond{StringCond: &commonpb.StringCondition{
+			Value: &commonpb.StringCondition_Param{Param: "key"},
+		}},
+	}}}
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{}, param)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	wrongType := auditUint(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, new(uint64(1)), nil)
+	_, _, _, _, err = CompileAuditFilter(&fakeAuditIndex{}, wrongType)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	lookupErr := errors.New("lookup failed")
+	_, _, _, _, err = CompileAuditFilter(&fakeAuditIndex{stringErr: lookupErr},
+		auditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-1"))
+	require.ErrorIs(t, err, lookupErr)
+
+	_, _, _, _, err = CompileAuditFilter(&fakeAuditIndex{prefixErr: lookupErr},
+		auditStringPrefix(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "retry-"))
+	require.ErrorIs(t, err, lookupErr)
+}
+
+func TestCompileAuditFilter_IdempotencyKeyNULPrefixIsInvalidArgument(t *testing.T) {
+	t.Parallel()
+
+	// A NUL-bearing prefix must be rejected at the compiler level as
+	// codes.InvalidArgument so ValidateAuditFilter can catch it and the gRPC
+	// error code is consistent with every other client-facing rejection.
+	nulPrefix := auditStringPrefix(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, "key\x00")
+	_, _, _, _, err := CompileAuditFilter(&fakeAuditIndex{}, nulPrefix)
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"NUL prefix must be rejected as gRPC InvalidArgument")
+	require.ErrorContains(t, err, "NUL")
+
+	// ValidateAuditFilter must also reject it (it uses auditValidationIndex{}).
+	err = ValidateAuditFilter(nulPrefix)
+	require.Equal(t, codes.InvalidArgument, status.Code(err),
+		"ValidateAuditFilter must surface NUL rejection as InvalidArgument")
 }
 
 func TestCompileAuditFilter_Nil(t *testing.T) {

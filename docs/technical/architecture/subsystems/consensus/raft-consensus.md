@@ -470,6 +470,19 @@ Raft logs grow indefinitely. Snapshots allow:
 
 Snapshots are created automatically by a periodic background maintenance timer (`--maintenance-interval`, default 30s). On each tick, if `lastPersistedIndex` has advanced since the last snapshot, a new snapshot is created, followed by WAL compaction and Pebble checkpoint creation.
 
+#### Missing directories
+
+`<wal-dir>/snap` is created at startup, so a write that finds it gone means it was removed underneath a running node. Two outcomes:
+
+- **Only `snap/` is gone**: it is recreated (an error log plus an Antithesis assertion), because the etcd WAL is intact and a follower still needs the snapshot to catch up.
+- **`<wal-dir>` itself is gone**: the node stops. That directory holds the etcd WAL segments, `WAL_CREATION_COMPLETED` and `INSTANCE_ID`, so etcd is fsyncing unlinked inodes and every acknowledgement since the removal is unrecoverable — the next restart would find no creation marker, rebuild an empty WAL and rejoin as a new member.
+
+The two are told apart by a handle on `<wal-dir>` opened at startup and held for the life of the node. Every snapshot read, write and directory creation resolves from that handle rather than from the pathname, so a `<wal-dir>` that has been unlinked — including one replaced by another directory at the same path — fails the operation instead of resolving to a tree etcd does not hold open. The classification is taken from the failing operation itself, not only from the check that precedes it, so a removal landing mid-write is terminal too.
+
+The handle follows the directory across a rename, which a restart does not: it reads the configured `--wal-dir` and finds neither the WAL nor the identity markers there. Each save therefore confirms, once the snapshot file is durable, that the configured path still resolves to the directory the handle holds, and reports a `<wal-dir>` that was moved away — or replaced after being moved — as the same terminal condition. The confirmation follows the write because reporting success is what lets the caller publish the snapshot: a move landing partway through must not be published as persisted.
+
+A snapshot whose file fails to save for any other reason is not published: the WAL keeps reporting the previous snapshot, so the next maintenance tick retries at the same or a newer index.
+
 ### Snapshot Contents
 
 A snapshot contains:

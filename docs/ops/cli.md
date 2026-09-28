@@ -66,6 +66,7 @@ These flags are available for all commands:
 | `--response-verify-key` | | Path to Ed25519 public key file for verifying server response signatures |
 | `--consistency` | | Read consistency level: `stale` or `linearizable` (default) |
 | `--auth-token` | | Bearer token for authentication (JWT string or `@path-to-file`) |
+| `--rescale` | | Re-express amounts at a given scale in human-readable output, summing same-currency balances across precisions. Absent = no rescaling; `--rescale` alone = scale 0; `--rescale=N` = scale N. Does not affect `--json`/`--yaml` output. See [Amount Rescaling](#amount-rescaling). |
 
 ### TLS server name (verifying by name while dialing by IP)
 
@@ -163,6 +164,38 @@ ledgerctl ledgers list
 ```
 
 Buffered spans are flushed (with a 5s timeout) before the process exits — on both success and error paths — so short-lived invocations still deliver their traces.
+
+### Amount Rescaling
+
+`--rescale` is a global, display-only flag that re-expresses ledger amounts at a
+chosen scale in the human-readable tables/text, summing same-currency balances
+that were recorded at different precisions (e.g. `USD/2` and `USD/3`) into a
+single base-currency figure.
+
+| Form | Meaning |
+|---|---|
+| flag absent | No rescaling. Amounts render exactly as stored, one row per `CUR/precision`. |
+| `--rescale` (no value) | Rescale to scale `0` — whole units, dropping the precision suffix (e.g. `1234 USD/2` → `12.34 USD`). |
+| `--rescale=N` | Rescale to scale `N` (e.g. `--rescale=2` → `6912.9 USD/2`). `N` is a `uint8`; values above `255` are rejected at parse time. |
+
+Same-currency rows are first summed at the group's highest precision, then
+re-expressed at the requested scale; scaling to a coarser scale yields a decimal
+fraction, a finer scale pads with zeros.
+
+**Structured output is never rescaled.** `--json` / `--yaml` always emit the raw
+integer amounts and full `CUR/precision` asset strings so scripts stay stable,
+regardless of `--rescale`. Rescaling applies only to the rendered tables/text.
+
+Applies to the volume/balance columns of `accounts list`, `accounts get`,
+`accounts aggregate-volumes`, `transactions` post-commit volumes, and
+`queries execute` aggregate results.
+
+Server-issued amounts are always canonical integer strings, and assets always
+valid. If `--rescale` meets an amount or volume that does not parse as one
+(including a volume entry whose input/output sub-message is absent), or an
+invalid asset such as `USD/x` or `USD/256`, the command fails with an
+`invariant:` error naming the offending asset instead of dropping that row or
+displaying it in the wrong unit. An empty volume list is not an error.
 
 ### Shared Flag Contract
 
@@ -1054,6 +1087,8 @@ ledgerctl accounts list [flags]
 
 **Behavior:**
 - Accounts are listed in alphabetical order by default; use `--reverse` for reverse-alphabetical (Z→A)
+- Each account row includes a **balances** column showing one balance (`input − output`) per `(asset, color)` bucket the account holds. Colored buckets are labelled `ASSET[COLOR]`; the uncolored bucket is labelled by its asset alone
+- The global `--rescale` flag re-expresses those balances at a chosen scale in the table (see [Amount Rescaling](#amount-rescaling)); it does not affect `--json`/`--yaml` output. Colors stay segregated: only precisions of the same color are summed
 - If `--ledger` is not provided and only one ledger exists, it will be used automatically
 - If multiple ledgers exist, you will be prompted to select one
 - Use `--prefix` to filter by address prefix (e.g. `users:` lists only accounts starting with `users:`)
@@ -1862,9 +1897,16 @@ ledgerctl accounts aggregate-volumes --ledger my-ledger --prefix users:
 # Aggregate with filter
 ledgerctl accounts aggregate-volumes --ledger my-ledger --filter "metadata[category] == premium"
 
-# Output as JSON
+# Sum same-currency rows across precisions and show whole units (display only)
+ledgerctl accounts aggregate-volumes --ledger my-ledger --rescale
+
+# Output as JSON (raw integer amounts and full CUR/precision assets; --rescale ignored)
 ledgerctl accounts aggregate-volumes --ledger my-ledger --json
 ```
+
+**Behavior:**
+- With the global `--rescale` flag, same-currency rows that differ only in precision are merged server-side (`use_max_precision`) and re-expressed at the requested scale in the table (see [Amount Rescaling](#amount-rescaling))
+- Structured output (`--json`/`--yaml`) is never rescaled or merged: it returns the raw per-precision volumes with integer amounts
 
 ---
 
@@ -2391,6 +2433,8 @@ they are valid on `audit list` alone:
 | `ledger` | string | `==`, `in` | Match-any over the entry's ledgers. |
 | `caller_subject` | string | `==`, `in` | Auth subject on the caller snapshot. |
 | `order_type` | string | `==`, `in` | Order kind token (e.g. `create_transaction`, `revert_transaction`, `save_numscript`); match-any over the entry's items. |
+| `idempotency_key` | string | `==`, `^=`, `in` | Batch idempotency key. Prefix matching is index-backed; a reused key returns every historical audit entry. |
+| | | | Bare alphanumeric values are accepted unquoted; values with `-`, `:`, spaces or other non-identifier characters must be single- or double-quoted. Keys containing both `"` and `'` cannot be expressed in the textual DSL and require the gRPC API directly: use `AuditCondition.string_cond` (one value) wrapped in a `QueryFilter_Audit` for exact lookups, an `OrFilter` of such leaves for `in` lookups, and `AuditCondition.string_prefix` for prefix lookups. |
 
 Unsupported conditions are rejected with `InvalidArgument` rather than silently
 ignored: `not`, `!=` (both need a complement the index cannot serve), and any
@@ -2442,6 +2486,9 @@ ledgerctl audit list --filter 'outcome == failure and ledger == main'
 
 # Filter by order type
 ledgerctl audit list --filter 'order_type in (create_transaction, revert_transaction)'
+
+# Find every historical use of one idempotency-key namespace
+ledgerctl audit list --filter 'idempotency_key ^= "import-2026-"'
 
 # Sequence range
 ledgerctl audit list --filter 'seq between 1000 and 2000'

@@ -152,7 +152,7 @@ func (o *orderOverlayScope) GetNextSequenceID() uint64 {
 	return o.baseSeqID + o.seqIDDelta
 }
 
-func (o *orderOverlayScope) IncrementNextSequenceID() (uint64, domain.Describable) {
+func (o *orderOverlayScope) IncrementNextSequenceID() (uint64, domain.SerializableError) {
 	o.captureBaseCounters()
 	next := o.baseSeqID + o.seqIDDelta
 	if _, exhausted := domain.CheckedNextSequence(next, domain.SequenceCounterLog); exhausted != nil {
