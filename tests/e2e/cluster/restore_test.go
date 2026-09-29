@@ -775,19 +775,32 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(info.GetCheckpointId()).To(Equal(deltaCheckpointID))
 			Expect(info.GetMaxSequence()).To(Equal(deltaCheckpointMaxSequence),
 				"the restored logical projection must match the live source row")
+			// The source checkpoint's physical files are deliberately absent from
+			// a cross-cluster backup. A fresh checkpoint on the restored cluster
+			// freezes its rebuilt audit index for the source-history comparison.
+			restoredCheckpointID, _, err := actions.CreateQueryCheckpoint(ctx, client)
+			Expect(err).To(Succeed())
 			var unfilteredCheckpoint []*auditpb.AuditEntry
 			Eventually(func(g Gomega) {
 				var readErr error
-				unfilteredCheckpoint, readErr = checkpointAuditByCaller(client, deltaCheckpointID, false)
+				unfilteredCheckpoint, readErr = checkpointAuditByCaller(client, restoredCheckpointID, false)
 				g.Expect(readErr).To(Succeed(), "the restored checkpoint must finish materializing before audit comparison")
 			}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
 			var restoredCheckpointAuditSeqs []uint64
+			var sourceAuditBoundary uint64
+			for _, sequence := range sourceCheckpointAuditSeqs {
+				if sequence > sourceAuditBoundary {
+					sourceAuditBoundary = sequence
+				}
+			}
 			for _, entry := range unfilteredCheckpoint {
-				restoredCheckpointAuditSeqs = append(restoredCheckpointAuditSeqs, entry.GetSequence())
+				if entry.GetSequence() <= sourceAuditBoundary {
+					restoredCheckpointAuditSeqs = append(restoredCheckpointAuditSeqs, entry.GetSequence())
+				}
 			}
 			Expect(restoredCheckpointAuditSeqs).To(Equal(sourceCheckpointAuditSeqs),
 				"the restored checkpoint must preserve the complete source audit history at its frozen boundary")
-			filteredCheckpoint, err := checkpointAuditByCaller(client, deltaCheckpointID, true)
+			filteredCheckpoint, err := checkpointAuditByCaller(client, restoredCheckpointID, true)
 			Expect(err).To(Succeed())
 			Expect(filteredCheckpoint).To(HaveLen(1),
 				"the restored checkpoint must freeze a complete filtered audit index")
