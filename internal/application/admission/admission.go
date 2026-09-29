@@ -2433,7 +2433,8 @@ func (a *Admission) requestToOrder(ctx context.Context, req *servicepb.Request, 
 		wrapSystemScoped(order, &raftcmdpb.SystemScopedOrder{
 			Payload: &raftcmdpb.SystemScopedOrder_RemoveEventsSink{
 				RemoveEventsSink: &raftcmdpb.RemoveEventsSinkOrder{
-					Name: reqType.RemoveEventsSink.GetName(),
+					Name:         reqType.RemoveEventsSink.GetName(),
+					ControllerId: reqType.RemoveEventsSink.GetControllerId(),
 				},
 			},
 		})

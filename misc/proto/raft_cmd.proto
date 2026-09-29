@@ -145,6 +145,7 @@ message AddEventsSinkOrder {
 
 message RemoveEventsSinkOrder {
   string name = 1;
+  string controller_id = 2;  // Replicated guard evaluated against the current SinkConfig at apply
 }
 
 // Signing key management orders

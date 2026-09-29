@@ -399,7 +399,7 @@ func TestWriteSetSinkConfigOperations(t *testing.T) {
 
 	// Add a config via its log payload.
 	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_AddedEventsSink{AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: &commonpb.SinkConfig{Name: "my-sink"}}},
+		Type: &commonpb.LogPayload_AddedEventsSink{AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: &commonpb.SinkConfig{Name: "my-sink", ControllerId: "uid-1"}}},
 	}})
 	require.True(t, buf.SinkConfigChanged())
 
@@ -407,6 +407,7 @@ func TestWriteSetSinkConfigOperations(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	require.Equal(t, "my-sink", cfg.GetName())
+	require.Equal(t, "uid-1", cfg.GetControllerId())
 
 	// Remove it.
 	buf.Absorb(&raftcmdpb.Order{}, &commonpb.Log{Payload: &commonpb.LogPayload{
