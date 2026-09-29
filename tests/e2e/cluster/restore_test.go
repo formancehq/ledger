@@ -111,8 +111,23 @@ var _ = Describe("Restore", Ordered, func() {
 		s3Client                    *s3.Client
 		deltaCheckpointID           uint64
 		deltaCheckpointMaxSequence  uint64
+		deltaCallerAuditSequence    uint64
+		sourceCheckpointAuditSeqs   []uint64
 		scheduleDeletionLogSequence uint64
 	)
+
+	checkpointAuditByCaller := func(client servicepb.BucketServiceClient, checkpointID uint64, filtered bool) ([]*auditpb.AuditEntry, error) {
+		options := &commonpb.ListOptions{Read: &commonpb.ReadOptions{CheckpointId: checkpointID}}
+		if filtered {
+			options.Filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
+				Audit: &commonpb.AuditCondition{
+					Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+					Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: deltaCallerKey},
+				},
+			}}
+		}
+		return actions.ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{Options: options})
+	}
 
 	BeforeAll(func() {
 		ctx = logging.TestingContext()
@@ -356,6 +371,18 @@ var _ = Describe("Restore", Ordered, func() {
 			deltaCheckpointID, deltaCheckpointMaxSequence, err = actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(deltaCheckpointID).NotTo(BeZero())
+			unfiltered, err := checkpointAuditByCaller(client, deltaCheckpointID, false)
+			Expect(err).To(Succeed())
+			for _, entry := range unfiltered {
+				sourceCheckpointAuditSeqs = append(sourceCheckpointAuditSeqs, entry.GetSequence())
+			}
+			filtered, err := checkpointAuditByCaller(client, deltaCheckpointID, true)
+			Expect(err).To(Succeed())
+			Expect(filtered).To(HaveLen(1), "the source checkpoint must expose its audited delta entry through the frozen filter index")
+			Expect(filtered[0].GetIdempotency().GetKey()).To(Equal(deltaCallerKey))
+			deltaCallerAuditSequence = filtered[0].GetSequence()
+			Expect(unfiltered).To(ContainElement(HaveField("Sequence", deltaCallerAuditSequence)),
+				"the source checkpoint's authoritative audit zone must contain the filtered entry")
 
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
@@ -748,6 +775,26 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(info.GetCheckpointId()).To(Equal(deltaCheckpointID))
 			Expect(info.GetMaxSequence()).To(Equal(deltaCheckpointMaxSequence),
 				"the restored logical projection must match the live source row")
+			var unfilteredCheckpoint []*auditpb.AuditEntry
+			Eventually(func(g Gomega) {
+				var readErr error
+				unfilteredCheckpoint, readErr = checkpointAuditByCaller(client, deltaCheckpointID, false)
+				g.Expect(readErr).To(Succeed(), "the restored checkpoint must finish materializing before audit comparison")
+			}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
+			var restoredCheckpointAuditSeqs []uint64
+			for _, entry := range unfilteredCheckpoint {
+				restoredCheckpointAuditSeqs = append(restoredCheckpointAuditSeqs, entry.GetSequence())
+			}
+			Expect(restoredCheckpointAuditSeqs).To(Equal(sourceCheckpointAuditSeqs),
+				"the restored checkpoint must preserve the complete source audit history at its frozen boundary")
+			filteredCheckpoint, err := checkpointAuditByCaller(client, deltaCheckpointID, true)
+			Expect(err).To(Succeed())
+			Expect(filteredCheckpoint).To(HaveLen(1),
+				"the restored checkpoint must freeze a complete filtered audit index")
+			Expect(filteredCheckpoint[0].GetSequence()).To(Equal(deltaCallerAuditSequence))
+			Expect(filteredCheckpoint[0].GetIdempotency().GetKey()).To(Equal(deltaCallerKey))
+			Expect(unfilteredCheckpoint).To(ContainElement(HaveField("Sequence", deltaCallerAuditSequence)),
+				"the restored checkpoint's authoritative audit zone must agree with its filter index")
 
 			entries, err := actions.ListAuditEntries(ctx, client, false)
 			Expect(err).To(Succeed())
