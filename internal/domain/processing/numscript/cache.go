@@ -1,6 +1,7 @@
 package numscript
 
 import (
+	"bytes"
 	"container/list"
 	"context"
 	"fmt"
@@ -16,7 +17,8 @@ import (
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
 // and decoded+verified VM artifacts — each as one warm VM instance — keyed by
-// the same script-content hash (see getOrDecodeCompiled). Both sides use an
+// the same script-content hash and served only for identical program bytes
+// (see getOrDecodeCompiled). Both sides use an
 // LRU eviction policy bounded by maxSize to prevent unbounded memory growth.
 // Thread-safe: an RWMutex allows concurrent cache hits without contention.
 // LRU reordering is approximate — read hits do not call MoveToFront to avoid
@@ -80,8 +82,13 @@ type parsedScript struct {
 // variable layout (the encoder appends one slot per declaration), so every
 // order carrying this artifact presents a shape it reports sufficient, and the
 // verification outcome is reusable without re-running the static pass.
+//
+// program is the exact encoded bytes that were decoded and verified. A hit
+// requires the order's bytes to be identical, so the node always executes the
+// committed artifact, never another compilation of the same script.
 type compiledLruEntry struct {
 	hash     [32]byte
+	program  []byte
 	vm       *numscriptlib.Vm
 	verified numscriptlib.VerifiedVarsInfo
 }
@@ -231,16 +238,16 @@ func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) 
 // inserted, so every cached entry holds a current-version program.
 //
 // Entries are keyed by scriptHash — the order's HashScript(text), already
-// checked against the resolved text by the caller — not by the program bytes,
-// which would only be hashed again on every apply: compilation is
-// deterministic, so a given library version compiles one text to one byte
-// sequence. The one thing a hit must still rule out is a program of another
-// bytecode version (a rolling upgrade: this node on the old binary, the
-// artifact compiled by an upgraded leader), which a cold node would reject —
-// so a hit peeks the version from the program header (O(1), no decode) and,
-// on mismatch, takes the cold path, which rejects it with the same error a
-// node without the entry would raise. The cache itself is in-memory, so a
-// binary upgrade restarts with it empty.
+// checked against the resolved text by the caller — and hold the exact program
+// bytes they verified. A hit requires those bytes to equal the order's:
+// compilation is not assumed to be deterministic, so two compilations of the
+// same script (another leader, a rolling upgrade, a parse-cache eviction on the
+// leader) may produce different bytes. On mismatch the order's bytes take the
+// cold path and, once verified, replace the entry: the node always executes
+// the committed bytes, and only pays the decode+verify again when the bytes
+// change. A rejected artifact (undecodable, foreign version, unverifiable) is
+// never inserted, so it leaves the current entry in place. The cache itself is
+// in-memory, so a binary upgrade restarts with it empty.
 //
 // vars is only consulted through the entry's VerifiedVarsInfo: the vars shape
 // is fixed by the program's own variable layout, so a cached artifact is valid
@@ -261,15 +268,13 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	elem, ok := c.compiledCache[hash]
 	c.compiledMu.RUnlock()
 
+	var entry *compiledLruEntry
 	if ok {
-		if version, peekErr := numscriptlib.PeekCompiledProgramVersion(programBytes); peekErr != nil || version != numscriptlib.CurrentBytecodeVersion {
-			ok = false
-		}
+		entry, _ = elem.Value.(*compiledLruEntry)
+		ok = bytes.Equal(entry.program, programBytes)
 	}
 
 	if ok {
-		entry, _ := elem.Value.(*compiledLruEntry)
-
 		if entry.verified.CheckVars(vars) {
 			return entry, nil
 		}
@@ -310,11 +315,16 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	c.compiledMu.Lock()
 	defer c.compiledMu.Unlock()
 
-	// Double-check: another goroutine may have inserted while we decoded.
+	// Another goroutine may have inserted while we decoded: reuse its entry
+	// only for the same bytes, otherwise replace it with the ones just verified.
 	if elem, ok := c.compiledCache[hash]; ok {
-		entry, _ := elem.Value.(*compiledLruEntry)
+		existing, _ := elem.Value.(*compiledLruEntry)
+		if bytes.Equal(existing.program, programBytes) {
+			return existing, nil
+		}
 
-		return entry, nil
+		c.compiledOrder.Remove(elem)
+		delete(c.compiledCache, hash)
 	}
 
 	if c.compiledOrder.Len() >= c.maxSize {
@@ -325,8 +335,10 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 		}
 	}
 
-	entry := &compiledLruEntry{
-		hash:     hash,
+	entry = &compiledLruEntry{
+		hash: hash,
+		// Own copy: programBytes aliases the committed order.
+		program:  bytes.Clone(programBytes),
 		vm:       numscriptlib.NewVm(program),
 		verified: verified,
 	}

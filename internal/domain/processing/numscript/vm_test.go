@@ -516,9 +516,10 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 // TestSafeExecCompiled_WarmHitForeignVersionRejected: the compiled cache is
 // keyed by the script hash, so a warm entry must not serve an artifact of
 // another bytecode version for the same script (a rolling upgrade: this node on
-// the old binary, the artifact compiled by an upgraded leader). The hit peeks
-// the version and takes the cold path, rejecting exactly as a node without the
-// entry would — and the warm entry keeps serving the genuine artifact.
+// the old binary, the artifact compiled by an upgraded leader). The bytes
+// differ, so the lookup takes the cold path and rejects exactly as a node
+// without the entry would — and, never inserted, the rejected artifact leaves
+// the warm entry serving the genuine one.
 func TestSafeExecCompiled_WarmHitForeignVersionRejected(t *testing.T) {
 	t.Parallel()
 
@@ -549,4 +550,45 @@ func TestSafeExecCompiled_WarmHitForeignVersionRejected(t *testing.T) {
 	result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
+}
+
+// TestSafeExecCompiled_SameScriptDifferentBytesRunsCommittedBytes: compilation
+// is not assumed to be deterministic, so the same script hash can arrive with
+// different program bytes (a new leader, a rolling upgrade). A warm entry for
+// that hash must not serve them: the node runs the committed bytes, which then
+// replace the entry, and switching back re-verifies again. The two programs
+// here differ observably (30 vs 40) so the test can tell which one ran.
+func TestSafeExecCompiled_SameScriptDifferentBytesRunsCommittedBytes(t *testing.T) {
+	t.Parallel()
+
+	first := mustCompile(t, mustEntry(t, `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`), nil)
+	second := mustCompile(t, mustEntry(t, `send [COIN 40] (
+  source = @src
+  destination = @dst
+)`), nil)
+	require.NotEqual(t, first.Program, second.Program)
+
+	// Both artifacts claim the same script, as two compilations of it would.
+	scriptHash := first.ScriptHash
+
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+	cache := NewNumscriptCache(16)
+
+	for _, step := range []struct {
+		compiled *CompiledScript
+		want     int64
+	}{
+		{first, 30},
+		{second, 40},
+		{first, 30},
+	} {
+		result, err := SafeExecCompiled(cache, scriptHash, step.compiled.Program, step.compiled.Vars, NewVMStore(source, false))
+		require.Nil(t, err)
+		require.Len(t, result.Postings, 1)
+		require.Equal(t, step.want, result.Postings[0].Amount.Int64(), "the committed bytes must run, not the cached ones")
+		require.Equal(t, 1, cache.compiledOrder.Len(), "new bytes replace the entry for the script")
+	}
 }
