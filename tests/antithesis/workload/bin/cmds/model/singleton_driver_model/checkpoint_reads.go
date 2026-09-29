@@ -35,8 +35,8 @@ func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, i
 	return found && transaction != nil && txRecordMatches(txs.Get(int(id-1)), transaction)
 }
 
-// The server maps protoerr.NotFoundError to a typed gRPC status without
-// ErrorInfo details (server.go). Text containing "not found" is never evidence.
+// The gRPC server maps NotFoundError to a bare codes.NotFound status
+// (server.go). Text containing "not found" is never evidence.
 func checkpointNotFound(err error) bool {
 	statusValue, ok := status.FromError(err)
 
