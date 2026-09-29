@@ -12,6 +12,7 @@ RUN mkdir -p /tmp/rocksdb && tar -xzf /tmp/rocksdb.tar.gz -C /tmp/rocksdb --stri
       -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 -DWITH_TESTS=OFF \
       -DWITH_TOOLS=OFF -DWITH_CORE_TOOLS=OFF -DWITH_BENCHMARK_TOOLS=OFF \
       -DWITH_GFLAGS=OFF -DWITH_LIBURING=OFF -DROCKSDB_BUILD_SHARED=ON \
+      -DWITH_SNAPPY=ON -DWITH_ZSTD=ON -DWITH_LZ4=ON -DWITH_ZLIB=ON -DWITH_BZ2=ON \
       -DUSE_RTTI=1 -DFAIL_ON_WARNINGS=NO && \
     cmake --build /tmp/rocksdb/build --target rocksdb-shared --parallel 4 && \
     mkdir -p /usr/local/include /usr/local/lib && \
