@@ -385,7 +385,7 @@ func testCheckpointRefusesExistingDir(t *testing.T, open Opener) {
 }
 
 func testPersistsAcrossReopen(t *testing.T, open Opener) {
-	dir := t.TempDir()
+	dir := filepath.Join(t.TempDir(), "nested", "live") // parents must be created like Pebble does
 	db, err := open(dir, engine.Options{})
 	require.NoError(t, err)
 	put(t, db, "a", "1")

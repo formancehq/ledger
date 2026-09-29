@@ -43,6 +43,13 @@ var _ engine.DB = (*DB)(nil)
 
 // Open opens or creates a RocksDB database at dir.
 func Open(dir string, o engine.Options) (*DB, error) {
+	// Pebble creates the directory (and parents) on open; RocksDB only
+	// creates the leaf.
+	if !o.ReadOnly {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return nil, fmt.Errorf("rocksdb open: creating directory: %w", err)
+		}
+	}
 	opts := grocksdb.NewDefaultOptions()
 	opts.SetCreateIfMissing(!o.ErrorIfExists || true)
 	opts.SetErrorIfExists(o.ErrorIfExists)

@@ -89,8 +89,7 @@ grocksdb v1.11.x targets RocksDB 11.x and requires GCC 11+ / C++20.
 
 ## Log
 
-- 2026-09-29: branch `codex/rocksdb-poc` created from `release/v3.0`;
-  step 1 started.
+- 2026-09-29: branch `codex/rocksdb-poc` created from `release/v3.0`; steps 1–5 executed the same day, findings below.
 
 ## Step 1 findings — build chain
 
@@ -252,4 +251,48 @@ Pebble, backup 19 s vs 11 s.
 
 Binary: 91.0 MB vs 90.8 MB, plus a 12 MB `librocksdb` shared library at
 runtime. Build time roughly +20 s for the cgo wrapper (cached afterwards).
+
+## Step 5 findings — ops and invariants
+
+Everything below ran with `LEDGER_TEST_ENGINE=rocksdb` and `-tags rocksdb`
+against the unchanged test-suites:
+
+- `-race` on dal, state and backup: green.
+- e2e cluster suite (in-process nodes, Ginkgo): **294 / 294 specs**, including
+  learner join, follower sync through checkpoint streaming, restore from
+  backup and from a stale cache, query checkpoints, protocol-version and
+  rolling-config scenarios. e2e business suite: **549 / 549**.
+- Docker: `docker build --build-arg STORAGE_ENGINE=rocksdb .` produces the
+  regular image with cgo on and Alpine's `librocksdb.so.11.0.4` in the
+  runtime layer (184 MB). A single node started with
+  `--storage-engine rocksdb --bootstrap` created a ledger, applied a
+  transaction, served the account, survived a restart with WAL replay and
+  wrote SSTs under `live/`.
+- Two more Pebble/RocksDB differences surfaced only at this level and are
+  now covered by the conformance suite: RocksDB does not create parent
+  directories on open nor on checkpoint.
+
+Not run: an Antithesis session. The workload images build from the same
+Dockerfile, so `STORAGE_ENGINE=rocksdb` is the only change needed; launching
+one is a paid, explicit step left to the team.
+
+## Go / no-go assessment
+
+| Criterion | Result |
+|---|---|
+| Reproducible multi-arch build | Yes for Nix (macOS/Linux) and Docker (amd64/arm64). goreleaser darwin/linux cross-compilation with cgo remains untested. |
+| Functional parity (checkpoint/restore, per-ledger bloom) | Yes: full dal/state/backup/e2e suites green; prefix bloom verified in step 2. |
+| Writes and scans within ±15 % | Writes, point gets, checkpoints: at parity or better. **Scans: 3–4× slower per key**, outside the target. |
+| RSS under control | Yes, and lower than Pebble at equal cache size (block cache outside the Go heap). |
+| Cost of read/usage store port | Estimated 1–2 days each: same mechanical pattern as the main store, plus `FixedPrefixTransform(65)` for the comparers. Value separation has a BlobDB equivalent; WAL failover has none. |
+| Cheaper than maintaining a Pebble fork | Not established. The engine abstraction (this branch) is the reusable part either way. |
+
+Recommendation: keep the `engine` abstraction and the RocksDB
+implementation behind its build tag, do not switch the default. The scan
+penalty hits exactly the paths the read store, cache restore, checker and
+backup rebuild lean on; closing it means batching iteration across the cgo
+boundary (a C shim returning N key/value pairs per call), which is a
+follow-up worth measuring before any migration decision. Meanwhile the
+abstraction makes a Pebble fork, a later RocksDB switch, or another pure-Go
+engine equally reachable.
 

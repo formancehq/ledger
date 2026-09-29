@@ -3,6 +3,7 @@ package enginetest
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"os"
@@ -84,7 +85,7 @@ func RunBenchmarks(b *testing.B, open Opener) {
 		b.ResetTimer()
 		for i := 0; b.Loop(); i++ {
 			_, _, err := db.Get(missing[i%len(missing)])
-			if err != engine.ErrNotFound {
+			if !errors.Is(err, engine.ErrNotFound) {
 				b.Fatalf("expected not found, got %v", err)
 			}
 		}
