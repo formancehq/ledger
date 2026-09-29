@@ -12,7 +12,8 @@ required_version=$(GOWORK=off go list -m -f '{{.Version}}' github.com/formancehq
     exit 1
 }
 python3 scripts/verify_client_release_contract.py "$PWD" "$server_version" \
-    "$PWD/pkg/client/v3" "pkg/client/${client_version}" local local h1:local >/dev/null
+    "$PWD/pkg/client/v3" "pkg/client/${client_version}" local local h1:local \
+    --local-contract >/dev/null
 GOWORK=off go -C pkg/client/v3 test ./...
 
 if GOWORK=off go -C pkg/client/v3 list -deps -f '{{.ImportPath}}' ./... |

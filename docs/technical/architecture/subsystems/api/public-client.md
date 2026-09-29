@@ -86,9 +86,12 @@ Run the complete Ledger validation and human Ledger/Connectivity review before
 tagging. The release gate downloads the selected client module at its tag,
 checks the module checksum, its embedded manifest and descriptor, the server's
 compiled protocol revision and descriptor, the root `go.mod` selection, and
-the client module source against the tag commit. It records both tag target
-commits, the module checksum, the descriptor digest, and the compatibility
-basis in `client-release-provenance.json`. It rejects an absent tag, contract
-drift, or mismatched compatibility metadata. No tag is created by regeneration
+every downloaded module file against an archive rebuilt from the client tag
+commit using Go module packaging rules. This also rejects altered or extra Go
+source while allowing files Go deliberately excludes from module ZIPs. It
+records both tag target commits, the module checksum, the descriptor digest,
+and the compatibility basis in `client-release-provenance.json`. It rejects an
+absent tag, contract drift, or mismatched compatibility metadata. No tag is
+created by regeneration
 or CI. Consumers pin the client tag and can verify the descriptor bytes against
 its immutable `contract.json`.

@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,7 +30,7 @@ def digest(path):
 
 
 def verify(root, server_tag, downloaded_client, client_tag, client_commit,
-           server_commit, module_checksum):
+           server_commit, module_checksum, *, local_contract=False):
     server = read_json(root / "misc/release/public-client.json")
     local_client = read_json(root / "pkg/client/v3/contract.json")
     published_client = read_json(downloaded_client / "contract.json")
@@ -75,6 +76,14 @@ def verify(root, server_tag, downloaded_client, client_tag, client_commit,
             "tagged client protocol revision differs from the server")
     require(module_checksum.startswith("h1:") and len(module_checksum) > 3,
             "downloaded module has no Go checksum")
+    if not local_contract:
+        result = subprocess.run(
+            ["go", "run", "./scripts/clientrelease", str(root.resolve()),
+             client_commit, client_version, str(downloaded_client.resolve()),
+             module_checksum],
+            cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+        require(result.returncode == 0,
+                "tagged module source verification failed: " + result.stderr.strip())
 
     return {
         "serverTag": server_tag,
@@ -97,11 +106,13 @@ def main():
     parser.add_argument("client_commit")
     parser.add_argument("server_commit")
     parser.add_argument("module_checksum")
+    parser.add_argument("--local-contract", action="store_true",
+                        help="check in-progress local metadata without a published client tag")
     args = parser.parse_args()
     try:
         result = verify(args.root, args.server_tag, args.downloaded_client,
                         args.client_tag, args.client_commit, args.server_commit,
-                        args.module_checksum)
+                        args.module_checksum, local_contract=args.local_contract)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"client release verification: {error}", file=sys.stderr)
         return 1
