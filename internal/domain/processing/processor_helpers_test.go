@@ -4,8 +4,9 @@ import (
 	"sync"
 	"testing"
 
-	numscriptlib "github.com/formancehq/numscript"
 	"go.uber.org/mock/gomock"
+
+	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
@@ -506,7 +507,7 @@ func stageCompiledArtifact(order *raftcmdpb.Order, script string, vars map[strin
 
 	hash := numscript.HashScript(script)
 
-	if order.Technical == nil {
+	if order.GetTechnical() == nil {
 		order.Technical = &raftcmdpb.OrderTechnical{}
 	}
 	order.Technical.CompiledProgram = program.Encode()
