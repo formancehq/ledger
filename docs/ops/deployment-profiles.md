@@ -45,7 +45,18 @@ The in-repository operator targets development and testing; the supported
 production installation is the Formance Stack Operator. When using the
 in-repository operator, use its current `Cluster` resource, not the legacy
 `Ledger` cluster examples that remain elsewhere in the documentation. It
-requires Kubernetes 1.28 or later; PVC/PV deletion protection requires 1.30.
+always sets the StatefulSet PVC retention policy, which requires the
+[`StatefulSetAutoDeletePVC` feature](https://kubernetes.io/blog/2023/05/04/kubernetes-1-27-statefulset-pvc-auto-deletion-beta/)
+(enabled by default since Kubernetes 1.27,
+[stable since 1.32](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#persistentvolumeclaim-retention)).
+PVC/PV deletion protection additionally needs the
+[`ValidatingAdmissionPolicy` API](https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/)
+(stable since 1.30); the chart skips the policy
+when that API is absent and warns that deletion protection is inactive. The
+operator has no established, tested minimum Kubernetes version. The E2E kind
+configuration does not pin a Kubernetes node version, so it cannot establish
+one either. These feature milestones are not a compatibility test of the whole
+operator.
 
 Install the operator and its CRD dependency, then start from the maintained
 [Cluster sample](../../misc/operator/config/samples/ledger_v1alpha1_cluster.yaml):
