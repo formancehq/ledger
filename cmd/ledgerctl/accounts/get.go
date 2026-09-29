@@ -112,11 +112,16 @@ func runGet(cmd *cobra.Command, args []string) error {
 		raw := make([]cmdutil.RawVolume, 0, len(account.GetVolumes()))
 		for _, entry := range account.GetVolumes() {
 			vol := entry.GetVolumes()
+			var inputStr, outputStr string
+			if vol != nil {
+				inputStr = vol.GetInput().DecimalString()
+				outputStr = vol.GetOutput().DecimalString()
+			}
 			raw = append(raw, cmdutil.RawVolume{
 				Asset:  entry.GetAsset(),
 				Color:  entry.GetColor(),
-				Input:  vol.GetInput().DecimalString(),
-				Output: vol.GetOutput().DecimalString(),
+				Input:  inputStr,
+				Output: outputStr,
 			})
 		}
 
