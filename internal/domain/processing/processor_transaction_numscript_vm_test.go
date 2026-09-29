@@ -113,8 +113,8 @@ func requireNumscriptRuntimeError(t *testing.T, err domain.SerializableError, de
 }
 
 // TestProduce_CompiledArtifactExecutesOnTheVM: an order carrying the
-// admission-compiled artifact executes on the VM and produces the same result
-// the interpreter produces for the same script and state.
+// admission-compiled artifact executes on the VM and produces the expected
+// postings and transaction metadata.
 func TestProduce_CompiledArtifactExecutesOnTheVM(t *testing.T) {
 	t.Parallel()
 
@@ -244,10 +244,9 @@ func TestProduce_UnverifiableArtifactIsLoud(t *testing.T) {
 	requireNumscriptRuntimeError(t, err, "verifying compiled numscript program")
 }
 
-// TestProduce_VMMissingFundsMatchesInterpreterClassification: the VM's
-// missing-funds failure maps to the same domain error the interpreter path
-// raises, so the client-facing classification does not depend on the engine.
-func TestProduce_VMMissingFundsMatchesInterpreterClassification(t *testing.T) {
+// TestProduce_VMMissingFundsIsInsufficientFunds: the VM's missing-funds
+// failure maps to the client-facing ErrInsufficientFunds, not a runtime error.
+func TestProduce_VMMissingFundsIsInsufficientFunds(t *testing.T) {
 	t.Parallel()
 
 	shortVars := map[string]string{"amt": "USD/2 5000"}
