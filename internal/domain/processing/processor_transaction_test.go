@@ -1142,6 +1142,43 @@ func TestProcessCreateTransaction_Numscript_RejectsNullByteMetadataValue(t *test
 	}
 }
 
+func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T) {
+	t.Parallel()
+
+	const script = `
+		vars { string $poison }
+		set_tx_meta("a", $poison)
+		set_tx_meta("b", $poison)
+		send [USD/2 100] (
+			source = @world
+			destination = @users:alice
+		)
+	`
+	for range 100 {
+		ctrl := gomock.NewController(t)
+		mockStore := NewMockScope(ctrl)
+		expectDefaultMetadataLimits(mockStore)
+		processor, err := NewRequestProcessor(nil, 0)
+		require.NoError(t, err)
+		expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}).AsReader(), nil).AnyTimes()
+		expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
+		mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
+		setupNumscriptVolumeMocks(mockStore)
+		request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+			Ledger: "test-ledger",
+			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+				Script: &commonpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
+			}}},
+		}}}
+		_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+		require.ErrorIs(t, err, domain.ErrMetadataValueContainsNullByte)
+		var keyErr *domain.ErrMetadataKeyValidation
+		require.ErrorAs(t, err, &keyErr)
+		require.Equal(t, "a", keyErr.Key)
+		ctrl.Finish()
+	}
+}
+
 func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	t.Parallel()
 

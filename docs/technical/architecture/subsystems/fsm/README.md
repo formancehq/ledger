@@ -9,6 +9,12 @@ loads the key from the primary store and checks it against the genesis hash
 before swapping FSM state; an audit history without a matching key is an
 invariant failure.
 
+Numscript-generated transaction metadata is validated in ascending key order at
+apply. If several entries are invalid, the first selected error becomes the
+authoritative audit failure (including its message and context), so selection
+must not depend on Go map iteration. A failed order discards its posting and
+metadata writes while preserving the failure audit entry.
+
 ## Documents
 
 | Document | Description |
