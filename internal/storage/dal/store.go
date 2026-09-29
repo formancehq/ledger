@@ -1,6 +1,7 @@
 package dal
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
@@ -571,10 +572,15 @@ func NewStore(
 	openStart := time.Now()
 
 	open := pebbleOpener(opts)
+	if alt, ok, err := engineOpener(cfg); err != nil {
+		return nil, err
+	} else if ok {
+		open = func(dir string) (engine.DB, error) { return alt(dir, cfg) }
+	}
 
 	db, err := open(liveDir)
 	if err != nil {
-		return nil, fmt.Errorf("opening pebble database: %w", err)
+		return nil, fmt.Errorf("opening %s database: %w", cmp.Or(cfg.Engine, EnginePebble), err)
 	}
 
 	if m := pebbleMetrics(db); m != nil {
@@ -605,7 +611,7 @@ func NewStore(
 	store := &Store{
 		opts:                    opts,
 		open:                    open,
-		logger:                  logger.WithField("cmp", "pebble"),
+		logger:                  logger.WithField("cmp", cmp.Or(cfg.Engine, EnginePebble)),
 		dataDir:                 dataDir,
 		currentCheckPoint:       latestCheckpointID,
 		oldestCheckpoint:        oldestCheckpoint,

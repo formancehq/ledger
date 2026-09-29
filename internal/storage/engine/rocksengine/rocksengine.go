@@ -12,6 +12,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"strconv"
 
 	"github.com/linxGnu/grocksdb"
@@ -148,6 +149,10 @@ func (d *DB) SyncWAL() error { return d.db.FlushWAL(true) }
 func (d *DB) Checkpoint(dir string) error {
 	if _, err := os.Stat(dir); err == nil {
 		return fmt.Errorf("rocksdb checkpoint: destination %q already exists", dir)
+	}
+	// Pebble creates missing parents; RocksDB does not.
+	if err := os.MkdirAll(filepath.Dir(dir), 0o750); err != nil {
+		return fmt.Errorf("rocksdb checkpoint: creating parent directory: %w", err)
 	}
 	cp, err := d.db.NewCheckpoint()
 	if err != nil {
