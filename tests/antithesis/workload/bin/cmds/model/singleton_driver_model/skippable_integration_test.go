@@ -166,7 +166,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		logs, err := actions.ListLogsFiltered(readCtx, client, &servicepb.ListLogsRequest{Ledger: "L", Options: &commonpb.ListOptions{PageSize: 100}})
 		require.NoError(t, err)
 		require.Len(t, logs, len(checker.modelState.Ledger("L").LogRows()))
-		require.True(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs)))
+		require.True(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs), ""))
 		found := false
 		for _, log := range logs {
 			skipped := log.GetPayload().GetApply().GetLog().GetData().GetOrderSkipped()
@@ -175,8 +175,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 			}
 			found = true
 			skipped.Context["unexpected"] = "corrupted"
-			require.False(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs)))
-
+			require.False(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs), ""))
 			break
 		}
 		require.True(t, found, "the listed page must contain a skipped log")

@@ -38,17 +38,14 @@ func TestModelAggregateFoldsMatchedAccountsOnly(t *testing.T) {
 		oracletest.TxReq("world", "keep:3", "EUR/2", 4),
 	)
 
-	got := modelAggregate(ls, filterAddrPrefix("keep:"))
+	got := modelAggregate(ls, filterAddrPrefix("keep:"), aggOptions{})
 
-	require.Equal(t, map[aggregateBucket]oracle.VolumePair{
-		{asset: "USD/2"}: {Input: *uint256.NewInt(12)},
-		{asset: "EUR/2"}: {Input: *uint256.NewInt(4)},
-	}, got)
+	require.Equal(t, "EUR/2|=in:4,out:0 USD/2|=in:12,out:0", renderAgg(got))
 
 	// The unfiltered universe additionally picks up world's outputs and skip:1.
-	all := modelAggregate(ls, nil)
-	require.Equal(t, *uint256.NewInt(21), all[aggregateBucket{asset: "USD/2"}].Input)
-	require.Equal(t, *uint256.NewInt(21), all[aggregateBucket{asset: "USD/2"}].Output)
+	all := modelAggregate(ls, nil, aggOptions{})
+	require.Equal(t, *uint256.NewInt(21), all[assetColor{Asset: "USD/2"}].in)
+	require.Equal(t, *uint256.NewInt(21), all[assetColor{Asset: "USD/2"}].out)
 }
 
 func TestModelAggregateKeepsColorBucketsSeparate(t *testing.T) {
@@ -56,9 +53,7 @@ func TestModelAggregateKeepsColorBucketsSeparate(t *testing.T) {
 
 	ls := buildLedger(t, oracletest.TxReqColoredL("L", "world", "keep:1", "USD/2", "A", 5))
 
-	require.Equal(t, map[aggregateBucket]oracle.VolumePair{
-		{asset: "USD/2", color: "A"}: {Input: *uint256.NewInt(5)},
-	}, modelAggregate(ls, filterAddrPrefix("keep:")))
+	require.Equal(t, "USD/2|A=in:5,out:0", renderAgg(modelAggregate(ls, filterAddrPrefix("keep:"), aggOptions{})))
 }
 
 // TestAggregateMatchesRejectsDivergence pins that the comparison is on the

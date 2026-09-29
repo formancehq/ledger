@@ -32,8 +32,16 @@ import (
 func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	filter, probe := c.genAuditFilter()
 
-	pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize()
+	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := random.RandomChoice([]uint8{0, 1}) == 1
+
+	cursor, afterSeq := c.rollAuditCursor()
+
+	malformed, rolled := rollMalformedCursor()
+	if rolled {
+		cursor, afterSeq = malformed, 0
+	}
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -47,13 +55,18 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 
 	stream, err := client.ListAuditEntries(readCtx, &servicepb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{
-			PageSize: uint32(pageSize),
+			PageSize: uint32(requestedPageSize),
+			Cursor:   cursor,
 			Reverse:  reverse,
 			Filter:   filter,
 		},
 	})
 
-	var entries []auditEntry
+	var (
+		entries []auditEntry
+		next    string
+	)
+
 	if err == nil {
 		raw, drainErr := drainStream(stream)
 		err = drainErr
@@ -63,12 +76,20 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		}
 	}
 
+	if err == nil {
+		next = nextCursorOf(stream)
+	}
+
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned.
 	maxTicket := c.ticketSeq.Load()
 
 	if err != nil {
 		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+
+		if handleMalformedCursorError(rolled, "audit", cursor, err) {
 			return
 		}
 
@@ -93,6 +114,15 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
+	if rolled {
+		assert.Unreachable("singleton_driver_model: malformed audit cursor returned results", internal.Details{
+			"cursor": cursor,
+			"rows":   len(entries),
+		})
+
+		return
+	}
+
 	if probe != auditProbeNone {
 		assert.Unreachable("singleton_driver_model: unsupported audit filter returned a page", internal.Details{
 			"filter": describeFilter(filter),
@@ -105,21 +135,24 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 	c.noteAuditSamples(entries)
 
 	details := internal.Details{
-		"filter":   describeFilter(filter),
-		"pageSize": pageSize,
-		"reverse":  reverse,
-		"rows":     len(entries),
-		"seqs":     describeAuditSeqs(entries),
+		"filter":     describeFilter(filter),
+		"pageSize":   pageSize,
+		"requested":  requestedPageSize,
+		"reverse":    reverse,
+		"cursor":     cursor,
+		"nextCursor": next,
+		"rows":       len(entries),
+		"seqs":       describeAuditSeqs(entries),
 	}
 
-	if violation := auditPageViolation(entries, pageSize, reverse, filter); violation != "" {
+	if violation := auditPageViolation(entries, pageSize, reverse, filter, afterSeq, next); violation != "" {
 		details["violation"] = violation
 		assert.Unreachable("singleton_driver_model: audit page violates its own contract", details)
 
 		return
 	}
 
-	verdict := c.validateAuditPage(maxTicket, entries, reverse, filter, pageSize)
+	verdict := c.validateAuditPage(maxTicket, entries, reverse, filter, pageSize, afterSeq, next)
 	if verdict.finding != "" {
 		details["entry"] = verdict.entry
 		details["why"] = verdict.why
@@ -131,12 +164,24 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
+	c.noteKnownAuditEntries(entries)
+
 	// Coverage: every entry of the page was the model's own record of a bulk.
 	assert.Reachable("singleton_driver_model: audit page validated", internal.Details{"filter": describeFilter(filter)})
 
 	if verdict.rejections > 0 {
 		// Coverage: a failed entry matched a rejection the model explained.
 		assert.Reachable("singleton_driver_model: audit failure entry matched a model rejection", internal.Details{})
+	}
+
+	if verdict.knownCertified > 0 {
+		// Coverage: the page was held to entries the trail served on an earlier read.
+		assert.Reachable("singleton_driver_model: audit page judged against remembered entries", internal.Details{"certified": verdict.knownCertified})
+	}
+
+	if verdict.cursorCorroborated {
+		// Coverage: a remembered entry past a full page proved its cursor was owed.
+		assert.Reachable("singleton_driver_model: audit resume cursor corroborated by a remembered entry", internal.Details{})
 	}
 }
 
@@ -160,7 +205,7 @@ func auditEntryOf(e *auditpb.AuditEntry) auditEntry {
 		seq:        e.GetSequence(),
 		proposalID: e.GetProposalId(),
 		timestamp:  e.GetTimestamp().GetData(),
-		subject:    e.GetCallerSnapshot().GetIdentity().GetSubject(),
+		subject:    e.GetCallerSnapshot().GetAuthenticated().GetIdentity().GetSubject(),
 		ledgers:    slices.Sorted(slices.Values(e.GetLedgers())),
 		orderCount: e.GetOrderCount(),
 	}
@@ -191,6 +236,11 @@ type auditVerdict struct {
 	why        string
 	missingSeq uint64 // the sequence the model lacked, for the finding's diagnostics
 	rejections int
+	// knownCertified counts the remembered entries the filter certainly selects
+	// on this read, and cursorCorroborated marks the page whose resume cursor one
+	// of them proved was owed — the two sondes that say the lower bound armed.
+	knownCertified     int
+	cursorCorroborated bool
 }
 
 // validateAuditPage checks each entry against the committed model. The model
@@ -198,7 +248,7 @@ type auditVerdict struct {
 // flight at the read's high-water have committed logs the model cannot name
 // yet; an entry past the committed frontier is admissible exactly then.
 // Acquires c.mu.
-func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int) auditVerdict {
+func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string) auditVerdict {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -254,7 +304,7 @@ func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reve
 			return auditVerdict{finding: "audit entry names logs the model never committed", entry: describeAuditEntry(e), why: "committed frontier is " + strconv.FormatUint(committedMax, 10), missingSeq: e.minLog}
 		}
 
-		if why, missing := auditSuccessMismatch(e, logs, committedMax); why != "" {
+		if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax, firstLearned); why != "" {
 			return auditVerdict{finding: "audit entry outside model", entry: describeAuditEntry(e), why: why, missingSeq: missing}
 		}
 
@@ -269,8 +319,10 @@ func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reve
 
 	// A page the size limit did not cut short holds every entry the filter
 	// selects, so every committed log the model learned inside a bare
-	// log-sequence range must be under some served success entry.
-	if cond := bareAuditLogSeqRange(filter); cond != nil && len(entries) < pageSize {
+	// log-sequence range must be under some served success entry. A resumed page
+	// starts past its cursor, so the entries covering the earlier logs are on a
+	// page this one does not hold.
+	if cond := bareAuditLogSeqRange(filter); cond != nil && len(entries) < pageSize && afterSeq == 0 {
 		for seq := range logs {
 			if seq < firstLearned || !matchUintBounds(cond, seq) {
 				continue
@@ -282,15 +334,122 @@ func (c *Checker) validateAuditPage(maxTicket uint64, entries []auditEntry, reve
 		}
 	}
 
-	// A reverse first page starts at the newest entry, so the newest committed
-	// bulk must be on it — unless a later rejection or an undrained bulk is the
-	// real tail.
-	if reverse && !unknownBulks && newestSeen && !newestFail && committedMax > 0 && latestSeen < committedMax {
+	// An unfiltered reverse FIRST page starts at the newest entry, so the newest
+	// committed bulk must be on it — unless a later rejection or an undrained bulk
+	// is the real tail. A resumed page starts below its cursor and says nothing
+	// about the tail; a filtered one selects its own newest entry, which
+	// auditKnownMatchViolation judges against the entries the trail has shown.
+	if reverse && afterSeq == 0 && filter == nil && !unknownBulks && newestSeen && !newestFail && committedMax > 0 && latestSeen < committedMax {
 		return auditVerdict{finding: "audit tail misses the newest committed bulk", entry: describeAuditEntry(entries[0]), why: "committed frontier is " + strconv.FormatUint(committedMax, 10) + ", newest covered " + strconv.FormatUint(latestSeen, 10)}
 	}
 
+	known := c.auditKnownMatchViolation(entries, reverse, filter, pageSize, afterSeq, next, logs)
+	if known.finding != "" {
+		return known
+	}
+
+	verdict.knownCertified, verdict.cursorCorroborated = known.knownCertified, known.cursorCorroborated
+
 	return verdict
 }
+
+// auditKnownMatchViolation judges a page against the entries the trail has
+// already shown this driver. A page is a prefix of the server's own result and
+// the known set is a subset of it, so a known match up to the page's last entry
+// belongs on the page, and one past it is something the server still owed —
+// rows while the page had room, a resume cursor once it was full.
+//
+// The trail cannot lose an entry between reads: audit history is permanent, and
+// a linearizable read takes its barrier at read time, so its snapshot is at or
+// past every entry already committed. Caller holds c.mu.
+func (c *Checker) auditKnownMatchViolation(entries []auditEntry, reverse bool, filter *commonpb.QueryFilter, pageSize int, afterSeq uint64, next string, logs map[uint64]committedLog) auditVerdict {
+	served := make(map[uint64]bool, len(entries))
+	for _, e := range entries {
+		served[e.seq] = true
+	}
+
+	var last uint64
+	if len(entries) > 0 {
+		last = entries[len(entries)-1].seq
+	}
+
+	var out auditVerdict
+
+	for seq, k := range c.knownAudit {
+		if afterSeq != 0 && (!reverse && seq <= afterSeq || reverse && seq >= afterSeq) {
+			continue // before the cursor: not this page's business
+		}
+
+		if !auditEntryCertainlyMatches(filter, k, logs) {
+			continue
+		}
+
+		out.knownCertified++
+
+		onPage := len(entries) > 0 && (!reverse && seq <= last || reverse && seq >= last)
+		switch {
+		case onPage:
+			if !served[seq] {
+				return auditVerdict{finding: "audit page omits an entry the trail served before", entry: describeAuditEntry(k), why: "inside the page's own range", missingSeq: seq}
+			}
+		case len(entries) < pageSize:
+			return auditVerdict{finding: "audit page stopped short of an entry the trail served before", entry: describeAuditEntry(k), why: strconv.Itoa(len(entries)) + " of " + strconv.Itoa(pageSize) + " rows used", missingSeq: seq}
+		case next == "":
+			return auditVerdict{finding: "audit page dropped its resume cursor", entry: describeAuditEntry(k), why: "a full page left this entry unserved and named no next cursor", missingSeq: seq}
+		default:
+			out.cursorCorroborated = true
+		}
+	}
+
+	return out
+}
+
+// auditEntryCertainlyMatches reports whether the filter certainly selects e.
+// Every leaf but order-type is judged exactly off the entry's own fields; an
+// order-type leaf holds only for the kinds the model committed under the entry's
+// logs, so an entry whose logs the model does not know — a rejection, a
+// system-scoped proposal — certifies nothing. A Not certifies nothing either:
+// the audit grammar refuses it, so no served page carries one, and inverting a
+// conservative verdict would not stay conservative.
+func auditEntryCertainlyMatches(filter *commonpb.QueryFilter, e auditEntry, logs map[uint64]committedLog) bool {
+	types := committedOrderTypes(e, logs)
+
+	return foldFilter(filter, filterFold[bool]{
+		and: allOf,
+		or:  anyOf,
+		not: func(bool) bool { return false },
+		leaf: func(leaf *commonpb.QueryFilter) bool {
+			if a := leaf.GetAudit(); a.GetField() == commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE {
+				return types[a.GetStringCond().GetHardcoded()]
+			}
+
+			return auditEntrySatisfies(leaf, e)
+		},
+	})
+}
+
+// noteKnownAuditEntries remembers a validated page. Eviction only weakens the
+// lower bound, never the other way, so the set is capped. Acquires c.mu.
+func (c *Checker) noteKnownAuditEntries(entries []auditEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, e := range entries {
+		if len(c.knownAudit) >= knownAuditCap {
+			if _, held := c.knownAudit[e.seq]; !held {
+				for seq := range c.knownAudit {
+					delete(c.knownAudit, seq)
+
+					break
+				}
+			}
+		}
+
+		c.knownAudit[e.seq] = e
+	}
+}
+
+const knownAuditCap = 4096
 
 // committedLog is one committed log a sequence was learned for; id is zero for
 // a ledger-level log, which the oracle keeps no row for.
@@ -321,8 +480,8 @@ func (c *Checker) committedLogsBySequence() (logs map[uint64]committedLog, minSe
 		}
 	}
 
-	for seq, ledger := range c.ledgerLogSeqs {
-		note(seq, committedLog{ledger: ledger})
+	for seq, rec := range c.ledgerLogSeqs {
+		note(seq, committedLog{ledger: rec.ledger, kind: rec.kind})
 	}
 
 	return logs, minSeq, maxSeq
@@ -372,7 +531,7 @@ func (c *Checker) rejectionExplains(e auditEntry) bool {
 // frontier is not one bulk of the model, or "" when it is: its sequence range
 // is contiguous, one order per log, every sequence is a committed log, and the
 // entry's ledgers are exactly those logs' ledgers.
-func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, committedMax uint64) (why string, missingSeq uint64) {
+func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, bulks map[uint64]committedBulk, committedMax, firstLearned uint64) (why string, missingSeq uint64) {
 	if e.minLog == 0 || e.maxLog < e.minLog {
 		return "empty or inverted log range", 0
 	}
@@ -412,20 +571,51 @@ func auditSuccessMismatch(e auditEntry, logs map[uint64]committedLog, committedM
 		return "logs belong to " + strings.Join(ledgers, ",") + ", entry names " + strings.Join(e.ledgers, ","), 0
 	}
 
+	// One bulk is one entry, so the range must be some bulk's own boundaries: a
+	// contiguous run of committed logs is not enough, or an entry merging two
+	// adjacent bulks — or naming part of one — passes every check above. Below the
+	// first learned sequence the model saw no bulk drain, so there is nothing to
+	// compare against.
+	if e.minLog >= firstLearned {
+		bulk, recorded := bulks[e.minLog]
+		if !recorded {
+			return "no committed bulk begins at " + strconv.FormatUint(e.minLog, 10), e.minLog
+		}
+
+		if bulk.maxSeq != e.maxLog {
+			return "the bulk at " + strconv.FormatUint(e.minLog, 10) + " ends at " + strconv.FormatUint(bulk.maxSeq, 10) + ", entry names " + strconv.FormatUint(e.maxLog, 10), 0
+		}
+	}
+
 	return "", 0
 }
 
 // auditPageViolation reports the first way the page breaks its own contract —
 // length, order, or filter scope — or "" when it holds. These are extras over
 // the model check, never the verdict on their own.
-func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter *commonpb.QueryFilter) string {
+func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter *commonpb.QueryFilter, afterSeq uint64, next string) string {
 	if len(entries) > pageSize {
 		return "page longer than requested"
+	}
+
+	// The trail's universe is wider than the model's — system-scoped and
+	// setup-era entries are not tracked — so no model verdict on whether another
+	// entry is waiting is available here. What still holds is structural: the
+	// token names the last entry served, and only a full page can carry one.
+	if !nextCursorLegal(next, cursorEither, lastAuditKey(entries), len(entries), pageSize) {
+		return "resume token does not match the page it rode with"
 	}
 
 	// Without an indexed leaf the page is a zone scan, and the zone is dense:
 	// every proposal, accepted or rejected, takes the next sequence.
 	dense := auditFilterIndexFree(filter)
+
+	// Resume is exclusive and runs in the iteration's own direction.
+	for _, e := range entries {
+		if afterSeq != 0 && (!reverse && e.seq <= afterSeq || reverse && e.seq >= afterSeq) {
+			return "entry outside the cursor"
+		}
+	}
 
 	for i, e := range entries {
 		if i > 0 {
@@ -447,7 +637,7 @@ func auditPageViolation(entries []auditEntry, pageSize int, reverse bool, filter
 			}
 		}
 
-		if i == 0 && dense && !reverse && e.seq != auditZoneStart(filter) {
+		if i == 0 && dense && !reverse && e.seq != max(auditZoneStart(filter), afterSeq+1) {
 			return "zone-scan page does not start at its lower bound"
 		}
 
@@ -529,12 +719,6 @@ func committedOrderTypes(e auditEntry, logs map[uint64]committedLog) map[string]
 			continue
 		}
 
-		if l.id == 0 {
-			types["save_ledger_metadata"], types["delete_ledger_metadata"] = true, true
-
-			continue
-		}
-
 		if token, known := auditOrderTypeOfKind[l.kind]; known {
 			types[token] = true
 		}
@@ -557,6 +741,8 @@ var auditOrderTypeOfKind = map[string]string{
 	"added_account_type":               "add_account_type",
 	"removed_account_type":             "remove_account_type",
 	"updated_default_enforcement_mode": "update_default_enforcement_mode",
+	"saved_ledger_metadata":            "save_ledger_metadata",
+	"deleted_ledger_metadata":          "delete_ledger_metadata",
 }
 
 // auditOrderTypes are the tokens a filter may ask for: every kind this
@@ -586,6 +772,41 @@ func auditFilterIndexFree(filter *commonpb.QueryFilter) bool {
 			return leaf.GetFilter() == nil || leaf.GetAudit().GetField() == commonpb.AuditField_AUDIT_FIELD_SEQUENCE
 		},
 	})
+}
+
+// lastAuditKey is the cursor an audit page implies: the sequence of its last
+// entry in decimal, empty for a page that showed none.
+func lastAuditKey(entries []auditEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+
+	return strconv.FormatUint(entries[len(entries)-1].seq, 10)
+}
+
+// rollAuditCursor picks a resume token for an audit page half the time: a
+// sequence the trail served earlier, a few below it, so the skip lands inside
+// the zone instead of past its head. Acquires c.mu.
+func (c *Checker) rollAuditCursor() (string, uint64) {
+	if !oneIn(2) {
+		return "", 0
+	}
+
+	c.mu.Lock()
+	var sample auditSample
+	if len(c.auditSamples) > 0 {
+		sample = c.auditSamples[internal.Rand().Intn(len(c.auditSamples))]
+	}
+	c.mu.Unlock()
+
+	seq := sample.seq
+	seq -= min(seq, internal.Rand().Uint64()%8)
+
+	if seq == 0 {
+		return "", 0
+	}
+
+	return strconv.FormatUint(seq, 10), seq
 }
 
 // auditZoneStart is the first sequence a forward zone scan serves: the zone
@@ -834,8 +1055,8 @@ func (c *Checker) describeServedLogAt(ctx context.Context, client servicepb.Buck
 	apply, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
 	if !ok {
 		served := "top-level " + strings.TrimPrefix(fmt.Sprintf("%T", log.GetPayload().GetType()), "*commonpb.LogPayload_")
-		if l, ok := c.ledgerLogSeqs[seq]; ok {
-			return served + "; model: ledger-level log of " + l
+		if rec, ok := c.ledgerLogSeqs[seq]; ok {
+			return served + "; model: ledger-level log of " + rec.ledger
 		}
 
 		return served + "; model: unknown sequence"

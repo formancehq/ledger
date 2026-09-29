@@ -224,7 +224,8 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		return
 	}
 
-	pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize()
+	noteClampedPageSize(requestedPageSize, pageSize)
 	reverse := mode == commonpb.QueryMode_QUERY_MODE_LIST && oneIn(2)
 
 	c.mu.Lock()
@@ -240,7 +241,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		Ledger:     ledger,
 		QueryName:  name,
 		Parameters: params,
-		PageSize:   uint32(pageSize),
+		PageSize:   uint32(requestedPageSize),
 		Mode:       mode,
 		Reverse:    reverse,
 	})
@@ -872,91 +873,22 @@ func preparedAggregateOutcomeLegal(ls oracle.LedgerState, call preparedCall, agg
 		})
 }
 
-// aggregateBucket is one (asset, color) total.
-type aggregateBucket struct {
-	asset string
-	color string
-}
-
 // aggregateMatches folds the base's volume cells over the accounts the filter
-// selects and compares the bucket set and every total exactly.
+// selects and compares the bucket set and every total exactly. A prepared query
+// carries no result-stage options, so the fold runs with none.
 func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *commonpb.AggregateResult) bool {
 	if len(agg.GetGroups()) != 0 {
 		return false
 	}
 
-	want := modelAggregate(ls, bound)
-
-	got := map[aggregateBucket]oracle.VolumePair{}
-	for _, v := range agg.GetVolumes() {
-		key := aggregateBucket{asset: v.GetAsset(), color: v.GetColor()}
-		if _, dup := got[key]; dup {
-			// One entry per bucket: a repeated bucket is a server-side fold bug
-			// that summing into a map would silently absorb.
-			return false
-		}
-
-		var pair oracle.VolumePair
-		v.GetInput().IntoUint256(&pair.Input)
-		v.GetOutput().IntoUint256(&pair.Output)
-		got[key] = pair
-	}
-
-	if len(got) != len(want) {
+	got, ok := serverAggregate(agg)
+	if !ok {
+		// One entry per bucket: a repeated bucket is a server-side fold bug that
+		// summing into a map would silently absorb.
 		return false
 	}
 
-	for key, wantPair := range want {
-		gotPair, ok := got[key]
-		if !ok || !gotPair.Input.Eq(&wantPair.Input) || !gotPair.Output.Eq(&wantPair.Output) {
-			return false
-		}
-	}
-
-	return true
-}
-
-// modelAggregate is the model's prediction: every volume cell of every account
-// the filter selects, summed per (asset, color). Grouping is by the account
-// universe the ACCOUNTS compiler iterates — the same universe accountWindow
-// pages over — so the aggregate and the list agree on membership by
-// construction.
-func modelAggregate(ls oracle.LedgerState, bound *commonpb.QueryFilter) map[aggregateBucket]oracle.VolumePair {
-	matched := map[string]struct{}{}
-
-	if base, precision, bare := hasAssetTarget(bound); bare {
-		// Same universe rule as preparedAccountProbe. A purged account carries
-		// no volume cell, so it adds nothing to the totals — but taking the
-		// universe from the projection the server iterates keeps the aggregate
-		// and the list agreeing on membership by construction rather than by
-		// coincidence.
-		for _, addr := range ls.EverAssetAccounts(base, precision) {
-			matched[addr] = struct{}{}
-		}
-	} else {
-		for _, addr := range accountUniverse(ls) {
-			if matchAccountFilter(ls, bound, addr) {
-				matched[addr] = struct{}{}
-			}
-		}
-	}
-
-	out := map[aggregateBucket]oracle.VolumePair{}
-
-	for key, pair := range ls.Volumes().All() {
-		if _, ok := matched[key.Address]; !ok {
-			continue
-		}
-
-		bucket := aggregateBucket{asset: key.Asset, color: key.Color}
-
-		acc := out[bucket]
-		acc.Input.Add(&acc.Input, &pair.Input)
-		acc.Output.Add(&acc.Output, &pair.Output)
-		out[bucket] = acc
-	}
-
-	return out
+	return aggEqual(modelAggregate(ls, bound, aggOptions{}), got)
 }
 
 // describeAggregate renders an aggregate result for a finding's details,
