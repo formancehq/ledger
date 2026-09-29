@@ -2003,8 +2003,8 @@ func HardLink(srcDir, dstDir string) error {
 		return fmt.Errorf("walk: %w", err)
 	}
 
-	for i := len(dirs) - 1; i >= 0; i-- {
-		if err := fsyncDir(dirs[i]); err != nil {
+	for _, dir := range slices.Backward(dirs) {
+		if err := fsyncDir(dir); err != nil {
 			return err
 		}
 	}
@@ -2033,10 +2033,12 @@ func copyCheckpointFile(src, dst string, mode fs.FileMode) error {
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		_ = out.Close()
+
 		return fmt.Errorf("copying checkpoint file %s: %w", src, err)
 	}
 	if err := out.Sync(); err != nil {
 		_ = out.Close()
+
 		return fmt.Errorf("syncing checkpoint file %s: %w", dst, err)
 	}
 	if err := out.Close(); err != nil {
