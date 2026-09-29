@@ -546,6 +546,14 @@ func auditFailureCases() []auditFailureCase {
 			wantContext: map[string]string{"details": "unexpected token at line 3"},
 		},
 		{
+			// Validation reason with no per-occurrence metadata: the detail is
+			// carried in the message only.
+			name:        "NumscriptCompile",
+			err:         &domain.ErrNumscriptCompile{Detail: "cannot take all balance of an unbounded source"},
+			wantReason:  domain.ErrReasonValidation,
+			wantContext: map[string]string{},
+		},
+		{
 			name:        "NumscriptRuntime",
 			err:         &domain.ErrNumscriptRuntime{Detail: "posting amount is negative"},
 			wantReason:  domain.ErrReasonNumscriptRuntime,
