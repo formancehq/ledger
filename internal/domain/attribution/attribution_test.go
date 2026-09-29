@@ -65,3 +65,10 @@ func TestAllowlistedSystemPrincipal(t *testing.T) {
 	}})
 	require.NoError(t, err)
 }
+
+func TestClusterPeerIsAllowlistedSystemPrincipal(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewSystem(ComponentClusterPeer)
+	require.NoError(t, err)
+}

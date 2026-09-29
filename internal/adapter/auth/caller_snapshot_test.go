@@ -142,8 +142,8 @@ func TestResolveCallerSnapshot_ClusterInternalWithoutForwardedSnapshot(t *testin
 	ctx = WithClusterInternal(ctx, true)
 
 	got := ResolveCallerSnapshot(ctx)
-	require.NotNil(t, got.GetAnonymous())
-	require.NotEmpty(t, got.GetAnonymous().GetScopes())
+	require.NotNil(t, got.GetSystem())
+	require.Equal(t, string(commands.ComponentClusterPeer), got.GetSystem().GetComponent())
 }
 
 func TestResolveCallerSnapshot_SystemActor(t *testing.T) {

@@ -128,7 +128,8 @@ func isAllowedSystemComponent(component string) bool {
 		ComponentClusterConfig,
 		ComponentClusterPolicy,
 		ComponentIdempotencyEvict,
-		ComponentBackup:
+		ComponentBackup,
+		ComponentClusterPeer:
 		return true
 	default:
 		return false
@@ -145,4 +146,5 @@ const (
 	ComponentClusterPolicy    SystemActor = "cluster-policy"
 	ComponentIdempotencyEvict SystemActor = "idempotency-eviction"
 	ComponentBackup           SystemActor = "backup"
+	ComponentClusterPeer      SystemActor = "cluster-peer"
 )

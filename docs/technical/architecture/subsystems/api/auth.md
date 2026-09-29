@@ -151,7 +151,8 @@ It is resolved into an opaque, validated `attribution.Capability` by
 
 1. **System actor** — a background action marked with `WithSystemActor(ctx, component)` resolves to a `system` principal (e.g. `query-checkpoint-scheduler`, `mirror`, `events-sink`, `cluster-config`, `idempotency-eviction`, `backup`).
 2. **Trusted forwarded snapshot** — a follower authenticated with the cluster secret sends the snapshot it captured, including `auth_disabled`; the leader validates and freezes it before installing an opaque capability in the context. A trusted hop that omits attribution fails. A snapshot on a non-cluster-internal connection is rejected as spoofing. Plaintext clusters without a cluster secret are not trusted forwarding hops; because authentication is disabled in that topology, the leader derives the same explicit `auth_disabled` principal locally.
-3. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
+3. **Cluster peer** — a request authenticated by the cluster secret with no forwarded caller resolves to the `cluster-peer` system principal rather than to an anonymous caller with transport-level scopes.
+4. **Local authentication state** — otherwise `buildCallerSnapshot()` produces `authenticated` from validated OIDC/Ed25519 claims, `anonymous` from configured anonymous access, or `auth_disabled` when authentication is disabled.
 
 Every admitted write proposal therefore records exactly one explicit principal.
 The capability validator requires a concrete principal, a stable credential

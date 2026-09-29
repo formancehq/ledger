@@ -79,7 +79,8 @@ func IsSystemActor(ctx context.Context) bool {
 //  1. an explicit system actor (WithSystemActor) — a background action;
 //  2. an explicitly forwarded capability (set only after the leader validates
 //     the cluster peer and the frozen snapshot);
-//  3. one built from the immutable authentication state attached locally by
+//  3. the authenticated cluster peer when no original caller was forwarded;
+//  4. one built from the immutable authentication state attached locally by
 //     EvaluateGRPCCredentials.
 //
 // Use this from both the follower (when forwarding to the leader, to keep the
@@ -92,6 +93,14 @@ func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 
 	if forwarded := ForwardedSnapshotFromContext(ctx); forwarded != nil {
 		return forwarded
+	}
+
+	// The cluster secret authenticates the peer, not an anonymous user. When a
+	// request carries no forwarded caller (for example ledgerctl or a reconcile
+	// RPC), preserve that distinction instead of fabricating an anonymous caller
+	// holding every scope granted to the peer transport.
+	if IsClusterInternal(ctx) {
+		return commands.SystemCallerSnapshot(commands.ComponentClusterPeer)
 	}
 
 	return buildCallerSnapshot(ctx)

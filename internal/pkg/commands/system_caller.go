@@ -15,6 +15,7 @@ const (
 	ComponentClusterPolicy    = attribution.ComponentClusterPolicy
 	ComponentIdempotencyEvict = attribution.ComponentIdempotencyEvict
 	ComponentBackup           = attribution.ComponentBackup
+	ComponentClusterPeer      = attribution.ComponentClusterPeer
 )
 
 // SystemCallerSnapshot builds the CallerSnapshot stamped onto a
