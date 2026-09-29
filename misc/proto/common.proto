@@ -1783,8 +1783,9 @@ message LedgerStats {
 }
 
 // PersistedConfig stores critical configuration parameters that must not change
-// between restarts with existing data. Stored at Pebble key {0x06, 0x0C}
-// (Global zone, SubGlobPersistedConfig).
+// between restarts with existing data. Stored at Pebble key {0x08, 0x0C}
+// (ZoneClusterPersistent, SubGlobPersistedConfig). The old {0x06, 0x0C}
+// anchor is detected and rejected by schema-v5 boot validation.
 message PersistedConfig {
   uint64 node_id = 1;
   string cluster_id = 2;

@@ -462,7 +462,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		seq++
 		b := src.OpenWriteSession()
 		require.NoError(t, b.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
-		require.NoError(t, b.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		audit := auditSuccess(seq, seq, seq)
+		audit.Timestamp = &commonpb.Timestamp{Data: seq * 100}
+		require.NoError(t, b.SetProto(coldAuditKey(seq), audit))
+		require.NoError(t, state.StoreLastAppliedTimestamp(b, seq*100))
 		saveNextLedgerIDForBackupTest(t, b, uint32(seq+1))
 		require.NoError(t, b.Commit())
 	}
@@ -502,7 +505,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 
 	seedBatch := dst.OpenWriteSession()
 	require.NoError(t, seedBatch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger-0", 1)))
-	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	seedAudit := auditSuccess(1, 1, 1)
+	seedAudit.Timestamp = &commonpb.Timestamp{Data: 100}
+	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), seedAudit))
+	require.NoError(t, state.StoreLastAppliedTimestamp(seedBatch, 100))
 	saveNextLedgerIDForBackupTest(t, seedBatch, 2)
 	require.NoError(t, seedBatch.Commit())
 
@@ -523,6 +529,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(seq+1), restoredNextLedgerID,
 		"the next creation after restore must not reuse a post-checkpoint ledger ID")
+	restoredHLC, err := query.ReadLastAppliedTimestamp(handle)
+	require.NoError(t, err)
+	require.Equal(t, seq*100, restoredHLC,
+		"the next proposal must advance past every post-checkpoint audit timestamp")
 
 	for _, name := range incrementalLedgers {
 		info, err := query.GetLedgerByName(ctx, handle, name)

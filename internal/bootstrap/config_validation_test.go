@@ -4,6 +4,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
@@ -260,12 +261,9 @@ func TestHealthThresholdsHysteresisValidation(t *testing.T) {
 	}
 }
 
-// TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned seeds a schema-v3
-// config at the raw anchor bytes {ZoneGlobal, 0x0C} — the physical location
-// every layout stores PersistedConfig at — and expects SchemaVersionError.
-// If SubGlobPersistedConfig is ever renumbered, the loader misses this row,
-// classifies the boot as first boot, and accepts the incompatible store;
-// this test then fails.
+// TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned seeds an old-schema
+// anchor at the raw prior-layout bytes {ZoneGlobal, 0x0C}. Startup must reject
+// it before creating the current-zone anchor, including with unsafe override.
 func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
 	t.Parallel()
 
@@ -294,6 +292,10 @@ func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
 	require.ErrorAs(t, err, &schemaErr)
 	require.Equal(t, uint32(3), schemaErr.Persisted)
 	require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
+	err = ValidateOrPersistConfig(store, cfg, logger, true)
+	require.ErrorAs(t, err, &schemaErr)
+	_, _, err = store.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
+	require.ErrorIs(t, err, pebble.ErrNotFound)
 }
 
 func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {

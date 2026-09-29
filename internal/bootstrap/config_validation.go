@@ -38,7 +38,10 @@ import (
 // field tags were realigned. A v3 store's global rows and any un-applied
 // Raft WAL entry are unreadable under the new layout, so opening one is
 // refused.
-const CurrentStorageSchemaVersion uint32 = 4
+// v5: durable cluster-local rows moved from ZoneGlobal to
+// ZoneClusterPersistent. The prior ZoneGlobal boot anchor is detected and
+// rejected before the new layout is read.
+const CurrentStorageSchemaVersion uint32 = 5
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with

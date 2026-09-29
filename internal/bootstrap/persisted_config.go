@@ -29,7 +29,24 @@ func (e *ConfigMismatchError) Error() string {
 // LoadPersistedConfig reads the persisted configuration from Pebble.
 // Returns nil if no configuration has been persisted yet (first boot).
 func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
-	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
+	// Schema v4 stored this anchor in ZoneGlobal. Reject it even if a v5
+	// anchor also exists: a mixed physical layout is not a first boot and must
+	// never be interpreted as a valid current store.
+	legacy, legacyCloser, legacyErr := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
+	if legacyErr == nil {
+		defer func() { _ = legacyCloser.Close() }()
+		old := &commonpb.PersistedConfig{}
+		if unmarshalErr := proto.Unmarshal(legacy, old); unmarshalErr != nil {
+			return nil, fmt.Errorf("unmarshaling prior-schema persisted config: %w", unmarshalErr)
+		}
+
+		return nil, &SchemaVersionError{Persisted: old.GetStorageSchemaVersion(), Current: CurrentStorageSchemaVersion}
+	}
+	if !errors.Is(legacyErr, pebble.ErrNotFound) {
+		return nil, fmt.Errorf("checking prior-schema persisted config: %w", legacyErr)
+	}
+
+	value, closer, err := reader.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return nil, nil
@@ -55,5 +72,5 @@ func SavePersistedConfig(b *dal.WriteSession, cfg *commonpb.PersistedConfig) err
 		return fmt.Errorf("marshaling persisted config: %w", err)
 	}
 
-	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, value)
+	return b.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, value)
 }

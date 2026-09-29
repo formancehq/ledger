@@ -28,6 +28,13 @@ export may be skipped, and no restored row may be dropped afterwards.
 
 ## Restore evidence and responsibilities
 
+The last applied HLC timestamp starts at the checkpoint value and folds the
+maximum effective timestamp from every exported post-checkpoint audit entry.
+Successful and failed business proposals both advance that clock. Technical-only
+proposals do not. `RebuildDelta` stores the folded value before staging is
+activated, so the first destination proposal cannot acquire a timestamp older
+than a restored audit entry.
+
 A full checkpoint carries the Pebble state at its log and audit sequence
 boundaries. Incremental backup segments after that boundary carry raw log,
 audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores those

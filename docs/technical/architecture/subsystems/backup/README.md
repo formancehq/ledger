@@ -117,6 +117,33 @@ A fresh backup against an empty destination is just a "full" backup with an empt
 
 ## Restore
 
+### Global key lifetimes (EN-1415)
+
+The primary Pebble store separates durable state by restore lifetime. The
+classification applies to the **whole zone**, so a new local prefix cannot be
+silently carried into a different cluster:
+
+| Pebble keys | Cross-cluster restore | Reason |
+|---|---|---|
+| `ZoneGlobal` / ledger info, next ledger ID, signing key/config, maintenance mode, event sink cursors/status/config, query checkpoint rows/allocator/schedule, cluster policy | Retained in the full checkpoint; mutable audited projections are rebuilt from the non-empty post-checkpoint delta | Business, governance, and delivery state follows the restored history. Query checkpoint rows are marked as restored because their physical directories are absent. |
+| `ZoneGlobal` / `SubGlobClusterConfig` | Retained | Replicated config includes the hash algorithm used to verify the audit chain and the cache epoch; dropping it could change FSM behavior after restore. It is not a node identity. |
+| `ZoneGlobal` / last applied HLC timestamp | Checkpoint value folded with the maximum timestamp of post-checkpoint audit entries | Every business proposal that advances the HLC records its effective timestamp in the audit header, including failed proposals. The next destination write must advance past the full restored history. |
+| `ZoneGlobal` / idempotency eviction cutoff | Retained as a technical scan horizon | The cutoff guards cache reinjection against already committed evictions; the in-memory map is rebuilt from Pebble. |
+| `ZoneClusterPersistent` (`0x08`) / applied index | Replaced by the restored genesis boundary after the zone delete | Source Raft indexes do not identify entries in the destination's log. The checkpoint index labels its new genesis snapshot. |
+| `ZoneClusterPersistent` / persisted node/cluster config, peers, removed-member registry, Bloom blocks | Deleted as one range | Identity and membership belong to the source cluster. The destination writes its own config and peers and rebuilds Bloom blocks from attributes. Source removal tombstones must not blacklist destination members. |
+| `ZoneClusterTransient` / backup jobs | Deleted as one range | Source in-flight jobs and their history do not coordinate destination work. |
+| `ZoneCache` | Deleted as one range | Checkpoint-era cache entries may be stale after incremental replay. |
+
+`PrepareForBackup` reads the source applied index, then stages checkpoint
+markers, both cluster-only zone deletes and the new genesis boundary in one
+Pebble batch. The boundary point write follows the zone tombstone. A failure
+before commit leaves the store unchanged; a commit error has indeterminate
+durability, and a flush error may leave the committed preparation in the store.
+The restore caller must discard failed staging rather than activate it. This
+changes the Pebble key layout: storage schema v5 rejects an earlier store
+through the old boot-anchor probe. There is no in-place migration of
+pre-release stores. In-cluster snapshot installation retains the local zone.
+
 `internal/infra/backup/restore.go` is the entry point. The flow is conceptually the inverse:
 
 1. Read the manifest from the destination.

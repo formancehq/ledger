@@ -109,11 +109,11 @@ func (f *Filter) add(id attributes.U128) {
 }
 
 // PersistDirtyBlocks writes all blocks modified since the last flush to
-// the Pebble batch. Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+// the Pebble batch. Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
 func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	for blockIdx, blk := range f.dirtyBlocks() {
 		key := make([]byte, 2+1+8)
-		key[0] = dal.ZoneGlobal
+		key[0] = dal.ZoneClusterPersistent
 		key[1] = dal.SubGlobBloom
 		key[2] = f.attrCode
 		binary.BigEndian.PutUint64(key[3:], blockIdx)
@@ -163,8 +163,8 @@ func (f *Filter) dirtyBlocks() iter.Seq2[uint64, block] {
 // into the in-memory filter via OR. This preserves bits set by concurrent
 // Add() calls from the FSM goroutine during the async restore window.
 func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
-	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode}
-	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode + 1}
+	lower := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, f.attrCode}
+	upper := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, f.attrCode + 1}
 
 	it, err := store.NewIter(&pebble.IterOptions{
 		LowerBound: lower,
@@ -182,7 +182,7 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 		}
 
 		key := it.Key()
-		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+		// Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
 		// Require the exact shape, an in-range block index, and a full-length
 		// value. A malformed row was previously skipped, after which the filter
 		// was still published ready — a missing block is a false negative that
@@ -550,7 +550,7 @@ func knownBloomAttrCodes() map[byte]struct{} {
 	return known
 }
 
-// ClassifyPersistedNamespace scans every row under [ZoneGlobal][SubGlobBloom]
+// ClassifyPersistedNamespace scans every row under [ZoneClusterPersistent][SubGlobBloom]
 // and classifies the persisted-block set against the current filter config,
 // returning (configDrift, err):
 //
@@ -589,8 +589,8 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 	known := knownBloomAttrCodes()
 
 	it, err := store.NewIter(&pebble.IterOptions{
-		LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
-		UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+		LowerBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+		UpperBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 	})
 	if err != nil {
 		return false, fmt.Errorf("creating bloom namespace iterator: %w", err)
@@ -606,7 +606,7 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 		}
 
 		key := it.Key()
-		// Key format: [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8].
+		// Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
 		// The attrCode lives at offset 2; a shorter row cannot belong to any
 		// filter's sub-range and is unparseable — treat as corruption.
 		if len(key) < 3 {

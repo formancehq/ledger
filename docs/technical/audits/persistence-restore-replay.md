@@ -52,6 +52,14 @@ inventing a stronger guarantee.
 
 ## State classification and source map
 
+For schema v5, test the physical lifetime boundary: a future unknown
+`ZoneClusterPersistent` row must disappear with source identity, peers, removed
+members and Bloom blocks, while a retained `ZoneGlobal` row remains. The applied
+index is the narrow exception: capture it before deletion and write the restored
+genesis boundary after the zone tombstone. A non-empty audit delta must also
+advance the checkpoint HLC to the greatest exported effective timestamp,
+including failed business proposals, before the next destination proposal.
+
 The audit must refresh this inventory from current writers and variants; the
 table is a discovery map, not a frozen exhaustive schema.
 

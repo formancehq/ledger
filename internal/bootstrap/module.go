@@ -234,7 +234,7 @@ func Module() fx.Option {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
 			// PeerStore persists Raft cluster membership in Pebble under
-			// [ZoneGlobal][SubGlobPeers] (EN-1413). Membership wraps it
+			// [ZoneClusterPersistent][SubGlobPeers] (EN-1413). Membership wraps it
 			// with the in-memory cache, owns the transport / service-pool
 			// wiring, and exposes the OnSnapshotInstalled /
 			// WriteConfChange callbacks injected into Applier and Machine

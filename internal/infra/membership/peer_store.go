@@ -12,16 +12,16 @@ import (
 )
 
 // PeerStore persists Raft cluster membership in Pebble under two adjacent
-// slices of the Global zone:
+// slices of the ClusterPersistent zone:
 //
-//   - [ZoneGlobal][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress — the
+//   - [ZoneClusterPersistent][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress — the
 //     directory of currently-configured peers with their addresses and
 //     16-byte instance UUIDs. Mutations land at ConfChange apply time
 //     (hot-path write through the FSM's WriteSession); recovery reads from
 //     this prefix at boot (lifecycle path, outside the FSM hot path —
 //     invariant 3). EN-1413.
 //
-//   - [ZoneGlobal][SubGlobRemovedMembers][node_id BE 8][instance_id 16] →
+//   - [ZoneClusterPersistent][SubGlobRemovedMembers][node_id BE 8][instance_id 16] →
 //     raftcmdpb.RemovedMemberEntry — tombstones written on removal so a
 //     still-alive pod cannot silently rejoin and be auto-promoted.
 //     Consulted by JoinAsLearner admission and checkAndPromoteLearners.
@@ -49,7 +49,7 @@ func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
 }
 
 // ---------------------------------------------------------------------------
-// Peer directory ([ZoneGlobal][SubGlobPeers]…)
+// Peer directory ([ZoneClusterPersistent][SubGlobPeers]…)
 // ---------------------------------------------------------------------------
 
 // peerKeyLen is the fixed length of a peer key:
@@ -59,7 +59,7 @@ const peerKeyLen = 1 + 1 + 8
 // peerKey builds the Pebble key for the given NodeID.
 func peerKey(nodeID uint64) []byte {
 	key := make([]byte, peerKeyLen)
-	key[0] = dal.ZoneGlobal
+	key[0] = dal.ZoneClusterPersistent
 	key[1] = dal.SubGlobPeers
 	binary.BigEndian.PutUint64(key[2:], nodeID)
 
@@ -70,8 +70,8 @@ func peerKey(nodeID uint64) []byte {
 // covers every peer entry. Upper is the next byte after SubGlobPeers so
 // the half-open range exactly matches the sub-prefix.
 func peerKeyRange() (lower, upper []byte) {
-	return []byte{dal.ZoneGlobal, dal.SubGlobPeers},
-		[]byte{dal.ZoneGlobal, dal.SubGlobPeers + 1}
+	return []byte{dal.ZoneClusterPersistent, dal.SubGlobPeers},
+		[]byte{dal.ZoneClusterPersistent, dal.SubGlobPeers + 1}
 }
 
 // Put writes (nodeID, raftAddr, serviceAddr, instanceID) to Pebble. Called
@@ -175,7 +175,7 @@ func (p *PeerStore) LoadAll() (map[uint64]ConfChangeContext, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Removed-member registry ([ZoneGlobal][SubGlobRemovedMembers]…)
+// Removed-member registry ([ZoneClusterPersistent][SubGlobRemovedMembers]…)
 // ---------------------------------------------------------------------------
 
 // removedMemberKeyLen is the fixed length of a removed-member key:
@@ -206,7 +206,7 @@ func removedMemberKey(nodeID uint64, instanceID []byte) []byte {
 	}
 
 	key := make([]byte, removedMemberKeyLen)
-	key[0] = dal.ZoneGlobal
+	key[0] = dal.ZoneClusterPersistent
 	key[1] = dal.SubGlobRemovedMembers
 	binary.BigEndian.PutUint64(key[2:10], nodeID)
 	copy(key[10:], instanceID)
@@ -217,20 +217,20 @@ func removedMemberKey(nodeID uint64, instanceID []byte) []byte {
 // removedMemberKeyRange returns the [lower, upper) bounds for iterating
 // the whole registry.
 func removedMemberKeyRange() (lower, upper []byte) {
-	return []byte{dal.ZoneGlobal, dal.SubGlobRemovedMembers},
-		[]byte{dal.ZoneGlobal, dal.SubGlobRemovedMembers + 1}
+	return []byte{dal.ZoneClusterPersistent, dal.SubGlobRemovedMembers},
+		[]byte{dal.ZoneClusterPersistent, dal.SubGlobRemovedMembers + 1}
 }
 
 // removedMemberNodeIDPrefix returns the [lower, upper) bounds for iterating
 // every entry belonging to the given nodeID (any instanceID).
 func removedMemberNodeIDPrefix(nodeID uint64) (lower, upper []byte) {
 	lo := make([]byte, 10)
-	lo[0] = dal.ZoneGlobal
+	lo[0] = dal.ZoneClusterPersistent
 	lo[1] = dal.SubGlobRemovedMembers
 	binary.BigEndian.PutUint64(lo[2:], nodeID)
 
 	up := make([]byte, 10)
-	up[0] = dal.ZoneGlobal
+	up[0] = dal.ZoneClusterPersistent
 	up[1] = dal.SubGlobRemovedMembers
 	binary.BigEndian.PutUint64(up[2:], nodeID+1)
 
