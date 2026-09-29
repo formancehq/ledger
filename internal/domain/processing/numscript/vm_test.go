@@ -78,7 +78,7 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, "src", result.Postings[0].Source)
@@ -237,17 +237,17 @@ send $amt (
 	cache := NewNumscriptCache(16)
 	store := NewVMStore(mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}, false)
 
-	firstResult, err := SafeExecCompiled(cache, first.Program, first.Vars, store)
+	firstResult, err := SafeExecCompiled(cache, first.ScriptHash, first.Program, first.Vars, store)
 	require.Nil(t, err)
 	require.Len(t, firstResult.Postings, 1)
 	require.Equal(t, int64(30), firstResult.Postings[0].Amount.Int64())
 
 	// A run that fails normally (missing funds against an empty store) leaves
 	// the instance reusable for the next apply.
-	_, err = SafeExecCompiled(cache, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
+	_, err = SafeExecCompiled(cache, second.ScriptHash, second.Program, second.Vars, NewVMStore(mapValueSource{}, false))
 	require.NotNil(t, err)
 
-	secondResult, err := SafeExecCompiled(cache, second.Program, second.Vars, store)
+	secondResult, err := SafeExecCompiled(cache, second.ScriptHash, second.Program, second.Vars, store)
 	require.Nil(t, err)
 	require.Len(t, secondResult.Postings, 1)
 	require.Equal(t, int64(40), secondResult.Postings[0].Amount.Int64())
@@ -286,13 +286,13 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 
 	cache := NewNumscriptCache(16)
 
-	_, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(panicValueSource{}, false))
+	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(panicValueSource{}, false))
 	require.NotNil(t, err)
 	require.True(t, IsPanic(err))
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	result, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.Nil(t, err)
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
@@ -360,7 +360,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 
 				cache := NewNumscriptCache(16)
 
-				_, err := SafeExecCompiled(cache, programBytes, varsBytes, NewVMStore(source, false))
+				_, err := SafeExecCompiled(cache, compiled.ScriptHash, programBytes, varsBytes, NewVMStore(source, false))
 				require.NotNil(t, err)
 				require.False(t, IsPanic(err))
 
@@ -371,7 +371,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 				require.Zero(t, cache.compiledOrder.Len(), "a rejected artifact must not be cached")
 
 				// The rejection leaves the cache fit for the genuine artifact.
-				result, err := SafeExecCompiled(cache, compiled.Program, compiled.Vars, NewVMStore(source, false))
+				result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
 				require.Nil(t, err)
 				require.Len(t, result.Postings, 1)
 			})
@@ -416,7 +416,7 @@ func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := SafeExecCompiled(NewNumscriptCache(16), tc.program, tc.vars, NewVMStore(source, false))
+			_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, tc.program, tc.vars, NewVMStore(source, false))
 			require.NotNil(t, err)
 			require.False(t, IsPanic(err))
 
@@ -451,7 +451,7 @@ func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 
-	_, err := SafeExecCompiled(NewNumscriptCache(16), malformed, compiled.Vars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, malformed, compiled.Vars, NewVMStore(source, false))
 	require.NotNil(t, err)
 	require.False(t, IsPanic(err))
 
@@ -474,7 +474,7 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}}
 
-	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.Program, compiled.Vars, NewVMStore(source, false))
+	_, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
 	require.NotNil(t, err)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -482,4 +482,43 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 	require.Equal(t, "COIN", insufficientFunds.Asset)
 	require.Equal(t, "30", insufficientFunds.Amount)
 	require.Equal(t, "10", insufficientFunds.Balance)
+}
+
+// TestSafeExecCompiled_WarmHitForeignVersionRejected: the compiled cache is
+// keyed by the script hash, so a warm entry must not serve an artifact of
+// another bytecode version for the same script (a rolling upgrade: this node on
+// the old binary, the artifact compiled by an upgraded leader). The hit peeks
+// the version and takes the cold path, rejecting exactly as a node without the
+// entry would — and the warm entry keeps serving the genuine artifact.
+func TestSafeExecCompiled_WarmHitForeignVersionRejected(t *testing.T) {
+	t.Parallel()
+
+	script := `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`
+	compiled := compileScript(mustEntry(t, script), nil)
+	require.NotNil(t, compiled)
+
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+	cache := NewNumscriptCache(16)
+
+	_, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	require.Nil(t, err)
+	require.Equal(t, 1, cache.compiledOrder.Len())
+
+	current := numscriptlib.CurrentBytecodeVersion
+	foreign := withArtifactVersion(t, compiled.Program, numscriptlib.BytecodeVersion{Major: current.Major + 1})
+
+	_, err = SafeExecCompiled(cache, compiled.ScriptHash, foreign, compiled.Vars, NewVMStore(source, false))
+	require.NotNil(t, err)
+	require.False(t, IsPanic(err))
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, err, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "compiled numscript program")
+
+	result, err := SafeExecCompiled(cache, compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(source, false))
+	require.Nil(t, err)
+	require.Len(t, result.Postings, 1)
 }

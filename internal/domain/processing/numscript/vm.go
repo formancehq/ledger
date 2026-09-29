@@ -143,8 +143,10 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // the interpreter path. Execution reuses the entry's single warm VM instance
 // (see compiledLruEntry for the reuse contract: always safe sequentially,
 // never concurrently). Cache and warm instance alike only move work, never
-// results, so apply stays deterministic.
-func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+// results, so apply stays deterministic. scriptHash is the cache key: the
+// order's HashScript(text), which the caller has already checked against the
+// resolved text (see getOrDecodeCompiled for why it keys the cache).
+func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes []byte, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			result = numscriptlib.ExecutionResult{}
@@ -168,7 +170,7 @@ func SafeExecCompiled(cache *NumscriptCache, programBytes, varsBytes []byte, sto
 		}
 	}
 
-	entry, err := cache.getOrDecodeCompiled(programBytes, &vars)
+	entry, err := cache.getOrDecodeCompiled(scriptHash, programBytes, &vars)
 	if err != nil {
 		return numscriptlib.ExecutionResult{}, err
 	}

@@ -16,8 +16,8 @@ import (
 
 // NumscriptCache stores parsed Numscript programs keyed by their content hash,
 // and decoded+verified VM artifacts — each as one warm VM instance — keyed by
-// the artifact bytes' hash. Both sides use an LRU eviction policy bounded by
-// maxSize to prevent unbounded memory growth.
+// the same script-content hash (see getOrDecodeCompiled). Both sides use an
+// LRU eviction policy bounded by maxSize to prevent unbounded memory growth.
 // Thread-safe: an RWMutex allows concurrent cache hits without contention.
 // LRU reordering is approximate — read hits do not call MoveToFront to avoid
 // write-locking on the hot path.
@@ -226,8 +226,20 @@ func (e *lruEntry) compileParsed() *compiledProgram {
 // A program that does not decode, or that does not carry exactly the bundled
 // library's bytecode version (numscriptlib.CurrentBytecodeVersion — see
 // SafeExecCompiled for why), is rejected loudly before verification and never
-// inserted, so every cached entry holds a current-version program and the hit
-// path needs no version check.
+// inserted, so every cached entry holds a current-version program.
+//
+// Entries are keyed by scriptHash — the order's HashScript(text), already
+// checked against the resolved text by the caller — not by the program bytes:
+// the library's register allocator is not deterministic across separate
+// compiles, so one script can arrive as different but equivalent bytecode
+// (e.g. after a leader change), and any current-version compile of the text
+// runs the same program. The one thing a hit must still rule out is a
+// program of another bytecode version (a rolling upgrade: this node on the
+// old binary, the artifact compiled by an upgraded leader), which a cold node
+// would reject — so a hit peeks the version from the program header (O(1),
+// no decode) and, on mismatch, takes the cold path, which rejects it with the
+// same error a node without the entry would raise. The cache itself is
+// in-memory, so a binary upgrade restarts with it empty.
 //
 // vars is only consulted for its pool sizes, which VerifyWithVars checks
 // LoadVar indices against. The sizes are fixed by the program's own variable
@@ -235,13 +247,27 @@ func (e *lruEntry) compileParsed() *compiledProgram {
 // size mismatch means the artifact and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
 // pools so it fails with the verifier's own error, loudly.
-func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
-	hash := blake3.Sum256(programBytes)
+func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
+	if len(scriptHash) != len([32]byte{}) {
+		return nil, &domain.ErrNumscriptRuntime{
+			Detail: fmt.Sprintf("compiled numscript artifact: script hash has %d bytes, want 32", len(scriptHash)),
+		}
+	}
+
+	hash := [32]byte(scriptHash)
 
 	c.compiledMu.RLock()
-	if elem, ok := c.compiledCache[hash]; ok {
+	elem, ok := c.compiledCache[hash]
+	c.compiledMu.RUnlock()
+
+	if ok {
+		if version, peekErr := numscriptlib.PeekCompiledProgramVersion(programBytes); peekErr != nil || version != numscriptlib.CurrentBytecodeVersion {
+			ok = false
+		}
+	}
+
+	if ok {
 		entry, _ := elem.Value.(*compiledLruEntry)
-		c.compiledMu.RUnlock()
 
 		if entry.nStr == len(vars.StringsPool) && entry.nInt == len(vars.IntsPool) {
 			return entry, nil
@@ -255,8 +281,6 @@ func (c *NumscriptCache) getOrDecodeCompiled(programBytes []byte, vars *numscrip
 
 		return entry, nil
 	}
-
-	c.compiledMu.RUnlock()
 
 	// Decode and verify outside the lock — the expensive part.
 	program, decErr := numscriptlib.DecodeCompiledProgram(programBytes)
