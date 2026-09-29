@@ -20,6 +20,7 @@ import (
 var (
 	ErrMarshalProposal      = errors.New("marshaling proposal")
 	ErrAcquireProposalGuard = errors.New("acquiring proposal guard")
+	ErrIncompleteCoverage   = errors.New("incomplete execution plan coverage")
 )
 
 // Proposer is the canonical interface for submitting a built Raft
@@ -157,7 +158,11 @@ func (p *Builder) Run(
 	}
 
 	cmd.ExecutionPlan = build.ExecutionPlan
-	build.applyBits(cmd, build.ExecutionPlan.GetAttributes())
+	if err := build.applyBits(cmd, build.ExecutionPlan.GetAttributes()); err != nil {
+		build.ReleaseLoaders()
+
+		return nil, fmt.Errorf("%w: %w", ErrIncompleteCoverage, err)
+	}
 
 	data, err := marshalFn(cmd)
 	if err != nil {
@@ -194,7 +199,11 @@ func (p *Builder) Run(
 		// possibly values.
 		result.Rebuilt = true
 		cmd.ExecutionPlan = updatedPreloads
-		build.applyBits(cmd, updatedPreloads.GetAttributes())
+		if err := build.applyBits(cmd, updatedPreloads.GetAttributes()); err != nil {
+			guard.ReleaseAll()
+
+			return nil, fmt.Errorf("%w: %w", ErrIncompleteCoverage, err)
+		}
 
 		data, err = marshalFn(cmd)
 		if err != nil {
@@ -247,7 +256,7 @@ func (p *Builder) Run(
 // all operations in the batch, so rebuilding the map per operation
 // costs O(N·P) runtime.mapassign for N orders × P plans where O(P)
 // suffices.
-func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.AttributeCoverage) {
+func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.AttributeCoverage) error {
 	var (
 		index     map[planLookupKey]uint32
 		planCount = len(plans)
@@ -262,14 +271,14 @@ func (b *BuildResult) applyBits(_ *raftcmdpb.Proposal, plans []*raftcmdpb.Attrib
 			continue
 		}
 
-		if planCount == 0 {
-			*op.Target = nil
-
-			continue
+		bits, err := checkedBitsForNeeds(op.Coverage, plans, index)
+		if err != nil {
+			return err
 		}
-
-		*op.Target = bitsForNeedsWithIndex(op.Coverage, planCount, index)
+		*op.Target = bits
 	}
+
+	return nil
 }
 
 // runWithoutPreload is the no-preload fast path of Run. It fires when
@@ -313,7 +322,11 @@ func (p *Builder) runWithoutPreload(
 		cmd.ExecutionPlan = nil
 	}
 
-	build.applyBits(cmd, nil)
+	if err := build.applyBits(cmd, nil); err != nil {
+		build.ReleaseLoaders()
+
+		return nil, fmt.Errorf("%w: %w", ErrIncompleteCoverage, err)
+	}
 
 	data, err := marshalFn(cmd)
 	if err != nil {

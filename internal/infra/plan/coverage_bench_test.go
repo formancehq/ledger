@@ -139,7 +139,9 @@ func benchmarkPipeline(b *testing.B, orders int, postingsPerOrder int) {
 		}
 
 		// Step 3: applyBits — assign the per-operation coverage bitset.
-		build.applyBits(&raftcmdpb.Proposal{}, build.ExecutionPlan.GetAttributes())
+		if err := build.applyBits(&raftcmdpb.Proposal{}, build.ExecutionPlan.GetAttributes()); err != nil {
+			b.Fatal(err)
+		}
 
 		build.ReleaseLoaders()
 	}

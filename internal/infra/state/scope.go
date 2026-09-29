@@ -174,10 +174,10 @@ func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalid
 		}
 	}
 
-	kind := byte(plan.GetAttrCode())
-	if coverageSlotIndex[kind] < 0 {
+	code := plan.GetAttrCode()
+	if code > 0xff || coverageSlotIndex[byte(code)] < 0 {
 		return &domain.ErrInvalidExecutionPlan{
-			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%02x which the FSM does not handle", idx, kind),
+			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%x which the FSM does not handle", idx, code),
 		}
 	}
 

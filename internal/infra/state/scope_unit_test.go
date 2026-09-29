@@ -227,6 +227,26 @@ func TestApplyPlans_Errors(t *testing.T) {
 	})
 }
 
+func TestApplyPlans_RejectsAliasedAttrCode(t *testing.T) {
+	t.Parallel()
+
+	u128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+	plans := []*raftcmdpb.AttributeCoverage{{
+		Id:       &raftcmdpb.AttributeID{Id: u128[:]},
+		AttrCode: uint32(dal.SubAttrLedger) + 256,
+	}}
+
+	var selected coverageSlots
+	err := applyPlans(&selected, plans, []byte{1})
+	require.NotNil(t, err)
+	require.Contains(t, err.Reason_, "attr_code")
+
+	var proposalWide coverageSlots
+	err = applyAllPlans(&proposalWide, plans)
+	require.NotNil(t, err)
+	require.Contains(t, err.Reason_, "attr_code")
+}
+
 // TestApplyAllPlans_AcceptsValidPlans pins the contract that makes the
 // post-Preload NewProposalScope branch in applyProposal unreachable: any
 // AttributeCoverage set that passes validatePlan (16-byte AttributeID +

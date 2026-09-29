@@ -98,6 +98,7 @@ type cacheSnapshotSlot interface {
 	// unmarshals it into its V before applying the tombstone/Gen1-wins
 	// rules.
 	MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1Byte byte, attrID *raftcmdpb.AttributeID, rawValue []byte) error
+	ValidatePreload(attrID *raftcmdpb.AttributeID, rawValue []byte) error
 	// IterKeys iterates all U128 keys in the given generation.
 	IterKeys(genIndex int) iter.Seq[attributes.U128]
 }
@@ -214,6 +215,21 @@ func (s *protoSnapshotSlot[V]) MirrorPreload(
 	if gen1Set {
 		if err := writeCacheRaw(batch, gen1Byte, s.cacheType, id, tag, false, valueBytes); err != nil {
 			return fmt.Errorf("persisting preloaded gen1 value: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (s *protoSnapshotSlot[V]) ValidatePreload(attrID *raftcmdpb.AttributeID, rawValue []byte) error {
+	typed := s.newValue()
+	if err := typed.UnmarshalVT(rawValue); err != nil {
+		return fmt.Errorf("unmarshal cacheType=0x%x: %w", s.cacheType, err)
+	}
+	id := attributes.U128FromBytes(attrID.GetId())
+	for _, generation := range []kv.KV[attributes.U128, attributes.Entry[V]]{s.ac.Gen0(), s.ac.Gen1()} {
+		if existing, ok := generation.Get(id); ok && existing.Tag != attrID.GetTag() {
+			return fmt.Errorf("cacheType=0x%x: U128 collision with different tag", s.cacheType)
 		}
 	}
 
@@ -365,6 +381,15 @@ func (s *CacheSnapshotter) MirrorPreload(batch *dal.WriteSession, gen0Byte, gen1
 	}
 
 	return slot.MirrorPreload(batch, gen0Byte, gen1Byte, attrID, value.GetRawValue())
+}
+
+func (s *CacheSnapshotter) ValidatePreload(attrID *raftcmdpb.AttributeID, attrCode byte, value *raftcmdpb.AttributeValue) error {
+	slot, ok := s.slotByAttrCode[attrCode]
+	if !ok {
+		return fmt.Errorf("unknown preload attr_code 0x%x", attrCode)
+	}
+
+	return slot.ValidatePreload(attrID, value.GetRawValue())
 }
 
 // persistLeanProtoEntries writes all entries from a KV store to 0xFF in lean format.

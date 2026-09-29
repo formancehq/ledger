@@ -44,6 +44,22 @@ func TestBitsForNeeds_SameCanonicalDifferentAttrCode(t *testing.T) {
 		"both Ledger (bit 0) and Boundary (bit 1) plans must be flagged even though they share a U128")
 }
 
+func TestCheckedBitsForNeedsRejectsMissingAndMismatchedPlan(t *testing.T) {
+	t.Parallel()
+	canonical := domain.LedgerKey{Name: "missing"}.Bytes()
+	id, tag := attributes.MakeKey(canonical)
+	needs := NewCoverage()
+	needs.Add(dal.SubAttrLedger, canonical)
+	_, err := checkedBitsForNeeds(needs, nil, nil)
+	require.ErrorContains(t, err, "omits required")
+
+	plans := []*raftcmdpb.AttributeCoverage{{
+		Id: &raftcmdpb.AttributeID{Id: id[:], Tag: tag + 1}, AttrCode: uint32(dal.SubAttrLedger),
+	}}
+	_, err = checkedBitsForNeeds(needs, plans, buildPlanIndex(plans))
+	require.ErrorContains(t, err, "tag mismatch")
+}
+
 // TestBitsForNeeds_CoversEveryNeedsKind pins setIDInBitset's
 // exhaustive dispatch over every Coverage map. A new field on Coverage that
 // forgets a mark() arm here would silently never flag its bit in the
@@ -203,15 +219,15 @@ func TestApplyBits_SharesPlanIndexAcrossOperations(t *testing.T) {
 		ledgerB = "beta"
 	)
 
-	idA, _ := attributes.MakeKey(domain.LedgerKey{Name: ledgerA}.Bytes())
-	idB, _ := attributes.MakeKey(domain.LedgerKey{Name: ledgerB}.Bytes())
+	idA, tagA := attributes.MakeKey(domain.LedgerKey{Name: ledgerA}.Bytes())
+	idB, tagB := attributes.MakeKey(domain.LedgerKey{Name: ledgerB}.Bytes())
 
 	plans := []*raftcmdpb.AttributeCoverage{
 		{
-			Id: &raftcmdpb.AttributeID{Id: idA[:]}, AttrCode: uint32(dal.SubAttrLedger),
+			Id: &raftcmdpb.AttributeID{Id: idA[:], Tag: tagA}, AttrCode: uint32(dal.SubAttrLedger),
 		},
 		{
-			Id: &raftcmdpb.AttributeID{Id: idB[:]}, AttrCode: uint32(dal.SubAttrLedger),
+			Id: &raftcmdpb.AttributeID{Id: idB[:], Tag: tagB}, AttrCode: uint32(dal.SubAttrLedger),
 		},
 	}
 
@@ -246,7 +262,7 @@ func TestApplyBits_SharesPlanIndexAcrossOperations(t *testing.T) {
 		},
 	}
 
-	build.applyBits(nil, plans)
+	require.NoError(t, build.applyBits(nil, plans))
 
 	require.Equal(t, []byte{0b01}, gotA, "op A flags only bit 0 (ledgerA at index 0)")
 	require.Equal(t, []byte{0b10}, gotB, "op B flags only bit 1 (ledgerB at index 1)")
@@ -279,7 +295,7 @@ func TestApplyBits_EmptyPlansPreservesNilContract(t *testing.T) {
 		},
 	}
 
-	build.applyBits(nil, nil)
+	require.NoError(t, build.applyBits(nil, nil))
 
 	require.Nil(t, got0, "non-nil-target op must be overwritten with nil bitset")
 	require.Nil(t, got1, "nil-Coverage op still has its target written")
