@@ -168,3 +168,88 @@ compaction sees it).
   store already writes through batches, which amortises this, but every
   Get/Seek/Next is a cgo call too. Step 4 must measure scan-heavy paths.
 
+## Step 3 findings — engine abstraction and the main store on RocksDB
+
+`internal/storage/engine` is the contract; `pebbleengine` and
+`rocksengine` (build tag `rocksdb`) both pass `enginetest.Run`, including
+under `-race`. `dal.Store` runs on either through `Config.Engine`;
+`LEDGER_TEST_ENGINE=rocksdb go test -tags rocksdb` replays the existing
+suites on RocksDB. Result: **dal, state (FSM), attributes, backup, checker,
+query, membership and bloom suites are green on RocksDB**, with three
+Pebble-specific tests skipped (OPTIONS-file fault injection, MaxOpenFiles,
+Pebble-shaped metrics).
+
+Migration cost, measured: 109 files, +1.9k/-0.5k lines, one working day,
+almost all mechanical (`pebble.IterOptions` → `engine.IterOptions`,
+`*pebble.Iterator` → `engine.Iterator`, `pebble.ErrNotFound` →
+`engine.ErrNotFound`, write-session `Set`/`DeleteRange` losing their
+Pebble write-options argument). The read and usage stores were wrapped
+rather than ported: they keep their Pebble open path and comparers, and
+hand a `pebbleengine.DB` to the shared helpers.
+
+Semantic differences absorbed in `rocksengine`:
+
+- `SeekLT` is "last key < k" in Pebble, `SeekForPrev` is "<= k" in RocksDB:
+  an exact hit steps back once.
+- `SeekPrefixGE` confinement is decided per iterator in RocksDB
+  (`prefix_same_as_start`); the wrapper enforces it on `Valid()` instead.
+- `Checkpoint` uses `log_size_for_flush = MaxUint64` to mirror Pebble's
+  `WithFlushedWAL` (WAL synced and copied, memtable untouched), refuses an
+  existing destination, and creates missing parent directories (RocksDB
+  does not).
+- Iterator bounds are copied: RocksDB references the bound bytes for the
+  iterator's lifetime and callers reuse key buffers.
+- The write batch is encoded in Go (RocksDB wire format, 12-byte header +
+  tagged records) and handed to `rocksdb_writebatch_create_from` at commit:
+  one cgo call per batch instead of one per operation.
+- `ValueAndErr` never polls `rocksdb_iter_get_error` per key (a cgo call
+  plus a heap escape); errors surface through `Error()`.
+- `Options.Destroy` is skipped when a prefix extractor or merge operator
+  was set (grocksdb double free, see step 2).
+
+Still Pebble-only: `dal.NewStore` option building (event listener, VFS
+metrics wrapper, WAL failover, value separation, per-level compression),
+`servicepb.PebbleMetrics` (nil on RocksDB), write-stall signalling (never
+stalls on RocksDB), and the read/usage store comparers.
+
+## Step 4 findings — benchmarks (Apple M5 Pro, 48 GB, single process)
+
+Engine-level harness: `enginetest.RunBenchmarks` (ledger-shaped keys:
+zone/sub/32-byte hash for attributes, zone/sub/u64 for history; 200-op
+batches, NoSync with a WAL sync every 16 batches; 256 MB block cache, 64 MB
+memtable, 10-bit bloom). `go test -bench Engine` on both packages,
+`-benchtime=2s -count=3`, medians:
+
+| Benchmark | Pebble 2.1.7 | RocksDB 11.0.4 | RocksDB / Pebble |
+|---|---|---|---|
+| ApplyBatches (ops/s) | 440 k | 455 k | 1.03× |
+| ApplyBatches max RSS | 255 MB | 131 MB | 0.51× |
+| PointGetHot (ns) | 707 | 651 | 0.92× |
+| PointGetMissing (ns) | 436 | 159 | 0.36× |
+| ScanHistory1000 (keys/s) | 30.6 M | 8.5 M | **3.6× slower** |
+| SnapshotIterAttributes 1000 keys (µs) | 31 | 93 | **3.0× slower** |
+| CheckpointAndReopen, 49 MB DB (ms) | 130 | 61 | 0.47× |
+
+Application-level, same suites on both engines through
+`LEDGER_TEST_ENGINE`:
+
+| Benchmark | Pebble | RocksDB |
+|---|---|---|
+| dal `BenchmarkStoreGet` 64 B / 512 B / 4 KB (ns) | 506 / 573 / 1035 | 340 / 409 / 745 |
+| state `BenchmarkAuditWrite/Monolithic` n=1 / 10 / 100 / 500 (µs) | 1.1 / 2.2 / 20.5 / 98 | 2.9 / 3.5 / 10.3 / 33 |
+
+Reading: writes, point lookups, checkpoints and memory are at parity or
+better on RocksDB; RocksDB's lower RSS comes from its block cache living
+outside the Go heap (which also means Go memory profiles no longer show
+it). The one structural loss is iteration: every `Next`/`Key`/`Value` is a
+cgo transition (~40 ns each), so scan-heavy paths — read-store queries,
+cache restore, checker replays, backup rebuild — run 3–4× slower per key.
+Tiny commits pay a fixed ~2 µs write-path cost (RocksDB's mutex-guarded
+writer vs Pebble's lock-free commit pipeline); batches of 50+ operations,
+which is what an FSM apply produces, are faster on RocksDB. Test-suite wall
+time confirms the scan penalty: state suite 72 s on RocksDB vs 50 s on
+Pebble, backup 19 s vs 11 s.
+
+Binary: 91.0 MB vs 90.8 MB, plus a 12 MB `librocksdb` shared library at
+runtime. Build time roughly +20 s for the cgo wrapper (cached afterwards).
+

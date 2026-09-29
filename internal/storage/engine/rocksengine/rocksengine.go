@@ -7,6 +7,7 @@ package rocksengine
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -130,7 +131,7 @@ func (d *DB) NewSnapshot() engine.Snapshot {
 }
 
 func (d *DB) NewBatch() engine.Batch {
-	return &batch{db: d, wb: grocksdb.NewWriteBatch()}
+	return &batch{db: d, buf: make([]byte, batchHeaderLen, 4096)}
 }
 
 func (d *DB) Set(key, value []byte, sync bool) error {
@@ -409,7 +410,10 @@ func (it *iterator) Key() []byte { return it.it.KeySlice().Data() }
 
 func (it *iterator) Value() []byte { return it.it.ValueSlice().Data() }
 
-func (it *iterator) ValueAndErr() ([]byte, error) { return it.Value(), it.it.Err() }
+// ValueAndErr never reports an error here: RocksDB surfaces iteration
+// errors through Error() once the iterator turns invalid, and polling
+// rocksdb_iter_get_error per key costs a cgo call plus a heap escape.
+func (it *iterator) ValueAndErr() ([]byte, error) { return it.Value(), nil }
 
 func (it *iterator) Error() error { return it.it.Err() }
 
@@ -422,52 +426,98 @@ func (it *iterator) Close() error {
 
 // --- batches ---
 
+// RocksDB write batch wire format (db/write_batch.cc): an 8-byte sequence
+// number (0 until applied), a little-endian uint32 record count, then one
+// record per operation: [tag][varint32 len][key]([varint32 len][value]).
+// Encoding it in Go turns N cgo calls per batch into one at commit
+// (rocksdb_writebatch_create_from); the FSM apply path issues many small
+// Sets per entry and the per-call overhead dominated the write benchmarks.
+const (
+	batchHeaderLen = 12
+
+	tagDeletion       byte = 0x0
+	tagValue          byte = 0x1
+	tagSingleDeletion byte = 0x7
+	tagRangeDeletion  byte = 0xF
+)
+
 type batch struct {
-	db *DB
-	wb *grocksdb.WriteBatch
+	db    *DB
+	buf   []byte
+	count uint32
+}
+
+func (b *batch) appendSlice(v []byte) {
+	b.buf = binary.AppendUvarint(b.buf, uint64(len(v)))
+	b.buf = append(b.buf, v...)
 }
 
 func (b *batch) Set(key, value []byte) error {
-	b.wb.Put(key, value)
+	if b.buf == nil {
+		return errors.New("rocksdb: batch closed")
+	}
+	b.buf = append(b.buf, tagValue)
+	b.appendSlice(key)
+	b.appendSlice(value)
+	b.count++
 
 	return nil
 }
 
 func (b *batch) Delete(key []byte) error {
-	b.wb.Delete(key)
+	if b.buf == nil {
+		return errors.New("rocksdb: batch closed")
+	}
+	b.buf = append(b.buf, tagDeletion)
+	b.appendSlice(key)
+	b.count++
 
 	return nil
 }
 
 func (b *batch) SingleDelete(key []byte) error {
-	b.wb.SingleDelete(key)
+	if b.buf == nil {
+		return errors.New("rocksdb: batch closed")
+	}
+	b.buf = append(b.buf, tagSingleDeletion)
+	b.appendSlice(key)
+	b.count++
 
 	return nil
 }
 
 func (b *batch) DeleteRange(start, end []byte) error {
-	b.wb.DeleteRange(start, end)
+	if b.buf == nil {
+		return errors.New("rocksdb: batch closed")
+	}
+	b.buf = append(b.buf, tagRangeDeletion)
+	b.appendSlice(start)
+	b.appendSlice(end)
+	b.count++
 
 	return nil
 }
 
-func (b *batch) Count() uint32 { return uint32(b.wb.Count()) }
+func (b *batch) Count() uint32 { return b.count }
 
-func (b *batch) Len() int { return len(b.wb.Data()) }
+func (b *batch) Len() int { return len(b.buf) }
 
 func (b *batch) Commit(sync bool) error {
 	if b.db.readOnly {
 		return errors.New("rocksdb: database opened read-only")
 	}
+	if b.buf == nil {
+		return errors.New("rocksdb: batch closed")
+	}
+	binary.LittleEndian.PutUint32(b.buf[8:12], b.count)
+	wb := grocksdb.WriteBatchFrom(b.buf)
+	defer wb.Destroy()
 
-	return b.db.db.Write(b.db.writeOptions(sync), b.wb)
+	return b.db.db.Write(b.db.writeOptions(sync), wb)
 }
 
 func (b *batch) Close() error {
-	if b.wb != nil {
-		b.wb.Destroy()
-		b.wb = nil
-	}
+	b.buf = nil
 
 	return nil
 }
