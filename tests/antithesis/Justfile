@@ -108,7 +108,7 @@ k8s-launch-minutes duration_minutes description:
         --arg recipients "$ANTITHESIS_REPORT_RECIPIENT" \
         --arg config_image "antithesis-config-ledger-v3-k8s:{{tag}}" \
         --arg description {{quote(description)}} \
-        --arg images "workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}}" \
+        --arg images "workload-ledger-v3:{{tag}};{{ledger_image_name}}:{{tag}};ledger-operator:{{tag}};minio:{{tag}}" \
         '{params: {
             "antithesis.duration": $duration,
             "antithesis.report.recipients": $recipients,
@@ -126,6 +126,13 @@ k8s-launch-minutes duration_minutes description:
 
 # Build all images needed for k8s mode.
 k8s-build-images:
+    # MinIO server and mc client for bucket initialization.
+    env -u SOURCE_DATE_EPOCH docker build \
+        --platform linux/amd64 \
+        -f k8s/Dockerfile.minio \
+        -t "$ANTITHESIS_REPOSITORY/minio:{{tag}}" \
+        k8s
+
     # ledger (instrumented for Antithesis)
     env -u SOURCE_DATE_EPOCH docker build \
         --platform linux/amd64 \
@@ -147,6 +154,7 @@ k8s-push-images include='' *ARGS:
     just --justfile workload/Justfile -d workload tag={{tag}} push {{quote(include)}}
     docker push $ANTITHESIS_REPOSITORY/{{ledger_image_name}}:{{tag}}
     docker push $ANTITHESIS_REPOSITORY/ledger-operator:{{tag}}
+    docker push $ANTITHESIS_REPOSITORY/minio:{{tag}}
 
 # Exit non-zero while a completed run still contains failing properties.
 check-run run_id:
@@ -187,6 +195,7 @@ check-k8s-image-freshness:
         "antithesis-config-ledger-v3-k8s"
         "{{ledger_image_name}}"
         "ledger-operator"
+        "minio"
         "workload-ledger-v3"
         "workload-ledger-v3-sidecar"
     )
