@@ -128,7 +128,7 @@ spec:
     enabled: true
     type: hard
     topologyKey: kubernetes.io/hostname
-  pebble:
+  rocksdb:
     memTableSize: 256Mi
     cacheSize: 1Gi
   # Cache and bloom parameters are part of the Raft-replicated ClusterConfig.

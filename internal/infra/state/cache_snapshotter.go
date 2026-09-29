@@ -22,7 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	storagekv "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // parseLeanValue decodes a persisted cache lean value from the ZoneCache
@@ -465,7 +465,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 		}
 
 		currentGen = meta.GetCurrentGeneration()
-	case errors.Is(err, pebble.ErrNotFound):
+	case errors.Is(err, storagekv.ErrNotFound):
 		// The meta key is written on rotation, so absence means either a
 		// young store still in generation 0, or a store whose applied index
 		// is real but whose cache zone carries no meta — a restored store
@@ -571,7 +571,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 		}
 
 		baseIndex = genMeta.GetBaseIndex()
-	case errors.Is(err, pebble.ErrNotFound):
+	case errors.Is(err, storagekv.ErrNotFound):
 		// Per-generation meta is only written on rotation; before the first
 		// rotation it is legitimately absent and BaseIndex stays 0. Only
 		// ErrNotFound is treated as absence.
@@ -593,7 +593,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 		lower := []byte{dal.ZoneCache, genByte, slot.CacheType()}
 		upper := []byte{dal.ZoneCache, genByte, slot.CacheType() + 1}
 
-		iter, err := reader.NewIter(&pebble.IterOptions{
+		iter, err := reader.NewIter(&storagekv.IterOptions{
 			LowerBound: lower,
 			UpperBound: upper,
 		})
@@ -665,7 +665,7 @@ func (s *CacheSnapshotter) validateCacheNamespace(reader dal.PebbleReader, gen0B
 		validSlot[slot.CacheType()] = struct{}{}
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&storagekv.IterOptions{
 		LowerBound: []byte{dal.ZoneCache},
 		UpperBound: []byte{dal.ZoneCache + 1},
 	})
@@ -907,7 +907,7 @@ func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) (bo
 	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom}
 	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1}
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&storagekv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

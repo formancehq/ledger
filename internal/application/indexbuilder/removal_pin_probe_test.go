@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -58,7 +58,7 @@ func TestFieldRemoval_LeavesNoVersionRecordOrRows(t *testing.T) {
 
 	countRows := func(label string) int {
 		prefix := readstore.MetadataIndexFieldPrefix(kb, ledger, readstore.NamespaceAccount, metaKey)
-		iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{
+		iter, err := b.readStore.DB().NewIter(&kv.IterOptions{
 			LowerBound: prefix,
 			UpperBound: readstore.IncrementBytes(prefix),
 		})

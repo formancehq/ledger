@@ -42,8 +42,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
 func NewRootCommand() *cobra.Command {
@@ -120,7 +120,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Int("raft-max-inflight-msgs", 0, "Maximum number of in-flight messages (0 = use default 256)")
 	runCmd.Flags().Duration("raft-tick-interval", 100*time.Millisecond, "Interval between Raft ticks (0 = use default 100ms)")
 	runCmd.Flags().Uint64("raft-compaction-margin", 1000, "Minimum log entries between snapshots (0 = use default 1000)")
-	runCmd.Flags().Duration("maintenance-interval", 30*time.Second, "Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s)")
+	runCmd.Flags().Duration("maintenance-interval", 30*time.Second, "Interval for background WAL snapshot + RocksDB checkpoint (0 = use default 30s)")
 	runCmd.Flags().Int("raft-propose-queue-capacity", 0, "Capacity of the propose queue (0 = use default 100)")
 	runCmd.Flags().IntSlice("raft-transport-reception-queues", []int{}, "Comma-separated list of reception queue capacities per priority (e.g., \"10,512,512,512,128\")")
 	runCmd.Flags().IntSlice("raft-transport-send-queues", []int{}, "Comma-separated list of send queue capacities per priority (e.g., \"10,512,512,512,128\")")
@@ -129,20 +129,20 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Int("raft-replay-batch-size", 0, "Number of entries per batch during spool replay (0 = use default 1000)")
 	runCmd.Flags().Bool("grpc-compression", false, "Enable gzip compression on gRPC calls")
 
-	// Pebble storage configuration flags (common flags shared with read index)
-	registerPebbleFlags(runCmd, "pebble", dal.DefaultConfig().Config)
-	// DAL-specific Pebble flags
-	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "pebble-wal-bytes-per-sync", 0, "Pebble WAL bytes written before sync (default: 1Mi)")
-	runCmd.Flags().Duration("pebble-wal-min-sync-interval", 0, "Pebble minimum interval between WAL syncs (default: 0, immediate sync)")
-	runCmd.Flags().Bool("pebble-disable-wal", false, "Pebble disable WAL (WARNING: risks data loss)")
-	runCmd.Flags().Int("pebble-max-checkpoints", dal.DefaultConfig().MaxCheckpoints, "Maximum number of Pebble checkpoints to keep (default: 10)")
-	runCmd.Flags().String("pebble-wal-failover-dir", "", "Secondary WAL directory for automatic failover on primary disk latency spikes (disabled if empty)")
+	// RocksDB storage configuration flags (common flags shared with read index)
+	registerRocksDBFlags(runCmd, "rocksdb", dal.DefaultConfig().Config)
+	// DAL-specific RocksDB flags
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "rocksdb-wal-bytes-per-sync", 0, "RocksDB WAL bytes written before sync (default: 1Mi)")
+	runCmd.Flags().Duration("rocksdb-wal-min-sync-interval", 0, "RocksDB minimum interval between WAL syncs (default: 0, immediate sync)")
+	runCmd.Flags().Bool("rocksdb-disable-wal", false, "RocksDB disable WAL (WARNING: risks data loss)")
+	runCmd.Flags().Int("rocksdb-max-checkpoints", dal.DefaultConfig().MaxCheckpoints, "Maximum number of RocksDB checkpoints to keep (default: 10)")
+	runCmd.Flags().String("rocksdb-wal-failover-dir", "", "Secondary WAL directory for automatic failover on primary disk latency spikes (disabled if empty)")
 	// Value separation flags
-	runCmd.Flags().Bool("pebble-value-separation", false, "Enable value separation (large values stored in blob files)")
-	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "pebble-value-separation-min-size", 256, "Minimum value size for separation (default: 256)")
-	runCmd.Flags().Int("pebble-value-separation-max-depth", 4, "Max blob reference depth per SSTable (default: 4)")
-	runCmd.Flags().Duration("pebble-value-separation-rewrite-age", time.Hour, "Minimum blob file age before rewrite (default: 1h)")
-	runCmd.Flags().Float64("pebble-value-separation-garbage-ratio", 0.20, "Blob garbage ratio before rewrite (default: 0.20)")
+	runCmd.Flags().Bool("rocksdb-value-separation", false, "Enable value separation (large values stored in blob files)")
+	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "rocksdb-value-separation-min-size", 256, "Minimum value size for separation (default: 256)")
+	runCmd.Flags().Int("rocksdb-value-separation-max-depth", 4, "Max blob reference depth per SSTable (default: 4)")
+	runCmd.Flags().Duration("rocksdb-value-separation-rewrite-age", time.Hour, "Minimum blob file age before rewrite (default: 1h)")
+	runCmd.Flags().Float64("rocksdb-value-separation-garbage-ratio", 0.20, "Blob garbage ratio before rewrite (default: 0.20)")
 
 	runCmd.Flags().Uint64("cache-rotation-threshold", 1000, "Cache rotation threshold (0 = use default 1000)")
 	bytesize.ByteSizeVar(runCmd, new(bytesize.ByteSize), "spool-segment-max-bytes", 0, "Maximum spool segment size before rotation/sealing (0 = use default 256Mi)")
@@ -230,7 +230,7 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().Bool("unsafe-skip-config-validation", false, "Skip startup configuration safety checks (DANGEROUS: allows node-id/cluster-id changes)")
 
 	// Sentinel mode (runtime consistency checks)
-	runCmd.Flags().Bool("sentinel-mode", false, "Enable sentinel mode: runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification)")
+	runCmd.Flags().Bool("sentinel-mode", false, "Enable sentinel mode: runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/RocksDB verification)")
 
 	// Bloom filter per-attribute-type configuration
 	registerBloomFlags(runCmd)
@@ -239,12 +239,12 @@ func NewRunCommandWithBindings(bindings network.Bindings) *cobra.Command {
 	runCmd.Flags().String("hash-algorithm", "blake3", "Hash algorithm for log chain (blake3 or xxh3)")
 
 	// Read index configuration
-	runCmd.Flags().String("read-index-dir", "", "Directory for the Pebble read index (default: <data-dir>/read-indexes/)")
-	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per Pebble batch commit (0 = default 1000)")
-	registerPebbleFlags(runCmd, "read-index", readstore.DefaultConfig())
+	runCmd.Flags().String("read-index-dir", "", "Directory for the RocksDB read index (default: <data-dir>/read-indexes/)")
+	runCmd.Flags().Int("read-index-batch-size", 0, "Number of log entries per RocksDB batch commit (0 = default 1000)")
+	registerRocksDBFlags(runCmd, "read-index", readstore.DefaultConfig())
 
 	// Audit index configuration
-	runCmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per Pebble batch commit (0 = default 1000)")
+	runCmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per RocksDB batch commit (0 = default 1000)")
 	runCmd.Flags().Bool("disable-audit-index", false, "Disable the audit secondary index worker")
 
 	// Query profiling
@@ -501,8 +501,8 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 	cfg.RaftConfig.ReplayBatchSize = getInt("raft-replay-batch-size", 0)
 	cfg.PoolConfig.Compression = getBool("grpc-compression", false)
 
-	// Load Pebble configuration with defaults
-	cfg.PebbleConfig = loadPebbleConfig(cmd)
+	// Load RocksDB configuration with defaults
+	cfg.RocksDBConfig = loadRocksDBConfig(cmd)
 
 	// Parse transport reception queues.
 	// Priority-0 is heartbeats + high-priority raft traffic (votes, MsgApp
@@ -660,9 +660,9 @@ func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, err
 
 	// Read index configuration
 	cfg.ReadIndexConfig = bootstrap.ReadIndexConfig{
-		Dir:          getString("read-index-dir", ""),
-		BatchSize:    getInt("read-index-batch-size", 0),
-		PebbleConfig: loadReadIndexPebbleConfig(cmd),
+		Dir:           getString("read-index-dir", ""),
+		BatchSize:     getInt("read-index-batch-size", 0),
+		RocksDBConfig: loadReadIndexRocksDBConfig(cmd),
 	}
 
 	// Audit index configuration
@@ -836,11 +836,11 @@ const (
 func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit int64) {
 	mib := func(b int64) int64 { return b / (1 << 20) }
 
-	pebbleCache := cfg.PebbleConfig.CacheSize
-	memtables := int64(cfg.PebbleConfig.MemTableSize) * int64(cfg.PebbleConfig.MemTableStopWritesThreshold)
+	rocksdbCache := cfg.RocksDBConfig.CacheSize
+	memtables := int64(cfg.RocksDBConfig.MemTableSize) * int64(cfg.RocksDBConfig.MemTableStopWritesThreshold)
 
-	readIndexCache := cfg.ReadIndexConfig.PebbleConfig.CacheSize
-	readIndexMemtables := int64(cfg.ReadIndexConfig.PebbleConfig.MemTableSize) * int64(cfg.ReadIndexConfig.PebbleConfig.MemTableStopWritesThreshold)
+	readIndexCache := cfg.ReadIndexConfig.RocksDBConfig.CacheSize
+	readIndexMemtables := int64(cfg.ReadIndexConfig.RocksDBConfig.MemTableSize) * int64(cfg.ReadIndexConfig.RocksDBConfig.MemTableStopWritesThreshold)
 
 	transportBuf := int64(cfg.RaftConfig.TransportBufferSize)
 	if transportBuf == 0 {
@@ -879,41 +879,41 @@ func logMemoryEstimate(logger logging.Logger, cfg *bootstrap.Config, memlimit in
 		}
 	}
 
-	total := pebbleCache + memtables + readIndexCache + readIndexMemtables + transportTotal + fsmCache + bloomTotal + goRuntimeEstimate
+	total := rocksdbCache + memtables + readIndexCache + readIndexMemtables + transportTotal + fsmCache + bloomTotal + goRuntimeEstimate
 
 	logger.Infof(
-		"Memory estimate: pebbleCache=%dMiB memtables=%dMiB readIndexCache=%dMiB readIndexMemtables=%dMiB transport=%dMiB fsmCache=%dMiB bloom=%dMiB goRuntime=%dMiB total=%dMiB",
-		mib(pebbleCache), mib(memtables),
+		"Memory estimate: rocksdbCache=%dMiB memtables=%dMiB readIndexCache=%dMiB readIndexMemtables=%dMiB transport=%dMiB fsmCache=%dMiB bloom=%dMiB goRuntime=%dMiB total=%dMiB",
+		mib(rocksdbCache), mib(memtables),
 		mib(readIndexCache), mib(readIndexMemtables),
 		mib(transportTotal), mib(fsmCache), mib(bloomTotal), mib(goRuntimeEstimate), mib(total),
 	)
 
 	if memlimit != math.MaxInt64 && total > memlimit {
 		logger.Errorf(
-			"WARNING: estimated memory usage (%dMiB) exceeds GOMEMLIMIT (%dMiB) — risk of OOM. Consider increasing memory limits or reducing pebble-cache-size / pebble-memtable-size.",
+			"WARNING: estimated memory usage (%dMiB) exceeds GOMEMLIMIT (%dMiB) — risk of OOM. Consider increasing memory limits or reducing rocksdb-cache-size / rocksdb-memtable-size.",
 			mib(total), mib(memlimit),
 		)
 	}
 }
 
-// registerPebbleFlags registers the common Pebble flags with the given prefix.
+// registerRocksDBFlags registers the common RocksDB flags with the given prefix.
 // Flag names are "{prefix}-memtable-size", "{prefix}-cache-size", etc.
-func registerPebbleFlags(cmd *cobra.Command, prefix string, defaults pebblecfg.Config) {
+func registerRocksDBFlags(cmd *cobra.Command, prefix string, defaults rocksdbcfg.Config) {
 	p := prefix + "-"
-	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"memtable-size", 0, fmt.Sprintf("Pebble memtable size (default: %s)", bytesize.ByteSize(defaults.MemTableSize)))
-	cmd.Flags().Int(p+"memtable-stop-writes-threshold", 0, fmt.Sprintf("Pebble memtable count before stopping writes (default: %d)", defaults.MemTableStopWritesThreshold))
-	cmd.Flags().Int(p+"l0-compaction-threshold", 0, fmt.Sprintf("Pebble L0 file count to trigger compaction (default: %d)", defaults.L0CompactionThreshold))
-	cmd.Flags().Int(p+"l0-stop-writes-threshold", 0, fmt.Sprintf("Pebble L0 file count before stopping writes (default: %d)", defaults.L0StopWritesThreshold))
-	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"lbase-max-bytes", 0, fmt.Sprintf("Pebble L1 max size (default: %s)", bytesize.ByteSize(defaults.LBaseMaxBytes)))
-	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"cache-size", 0, fmt.Sprintf("Pebble block cache size (default: %s)", bytesize.ByteSize(defaults.CacheSize)))
-	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"target-file-size", 0, fmt.Sprintf("Pebble SST file target size (default: %s)", bytesize.ByteSize(defaults.TargetFileSize)))
-	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"bytes-per-sync", 0, fmt.Sprintf("Pebble bytes written before sync (default: %s)", bytesize.ByteSize(defaults.BytesPerSync)))
-	cmd.Flags().Int(p+"max-concurrent-compactions", 0, fmt.Sprintf("Pebble max concurrent compactions (default: %d)", defaults.MaxConcurrentCompactions))
-	cmd.Flags().String(p+"compression", "", fmt.Sprintf("Pebble per-level compression L0-L6, comma-separated (none|snappy|zstd|fastest|fast|balanced|good|default) (default: %s)", defaults.Compression))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"memtable-size", 0, fmt.Sprintf("RocksDB memtable size (default: %s)", bytesize.ByteSize(defaults.MemTableSize)))
+	cmd.Flags().Int(p+"memtable-stop-writes-threshold", 0, fmt.Sprintf("RocksDB memtable count before stopping writes (default: %d)", defaults.MemTableStopWritesThreshold))
+	cmd.Flags().Int(p+"l0-compaction-threshold", 0, fmt.Sprintf("RocksDB L0 file count to trigger compaction (default: %d)", defaults.L0CompactionThreshold))
+	cmd.Flags().Int(p+"l0-stop-writes-threshold", 0, fmt.Sprintf("RocksDB L0 file count before stopping writes (default: %d)", defaults.L0StopWritesThreshold))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"lbase-max-bytes", 0, fmt.Sprintf("RocksDB L1 max size (default: %s)", bytesize.ByteSize(defaults.LBaseMaxBytes)))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"cache-size", 0, fmt.Sprintf("RocksDB block cache size (default: %s)", bytesize.ByteSize(defaults.CacheSize)))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"target-file-size", 0, fmt.Sprintf("RocksDB SST file target size (default: %s)", bytesize.ByteSize(defaults.TargetFileSize)))
+	bytesize.ByteSizeVar(cmd, new(bytesize.ByteSize), p+"bytes-per-sync", 0, fmt.Sprintf("RocksDB bytes written before sync (default: %s)", bytesize.ByteSize(defaults.BytesPerSync)))
+	cmd.Flags().Int(p+"max-concurrent-compactions", 0, fmt.Sprintf("RocksDB max concurrent compactions (default: %d)", defaults.MaxConcurrentCompactions))
+	cmd.Flags().String(p+"compression", "", fmt.Sprintf("RocksDB per-level compression L0-L6, comma-separated (none|snappy|zstd|fastest|fast|balanced|good|default) (default: %s)", defaults.Compression))
 }
 
-// loadBasePebbleConfig loads the common Pebble config from flags with the given prefix.
-func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.Config) pebblecfg.Config {
+// loadBaseRocksDBConfig loads the common RocksDB config from flags with the given prefix.
+func loadBaseRocksDBConfig(cmd *cobra.Command, prefix string, defaults rocksdbcfg.Config) rocksdbcfg.Config {
 	p := prefix + "-"
 
 	getByteSize := func(flag string, def int64) int64 {
@@ -934,14 +934,14 @@ func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.
 
 	compression := defaults.Compression
 	if s, _ := cmd.Flags().GetString(p + "compression"); s != "" {
-		parsed, err := pebblecfg.ParseLevelCompression(s)
+		parsed, err := rocksdbcfg.ParseLevelCompression(s)
 		if err != nil {
 			panic(fmt.Sprintf("invalid %scompression flag: %v", p, err))
 		}
 		compression = parsed
 	}
 
-	return pebblecfg.Config{
+	return rocksdbcfg.Config{
 		MemTableSize:                uint64(getByteSize(p+"memtable-size", int64(defaults.MemTableSize))),
 		MemTableStopWritesThreshold: getInt(p+"memtable-stop-writes-threshold", defaults.MemTableStopWritesThreshold),
 		L0CompactionThreshold:       getInt(p+"l0-compaction-threshold", defaults.L0CompactionThreshold),
@@ -955,10 +955,10 @@ func loadBasePebbleConfig(cmd *cobra.Command, prefix string, defaults pebblecfg.
 	}
 }
 
-// loadPebbleConfig loads Pebble configuration from command flags with defaults.
-func loadPebbleConfig(cmd *cobra.Command) dal.Config {
+// loadRocksDBConfig loads RocksDB configuration from command flags with defaults.
+func loadRocksDBConfig(cmd *cobra.Command) dal.Config {
 	cfg := dal.DefaultConfig()
-	cfg.Config = loadBasePebbleConfig(cmd, "pebble", cfg.Config)
+	cfg.Config = loadBaseRocksDBConfig(cmd, "rocksdb", cfg.Config)
 
 	getDuration := func(flag string, def time.Duration) time.Duration {
 		if val, _ := cmd.Flags().GetDuration(flag); val != 0 {
@@ -984,37 +984,37 @@ func loadPebbleConfig(cmd *cobra.Command) dal.Config {
 		return def
 	}
 
-	cfg.WALBytesPerSync = getByteSize("pebble-wal-bytes-per-sync", cfg.WALBytesPerSync)
-	cfg.WALMinSyncInterval = getDuration("pebble-wal-min-sync-interval", cfg.WALMinSyncInterval)
-	cfg.MaxCheckpoints = getInt("pebble-max-checkpoints", cfg.MaxCheckpoints)
+	cfg.WALBytesPerSync = getByteSize("rocksdb-wal-bytes-per-sync", cfg.WALBytesPerSync)
+	cfg.WALMinSyncInterval = getDuration("rocksdb-wal-min-sync-interval", cfg.WALMinSyncInterval)
+	cfg.MaxCheckpoints = getInt("rocksdb-max-checkpoints", cfg.MaxCheckpoints)
 
-	if disableWAL, _ := cmd.Flags().GetBool("pebble-disable-wal"); disableWAL {
+	if disableWAL, _ := cmd.Flags().GetBool("rocksdb-disable-wal"); disableWAL {
 		cfg.DisableWAL = true
 	}
 
-	if dir, _ := cmd.Flags().GetString("pebble-wal-failover-dir"); dir != "" {
+	if dir, _ := cmd.Flags().GetString("rocksdb-wal-failover-dir"); dir != "" {
 		cfg.WALFailoverDir = dir
 	}
 
 	// Value separation
-	if enabled, _ := cmd.Flags().GetBool("pebble-value-separation"); enabled {
+	if enabled, _ := cmd.Flags().GetBool("rocksdb-value-separation"); enabled {
 		cfg.ValueSeparation.Enabled = true
 	}
 
-	cfg.ValueSeparation.MinimumSize = getByteSize("pebble-value-separation-min-size", cfg.ValueSeparation.MinimumSize)
-	cfg.ValueSeparation.MaxBlobReferenceDepth = getInt("pebble-value-separation-max-depth", cfg.ValueSeparation.MaxBlobReferenceDepth)
-	cfg.ValueSeparation.RewriteMinimumAge = getDuration("pebble-value-separation-rewrite-age", cfg.ValueSeparation.RewriteMinimumAge)
+	cfg.ValueSeparation.MinimumSize = getByteSize("rocksdb-value-separation-min-size", cfg.ValueSeparation.MinimumSize)
+	cfg.ValueSeparation.MaxBlobReferenceDepth = getInt("rocksdb-value-separation-max-depth", cfg.ValueSeparation.MaxBlobReferenceDepth)
+	cfg.ValueSeparation.RewriteMinimumAge = getDuration("rocksdb-value-separation-rewrite-age", cfg.ValueSeparation.RewriteMinimumAge)
 
-	if ratio, _ := cmd.Flags().GetFloat64("pebble-value-separation-garbage-ratio"); ratio != 0 {
+	if ratio, _ := cmd.Flags().GetFloat64("rocksdb-value-separation-garbage-ratio"); ratio != 0 {
 		cfg.ValueSeparation.TargetGarbageRatio = ratio
 	}
 
 	return cfg
 }
 
-// loadReadIndexPebbleConfig loads Pebble configuration for the read index from command flags.
-func loadReadIndexPebbleConfig(cmd *cobra.Command) readstore.Config {
-	return loadBasePebbleConfig(cmd, "read-index", readstore.DefaultConfig())
+// loadReadIndexRocksDBConfig loads RocksDB configuration for the read index from command flags.
+func loadReadIndexRocksDBConfig(cmd *cobra.Command) readstore.Config {
+	return loadBaseRocksDBConfig(cmd, "read-index", readstore.DefaultConfig())
 }
 
 // bloomFlagNames lists per-attribute-type names for bloom filter flag registration.

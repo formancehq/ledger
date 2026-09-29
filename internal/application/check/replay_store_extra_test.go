@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestReplayStoreMoveVolumeTransfersAndDeletes(t *testing.T) {
@@ -30,7 +30,7 @@ func TestReplayStoreMoveVolumeTransfersAndDeletes(t *testing.T) {
 
 	// Old key should be deleted
 	_, _, err := rs.db.Get(replayKey(replayPrefixVolume, oldKey))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestReplayStoreMoveVolumeAccumulatesIntoExisting(t *testing.T) {
@@ -53,7 +53,7 @@ func TestReplayStoreMoveVolumeAccumulatesIntoExisting(t *testing.T) {
 
 	// Old key should be deleted
 	_, _, err := rs.db.Get(replayKey(replayPrefixVolume, oldKey))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestReplayStoreMoveVolumeNoOpWhenSourceMissing(t *testing.T) {
@@ -68,7 +68,7 @@ func TestReplayStoreMoveVolumeNoOpWhenSourceMissing(t *testing.T) {
 
 	// New key should not exist either
 	_, _, err := rs.db.Get(replayKey(replayPrefixVolume, newKey))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestReplayStoreMoveMetadataTransfersAndDeletes(t *testing.T) {
@@ -91,7 +91,7 @@ func TestReplayStoreMoveMetadataTransfersAndDeletes(t *testing.T) {
 
 	// Old key should be deleted
 	_, _, err = rs.db.Get(replayKey(replayPrefixMetadata, oldKey))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestReplayStoreMoveMetadataNoOpWhenSourceMissing(t *testing.T) {
@@ -105,7 +105,7 @@ func TestReplayStoreMoveMetadataNoOpWhenSourceMissing(t *testing.T) {
 
 	// New key should not exist
 	_, _, err := rs.db.Get(replayKey(replayPrefixMetadata, newKey))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestReplayStoreMoveMetadataOverwritesExistingTarget(t *testing.T) {
@@ -137,7 +137,7 @@ func TestReplayStoreDeleteVolume(t *testing.T) {
 	require.NoError(t, rs.DeleteVolume(key))
 
 	_, _, err := rs.db.Get(replayKey(replayPrefixVolume, key))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestReplayStoreDeleteVolumeNonExistentKey(t *testing.T) {

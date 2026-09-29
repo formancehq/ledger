@@ -13,7 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -129,7 +129,7 @@ func ReadLedgerLogsCompiled(
 
 		v, closer, err := indexReader.Get(key)
 		if err != nil {
-			// Even pebble.ErrNotFound is suspect here: the filter index
+			// Even kv.ErrNotFound is suspect here: the filter index
 			// produced this logID, so the per-ledger log index entry
 			// should exist. A miss means the two are out of sync.
 			return nil, &domain.ErrIndexInconsistent{
@@ -162,7 +162,7 @@ func ReadLedgerLogsCompiled(
 // sequence. The caller receives raw key/value bytes without proto
 // deserialization and is responsible for closing the iterator.
 // The iterator is already positioned at the first valid entry (via First()).
-func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence uint64) (*pebble.Iterator, error) {
+func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence uint64) (*kv.Iterator, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog)
 

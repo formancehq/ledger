@@ -17,7 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -1109,7 +1109,7 @@ func TestLogDateBackfillIncludesControlAndHistory(t *testing.T) {
 
 	require.NoError(t, b.processBackfill(context.Background(), make(chan struct{}), b.backfillTasks[0], time.Now().Add(time.Hour)))
 	prefix := readstore.LedgerLogDateRangePrefix(dal.NewKeyBuilder(), ledger)
-	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+	iter, err := b.readStore.DB().NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, iter.Close()) }()
 	count := 0
@@ -1376,7 +1376,7 @@ func persistLedgerAndIndexRegistry(t *testing.T, b *Builder, ledger string, id *
 func countReadstorePrefix(t *testing.T, b *Builder, prefix []byte) int {
 	t.Helper()
 
-	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+	iter, err := b.readStore.DB().NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, iter.Close()) }()
 	count := 0

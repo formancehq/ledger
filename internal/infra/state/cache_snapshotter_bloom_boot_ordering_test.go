@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous is the
@@ -230,7 +230,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 	{
 		handle, err := dataStore.NewDirectReadHandle()
 		require.NoError(t, err)
-		iter, err := handle.NewIter(&pebble.IterOptions{
+		iter, err := handle.NewIter(&kv.IterOptions{
 			LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
 			UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
 		})

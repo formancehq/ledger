@@ -28,7 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
@@ -1777,7 +1777,7 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 		return nil, err
 	}
 
-	var auditSnap *pebble.Snapshot
+	var auditSnap *kv.Snapshot
 	indexReader := query.AuditIndexReader(rs)
 	if query.AuditFilterNeedsIndex(filter) {
 		for {

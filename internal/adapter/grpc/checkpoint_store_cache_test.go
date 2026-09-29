@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -232,7 +232,7 @@ func TestCheckpointStoreCacheReleaseIsIdempotent(t *testing.T) {
 	releaseFirst()
 
 	value, closer, err := main.Get([]byte("any-key"))
-	require.ErrorIs(t, err, pebble.ErrNotFound, "the shared stores must still be open for the remaining reader")
+	require.ErrorIs(t, err, kv.ErrNotFound, "the shared stores must still be open for the remaining reader")
 	require.Nil(t, value)
 	require.Nil(t, closer)
 

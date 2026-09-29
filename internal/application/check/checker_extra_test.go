@@ -12,7 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // --- applyPostings tests ---
@@ -339,7 +339,7 @@ func TestEphemeralPurgeBufferDerivesAccountWidePurgeAndAllowsRefund(t *testing.T
 	if closer != nil {
 		_ = closer.Close()
 	}
-	require.ErrorIs(t, err, pebble.ErrNotFound, "account-wide purge must remove metadata")
+	require.ErrorIs(t, err, kv.ErrNotFound, "account-wide purge must remove metadata")
 
 	replayProposal(newPosting("world", account, "USD", 3))
 	volume, err := rs.GetVolume(domain.NewVolumeKey("ledger", account, "USD", "").Bytes())

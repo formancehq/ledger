@@ -112,9 +112,9 @@ type ClusterSpec struct {
 	// +optional
 	Restore bool `json:"restore,omitempty"`
 
-	// Pebble storage engine configuration.
+	// RocksDB storage engine configuration.
 	// +optional
-	Pebble *PebbleConfig `json:"pebble,omitempty"`
+	RocksDB *RocksDBConfig `json:"rocksdb,omitempty"`
 
 	// Raft consensus configuration.
 	// +optional
@@ -146,7 +146,7 @@ type ClusterSpec struct {
 	MetricsNaming string `json:"metricsNaming,omitempty"`
 
 	// SentinelMode enables runtime volume consistency assertions
-	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+	// (monotonicity, delta/posting cross-check, post-commit cache/RocksDB verification).
 	// +optional
 	SentinelMode *bool `json:"sentinelMode,omitempty"`
 
@@ -272,7 +272,7 @@ type ClusterSpec struct {
 	// +optional
 	Auth *AuthorizationConfig `json:"auth,omitempty"`
 
-	// ReadIndex configuration for the Pebble read index store.
+	// ReadIndex configuration for the RocksDB read index store.
 	// +optional
 	ReadIndex *ReadIndexConfig `json:"readIndex,omitempty"`
 
@@ -407,18 +407,18 @@ type ServiceAccountSpec struct {
 	Name string `json:"name,omitempty"`
 }
 
-// ReadIndexConfig holds Pebble read index configuration.
+// ReadIndexConfig holds RocksDB read index configuration.
 type ReadIndexConfig struct {
-	// BatchSize is the number of log entries per Pebble batch commit.
+	// BatchSize is the number of log entries per RocksDB batch commit.
 	// Higher values amortize commit overhead but use more memory.
 	// Default: 1000.
 	// +optional
 	BatchSize *int32 `json:"batchSize,omitempty"`
 
-	// Pebble holds the common Pebble tunables for the read index.
+	// RocksDB holds the common RocksDB tunables for the read index.
 	// Uses the same knobs as the primary store (cache size, memtable, L0 thresholds, etc.).
 	// +optional
-	Pebble *PebbleConfig `json:"pebble,omitempty"`
+	RocksDB *RocksDBConfig `json:"rocksdb,omitempty"`
 }
 
 // AuthorizationConfig holds authentication and authorization configuration.
@@ -463,8 +463,8 @@ type AuthorizationConfig struct {
 	AnonymousScopes []string `json:"anonymousScopes,omitempty"`
 }
 
-// PebbleConfig holds Pebble storage engine configuration.
-type PebbleConfig struct {
+// RocksDBConfig holds RocksDB storage engine configuration.
+type RocksDBConfig struct {
 	// MemTableSize is the MemTable size (e.g. "256Mi", "1Gi").
 	// Accepts Kubernetes quantity format.
 	// +optional
@@ -525,7 +525,7 @@ type PebbleConfig struct {
 	// +optional
 	IncrementalCompactThreshold *int64 `json:"incrementalCompactThreshold,omitempty"`
 
-	// MaxCheckpoints is the maximum number of Pebble checkpoints to keep.
+	// MaxCheckpoints is the maximum number of RocksDB checkpoints to keep.
 	// Default: 10.
 	// +optional
 	MaxCheckpoints *int32 `json:"maxCheckpoints,omitempty"`
@@ -537,11 +537,11 @@ type PebbleConfig struct {
 
 	// ValueSeparation configuration for large value storage in blob files.
 	// +optional
-	ValueSeparation *PebbleValueSeparationConfig `json:"valueSeparation,omitempty"`
+	ValueSeparation *RocksDBValueSeparationConfig `json:"valueSeparation,omitempty"`
 }
 
-// PebbleValueSeparationConfig holds Pebble value separation configuration.
-type PebbleValueSeparationConfig struct {
+// RocksDBValueSeparationConfig holds RocksDB value separation configuration.
+type RocksDBValueSeparationConfig struct {
 	// Enabled enables value separation (large values stored in blob files).
 	// +optional
 	Enabled *bool `json:"enabled,omitempty"`
@@ -573,7 +573,7 @@ type RaftConfig struct {
 	// +optional
 	CompactionMargin *int32 `json:"compactionMargin,omitempty"`
 
-	// MaintenanceInterval is the interval for background WAL snapshot + Pebble checkpoint.
+	// MaintenanceInterval is the interval for background WAL snapshot + RocksDB checkpoint.
 	// Default: 30s.
 	// +optional
 	MaintenanceInterval string `json:"maintenanceInterval,omitempty"`

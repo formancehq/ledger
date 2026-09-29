@@ -15,7 +15,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
@@ -429,8 +429,8 @@ func TestStore_CompressionPerLevel(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := usagestore.DefaultConfig()
-	cfg.Compression[0] = pebblecfg.NoCompression
-	cfg.Compression[1] = pebblecfg.ZstdCompression
+	cfg.Compression[0] = rocksdbcfg.NoCompression
+	cfg.Compression[1] = rocksdbcfg.ZstdCompression
 	s, err := usagestore.New(dir, logging.NopZap(), cfg)
 	require.NoError(t, err)
 	require.NoError(t, s.Close())
@@ -450,7 +450,7 @@ func TestStore_CompressionPerLevel(t *testing.T) {
 	}
 	require.NotEmpty(t, compression)
 	codecs := strings.Split(compression, ":")
-	require.Len(t, codecs, pebblecfg.NumLevels)
+	require.Len(t, codecs, rocksdbcfg.NumLevels)
 	assert.Equal(t, "kNoCompression", codecs[0])
 	assert.Equal(t, "kZSTD", codecs[1])
 }

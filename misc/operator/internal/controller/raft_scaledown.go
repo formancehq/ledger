@@ -215,7 +215,7 @@ func removeNodeWithExec(ctx context.Context, cfg *rest.Config, clientset kuberne
 	_, err = exec(ctx, cfg, clientset, namespace, pod0, container, args)
 	if err != nil {
 		// The RPC can fail after ConfChangeRemoveNode has committed (for
-		// example while its tombstone is still waiting on Pebble). Verify the
+		// example while its tombstone is still waiting on RocksDB). Verify the
 		// actual membership postcondition rather than matching CLI text, which
 		// may be intentionally sanitized by the gRPC server.
 		stillPresent, statusErr := raftNodePresent(

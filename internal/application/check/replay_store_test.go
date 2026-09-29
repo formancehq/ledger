@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // decodeReplayMetaValue unmarshals the MetadataValue stored after the flag byte.
@@ -394,7 +394,7 @@ func TestReplayStoreMetadataNotFound(t *testing.T) {
 	rs := newTestReplayStore(t)
 
 	_, _, err := rs.db.Get(replayKey(replayPrefixMetadata, []byte("nonexistent")))
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 // A metadata delete has no snapshot representation. When Pebble compacts the
@@ -445,7 +445,7 @@ func TestReplayStoreDeleteSurvivesCompaction(t *testing.T) {
 	baseData, err := base.MarshalVT()
 	require.NoError(t, err)
 	require.NoError(t, rs.db.Merge(replayKey(replayPrefixTransaction, txKey),
-		append([]byte{txOpFinalized}, baseData...), pebble.NoSync))
+		append([]byte{txOpFinalized}, baseData...), kv.NoSync))
 	require.NoError(t, rs.db.Flush())
 
 	require.NoError(t, rs.DeleteTxMetadata(txKey, "k0"))

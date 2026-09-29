@@ -13,15 +13,15 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
 // DefaultConfig returns the default RocksDB configuration for the usage store.
-// Reuses the same tunables type as the primary store (pebblecfg.Config).
+// Reuses the same tunables type as the primary store (rocksdbcfg.Config).
 // Sized smaller than the read index: the usage store holds O(ledgers × templates)
 // entries plus a handful of per-ledger counters, so it never grows large.
-func DefaultConfig() pebblecfg.Config {
-	return pebblecfg.Config{
+func DefaultConfig() rocksdbcfg.Config {
+	return rocksdbcfg.Config{
 		MemTableSize:                16 << 20, // 16MB
 		MemTableStopWritesThreshold: 4,
 		L0CompactionThreshold:       4,
@@ -31,7 +31,7 @@ func DefaultConfig() pebblecfg.Config {
 		TargetFileSize:              16 << 20,  // 16MB
 		BytesPerSync:                512 << 10, // 512KB
 		MaxConcurrentCompactions:    1,
-		Compression:                 pebblecfg.DefaultLevelCompression(),
+		Compression:                 rocksdbcfg.DefaultLevelCompression(),
 	}
 }
 
@@ -51,7 +51,7 @@ type Store struct {
 }
 
 // New opens or creates a RocksDB database at the given directory.
-func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error) {
+func New(dir string, logger logging.Logger, cfg rocksdbcfg.Config) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating usage store directory: %w", err)
 	}
@@ -113,7 +113,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	return &Store{db: db, options: opts, cache: cache, tableOptions: table, logger: logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}), dir: dirPath, readOnly: true}, nil
 }
 
-func usageOptions(cfg pebblecfg.Config) (*grocksdb.Options, *grocksdb.Cache, *grocksdb.BlockBasedTableOptions, error) {
+func usageOptions(cfg rocksdbcfg.Config) (*grocksdb.Options, *grocksdb.Cache, *grocksdb.BlockBasedTableOptions, error) {
 	// grocksdb.Options.Destroy double-frees a SliceTransform passed through
 	// SetPrefixExtractor with RocksDB 11.8. Parsing the native capped transform
 	// leaves grocksdb's duplicate cst ownership slot nil while retaining the

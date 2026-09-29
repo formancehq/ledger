@@ -18,12 +18,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/kv"
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
 // Config contains the read index storage tunables.
-// It uses the same tunables as the primary store (pebblecfg.Config).
-type Config = pebblecfg.Config
+// It uses the same tunables as the primary store (rocksdbcfg.Config).
+type Config = rocksdbcfg.Config
 
 // ErrReadProjectionFailed reports that the normal read projection stopped on
 // a terminal local invariant failure and can no longer certify new horizons.
@@ -43,7 +43,7 @@ func DefaultConfig() Config {
 		TargetFileSize:              64 << 20,  // 64MB
 		BytesPerSync:                512 << 10, // 512KB
 		MaxConcurrentCompactions:    1,
-		Compression:                 pebblecfg.DefaultLevelCompression(),
+		Compression:                 rocksdbcfg.DefaultLevelCompression(),
 	}
 }
 

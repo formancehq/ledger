@@ -134,8 +134,8 @@ func Module() fx.Option {
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
-					meterProvider.Meter("pebble.runtime_store"),
-					cfg.PebbleConfig,
+					meterProvider.Meter("rocksdb.runtime_store"),
+					cfg.RocksDBConfig,
 				)
 				if err != nil {
 					return nil, err
@@ -513,7 +513,7 @@ func Module() fx.Option {
 					dir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
 
-				return readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
+				return readstore.New(dir, logger, cfg.ReadIndexConfig.RocksDBConfig)
 			},
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {

@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // TestDeleteLedgerData_RemovesLedgerMetadata pins the deletion cascade's
@@ -198,7 +198,7 @@ func TestClearSinkStatus(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).PutString("clear-me")
 	_, _, err := s.Get(kb.Build())
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func Test_appendAuditEntries(t *testing.T) {

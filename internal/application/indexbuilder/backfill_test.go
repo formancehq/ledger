@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -360,7 +360,7 @@ func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase 
 	t.Helper()
 
 	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), ledger, assetBase, precision)
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
+	iter, err := store.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})
@@ -792,7 +792,7 @@ func readStoreKeyExists(t *testing.T, store *readstore.Store, key []byte) bool {
 		return true
 	}
 
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, kv.ErrNotFound) {
 		return false
 	}
 
@@ -1507,7 +1507,7 @@ func assertReadStoreMissing(t *testing.T, b *Builder, key []byte) {
 		defer func() { require.NoError(t, closer.Close()) }()
 	}
 
-	require.True(t, errors.Is(err, pebble.ErrNotFound), "expected key %x to be missing, got %v", key, err)
+	require.True(t, errors.Is(err, kv.ErrNotFound), "expected key %x to be missing, got %v", key, err)
 }
 
 func TestIsHistoryLog(t *testing.T) {
@@ -2412,7 +2412,7 @@ func makeSavedAccountMetadataLog(seq uint64, ledger, account, key, value string)
 func countKeysWithPrefix(t *testing.T, store *readstore.Store, prefix []byte) int {
 	t.Helper()
 
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
+	iter, err := store.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})

@@ -17,7 +17,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // Result contains statistics from a full backup run.
@@ -716,7 +716,7 @@ func uploadSegmentPart(
 	ctx context.Context,
 	storage Storage,
 	key string,
-	iter *pebble.Iterator,
+	iter *kv.Iterator,
 	maxSegmentBytes int64,
 ) (endSeq, count uint64, size int64, err error) {
 	pr, pw := io.Pipe()

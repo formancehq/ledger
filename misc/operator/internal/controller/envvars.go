@@ -212,21 +212,21 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 		envs = appendIfStr(envs, "HEALTH_CLOCK_SKEW_THRESHOLD", spec.Health.ClockSkewThreshold)
 	}
 
-	// Pebble
-	if spec.Pebble != nil {
-		envs = appendPebbleEnvVars(envs, "PEBBLE", spec.Pebble)
-		// DAL-specific Pebble flags
-		envs = appendIfQuantity(envs, "PEBBLE_WAL_BYTES_PER_SYNC", spec.Pebble.WalBytesPerSync)
-		envs = appendIfStr(envs, "PEBBLE_WAL_MIN_SYNC_INTERVAL", spec.Pebble.WalMinSyncInterval)
-		envs = appendIfBool(envs, "PEBBLE_DISABLE_WAL", spec.Pebble.DisableWAL)
-		envs = appendIfInt64(envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD", spec.Pebble.IncrementalCompactThreshold)
-		envs = appendIfInt32(envs, "PEBBLE_MAX_CHECKPOINTS", spec.Pebble.MaxCheckpoints)
-		if spec.Pebble.ValueSeparation != nil {
-			envs = appendIfBool(envs, "PEBBLE_VALUE_SEPARATION", spec.Pebble.ValueSeparation.Enabled)
-			envs = appendIfQuantity(envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", spec.Pebble.ValueSeparation.MinSize)
-			envs = appendIfInt32(envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", spec.Pebble.ValueSeparation.MaxDepth)
-			envs = appendIfStr(envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE", spec.Pebble.ValueSeparation.RewriteAge)
-			envs = appendIfStr(envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO", spec.Pebble.ValueSeparation.GarbageRatio)
+	// RocksDB
+	if spec.RocksDB != nil {
+		envs = appendRocksDBEnvVars(envs, "ROCKSDB", spec.RocksDB)
+		// DAL-specific RocksDB flags
+		envs = appendIfQuantity(envs, "ROCKSDB_WAL_BYTES_PER_SYNC", spec.RocksDB.WalBytesPerSync)
+		envs = appendIfStr(envs, "ROCKSDB_WAL_MIN_SYNC_INTERVAL", spec.RocksDB.WalMinSyncInterval)
+		envs = appendIfBool(envs, "ROCKSDB_DISABLE_WAL", spec.RocksDB.DisableWAL)
+		envs = appendIfInt64(envs, "ROCKSDB_INCREMENTAL_COMPACT_THRESHOLD", spec.RocksDB.IncrementalCompactThreshold)
+		envs = appendIfInt32(envs, "ROCKSDB_MAX_CHECKPOINTS", spec.RocksDB.MaxCheckpoints)
+		if spec.RocksDB.ValueSeparation != nil {
+			envs = appendIfBool(envs, "ROCKSDB_VALUE_SEPARATION", spec.RocksDB.ValueSeparation.Enabled)
+			envs = appendIfQuantity(envs, "ROCKSDB_VALUE_SEPARATION_MIN_SIZE", spec.RocksDB.ValueSeparation.MinSize)
+			envs = appendIfInt32(envs, "ROCKSDB_VALUE_SEPARATION_MAX_DEPTH", spec.RocksDB.ValueSeparation.MaxDepth)
+			envs = appendIfStr(envs, "ROCKSDB_VALUE_SEPARATION_REWRITE_AGE", spec.RocksDB.ValueSeparation.RewriteAge)
+			envs = appendIfStr(envs, "ROCKSDB_VALUE_SEPARATION_GARBAGE_RATIO", spec.RocksDB.ValueSeparation.GarbageRatio)
 		}
 	}
 
@@ -343,8 +343,8 @@ func buildEnvVars(ledger *ledgerv1alpha1.Cluster, targetTLSMode string, credenti
 	// Read index
 	if spec.ReadIndex != nil {
 		envs = appendIfInt32(envs, "READ_INDEX_BATCH_SIZE", spec.ReadIndex.BatchSize)
-		if spec.ReadIndex.Pebble != nil {
-			envs = appendPebbleEnvVars(envs, "READ_INDEX", spec.ReadIndex.Pebble)
+		if spec.ReadIndex.RocksDB != nil {
+			envs = appendRocksDBEnvVars(envs, "READ_INDEX", spec.ReadIndex.RocksDB)
 		}
 	}
 
@@ -466,9 +466,9 @@ func appendMonitoringEnvVars(envs []corev1.EnvVar, mon *ledgerv1alpha1.Monitorin
 	return envs
 }
 
-// appendPebbleEnvVars appends the common Pebble env vars for the given prefix.
-// Prefix is "PEBBLE" or "READ_INDEX".
-func appendPebbleEnvVars(envs []corev1.EnvVar, prefix string, p *ledgerv1alpha1.PebbleConfig) []corev1.EnvVar {
+// appendRocksDBEnvVars appends the common RocksDB env vars for the given prefix.
+// Prefix is "ROCKSDB" or "READ_INDEX".
+func appendRocksDBEnvVars(envs []corev1.EnvVar, prefix string, p *ledgerv1alpha1.RocksDBConfig) []corev1.EnvVar {
 	envs = appendIfQuantity(envs, prefix+"_MEMTABLE_SIZE", p.MemTableSize)
 	envs = appendIfInt32(envs, prefix+"_MEMTABLE_STOP_WRITES_THRESHOLD", p.MemTableStopWritesThreshold)
 	envs = appendIfInt32(envs, prefix+"_L0_COMPACTION_THRESHOLD", p.L0CompactionThreshold)

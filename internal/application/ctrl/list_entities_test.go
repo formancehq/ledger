@@ -11,7 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -46,7 +46,7 @@ func TestListDescFilteredStopsAtLookahead(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	for id := uint64(2); id <= 100; id += 2 {
-		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, pebble.NoSync))
+		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, kv.NoSync))
 	}
 
 	encode := func(id uint64) []byte { return binary.BigEndian.AppendUint64(nil, id) }

@@ -7,11 +7,11 @@ import (
 	"io"
 	"sync"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // PebbleGetter provides point-lookup access to Pebble.
-// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, *Store, and the
+// Implemented by *kv.DB, *kv.Snapshot, *ReadHandle, *Store, and the
 // liveGetter behind (*ReadHandle).Live.
 //
 // *WriteSession deliberately does NOT implement this interface: hot-path
@@ -19,7 +19,7 @@ import (
 //
 // The returned io.Closer owns the Pebble resources backing the returned bytes,
 // which are only valid until it is closed. On an SST-backed lookup that
-// resource is a live *pebble.Iterator holding a file cache reference.
+// resource is a live *kv.Iterator holding a file cache reference.
 //
 // *Store is the exception. It holds dbMu.RLock only for the duration of the
 // call, so it must not hand that resource back: the lock would already be
@@ -47,7 +47,7 @@ type noopCloser struct{}
 func (noopCloser) Close() error { return nil }
 
 // PebbleReader provides full read access (point lookups + iteration).
-// Implemented by *pebble.DB, *pebble.Snapshot, and *ReadHandle.
+// Implemented by *kv.DB, *kv.Snapshot, and *ReadHandle.
 //
 // *Store does NOT implement this interface. Callers that need iterators must
 // use NewReadHandle() or NewDirectReadHandle() — these hold dbMu.RLock for
@@ -58,7 +58,7 @@ func (noopCloser) Close() error { return nil }
 // writers must not read from Pebble.
 type PebbleReader interface {
 	PebbleGetter
-	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)
+	NewIter(o *kv.IterOptions) (*kv.Iterator, error)
 }
 
 // ReadHandle provides read access to the store, optionally via a Pebble snapshot.
@@ -73,14 +73,14 @@ type PebbleReader interface {
 // only protects children that respect that ordering.
 //
 // Two modes:
-//   - Snapshot mode (NewReadHandle): point-in-time consistency via *pebble.Snapshot.
-//   - Direct mode (NewDirectReadHandle): reads from *pebble.DB directly. Iterators
+//   - Snapshot mode (NewReadHandle): point-in-time consistency via *kv.Snapshot.
+//   - Direct mode (NewDirectReadHandle): reads from *kv.DB directly. Iterators
 //     share the DB's keySpanCache (no per-snapshot re-initialization) and do not
 //     pin SSTs beyond iterator lifetime, so compactions are not blocked.
 type ReadHandle struct {
 	reader PebbleReader
-	snap   *pebble.Snapshot // nil in direct mode
-	db     *pebble.DB
+	snap   *kv.Snapshot // nil in direct mode
+	db     *kv.DB
 	mu     *sync.RWMutex
 }
 
@@ -146,7 +146,7 @@ func (h *ReadHandle) Live() PebbleGetter {
 // closer, and it holds no lock of its own — it is only safe for as long as
 // the ReadHandle that produced it.
 type liveGetter struct {
-	db *pebble.DB
+	db *kv.DB
 }
 
 func (g liveGetter) Get(key []byte) ([]byte, io.Closer, error) {
@@ -157,7 +157,7 @@ func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
 	return h.reader.Get(key)
 }
 
-func (h *ReadHandle) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error) {
+func (h *ReadHandle) NewIter(opts *kv.IterOptions) (*kv.Iterator, error) {
 	return h.reader.NewIter(opts)
 }
 
@@ -189,7 +189,7 @@ func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 
 	val, closer, err := db.Get(key)
 	if err != nil {
-		// Includes pebble.ErrNotFound, which callers match on; propagate
+		// Includes kv.ErrNotFound, which callers match on; propagate
 		// unwrapped. Pebble returns no closer alongside an error.
 		return nil, nil, err
 	}
@@ -205,8 +205,8 @@ func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 }
 
 // NewBoundedIter creates a Pebble iterator bounded by [lower, upper).
-func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*pebble.Iterator, error) {
-	return reader.NewIter(&pebble.IterOptions{
+func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*kv.Iterator, error) {
+	return reader.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -217,7 +217,7 @@ func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*pebble.Iterator,
 func GetValue(reader PebbleGetter, key []byte) ([]byte, error) {
 	val, closer, err := reader.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil
 		}
 

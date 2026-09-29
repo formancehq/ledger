@@ -18,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrVolumeCachePebbleDivergence is returned when the cache volume does not
@@ -751,7 +751,7 @@ func countCacheZoneEntries(store dal.PebbleReader, genByte, cacheType byte) uint
 	lower := []byte{dal.ZoneCache, genByte, cacheType}
 	upper := []byte{dal.ZoneCache, genByte, cacheType + 1}
 
-	iter, err := store.NewIter(&pebble.IterOptions{
+	iter, err := store.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -775,7 +775,7 @@ func countAttributeEntries(store dal.PebbleReader, attrType byte) uint64 {
 	lower := []byte{dal.ZoneAttributes, attrType}
 	upper := []byte{dal.ZoneAttributes, attrType + 1}
 
-	iter, err := store.NewIter(&pebble.IterOptions{
+	iter, err := store.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

@@ -1,4 +1,4 @@
-package pebblecfg
+package rocksdbcfg
 
 import (
 	"testing"

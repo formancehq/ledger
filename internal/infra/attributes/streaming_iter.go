@@ -6,7 +6,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // StreamingIter is a pull-based iterator over computed attribute entries.
@@ -25,7 +25,7 @@ import (
 //	if err := iter.Err(); err != nil { return err }
 type StreamingIter[V proto.Message] struct {
 	ab         accumulatorBase[V]
-	iter       *pebble.Iterator
+	iter       *kv.Iterator
 	started    bool
 	flushed    bool
 	current    *ComputedEntry[V]
@@ -58,7 +58,7 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 		upperBound = []byte{dal.ZoneAttributes, a.prefix + 1}
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})

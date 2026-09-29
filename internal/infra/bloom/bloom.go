@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // BloomConfigEnabled returns true if at least one bloom filter type has a
@@ -118,7 +118,7 @@ func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 		key[2] = f.attrCode
 		binary.BigEndian.PutUint64(key[3:], blockIdx)
 
-		if err := batch.Set(key, marshalBlock(&blk), pebble.NoSync); err != nil {
+		if err := batch.Set(key, marshalBlock(&blk), kv.NoSync); err != nil {
 			return fmt.Errorf("persisting bloom block %d: %w", blockIdx, err)
 		}
 	}
@@ -166,7 +166,7 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode}
 	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode + 1}
 
-	it, err := store.NewIter(&pebble.IterOptions{
+	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -588,7 +588,7 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 
 	known := knownBloomAttrCodes()
 
-	it, err := store.NewIter(&pebble.IterOptions{
+	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
 		UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
 	})
@@ -638,7 +638,7 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 // canonical keys into the bloom filters. Used on first boot when no persisted
 // bloom blocks exist yet.
 func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleReader) error {
-	it, err := store.NewIter(&pebble.IterOptions{
+	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneAttributes},
 		UpperBound: []byte{dal.ZoneAttributes + 1},
 	})

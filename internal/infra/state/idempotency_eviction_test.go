@@ -15,7 +15,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned is the
@@ -111,7 +111,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 	mainKeysRemaining := 0
 	timeIndexRemaining := 0
 
-	mainIter, err := postHandle.NewIter(&pebble.IterOptions{
+	mainIter, err := postHandle.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
 	})
@@ -121,7 +121,7 @@ func TestIdempotencyEviction_SameTimestampSiblingsNeverOrphaned(t *testing.T) {
 	}
 	require.NoError(t, mainIter.Close())
 
-	timeIter, err := postHandle.NewIter(&pebble.IterOptions{
+	timeIter, err := postHandle.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
@@ -176,7 +176,7 @@ func TestIdempotencyEviction_LastScannedKeyExcludesSiblingsLexically(t *testing.
 	rangeEnd = append(rangeEnd, 0x00)
 
 	// Inspect every unscanned time-index key and assert rangeEnd < it.
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&kv.IterOptions{
 		LowerBound: rangeEnd,
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
@@ -337,7 +337,7 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = post.Close() }()
 
-	mainIter, err := post.NewIter(&pebble.IterOptions{
+	mainIter, err := post.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
 	})
@@ -354,7 +354,7 @@ func TestIdempotencyEviction_MultiBatchConvergence(t *testing.T) {
 		"all 4 main keys must be deleted across both batches — any "+
 			"survivor here is an orphaned key the in-memory dedup leaked")
 
-	timeIter, err := post.NewIter(&pebble.IterOptions{
+	timeIter, err := post.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
@@ -454,7 +454,7 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 func countIdemTimeIndexRows(t *testing.T, reader dal.PebbleReader, keyHash []byte) int {
 	t.Helper()
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})

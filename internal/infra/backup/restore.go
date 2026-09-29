@@ -10,7 +10,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func exportKeyShape(segmentType string) ([]byte, int, error) {
@@ -131,7 +131,7 @@ func ApplyExports(
 			}
 			lastSeq = seq
 
-			if err := batch.Set(key, value, pebble.NoSync); err != nil {
+			if err := batch.Set(key, value, kv.NoSync); err != nil {
 				_ = reader.Close()
 				_ = batch.Cancel()
 

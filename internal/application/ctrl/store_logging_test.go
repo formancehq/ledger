@@ -9,11 +9,11 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestScanAccountLogsCompletionAtTrace(t *testing.T) {
-	db, err := pebble.Open(t.TempDir(), pebble.Options{})
+	db, err := kv.Open(t.TempDir(), kv.Options{})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

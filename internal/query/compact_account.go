@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // CompactAccountIterator yields CompactAccount values by merging Volume and
@@ -24,7 +24,7 @@ type CompactAccountIterator struct {
 
 // compactSubIter iterates one attribute type, collecting all entries per account.
 type compactSubIter struct {
-	iter      *pebble.Iterator
+	iter      *kv.Iterator
 	ledgerLen int  // length of "ledger\x00" in canonical key
 	attrType  byte // dal.SubAttrVolume or dal.SubAttrMetadata
 	sepByte   byte // canonical key separator for this type

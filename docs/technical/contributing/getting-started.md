@@ -39,7 +39,7 @@ ledger/
 │   ├── pkg/                   # Internal utilities (kv/, signal/, futures/, commands/, bitset/, bytesize/, filterexpr/, semver/, tarutil/, vtmarshal/, worker/)
 │   ├── proto/                 # Generated protobuf code
 │   ├── query/                 # CQRS read-side queries
-│   └── storage/               # Pebble persistence (dal/, wal/, spool/, readstore/, pebblecfg/)
+│   └── storage/               # Pebble persistence (dal/, wal/, spool/, readstore/, rocksdbcfg/)
 ├── pkg/                       # Public packages (actions/, scenario/, testserver/)
 ├── tests/                     # Test suites (e2e/, scenarios/, antithesis/, perf/, schemathesis/)
 ├── misc/

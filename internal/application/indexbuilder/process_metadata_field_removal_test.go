@@ -8,7 +8,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -23,7 +23,7 @@ func countReverseMapRows(t *testing.T, b *Builder, ledger, ns, metaKey string) i
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	iter, err := snap.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+	iter, err := snap.NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: upper})
 	require.NoError(t, err)
 
 	defer func() { _ = iter.Close() }()

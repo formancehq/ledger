@@ -15,7 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // NewDumpCommand creates the store dump command.
@@ -43,7 +43,7 @@ func runDump(cmd *cobra.Command, args []string) error {
 	limit, _ := cmd.Flags().GetInt("limit")
 	raw, _ := cmd.Flags().GetBool("raw")
 
-	db, err := pebble.Open(dataDir, pebble.Options{
+	db, err := kv.Open(dataDir, kv.Options{
 		ReadOnly: true,
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func runDump(cmd *cobra.Command, args []string) error {
 
 	defer func() { _ = db.Close() }()
 
-	var iterOpts pebble.IterOptions
+	var iterOpts kv.IterOptions
 	if prefixHex != "" {
 		prefixBytes, decErr := hex.DecodeString(prefixHex)
 		if decErr != nil {

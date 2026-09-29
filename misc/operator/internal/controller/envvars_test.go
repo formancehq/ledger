@@ -210,27 +210,27 @@ func TestBuildEnvVars_MirrorMaxBatchSize(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Pebble compression
+// RocksDB compression
 // ---------------------------------------------------------------------------
 
-func TestBuildEnvVars_PebbleCompression(t *testing.T) {
+func TestBuildEnvVars_RocksDBCompression(t *testing.T) {
 	t.Parallel()
 
 	t.Run("primary store", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{
 			Compression: "snappy,snappy,zstd,zstd,zstd,zstd,zstd",
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "PEBBLE_COMPRESSION", "snappy,snappy,zstd,zstd,zstd,zstd,zstd")
+		assertEnv(t, envs, "ROCKSDB_COMPRESSION", "snappy,snappy,zstd,zstd,zstd,zstd,zstd")
 	})
 
 	t.Run("read index", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		ls.Spec.ReadIndex = &ledgerv1alpha1.ReadIndexConfig{
-			Pebble: &ledgerv1alpha1.PebbleConfig{
+			RocksDB: &ledgerv1alpha1.RocksDBConfig{
 				Compression: "none,none,zstd,zstd,zstd,zstd,zstd",
 			},
 		}
@@ -241,44 +241,44 @@ func TestBuildEnvVars_PebbleCompression(t *testing.T) {
 	t.Run("omitted when empty", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertNoEnv(t, envs, "PEBBLE_COMPRESSION")
+		assertNoEnv(t, envs, "ROCKSDB_COMPRESSION")
 	})
 }
 
 // ---------------------------------------------------------------------------
-// Pebble max checkpoints
+// RocksDB max checkpoints
 // ---------------------------------------------------------------------------
 
-func TestBuildEnvVars_PebbleMaxCheckpoints(t *testing.T) {
+func TestBuildEnvVars_RocksDBMaxCheckpoints(t *testing.T) {
 	t.Parallel()
 
 	t.Run("set", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		v := int32(5)
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{
 			MaxCheckpoints: &v,
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "PEBBLE_MAX_CHECKPOINTS", "5")
+		assertEnv(t, envs, "ROCKSDB_MAX_CHECKPOINTS", "5")
 	})
 
 	t.Run("omitted when nil", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertNoEnv(t, envs, "PEBBLE_MAX_CHECKPOINTS")
+		assertNoEnv(t, envs, "ROCKSDB_MAX_CHECKPOINTS")
 	})
 }
 
 // ---------------------------------------------------------------------------
-// Pebble value separation
+// RocksDB value separation
 // ---------------------------------------------------------------------------
 
-func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
+func TestBuildEnvVars_RocksDBValueSeparation(t *testing.T) {
 	t.Parallel()
 
 	t.Run("full config", func(t *testing.T) {
@@ -287,8 +287,8 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 		bTrue := true
 		minSize := resource.MustParse("512")
 		maxDepth := int32(8)
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
-			ValueSeparation: &ledgerv1alpha1.PebbleValueSeparationConfig{
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{
+			ValueSeparation: &ledgerv1alpha1.RocksDBValueSeparationConfig{
 				Enabled:      &bTrue,
 				MinSize:      &minSize,
 				MaxDepth:     &maxDepth,
@@ -297,37 +297,37 @@ func TestBuildEnvVars_PebbleValueSeparation(t *testing.T) {
 			},
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION", "true")
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", "512")
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", "8")
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE", "2h")
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO", "0.30")
+		assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION", "true")
+		assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MIN_SIZE", "512")
+		assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MAX_DEPTH", "8")
+		assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_REWRITE_AGE", "2h")
+		assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_GARBAGE_RATIO", "0.30")
 	})
 
 	t.Run("nil value separation omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION")
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE")
+		assertNoEnv(t, envs, "ROCKSDB_VALUE_SEPARATION")
+		assertNoEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MIN_SIZE")
 	})
 
 	t.Run("partial config", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		bTrue := true
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
-			ValueSeparation: &ledgerv1alpha1.PebbleValueSeparationConfig{
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{
+			ValueSeparation: &ledgerv1alpha1.RocksDBValueSeparationConfig{
 				Enabled: &bTrue,
 			},
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION", "true")
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE")
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH")
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE")
-		assertNoEnv(t, envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO")
+		assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION", "true")
+		assertNoEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MIN_SIZE")
+		assertNoEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MAX_DEPTH")
+		assertNoEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_REWRITE_AGE")
+		assertNoEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_GARBAGE_RATIO")
 	})
 }
 
@@ -662,29 +662,29 @@ func TestBuildEnvVars_RaftReplayBatchSize(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Pebble incremental compact threshold
+// RocksDB incremental compact threshold
 // ---------------------------------------------------------------------------
 
-func TestBuildEnvVars_PebbleIncrementalCompactThreshold(t *testing.T) {
+func TestBuildEnvVars_RocksDBIncrementalCompactThreshold(t *testing.T) {
 	t.Parallel()
 
 	t.Run("set", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
 		v := int64(50000)
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{
 			IncrementalCompactThreshold: &v,
 		}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertEnv(t, envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD", "50000")
+		assertEnv(t, envs, "ROCKSDB_INCREMENTAL_COMPACT_THRESHOLD", "50000")
 	})
 
 	t.Run("nil omitted", func(t *testing.T) {
 		t.Parallel()
 		ls := newMinimalCluster()
-		ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{}
+		ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{}
 		envs := buildEnvVars(ls, "disabled", nil)
-		assertNoEnv(t, envs, "PEBBLE_INCREMENTAL_COMPACT_THRESHOLD")
+		assertNoEnv(t, envs, "ROCKSDB_INCREMENTAL_COMPACT_THRESHOLD")
 	})
 }
 
@@ -928,9 +928,9 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 	ls.Spec.GrpcSlowThreshold = "5s"
 	ls.Spec.NumscriptCacheSize = &numscriptCache
 	ls.Spec.MirrorMaxBatchSize = &mirrorBatch
-	ls.Spec.Pebble = &ledgerv1alpha1.PebbleConfig{
+	ls.Spec.RocksDB = &ledgerv1alpha1.RocksDBConfig{
 		Compression: "zstd,zstd,zstd,zstd,zstd,zstd,zstd",
-		ValueSeparation: &ledgerv1alpha1.PebbleValueSeparationConfig{
+		ValueSeparation: &ledgerv1alpha1.RocksDBValueSeparationConfig{
 			Enabled:      &bTrue,
 			MinSize:      &vsMinSize,
 			MaxDepth:     &vsMaxDepth,
@@ -956,7 +956,7 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 		},
 	}
 	ls.Spec.ReadIndex = &ledgerv1alpha1.ReadIndexConfig{
-		Pebble: &ledgerv1alpha1.PebbleConfig{
+		RocksDB: &ledgerv1alpha1.RocksDBConfig{
 			Compression: "none,snappy,zstd,zstd,zstd,zstd,zstd",
 		},
 	}
@@ -978,15 +978,15 @@ func TestBuildEnvVars_AllNewFields(t *testing.T) {
 	assertEnv(t, envs, "NUMSCRIPT_CACHE_SIZE", "4096")
 	assertEnv(t, envs, "MIRROR_MAX_BATCH_SIZE", "200")
 
-	// Pebble compression
-	assertEnv(t, envs, "PEBBLE_COMPRESSION", "zstd,zstd,zstd,zstd,zstd,zstd,zstd")
+	// RocksDB compression
+	assertEnv(t, envs, "ROCKSDB_COMPRESSION", "zstd,zstd,zstd,zstd,zstd,zstd,zstd")
 
-	// Pebble value separation
-	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION", "true")
-	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MIN_SIZE", "1Ki")
-	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_MAX_DEPTH", "6")
-	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_REWRITE_AGE", "30m")
-	assertEnv(t, envs, "PEBBLE_VALUE_SEPARATION_GARBAGE_RATIO", "0.15")
+	// RocksDB value separation
+	assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION", "true")
+	assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MIN_SIZE", "1Ki")
+	assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_MAX_DEPTH", "6")
+	assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_REWRITE_AGE", "30m")
+	assertEnv(t, envs, "ROCKSDB_VALUE_SEPARATION_GARBAGE_RATIO", "0.15")
 
 	// Raft additions
 	assertEnv(t, envs, "RAFT_PROCESSING_TICK_INTERVAL", "15ms")
@@ -1052,31 +1052,31 @@ func TestAppendBloomEnvVars(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// appendPebbleEnvVars compression
+// appendRocksDBEnvVars compression
 // ---------------------------------------------------------------------------
 
-func TestAppendPebbleEnvVars_Compression(t *testing.T) {
+func TestAppendRocksDBEnvVars_Compression(t *testing.T) {
 	t.Parallel()
 
-	t.Run("PEBBLE prefix", func(t *testing.T) {
+	t.Run("ROCKSDB prefix", func(t *testing.T) {
 		t.Parallel()
-		p := &ledgerv1alpha1.PebbleConfig{Compression: "snappy"}
-		envs := appendPebbleEnvVars(nil, "PEBBLE", p)
-		assertEnv(t, envs, "PEBBLE_COMPRESSION", "snappy")
+		p := &ledgerv1alpha1.RocksDBConfig{Compression: "snappy"}
+		envs := appendRocksDBEnvVars(nil, "ROCKSDB", p)
+		assertEnv(t, envs, "ROCKSDB_COMPRESSION", "snappy")
 	})
 
 	t.Run("READ_INDEX prefix", func(t *testing.T) {
 		t.Parallel()
-		p := &ledgerv1alpha1.PebbleConfig{Compression: "zstd"}
-		envs := appendPebbleEnvVars(nil, "READ_INDEX", p)
+		p := &ledgerv1alpha1.RocksDBConfig{Compression: "zstd"}
+		envs := appendRocksDBEnvVars(nil, "READ_INDEX", p)
 		assertEnv(t, envs, "READ_INDEX_COMPRESSION", "zstd")
 	})
 
 	t.Run("empty compression omitted", func(t *testing.T) {
 		t.Parallel()
-		p := &ledgerv1alpha1.PebbleConfig{}
-		envs := appendPebbleEnvVars(nil, "PEBBLE", p)
-		assertNoEnv(t, envs, "PEBBLE_COMPRESSION")
+		p := &ledgerv1alpha1.RocksDBConfig{}
+		envs := appendRocksDBEnvVars(nil, "ROCKSDB", p)
+		assertNoEnv(t, envs, "ROCKSDB_COMPRESSION")
 	})
 }
 

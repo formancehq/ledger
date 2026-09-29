@@ -8,7 +8,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -52,7 +52,7 @@ func TestMaterializeIterator_PropagatesADrainFailure(t *testing.T) {
 	} {
 		key := readstore.MetadataIndexEventKeyV(kb, ledger, readstore.NamespaceAccount, metaKey, version,
 			encoded(e.value), []byte(e.entity), e.seq, e.op)
-		require.NoError(t, rs.DB().Set(append([]byte(nil), key...), nil, pebble.NoSync))
+		require.NoError(t, rs.DB().Set(append([]byte(nil), key...), nil, kv.NoSync))
 	}
 
 	lower := append(append([]byte(nil), prefix...), readstore.TypeTagInt)

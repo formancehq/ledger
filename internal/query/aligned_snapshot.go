@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -168,7 +168,7 @@ func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarg
 // The accepted snapshot is gated on the ledger still being live, re-read
 // through the handle's live view once the projection snapshot is open
 // (requireLedgerLive).
-func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *dal.ReadHandle, ledgerName string, releaseHold func()) (*pebble.Snapshot, uint64, func(), error) {
+func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *dal.ReadHandle, ledgerName string, releaseHold func()) (*kv.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("reading main-store sequence: %w", err)

@@ -4126,42 +4126,42 @@ Offline read-index rebuild is not available in Ledger v3.0. A generic projection
 
 ### Server RocksDB Storage Flags
 
-Tune the RocksDB (LSM-tree) storage engine. The existing CLI flag names retain
-the `pebble` prefix. Size flags accept Kubernetes-style quantities (e.g.,
+Tune the RocksDB (LSM-tree) storage engine. Storage flags use the `rocksdb`
+prefix. Size flags accept Kubernetes-style quantities (e.g.,
 `256Mi`, `1Gi`, `512Ki`).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pebble-memtable-size` | ByteSize | `256Mi` | Size of a single memtable |
-| `--pebble-memtable-stop-writes-threshold` | int | `6` | Number of memtables before stopping writes |
-| `--pebble-l0-compaction-threshold` | int | `4` | L0 file count to trigger compaction |
-| `--pebble-l0-stop-writes-threshold` | int | `16` | L0 file count before stopping writes |
-| `--pebble-lbase-max-bytes` | ByteSize | `2Gi` | Maximum size of L1 |
-| `--pebble-cache-size` | ByteSize | `1Gi` | Block cache size |
-| `--pebble-target-file-size` | ByteSize | `256Mi` | Target SST file size |
-| `--pebble-bytes-per-sync` | ByteSize | `1Mi` | Bytes written before sync during flush/compaction |
-| `--pebble-wal-bytes-per-sync` | ByteSize | `1Mi` | WAL bytes written before sync |
-| `--pebble-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
-| `--pebble-wal-min-sync-interval` | duration | `0` | Nonzero values are rejected by the RocksDB store. |
-| `--pebble-disable-wal` | bool | `false` | Enabling this is rejected for the durable primary store. |
-| `--pebble-max-checkpoints` | int | `10` | Maximum number of RocksDB checkpoints to keep |
-| `--pebble-wal-failover-dir` | string | _(empty)_ | Nonempty values are rejected by the RocksDB store. |
-| `--pebble-compression` | string | `fastest,...,fast,fast,balanced` | Per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
-| `--pebble-value-separation` | bool | `false` | Enabling this is rejected by the RocksDB store. |
-| `--pebble-value-separation-min-size` | ByteSize | `256` | Inactive while value separation is disabled. |
-| `--pebble-value-separation-max-depth` | int | `4` | Inactive while value separation is disabled. |
-| `--pebble-value-separation-rewrite-age` | duration | `1h` | Inactive while value separation is disabled. |
-| `--pebble-value-separation-garbage-ratio` | float64 | `0.20` | Inactive while value separation is disabled. |
+| `--rocksdb-memtable-size` | ByteSize | `256Mi` | Size of a single memtable |
+| `--rocksdb-memtable-stop-writes-threshold` | int | `6` | Number of memtables before stopping writes |
+| `--rocksdb-l0-compaction-threshold` | int | `4` | L0 file count to trigger compaction |
+| `--rocksdb-l0-stop-writes-threshold` | int | `16` | L0 file count before stopping writes |
+| `--rocksdb-lbase-max-bytes` | ByteSize | `2Gi` | Maximum size of L1 |
+| `--rocksdb-cache-size` | ByteSize | `1Gi` | Block cache size |
+| `--rocksdb-target-file-size` | ByteSize | `256Mi` | Target SST file size |
+| `--rocksdb-bytes-per-sync` | ByteSize | `1Mi` | Bytes written before sync during flush/compaction |
+| `--rocksdb-wal-bytes-per-sync` | ByteSize | `1Mi` | WAL bytes written before sync |
+| `--rocksdb-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
+| `--rocksdb-wal-min-sync-interval` | duration | `0` | Nonzero values are rejected by the RocksDB store. |
+| `--rocksdb-disable-wal` | bool | `false` | Enabling this is rejected for the durable primary store. |
+| `--rocksdb-max-checkpoints` | int | `10` | Maximum number of RocksDB checkpoints to keep |
+| `--rocksdb-wal-failover-dir` | string | _(empty)_ | Nonempty values are rejected by the RocksDB store. |
+| `--rocksdb-compression` | string | `fastest,...,fast,fast,balanced` | Per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
+| `--rocksdb-value-separation` | bool | `false` | Enabling this is rejected by the RocksDB store. |
+| `--rocksdb-value-separation-min-size` | ByteSize | `256` | Inactive while value separation is disabled. |
+| `--rocksdb-value-separation-max-depth` | int | `4` | Inactive while value separation is disabled. |
+| `--rocksdb-value-separation-rewrite-age` | duration | `1h` | Inactive while value separation is disabled. |
+| `--rocksdb-value-separation-garbage-ratio` | float64 | `0.20` | Inactive while value separation is disabled. |
 
 The RocksDB adapter does not currently enable value separation or automatic
 WAL failover. Do not set these options in a Ledger v3 deployment.
 
 ```bash
 # Use zstd compression on all levels
-ledger run --pebble-compression "zstd,zstd,zstd,zstd,zstd,zstd,zstd" [other flags...]
+ledger run --rocksdb-compression "zstd,zstd,zstd,zstd,zstd,zstd,zstd" [other flags...]
 
 # Per-level compression (L0-L6)
-ledger run --pebble-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other flags...]
+ledger run --rocksdb-compression "none,snappy,zstd,zstd,zstd,zstd,zstd" [other flags...]
 ```
 
 ---
@@ -4385,7 +4385,7 @@ ledger run --health-clock-skew-threshold 0 [other flags...]
 | `--metrics-naming` | string | `otel` | Application metrics naming convention (`otel` or `prom`) |
 
 Controls how the application's own metric names are emitted. Every
-instrument the server creates (admission, cache, wal, raft, pebble,
+instrument the server creates (admission, cache, wal, raft, rocksdb,
 …) is subject to the policy. OpenTelemetry semantic-convention
 auto-instrumentation (`http.*`, `go.*`, `process.*`, `system.*`)
 goes through the *global* MeterProvider and bypasses this flag, so

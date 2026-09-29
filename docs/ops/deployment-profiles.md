@@ -10,9 +10,8 @@ change them. The complete flag reference remains in the [CLI reference](./cli.md
 while this page only covers the settings that materially affect deployment
 choices.
 
-Ledger v3 uses RocksDB for its primary store and projections. Some flag and
-Operator field names still contain `pebble`; those names select RocksDB
-settings. The primary store rejects `--pebble-wal-failover-dir`, nonzero WAL
+Ledger v3 uses RocksDB for its primary store and projections. The primary store
+rejects `--rocksdb-wal-failover-dir`, nonzero WAL
 minimum sync interval, enabled value separation, and disabled WAL.
 
 ## Start with the Customer Requirements
@@ -133,10 +132,10 @@ not only steady-state traffic.
 
 | Profile | Topology | CPU | Memory | Storage | Initial configuration |
 |---------|----------|-----|--------|---------|-----------------------|
-| Local / demo | 1 node | 2 cores | 2 GiB | One local SSD volume | `GOMEMLIMIT=1800MiB`, `--pebble-cache-size=256Mi`, `--pebble-memtable-size=64Mi` |
+| Local / demo | 1 node | 2 cores | 2 GiB | One local SSD volume | `GOMEMLIMIT=1800MiB`, `--rocksdb-cache-size=256Mi`, `--rocksdb-memtable-size=64Mi` |
 | Production baseline | 3 nodes | 4 cores | 4 GiB | Persistent SSD; separate WAL and data volumes when possible | `GOMEMLIMIT=3600MiB`; application defaults |
 | High write throughput | 3 nodes | 8 cores | 4-8 GiB | Provisioned-IOPS SSD/NVMe; separate WAL and data volumes | Defaults first; bulk requests around 50 transactions; tune from queue, preload, and RocksDB metrics |
-| Read-heavy | 3 nodes | 4-8 cores | 8 GiB | Fast data volume; optionally isolate the read index | `GOMEMLIMIT=7200MiB`, `--pebble-cache-size=4Gi`, start with `--read-index-cache-size=128Mi` |
+| Read-heavy | 3 nodes | 4-8 cores | 8 GiB | Fast data volume; optionally isolate the read index | `GOMEMLIMIT=7200MiB`, `--rocksdb-cache-size=4Gi`, start with `--read-index-cache-size=128Mi` |
 
 The default in-memory budget is approximately 3.2 GiB per node even before
 workload-dependent gRPC buffers and transient allocations. A 512 MiB container
@@ -186,14 +185,14 @@ multi-region topology trade-offs and the supported responses to quorum loss.
 
 | Customer need or observed signal | Parameter or action | Trade-off / guardrail |
 |-----------------------------------|---------------------|-----------------------|
-| Memory limit below 4 GiB | Reduce `--pebble-cache-size`, then `--pebble-memtable-size`; set `GOMEMLIMIT` to about 90% of the container limit | More disk reads and flushes; watch write stalls and query latency. |
-| Read latency is high and disk reads dominate | Increase `--pebble-cache-size`; for filtered listings, increase `--read-index-cache-size` and create only the required indexes | Directly increases RSS. An index improves its matching query but adds build, storage, and write cost. |
+| Memory limit below 4 GiB | Reduce `--rocksdb-cache-size`, then `--rocksdb-memtable-size`; set `GOMEMLIMIT` to about 90% of the container limit | More disk reads and flushes; watch write stalls and query latency. |
+| Read latency is high and disk reads dominate | Increase `--rocksdb-cache-size`; for filtered listings, increase `--read-index-cache-size` and create only the required indexes | Directly increases RSS. An index improves its matching query but adds build, storage, and write cost. |
 | Admission preloads are slow and active keys are reused | Increase `--cache-rotation-threshold` from the default `1000` | Approximately linear cache-memory growth; roll the value consistently across the cluster. |
 | Workload continually creates unique accounts | Keep the cache threshold near the default and focus on fast storage | A larger cache provides little benefit without key reuse. |
 | Many RocksDB lookups are for absent keys | Enable Bloom filters only for affected attribute types with a reliable distinct-key bound between rebuilds or an explicit resize policy | Filters consume fixed memory on every node and lose effectiveness when `expectedKeys` is exceeded. Do not enable them by habit. |
 | More Numscript texts than the `1024`-entry cache | First replace generated scripts with variables; only then increase `--numscript-cache-size` | Increasing the cache hides inefficient script templating and consumes memory. |
 | Propose queue fills | Use bulks, check leader CPU and WAL latency, then consider `--raft-propose-queue-capacity` | A larger queue absorbs bursts but does not increase sustainable throughput and increases latency under overload. |
-| RocksDB write stalls | Check storage latency and compaction metrics; consider more IOPS or `--pebble-max-concurrent-compactions` | More compactions consume CPU, I/O, and temporary memory. |
+| RocksDB write stalls | Check storage latency and compaction metrics; consider more IOPS or `--rocksdb-max-concurrent-compactions` | More compactions consume CPU, I/O, and temporary memory. |
 | Inter-node bandwidth is constrained | Test `--grpc-compression` for Ledger's outgoing internal gRPC pools | Saves inter-node bandwidth but costs CPU and can increase latency. Client-call compression remains a client configuration decision. |
 | Followers join slowly | Increase `--snapshot-parallelism` from `4` and, for very large snapshots, `--snapshot-session-ttl` | More parallelism consumes network, disk I/O, file descriptors, and memory on both nodes. |
 | High-cardinality observability is expensive | Keep `--admission-metrics` disabled in steady-state high-throughput production; sample successful traces | Reduces diagnostic detail. Re-enable temporarily while investigating. |
@@ -203,12 +202,12 @@ fields:
 
 | CLI control | Operator field |
 |-------------|----------------|
-| `--pebble-cache-size`, `--pebble-memtable-size` | `spec.pebble.cacheSize`, `spec.pebble.memTableSize` |
-| `--read-index-cache-size` | `spec.readIndex.pebble.cacheSize` |
+| `--rocksdb-cache-size`, `--rocksdb-memtable-size` | `spec.rocksdb.cacheSize`, `spec.rocksdb.memTableSize` |
+| `--read-index-cache-size` | `spec.readIndex.rocksdb.cacheSize` |
 | `--cache-rotation-threshold` | `spec.cache.rotationThreshold` |
 | `--numscript-cache-size` | `spec.numscriptCacheSize` |
 | `--raft-propose-queue-capacity` | `spec.raft.proposeQueueCapacity` |
-| `--pebble-max-concurrent-compactions` | `spec.pebble.maxConcurrentCompactions` |
+| `--rocksdb-max-concurrent-compactions` | `spec.rocksdb.maxConcurrentCompactions` |
 | `--grpc-compression` | `spec.grpcCompression` |
 | `--snapshot-parallelism`, `--snapshot-session-ttl` | `spec.snapshot.parallelism`, `spec.snapshot.sessionTTL` |
 | `--admission-metrics` | `spec.admissionMetrics` |
@@ -256,10 +255,10 @@ workload does not force the same choice on the consensus store:
 
 ```yaml
 spec:
-  pebble:
+  rocksdb:
     compression: "fastest,fastest,fastest,fastest,fast,fast,balanced"
   readIndex:
-    pebble:
+    rocksdb:
       compression: "fastest,fastest,fastest,fastest,fast,balanced,good"
 ```
 

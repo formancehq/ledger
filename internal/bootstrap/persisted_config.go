@@ -8,7 +8,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ConfigMismatchError is returned when a persisted configuration value differs
@@ -31,7 +31,7 @@ func (e *ConfigMismatchError) Error() string {
 func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
 	value, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil
 		}
 

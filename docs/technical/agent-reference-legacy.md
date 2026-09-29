@@ -126,7 +126,7 @@ Key rules:
 - **Application**: `internal/application/` - use cases (`admission/`, `ctrl/`, `events/`, `check/`, `indexbuilder/`, `mirror/`)
 - **Infrastructure**: `internal/infra/` - consensus (`node/`, `state/`), caching (`cache/`, `attributes/`), transport, health, monitoring, `backup/`, `bloom/`, `coldstorage/`, `preload/`
 - **Utilities**: `internal/pkg/` - zero/low-dependency utilities (`kv/`, `signal/`, `futures/`, `commands/`, `bitset/`, `bytesize/`, `filterexpr/`, `semver/`, `tarutil/`, `vtmarshal/`, `worker/`)
-- **Storage**: `internal/storage/` - Pebble DAL, WAL, spool, `readstore/`, `pebblecfg/`
+- **Storage**: `internal/storage/` - Pebble DAL, WAL, spool, `readstore/`, `rocksdbcfg/`
 - **Query**: `internal/query/` - CQRS read-side queries
 - **Adapters**: `internal/adapter/` - transport layer (`grpc/` primary API, `http/` REST compat, `json/` serialization, `auth/` JWT/Ed25519 authentication, `v2/` v2 compatibility layer)
 - **Proto definitions**: `misc/proto/` -> generated code in `internal/proto/`

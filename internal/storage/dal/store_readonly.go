@@ -7,7 +7,7 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // OpenReadOnly opens a Pebble database at dirPath in read-only mode.
@@ -28,12 +28,12 @@ import (
 // by several GiB and tipped the pod over its memory limit during full
 // backups. The default 8 MiB block cache is left in place.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
-	opts := pebble.Options{
+	opts := kv.Options{
 		ReadOnly:  true,
 		Configure: func(o *grocksdb.Options) { o.SetMaxOpenFiles(32) },
 	}
 
-	db, err := pebble.Open(dirPath, opts)
+	db, err := kv.Open(dirPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening read-only rocksdb database at %s: %w", dirPath, err)
 	}
@@ -52,9 +52,9 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 // without checkpoint management. Used for backup compaction operations.
 // The caller must call Close() when done.
 func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
-	opts := pebble.Options{}
+	opts := kv.Options{}
 
-	db, err := pebble.Open(dirPath, opts)
+	db, err := kv.Open(dirPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening rocksdb database at %s: %w", dirPath, err)
 	}

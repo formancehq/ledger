@@ -15,7 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -731,7 +731,7 @@ func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledg
 		}
 		for _, account := range accounts {
 			prefix := readstore.AssetsByAccountPrefix(b.kb, ledger, account)
-			iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+			iter, err := b.readStore.DB().NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
 			if err != nil {
 				return err
 			}
@@ -897,7 +897,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 
 	tmpDir := finalDir + ".tmp"
 
-	// pebble.Checkpoint fails with ErrExist if the target already exists, so the
+	// kv.Checkpoint fails with ErrExist if the target already exists, so the
 	// temp dir must not linger from a previous crashed attempt.
 	if err := os.RemoveAll(tmpDir); err != nil {
 		return fmt.Errorf("clearing stale temp checkpoint %d: %w", checkpointID, err)
@@ -1475,7 +1475,7 @@ func (b *Builder) markLedgerDeletedInBatch(name string) {
 // (true, nil) on hit. Mirrors reverseMapValue's committed-read path.
 func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
 	_, closer, err := b.readStore.DB().Get(key)
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, kv.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -1499,7 +1499,7 @@ func (b *Builder) reverseMapValue(reverseKey []byte) ([]byte, error) {
 	}
 
 	val, closer, err := b.readStore.DB().Get(reverseKey)
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, kv.ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {

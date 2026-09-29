@@ -58,7 +58,7 @@ table is a discovery map, not a frozen exhaustive schema.
 | Boundary | Sources and required evidence |
 | --- | --- |
 | Live primary mutations | `internal/domain/processing/`, `internal/infra/state/`, `internal/infra/attributes/`: enumerate every audited apply mutation, including deletion/range-deletion and proposal-local effects. Record persisted class and exact keys. |
-| Durable storage | `internal/storage/dal/`, `wal/`, `spool/`, `pebblecfg/`: establish write-session commit, checkpoint, cursor and recovery semantics. A cache or snapshot read is not proof that the primary write is durable. |
+| Durable storage | `internal/storage/dal/`, `wal/`, `spool/`, `rocksdbcfg/`: establish write-session commit, checkpoint, cursor and recovery semantics. A cache or snapshot read is not proof that the primary write is durable. |
 | Backup publication | `internal/application/backup/`, `internal/infra/backup/manager.go`, `manifest.go`, `segment.go`, and `cmd/ledgerctl/store/incremental_backup.go`: trace sequence capture, segment contents, object upload, manifest swap and orphan pruning. The current published manifest must always remain fully restorable. |
 | Raw delta application | `internal/infra/backup/restore.go`: verify manifest/type/range/key-shape/stream validation, batch commits, partial-prefix behavior and retry. Permanent history residency must equal the source logically. |
 | Derived-state rebuild | `internal/infra/backup/rebuild.go`, `internal/domain/replay/`: compare every replay branch and fold with its live writer. Essential facts may live in `LedgerLog`, chain-bound serialized `AuditItem`, or `AppliedProposal`; absence must not silently become a default. |

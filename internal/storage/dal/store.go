@@ -22,7 +22,7 @@ import (
 	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
@@ -32,7 +32,7 @@ var ErrStoreClosed = errors.New("store closed")
 const (
 	liveDir = "live"
 	// liveStagingDir is where RestoreCheckpoint builds the new database
-	// before publishing it. Hard-link, pebble.Open, persisted-config
+	// before publishing it. Hard-link, kv.Open, persisted-config
 	// rewrite, flush, and re-checkpoint all happen inside `live.staging/`.
 	// Only once every post-open step succeeds do we `rename(live.staging,
 	// live)` — that rename is the single atomic commit point of the
@@ -141,8 +141,8 @@ func ValidateFreshRestoreTarget(dataDir string) error {
 type Store struct {
 	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
 	snapshotMu        sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
-	db                *pebble.DB
-	opts              pebble.Options
+	db                *kv.DB
+	opts              kv.Options
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
@@ -155,11 +155,11 @@ type Store struct {
 	deletedQueryCheckpoints map[uint64]struct{}
 }
 
-// getDB returns the current pebble.DB.
+// getDB returns the current kv.DB.
 // Callers that create iterators (NewIter) must hold
 // dbMu.RLock to prevent RestoreCheckpoint/Close from closing the DB
 // between the read and the iterator creation.
-func (s *Store) getDB() *pebble.DB {
+func (s *Store) getDB() *kv.DB {
 	return s.db
 }
 
@@ -430,7 +430,7 @@ func NewStore(
 	if cfg.DisableWAL {
 		return nil, errors.New("disabling the WAL is not supported for Ledger's durable store")
 	}
-	opts := pebble.Options{CacheSize: uint64(cfg.CacheSize), Configure: func(o *grocksdb.Options) {
+	opts := kv.Options{CacheSize: uint64(cfg.CacheSize), Configure: func(o *grocksdb.Options) {
 		o.SetWriteBufferSize(cfg.MemTableSize)
 		o.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
 		o.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
@@ -444,7 +444,7 @@ func NewStore(
 	}}
 
 	var (
-		db  *pebble.DB
+		db  *kv.DB
 		err error
 	)
 
@@ -494,7 +494,7 @@ func NewStore(
 
 	openStart := time.Now()
 
-	db, err = pebble.Open(liveDir, opts)
+	db, err = kv.Open(liveDir, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening RocksDB database: %w", err)
 	}
@@ -648,8 +648,8 @@ func (s *Store) WarmBlockCache() {
 }
 
 // warmRange iterates [lower, upper) reading every value to populate the block cache.
-func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
-	iter, err := db.NewIter(&pebble.IterOptions{
+func (s *Store) warmRange(db *kv.DB, lower, upper byte) (int64, error) {
+	iter, err := db.NewIter(&kv.IterOptions{
 		LowerBound: []byte{lower},
 		UpperBound: []byte{upper},
 	})
@@ -909,7 +909,7 @@ const queryCheckpointsDir = "query-checkpoints"
 // created by the FSM when a CreateQueryCheckpointOrder is applied via Raft.
 //
 // Readers poll the final path concurrently, so it must never hold an
-// intermediate state. pebble.DB.Checkpoint writes the MANIFEST — which is what
+// intermediate state. kv.DB.Checkpoint writes the MANIFEST — which is what
 // makes a directory openable — before it copies the WAL files, and
 // WithFlushedWAL syncs the WAL rather than flushing the memtable, so a
 // directory caught between those steps opens cleanly while missing every
@@ -933,7 +933,7 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (_ string, err error) {
 	dir := filepath.Join(base, "main")
 	tmpDir := dir + ".tmp"
 
-	// pebble.Checkpoint refuses an existing destination.
+	// kv.Checkpoint refuses an existing destination.
 	if CheckpointDirReady(dir) {
 		return dir, nil
 	}
@@ -1446,7 +1446,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		// Reopen the original DB so the Store stays usable.
 		// FileCache must be cleared for the same reason as below.
 
-		revivedDB, openErr := pebble.Open(liveDirectory, s.opts)
+		revivedDB, openErr := kv.Open(liveDirectory, s.opts)
 		if openErr != nil {
 			return fmt.Errorf("rollback failed (could not reopen original live): %w; original error: %w", openErr, reason)
 		}
@@ -1463,7 +1463,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 	// Step 5: open the staged RocksDB database with fresh native options.
 
-	newDB, err := pebble.Open(stagingDirectory, s.opts)
+	newDB, err := kv.Open(stagingDirectory, s.opts)
 	if err != nil {
 		return rollback(fmt.Errorf("opening staged database: %w", err))
 	}
@@ -1473,7 +1473,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Step 6: re-write this node's persisted config and re-checkpoint
 	// (still inside the staging directory).
 	if preservedConfig != nil {
-		if err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+		if err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, kv.Sync); err != nil {
 			return rollback(fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err))
 		}
 
@@ -1518,7 +1518,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// correctness; the worst case is a stale live.discard/ that boot
 	// will sweep up.
 
-	publishedDB, err := pebble.Open(liveDirectory, s.opts)
+	publishedDB, err := kv.Open(liveDirectory, s.opts)
 	if err != nil {
 		// We renamed staging to live so the new state is durable, but
 		// we cannot reopen it in-process. Surface the error; the next
@@ -1579,7 +1579,7 @@ func WithResetFunc(fn func(proto.Message)) ProtoCursorOption {
 
 // ProtoCursor implements Cursor[T] for RocksDB where T is a proto.Message pointer.
 type ProtoCursor[T proto.Message] struct {
-	iter      *pebble.Iterator
+	iter      *kv.Iterator
 	started   bool
 	elemTyp   reflect.Type
 	reuse     bool
@@ -1588,7 +1588,7 @@ type ProtoCursor[T proto.Message] struct {
 	item      T // reused when reuse=true
 }
 
-func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
+func NewProtoCursor[T proto.Message](iter *kv.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
 	var cfg protoCursorConfig
 	for _, o := range opts {
 		o(&cfg)
@@ -1893,7 +1893,7 @@ func fsyncDir(dir string) error {
 }
 
 // Checkpoint creates a RocksDB checkpoint at destDir after a durable flush.
-// This is a thin wrapper around pebble.DB.Checkpoint used for testing
+// This is a thin wrapper around kv.DB.Checkpoint used for testing
 // and backup operations that need a standalone copy of the database.
 func (s *Store) Checkpoint(destDir string) error {
 	s.dbMu.RLock()

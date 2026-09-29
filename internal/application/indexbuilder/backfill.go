@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -711,7 +711,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		lowerBound = rmapPrefix
 	}
 
-	iter, err := snap.NewIter(&pebble.IterOptions{
+	iter, err := snap.NewIter(&kv.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upper,
 	})

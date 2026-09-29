@@ -13,7 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrBackupInProgress rejects a BackupOrderStart whose destination
@@ -390,7 +390,7 @@ func (s *BackupJobsState) Reset() {
 func (s *BackupJobsState) RestoreFromStore(reader dal.PebbleReader) error {
 	prefix := []byte{dal.ZoneClusterTransient, dal.SubTransientBackupJob}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: backupJobUpperBound(),
 	})

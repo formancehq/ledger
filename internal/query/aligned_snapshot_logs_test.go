@@ -9,7 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -58,9 +58,9 @@ func TestMainHorizonKeep_Logs(t *testing.T) {
 		{
 			name:            "index entry not found",
 			entity:          logID8(logID),
-			getErr:          pebble.ErrNotFound,
+			getErr:          kv.ErrNotFound,
 			wantErrContains: "resolving log id",
-			wantErrIs:       pebble.ErrNotFound,
+			wantErrIs:       kv.ErrNotFound,
 			expectGet:       true,
 		},
 		{

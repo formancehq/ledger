@@ -16,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -122,7 +122,7 @@ func Execute(
 	schema := SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), pq.GetTarget())
 
 	var (
-		indexSnap    *pebble.Snapshot
+		indexSnap    *kv.Snapshot
 		mainSeq      uint64
 		releaseLease func()
 	)

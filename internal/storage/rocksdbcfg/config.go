@@ -1,4 +1,4 @@
-package pebblecfg
+package rocksdbcfg
 
 import (
 	"fmt"
@@ -7,10 +7,10 @@ import (
 	"github.com/linxGnu/grocksdb"
 )
 
-// NumLevels is the number of Pebble LSM levels.
+// NumLevels is the number of RocksDB LSM levels.
 const NumLevels = 7
 
-// Compression represents a named Pebble block compression profile.
+// Compression represents a named RocksDB block compression profile.
 type Compression int
 
 const (
@@ -52,8 +52,8 @@ func (c Compression) String() string {
 	return fmt.Sprintf("unknown(%d)", int(c))
 }
 
-// ToRocksDB maps the existing configuration names to RocksDB codecs.
-// Pebble's adaptive Fast profiles have no exact RocksDB counterpart.
+// ToRocksDB maps the named configuration profiles to RocksDB codecs.
+// Fastest/Fast map to Snappy; Balanced/Good map to Zstd.
 func (c Compression) ToRocksDB() grocksdb.CompressionType {
 	switch c {
 	case NoCompression:
@@ -76,13 +76,11 @@ func ParseCompression(s string) (Compression, error) {
 	)
 }
 
-// LevelCompression holds the compression profile for each of the 7 Pebble levels (L0–L6).
+// LevelCompression holds the compression profile for each of the 7 RocksDB levels (L0–L6).
 type LevelCompression [NumLevels]Compression
 
 // DefaultLevelCompression returns the default per-level compression:
-// L0–L3 use Fastest (minimal CPU on hot levels),
-// L4–L5 use Fast (good ratio/CPU trade-off),
-// L6 uses Balanced (best ratio for cold data without full zstd cost).
+// L0–L5 use Snappy; L6 uses Zstd.
 func DefaultLevelCompression() LevelCompression {
 	return LevelCompression{
 		FastestCompression,  // L0
@@ -124,7 +122,7 @@ func ParseLevelCompression(s string) (LevelCompression, error) {
 	return lc, nil
 }
 
-// Config contains the common Pebble tunables shared by both the primary
+// Config contains the common RocksDB tunables shared by both the primary
 // DAL store and the read index store.
 type Config struct {
 	// MemTableSize is the size of a single memtable in bytes.

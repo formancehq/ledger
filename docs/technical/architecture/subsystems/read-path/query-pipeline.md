@@ -179,7 +179,7 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 | `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
 | `FilterIterator[D]` | `combinator_filter.go` | Predicate wrapper (for example the main-store horizon trim). |
 | `SliceIterator[D]` | `combinator_slice.go` | Borrowed view over an already sorted, materialized result. |
-| address-prefix iterator | `iterator_pebble.go` | Leaf scan with a chart-of-accounts prefix predicate. |
+| address-prefix iterator | `iterator_rocksdb.go` | Leaf scan with a chart-of-accounts prefix predicate. |
 
 The boolean combinators are **direction-parameterized, not duplicated**: each is one implementation whose only direction-dependent input is `D`'s comparator, so ascending and descending composition cannot drift apart (EN-1966). Only the leaves listed as direction-specific above have two implementations.
 

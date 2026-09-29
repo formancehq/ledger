@@ -13,7 +13,7 @@
     "internal/infra/node/node.go",
     "internal/infra/transport/module.go",
     "internal/infra/transport/connection_pool.go",
-    "internal/storage/pebblecfg/**",
+    "internal/storage/rocksdbcfg/**",
     "internal/storage/dal/config*.go",
     "internal/storage/readstore/store.go",
     "internal/query/config*.go",

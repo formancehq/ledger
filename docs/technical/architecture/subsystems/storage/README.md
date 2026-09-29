@@ -1,6 +1,6 @@
 # Storage
 
-The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool`, `internal/storage/pebblecfg`). One RocksDB database backs the main store (WAL enabled); a second backs the read index (WAL disabled, fully rebuildable). The usage projection is a third RocksDB database. The spool sits between Raft commit and FSM apply.
+The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool`, `internal/storage/rocksdbcfg`). One RocksDB database backs the main store (WAL enabled); a second backs the read index (WAL disabled, fully rebuildable). The usage projection is a third RocksDB database. The spool sits between Raft commit and FSM apply.
 
 ## Documents
 

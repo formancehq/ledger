@@ -211,28 +211,28 @@ meaning are populated.
 
 ## Configuration
 
-The existing `--pebble-*` command-line flags remain accepted for the mapped RocksDB tunables:
+Use the `--rocksdb-*` flags to configure the primary store:
 
 ```bash
 ./ledger serve \
-  --pebble-memtable-size=256Mi \
-  --pebble-memtable-stop-writes-threshold=6 \
-  --pebble-l0-compaction-threshold=4 \
-  --pebble-l0-stop-writes-threshold=16 \
-  --pebble-lbase-max-bytes=2Gi \
-  --pebble-cache-size=1Gi \
-  --pebble-target-file-size=256Mi \
-  --pebble-bytes-per-sync=1Mi \
-  --pebble-wal-bytes-per-sync=1Mi \
-  --pebble-max-concurrent-compactions=2 \
-  --pebble-wal-min-sync-interval=0 \
-  --pebble-disable-wal=false
+  --rocksdb-memtable-size=256Mi \
+  --rocksdb-memtable-stop-writes-threshold=6 \
+  --rocksdb-l0-compaction-threshold=4 \
+  --rocksdb-l0-stop-writes-threshold=16 \
+  --rocksdb-lbase-max-bytes=2Gi \
+  --rocksdb-cache-size=1Gi \
+  --rocksdb-target-file-size=256Mi \
+  --rocksdb-bytes-per-sync=1Mi \
+  --rocksdb-wal-bytes-per-sync=1Mi \
+  --rocksdb-max-concurrent-compactions=2 \
+  --rocksdb-wal-min-sync-interval=0 \
+  --rocksdb-disable-wal=false
 ```
 
 Or via environment variables:
 
 ```bash
-PEBBLE_MEMTABLE_SIZE=268435456 ./ledger serve
+ROCKSDB_MEMTABLE_SIZE=268435456 ./ledger serve
 ```
 
 ---

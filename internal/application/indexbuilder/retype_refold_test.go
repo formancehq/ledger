@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -19,7 +19,7 @@ func countEventsAt(t *testing.T, s *readstore.Store, ledger, ns, key string, ver
 
 	kb := dal.NewKeyBuilder()
 	prefix := readstore.MetadataIndexPrefixV(kb, ledger, ns, key, version)
-	iter, err := s.DB().NewIter(&pebble.IterOptions{
+	iter, err := s.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})

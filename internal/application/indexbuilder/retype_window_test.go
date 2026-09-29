@@ -9,7 +9,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -24,7 +24,7 @@ func eventGroupExists(t *testing.T, s *readstore.Store, ledger, ns, metaKey stri
 	prefix = append(prefix, encoded...)
 	prefix = append(prefix, entity...)
 
-	iter, err := s.DB().NewIter(&pebble.IterOptions{
+	iter, err := s.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})
