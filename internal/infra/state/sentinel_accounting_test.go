@@ -235,7 +235,7 @@ func TestVerifyPostCommitVolumes(t *testing.T) {
 	}
 }
 
-// PebbleGetter has no generated mock; this function adapter injects the exact
+// KVGetter has no generated mock; this function adapter injects the exact
 // read failure without conflating it with Pebble's not-found response.
 type sentinelFailingGetter func([]byte) ([]byte, io.Closer, error)
 

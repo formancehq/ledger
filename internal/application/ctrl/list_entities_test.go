@@ -28,8 +28,8 @@ import (
 // the target only selects which leaves CompileReverse builds. So one target is
 // enough, and the fixture uses LOGS because the LOGS arm of compileUniverseRev
 // reads ctx.indexReader — the reader passed here — while the ACCOUNTS and
-// TRANSACTIONS arms read ctx.pebbleReader. Retargeting this test therefore
-// means supplying pebbleReader and a pin as well.
+// TRANSACTIONS arms read ctx.mainReader. Retargeting this test therefore
+// means supplying mainReader and a pin as well.
 //
 // This must stay on listDescFiltered rather than listEntities: listEntities
 // overwrites horizonKeep with query.MainHorizonKeep, which would discard the

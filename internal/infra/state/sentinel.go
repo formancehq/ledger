@@ -124,7 +124,7 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 // "racing checkpoint commit" failure mode (issue #424 / EN-1235) is no
 // longer possible.
 func verifyPostCommitVolumes(
-	store dal.PebbleGetter,
+	store dal.KVGetter,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	volumeUpdates []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair],
 	raftIndex uint64,
@@ -548,7 +548,7 @@ func collectSentinelLedgerNames(results []ApplyResult) ([]string, map[string]str
 // and deleted ledgers have no remaining volume rows. The latter catches a
 // partial deletion cascade even when the leftover rows are balanced.
 func verifyAggregatedVolumesBalanced(
-	store dal.PebbleReader,
+	store dal.KVReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerNames []string,
 	deletedLedgerNames map[string]struct{},
@@ -611,7 +611,7 @@ func verifyAggregatedVolumesBalanced(
 // dumpPerAccountVolumes logs every individual account volume for the given
 // ledger and asset. Called when an aggregated imbalance is detected.
 func dumpPerAccountVolumes(
-	store dal.PebbleReader,
+	store dal.KVReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerName string,
 	asset string,
@@ -681,7 +681,7 @@ func dumpPerAccountVolumes(
 // against the 0xFF Pebble cache zone. Logs the sizes and any keys that are in
 // one but not the other. Called only on sentinel check failure.
 func dumpCacheVsPebbleCoherence(
-	store dal.PebbleReader,
+	store dal.KVReader,
 	c *cache.Cache,
 	raftIndex uint64,
 	logger logging.Logger,
@@ -747,7 +747,7 @@ func dumpCacheVsPebbleCoherence(
 	}).Errorf("CACHE COHERENCE: summary (keys in memory but missing from 0xFF)")
 }
 
-func countCacheZoneEntries(store dal.PebbleReader, genByte, cacheType byte) uint64 {
+func countCacheZoneEntries(store dal.KVReader, genByte, cacheType byte) uint64 {
 	lower := []byte{dal.ZoneCache, genByte, cacheType}
 	upper := []byte{dal.ZoneCache, genByte, cacheType + 1}
 
@@ -771,7 +771,7 @@ func countCacheZoneEntries(store dal.PebbleReader, genByte, cacheType byte) uint
 	return count
 }
 
-func countAttributeEntries(store dal.PebbleReader, attrType byte) uint64 {
+func countAttributeEntries(store dal.KVReader, attrType byte) uint64 {
 	lower := []byte{dal.ZoneAttributes, attrType}
 	upper := []byte{dal.ZoneAttributes, attrType + 1}
 
@@ -793,7 +793,7 @@ func countAttributeEntries(store dal.PebbleReader, attrType byte) uint64 {
 	return count
 }
 
-func cacheZoneHasKey(store dal.PebbleReader, genByte, cacheType byte, id attributes.U128) bool {
+func cacheZoneHasKey(store dal.KVReader, genByte, cacheType byte, id attributes.U128) bool {
 	var key [3 + 16]byte
 	key[0] = dal.ZoneCache
 	key[1] = genByte

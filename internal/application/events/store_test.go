@@ -15,7 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func readSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.PebbleReader, name string) (*commonpb.SinkConfig, error) {
+func readSinkConfig(attr *attributes.Attribute[*commonpb.SinkConfig], reader dal.KVReader, name string) (*commonpb.SinkConfig, error) {
 	return attr.Get(reader, domain.SinkConfigKey{Name: name}.Bytes())
 }
 

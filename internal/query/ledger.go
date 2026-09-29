@@ -18,7 +18,7 @@ import (
 var queryTracer = otel.Tracer("query")
 
 // ReadLedgers returns a cursor over all registered ledgers from the given reader.
-func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+func ReadLedgers(ctx context.Context, reader dal.KVReader) (cursor.Cursor[*commonpb.LedgerInfo], error) {
 	_, span := queryTracer.Start(ctx, "query.list_ledgers")
 	defer span.End()
 
@@ -33,7 +33,7 @@ func ReadLedgers(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*c
 // readLedgerInfoRow reads one ledger's LedgerInfo row through the given
 // getter. A nil info means the row is absent; a soft-deleted ledger still has
 // one, with DeletedAt stamped. Callers own the interpretation of both.
-func readLedgerInfoRow(reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
+func readLedgerInfoRow(reader dal.KVGetter, name string) (*commonpb.LedgerInfo, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobLedgerInfo).PutLedgerName(name)
 
@@ -42,7 +42,7 @@ func readLedgerInfoRow(reader dal.PebbleGetter, name string) (*commonpb.LedgerIn
 
 // GetLedgerByName retrieves a ledger by its name from the given reader.
 // Returns domain.ErrNotFound if the ledger does not exist or is soft-deleted.
-func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) (*commonpb.LedgerInfo, error) {
+func GetLedgerByName(ctx context.Context, reader dal.KVGetter, name string) (*commonpb.LedgerInfo, error) {
 	_, span := queryTracer.Start(ctx, "query.get_ledger",
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
@@ -62,7 +62,7 @@ func GetLedgerByName(ctx context.Context, reader dal.PebbleGetter, name string) 
 // EnrichLedgerMetadata populates the Metadata field on LedgerInfo by scanning
 // the ledger metadata attributes from Pebble. The metadata field on LedgerInfo
 // is read-time only (not stored as part of LedgerInfo in the attribute store).
-func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes, info *commonpb.LedgerInfo) error {
+func EnrichLedgerMetadata(reader dal.KVReader, attrs *attributes.Attributes, info *commonpb.LedgerInfo) error {
 	if info == nil {
 		return nil
 	}
@@ -101,7 +101,7 @@ func EnrichLedgerMetadata(reader dal.PebbleReader, attrs *attributes.Attributes,
 
 // ReadNextLedgerID reads the next ledger ID counter from Pebble.
 // Returns 1 if no counter has been stored yet.
-func ReadNextLedgerID(reader dal.PebbleGetter) (uint32, error) {
+func ReadNextLedgerID(reader dal.KVGetter) (uint32, error) {
 	v, err := dal.ReadUint32(reader, []byte{dal.ZoneGlobal, dal.SubGlobNextLedgerID}, 1)
 	if err != nil {
 		return 0, fmt.Errorf("getting next ledger ID: %w", err)

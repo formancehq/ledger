@@ -24,8 +24,8 @@ const defaultPageSize = 100
 
 // EntityEnricher provides functions to hydrate raw entity IDs into full objects.
 type EntityEnricher struct {
-	EnrichAccount     func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error)
-	EnrichTransaction func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error)
+	EnrichAccount     func(reader dal.KVReader, ledgerName string, address string) (*commonpb.Account, error)
+	EnrichTransaction func(ctx context.Context, reader dal.KVReader, ledgerName string, txID uint64) (*commonpb.Transaction, error)
 }
 
 // Execute runs a prepared query against the read index and, for
@@ -154,7 +154,7 @@ func Execute(
 
 	kb := dal.NewKeyBuilder()
 
-	indexRegistry := NewPebbleIndexReader(indexAttr, handle)
+	indexRegistry := NewIndexReader(indexAttr, handle)
 
 	// Resolve the per-replica version through THE SAME snapshot used
 	// for iteration. Reading the version from the live DB while the
@@ -204,8 +204,8 @@ func executeList(
 	target commonpb.QueryTarget,
 	req *servicepb.ExecutePreparedQueryRequest,
 	profile *QueryProfile,
-	reader dal.PebbleReader,
-	indexReader dal.PebbleReader,
+	reader dal.KVReader,
+	indexReader dal.KVReader,
 	ledgerName string,
 	enricher *EntityEnricher,
 ) (*servicepb.ExecutePreparedQueryResponse, error) {
@@ -291,7 +291,7 @@ func executeList(
 }
 
 // EnrichAccounts hydrates a slice of raw entity bytes into full Account objects.
-func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*commonpb.Account, error) {
+func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.KVReader, ledgerName string) ([]*commonpb.Account, error) {
 	accounts := make([]*commonpb.Account, len(entityIDs))
 	for i, e := range entityIDs {
 		acc, err := enricher.EnrichAccount(reader, ledgerName, string(e))
@@ -306,7 +306,7 @@ func EnrichAccounts(entityIDs [][]byte, enricher *EntityEnricher, reader dal.Peb
 }
 
 // EnrichTransactions hydrates a slice of raw entity bytes into full Transaction objects.
-func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.PebbleReader, ledgerName string) ([]*commonpb.Transaction, error) {
+func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *EntityEnricher, reader dal.KVReader, ledgerName string) ([]*commonpb.Transaction, error) {
 	txns := make([]*commonpb.Transaction, len(entityIDs))
 	for i, e := range entityIDs {
 		txID := binary.BigEndian.Uint64(e)
@@ -326,11 +326,11 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 // compiled iterator) into full Log objects. It mirrors the direct ListLogs
 // path: the compiled iterator yields per-ledger logIDs, ReadLedgerLogsCompiled
 // resolves them to global sequences via the log read-index and reads the log
-// payloads from Pebble. pebbleReader reads the log payloads (History zone);
+// payloads from Pebble. mainReader reads the log payloads (History zone);
 // indexReader resolves logID → sequence through the same snapshot used for
 // iteration.
-func EnrichLogs(ctx context.Context, pebbleReader dal.PebbleReader, indexReader dal.PebbleReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
-	c, err := ReadLedgerLogsCompiled(ctx, pebbleReader, indexReader, ledgerName, logIDs)
+func EnrichLogs(ctx context.Context, mainReader dal.KVReader, indexReader dal.KVReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
+	c, err := ReadLedgerLogsCompiled(ctx, mainReader, indexReader, ledgerName, logIDs)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledger logs: %w", err)
 	}

@@ -17,7 +17,7 @@ import (
 )
 
 // ReadLastAuditSequence returns the last audit entry sequence from the given reader. Returns 0 if no entries exist.
-func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
+func ReadLastAuditSequence(reader dal.KVReader) (uint64, error) {
 	entry, err := ReadLastAuditEntry(reader)
 	if err != nil {
 		return 0, err
@@ -31,7 +31,7 @@ func ReadLastAuditSequence(reader dal.PebbleReader) (uint64, error) {
 }
 
 // ReadLastAuditEntry returns the last audit entry from the given reader, or nil if none exist.
-func ReadLastAuditEntry(reader dal.PebbleReader) (*auditpb.AuditEntry, error) {
+func ReadLastAuditEntry(reader dal.KVReader) (*auditpb.AuditEntry, error) {
 	entry, err := dal.ReadLastEntry[*auditpb.AuditEntry](reader, dal.ZoneHistory, dal.SubHistoryAudit)
 	if err != nil {
 		return nil, fmt.Errorf("reading last audit entry: %w", err)
@@ -42,7 +42,7 @@ func ReadLastAuditEntry(reader dal.PebbleReader) (*auditpb.AuditEntry, error) {
 
 // ReadAuditEntries returns a cursor over audit entries after the given sequence from the given reader.
 // Use afterSequence=nil to return all entries, or a pointer to a sequence to filter.
-func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func ReadAuditEntries(ctx context.Context, reader dal.KVReader, afterSequence *uint64) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	_, span := queryTracer.Start(ctx, "query.list_audit_entries")
 	defer span.End()
 
@@ -86,7 +86,7 @@ func ReadAuditEntries(ctx context.Context, reader dal.PebbleReader, afterSequenc
 //   - pageSize: maximum entries to return.
 func ReadAuditEntriesPage(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	candidateSeqs []uint64,
 	narrowed bool,
 	loSeq, hiSeq uint64,
@@ -114,7 +114,7 @@ func ReadAuditEntriesPage(
 // exclusive cursor are applied on the sequence slice first; then entries are
 // materialized in order and the page is capped at pageSize entries.
 func readAuditPageFromSeqSet(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	seqs []uint64,
 	loSeq, hiSeq, afterSeq uint64,
 	reverse bool,
@@ -180,7 +180,7 @@ func pageCap(pageSize uint32) int {
 // readAuditPageFromZone streams a page directly from the audit zone within the
 // [loSeq, hiSeq] window, honoring the exclusive cursor and reverse iteration.
 func readAuditPageFromZone(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	loSeq, hiSeq, afterSeq uint64,
 	reverse bool,
 	pageSize uint32,
@@ -263,7 +263,7 @@ func readAuditPageFromZone(
 
 // ReadAuditItems returns all audit items for the given audit sequence.
 // Items are returned sorted by order_index (natural Pebble key order).
-func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence uint64) ([]*auditpb.AuditItem, error) {
+func ReadAuditItems(ctx context.Context, reader dal.KVReader, auditSequence uint64) ([]*auditpb.AuditItem, error) {
 	_, span := queryTracer.Start(ctx, "query.read_audit_items",
 		trace.WithAttributes(attribute.Int64("audit_sequence", int64(auditSequence))))
 	defer span.End()
@@ -314,7 +314,7 @@ func ReadAuditItems(ctx context.Context, reader dal.PebbleReader, auditSequence 
 
 // ReadAuditEntry returns a single audit entry by sequence number.
 // Returns domain.ErrNotFound if the entry does not exist.
-func ReadAuditEntry(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*auditpb.AuditEntry, error) {
+func ReadAuditEntry(ctx context.Context, reader dal.KVGetter, sequence uint64) (*auditpb.AuditEntry, error) {
 	_, span := queryTracer.Start(ctx, "query.get_audit_entry",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()

@@ -31,9 +31,9 @@ type PrefixIterator struct {
 // NewPrefixIterator creates an iterator that scans all keys with the given
 // prefix. entityOffset is the byte position where the entity ID starts.
 // entityLen is 0 for variable-length entities (accounts) or 8 for fixed-length (txIDs).
-// The caller provides a PebbleReader (snapshot or DB).
+// The caller provides a KVReader (snapshot or DB).
 func NewPrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,
@@ -59,7 +59,7 @@ func NewPrefixIterator(
 // NewStampGatedPrefixIterator is NewPrefixIterator with the fold-sequence
 // gate armed at pin (see PrefixIterator.stampPin).
 func NewStampGatedPrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,
@@ -250,7 +250,7 @@ var errInvariantRangeIteratorSeek = errors.New("invariant: RangeIterator.Seek ca
 
 // NewRangeIterator creates an iterator that scans keys in [lower, upper).
 func NewRangeIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	lower, upper []byte,
 	entityOffset int,
 	entityLen int,
@@ -274,7 +274,7 @@ func NewRangeIterator(
 // NewStampGatedRangeIterator is NewRangeIterator with the fold-sequence gate
 // armed at pin (see PrefixIterator.stampPin).
 func NewStampGatedRangeIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	lower, upper []byte,
 	entityOffset int,
 	entityLen int,

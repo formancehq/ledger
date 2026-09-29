@@ -104,7 +104,7 @@ func (s *Store) ReadAuditRaftProgress() (uint64, error) {
 }
 
 // ReadAuditRaftProgressFrom is the snapshot-aware certificate read.
-func (s *Store) ReadAuditRaftProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) ReadAuditRaftProgressFrom(reader dal.KVGetter) (uint64, error) {
 	return auditRaftCursor.Read(reader)
 }
 
@@ -212,7 +212,7 @@ func prefixUpperBound(prefix []byte) []byte {
 // for "alice" would also match a value indexed as "alice\x00evil" (whose key
 // shares the prefix). Fixed-width fields (uint64, byte) pass exactLen=0 since
 // their value segment cannot be a prefix of a longer value.
-func auditSeqsForPrefix(reader dal.PebbleReader, lower, upper []byte, exactLen int) ([]uint64, error) {
+func auditSeqsForPrefix(reader dal.KVReader, lower, upper []byte, exactLen int) ([]uint64, error) {
 	iter, err := reader.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, fmt.Errorf("creating audit index iterator: %w", err)
@@ -251,10 +251,10 @@ func auditSeqsForPrefix(reader dal.PebbleReader, lower, upper []byte, exactLen i
 
 // AuditIndexSnapshot binds audit lookups to one readstore snapshot. Filter
 // compilation and its Raft certificate must use the same instance.
-type AuditIndexSnapshot struct{ reader dal.PebbleReader }
+type AuditIndexSnapshot struct{ reader dal.KVReader }
 
 // NewAuditIndexSnapshot returns the audit lookup surface for a pinned reader.
-func NewAuditIndexSnapshot(reader dal.PebbleReader) *AuditIndexSnapshot {
+func NewAuditIndexSnapshot(reader dal.KVReader) *AuditIndexSnapshot {
 	return &AuditIndexSnapshot{reader: reader}
 }
 
@@ -275,7 +275,7 @@ func (s *AuditIndexSnapshot) AuditSeqsByString(field byte, value string) ([]uint
 	return auditSeqsByString(s.reader, field, value)
 }
 
-func auditSeqsByString(reader dal.PebbleReader, field byte, value string) ([]uint64, error) {
+func auditSeqsByString(reader dal.KVReader, field byte, value string) ([]uint64, error) {
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().
 		PutByte(PrefixInternal).
@@ -298,7 +298,7 @@ func (s *AuditIndexSnapshot) AuditSeqsByStringPrefix(field byte, value string) (
 	return auditSeqsByStringPrefix(s.reader, field, value)
 }
 
-func auditSeqsByStringPrefix(reader dal.PebbleReader, field byte, value string) ([]uint64, error) {
+func auditSeqsByStringPrefix(reader dal.KVReader, field byte, value string) ([]uint64, error) {
 	// NUL is used as the value terminator in AuditIndexStringKey. A prefix
 	// operand containing NUL shares a byte-prefix with shorter exact keys and
 	// would produce false-positive matches. Reject it explicitly.
@@ -328,7 +328,7 @@ func (s *AuditIndexSnapshot) AuditSeqsByOutcome(success bool) ([]uint64, error) 
 	return auditSeqsByOutcome(s.reader, success)
 }
 
-func auditSeqsByOutcome(reader dal.PebbleReader, success bool) ([]uint64, error) {
+func auditSeqsByOutcome(reader dal.KVReader, success bool) ([]uint64, error) {
 	var b byte
 	if success {
 		b = 1
@@ -354,7 +354,7 @@ func (s *AuditIndexSnapshot) AuditSeqsByUint64Range(field byte, lo, hi uint64) (
 	return auditSeqsByUint64Range(s.reader, field, lo, hi)
 }
 
-func auditSeqsByUint64Range(reader dal.PebbleReader, field byte, lo, hi uint64) ([]uint64, error) {
+func auditSeqsByUint64Range(reader dal.KVReader, field byte, lo, hi uint64) ([]uint64, error) {
 	kb := dal.NewKeyBuilder()
 	lower := kb.Reset().
 		PutByte(PrefixInternal).

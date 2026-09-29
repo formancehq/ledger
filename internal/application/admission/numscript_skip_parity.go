@@ -110,7 +110,7 @@ func (a *Admission) referenceExists(ledgerName, reference string, effects *batch
 // processRevertTransaction's GetReverted probe against the FSM's mutated bitset.
 //
 // The bitset lives under a per-ledger Pebble key range, so the read needs an
-// iterator: *dal.Store exposes only point lookups (PebbleGetter), so we take a
+// iterator: *dal.Store exposes only point lookups (KVGetter), so we take a
 // short-lived direct read handle (holds dbMu.RLock for its lifetime, does not
 // block compactions) and close it before returning.
 func (a *Admission) transactionReverted(ledgerName string, txID uint64, effects *batchEffects) (bool, error) {

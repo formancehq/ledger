@@ -55,7 +55,7 @@ var errInvariantEventRangeSeek = errors.New("invariant: EventResolveIterator ran
 
 // NewEventResolveIterator scans the event range under prefix (built by
 // MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin.
-func NewEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*EventResolveIterator, error) {
+func NewEventResolveIterator(reader dal.KVReader, prefix []byte, pin uint64) (*EventResolveIterator, error) {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: IncrementBytes(prefix),
@@ -71,7 +71,7 @@ func NewEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64)
 // [lower, upper) as of pin. prefixLen is the length of the shared prefix up
 // to the encoded values; emitOffset is the fixed width of one encoded value
 // (type tag + payload), stripped from the group to yield the entity.
-func NewEventResolveRangeIterator(reader dal.PebbleReader, lower, upper []byte, prefixLen, emitOffset int, pin uint64) (*EventResolveIterator, error) {
+func NewEventResolveRangeIterator(reader dal.KVReader, lower, upper []byte, prefixLen, emitOffset int, pin uint64) (*EventResolveIterator, error) {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,

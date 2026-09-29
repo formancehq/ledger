@@ -30,7 +30,7 @@ type vtDeterministicMarshaler interface {
 // kv.Batch with NoSync writes.
 //
 // WriteSession is deliberately write-only: it does not expose Get / NewIter
-// nor implement PebbleGetter / PebbleReader. This makes the invariant "no
+// nor implement KVGetter / KVReader. This makes the invariant "no
 // Pebble reads on the FSM hot path" structural — code that only holds a
 // *WriteSession cannot read from Pebble, by the compiler.
 //

@@ -116,7 +116,7 @@ func (s *IdempotencyStore) Reset() {
 // restart at different moments. Removing stale entries is exclusively the
 // job of the Raft-replicated IdempotencyEviction command, which uses a
 // deterministic cutoff embedded in the proposal.
-func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
+func (s *IdempotencyStore) RestoreFromStore(reader dal.KVReader) error {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
@@ -163,7 +163,7 @@ func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
 //
 // This is called on the leader OUTSIDE the FSM apply path. The returned
 // hashes are embedded in the Raft proposal so the FSM apply is write-only.
-func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffMicros uint64, maxKeys int) ([][]byte, []byte, error) {
+func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.KVReader, cutoffMicros uint64, maxKeys int) ([][]byte, []byte, error) {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
@@ -376,7 +376,7 @@ func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 
 // LoadIdempotencyKey reads an idempotency key from Pebble under prefix 0x03.
 // Returns nil if the key does not exist.
-func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*commonpb.IdempotencyKeyValue, error) {
+func LoadIdempotencyKey(reader dal.KVReader, key string) (*commonpb.IdempotencyKeyValue, error) {
 	keyHash := HashIdempotencyKey(key)
 
 	pebbleKey := make([]byte, 2+16)

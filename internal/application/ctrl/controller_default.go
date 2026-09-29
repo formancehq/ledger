@@ -247,7 +247,7 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 }
 
 // buildTransaction builds a transaction from its stored state and creation log.
-func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.KVReader, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
 	state, err := query.ReadTransactionState(ctx, reader, ctrl.attrs.Transaction, ledgerName, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading transaction state for %d: %w", transactionID, err)
@@ -263,7 +263,7 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 // assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
 // Metadata values are returned verbatim — declared_type is an index hint, not
 // an API contract, so reads do not coerce.
-func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
+func assembleTransactionFromState(ctx context.Context, reader dal.KVReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
 	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
@@ -376,9 +376,9 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		schema:        schemaFields,
 		info:          ledgerInfo,
 		profile:       profile,
-		pebbleReader:  handle,
+		mainReader:    handle,
 		releaseHold:   releaseHold,
-		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
+		indexRegistry: query.NewIndexReader(ctrl.attrs.Index, handle),
 		// indexVersionFor deliberately omitted — listEntities binds
 		// it to its own iteration snapshot.
 		afterToBytes: func(id uint64) []byte {
@@ -470,9 +470,9 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		schema:        schemaFields,
 		info:          ledgerInfo,
 		profile:       profile,
-		pebbleReader:  handle,
+		mainReader:    handle,
 		releaseHold:   releaseHold,
-		indexRegistry: query.NewPebbleIndexReader(ctrl.attrs.Index, handle),
+		indexRegistry: query.NewIndexReader(ctrl.attrs.Index, handle),
 		// indexVersionFor deliberately omitted — listEntities binds
 		// it to its own iteration snapshot.
 		afterToBytes: func(addr string) []byte {
@@ -914,7 +914,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	var (
-		indexReader     dal.PebbleReader
+		indexReader     dal.KVReader
 		indexVersionFor readstore.IndexVersionResolver
 		mainSeq         uint64
 		horizonKeep     func([]byte) (bool, error)
@@ -949,7 +949,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(indexReader, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
+	compiled, err := query.Compile(indexReader, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -1028,7 +1028,7 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		}}
 	}
 
-	indexReader := query.NewPebbleIndexReader(ctrl.attrs.Index, handleForIndex)
+	indexReader := query.NewIndexReader(ctrl.attrs.Index, handleForIndex)
 
 	indexID := indexes.MetadataID(req.GetTargetType(), metaKey)
 	idx, err := indexes.Find(indexReader, ledgerInfo.GetName(), indexID)
@@ -1354,7 +1354,7 @@ func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetI
 		}
 	}
 
-	reader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+	reader := query.NewIndexReader(ctrl.attrs.Index, handle)
 
 	idx, err := indexes.Find(reader, req.GetLedger(), req.GetId())
 	if err != nil {
@@ -1393,7 +1393,7 @@ func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *ser
 		}
 	}
 
-	reader := query.NewPebbleIndexReader(ctrl.attrs.Index, handle)
+	reader := query.NewIndexReader(ctrl.attrs.Index, handle)
 
 	idx, err := indexes.Find(reader, req.GetLedger(), req.GetId())
 	if err != nil {
@@ -1675,7 +1675,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		snap, kb, filter,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
-		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
+		ledgerInfo, query.NewIndexReader(ctrl.attrs.Index, handle), ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
 	)
 	if err != nil {
 		releaseHold()
@@ -1952,14 +1952,14 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 // and transaction assembly logic to hydrate raw entity IDs into full objects.
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
-		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error) {
+		EnrichAccount: func(reader dal.KVReader, ledgerName string, address string) (*commonpb.Account, error) {
 			// List-style enrichment paths do not surface a per-call collapse
 			// flag; entries are returned color-segregated and the caller can
 			// collapse client-side if needed. Per-account GetAccount honors
 			// the flag through the GetAccountOptions path.
 			return scanAccount(reader, ctrl.attrs, ledgerName, address, false, ctrl.logger)
 		},
-		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error) {
+		EnrichTransaction: func(ctx context.Context, reader dal.KVReader, ledgerName string, txID uint64) (*commonpb.Transaction, error) {
 			return ctrl.buildTransaction(ctx, reader, ledgerName, txID)
 		},
 	}

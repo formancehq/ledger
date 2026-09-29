@@ -145,7 +145,7 @@ func (b *batchEffects) mergeDiscovery(deltas map[domain.VolumeKey]*big.Int, meta
 
 // admissionValueSource reads balances and account metadata at admission time
 // for Numscript dependency resolution. Reads go through the shared Pebble
-// snapshot (a.store, a *dal.PebbleGetter) using the same attribute codecs the
+// snapshot (a.store, a *dal.KVGetter) using the same attribute codecs the
 // FSM cache is built from — this is the admission/preload read path, NOT the
 // FSM hot path (invariant #3 concerns only the apply path) — with the current
 // batch's accumulated effects layered on top so an order sees its predecessors'

@@ -58,7 +58,7 @@ func TestBoundedEntityIterator_ProductionConstructors(t *testing.T) {
 				if kind == "logs" {
 					it, err = NewLedgerLogRangeIterator(s.DB(), dal.NewKeyBuilder(), ledger, lower, upper)
 				} else {
-					it, err = NewPebbleTxRangeIterator(s.DB(), ledger, lower, upper)
+					it, err = NewTxRangeIterator(s.DB(), ledger, lower, upper)
 				}
 				require.NoError(t, err)
 				t.Cleanup(it.Close)

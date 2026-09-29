@@ -387,7 +387,7 @@ func (s *BackupJobsState) Reset() {
 // restore (within the same cluster — a cross-cluster restore wipes the
 // zone before this runs, see FinalizeRestore). Boot path only; not
 // allowed in the apply hot path.
-func (s *BackupJobsState) RestoreFromStore(reader dal.PebbleReader) error {
+func (s *BackupJobsState) RestoreFromStore(reader dal.KVReader) error {
 	prefix := []byte{dal.ZoneClusterTransient, dal.SubTransientBackupJob}
 
 	iter, err := reader.NewIter(&kv.IterOptions{

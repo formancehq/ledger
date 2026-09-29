@@ -1645,7 +1645,7 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 // is a pure function of stored state — independent of what the rmap currently
 // holds (which may be a lossy projection from a prior retype).
 func (b *Builder) fetchStoredMetadataValue(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	ledgerName string,
 	targetType commonpb.TargetType,
 	key string,

@@ -156,7 +156,7 @@ Each write overwrites the previous value. The in-memory cache tracks two generat
 - **High-throughput workloads** with many transactions
 - **Write-heavy applications** where write performance is critical
 - **Large ledgers** that benefit from LSM-tree compaction
-- **Production environments** requiring pure Go builds
+- **Linux deployments** with a compatible RocksDB library and CGO toolchain
 
 ### Directory Structure
 
@@ -181,7 +181,7 @@ With incremental cache persistence (cache zone written in each RocksDB batch), t
 1. **Normal restart**: If `live/` exists, open it directly — no checkpoint restoration needed. RocksDB's own WAL ensures crash safety.
 2. **Fresh start**: If `live/` does not exist, create a new RocksDB database.
 3. **Follower sync**: Checkpoints are created on Raft snapshot and used by followers joining the cluster via `SynchronizeWithLeader`.
-4. **Efficiency**: Checkpoints use hard links, so they don't duplicate data.
+4. **Efficiency**: Checkpoint clones hard-link immutable SST/blob files and copy mutable metadata. Each database keeps its own lock file.
 
 ### L0 Compaction Management
 

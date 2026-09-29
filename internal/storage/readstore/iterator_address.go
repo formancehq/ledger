@@ -15,7 +15,7 @@ import (
 // transaction index bucket. Unlike the attributes store, these mappings remain
 // available after an ephemeral account is purged.
 func accountTxAddressesByPrefix(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	addrPrefix string,
@@ -61,7 +61,7 @@ func accountTxAddressesByPrefix(
 // NewAccountTxAddressPrefixIterator enumerates matching addresses from the
 // retained account-to-transaction mapping in ascending order.
 func NewAccountTxAddressPrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	addrPrefix string,
@@ -78,7 +78,7 @@ func NewAccountTxAddressPrefixIterator(
 // NewReverseAccountTxAddressPrefixIterator is the descending counterpart of
 // NewAccountTxAddressPrefixIterator.
 func NewReverseAccountTxAddressPrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	addrPrefix string,
@@ -123,7 +123,7 @@ type entitySource interface {
 // materialize may observe it. Every positioning call goes through
 // ensureMaterialized, which returns only after the slice is sorted.
 type addressTxUnion struct {
-	reader     dal.PebbleReader
+	reader     dal.KVReader
 	kb         *dal.KeyBuilder
 	ledgerName string
 	prefix     byte         // which account→tx prefix to scan
@@ -231,7 +231,7 @@ type AddressTxIterator[D Direction] struct {
 }
 
 func newAddressTxIterator[D Direction](
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	addrIter entitySource,
@@ -252,7 +252,7 @@ func newAddressTxIterator[D Direction](
 // addrIter, looks up all associated transaction IDs in the specified
 // account→tx prefix and produces them in ascending order.
 func NewAddressTxIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	addrIter entitySource,
@@ -264,7 +264,7 @@ func NewAddressTxIterator(
 // NewReverseAddressTxIterator is NewAddressTxIterator in descending order,
 // over the same union.
 func NewReverseAddressTxIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	kb *dal.KeyBuilder,
 	ledgerName string,
 	addrIter entitySource,

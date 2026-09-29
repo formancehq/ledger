@@ -47,7 +47,7 @@ type compactSubIter struct {
 
 // NewCompactAccountIterator creates an iterator that yields CompactAccount
 // values by scanning Volume and Metadata attribute ranges for the given ledger.
-func NewCompactAccountIterator(reader dal.PebbleReader, ledgerName string) (*CompactAccountIterator, error) {
+func NewCompactAccountIterator(reader dal.KVReader, ledgerName string) (*CompactAccountIterator, error) {
 	vIter, err := newCompactSubIter(reader, dal.SubAttrVolume, dal.CanonicalKeySepVolume, ledgerName, dal.LedgerNameFixedSize)
 	if err != nil {
 		return nil, err
@@ -63,7 +63,7 @@ func NewCompactAccountIterator(reader dal.PebbleReader, ledgerName string) (*Com
 	return &CompactAccountIterator{v: *vIter, m: *mIter}, nil
 }
 
-func newCompactSubIter(reader dal.PebbleReader, attrType, sepByte byte, ledgerName string, ledgerLen int) (*compactSubIter, error) {
+func newCompactSubIter(reader dal.KVReader, attrType, sepByte byte, ledgerName string, ledgerLen int) (*compactSubIter, error) {
 	// Bounds: [0xF1][attrType][ledgerName padded 64B] → successor (last byte +1).
 	lowerBound := make([]byte, 2+dal.LedgerNameFixedSize)
 	lowerBound[0] = dal.ZoneAttributes

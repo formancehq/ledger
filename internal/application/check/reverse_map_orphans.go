@@ -87,7 +87,7 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 // oracle term compareReverseMapOrphans compares it against.
 type reverseMapOrphanScope struct {
 	// reader is the primary-store snapshot the index registry is read from.
-	reader dal.PebbleReader
+	reader dal.KVReader
 	// peer is the peer read-index snapshot, pinned by Check() BEFORE the primary
 	// one so the peer cursor can never appear ahead. nil when no readstore is
 	// attached.
@@ -406,7 +406,7 @@ func (c *Checker) compareReverseMapOrphans(
 // every unseen registry entry would turn its live rmap rows into false
 // positives.
 func (c *Checker) collectIndexedFields(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[domain.IndexKey]struct{}, bool) {
 	iter, err := c.attrs.Index.NewStreamingIter(reader, nil)

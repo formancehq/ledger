@@ -628,7 +628,7 @@ const maxExportSegmentBytes = 4 << 30 // 4 GiB
 func exportEntries(
 	ctx context.Context,
 	storage Storage,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	zone, sub byte,
 	afterSeq, endSeq uint64,
 	segType string,

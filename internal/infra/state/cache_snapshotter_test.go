@@ -56,7 +56,7 @@ func TestCacheSnapshotter_StopWaitsForAdmittedBloomTask(t *testing.T) {
 	// cancelled, so Stop returning proves that it cancelled and drained the
 	// already-admitted work rather than merely closing future admission.
 	snapshotter.bloomMu.Lock()
-	snapshotter.runBloomTask(dataStore, "admitted before stop", func(ctx context.Context, _ dal.PebbleReader) error {
+	snapshotter.runBloomTask(dataStore, "admitted before stop", func(ctx context.Context, _ dal.KVReader) error {
 		close(taskStarted)
 		<-ctx.Done()
 		close(taskExited)

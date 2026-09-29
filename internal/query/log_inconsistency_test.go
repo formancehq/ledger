@@ -16,12 +16,12 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// newGetterWithEntries returns a MockPebbleGetter that resolves every Get call
+// newGetterWithEntries returns a MockKVGetter that resolves every Get call
 // against the given map: hits return the bytes, misses return kv.ErrNotFound.
-func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockPebbleGetter {
+func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockKVGetter {
 	t.Helper()
 
-	g := NewMockPebbleGetter(gomock.NewController(t))
+	g := NewMockKVGetter(gomock.NewController(t))
 	g.EXPECT().Get(gomock.Any()).DoAndReturn(func(key []byte) ([]byte, io.Closer, error) {
 		if v, ok := entries[string(key)]; ok {
 			return v, io.NopCloser(nil), nil
@@ -33,23 +33,23 @@ func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockPebbleGe
 	return g
 }
 
-// newGetterAlwaysErr returns a MockPebbleGetter whose Get always fails with err.
-func newGetterAlwaysErr(t *testing.T, err error) *MockPebbleGetter {
+// newGetterAlwaysErr returns a MockKVGetter whose Get always fails with err.
+func newGetterAlwaysErr(t *testing.T, err error) *MockKVGetter {
 	t.Helper()
 
-	g := NewMockPebbleGetter(gomock.NewController(t))
+	g := NewMockKVGetter(gomock.NewController(t))
 	g.EXPECT().Get(gomock.Any()).Return(nil, nil, err).AnyTimes()
 
 	return g
 }
 
-// newGetterUnused returns a MockPebbleGetter that records no expectations —
+// newGetterUnused returns a MockKVGetter that records no expectations —
 // any Get call will fail the test. Useful when the caller must short-circuit
 // before any read happens.
-func newGetterUnused(t *testing.T) *MockPebbleGetter {
+func newGetterUnused(t *testing.T) *MockKVGetter {
 	t.Helper()
 
-	return NewMockPebbleGetter(gomock.NewController(t))
+	return NewMockKVGetter(gomock.NewController(t))
 }
 
 func ledgerLogIndexValue(seq uint64) []byte {

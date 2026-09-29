@@ -560,7 +560,7 @@ func txRowsMatch(ls oracle.LedgerState, rows []txWindowRow, pageSize int, server
 
 // accountUniverse returns ls's account addresses — every address carrying a
 // volume cell or a metadata entry — in ascending byte order, matching the
-// server's merged V+M attribute scan (readstore.NewPebbleAccountIterator).
+// server's merged V+M attribute scan (readstore.NewAccountIterator).
 func accountUniverse(ls oracle.LedgerState) []string {
 	seen := map[string]struct{}{}
 	for k := range ls.Volumes().All() {

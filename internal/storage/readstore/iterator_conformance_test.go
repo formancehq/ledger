@@ -165,7 +165,7 @@ func conformancePairs() []iterPair {
 		{
 			// The transaction universe: what a descending TRANSACTIONS page
 			// with no filter compiles to.
-			name: "PebbleTxIterator",
+			name: "TxIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s := newTestStore(t)
 
@@ -173,11 +173,11 @@ func conformancePairs() []iterPair {
 					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 				}
 
-				fwd, err := NewPebbleTxIterator(s.DB(), "l")
+				fwd, err := NewTxIterator(s.DB(), "l")
 				require.NoError(t, err)
 				t.Cleanup(fwd.Close)
 
-				rev, err := NewPebbleReverseTxIterator(s.DB(), "l")
+				rev, err := NewReverseTxIterator(s.DB(), "l")
 				require.NoError(t, err)
 				t.Cleanup(rev.Close)
 
@@ -190,10 +190,10 @@ func conformancePairs() []iterPair {
 		{
 			// The single-attribute-type account leaf behind the account
 			// universe. Registered at the leaf rather than through
-			// NewPebbleReverseAccountIterator, which returns an OrIterator
+			// NewReverseAccountIterator, which returns an OrIterator
 			// over two of these and so would leave the leaf itself
 			// unregistered.
-			name: "PebbleAccountIterator",
+			name: "AccountIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s := newTestStore(t)
 
@@ -227,7 +227,7 @@ func conformancePairs() []iterPair {
 			// (compileTxIDConditionRev). Seeded outside the range on both
 			// sides, so a bound the reverse leaf drops shows up as an extra
 			// entity rather than only as a different order.
-			name: "PebbleTxRangeIterator",
+			name: "TxRangeIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s := newTestStore(t)
 
@@ -235,11 +235,11 @@ func conformancePairs() []iterPair {
 					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 				}
 
-				fwd, err := NewPebbleTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
+				fwd, err := NewTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
 				require.NoError(t, err)
 				t.Cleanup(fwd.Close)
 
-				rev, err := NewPebbleReverseTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
+				rev, err := NewReverseTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
 				require.NoError(t, err)
 				t.Cleanup(rev.Close)
 

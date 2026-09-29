@@ -45,8 +45,8 @@ func NewRecovery(apply *Machine, reader dal.RecoveryReader) *Recovery {
 //
 // Called on restart and after follower sync (Synchronizer.SynchronizeWithLeader).
 func (r *Recovery) RecoverState() error {
-	// Create a ReadHandle for functions that need iterator access (PebbleReader).
-	// Get-only calls use r.reader directly (PebbleGetter).
+	// Create a ReadHandle for functions that need iterator access (KVReader).
+	// Get-only calls use r.reader directly (KVGetter).
 	handle, err := r.reader.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for recovery: %w", err)

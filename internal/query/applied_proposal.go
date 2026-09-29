@@ -15,7 +15,7 @@ import (
 
 // ReadLastAppliedProposalSequence returns the sequence of the most recently
 // written AppliedProposal entry, or 0 if none exist.
-func ReadLastAppliedProposalSequence(reader dal.PebbleReader) (uint64, error) {
+func ReadLastAppliedProposalSequence(reader dal.KVReader) (uint64, error) {
 	entry, err := ReadLastAppliedProposal(reader)
 	if err != nil {
 		return 0, err
@@ -30,7 +30,7 @@ func ReadLastAppliedProposalSequence(reader dal.PebbleReader) (uint64, error) {
 
 // ReadLastAppliedProposal returns the most recently written AppliedProposal
 // entry, or nil if none exist.
-func ReadLastAppliedProposal(reader dal.PebbleReader) (*proposalpb.AppliedProposal, error) {
+func ReadLastAppliedProposal(reader dal.KVReader) (*proposalpb.AppliedProposal, error) {
 	entry, err := dal.ReadLastEntry[*proposalpb.AppliedProposal](reader, dal.ZoneHistory, dal.SubHistoryAppliedProposal)
 	if err != nil {
 		return nil, fmt.Errorf("reading last applied proposal: %w", err)
@@ -43,7 +43,7 @@ func ReadLastAppliedProposal(reader dal.PebbleReader) (*proposalpb.AppliedPropos
 // sequence strictly greater than afterSequence. Pass nil to iterate from the
 // beginning. The index builder uses this cursor to learn the per-batch
 // transient account exclusion set without touching the audit log.
-func ReadAppliedProposals(ctx context.Context, reader dal.PebbleReader, afterSequence *uint64) (cursor.Cursor[*proposalpb.AppliedProposal], error) {
+func ReadAppliedProposals(ctx context.Context, reader dal.KVReader, afterSequence *uint64) (cursor.Cursor[*proposalpb.AppliedProposal], error) {
 	_, span := queryTracer.Start(ctx, "query.list_applied_proposals")
 	defer span.End()
 
@@ -69,7 +69,7 @@ func ReadAppliedProposals(ctx context.Context, reader dal.PebbleReader, afterSeq
 // ReadAppliedProposal returns the AppliedProposal at the given sequence, or
 // domain.ErrNotFound when no entry exists at that sequence (failed proposals
 // leave gaps).
-func ReadAppliedProposal(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*proposalpb.AppliedProposal, error) {
+func ReadAppliedProposal(ctx context.Context, reader dal.KVGetter, sequence uint64) (*proposalpb.AppliedProposal, error) {
 	_, span := queryTracer.Start(ctx, "query.get_applied_proposal",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()

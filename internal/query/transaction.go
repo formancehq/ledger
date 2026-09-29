@@ -14,7 +14,7 @@ import (
 )
 
 // ReadTransactionState reads the current state of a transaction from the attributes zone.
-func ReadTransactionState(ctx context.Context, reader dal.PebbleGetter, attrs *attributes.Attribute[*commonpb.TransactionState], ledgerName string, txID uint64) (*commonpb.TransactionState, error) {
+func ReadTransactionState(ctx context.Context, reader dal.KVGetter, attrs *attributes.Attribute[*commonpb.TransactionState], ledgerName string, txID uint64) (*commonpb.TransactionState, error) {
 	_, span := queryTracer.Start(ctx, "query.read_tx_state",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),

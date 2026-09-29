@@ -16,4 +16,4 @@ The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal
 
 - [Consensus](../consensus/) — Raft layer that writes the WAL and consumes the spool.
 - [FSM](../fsm/) — apply path that turns committed entries into RocksDB writes.
-- [Attributes](../attributes/) — caches in front of the Pebble main store.
+- [Attributes](../attributes/) — caches in front of the RocksDB main store.

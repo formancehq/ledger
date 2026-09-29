@@ -43,7 +43,7 @@ func (b *Builder) historyStateFor(ledger string) (ledgerHistoryState, bool) {
 	return state, ok
 }
 
-func (b *Builder) loadLedgerHistory(reader dal.PebbleReader) error {
+func (b *Builder) loadLedgerHistory(reader dal.KVReader) error {
 	entries, err := readstore.ReadAllLedgerHistoryStatesFrom(reader)
 	if err != nil {
 		if errors.Is(err, readstore.ErrLedgerHistoryCorrupt) {

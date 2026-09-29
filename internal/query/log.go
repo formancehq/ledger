@@ -18,7 +18,7 @@ import (
 )
 
 // ReadLastLog returns the full last log entry from the given reader. Returns nil if no logs exist.
-func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
+func ReadLastLog(reader dal.KVReader) (*commonpb.Log, error) {
 	log, err := dal.ReadLastEntry[*commonpb.Log](reader, dal.ZoneHistory, dal.SubHistoryLog)
 	if err != nil {
 		return nil, fmt.Errorf("reading last log: %w", err)
@@ -29,7 +29,7 @@ func ReadLastLog(reader dal.PebbleReader) (*commonpb.Log, error) {
 
 // ReadLastSequence returns the last log sequence number from the given reader.
 // Returns 0 if no logs exist. Reuses ReadLastLog to avoid duplicating the iterator logic.
-func ReadLastSequence(reader dal.PebbleReader) (uint64, error) {
+func ReadLastSequence(reader dal.KVReader) (uint64, error) {
 	log, err := ReadLastLog(reader)
 	if err != nil {
 		return 0, err
@@ -43,7 +43,7 @@ func ReadLastSequence(reader dal.PebbleReader) (uint64, error) {
 }
 
 // ReadLogBySequence retrieves a log by its sequence number from the given reader.
-func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence uint64) (*commonpb.Log, error) {
+func ReadLogBySequence(ctx context.Context, reader dal.KVGetter, sequence uint64) (*commonpb.Log, error) {
 	_, span := queryTracer.Start(ctx, "query.get_log",
 		trace.WithAttributes(attribute.Int64("sequence", int64(sequence))))
 	defer span.End()
@@ -61,12 +61,12 @@ func ReadLogBySequence(ctx context.Context, reader dal.PebbleGetter, sequence ui
 }
 
 // ledgerLogCursor iterates over pre-fetched global sequences and fetches full
-// Log entries from Pebble on demand. It holds no long-lived resources.
+// Log entries from the main store on demand. It holds no long-lived resources.
 type ledgerLogCursor struct {
-	ctx    context.Context
-	pebble dal.PebbleReader
-	seqs   []uint64
-	pos    int
+	ctx        context.Context
+	mainReader dal.KVReader
+	seqs       []uint64
+	pos        int
 }
 
 func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
@@ -79,13 +79,13 @@ func (c *ledgerLogCursor) Next() (*commonpb.Log, error) {
 
 	// Log history is permanent: an indexed sequence missing from the log
 	// zone is a consistency failure, never a legitimate miss.
-	log, err := ReadLogBySequence(c.ctx, c.pebble, seq)
+	log, err := ReadLogBySequence(c.ctx, c.mainReader, seq)
 	if err != nil {
 		return nil, err
 	}
 
 	if log == nil {
-		return nil, fmt.Errorf("log with sequence %d not found in Pebble", seq)
+		return nil, fmt.Errorf("log with sequence %d not found in main store", seq)
 	}
 
 	return log, nil
@@ -95,7 +95,7 @@ func (c *ledgerLogCursor) Close() error { return nil }
 
 // ReadLedgerLogsCompiled returns a cursor over log entries using pre-compiled
 // logID bytes from the Compile framework. It resolves logIDs → global sequences
-// via the read index, then fetches the full Log from Pebble for each entry.
+// via the read index, then fetches the full Log from the main store for each entry.
 //
 // Any structural inconsistency between the filter index (source of logIDs)
 // and the per-ledger log index (lookup target) is surfaced as
@@ -104,8 +104,8 @@ func (c *ledgerLogCursor) Close() error { return nil }
 // cannot tell it apart from a legitimate empty result.
 func ReadLedgerLogsCompiled(
 	ctx context.Context,
-	pebbleReader dal.PebbleReader,
-	indexReader dal.PebbleGetter,
+	mainReader dal.KVReader,
+	indexReader dal.KVGetter,
 	ledgerName string,
 	logIDs [][]byte,
 ) (cursor.Cursor[*commonpb.Log], error) {
@@ -155,14 +155,14 @@ func ReadLedgerLogsCompiled(
 		_ = closer.Close()
 	}
 
-	return &ledgerLogCursor{ctx: ctx, pebble: pebbleReader, seqs: seqs}, nil
+	return &ledgerLogCursor{ctx: ctx, mainReader: mainReader, seqs: seqs}, nil
 }
 
-// ReadLogsSinceRaw returns a raw Pebble iterator for logs after the given
+// ReadLogsSinceRaw returns a raw storage iterator for logs after the given
 // sequence. The caller receives raw key/value bytes without proto
 // deserialization and is responsible for closing the iterator.
 // The iterator is already positioned at the first valid entry (via First()).
-func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence uint64) (*kv.Iterator, error) {
+func ReadLogsSinceRaw(_ context.Context, reader dal.KVReader, afterSequence uint64) (*kv.Iterator, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog)
 
@@ -184,7 +184,7 @@ func ReadLogsSinceRaw(_ context.Context, reader dal.PebbleReader, afterSequence 
 
 // ReadLogsSince returns a cursor over global log entries after the given sequence from the given reader.
 // Pass afterSequence=0 to return all log entries.
-func ReadLogsSince(ctx context.Context, reader dal.PebbleReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (cursor.Cursor[*commonpb.Log], error) {
+func ReadLogsSince(ctx context.Context, reader dal.KVReader, afterSequence uint64, opts ...dal.ProtoCursorOption) (cursor.Cursor[*commonpb.Log], error) {
 	_, span := queryTracer.Start(ctx, "query.list_logs")
 	defer span.End()
 

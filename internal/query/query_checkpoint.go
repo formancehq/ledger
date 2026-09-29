@@ -11,7 +11,7 @@ import (
 // ReadQueryCheckpointRows returns every live query-checkpoint row keyed by its
 // Pebble key id (the authoritative identity), for the checker to compare against
 // the audit-derived set.
-func ReadQueryCheckpointRows(reader dal.PebbleReader) (map[uint64]*raftcmdpb.QueryCheckpointState, error) {
+func ReadQueryCheckpointRows(reader dal.KVReader) (map[uint64]*raftcmdpb.QueryCheckpointState, error) {
 	ids, err := ReadLiveQueryCheckpointIDs(reader)
 	if err != nil {
 		return nil, err
@@ -40,7 +40,7 @@ func ReadQueryCheckpointRows(reader dal.PebbleReader) (map[uint64]*raftcmdpb.Que
 // The ID is read from the Pebble KEY, never the payload's checkpoint_id: the key
 // is what CreateQueryCheckpoint / DeleteQueryCheckpoint address, so it is the
 // authoritative identity of the row.
-func ReadLiveQueryCheckpointIDs(reader dal.PebbleReader) (map[uint64]struct{}, error) {
+func ReadLiveQueryCheckpointIDs(reader dal.KVReader) (map[uint64]struct{}, error) {
 	iter, err := dal.NewBoundedIter(reader,
 		[]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpoint},
 		[]byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpoint + 1})
@@ -67,7 +67,7 @@ func ReadLiveQueryCheckpointIDs(reader dal.PebbleReader) (map[uint64]struct{}, e
 
 // ReadQueryCheckpoint reads a single query checkpoint by ID from Pebble.
 // Returns nil if the checkpoint does not exist.
-func ReadQueryCheckpoint(reader dal.PebbleGetter, checkpointID uint64) (*raftcmdpb.QueryCheckpointState, error) {
+func ReadQueryCheckpoint(reader dal.KVGetter, checkpointID uint64) (*raftcmdpb.QueryCheckpointState, error) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint)
 	kb.PutUint64(checkpointID)
@@ -82,7 +82,7 @@ func ReadQueryCheckpoint(reader dal.PebbleGetter, checkpointID uint64) (*raftcmd
 
 // ReadNextQueryCheckpointID reads the next checkpoint ID counter from Pebble.
 // Returns 1 if no counter has been stored yet.
-func ReadNextQueryCheckpointID(reader dal.PebbleGetter) (uint64, error) {
+func ReadNextQueryCheckpointID(reader dal.KVGetter) (uint64, error) {
 	v, err := dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobNextQueryCheckpointID}, 1)
 	if err != nil {
 		return 0, fmt.Errorf("getting next query checkpoint ID: %w", err)
@@ -93,7 +93,7 @@ func ReadNextQueryCheckpointID(reader dal.PebbleGetter) (uint64, error) {
 
 // ReadQueryCheckpointSchedule loads the query checkpoint schedule cron expression from the given reader.
 // Returns an empty string if no schedule is configured.
-func ReadQueryCheckpointSchedule(reader dal.PebbleGetter) (string, error) {
+func ReadQueryCheckpointSchedule(reader dal.KVGetter) (string, error) {
 	v, err := dal.ReadString(reader, []byte{dal.ZoneGlobal, dal.SubGlobQueryCheckpointSchedule})
 	if err != nil {
 		return "", fmt.Errorf("loading query checkpoint schedule: %w", err)
@@ -103,7 +103,7 @@ func ReadQueryCheckpointSchedule(reader dal.PebbleGetter) (string, error) {
 }
 
 // ListQueryCheckpoints reads all query checkpoints from Pebble, sorted by checkpoint ID ascending.
-func ListQueryCheckpoints(reader dal.PebbleReader) ([]*raftcmdpb.QueryCheckpointState, error) {
+func ListQueryCheckpoints(reader dal.KVReader) ([]*raftcmdpb.QueryCheckpointState, error) {
 	checkpoints, err := dal.CollectZone[*raftcmdpb.QueryCheckpointState](reader, dal.ZoneGlobal, dal.SubGlobQueryCheckpoint)
 	if err != nil {
 		return nil, fmt.Errorf("listing query checkpoints: %w", err)

@@ -200,7 +200,7 @@ func ValidateFreshRestoreTarget(dataDir string) error {
 	return nil
 }
 
-// Store is a Pebble implementation of dal.Store
+// Store is the RocksDB-backed main storage implementation.
 // It stores balances and account metadata.
 type Store struct {
 	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
@@ -227,7 +227,7 @@ func (s *Store) getDB() *kv.DB {
 	return s.db
 }
 
-// WriteStallWaitCh returns a channel that blocks while Pebble is in a write stall.
+// WriteStallWaitCh returns a channel that blocks while RocksDB is in a write stall.
 // When not stalled, the channel is already closed (non-blocking).
 // Safe to call on stores opened read-only (returns a pre-closed channel).
 func (s *Store) WriteStallWaitCh() <-chan struct{} {
@@ -241,7 +241,7 @@ func (s *Store) WriteStallWaitCh() <-chan struct{} {
 	return s.stallState.WaitCh()
 }
 
-// IsWriteStalled returns true if Pebble is currently in a write stall.
+// IsWriteStalled returns true if RocksDB is currently in a write stall.
 // Safe to call on stores opened read-only (always returns false).
 func (s *Store) IsWriteStalled() bool {
 	if s.stallState == nil {
@@ -251,7 +251,7 @@ func (s *Store) IsWriteStalled() bool {
 	return s.stallState.IsStalled()
 }
 
-// Key prefixes for Pebble storage. Every key starts with a 2-byte prefix:
+// Key prefixes for main storage. Every key starts with a 2-byte prefix:
 // [zone_byte][sub_prefix_byte][...payload...].
 //
 // Zone bytes (first byte of every key):
@@ -265,7 +265,7 @@ func (s *Store) IsWriteStalled() bool {
 //	0x07  ClusterTransient   — FSM-tracked state that has no meaning after restore (backup jobs, future ephemeral state).
 //	0x08..0xFF                — reserved for future zones.
 
-// Zone bytes — first byte of every Pebble key.
+// Zone bytes — first byte of every main-store key.
 const (
 	ZoneAttributes  byte = 0x01
 	ZoneCache       byte = 0x02
@@ -1801,7 +1801,7 @@ func (c *ProtoCursor[T]) Close() error {
 }
 
 // ReadProto reads a protobuf message from Pebble. Returns the zero value of T if not found.
-func ReadProto[T proto.Message](reader PebbleGetter, key []byte) (T, error) {
+func ReadProto[T proto.Message](reader KVGetter, key []byte) (T, error) {
 	var zero T
 
 	val, err := GetValue(reader, key)
@@ -1826,7 +1826,7 @@ func ReadProto[T proto.Message](reader PebbleGetter, key []byte) (T, error) {
 }
 
 // ScanZone returns a ProtoCursor over all entries in a [zone][sub] prefix range.
-func ScanZone[T proto.Message](reader PebbleReader, zone, sub byte, opts ...ProtoCursorOption) (*ProtoCursor[T], error) {
+func ScanZone[T proto.Message](reader KVReader, zone, sub byte, opts ...ProtoCursorOption) (*ProtoCursor[T], error) {
 	lowerBound := []byte{zone, sub}
 	upperBound := ZonePrefixUpperBound(zone, sub)
 
@@ -1839,7 +1839,7 @@ func ScanZone[T proto.Message](reader PebbleReader, zone, sub byte, opts ...Prot
 }
 
 // CollectZone scans a [zone][sub] range and returns all proto entries as a slice.
-func CollectZone[T proto.Message](reader PebbleReader, zone, sub byte) ([]T, error) {
+func CollectZone[T proto.Message](reader KVReader, zone, sub byte) ([]T, error) {
 	c, err := ScanZone[T](reader, zone, sub)
 	if err != nil {
 		return nil, err
@@ -1850,7 +1850,7 @@ func CollectZone[T proto.Message](reader PebbleReader, zone, sub byte) ([]T, err
 
 // ReadLastEntry reads the last entry in a [zone][sub] prefix range using iter.Last().
 // Returns the zero value of T if no entries exist.
-func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, error) {
+func ReadLastEntry[T proto.Message](reader KVReader, zone, sub byte) (T, error) {
 	var zero T
 
 	kb := NewKeyBuilder()

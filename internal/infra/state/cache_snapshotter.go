@@ -549,7 +549,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 // rotation. When absent, BaseIndex defaults to 0 (the pre-rotation value) and
 // we still iterate the per-entry rows that mergeSimpleWithCache emits every
 // batch.
-func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte byte, genIndex int) error {
+func (s *CacheSnapshotter) restoreGeneration(reader dal.KVReader, genByte byte, genIndex int) error {
 	// Read generation metadata if present.
 	baseIndex := uint64(0)
 
@@ -659,7 +659,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 // where gen is one of the two live generation bytes and slotCode is a
 // registered cache slot. The valid slot set is derived from s.slots so this
 // stays in lock-step with the persist side (no second hardcoded list).
-func (s *CacheSnapshotter) validateCacheNamespace(reader dal.PebbleReader, gen0Byte, gen1Byte byte) error {
+func (s *CacheSnapshotter) validateCacheNamespace(reader dal.KVReader, gen0Byte, gen1Byte byte) error {
 	validSlot := make(map[byte]struct{}, len(s.slots))
 	for _, slot := range s.slots {
 		validSlot[slot.CacheType()] = struct{}{}
@@ -807,7 +807,7 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 // in the calling goroutine using the provided context. Shared between
 // runBloomTask (wraps it in a SingleTaskExecutor) and runBloomTaskSync
 // (drives it inline on the boot path).
-func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.PebbleReader) error) error {
+func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.KVReader) error) error {
 	start := time.Now()
 
 	// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
@@ -859,7 +859,7 @@ func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.Recov
 // It interrupts any in-flight task, captures the current epoch, and runs
 // loadFn via the SingleTaskExecutor. See runBloomTaskBody for the actual
 // load + replay + SetReady sequence.
-func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) {
+func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.KVReader) error) {
 	s.bloomExecutor.Interrupt()
 
 	s.logger.WithFields(map[string]any{
@@ -879,7 +879,7 @@ func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string,
 // background context. By the time it returns, the bloom is ready (or
 // the call errored out), so the caller can safely begin work that
 // relies on bloom completeness -- in particular replayWAL.
-func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) error {
+func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.KVReader) error) error {
 	s.bloomExecutor.Interrupt()
 
 	s.logger.WithFields(map[string]any{

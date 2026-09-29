@@ -32,7 +32,7 @@ type ReversePrefixIterator struct {
 // given prefix in reverse order. entityOffset is the byte position where the
 // entity ID starts, entityLen is 0 for variable-length or 8 for fixed-length.
 func NewReversePrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,
@@ -59,7 +59,7 @@ func NewReversePrefixIterator(
 // fold-sequence gate armed at pin — the descending twin of
 // NewStampGatedPrefixIterator.
 func NewStampGatedReversePrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,

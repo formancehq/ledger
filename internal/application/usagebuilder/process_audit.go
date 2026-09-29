@@ -270,7 +270,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 // applyVolumeAnnotations.
 func (b *Builder) dispatchOrder(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	order *raftcmdpb.Order,
 	logSeq uint64,
 	state *batchState,
@@ -342,7 +342,7 @@ func (b *Builder) dispatchOrder(
 // travel across the mirror wire.
 func (b *Builder) dispatchMirrorIngest(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	ledger string,
 	mle *raftcmdpb.MirrorLogEntry,
 	logSeq uint64,
@@ -471,7 +471,7 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 // order.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	ledger string,
 	order *raftcmdpb.CreateTransactionOrder,
 	logSeq uint64,
@@ -535,7 +535,7 @@ func (b *Builder) dispatchCreateTransaction(
 // purged volumes and newly-created volumes live on the produced log.
 func (b *Builder) dispatchRevertTransaction(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	ledger string,
 	logSeq uint64,
 	state *batchState,
@@ -587,7 +587,7 @@ type logVolumeAnnotations struct {
 // readLog fetches the log at logSeq and returns its posting count plus the
 // three disjoint volume-annotation lists. Empty when the log does not exist
 // or carries no transaction / annotation.
-func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (logVolumeAnnotations, error) {
+func (b *Builder) readLog(ctx context.Context, handle dal.KVGetter, logSeq uint64) (logVolumeAnnotations, error) {
 	log, err := query.ReadLogBySequence(ctx, handle, logSeq)
 	if err != nil {
 		return logVolumeAnnotations{}, fmt.Errorf("reading log at seq %d: %w", logSeq, err)

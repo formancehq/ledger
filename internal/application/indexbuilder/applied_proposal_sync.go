@@ -60,7 +60,7 @@ type appliedProposalSync struct {
 
 // newAppliedProposalSync creates an appliedProposalSync that reads entries
 // from the given Pebble handle, starting after afterSeq.
-func newAppliedProposalSync(ctx context.Context, handle dal.PebbleReader, afterSeq uint64) (*appliedProposalSync, error) {
+func newAppliedProposalSync(ctx context.Context, handle dal.KVReader, afterSeq uint64) (*appliedProposalSync, error) {
 	var filter *uint64
 	if afterSeq > 0 {
 		filter = &afterSeq

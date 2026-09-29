@@ -118,7 +118,7 @@ gRPC only: both serializations of the REST surface require at least one operand
 per combinator (`decodeCombinator`, `internal/proto/commonpb/query_filter.go`).
 
 On ACCOUNTS, "the universe" is the main store's volume ∪ metadata rows
-(`NewPebbleAccountIterator`), and two leaves reach past it. A drained ephemeral
+(`NewAccountIterator`), and two leaves reach past it. A drained ephemeral
 account keeps its monotonic `abya` row after `applyEphemeralPurge` deletes its
 volume row, so `has asset` serves an account that the universe scan omits — the
 split the ACCOUNTS horizon carve-out exists to preserve

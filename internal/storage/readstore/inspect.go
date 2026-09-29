@@ -23,7 +23,7 @@ const defaultPageSize = 100
 
 // InspectParams holds all parameters for an index inspection scan.
 type InspectParams struct {
-	Reader      dal.PebbleReader
+	Reader      dal.KVReader
 	KB          *dal.KeyBuilder
 	LedgerName  string
 	Namespace   string // "a:" or "t:"
@@ -70,7 +70,7 @@ type InspectFacetEntry struct {
 // A key it cannot read is an error, not a skipped row: statistics derived from
 // the events around it would be plausible and wrong, hiding the corruption
 // they were computed over.
-func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen int, horizon uint64, fn func(group []byte) bool) error {
+func forEachLiveGroup(reader dal.KVReader, lower, upper []byte, prefixLen int, horizon uint64, fn func(group []byte) bool) error {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
@@ -127,7 +127,7 @@ func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen in
 }
 
 // countLiveGroups counts members whose latest event at or before horizon is an add.
-func countLiveGroups(reader dal.PebbleReader, prefix []byte, horizon uint64) (uint64, error) {
+func countLiveGroups(reader dal.KVReader, prefix []byte, horizon uint64) (uint64, error) {
 	var n uint64
 
 	err := forEachLiveGroup(reader, prefix, IncrementBytes(prefix), len(prefix), horizon, func([]byte) bool {

@@ -8,25 +8,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// pebbleIndexReader resolves Index entries against a Pebble snapshot of the
+// indexReader resolves Index entries against a snapshot of the
 // main store's attribute zone (SubAttrIndex). It is the read-side counterpart
 // to the WriteSet-backed lookup used by the FSM hot path: both implement
 // indexes.Lookup, so callers of query.Compile can pass either.
-type pebbleIndexReader struct {
+type indexReader struct {
 	attr   *attributes.Attribute[*commonpb.Index]
-	reader dal.PebbleGetter
+	reader dal.KVGetter
 }
 
-// NewPebbleIndexReader wires a read-side indexes.Lookup.
+// NewIndexReader wires a read-side indexes.Lookup.
 //
 // A nil attribute or reader returns a Lookup that reports
 // (nil, domain.ErrNotFound) — useful for tests and ad-hoc Compile callers
 // that have no index registry to consult.
-func NewPebbleIndexReader(attr *attributes.Attribute[*commonpb.Index], reader dal.PebbleGetter) indexes.Lookup {
-	return &pebbleIndexReader{attr: attr, reader: reader}
+func NewIndexReader(attr *attributes.Attribute[*commonpb.Index], reader dal.KVGetter) indexes.Lookup {
+	return &indexReader{attr: attr, reader: reader}
 }
 
-func (r *pebbleIndexReader) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
+func (r *indexReader) Get(key domain.IndexKey) (commonpb.IndexReader, error) {
 	if r == nil || r.attr == nil || r.reader == nil {
 		return nil, domain.ErrNotFound
 	}

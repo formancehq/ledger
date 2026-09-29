@@ -98,7 +98,7 @@ func logPrefixUpperBound() []byte {
 // readHighestLogKey returns the greatest Log KEY sequence in the store, or 0
 // when it holds no Log row. Read off the key, never off the value's `sequence`
 // field — see the head comment in Check.
-func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
+func readHighestLogKey(reader dal.KVReader) (uint64, error) {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
 		UpperBound: logPrefixUpperBound(),
@@ -982,7 +982,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 // filters can hide a surviving primary row.
 func (c *Checker) comparePurgedAccountAbsence(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	purged map[domain.AccountKey]struct{},
 	purgedVolumes map[domain.VolumeKey]struct{},
 	callback func(*servicepb.CheckStoreEvent),
@@ -1075,7 +1075,7 @@ func (c *Checker) comparePurgedAccountAbsence(
 // compares against the audit-derived ground truth.
 func (c *Checker) collectStoredTransientVolumes(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	addStored func(ledger, account, asset, color string),
 ) error {
 	proposals, err := query.ReadAppliedProposals(ctx, reader, nil)
@@ -1179,7 +1179,7 @@ func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derive
 // oracle terms compareIndexes compares it against.
 type compareIndexesScope struct {
 	// reader is the primary-store snapshot the registry is read from.
-	reader dal.PebbleReader
+	reader dal.KVReader
 	// expected is the audit-derived registry state: the replayed CreateIndex /
 	// DropIndex / RemovedMetadataFieldType / DeleteLedger delta.
 	expected map[domain.IndexKey]*commonpb.Index
@@ -1360,7 +1360,7 @@ func (c *Checker) compareIndexes(
 // its missing boundary is expected, not corruption. The present-row equality
 // checks (ahead/behind/corrupt-to-zero) still apply to every ledger whose row
 // is present.
-func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, deletedInReplay map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) {
+func (c *Checker) compareMirrorV2LogID(reader dal.KVReader, chainBound *chainBoundState, deletedInReplay map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) {
 	// Collect stored last_mirror_v2_log_id per ledger from the live boundary rows.
 	stored := make(map[string]uint64)
 
@@ -1470,7 +1470,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 // created_at, and applied_index)
 // from the logs, so a missing row is corruption, never a legitimate restore
 // artifact. Stored rows are keyed by the Pebble key id, not the payload.
-func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareQueryCheckpoints(reader dal.KVReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
 	stored, err := query.ReadQueryCheckpointRows(reader)
 	if err != nil {
 		return fmt.Errorf("reading stored query checkpoints: %w", err)
@@ -1552,7 +1552,7 @@ func numscriptVersionGreater(a, b string) bool {
 // latest pointer that is not the greatest saved semver is tampering: a stored
 // row the replay never produced is a surplus/injected row and is flagged.
 func (c *Checker) compareNumscripts(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
 	expectedLatest map[domain.NumscriptVersionKey]string,
 	deletedInReplay map[string]struct{},
@@ -1729,7 +1729,7 @@ func (e excludedVolumesSet) containsAccount(ledgerName, account string) bool {
 // compareVolumes compares the replayed volumes with the live rows.
 // `excluded` lists per-ledger accounts whose volumes legitimately diverge
 // (transient + purged ephemeral, sourced from the audit log).
-func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.KVReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
@@ -1965,7 +1965,7 @@ func metaValueDisplay(v *commonpb.MetadataValue) string {
 // `excluded` lists per-ledger accounts whose state legitimately diverges
 // (transient + purged ephemeral, sourced from the audit log) — metadata on
 // such accounts is skipped to avoid false positives.
-func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.KVReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
@@ -2162,7 +2162,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 // undetected. The fix in #347 widens allKeys to the union with live and
 // instruments every abort path with an error event so that swallowed
 // iterator/unmarshal failures cannot make the check look clean.
-func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareTransactions(ctx context.Context, reader dal.KVReader, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	emitErr := func(msg string) {
@@ -2507,7 +2507,7 @@ type auditVerification struct {
 
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	chainBound *chainBoundState,
 	folds chainVerifierFolds,
 	callback func(*servicepb.CheckStoreEvent),
@@ -4501,7 +4501,7 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 // to a follower's store, which is where SubIdempKeys lives. The audit entries
 // that anchor the expectation are hash-chain-verified above.
 func (c *Checker) compareIdempotencyOutcomes(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	expected map[idemExpectedKey]expectedIdempotency,
 	hasVerifiedRange bool,
 	callback func(*servicepb.CheckStoreEvent),
@@ -4622,7 +4622,7 @@ type proposalBoundaryReader struct {
 
 func (c *Checker) newProposalBoundaryReader(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 ) (*proposalBoundaryReader, error) {
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
@@ -4680,7 +4680,7 @@ func logSequenceFromAuditEntry(entry *auditpb.AuditEntry) uint64 {
 // from the audit. The schema is a projection of CreateLedger.initial_schema +
 // SetMetadataFieldType / RemovedMetadataFieldType orders; a stored schema that
 // diverges from the replay is tampering or a restore-rebuild gap.
-func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*commonpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareSchema(ctx context.Context, reader dal.KVReader, expected map[string]*commonpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for schema verification: %w", err)
@@ -4733,7 +4733,7 @@ func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled 
 // (AddAccountType / RemoveAccountType). The logged AccountType is the exact
 // object stored on LedgerInfo (processAddAccountType), so a proto.Equal
 // divergence is tampering or a restore-rebuild gap.
-func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*commonpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.KVReader, expected map[string]map[string]*commonpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for account-type verification: %w", err)
@@ -4765,7 +4765,7 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 // compareDefaultEnforcementModes verifies the persisted policy that controls
 // whether unmatched accounts are rejected. The expectation is reconstructed
 // from the ledger's creation log and subsequent audited mode-update logs.
-func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.PebbleReader, expected map[string]commonpb.ChartEnforcementMode, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.KVReader, expected map[string]commonpb.ChartEnforcementMode, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for default enforcement mode verification: %w", err)
@@ -4803,7 +4803,7 @@ func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal
 // nothing on one side. knownLedgers is the audit-derived set (replay), never
 // seeded from the live store, so both checks are honest. This is the
 // store-side counterpart of the replay's UNKNOWN_LEDGER gate.
-func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.KVReader, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for presence verification: %w", err)
@@ -4993,7 +4993,7 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 // too: DeleteLedger deletes the rows at apply time on both the live path and
 // the replay, so nothing legitimately lingers. Rows that fail to decode are
 // reported rather than silently narrowing the comparison.
-func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareReversions(reader dal.KVReader, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	stored, malformed, err := query.ReadReversions(reader)
 	if err != nil {
 		return fmt.Errorf("reading stored reversion bitsets: %w", err)
@@ -5184,7 +5184,7 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 // interchangeable. Items with log_sequence 0 (failed proposals, idempotent
 // replays) contribute nothing; effects for ledgers without an expectation
 // (deleted, or flagged UNKNOWN_LEDGER during replay) are skipped.
-func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries) error {
+func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.KVReader, expected map[string]*raftcmdpb.LedgerBoundaries) error {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryAuditItem},
 		UpperBound: []byte{dal.ZoneHistory, dal.SubHistoryAuditItem + 1},
@@ -5249,7 +5249,7 @@ func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expe
 // longer live on LedgerBoundaries — they moved to the usagestore peer
 // secondary store and are out of main-store checker scope by construction
 // (their integrity is a peer-store rebuild-health concern, not invariant #8).
-func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareBoundaries(ctx context.Context, reader dal.KVReader, expected map[string]*raftcmdpb.LedgerBoundaries, callback func(*servicepb.CheckStoreEvent)) error {
 	stored := make(map[string]*raftcmdpb.LedgerBoundaries)
 
 	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
@@ -5332,7 +5332,7 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 // deleted ledger's claims, but DeleteLedger removes the stored rows at apply.
 // A STORED row for a non-live ledger is flagged for the same reason: nothing
 // legitimately lingers past the same-apply purge.
-func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, replay *replayStore, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareReferences(ctx context.Context, reader dal.KVReader, replay *replayStore, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
 	parseKey := func(canonicalKey []byte) (domain.TransactionReferenceKey, bool) {
 		var rk domain.TransactionReferenceKey
 		if err := rk.Unmarshal(canonicalKey); err != nil {

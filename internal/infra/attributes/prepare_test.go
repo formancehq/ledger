@@ -21,9 +21,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
-// readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.
+// readLastAppliedIndex reads the last applied Raft index directly from KVReader.
 // Defined here to avoid importing state (which imports attributes, creating a cycle).
-func readLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
+func readLastAppliedIndex(reader dal.KVGetter) (uint64, error) {
 	get, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex})
 	if err != nil {
 		if errors.Is(err, kv.ErrNotFound) {

@@ -62,11 +62,11 @@ type leaves[D readstore.Direction] interface {
 type ascLeaves struct{}
 
 func (ascLeaves) accountUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Asc], error) {
-	return readstore.NewPebbleAccountIterator(ctx.pebbleReader, ctx.ledgerName)
+	return readstore.NewAccountIterator(ctx.mainReader, ctx.ledgerName)
 }
 
 func (ascLeaves) txUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Asc], error) {
-	return readstore.NewPebbleTxIterator(ctx.pebbleReader, ctx.ledgerName)
+	return readstore.NewTxIterator(ctx.mainReader, ctx.ledgerName)
 }
 
 func (ascLeaves) logUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Asc], error) {
@@ -74,7 +74,7 @@ func (ascLeaves) logUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Asc]
 }
 
 func (ascLeaves) accountPrefix(ctx *compileCtx, addrPrefix string) (readstore.Iterator[readstore.Asc], error) {
-	return readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+	return readstore.NewAccountPrefixIterator(ctx.mainReader, ctx.ledgerName, addrPrefix)
 }
 
 func (ascLeaves) addressTx(ctx *compileCtx, accounts readstore.Iterator[readstore.Asc], rolePrefix byte) readstore.Iterator[readstore.Asc] {
@@ -94,7 +94,7 @@ func (ascLeaves) stampGatedPrefix(ctx *compileCtx, prefix []byte, entityOffset, 
 }
 
 func (ascLeaves) txRange(ctx *compileCtx, lower, upper []byte) (readstore.Iterator[readstore.Asc], error) {
-	return readstore.NewPebbleTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
+	return readstore.NewTxRangeIterator(ctx.mainReader, ctx.ledgerName, lower, upper)
 }
 
 func (ascLeaves) bitset(bs *bitset.Bitset) readstore.Iterator[readstore.Asc] {
@@ -107,11 +107,11 @@ func (ascLeaves) bitset(bs *bitset.Bitset) readstore.Iterator[readstore.Asc] {
 type descLeaves struct{}
 
 func (descLeaves) accountUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Desc], error) {
-	return readstore.NewPebbleReverseAccountIterator(ctx.pebbleReader, ctx.ledgerName)
+	return readstore.NewReverseAccountIterator(ctx.mainReader, ctx.ledgerName)
 }
 
 func (descLeaves) txUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Desc], error) {
-	return readstore.NewPebbleReverseTxIterator(ctx.pebbleReader, ctx.ledgerName)
+	return readstore.NewReverseTxIterator(ctx.mainReader, ctx.ledgerName)
 }
 
 func (descLeaves) logUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Desc], error) {
@@ -119,7 +119,7 @@ func (descLeaves) logUniverse(ctx *compileCtx) (readstore.Iterator[readstore.Des
 }
 
 func (descLeaves) accountPrefix(ctx *compileCtx, addrPrefix string) (readstore.Iterator[readstore.Desc], error) {
-	return readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+	return readstore.NewReverseAccountPrefixIterator(ctx.mainReader, ctx.ledgerName, addrPrefix)
 }
 
 func (descLeaves) addressTx(ctx *compileCtx, accounts readstore.Iterator[readstore.Desc], rolePrefix byte) readstore.Iterator[readstore.Desc] {
@@ -139,7 +139,7 @@ func (descLeaves) stampGatedPrefix(ctx *compileCtx, prefix []byte, entityOffset,
 }
 
 func (descLeaves) txRange(ctx *compileCtx, lower, upper []byte) (readstore.Iterator[readstore.Desc], error) {
-	return readstore.NewPebbleReverseTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
+	return readstore.NewReverseTxRangeIterator(ctx.mainReader, ctx.ledgerName, lower, upper)
 }
 
 func (descLeaves) bitset(bs *bitset.Bitset) readstore.Iterator[readstore.Desc] {

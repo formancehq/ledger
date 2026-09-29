@@ -22,7 +22,7 @@ var ErrLedgerHistoryCorrupt = errors.New("ledger history state corrupt")
 
 // ReadAllLedgerHistoryStatesFrom reads a coherent tracker snapshot. Malformed
 // keys and values are corruption, never silently treated as an absent ledger.
-func ReadAllLedgerHistoryStatesFrom(reader dal.PebbleReader) ([]LedgerHistoryStateEntry, error) {
+func ReadAllLedgerHistoryStatesFrom(reader dal.KVReader) ([]LedgerHistoryStateEntry, error) {
 	prefix := LedgerHistoryStatePrefix()
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,

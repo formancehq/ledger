@@ -40,7 +40,7 @@ type ReverseEventResolveIterator struct {
 // NewReverseEventResolveIterator scans the event range under prefix (built by
 // MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin,
 // descending.
-func NewReverseEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*ReverseEventResolveIterator, error) {
+func NewReverseEventResolveIterator(reader dal.KVReader, prefix []byte, pin uint64) (*ReverseEventResolveIterator, error) {
 	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: IncrementBytes(prefix),

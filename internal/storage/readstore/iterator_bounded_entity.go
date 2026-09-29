@@ -29,7 +29,7 @@ type BoundedEntityIterator struct {
 // entity, so its length determines the extraction offset. Nil bounds are open;
 // an open upper bound uses the prefix successor to include the maximum entity.
 // entityLen must be positive; non-nil bounds must have exactly that width.
-func NewBoundedEntityIterator(reader dal.PebbleReader, prefix, lower, upper []byte, entityLen int) (*BoundedEntityIterator, error) {
+func NewBoundedEntityIterator(reader dal.KVReader, prefix, lower, upper []byte, entityLen int) (*BoundedEntityIterator, error) {
 	if entityLen <= 0 {
 		return nil, fmt.Errorf("invariant: BoundedEntityIterator entityLen must be positive, got %d", entityLen)
 	}

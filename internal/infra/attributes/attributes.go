@@ -138,7 +138,7 @@ const SuffixLen = AttrTypeLen
 // Key format: [KeyPrefixAttributes][attrType][canonicalKey].
 // Returns the value and any error. Returns (zero, nil) if no entry found.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) Get(reader dal.PebbleGetter, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) Get(reader dal.KVGetter, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
 	pLen := prefixLen(canonicalKey)
@@ -183,7 +183,7 @@ type ScanResult[V proto.Message] struct {
 
 // ScanEntries reads the entry for a canonical key and returns the result.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ScanEntries(reader dal.PebbleGetter, canonicalKey []byte) (*ScanResult[V], error) {
+func (a *Attribute[V]) ScanEntries(reader dal.KVGetter, canonicalKey []byte) (*ScanResult[V], error) {
 	value, err := a.Get(reader, canonicalKey)
 	if err != nil {
 		return nil, err
@@ -204,7 +204,7 @@ func (a *Attribute[V]) ScanEntries(reader dal.PebbleGetter, canonicalKey []byte)
 // This is more efficient than List + Get per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+func (a *Attribute[V]) ComputeAllForPrefix(reader dal.KVReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
 	si, err := a.NewStreamingIter(reader, canonicalPrefix)
 	if err != nil {
 		return nil, err

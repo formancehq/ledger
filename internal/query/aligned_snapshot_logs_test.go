@@ -93,7 +93,7 @@ func TestMainHorizonKeep_Logs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			getter := NewMockPebbleGetter(gomock.NewController(t))
+			getter := NewMockKVGetter(gomock.NewController(t))
 			closer := &horizonCloser{}
 			if tt.expectGet {
 				kb := dal.NewKeyBuilder()

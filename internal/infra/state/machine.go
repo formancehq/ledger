@@ -779,7 +779,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 	// even if a future change reintroduces a synchronous commit path.
 	if len(pb.sentinelUpdates) == 0 && len(pb.sentinelLedgerNames) == 0 {
 		// Nothing to verify — skip the snapshot open entirely.
-	} else if err := fsm.sentinel.Run(func(sentinelHandle dal.PebbleReader) error {
+	} else if err := fsm.sentinel.Run(func(sentinelHandle dal.KVReader) error {
 		if len(pb.sentinelUpdates) > 0 {
 			if err := verifyPostCommitVolumes(
 				sentinelHandle, fsm.Registry.Attrs.Volume,

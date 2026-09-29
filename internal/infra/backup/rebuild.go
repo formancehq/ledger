@@ -710,7 +710,7 @@ type proposalBoundaryReader struct {
 
 func newProposalBoundaryReader(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	replayedThrough uint64,
 	afterAuditSeq uint64,
 ) (*proposalBoundaryReader, error) {
@@ -766,7 +766,7 @@ func (r *proposalBoundaryReader) Close() error {
 // fromLogSeq.
 func seedLedgerContext(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 	ledgerInfos map[string]*commonpb.LedgerInfo,
@@ -1048,7 +1048,7 @@ type attributeReplayWriter struct {
 	// batch after the attribute commit. The per-ledger usage counters live in
 	// the usagestore peer secondary store, not here.
 	boundaries map[string]*raftcmdpb.LedgerBoundaries
-	readHandle dal.PebbleReader
+	readHandle dal.KVReader
 
 	// Reversion bitsets per ledger (ZonePerLedger/SubPLReversions). The FSM's
 	// already-reverted gate reads these — not the tx rows'
@@ -1222,7 +1222,7 @@ func (w *attributeReplayWriter) AccountHasNonZeroVolume(ledger, account string) 
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
 // nothing.
-func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, fromLogSeq, fromAuditSeq uint64) error {
+func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.KVReader, fromLogSeq, fromAuditSeq uint64) error {
 	lower := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 		PutUint64(fromAuditSeq + 1).
@@ -1331,7 +1331,7 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 // reads the FSM's own live/expired decision straight off the hash-chain-bound
 // audit reason, so no persisted TTL — and no ambiguous zero-value sentinel — is
 // consulted here.
-func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.PebbleReader, fromAuditSeq uint64) error {
+func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.KVReader, fromAuditSeq uint64) error {
 	var after *uint64
 	if fromAuditSeq > 0 {
 		after = &fromAuditSeq

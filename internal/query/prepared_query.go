@@ -14,7 +14,7 @@ import (
 )
 
 // ReadPreparedQuery reads a single prepared query by ledger and name from the attributes zone.
-func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleGetter, ledgerName string, name string) (*commonpb.PreparedQuery, error) {
+func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.KVGetter, ledgerName string, name string) (*commonpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.get_prepared_query",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -26,7 +26,7 @@ func ReadPreparedQuery(ctx context.Context, attr *attributes.Attribute[*commonpb
 }
 
 // ReadPreparedQueries reads all prepared queries for a ledger from the attributes zone.
-func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.PebbleReader, ledgerName string) ([]*commonpb.PreparedQuery, error) {
+func ReadPreparedQueries(ctx context.Context, attr *attributes.Attribute[*commonpb.PreparedQuery], reader dal.KVReader, ledgerName string) ([]*commonpb.PreparedQuery, error) {
 	_, span := queryTracer.Start(ctx, "query.list_prepared_queries",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()

@@ -120,10 +120,10 @@ func TestReversePrefixIterator_SeekCeilKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-// PebbleReverseTxIterator.Seek has three exhaustion branches (Prev fails
+// ReverseTxIterator.Seek has three exhaustion branches (Prev fails
 // after a positioned Seek, Last fails on an empty view, and the scan-back
 // loop running out); the first two must record the ceil and stay re-seekable.
-func TestPebbleReverseTxIterator_SeekRepositioning(t *testing.T) {
+func TestReverseTxIterator_SeekRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -132,7 +132,7 @@ func TestPebbleReverseTxIterator_SeekRepositioning(t *testing.T) {
 		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
-	it, err := NewPebbleReverseTxIterator(s.DB(), "l")
+	it, err := NewReverseTxIterator(s.DB(), "l")
 	require.NoError(t, err)
 	defer it.Close()
 
@@ -151,7 +151,7 @@ func TestPebbleReverseTxIterator_SeekRepositioning(t *testing.T) {
 
 	// Last()-fails branch: an empty view records the ceil on the first seek,
 	// covering every later target below it.
-	empty, err := NewPebbleReverseTxIterator(s.DB(), "empty")
+	empty, err := NewReverseTxIterator(s.DB(), "empty")
 	require.NoError(t, err)
 	defer empty.Close()
 
@@ -165,7 +165,7 @@ func TestPebbleReverseTxIterator_SeekRepositioning(t *testing.T) {
 // below mirror TestPrefixIterator_SeekFloorKeepsRepositioning for the
 // remaining leaves.
 
-func TestPebbleTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+func TestTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -174,7 +174,7 @@ func TestPebbleTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
-	it, err := NewPebbleTxIterator(s.DB(), "l")
+	it, err := NewTxIterator(s.DB(), "l")
 	require.NoError(t, err)
 	defer it.Close()
 
@@ -193,7 +193,7 @@ func TestPebbleTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+func TestTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -202,7 +202,7 @@ func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
-	it, err := NewPebbleTxRangeIterator(s.DB(), "l", txIDBytes(1), txIDBytes(4))
+	it, err := NewTxRangeIterator(s.DB(), "l", txIDBytes(1), txIDBytes(4))
 	require.NoError(t, err)
 	defer it.Close()
 
@@ -221,7 +221,7 @@ func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
+func TestAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -255,10 +255,10 @@ func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	require.NoError(t, it.Err())
 }
 
-// The account mirror of TestPebbleReverseTxIterator_SeekRepositioning:
+// The account mirror of TestReverseTxIterator_SeekRepositioning:
 // same seek-then-step-back shape over address extraction, covering the
 // Prev()-fails and Last()-fails branches plus reposition after exhaustion.
-func TestPebbleReverseAccountIterator_SeekRepositioning(t *testing.T) {
+func TestReverseAccountIterator_SeekRepositioning(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -304,7 +304,7 @@ func TestPebbleReverseAccountIterator_SeekRepositioning(t *testing.T) {
 // Seek at the all-0xff cursor must return the last transaction: the
 // incremented probe key wraps to zero, and mistaking that for an empty range
 // would also poison the ceil for every later seek.
-func TestPebbleReverseTxIterator_SeekMaxUint64(t *testing.T) {
+func TestReverseTxIterator_SeekMaxUint64(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -313,7 +313,7 @@ func TestPebbleReverseTxIterator_SeekMaxUint64(t *testing.T) {
 		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
-	it, err := NewPebbleReverseTxIterator(s.DB(), "l")
+	it, err := NewReverseTxIterator(s.DB(), "l")
 	require.NoError(t, err)
 	defer it.Close()
 

@@ -262,10 +262,10 @@ func (s *Store) ReadProgress() (uint64, error) {
 }
 
 // ReadProgressFrom is the snapshot-aware variant of ReadProgress: it reads
-// from an arbitrary PebbleGetter (typically a *kv.Snapshot taken via
+// from an arbitrary KVGetter (typically a *kv.Snapshot taken via
 // NewSnapshot()) instead of the live DB, so multi-step readers can pin a
 // consistent view.
-func (s *Store) ReadProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) ReadProgressFrom(reader dal.KVGetter) (uint64, error) {
 	return progressCursor.Read(reader)
 }
 
@@ -282,7 +282,7 @@ func (s *Store) ReadRaftProgress() (uint64, error) {
 
 // ReadRaftProgressFrom reads the normal projection certificate from a pinned
 // snapshot, so the certificate and index rows come from one Pebble view.
-func (s *Store) ReadRaftProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) ReadRaftProgressFrom(reader dal.KVGetter) (uint64, error) {
 	return readRaftCursor.Read(reader)
 }
 
@@ -300,7 +300,7 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 // LastIndexedSequenceFrom is the snapshot-aware variant. Callers that hold
 // a snapshot for a multi-step read must use this form so the value stays
 // pinned to the snapshot rather than advancing under their feet.
-func (s *Store) LastIndexedSequenceFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) LastIndexedSequenceFrom(reader dal.KVGetter) (uint64, error) {
 	return s.ReadProgressFrom(reader)
 }
 
@@ -689,7 +689,7 @@ func (s *Store) WriteIndexVersionState(batch *dal.WriteSession, ledgerName strin
 // Per CLAUDE.md invariant #7, callers MUST NOT collapse a non-nil err
 // into "absent" — a transient I/O error masquerading as `index still
 // building` would lie to the client indefinitely.
-func ReadIndexVersionStateFrom(reader dal.PebbleGetter, ledgerName, canonicalID string) (IndexVersionState, bool, error) {
+func ReadIndexVersionStateFrom(reader dal.KVGetter, ledgerName, canonicalID string) (IndexVersionState, bool, error) {
 	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
 
 	v, closer, err := reader.Get(key)
@@ -729,7 +729,7 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func (s *Store) SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
+func (s *Store) SnapshotVersionResolver(reader dal.KVGetter, ledgerName string) IndexVersionResolver {
 	return s.PinnedVersionResolver(reader, ledgerName, 0)
 }
 
@@ -786,7 +786,7 @@ type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, er
 // activation or past the last log it received, and for a pin-less read,
 // which nothing bounds to that keyspace. An initial build retains nothing
 // and is refused while in flight, as it always was before it first served.
-func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
+func (s *Store) PinnedVersionResolver(reader dal.KVGetter, ledgerName string, pin uint64) IndexVersionResolver {
 	return func(canonical string) (ResolvedIndexVersion, bool, error) {
 		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
@@ -851,7 +851,7 @@ func (s *Store) ReadAllIndexVersionStates() ([]IndexVersionStateEntry, error) {
 
 // ReadAllIndexVersionStatesFrom reads versions through the caller's snapshot,
 // so boot can restore them at the same position as its cursor and ledger history.
-func (s *Store) ReadAllIndexVersionStatesFrom(reader dal.PebbleReader) ([]IndexVersionStateEntry, error) {
+func (s *Store) ReadAllIndexVersionStatesFrom(reader dal.KVReader) ([]IndexVersionStateEntry, error) {
 	prefix := IndexVersionStatePrefix()
 	upper := IncrementBytes(prefix)
 
@@ -913,11 +913,11 @@ func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 // ReadAllBackfillProgress. Multi-step callers hold a *kv.Snapshot
 // (via NewSnapshot()) and pass it in so every cursor in the returned
 // map is coherent with the caller's other snapshot-based reads.
-func (s *Store) ReadAllBackfillProgressFrom(reader dal.PebbleReader) (map[string]uint64, error) {
+func (s *Store) ReadAllBackfillProgressFrom(reader dal.KVReader) (map[string]uint64, error) {
 	return readAllBackfillProgress(reader)
 }
 
-func readAllBackfillProgress(reader dal.PebbleReader) (map[string]uint64, error) {
+func readAllBackfillProgress(reader dal.KVReader) (map[string]uint64, error) {
 	prefix := BackfillKeyPrefix()
 	upper := IncrementBytes(prefix)
 
@@ -970,7 +970,7 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 // ListBackfillProgress. Multi-step callers reading from a
 // *kv.Snapshot pass it here so the per-cursor values in the
 // returned slice come from the same point-in-time view.
-func (s *Store) ListBackfillProgressFrom(reader dal.PebbleReader) ([]BackfillEntry, error) {
+func (s *Store) ListBackfillProgressFrom(reader dal.KVReader) ([]BackfillEntry, error) {
 	return decodeBackfillProgress(s.ReadAllBackfillProgressFrom(reader))
 }
 

@@ -423,7 +423,7 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	}
 
 	// Read metadata after backup preparation. We can do this directly on the same RW
-	// handle — query.ReadLast* only need a PebbleGetter, which *dal.Store
+	// handle — query.ReadLast* only need a KVGetter, which *dal.Store
 	// satisfies in both RW and RO modes.
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(store)
 	if err != nil {

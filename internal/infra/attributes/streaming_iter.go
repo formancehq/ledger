@@ -38,7 +38,7 @@ type StreamingIter[V proto.Message] struct {
 // canonical keys sharing the given prefix. Pass nil for the full attribute space
 // of this attribute type.
 // Thread-safe: allocates its own iterator and buffer for concurrent access.
-func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix []byte) (*StreamingIter[V], error) {
+func (a *Attribute[V]) NewStreamingIter(reader dal.KVReader, canonicalPrefix []byte) (*StreamingIter[V], error) {
 	// Bounds include the attrType byte so Pebble only scans entries of this type.
 	// Lower: [0xF1][attrType][canonicalPrefix]
 	lowerBound := make([]byte, 2+len(canonicalPrefix))

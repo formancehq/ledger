@@ -207,7 +207,7 @@ func verifyCacheMatchesPebbleFF(t *testing.T, machine *Machine, store *dal.Store
 
 func countPebbleFFVolumesMissingFromMemory(
 	t *testing.T,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	genByte byte,
 	generation string,
 	contains func(attributes.U128) bool,
@@ -245,7 +245,7 @@ func countPebbleFFVolumesMissingFromMemory(
 	return missing
 }
 
-func hasCacheZoneEntry(t *testing.T, store dal.PebbleGetter, genByte, cacheType byte, id attributes.U128) bool {
+func hasCacheZoneEntry(t *testing.T, store dal.KVGetter, genByte, cacheType byte, id attributes.U128) bool {
 	t.Helper()
 
 	var key [3 + 16]byte

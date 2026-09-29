@@ -27,7 +27,7 @@ type attrResolver interface {
 	Resolve(
 		keys map[attributes.U128]CoverageEntry,
 		nextIndex, boundary, cacheEpoch uint64,
-		store dal.PebbleGetter,
+		store dal.KVGetter,
 		logger logging.Logger,
 	) (*resolveResult, error)
 
@@ -53,14 +53,14 @@ type protoAttrResolver[T interface {
 	typeName string
 	cache    *cache.AttributeCache[T]
 	loader   *preload.AttributeLoader[T]
-	getValue func(reader dal.PebbleGetter, canonicalKey []byte) (T, error)
+	getValue func(reader dal.KVGetter, canonicalKey []byte) (T, error)
 	bloom    func() *bloom.Filter
 }
 
 func (r *protoAttrResolver[T]) Resolve(
 	keys map[attributes.U128]CoverageEntry,
 	nextIndex, boundary, cacheEpoch uint64,
-	store dal.PebbleGetter,
+	store dal.KVGetter,
 	logger logging.Logger,
 ) (*resolveResult, error) {
 	return resolveCoverage[T](

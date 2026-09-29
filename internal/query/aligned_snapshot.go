@@ -34,7 +34,7 @@ func ReadBarrierHorizon(ctx context.Context) (uint64, bool) {
 	return h, ok
 }
 
-func mainAppliedHorizon(ctx context.Context, mainReader dal.PebbleGetter) (uint64, error) {
+func mainAppliedHorizon(ctx context.Context, mainReader dal.KVGetter) (uint64, error) {
 	horizon, err := ReadLastAppliedIndex(mainReader)
 	if err != nil {
 		return 0, fmt.Errorf("reading main-store applied index: %w", err)
@@ -333,8 +333,8 @@ func requireLedgerLive(mainReader *dal.ReadHandle, ledgerName string) error {
 // skip wrapping).
 func MainHorizonKeep(
 	target commonpb.QueryTarget,
-	handle dal.PebbleReader,
-	indexSnap dal.PebbleGetter,
+	handle dal.KVReader,
+	indexSnap dal.KVGetter,
 	ledgerName string,
 	mainSeq uint64,
 ) func([]byte) (bool, error) {
@@ -345,7 +345,7 @@ func MainHorizonKeep(
 				return false, fmt.Errorf("horizon probe: transaction entity of unexpected length %d (want 8)", len(e))
 			}
 
-			return pebbleTxExists(handle, ledgerName, binary.BigEndian.Uint64(e))
+			return mainTxExists(handle, ledgerName, binary.BigEndian.Uint64(e))
 		}
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		kb := dal.NewKeyBuilder()

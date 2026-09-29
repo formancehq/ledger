@@ -18,7 +18,7 @@ import (
 type Uint64Cursor struct{ key []byte }
 
 // Read returns the stored cursor, or 0 if the key is absent.
-func (c Uint64Cursor) Read(r dal.PebbleGetter) (uint64, error) {
+func (c Uint64Cursor) Read(r dal.KVGetter) (uint64, error) {
 	v, closer, err := r.Get(c.key)
 	if err != nil {
 		if errors.Is(err, kv.ErrNotFound) {

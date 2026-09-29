@@ -23,7 +23,7 @@ type MalformedReversionRow struct {
 // ReadReversions loads all per-ledger reversion bitsets from Pebble.
 // Key format: [0x03][0x01][ledgerName padded 64B][wordIndex BE 8 bytes] → [uint64 LE 8 bytes].
 // Rows that do not decode are skipped and returned in the malformed slice.
-func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, []MalformedReversionRow, error) {
+func ReadReversions(reader dal.KVReader) (map[string]*bitset.Bitset, []MalformedReversionRow, error) {
 	lowerBound := []byte{dal.ZonePerLedger, dal.SubPLReversions}
 	upperBound := []byte{dal.ZonePerLedger, dal.SubPLReversions + 1}
 
@@ -99,7 +99,7 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, []Malfo
 // It scans only that ledger's words rather than every ledger's (unlike
 // ReadReversions) and returns a never-nil bitset — empty when the ledger has no
 // reversions.
-func ReadReversionBitset(reader dal.PebbleReader, ledgerName string) (*bitset.Bitset, error) {
+func ReadReversionBitset(reader dal.KVReader, ledgerName string) (*bitset.Bitset, error) {
 	prefix := make([]byte, 2+dal.LedgerNameFixedSize)
 	prefix[0] = dal.ZonePerLedger
 	prefix[1] = dal.SubPLReversions

@@ -162,7 +162,7 @@ func (f *Filter) dirtyBlocks() iter.Seq2[uint64, block] {
 // RestoreFromStore loads persisted bloom blocks from Pebble, merging them
 // into the in-memory filter via OR. This preserves bits set by concurrent
 // Add() calls from the FSM goroutine during the async restore window.
-func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
+func (f *Filter) RestoreFromStore(ctx context.Context, store dal.KVReader) error {
 	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode}
 	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom, f.attrCode + 1}
 
@@ -518,7 +518,7 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 }
 
 // RestoreFromStore loads all persisted bloom blocks from Pebble.
-func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
+func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.KVReader) error {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return nil
@@ -573,7 +573,7 @@ func knownBloomAttrCodes() map[byte]struct{} {
 //
 // A clean namespace (every row belongs to an enabled filter) returns
 // (false, nil).
-func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.PebbleReader) (bool, error) {
+func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.KVReader) (bool, error) {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return false, nil
@@ -637,7 +637,7 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 // PopulateFromStore scans the Pebble attribute range and inserts all existing
 // canonical keys into the bloom filters. Used on first boot when no persisted
 // bloom blocks exist yet.
-func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleReader) error {
+func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.KVReader) error {
 	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneAttributes},
 		UpperBound: []byte{dal.ZoneAttributes + 1},

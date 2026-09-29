@@ -451,7 +451,7 @@ func TestIdempotencyEvictionScheduler_StopCancelsProposeFn(t *testing.T) {
 
 // countIdemTimeIndexRows counts eviction time-index rows
 // ([0x05][0x02][expires_at 8B][hash 16B]) whose hash suffix matches keyHash.
-func countIdemTimeIndexRows(t *testing.T, reader dal.PebbleReader, keyHash []byte) int {
+func countIdemTimeIndexRows(t *testing.T, reader dal.KVReader, keyHash []byte) int {
 	t.Helper()
 
 	iter, err := reader.NewIter(&kv.IterOptions{
