@@ -245,8 +245,7 @@ half carries a bytecode version (major.minor) the bundled library cannot read
 minor); either half does not decode; the
 program fails verification; or `compiled_script_hash` does not match the
 resolved text. The version check keeps foreign bytecode out: another major
-changed the meaning of existing encodings (the library's 1→2 bump moved opcode
-operand banks), and a newer minor may use opcodes this build does not know.
+changes the meaning of existing encodings, and a newer minor may use opcodes this build does not know.
 An older minor of the same major runs: a minor bump is additive by the
 library's contract, so that bytecode keeps its meaning. This is what lets a
 node that restarts on a newer binary still apply the entries committed before
