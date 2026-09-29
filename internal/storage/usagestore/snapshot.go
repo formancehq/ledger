@@ -4,9 +4,10 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/linxGnu/grocksdb"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/linxGnu/grocksdb"
 )
 
 // Snapshot pins one coherent RocksDB sequence until Close.
@@ -16,7 +17,11 @@ type Snapshot struct {
 }
 
 func (s *Store) NewSnapshot() *Snapshot { return &Snapshot{db: s.db, snap: s.db.NewSnapshot()} }
-func (s *Snapshot) Close() error        { s.db.ReleaseSnapshot(s.snap); return nil }
+func (s *Snapshot) Close() error {
+	s.db.ReleaseSnapshot(s.snap)
+
+	return nil
+}
 
 func (s *Snapshot) get(key []byte) ([]byte, error) {
 	opts := grocksdb.NewDefaultReadOptions()
@@ -30,6 +35,7 @@ func (s *Snapshot) get(key []byte) ([]byte, error) {
 	if !slice.Exists() {
 		return nil, nil
 	}
+
 	return append([]byte{}, slice.Data()...), nil
 }
 
@@ -45,6 +51,7 @@ func (s *Snapshot) GetCounter(ledgerName string, counterID byte) (uint64, error)
 	if len(v) != 8 {
 		return 0, fmt.Errorf("corrupt counter value: expected 8 bytes, got %d", len(v))
 	}
+
 	return binary.BigEndian.Uint64(v), nil
 }
 
@@ -61,5 +68,6 @@ func (s *Snapshot) GetTemplateUsage(ledgerName, templateName string) (*commonpb.
 	if err := usage.UnmarshalVT(v); err != nil {
 		return nil, fmt.Errorf("unmarshaling template usage: %w", err)
 	}
+
 	return usage, nil
 }

@@ -37,5 +37,5 @@ func TestStore_GetMetrics(t *testing.T) {
 	require.True(t, ok)
 	require.NotNil(t, metrics)
 	// The envelope remains compatible; Pebble-only fields are absent.
-	require.Zero(t, metrics.DiskSpaceUsage)
+	require.Zero(t, metrics.GetDiskSpaceUsage())
 }

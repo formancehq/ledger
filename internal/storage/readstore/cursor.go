@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // Uint64Cursor is a fixed-key big-endian uint64 progress cursor persisted in

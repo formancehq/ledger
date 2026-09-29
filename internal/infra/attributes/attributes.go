@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"slices"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // Attribute is the implementation for all attribute types.

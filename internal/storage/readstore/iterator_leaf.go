@@ -3,9 +3,8 @@ package readstore
 import (
 	"errors"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // PrefixIterator scans all keys in the read index Pebble database that share a

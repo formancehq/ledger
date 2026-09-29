@@ -368,6 +368,7 @@ func TestServingTransitions_FlushesOnlyWhenMarked(t *testing.T) {
 	flush := s.serving.flush
 	s.serving.flush = func() error {
 		flushes++
+
 		return flush()
 	}
 	require.NoError(t, s.serving.Flush())

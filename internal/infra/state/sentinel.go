@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrVolumeCachePebbleDivergence is returned when the cache volume does not

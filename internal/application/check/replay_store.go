@@ -103,6 +103,7 @@ func (s *replayStore) deleteRange(lower, upper []byte) error {
 	if err := batch.DeleteRange(lower, upper, kv.NoSync); err != nil {
 		return err
 	}
+
 	return batch.Commit(kv.NoSync)
 }
 
@@ -690,6 +691,7 @@ func mergeReplayValues(key, base []byte, operands [][]byte, includesBase bool) (
 	if closer != nil {
 		_ = closer.Close()
 	}
+
 	return result, err == nil
 }
 

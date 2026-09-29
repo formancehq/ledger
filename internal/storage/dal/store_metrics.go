@@ -1,12 +1,13 @@
 package dal
 
 import (
-	"math"
 	"maps"
+	"math"
 	"slices"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/linxGnu/grocksdb"
+
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // GetMetrics keeps the existing proto envelope for the primary store. Only
@@ -20,6 +21,7 @@ func (s *Store) GetMetrics() any {
 	if db == nil {
 		return nil
 	}
+
 	return rocksDBProtoMetrics(db.Raw())
 }
 
@@ -55,5 +57,6 @@ func rocksDBProtoMetrics(db *grocksdb.DB) *servicepb.PebbleMetrics {
 	for _, level := range slices.Sorted(maps.Keys(levels)) {
 		result.Levels = append(result.Levels, levels[level])
 	}
+
 	return result
 }

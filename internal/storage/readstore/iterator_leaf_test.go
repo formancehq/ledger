@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // RangeIterator drains [lower, upper) forward; Seek is unimplementable on

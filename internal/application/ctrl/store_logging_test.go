@@ -3,13 +3,13 @@ package ctrl
 import (
 	"testing"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestScanAccountLogsCompletionAtTrace(t *testing.T) {

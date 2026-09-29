@@ -12,7 +12,11 @@ func TestRocksDBStorageContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	if _, _, err := db.Get([]byte("absent")); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing key: got %v", err)
@@ -46,7 +50,11 @@ func TestRocksDBStorageContract(t *testing.T) {
 	}
 
 	snapshot := db.NewSnapshot()
-	defer snapshot.Close()
+	defer func() {
+		if err := snapshot.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if err := db.Set([]byte("ledger/a"), []byte("updated"), Sync); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +97,11 @@ func TestRocksDBStorageContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer copyDB.Close()
+	defer func() {
+		if err := copyDB.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	value, closer, err = copyDB.Get([]byte("ledger/a"))
 	if err != nil {
 		t.Fatal(err)

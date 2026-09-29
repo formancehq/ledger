@@ -4,7 +4,6 @@ import (
 	"math/big"
 	"testing"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -13,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // --- applyPostings tests ---

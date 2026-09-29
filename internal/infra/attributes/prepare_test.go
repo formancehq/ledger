@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -19,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.

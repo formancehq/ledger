@@ -3,8 +3,9 @@ package readstore
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestBoundedEntityIterator_RejectsInvalidWidths(t *testing.T) {

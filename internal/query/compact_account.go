@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"io"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // CompactAccountIterator yields CompactAccount values by merging Volume and

@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/linxGnu/grocksdb"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
@@ -23,6 +22,7 @@ import (
 	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
@@ -419,19 +419,19 @@ func NewStore(
 	stallState := NewWriteStallState()
 
 	if cfg.WALFailoverDir != "" {
-		return nil, fmt.Errorf("RocksDB does not support automatic WAL failover (walFailoverDir)")
+		return nil, errors.New("RocksDB does not support automatic WAL failover (walFailoverDir)")
 	}
 	if cfg.WALMinSyncInterval != 0 {
-		return nil, fmt.Errorf("RocksDB does not support walMinSyncInterval")
+		return nil, errors.New("RocksDB does not support walMinSyncInterval")
 	}
 	if cfg.ValueSeparation.Enabled {
-		return nil, fmt.Errorf("RocksDB value separation requires separate blob-file qualification")
+		return nil, errors.New("RocksDB value separation requires separate blob-file qualification")
 	}
 	if cfg.DisableWAL {
-		return nil, fmt.Errorf("disabling the WAL is not supported for Ledger's durable store")
+		return nil, errors.New("disabling the WAL is not supported for Ledger's durable store")
 	}
 	opts := pebble.Options{CacheSize: uint64(cfg.CacheSize), Configure: func(o *grocksdb.Options) {
-		o.SetWriteBufferSize(uint64(cfg.MemTableSize))
+		o.SetWriteBufferSize(cfg.MemTableSize)
 		o.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
 		o.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
 		o.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
@@ -440,7 +440,7 @@ func NewStore(
 		o.SetCompressionPerLevel(cfg.RocksDBCompression())
 		o.SetBytesPerSync(uint64(cfg.BytesPerSync))
 		o.SetWALBytesPerSync(uint64(cfg.WALBytesPerSync))
-		o.SetMaxBackgroundCompactions(cfg.MaxConcurrentCompactions)
+		o.SetMaxBackgroundJobs(cfg.MaxConcurrentCompactions + 1)
 	}}
 
 	var (
@@ -526,6 +526,7 @@ func NewStore(
 	store.db = db
 	if _, err = store.RegisterMetrics(meter); err != nil {
 		_ = db.Close()
+
 		return nil, fmt.Errorf("registering RocksDB metrics: %w", err)
 	}
 

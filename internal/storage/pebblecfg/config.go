@@ -165,6 +165,7 @@ func (cfg Config) RocksDBCompression() []grocksdb.CompressionType {
 	for i := range levels {
 		levels[i] = cfg.Compression[i].ToRocksDB()
 	}
+
 	return levels
 }
 

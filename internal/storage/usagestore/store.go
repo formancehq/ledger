@@ -79,6 +79,7 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 		table.Destroy()
 		cache.Destroy()
 		opts.Destroy()
+
 		return nil, fmt.Errorf("opening RocksDB usage store: %w", err)
 	}
 	writeOptions := grocksdb.NewDefaultWriteOptions()
@@ -105,8 +106,10 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 		table.Destroy()
 		cache.Destroy()
 		opts.Destroy()
+
 		return nil, fmt.Errorf("opening read-only RocksDB usage store at %s: %w", dirPath, err)
 	}
+
 	return &Store{db: db, options: opts, cache: cache, tableOptions: table, logger: logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}), dir: dirPath, readOnly: true}, nil
 }
 
@@ -122,7 +125,7 @@ func usageOptions(cfg pebblecfg.Config) (*grocksdb.Options, *grocksdb.Cache, *gr
 	opts.SetCreateIfMissing(true)
 	cmp := newUsageStoreComparator()
 	opts.SetComparator(cmp)
-	opts.SetWriteBufferSize(uint64(cfg.MemTableSize))
+	opts.SetWriteBufferSize(cfg.MemTableSize)
 	opts.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
 	opts.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
 	opts.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
@@ -137,6 +140,7 @@ func usageOptions(cfg pebblecfg.Config) (*grocksdb.Options, *grocksdb.Cache, *gr
 	table.SetFilterPolicy(grocksdb.NewBloomFilterFull(10))
 	table.SetWholeKeyFiltering(false)
 	opts.SetBlockBasedTableFactory(table)
+
 	return opts, cache, table, nil
 }
 
@@ -155,6 +159,7 @@ func (s *Store) CreateCheckpoint(destDir string) error {
 		return err
 	}
 	defer cp.Destroy()
+
 	return cp.CreateCheckpoint(destDir, 0)
 }
 
@@ -162,6 +167,7 @@ func (s *Store) Flush() error {
 	opts := grocksdb.NewDefaultFlushOptions()
 	defer opts.Destroy()
 	opts.SetWait(true)
+
 	return s.db.Flush(opts)
 }
 
@@ -178,6 +184,7 @@ func (s *Store) Close() error {
 	s.tableOptions.Destroy()
 	s.cache.Destroy()
 	s.options.Destroy()
+
 	return flushErr
 }
 
@@ -198,6 +205,7 @@ func (s *Store) get(key []byte) ([]byte, error) {
 	if !slice.Exists() {
 		return nil, nil
 	}
+
 	return append([]byte{}, slice.Data()...), nil
 }
 

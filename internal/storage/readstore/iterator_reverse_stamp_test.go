@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestReversePrefixIteratorStampVisibility(t *testing.T) {

@@ -6,10 +6,10 @@ import (
 	"math"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestSeekFloor(t *testing.T) {

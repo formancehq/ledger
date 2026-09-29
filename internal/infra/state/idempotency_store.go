@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"math"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // HashIdempotencyKey returns a 128-bit hash of the idempotency key string,

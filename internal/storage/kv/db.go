@@ -74,6 +74,7 @@ func Open(path string, config Options) (*DB, error) {
 		if cache != nil {
 			cache.Destroy()
 		}
+
 		return nil, err
 	}
 	write := grocksdb.NewDefaultWriteOptions()
@@ -83,6 +84,7 @@ func Open(path string, config Options) (*DB, error) {
 		write.DisableWAL(true)
 		syncWrite.DisableWAL(true)
 	}
+
 	return &DB{raw: raw, options: opts, read: grocksdb.NewDefaultReadOptions(), write: write, syncWrite: syncWrite, cache: cache, table: table, mergeOperator: config.MergeOperator, disableWAL: config.DisableWAL}, nil
 }
 
@@ -100,6 +102,7 @@ func (d *DB) Close() error {
 	if d.cache != nil {
 		d.cache.Destroy()
 	}
+
 	return nil
 }
 
@@ -115,6 +118,7 @@ func (d *DB) Get(key []byte) ([]byte, io.Closer, error) {
 	if value == nil {
 		return nil, nil, ErrNotFound
 	}
+
 	return value, nopCloser{}, nil
 }
 
@@ -149,8 +153,10 @@ func (d *DB) Merge(key, value []byte, options *WriteOptions) error {
 		if !ok {
 			return fmt.Errorf("merge operator %s rejected key %x", d.mergeOperator.Name(), key)
 		}
+
 		return d.raw.Put(d.writeOptions(options), key, merged)
 	}
+
 	return d.raw.Merge(d.writeOptions(options), key, value)
 }
 
@@ -158,6 +164,7 @@ func (d *DB) writeOptions(options *WriteOptions) *grocksdb.WriteOptions {
 	if options != nil && options.Sync {
 		return d.syncWrite
 	}
+
 	return d.write
 }
 
@@ -167,12 +174,25 @@ type Batch struct {
 	closed bool
 }
 
-func (d *DB) NewBatch() *Batch                                  { return &Batch{db: d, raw: grocksdb.NewWriteBatch()} }
-func (b *Batch) Set(key, value []byte, _ *WriteOptions) error   { b.raw.Put(key, value); return nil }
-func (b *Batch) Delete(key []byte, _ *WriteOptions) error       { b.raw.Delete(key); return nil }
-func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error { b.raw.SingleDelete(key); return nil }
+func (d *DB) NewBatch() *Batch { return &Batch{db: d, raw: grocksdb.NewWriteBatch()} }
+func (b *Batch) Set(key, value []byte, _ *WriteOptions) error {
+	b.raw.Put(key, value)
+
+	return nil
+}
+func (b *Batch) Delete(key []byte, _ *WriteOptions) error {
+	b.raw.Delete(key)
+
+	return nil
+}
+func (b *Batch) SingleDelete(key []byte, _ *WriteOptions) error {
+	b.raw.SingleDelete(key)
+
+	return nil
+}
 func (b *Batch) DeleteRange(lower, upper []byte, _ *WriteOptions) error {
 	b.raw.DeleteRange(lower, upper)
+
 	return nil
 }
 func (b *Batch) Commit(options *WriteOptions) error {
@@ -183,6 +203,7 @@ func (b *Batch) Close() error {
 		b.raw.Destroy()
 		b.closed = true
 	}
+
 	return nil
 }
 
@@ -211,6 +232,7 @@ func newIter(db *grocksdb.DB, snapshot *grocksdb.Snapshot, bounds *IterOptions) 
 			opts.SetIterateUpperBound(bytes.Clone(bounds.UpperBound))
 		}
 	}
+
 	return &Iterator{raw: db.NewIterator(opts), opts: opts}
 }
 
@@ -218,16 +240,41 @@ func (i *Iterator) valid() bool {
 	if !i.raw.Valid() {
 		return false
 	}
+
 	return i.prefix == nil || bytes.HasPrefix(i.Key(), i.prefix)
 }
-func (i *Iterator) First() bool            { i.prefix = nil; i.raw.SeekToFirst(); return i.valid() }
-func (i *Iterator) Last() bool             { i.prefix = nil; i.raw.SeekToLast(); return i.valid() }
-func (i *Iterator) Next() bool             { i.raw.Next(); return i.valid() }
-func (i *Iterator) Prev() bool             { i.raw.Prev(); return i.valid() }
-func (i *Iterator) SeekGE(key []byte) bool { i.prefix = nil; i.raw.Seek(key); return i.valid() }
+func (i *Iterator) First() bool {
+	i.prefix = nil
+	i.raw.SeekToFirst()
+
+	return i.valid()
+}
+func (i *Iterator) Last() bool {
+	i.prefix = nil
+	i.raw.SeekToLast()
+
+	return i.valid()
+}
+func (i *Iterator) Next() bool {
+	i.raw.Next()
+
+	return i.valid()
+}
+func (i *Iterator) Prev() bool {
+	i.raw.Prev()
+
+	return i.valid()
+}
+func (i *Iterator) SeekGE(key []byte) bool {
+	i.prefix = nil
+	i.raw.Seek(key)
+
+	return i.valid()
+}
 func (i *Iterator) SeekPrefixGE(prefix, key []byte) bool {
 	i.prefix = bytes.Clone(prefix)
 	i.raw.Seek(key)
+
 	return i.valid()
 }
 func (i *Iterator) SeekLT(key []byte) bool {
@@ -236,6 +283,7 @@ func (i *Iterator) SeekLT(key []byte) bool {
 	if i.raw.Valid() && bytes.Equal(i.Key(), key) {
 		i.raw.Prev()
 	}
+
 	return i.valid()
 }
 func (i *Iterator) Valid() bool { return i.valid() }
@@ -243,17 +291,24 @@ func (i *Iterator) Key() []byte {
 	if value := i.raw.Key(); value != nil {
 		return value.Data()
 	}
+
 	return nil
 }
 func (i *Iterator) Value() []byte {
 	if value := i.raw.Value(); value != nil {
 		return value.Data()
 	}
+
 	return nil
 }
 func (i *Iterator) ValueAndErr() ([]byte, error) { return i.Value(), i.Error() }
 func (i *Iterator) Error() error                 { return i.raw.Err() }
-func (i *Iterator) Close() error                 { i.raw.Close(); i.opts.Destroy(); return nil }
+func (i *Iterator) Close() error {
+	i.raw.Close()
+	i.opts.Destroy()
+
+	return nil
+}
 
 type Snapshot struct {
 	db  *DB
@@ -272,12 +327,17 @@ func (s *Snapshot) Get(key []byte) ([]byte, io.Closer, error) {
 	if value == nil {
 		return nil, nil, ErrNotFound
 	}
+
 	return value, nopCloser{}, nil
 }
 func (s *Snapshot) NewIter(bounds *IterOptions) (*Iterator, error) {
 	return newIter(s.db.raw, s.raw, bounds), nil
 }
-func (s *Snapshot) Close() error { s.db.raw.ReleaseSnapshot(s.raw); return nil }
+func (s *Snapshot) Close() error {
+	s.db.raw.ReleaseSnapshot(s.raw)
+
+	return nil
+}
 
 func (d *DB) Checkpoint(dest string) error {
 	if !d.disableWAL {
@@ -306,6 +366,7 @@ func (d *DB) Flush() error {
 	opts := grocksdb.NewDefaultFlushOptions()
 	defer opts.Destroy()
 	opts.SetWait(true)
+
 	return d.raw.Flush(opts)
 }
 
@@ -316,6 +377,7 @@ func (d *DB) Compact(ctx context.Context, start, end []byte, _ bool) error {
 		return err
 	}
 	d.raw.CompactRange(grocksdb.Range{Start: start, Limit: end})
+
 	return ctx.Err()
 }
 

@@ -12,19 +12,9 @@ env:
 builds:
 - binary: ledger-server
   id: ledger-server
-  tags:
-  - kafka
-  - nats
-  - clickhouse
-  - databricks
-  - s3
-  - pyroscope
-  ldflags:
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  env:
-  - CGO_ENABLED=1
+  builder: prebuilt
+  prebuilt:
+    path: .release-prebuilt/linux_amd64/ledger-server
   goos:
   - linux
   goarch:
@@ -32,13 +22,9 @@ builds:
 
 - binary: ledgerctl
   id: ledgerctl
-  main: ./cmd/ledgerctl
-  ldflags:
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  env:
-  - CGO_ENABLED=1
+  builder: prebuilt
+  prebuilt:
+    path: .release-prebuilt/linux_amd64/ledgerctl
   goos:
   - linux
   goarch:

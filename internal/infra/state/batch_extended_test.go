@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -15,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // TestDeleteLedgerData_RemovesLedgerMetadata pins the deletion cascade's

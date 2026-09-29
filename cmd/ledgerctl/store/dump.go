@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -16,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // NewDumpCommand creates the store dump command.

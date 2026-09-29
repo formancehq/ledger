@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/holiman/uint256"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -29,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // RebuildDelta reconstructs derived state (attributes, system state) from logs

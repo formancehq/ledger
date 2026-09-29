@@ -41,5 +41,6 @@ func (s *Store) GetMetrics() *servicepb.PebbleMetrics {
 	for _, level := range slices.Sorted(maps.Keys(levels)) {
 		result.Levels = append(result.Levels, levels[level])
 	}
+
 	return result
 }

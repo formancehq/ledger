@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -17,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // BloomConfigEnabled returns true if at least one bloom filter type has a

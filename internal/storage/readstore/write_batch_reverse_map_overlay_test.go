@@ -3,11 +3,11 @@ package readstore
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestWriteBatchReverseMapRangeOverlayHonorsOperationOrder(t *testing.T) {

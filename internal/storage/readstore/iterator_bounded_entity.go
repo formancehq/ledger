@@ -3,9 +3,8 @@ package readstore
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // BoundedEntityIterator streams a prefix whose keys are ordered by a unique,

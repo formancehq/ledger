@@ -78,6 +78,9 @@ The replay checker folds merge operands in Go because the current grocksdb
 native merge callback crashes on close; qualify replay throughput before
 production use.
 
-The server and CLI require CGO plus a compatible RocksDB 11 library. The
-previous CGO-disabled and Windows cross-builds are not available in this
-version; see the build workflow for supported targets.
+Development builds require CGO plus a compatible RocksDB 11 library. Release
+archives and the GoReleaser image use static linux/amd64 binaries built in
+Alpine with RocksDB 11.1.2; `just release-local` builds and smoke-tests those
+artifacts without publishing. The regular Dockerfile also builds linux/arm64
+images. CGO-disabled and Windows release builds are not available in this
+version.

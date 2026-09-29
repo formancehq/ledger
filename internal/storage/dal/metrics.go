@@ -40,6 +40,7 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 				observer.ObserveInt64(item.gauge, int64(value))
 			}
 		}
+
 		return nil
 	}, instruments...)
 }

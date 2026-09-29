@@ -27,6 +27,7 @@ func (b *WriteSession) active() error {
 	if b.batch == nil {
 		return errors.New("write session already cancelled")
 	}
+
 	return nil
 }
 
@@ -35,6 +36,7 @@ func (b *WriteSession) Cancel() error {
 		b.batch.Destroy()
 		b.batch = nil
 	}
+
 	return nil
 }
 
@@ -46,6 +48,7 @@ func (b *WriteSession) Commit() error {
 		return fmt.Errorf("committing usage write session: %w", err)
 	}
 	b.committed = true
+
 	return b.Cancel()
 }
 
@@ -54,6 +57,7 @@ func (b *WriteSession) SetBytes(key, value []byte) error {
 		return err
 	}
 	b.batch.Put(key, value)
+
 	return nil
 }
 
@@ -72,6 +76,7 @@ func (b *WriteSession) SetProto(key []byte, msg proto.Message) error {
 		return err
 	}
 	b.batch.Put(key, data)
+
 	return nil
 }
 
@@ -80,6 +85,7 @@ func (b *WriteSession) DeleteKey(key []byte) error {
 		return err
 	}
 	b.batch.Delete(key)
+
 	return nil
 }
 
@@ -88,5 +94,6 @@ func (b *WriteSession) DeleteRangeNoSync(start, end []byte) error {
 		return err
 	}
 	b.batch.DeleteRange(start, end)
+
 	return nil
 }

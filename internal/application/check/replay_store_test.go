@@ -5,11 +5,11 @@ import (
 	"math/big"
 	"testing"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // decodeReplayMetaValue unmarshals the MetadataValue stored after the flag byte.

@@ -28,12 +28,14 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 		specs[i].gauge = gauge
 		instruments = append(instruments, gauge)
 	}
+
 	return m.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
 		for _, spec := range specs {
 			if value, ok := s.db.Raw().GetIntProperty(spec.key); ok && value <= math.MaxInt64 {
 				observer.ObserveInt64(spec.gauge, int64(value))
 			}
 		}
+
 		return nil
 	}, instruments...)
 }

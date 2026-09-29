@@ -5,10 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 

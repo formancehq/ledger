@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"google.golang.org/protobuf/proto"
+
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // vtSizedBufferMarshaler is implemented by vtprotobuf-generated messages.

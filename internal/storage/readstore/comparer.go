@@ -16,6 +16,7 @@ func readStoreSplit(key []byte) int {
 	if len(key) >= ledgerScopedPrefixLen {
 		return ledgerScopedPrefixLen
 	}
+
 	return len(key)
 }
 
@@ -32,8 +33,10 @@ var ReadStoreComparer = struct {
 		dst = append(dst[:0], prefix...)
 		if len(dst) == ledgerScopedPrefixLen {
 			dst[len(dst)-1]++
+
 			return dst
 		}
+
 		return append(dst, 0)
 	},
 }

@@ -7,11 +7,10 @@ import (
 	"errors"
 	"fmt"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func exportKeyShape(segmentType string) ([]byte, int, error) {

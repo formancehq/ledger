@@ -4,9 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // LedgerHistoryStateEntry is the storage codec result for one indexbuilder

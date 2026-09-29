@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // PeerStore persists Raft cluster membership in Pebble under two adjacent

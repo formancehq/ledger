@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 const (

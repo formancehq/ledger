@@ -441,9 +441,10 @@ func TestStore_CompressionPerLevel(t *testing.T) {
 	options, err := os.ReadFile(files[len(files)-1])
 	require.NoError(t, err)
 	var compression string
-	for _, line := range strings.Split(string(options), "\n") {
+	for line := range strings.SplitSeq(string(options), "\n") {
 		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "compression_per_level="); ok {
 			compression = value
+
 			break
 		}
 	}

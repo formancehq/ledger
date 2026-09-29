@@ -292,20 +292,26 @@ test-schemathesis:
     bash tests/schemathesis/run.sh
 
 # Release (official, triggered by tag)
-release: _release-cgo-gate
+release: _build-release-prebuilt-tag
     goreleaser release --clean
 
+# Verify archives and OCI image locally without publishing.
+release-local: _build-release-prebuilt-snapshot
+    goreleaser release --snapshot --clean
+
 # Release CI (nightly, triggered by main push)
-release-ci: _release-cgo-gate
+release-ci: _build-release-prebuilt-nightly
     goreleaser release --nightly --clean
 
-# Fail closed until GoReleaser builds are linked against the Alpine/musl
-# RocksDB 11.1.2 runtime and the resulting archives and image pass a smoke test.
-# The current Nix Linux runner links CGO binaries against glibc/Nix store libs;
-# the tarball also lacks the RocksDB and compression libraries its binary needs.
-_release-cgo-gate:
-    @echo 'Release blocked: GoReleaser CGO binaries use Nix/glibc, but the image uses Alpine/musl RocksDB 11.1.2; the tarball lacks its native runtime libraries. Build and smoke-test matching linux/amd64 image and archive before removing this gate.' >&2
-    @exit 1
+# Build static Linux binaries under Alpine for both archives and OCI images.
+_build-release-prebuilt-tag:
+    bash scripts/build-release-prebuilt.sh tag
+
+_build-release-prebuilt-nightly:
+    bash scripts/build-release-prebuilt.sh nightly
+
+_build-release-prebuilt-snapshot:
+    bash scripts/build-release-prebuilt.sh snapshot
 
 # Clean build artifacts
 clean:

@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"math"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // PrepareForBackup makes a checkpoint portable and restartable on a fresh

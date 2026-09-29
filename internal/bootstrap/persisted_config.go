@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ConfigMismatchError is returned when a persisted configuration value differs

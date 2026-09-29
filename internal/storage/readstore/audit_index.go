@@ -8,9 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrAuditProjectionUnavailable reports that an audit progress wait cannot

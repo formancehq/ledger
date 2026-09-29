@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/linxGnu/grocksdb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
-	"github.com/linxGnu/grocksdb"
 )
 
 // Config contains the read index storage tunables.
@@ -156,14 +156,14 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 	openStart := time.Now()
 
 	opts := kv.Options{ComparatorName: readStoreComparerName, CacheSize: uint64(cfg.CacheSize), DisableWAL: true, Configure: func(o *grocksdb.Options) {
-		o.SetWriteBufferSize(uint64(cfg.MemTableSize))
+		o.SetWriteBufferSize(cfg.MemTableSize)
 		o.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
 		o.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
 		o.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
 		o.SetMaxBytesForLevelBase(uint64(cfg.LBaseMaxBytes))
 		o.SetTargetFileSizeBase(uint64(cfg.TargetFileSize))
 		o.SetBytesPerSync(uint64(cfg.BytesPerSync))
-		o.SetMaxBackgroundCompactions(cfg.MaxConcurrentCompactions)
+		o.SetMaxBackgroundJobs(cfg.MaxConcurrentCompactions + 1)
 		o.SetCompressionPerLevel(cfg.RocksDBCompression())
 	}}
 	db, err := kv.Open(dbPath, opts)

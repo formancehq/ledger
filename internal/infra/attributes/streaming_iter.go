@@ -3,10 +3,10 @@ package attributes
 import (
 	"fmt"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // StreamingIter is a pull-based iterator over computed attribute entries.

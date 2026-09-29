@@ -3,10 +3,11 @@ package dal
 import (
 	"fmt"
 
-	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/linxGnu/grocksdb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // OpenReadOnly opens a Pebble database at dirPath in read-only mode.
