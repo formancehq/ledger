@@ -150,13 +150,13 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 //     library's contract, so an older minor keeps its meaning and runs — that
 //     is what lets a node that restarts on a newer binary still apply entries
 //     committed before the upgrade, identically to the replicas that applied
-//     them on the old one. Another major (existing encodings changed meaning —
-//     the library's 1→2 bump moved opcode operand banks) or a newer minor
-//     (opcodes this build does not know) is rejected rather than run as
-//     foreign bytecode; the library's decoder refuses both too. Both versions come out of the committed entry's
-//     own bytes, and the bundled version is a property of the binary exactly
-//     like the library's execution semantics, so apply stays a pure function
-//     of (committed entry, running binary).
+//     them on the old one. Another major (existing encodings changed meaning)
+//     or a newer minor (opcodes this build does not know) is rejected rather
+//     than run as foreign bytecode; the library's decoder refuses both too.
+//     Both versions come out of the committed entry's own bytes, and the
+//     bundled version is a property of the binary exactly like the library's
+//     execution semantics, so apply stays a pure function of (committed
+//     entry, running binary).
 //   - Decode and verification: the artifact was produced by our own compiler
 //     from a script that parsed, so malformed bytes mean a codec or compiler
 //     bug, and the verifier is what entitles the VM to execute wire-supplied
