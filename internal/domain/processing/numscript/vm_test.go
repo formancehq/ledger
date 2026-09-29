@@ -130,11 +130,12 @@ send $amt (
 )`
 	compiled, err := compileScript(mustEntry(t, script), map[string]string{"amt": "not-a-monetary"})
 	require.Nil(t, compiled)
-	compileErr := requireCompileError(t, err)
-	require.Contains(t, compileErr.Detail, "amt")
+	require.Contains(t, requireCompileError(t, err), "amt")
 }
 
-func requireCompileError(t *testing.T, err domain.SerializableError) *domain.ErrNumscriptCompile {
+// requireCompileError asserts err is a freezable ErrNumscriptCompile and
+// returns its detail.
+func requireCompileError(t *testing.T, err domain.SerializableError) string {
 	t.Helper()
 
 	require.NotNil(t, err)
@@ -144,7 +145,7 @@ func requireCompileError(t *testing.T, err domain.SerializableError) *domain.Err
 	require.Equal(t, domain.KindValidation, compileErr.Kind())
 	require.True(t, domain.IsFreezableFailure(compileErr.Kind()))
 
-	return compileErr
+	return compileErr.Detail
 }
 
 // TestCompileScript_CompilesOncePerCachedScript: the script-dependent half of
