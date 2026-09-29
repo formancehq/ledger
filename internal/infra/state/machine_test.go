@@ -162,6 +162,51 @@ func TestPrepareEntriesRejectsInvalidAttributionBeforeBusinessMutation(t *testin
 	require.Equal(t, uint64(1), machine.LastAppliedIndex(), "Raft progress must advance past the rejected committed entry")
 }
 
+func TestPrepareEntriesRejectsMissingAttributionBeforeBusinessMutation(t *testing.T) {
+	t.Parallel()
+
+	machine, store, _ := newTestMachineWithThreshold(t, 1)
+	installTestClusterPolicy(machine)
+	beforeAuditSequence := machine.State.NextAuditSequenceID
+	beforeSequence := machine.State.NextSequenceID
+	beforeLedgerID := machine.State.NextLedgerID
+
+	proposal := makeProposal(42, &raftcmdpb.Order{
+		Type: &raftcmdpb.Order_LedgerScoped{
+			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
+				Ledger: "must-not-exist",
+				Payload: &raftcmdpb.LedgerScopedOrder_CreateLedger{
+					CreateLedger: &raftcmdpb.CreateLedgerOrder{},
+				},
+			},
+		},
+	})
+	proposal.CallerSnapshot = nil
+	sealProposal(proposal)
+	entryData, err := proto.Marshal(proposal)
+	require.NoError(t, err)
+	entry := &raftpb.Entry{
+		Index: new(uint64(1)),
+		Term:  new(uint64(1)),
+		Type:  new(raftpb.EntryNormal),
+		Data:  entryData,
+	}
+
+	prepared, err := machine.PrepareEntries(context.Background(), store, entry)
+	require.NoError(t, err)
+	require.Len(t, prepared.Result.Results, 1)
+	var invalid *domain.ErrInvalidCallerAttribution
+	require.ErrorAs(t, prepared.Result.Results[0].Error, &invalid)
+	require.Equal(t, uint64(1), prepared.Result.Results[0].AppliedIndex)
+	require.NoError(t, machine.CommitPreparedBatch(context.Background(), prepared))
+
+	require.Equal(t, beforeAuditSequence, machine.State.NextAuditSequenceID)
+	require.Equal(t, beforeSequence, machine.State.NextSequenceID)
+	require.Equal(t, beforeLedgerID, machine.State.NextLedgerID)
+	require.Empty(t, listAuditEntries(t, store, 0))
+	require.Equal(t, uint64(1), machine.LastAppliedIndex(), "Raft progress must advance past the rejected committed entry")
+}
+
 func TestPrepareEntriesRejectsInvalidAttributionWithoutBusinessPayload(t *testing.T) {
 	t.Parallel()
 

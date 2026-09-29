@@ -2577,10 +2577,9 @@ func (c *Checker) verifyAuditHashChain(
 				fmt.Sprintf("audit entry %d has invalid caller attribution: %v", entry.GetSequence(), attributionErr),
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
-			signing.markLiveTruncated()
-			policy.markLiveTruncated()
+			folds.markLiveTruncated()
 
-			return expectedSkippable, nil
+			return result, nil
 		}
 
 		// `items` on the stored AuditEntry value is reserved for

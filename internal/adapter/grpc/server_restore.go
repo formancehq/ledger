@@ -362,6 +362,9 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	if sendErr != nil {
 		return sendErr
 	}
+	if err := stream.Context().Err(); err != nil {
+		return err
+	}
 
 	validationPassed = validationErrors == 0
 

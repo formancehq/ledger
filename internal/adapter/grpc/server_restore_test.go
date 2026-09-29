@@ -88,6 +88,39 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
 }
 
+func TestCanceledValidationPreventsRestoreFinalization(t *testing.T) {
+	t.Parallel()
+
+	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{})
+	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
+	require.NoError(t, err)
+	server.mu.Lock()
+	server.stagingStore = store
+	server.downloaded = true
+	server.mu.Unlock()
+	t.Cleanup(server.Shutdown)
+
+	configBytes, err := proto.Marshal(&commonpb.PersistedConfig{ClusterId: "source-cluster"})
+	require.NoError(t, err)
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, configBytes))
+	require.NoError(t, batch.Commit())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	stream := NewMockServerStreamingServer[restorepb.ValidateRestoreEvent](gomock.NewController(t))
+	stream.EXPECT().Context().Return(ctx).AnyTimes()
+	stream.EXPECT().Send(gomock.Any()).Return(nil).AnyTimes()
+	require.ErrorIs(t, server.ValidateRestore(&restorepb.ValidateRestoreRequest{}, stream), context.Canceled)
+
+	server.mu.Lock()
+	validated := server.validated
+	server.mu.Unlock()
+	require.False(t, validated)
+	_, err = server.FinalizeRestore(context.Background(), &restorepb.FinalizeRestoreRequest{})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+}
+
 func TestSafeStagingPath_Valid(t *testing.T) {
 	t.Parallel()
 
