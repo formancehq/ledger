@@ -61,8 +61,8 @@ type ClusterSpec struct {
 	// +optional
 	SecurityContext *corev1.SecurityContext `json:"securityContext,omitempty"`
 
-	// ClusterID for inter-node communication validation.
-	// +kubebuilder:default="default"
+	// ClusterID for inter-node communication validation. When omitted, the
+	// operator generates and persists a UUID before creating workloads.
 	// +kubebuilder:validation:XValidation:rule="oldSelf == '' || self == oldSelf",message="clusterID is immutable once set"
 	// +optional
 	ClusterID string `json:"clusterID,omitempty" ledger:"immutable"`

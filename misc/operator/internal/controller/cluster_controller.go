@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -68,6 +69,18 @@ func (r *ClusterReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Handle deletion — owned resources are garbage-collected via owner references.
 	if !ledger.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
+	}
+	// Commit the identity before any resource can start a Ledger process. An
+	// update conflict aborts this reconcile; the next read uses the winning ID.
+	if ledger.Spec.ClusterID == "" {
+		generated, err := uuid.NewRandom()
+		if err != nil {
+			return ctrl.Result{}, fmt.Errorf("generating cluster ID: %w", err)
+		}
+		ledger.Spec.ClusterID = generated.String()
+		if err := r.Update(ctx, ledger); err != nil {
+			return ctrl.Result{}, fmt.Errorf("persisting generated cluster ID: %w", err)
+		}
 	}
 
 	// Clear the persisted Phase before stepping through reconcile so a
@@ -555,9 +568,6 @@ func applyDefaults(ledger *ledgerv1alpha1.Cluster) {
 	}
 	if ledger.Spec.DataDir == "" {
 		ledger.Spec.DataDir = "/data/app"
-	}
-	if ledger.Spec.ClusterID == "" {
-		ledger.Spec.ClusterID = "default"
 	}
 	if ledger.Spec.ServiceAccount.Create == nil {
 		create := true

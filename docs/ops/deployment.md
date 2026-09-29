@@ -162,6 +162,14 @@ spec:
 
 The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
 
+When an operator-managed Cluster omits `spec.clusterID`, the operator commits a
+random UUID to the Cluster spec before creating any workload. All replicas use
+that value. It remains stable across reconciliations, operator and pod restarts,
+and scaling. An explicitly configured ID is honored. Reusing existing storage
+with a different ID fails the normal persisted-configuration check; set the
+original ID when reattaching data. A new Cluster with fresh storage gets a new
+ID even if its name is reused. Direct `ledger run` still requires `--cluster-id`.
+
 ### Main Configuration
 
 #### Number of Replicas

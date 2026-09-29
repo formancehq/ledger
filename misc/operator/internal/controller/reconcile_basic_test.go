@@ -5,6 +5,9 @@ package controller
 import (
 	"testing"
 
+	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
+	"github.com/google/uuid"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
@@ -83,7 +86,47 @@ func TestReconcile_MinimalCluster(t *testing.T) {
 	requireEnvVar(t, container.Env, "BIND_ADDR", "0.0.0.0:7777")
 	requireEnvVar(t, container.Env, "GRPC_PORT", "8888")
 	requireEnvVar(t, container.Env, "HTTP_PORT", "9000")
-	requireEnvVar(t, container.Env, "CLUSTER_ID", "default")
+	committed := &ledgerv1alpha1.Cluster{}
+	require.NoError(t, k8sClient.Get(ctx, types.NamespacedName{Name: "basic", Namespace: ns}, committed))
+	_, err := uuid.Parse(committed.Spec.ClusterID)
+	require.NoError(t, err)
+	requireEnvVar(t, container.Env, "CLUSTER_ID", committed.Spec.ClusterID)
+}
+
+func TestReconcile_ClusterIDLifecycle(t *testing.T) {
+	nsA := createTestNamespace(t)
+	nsB := createTestNamespace(t)
+	for _, ns := range []string{nsA, nsB} {
+		require.NoError(t, k8sClient.Create(ctx, newCluster("same-name", ns)))
+	}
+	ids := make([]string, 0, 2)
+	for _, ns := range []string{nsA, nsB} {
+		key := types.NamespacedName{Name: "same-name", Namespace: ns}
+		cluster := &ledgerv1alpha1.Cluster{}
+		requireEventually(t, func() bool {
+			return k8sClient.Get(ctx, key, cluster) == nil && cluster.Spec.ClusterID != ""
+		}, "cluster ID should be committed")
+		_, err := uuid.Parse(cluster.Spec.ClusterID)
+		require.NoError(t, err)
+		ids = append(ids, cluster.Spec.ClusterID)
+		sts := &appsv1.StatefulSet{}
+		requireEventually(t, func() bool {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-same-name", Namespace: ns}, sts) == nil
+		}, "StatefulSet should be created")
+		requireEnvVar(t, sts.Spec.Template.Spec.Containers[0].Env, "CLUSTER_ID", cluster.Spec.ClusterID)
+		require.NoError(t, k8sClient.Get(ctx, key, cluster))
+		require.Equal(t, ids[len(ids)-1], cluster.Spec.ClusterID)
+	}
+	require.NotEqual(t, ids[0], ids[1])
+
+	explicit := newCluster("explicit-id", nsA)
+	explicit.Spec.ClusterID = "operator-chosen"
+	require.NoError(t, k8sClient.Create(ctx, explicit))
+	sts := &appsv1.StatefulSet{}
+	requireEventually(t, func() bool {
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-explicit-id", Namespace: nsA}, sts) == nil
+	}, "explicit cluster StatefulSet should be created")
+	requireEnvVar(t, sts.Spec.Template.Spec.Containers[0].Env, "CLUSTER_ID", "operator-chosen")
 }
 
 func TestReconcile_GrpcServiceNotCreatedByDefault(t *testing.T) {
