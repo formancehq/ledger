@@ -813,8 +813,15 @@ a mixed window can flip a whole order's outcome, the same class as
   deliberately.
 - **No data wipe is required.** No persisted key layout or value encoding
   changes and `storage-schema-version` is unaffected; existing entries stay
-  verifiable. The exposure is confined to scripted transactions applied inside
-  a mixed-binary window.
+  verifiable.
+- **Stopping all nodes does not remove every exposure.** A scripted entry
+  committed before the stop but applied by a node only after it restarts on
+  the new binary — the entries it replays above its last snapshot — runs on
+  the new binary. An entry the old binary committed carries no artifact, so
+  the new binary fails it, although replicas that applied it before the stop
+  succeeded. The same holds for a rollback, and for a later library update
+  that changes the bytecode version (see the next points). Such a replica must
+  be resynchronised from the leader.
 - **`ledgerctl check` does not detect a straddled window** for the usual
   reason: each replica's audit chain stays internally consistent. Detecting a
   divergence means comparing transaction metadata and audit entries across
