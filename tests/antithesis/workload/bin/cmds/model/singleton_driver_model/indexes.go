@@ -255,7 +255,7 @@ func hasAssetPrecisionOverflow(f *commonpb.QueryFilter) bool {
 // Any other error code is a finding. So is a result set no base can produce
 // (spurious rows without the index) and a rejection when every base has the index
 // active (ready everywhere, yet rejected).
-func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error) {
+func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string, err error) {
 	if err != nil && !isIndexNotFound(err) && !isIndexNotReady(err) {
 		assert.Unreachable("singleton_driver_model: asset-index account query returned unexpected error", internal.Details{
 			"ledger": ledger,
@@ -294,7 +294,14 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 			return false // rows require the index present
 		}
 
-		want := assetWindow(ls, base, precision, cursor, pageSize, reverse)
+		want := assetWindow(ls, base, precision, cursor, pageSize+1, reverse)
+
+		more := cursorForbidden
+		if len(want) > pageSize {
+			want = want[:pageSize]
+			more = cursorRequired
+		}
+
 		if len(want) != len(serverAccts) {
 			return false
 		}
@@ -305,7 +312,7 @@ func (c *Checker) validateAssetAccountQuery(maxTicket uint64, ledger string, fil
 			}
 		}
 
-		return true
+		return nextCursorLegal(next, more, lastAccountKey(serverAccts), len(serverAccts), pageSize)
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter,
@@ -858,7 +865,7 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 //
 // Any other error code is a finding, as are rows without every needed index and
 // a rejection when every needed index is active on every base.
-func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, err error) {
+func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, afterID uint64, pageSize int, reverse bool, serverTxs []*commonpb.Transaction, next string, err error) {
 	errKind, ok := classifyIndexedQueryError(err)
 	if !ok {
 		assert.Unreachable("singleton_driver_model: indexed transaction query returned unexpected error", internal.Details{
@@ -878,7 +885,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		}
 
 		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
-			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
+			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs, next)
 		})
 	})
 
@@ -1240,7 +1247,7 @@ func classifyIndexedQueryError(err error) (indexedErrKind, bool) {
 // validateIndexedAccountQuery is the accounts twin of
 // validateIndexedTransactionQuery: same needed-set lifecycle gating, with the
 // ordered account window (accountWindow + accountMatches) as the result check.
-func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, err error) {
+func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, cursor string, pageSize int, reverse bool, serverAccts []*commonpb.Account, next string, err error) {
 	errKind, ok := classifyIndexedQueryError(err)
 	if !ok {
 		assert.Unreachable("singleton_driver_model: indexed account query returned unexpected error", internal.Details{
@@ -1260,18 +1267,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		}
 
 		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
-			want := accountWindow(ls, filter, cursor, pageSize, reverse)
-			if len(want) != len(serverAccts) {
-				return false
-			}
-
-			for i, addr := range want {
-				if serverAccts[i].GetAddress() != addr || !accountMatches(ls, addr, serverAccts[i]) {
-					return false
-				}
-			}
-
-			return true
+			return accountPageMatches(ls, filter, cursor, pageSize, reverse, serverAccts, next)
 		})
 	})
 

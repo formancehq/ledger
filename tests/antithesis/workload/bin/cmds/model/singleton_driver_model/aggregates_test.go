@@ -48,7 +48,7 @@ func TestServerAggregateKeysByAssetAndColor(t *testing.T) {
 
 	got, ok := serverAggregate(&commonpb.AggregateResult{Volumes: []*commonpb.AggregatedVolume{vol("USD/2", "", 3, 1), vol("USD/2", "a", 2, 2), vol("EUR/2", "", 0, 0)}})
 	require.True(t, ok)
-	require.Len(t, got, 2, "a fully-zero bucket is dropped")
+	require.Len(t, got, 3, "every bucket the server sent is kept, so an invented zero bucket stays visible")
 	require.Equal(t, "3", got[assetColor{Asset: "USD/2"}].in.Dec())
 	require.Equal(t, "2", got[assetColor{Asset: "USD/2", Color: "a"}].out.Dec())
 

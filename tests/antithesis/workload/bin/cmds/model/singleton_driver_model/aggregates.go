@@ -183,9 +183,10 @@ func formatAsset(base string, precision uint8) string {
 	return base + "/" + strconv.FormatUint(uint64(precision), 10)
 }
 
-// serverAggregate decodes an AggregateResult into per-(asset, color) sums,
-// dropping fully-zero entries. ok is false when a bucket repeats, which the
-// result's one-entry-per-bucket contract forbids.
+// serverAggregate decodes an AggregateResult into per-(asset, color) sums. Every
+// bucket the server sent is kept, zero totals included: a bucket it invented is
+// a divergence the model side's drop would otherwise absorb. ok is false when a
+// bucket repeats, which the result's one-entry-per-bucket contract forbids.
 func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair, ok bool) {
 	out = map[assetColor]*aggPair{}
 
@@ -199,12 +200,6 @@ func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair
 		av.GetInput().IntoUint256(&p.in)
 		av.GetOutput().IntoUint256(&p.out)
 		out[key] = p
-	}
-
-	for key, p := range out {
-		if p.zero() {
-			delete(out, key)
-		}
 	}
 
 	return out, true

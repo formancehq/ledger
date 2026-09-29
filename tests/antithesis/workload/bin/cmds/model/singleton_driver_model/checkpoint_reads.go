@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -120,16 +121,30 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		// Nil filters deliberately avoid asynchronous index readiness: every row
 		// in this page is required by the frozen primary-store state.
 		if choice == 4 {
+			// The frozen state cannot move under a resumed page, so a cursor here
+			// is the one window the model predicts exactly.
+			var cursor string
+			if oneIn(2) {
+				cursor = poolAddress()
+			}
+
+			options.Cursor = cursor
+			details["cursor"] = cursor
+
 			stream, streamErr := bucket.ListAccounts(readCtx, &servicepb.ListAccountsRequest{Ledger: ledger, Options: options})
 			err = streamErr
 			var rows []*commonpb.Account
 			if err == nil {
 				rows, err = drainStream(stream)
 			}
+			var next string
+			if err == nil {
+				next = nextCursorOf(stream)
+			}
 			maxTicket = c.ticketSeq.Load()
-			want := accountWindow(frozen.Ledger(ledger), nil, "", pageSize, reverse)
-			details["expectedAddresses"], details["returned"] = want, rows
-			matches = err == nil && len(rows) == len(want)
+			want, more := checkpointAccountWindow(frozen.Ledger(ledger), cursor, pageSize, reverse)
+			details["expectedAddresses"], details["returned"], details["nextCursor"] = want, rows, next
+			matches = err == nil && len(rows) == len(want) && nextCursorLegal(next, more, lastAccountKey(rows), len(rows), pageSize)
 			concrete = err == nil && len(rows) > 0
 			if matches {
 				for i, address := range want {
@@ -141,15 +156,32 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				}
 			}
 		} else {
+			var (
+				cursor  string
+				afterID uint64
+			)
+
+			if oneIn(2) {
+				afterID = 1 + internal.Rand().Uint64()%256
+				cursor = strconv.FormatUint(afterID, 10)
+			}
+
+			options.Cursor = cursor
+			details["cursor"] = cursor
+
 			stream, streamErr := bucket.ListTransactions(readCtx, &servicepb.ListTransactionsRequest{Ledger: ledger, Options: options})
 			err = streamErr
 			var rows []*commonpb.Transaction
 			if err == nil {
 				rows, err = drainStream(stream)
 			}
+			var next string
+			if err == nil {
+				next = nextCursorOf(stream)
+			}
 			maxTicket = c.ticketSeq.Load()
-			details["returned"] = rows
-			matches = err == nil && txWindowMatches(frozen.Ledger(ledger), nil, 0, pageSize, reverse, rows)
+			details["returned"], details["nextCursor"] = rows, next
+			matches = err == nil && txWindowMatches(frozen.Ledger(ledger), nil, afterID, pageSize, reverse, rows, next)
 			concrete = err == nil && len(rows) > 0
 		}
 	}
@@ -336,4 +368,16 @@ func (c *Checker) checkpointReadOutcomeMatches(id, maxTicket uint64, frozenMatch
 	})
 
 	return matches
+}
+
+// checkpointAccountWindow is the unfiltered accounts page a frozen checkpoint
+// must serve, with the verdict on whether a further row is waiting. The frozen
+// state cannot move, so both are exact.
+func checkpointAccountWindow(ls oracle.LedgerState, cursor string, pageSize int, reverse bool) ([]string, cursorMore) {
+	want := accountWindow(ls, nil, cursor, pageSize+1, reverse)
+	if len(want) > pageSize {
+		return want[:pageSize], cursorRequired
+	}
+
+	return want, cursorForbidden
 }

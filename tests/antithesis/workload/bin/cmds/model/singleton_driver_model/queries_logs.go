@@ -390,8 +390,36 @@ func revertedIDForLog(ls oracle.LedgerState, row oracle.LogRow) uint64 {
 // candidate's row sequence: required rows appear in order, optional rows may,
 // nothing else does, and a required row may only be missing past a full
 // (truncated) page.
-func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow) bool {
-	return logRowsMatch(ledger, logWindowRows(ls, ledger, filter, afterSeq), pageSize, page)
+func logWindowMatches(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, page []serverLogRow, next string) bool {
+	rows := logWindowRows(ls, ledger, filter, afterSeq)
+	if !logRowsMatch(ledger, rows, pageSize, page) {
+		return false
+	}
+
+	return nextCursorLegal(next, logRowsLeftoverMore(rows, page), lastLogKey(page), len(page), pageSize)
+}
+
+// logRowsLeftoverMore turns the rows a page left behind into the verdict on
+// whether a resume cursor was owed: a required row certainly follows, one whose
+// date the model has not learned may or may not.
+func logRowsLeftoverMore(rows []logWindowRow, page []serverLogRow) cursorMore {
+	j, i := 0, 0
+	for ; i < len(rows) && j < len(page); i++ {
+		if page[j].id == rows[i].id {
+			j++
+		}
+	}
+
+	more := cursorForbidden
+	for _, row := range rows[i:] {
+		if row.required {
+			return cursorRequired
+		}
+
+		more = cursorEither
+	}
+
+	return more
 }
 
 func logRowsMatch(ledger string, rows []logWindowRow, pageSize int, page []serverLogRow) bool {
@@ -426,6 +454,18 @@ func logRowsMatch(ledger string, rows []logWindowRow, pageSize int, page []serve
 	}
 
 	return j == len(page)
+}
+
+// lastLogKey is the cursor a logs page implies: the ledger-local id of its last
+// row in decimal, empty for a page that showed none. The handler emits the empty
+// token for a row carrying no apply payload, which this workload never produces
+// — a token missing from a page of apply logs is a finding here.
+func lastLogKey(page []serverLogRow) string {
+	if len(page) == 0 {
+		return ""
+	}
+
+	return strconv.FormatUint(page[len(page)-1].id, 10)
 }
 
 // logRowMatches compares a served log against the model's record of it, field
@@ -533,14 +573,19 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		filter = genLogFilter(ledger, c.modelLogDateSample(ledger), 0)
 	}
 
-	pageSize := queryPageSize()
+	requestedPageSize, pageSize := queryPageSize()
+	noteClampedPageSize(requestedPageSize, pageSize)
 
 	var (
 		cursor   string
 		afterSeq uint64
 	)
 
-	if oneIn(2) {
+	malformed, rolled := rollMalformedCursor()
+	switch {
+	case rolled:
+		cursor = malformed
+	case oneIn(2):
 		afterSeq = internal.Rand().Uint64() % 16
 		cursor = strconv.FormatUint(afterSeq, 10)
 	}
@@ -560,15 +605,23 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	stream, err := client.ListLogs(readCtx, &servicepb.ListLogsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
-			PageSize: uint32(pageSize),
+			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
 			Filter:   filter,
 		},
 	})
 
-	var logs []*commonpb.Log
+	var (
+		logs []*commonpb.Log
+		next string
+	)
+
 	if err == nil {
 		logs, err = drainStream(stream)
+	}
+
+	if err == nil {
+		next = nextCursorOf(stream)
 	}
 
 	maxTicket := responseFrontier()
@@ -584,6 +637,10 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			return
 		}
 
+		if handleMalformedCursorError(rolled, "log", cursor, err) {
+			return
+		}
+
 		assert.Unreachable("singleton_driver_model: ListLogs returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"filter": describeFilter(filter),
@@ -593,7 +650,16 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		return
 	}
 
-	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, pageSize, logs, neededLogIndexes(filter), errKind, err)
+	if rolled {
+		assert.Unreachable("singleton_driver_model: malformed log cursor returned results", internal.Details{
+			"cursor": cursor,
+			"rows":   len(logs),
+		})
+
+		return
+	}
+
+	c.validateLogQuery(ctx, client, maxTicket, ledger, filter, afterSeq, pageSize, logs, next, neededLogIndexes(filter), errKind, err)
 }
 
 // classifyLogQueryError maps a ListLogs outcome to its class. ok=false means
@@ -633,7 +699,7 @@ func serverLogIDs(logs []*commonpb.Log) []uint64 {
 //   - a not-ready refusal is legal iff some needed index is not active on the
 //     base — so a refusal of a filter needing no index is a finding, and so is
 //     a page served for an index no base holds.
-func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, needed map[string]struct{}, errKind indexedErrKind, err error) {
+func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketServiceClient, maxTicket uint64, ledger string, filter *commonpb.QueryFilter, afterSeq uint64, pageSize int, serverLogs []*commonpb.Log, next string, needed map[string]struct{}, errKind indexedErrKind, err error) {
 	page := serverLogRows(serverLogs)
 	ids := serverLogIDs(serverLogs)
 
@@ -672,7 +738,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 			return false
 		}
 
-		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize)
+		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize, next)
 	})
 
 	c.noteQueryCoverage(ledger, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed,
@@ -694,6 +760,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 	details := internal.Details{
 		"ledger":      ledger,
 		"filter":      describeFilter(filter),
+		"nextCursor":  next,
 		"afterSeq":    afterSeq,
 		"pageSize":    pageSize,
 		"rows":        len(ids),
@@ -735,9 +802,9 @@ func describeServerLogRows(page []serverLogRow) string {
 // logOutcomeLegal is the per-candidate verdict for one ListLogs outcome: the
 // shared index-lifecycle legality, with the base's ordered log window as the
 // result check.
-func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, pageSize int) bool {
+func logOutcomeLegal(ls oracle.LedgerState, ledger string, filter *commonpb.QueryFilter, needed map[string]struct{}, errKind indexedErrKind, page []serverLogRow, afterSeq uint64, pageSize int, next string) bool {
 	return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_LOGS, filter, needed, errKind, "", func(view oracle.LedgerState) bool {
-		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, page)
+		return logWindowMatches(view, ledger, filter, afterSeq, pageSize, page, next)
 	})
 }
 

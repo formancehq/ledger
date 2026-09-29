@@ -239,7 +239,7 @@ func runWorker(
 		// transaction queries receive extra slots because together they must
 		// exercise every builtin and declared metadata index.
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4}) == 0 {
-			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}) {
+			switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
 			case 0:
 				runLedgerRead(ctx, client, c)
 			case 1:
@@ -263,8 +263,12 @@ func runWorker(
 				runCheckpointRead(ctx, node, c)
 			case 13, 14:
 				runSecondaryRead(ctx, client, c)
-			default:
+			case 15:
 				runRead(ctx, client, c)
+			default:
+				// Every slot the roll can produce has an arm; a fall-through means
+				// the two lists drifted and a read kind stopped being dispatched.
+				assert.Unreachable("singleton_driver_model: read dispatch has an unreachable slot", nil)
 			}
 
 			continue

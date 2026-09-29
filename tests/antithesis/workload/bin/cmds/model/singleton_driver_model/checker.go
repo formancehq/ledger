@@ -66,10 +66,23 @@ type Checker struct {
 	rejections map[rejectedBulk]struct{}
 
 	// ledgerLogSeqs maps the global sequence of each committed log that carries
-	// no ledger-local id — a ledger-metadata log — to its ledger. The oracle keeps
-	// no row for those, so their sequences are learned here at drain. Guarded by
-	// mu.
-	ledgerLogSeqs map[uint64]string
+	// no ledger-local id — a ledger-metadata log — to its ledger and kind. The
+	// oracle keeps no row for those, so both are learned here at drain. Guarded
+	// by mu.
+	ledgerLogSeqs map[uint64]ledgerLogRecord
+
+	// committedBulks maps the first log sequence of each committed bulk to its
+	// boundaries. One bulk is one audit entry, so these are the only log ranges a
+	// success entry may name: without them a fabricated entry merging two adjacent
+	// bulks, or naming part of one, satisfies every other check. Guarded by mu.
+	committedBulks map[uint64]committedBulk
+
+	// knownAudit is a lower bound on the audit trail: entries the server served
+	// on a page that validated. Audit history is permanent, so a remembered entry
+	// still exists on every later read. The set is never complete — the trail also
+	// holds proposals this driver never made — so it can only ever prove that MORE
+	// entries match, never that none do. Guarded by mu.
+	knownAudit map[uint64]auditEntry
 
 	// auditSamples holds indexed fields of served audit entries, for aiming
 	// audit filters at values the trail holds. Guarded by mu.
@@ -210,7 +223,9 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		pendingPromoted:            map[string]struct{}{},
 		ambiguousBulks:             map[uint64]oracle.Bulk{},
 		reservedLedgerCreates:      map[string]uint64{},
-		ledgerLogSeqs:              map[uint64]string{},
+		ledgerLogSeqs:              map[uint64]ledgerLogRecord{},
+		knownAudit:                 map[uint64]auditEntry{},
+		committedBulks:             map[uint64]committedBulk{},
 		rejections:                 map[rejectedBulk]struct{}{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
@@ -421,6 +436,38 @@ func distinctLedgers(bulk oracle.Bulk) []string {
 	return out
 }
 
+// committedBulk is the log range one committed bulk produced, with the number
+// of orders that produced it.
+type committedBulk struct {
+	minSeq, maxSeq uint64
+	orders         uint32
+}
+
+// recordCommittedBulk remembers the boundaries a bulk committed at. Caller holds
+// c.mu.
+func (c *Checker) recordCommittedBulk(bulk oracle.Bulk, logs []*commonpb.Log) {
+	var minSeq, maxSeq uint64
+
+	for _, l := range logs {
+		seq := l.GetSequence()
+		if seq == 0 {
+			continue
+		}
+
+		if minSeq == 0 || seq < minSeq {
+			minSeq = seq
+		}
+
+		maxSeq = max(maxSeq, seq)
+	}
+
+	if minSeq == 0 {
+		return
+	}
+
+	c.committedBulks[minSeq] = committedBulk{minSeq: minSeq, maxSeq: maxSeq, orders: uint32(len(bulk.Requests))}
+}
+
 // learnLedgerLogSequences records the sequences of a committed bulk's logs
 // that carry no ledger-local id. Caller holds c.mu.
 func (c *Checker) learnLedgerLogSequences(bulk oracle.Bulk, logs []*commonpb.Log) {
@@ -434,6 +481,26 @@ func (c *Checker) learnLedgerLogSequences(bulk oracle.Bulk, logs []*commonpb.Log
 			continue
 		}
 
-		c.ledgerLogSeqs[seq] = oracle.LedgerOf(req)
+		c.ledgerLogSeqs[seq] = ledgerLogRecord{ledger: oracle.LedgerOf(req), kind: ledgerLogKindOf(req)}
+	}
+}
+
+// ledgerLogRecord is a committed ledger-metadata log: the ledger it targets and
+// the order that produced it.
+type ledgerLogRecord struct {
+	ledger string
+	kind   string
+}
+
+// ledgerLogKindOf names the order behind a ledger-metadata log, empty for a
+// request that produces none.
+func ledgerLogKindOf(req *servicepb.Request) string {
+	switch req.GetType().(type) {
+	case *servicepb.Request_SaveLedgerMetadata:
+		return "saved_ledger_metadata"
+	case *servicepb.Request_DeleteLedgerMetadata:
+		return "deleted_ledger_metadata"
+	default:
+		return ""
 	}
 }

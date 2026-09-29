@@ -17,7 +17,7 @@ func TestModelUsage_CountsWhatTheUsagebuilderCounts(t *testing.T) {
 	// is itself a transaction whose reversed postings count again — the
 	// CounterPosting contract sums postings per CreatedTransaction AND
 	// RevertedTransaction log.
-	ls := buildLedger(t,
+	ls := buildLedgerSeparateBulks(t,
 		oracletest.TxReqMulti(true,
 			commonpb.NewPosting("world", "acc:a", "USD", big.NewInt(10)),
 			commonpb.NewPosting("acc:a", "acc:b", "USD", big.NewInt(5)),
