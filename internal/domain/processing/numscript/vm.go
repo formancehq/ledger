@@ -144,19 +144,16 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // function of the committed entry and the running binary (invariant #2) and
 // the defect surfaces instead of being papered over (invariant #7).
 //
-//   - Bytecode version: both halves must carry exactly the bytecode version
-//     (major.minor) the bundled library compiles to,
-//     numscriptlib.CurrentBytecodeVersion. The library's own decoder already
-//     refuses another major (existing encodings changed meaning — its 1→2
-//     bump moved opcode operand banks) and a newer minor (opcodes this build
-//     does not know); it would still read an older minor of the same major,
-//     since a minor bump is additive by contract, and the ledger deliberately
-//     does not execute even that: exact match is the conservative default
-//     until a minor bump has actually been exercised, and relaxing it to the
-//     library's CanRead is a one-line decision. An artifact of another
-//     version came from another binary — a Raft log replayed across a library
-//     upgrade, a rollback, a mixed-binary window — and is rejected rather than
-//     run as foreign bytecode. Both versions come out of the committed entry's
+//   - Bytecode version: both halves must carry a bytecode version the bundled
+//     library can read (numscriptlib.CurrentBytecodeVersion.CanRead): the same
+//     major and a minor no newer than its own. A minor bump is additive by the
+//     library's contract, so an older minor keeps its meaning and runs — that
+//     is what lets a node that restarts on a newer binary still apply entries
+//     committed before the upgrade, identically to the replicas that applied
+//     them on the old one. Another major (existing encodings changed meaning —
+//     the library's 1→2 bump moved opcode operand banks) or a newer minor
+//     (opcodes this build does not know) is rejected rather than run as
+//     foreign bytecode; the library's decoder refuses both too. Both versions come out of the committed entry's
 //     own bytes, and the bundled version is a property of the binary exactly
 //     like the library's execution semantics, so apply stays a pure function
 //     of (committed entry, running binary).
@@ -190,11 +187,11 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 		}
 	}
 
-	if vars.Version != numscriptlib.CurrentBytecodeVersion {
+	if !numscriptlib.CurrentBytecodeVersion.CanRead(vars.Version) {
 		return numscriptlib.ExecutionResult{}, &domain.ErrNumscriptRuntime{
 			Detail: fmt.Sprintf(
-				"compiled numscript vars encoded with bytecode version %s; this binary executes %s only",
-				vars.Version, numscriptlib.CurrentBytecodeVersion,
+				"compiled numscript vars encoded with bytecode version %s; this binary executes %d.0 through %s",
+				vars.Version, numscriptlib.CurrentBytecodeVersion.Major, numscriptlib.CurrentBytecodeVersion,
 			),
 		}
 	}

@@ -335,11 +335,8 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 // program or vars carry a bytecode version other than the bundled library's —
 // the footprint of a Raft log replayed across a library upgrade, a rollback,
 // or a mixed-binary window — is rejected loudly (ErrNumscriptRuntime, not a
-// panic) and never cached, for either half.
-// Another major or a newer minor the library itself refuses at decode; an
-// older minor of the same major the library would still read, and the
-// ledger's own exact-match check refuses it — that case is exercised as soon
-// as the bundled version's minor is above zero.
+// panic) and never cached, for either half: another major or a newer minor.
+// An older minor of the same major runs (TestSafeExecCompiled_OlderMinorRuns).
 func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 	t.Parallel()
 
@@ -356,10 +353,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 	require.NoError(t, decErr)
 	require.Equal(t, current, program.Version, "a fresh artifact carries the bundled bytecode version")
 
-	const (
-		libraryRefusal = "not readable by this build"    // the decoder's typed error, surfaced as a decode failure
-		ledgerRefusal  = "encoded with bytecode version" // the ledger's exact-match check
-	)
+	const libraryRefusal = "not readable by this build" // the decoder's typed error, surfaced as a decode failure
 
 	versions := map[string]struct {
 		v      numscriptlib.BytecodeVersion
@@ -368,12 +362,6 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 		"older major": {numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}, libraryRefusal},
 		"newer major": {numscriptlib.BytecodeVersion{Major: current.Major + 1}, libraryRefusal},
 		"newer minor": {numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor + 1}, libraryRefusal},
-	}
-	if current.Minor > 0 {
-		versions["older minor"] = struct {
-			v      numscriptlib.BytecodeVersion
-			detail string
-		}{numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}, ledgerRefusal}
 	}
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
@@ -591,4 +579,33 @@ func TestSafeExecCompiled_SameScriptDifferentBytesRunsCommittedBytes(t *testing.
 		require.Equal(t, step.want, result.Postings[0].Amount.Int64(), "the committed bytes must run, not the cached ones")
 		require.Equal(t, 1, cache.compiledOrder.Len(), "new bytes replace the entry for the script")
 	}
+}
+
+// TestSafeExecCompiled_OlderMinorRuns: an artifact of an older minor of the
+// bundled major keeps its meaning (a minor bump is additive), so it executes
+// — a node restarting on a newer binary still applies entries committed before
+// the upgrade, with the same outcome as the replicas that applied them on the
+// old one. Only exercisable once the bundled minor is above zero.
+func TestSafeExecCompiled_OlderMinorRuns(t *testing.T) {
+	t.Parallel()
+
+	current := numscriptlib.CurrentBytecodeVersion
+	if current.Minor == 0 {
+		t.Skipf("bundled bytecode version %s has no older minor", current)
+	}
+
+	compiled := mustCompile(t, mustEntry(t, `send [COIN 30] (
+  source = @src
+  destination = @dst
+)`), nil)
+
+	older := numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}
+	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
+
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash,
+		withArtifactVersion(t, compiled.Program, older), withArtifactVersion(t, compiled.Vars, older),
+		NewVMStore(source, false))
+	require.Nil(t, err)
+	require.Len(t, result.Postings, 1)
+	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
 }
