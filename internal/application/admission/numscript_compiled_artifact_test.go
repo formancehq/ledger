@@ -43,6 +43,6 @@ func TestResolveScripts_BindsCompiledArtifact(t *testing.T) {
 	vars, err := numscriptlib.DecodeVars(technical.GetCompiledVars())
 	require.NoError(t, err)
 
-	require.NoError(t, numscriptlib.VerifyCompiledProgramWithVars(program, &vars),
-		"the bound artifact must pass the same verification the FSM runs")
+	_, err = numscriptlib.VerifyCompiledProgramWithVars(program, &vars)
+	require.NoError(t, err, "the bound artifact must pass the same verification the FSM runs")
 }
