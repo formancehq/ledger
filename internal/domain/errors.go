@@ -1350,6 +1350,22 @@ func (e *ErrNumscriptParse) Metadata() map[string]string {
 	return map[string]string{"details": e.Details}
 }
 
+// ErrNumscriptCompile — a script that parsed and resolved cannot run on the
+// Numscript VM, the only execution engine: the compiler does not support a
+// construct yet, the program exceeds the VM's capacity (register banks,
+// program size), or a var value does not bind to the program's variable
+// layout. Deterministic for a given script and vars, so it is a freezable
+// validation rejection. It reuses the generic VALIDATION reason (the message
+// carries the detail), like the other numscript validation sentinels.
+type ErrNumscriptCompile struct {
+	Detail string
+}
+
+func (e *ErrNumscriptCompile) Error() string             { return "numscript compile error: " + e.Detail }
+func (*ErrNumscriptCompile) Kind() ErrorKind             { return KindValidation }
+func (*ErrNumscriptCompile) Reason() string              { return ErrReasonValidation }
+func (*ErrNumscriptCompile) Metadata() map[string]string { return nil }
+
 // ErrDependencyDiscoveryFailed is returned when admission cannot discover all
 // dependencies needed to preload a Numscript transaction before proposal.
 type ErrDependencyDiscoveryFailed struct {

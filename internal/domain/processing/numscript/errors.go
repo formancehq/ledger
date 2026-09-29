@@ -131,30 +131,14 @@ func numscriptPanicToDescribable(recovered any) domain.SerializableError {
 	return panicError{&domain.ErrNumscriptRuntime{Detail: fmt.Sprintf("numscript panic: %v", recovered)}}
 }
 
-// SafeRun wraps ParseResult.Run with a deferred recover to catch panics from the
-// numscript library and convert them into regular errors.
-func SafeRun(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
-	defer func() {
-		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
-			result = numscriptlib.ExecutionResult{}
-			err = panicErr
-		}
-	}()
-
-	result, runErr := parsed.Run(ctx, vars, store)
-	err = convertNumscriptError(runErr)
-
-	return
-}
-
-// SafeResolveDependencies wraps ParseResult.ResolveDependencies with the same
-// deferred recover + error-conversion contract as SafeRun. ResolveDependencies
+// SafeResolveDependencies wraps ParseResult.ResolveDependencies with a
+// deferred recover and the shared error conversion. ResolveDependencies
 // runs untrusted script analysis and can panic on adversarial input; both call
 // sites (admission dependency discovery and — critically — the FSM apply-path
 // stale-inputs re-resolution) must never let that panic escape, so the panic is
 // converted into a Describable ErrNumscriptRuntime rather than crashing the
 // request goroutine or the Raft apply loop. Library errors are mapped through
-// the shared convertNumscriptError, identically to SafeRun.
+// the shared convertNumscriptError.
 func SafeResolveDependencies(parsed numscriptlib.ParseResult, ctx context.Context, vars numscriptlib.VariablesMap, store numscriptlib.Store) (resolved numscriptlib.ResolvedDependencies, err domain.SerializableError) {
 	defer func() {
 		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {

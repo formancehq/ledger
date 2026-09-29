@@ -294,17 +294,17 @@ type OrderTechnical struct {
 	RevertTargetDigest []byte `protobuf:"bytes,4,opt,name=revert_target_digest,json=revertTargetDigest,proto3" json:"revert_target_digest,omitempty"`
 	// compiled_program is the Numscript VM bytecode admission compiled from this
 	// order's script on the leader's parallel path (numscript Compile + Encode).
-	// The FSM decodes, verifies and executes it on every node instead of
-	// interpreting the script text, so compilation happens once per proposal and
-	// the engine choice is a function of the committed entry alone (invariant
-	// #2) — provided every replica runs a binary that knows these fields. A
-	// binary predating them silently drops the artifact and interprets with its
-	// own bundled library, so this change is a stop-all-nodes deployment
-	// boundary (service protocol revision 14; see docs/ops/deployment.md,
-	// "Upgrading across the Numscript VM execution change"). Absent when the
-	// script cannot be compiled (e.g. it uses a feature the compiler does not
-	// support, like asset scaling): the FSM then falls back to the tree-walking
-	// interpreter, whose semantics the VM matches by construction.
+	// The VM is the only execution engine: the FSM decodes, verifies and
+	// executes this artifact on every node, so compilation happens once per
+	// proposal and the outcome is a function of the committed entry alone
+	// (invariant #2) — provided every replica runs a binary that knows these
+	// fields. A binary predating them silently drops the artifact and interprets
+	// with its own bundled library, so this change is a stop-all-nodes
+	// deployment boundary (service protocol revision 14; see
+	// docs/ops/deployment.md, "Upgrading across the Numscript VM execution
+	// change"). Every scripted order admission proposes carries one: a script
+	// the VM cannot run is rejected at admission, and a scripted order reaching
+	// the FSM without an artifact fails loudly as an admission bug.
 	CompiledProgram []byte `protobuf:"bytes,5,opt,name=compiled_program,json=compiledProgram,proto3" json:"compiled_program,omitempty"`
 	// compiled_vars is the order's runtime vars encoded against
 	// compiled_program's variable layout (numscript VarsEncoder + Vars.Encode).

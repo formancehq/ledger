@@ -128,6 +128,7 @@ ledgerctl numscripts versions payment-with-fees
 | Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
+| Not runnable on the VM | `VALIDATION` | 400 | INVALID_ARGUMENT | A transaction's script parses and resolves but does not compile (unsupported construct, VM capacity exceeded, var value that does not bind) — `ErrNumscriptCompile` |
 
 ## Script References in Transactions
 
@@ -190,41 +191,53 @@ FSM Apply: processCreateTransaction
 Normal transaction processing (parse, execute, postings...)
 ```
 
-### Execution Engines — admission compiles, the FSM executes
+### Execution — admission compiles, the FSM executes on the VM
 
-Once the script text is resolved, two engines of the bundled Numscript library
-can execute it, with identical results by construction:
+The Numscript VM is the only engine that executes a script. The library's
+tree-walking interpreter code is still used, but only to analyze scripts, never
+to execute them: dependency resolution at admission and the FSM's stale-inputs
+re-resolution walk the parsed AST (`numscript.SafeResolveDependencies`).
 
-- **The VM.** Admission compiles each script it could resolve to VM bytecode
-  (`numscript.compileScript`, on the leader's parallel path) — once per
-  cached script: the compile and its bytecode encoding hang off the script's
-  `NumscriptCache` parse entry (`lruEntry.compileParsed`), so every order of
-  a script shares one program and only its vars are encoded per order — and
-  binds the artifact to the order's technical sub-message: `compiled_program`,
-  `compiled_vars` (the order's vars encoded against that program's variable
-  layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled). The
-  FSM decodes and verifies the program once per artifact — `NumscriptCache`
-  keeps one warm VM instance per script, keyed by `compiled_script_hash`
-  (already checked against the resolved text) rather than by the program
-  bytes: compilation is deterministic, so one library version compiles one
-  text to one byte sequence, and the key avoids hashing the program again on
-  every apply. A hit still peeks the
-  program's bytecode version from its header (no decode) and rejects a
-  foreign one exactly as a cold node would — the rolling-upgrade case — and
-  the cache is in-memory, so an upgrade restarts it empty — and executes it
-  per apply
-  (`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
-  wire-supplied bytecode without per-instruction checks, and its cost (several
-  interpreter runs) is why it is cached.
-- **The tree-walking interpreter** (`numscript.SafeRun`) runs the text only
-  when admission produced no artifact: the compiler does not support the
-  script yet (e.g. asset scaling), or a var value the encoder rejects — the
-  interpreter then owns the client-facing error. It is never a fallback for an
-  artifact the FSM cannot execute.
+Admission compiles each script it resolved to VM bytecode
+(`numscript.compileScript`, on the leader's parallel path) — once per cached
+script: the compile and its bytecode encoding hang off the script's
+`NumscriptCache` parse entry (`lruEntry.compileParsed`), so every order of a
+script shares one program and only its vars are encoded per order. It binds
+the artifact to the order's technical sub-message: `compiled_program`,
+`compiled_vars` (the order's vars encoded against that program's variable
+layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled).
+Admission also runs that artifact on a fresh VM instance to predict the
+script's effects for later orders in the same atomic batch.
+
+A script the VM cannot run is rejected at admission with
+`ErrNumscriptCompile` (`VALIDATION`, freezable): the compiler does not support
+a construct, the program exceeds the VM's capacity (register banks, program
+size), or a var value does not bind to the program's variable layout. Compile
+runs after dependency resolution, so a script resolution already rejects keeps
+its specific error — asset scaling, for instance, still fails with
+`ErrNumscriptScalingUnsupported`. A compiler panic surfaces loudly as
+`ErrNumscriptRuntime`.
+
+The FSM decodes and verifies the program once per artifact — `NumscriptCache`
+keeps one warm VM instance per script, keyed by `compiled_script_hash`
+(already checked against the resolved text) rather than by the program bytes:
+compilation is deterministic, so one library version compiles one text to one
+byte sequence, and the key avoids hashing the program again on every apply. A
+hit still peeks the program's
+bytecode version from its header (no decode) and rejects a foreign one exactly
+as a cold node would — the rolling-upgrade case — and the cache is in-memory,
+so an upgrade restarts it empty. It then executes the artifact per apply
+(`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
+wire-supplied bytecode without per-instruction checks, and its cost (~30x an
+execution) is why it is cached.
+
+Every scripted order admission proposes carries an artifact; an order it
+forwards without one is marked `preload_unavailable` and rejected before any
+read. A scripted order reaching execution without an artifact is therefore an
+admission bug, and the FSM fails it with `ErrNumscriptRuntime` (invariant #7).
 
 The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
-(invariant #7), identically on every node running the binary, and never
-interpreting the text in its place — when: either half does not carry exactly
+(invariant #7), identically on every node running the binary — when: either half does not carry exactly
 the bytecode version (major.minor) the bundled library compiles to
 (`numscriptlib.CurrentBytecodeVersion`); either half does not decode; the
 program fails verification; or `compiled_script_hash` does not match the
@@ -243,9 +256,8 @@ inline scripts travel in the order, exact library versions are immutable, an
 advanced `"latest"` is stale-rejected first, and our own compiler produced the
 bytecode in this very format.
 
-Either way the engine choice is a function of the committed entry and the
-running binary alone — the same footing as the library's interpreter
-semantics — so every replica on one binary applies the entry identically
+The outcome is a function of the committed entry and the running binary
+alone, so every replica on one binary applies the entry identically
 (invariant #2). Technical fields are excluded from business-intent hashing
 (invariant #10), so the artifact never reaches the audit chain. Client
 requests cannot carry technical fields: `ApplyBatch` is made of `Request`

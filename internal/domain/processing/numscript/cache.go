@@ -46,16 +46,19 @@ type lruEntry struct {
 
 	compileOnce sync.Once
 	compiled    *compiledProgram
+	compileErr  domain.SerializableError
 }
 
 // compiledProgram is the script-dependent half of an admission compile: the
-// encoded bytecode and the encoder that binds an order's vars to the program's
-// variable layout. Neither depends on any order's values, so one instance
-// serves every order of the script. program is shared and never mutated —
-// compileScript hands each order its own copy.
+// program, its encoded bytecode, and the encoder that binds an order's vars to
+// the program's variable layout. None depends on any order's values, so one
+// instance serves every order of the script. It is shared and never mutated:
+// compileScript hands each order its own copy of the bytes, and admission's
+// effects run builds its own VM instance over the (immutable) program.
 type compiledProgram struct {
 	varsEncoder numscriptlib.VarsEncoder
-	program     []byte
+	program     numscriptlib.CompiledProgram
+	encoded     []byte
 }
 
 // parsedScript wraps a parsed Numscript program with any parsing errors.
@@ -186,34 +189,34 @@ func (c *NumscriptCache) getOrParseEntry(script string) *lruEntry {
 }
 
 // compileParsed compiles the entry's script at most once and shares the result
-// with every later caller. nil means the compiler cannot lower the script (or
-// panicked on it) — as stable a property of the text as a parse error, and
-// cached the same way so an uncompilable script does not re-run the compiler
-// on every order. Only the script-dependent half is computed here; binding an
-// order's vars (VarsEncoder.Encode) is per-order and stays with the caller.
-// The compile runs outside the cache locks; concurrent callers for the same
-// script block on the Once and share the single result.
-func (e *lruEntry) compileParsed() *compiledProgram {
+// with every later caller. A compile failure is as stable a property of the
+// text as a parse error and is cached the same way, so an uncompilable script
+// does not re-run the compiler on every order: ErrNumscriptCompile when the
+// compiler rejects the script, a panicError (IsPanic) when it panics. Callers
+// only reach here for a script that parsed. Only the script-dependent half is
+// computed here; binding an order's vars (VarsEncoder.Encode) is per-order and
+// stays with the caller. The compile runs outside the cache locks; concurrent
+// callers for the same script block on the Once and share the single result.
+func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) {
 	e.compileOnce.Do(func() {
 		defer func() {
-			if recover() != nil {
+			if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 				e.compiled = nil
+				e.compileErr = panicErr
 			}
 		}()
 
-		if e.script.err != nil {
-			return
-		}
-
 		varsEncoder, program, err := e.script.program.Compile()
 		if err != nil {
+			e.compileErr = &domain.ErrNumscriptCompile{Detail: err.Error()}
+
 			return
 		}
 
-		e.compiled = &compiledProgram{varsEncoder: varsEncoder, program: program.Encode()}
+		e.compiled = &compiledProgram{varsEncoder: varsEncoder, program: program, encoded: program.Encode()}
 	})
 
-	return e.compiled
+	return e.compiled, e.compileErr
 }
 
 // getOrDecodeCompiled returns the cache entry holding the decoded, verified VM
