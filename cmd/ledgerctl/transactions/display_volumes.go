@@ -50,8 +50,8 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 				raw = append(raw, cmdutil.RawVolume{
 					Asset:  entry.GetAsset(),
 					Color:  entry.GetColor(),
-					Input:  v.GetInput(),
-					Output: v.GetOutput(),
+					Input:  v.GetInput().DecimalString(),
+					Output: v.GetOutput().DecimalString(),
 				})
 			}
 

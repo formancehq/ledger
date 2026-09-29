@@ -349,8 +349,8 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) ([
 			raw = append(raw, cmdutil.RawVolume{
 				Asset:  entry.GetAsset(),
 				Color:  entry.GetColor(),
-				Input:  vol.GetInput(),
-				Output: vol.GetOutput(),
+				Input:  vol.GetInput().DecimalString(),
+				Output: vol.GetOutput().DecimalString(),
 			})
 		}
 
@@ -382,12 +382,12 @@ func formatAccountBalances(volumes []*commonpb.AccountVolume, rescale *uint8) ([
 		balance := entry.GetVolumes().GetBalance()
 
 		balanceColor := pterm.Green
-		if balance != "" && balance[0] == '-' {
+		if s := balance.DecimalString(); len(s) > 0 && s[0] == '-' {
 			balanceColor = pterm.Red
 		}
 
 		label := balanceLabel(entry.GetAsset(), entry.GetColor())
-		lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance)))
+		lines = append(lines, fmt.Sprintf("%s %s", label, balanceColor(balance.DecimalString())))
 	}
 
 	return lines, nil

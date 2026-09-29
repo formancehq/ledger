@@ -115,8 +115,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 			raw = append(raw, cmdutil.RawVolume{
 				Asset:  entry.GetAsset(),
 				Color:  entry.GetColor(),
-				Input:  vol.GetInput(),
-				Output: vol.GetOutput(),
+				Input:  vol.GetInput().DecimalString(),
+				Output: vol.GetOutput().DecimalString(),
 			})
 		}
 
