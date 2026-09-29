@@ -239,21 +239,19 @@ read. A scripted order reaching execution without an artifact is therefore an
 admission bug, and the FSM fails it with `ErrNumscriptRuntime` (invariant #7).
 
 The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
-(invariant #7), identically on every node running the binary — when: either half does not carry exactly
-the bytecode version (major.minor) the bundled library compiles to
-(`numscriptlib.CurrentBytecodeVersion`); either half does not decode; the
+(invariant #7), identically on every node running the binary — when: either
+half carries a bytecode version (major.minor) the bundled library cannot read
+(`numscriptlib.CurrentBytecodeVersion.CanRead`: another major, or a newer
+minor); either half does not decode; the
 program fails verification; or `compiled_script_hash` does not match the
-resolved text. The version check is what keeps foreign bytecode out: an
-artifact of another version came from a different binary — a Raft log
-replayed across a library upgrade, a rollback, a mixed-binary window. The
-library's own decoder already refuses another major (existing encodings
-changed meaning; its 1→2 bump moved opcode operand banks) and a newer minor
-(opcodes this build does not know). It would still read an older minor of the
-same major, since a minor bump is additive by contract, and the ledger
-deliberately does not execute even that: exact match is the conservative
-default until a minor bump has actually been exercised, and relaxing it to the
-library's `CanRead` is a one-line decision. The other three cannot happen by
-construction:
+resolved text. The version check keeps foreign bytecode out: another major
+changed the meaning of existing encodings (the library's 1→2 bump moved opcode
+operand banks), and a newer minor may use opcodes this build does not know.
+An older minor of the same major runs: a minor bump is additive by the
+library's contract, so that bytecode keeps its meaning. This is what lets a
+node that restarts on a newer binary still apply the entries committed before
+the upgrade, with the same outcome as the replicas that applied them on the
+old binary. The other three cannot happen by construction:
 inline scripts travel in the order, exact library versions are immutable, an
 advanced `"latest"` is stale-rejected first, and our own compiler produced the
 bytecode in this very format.
