@@ -160,6 +160,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	leader := servicepb.NewBucketServiceClient(leaderConn)
+	testserver.WaitForWriteAdmission(t, ctx, leader)
 	_, err = leader.Apply(ctx, actions.WithIdempotencyKey("setup", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 
