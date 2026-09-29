@@ -2,6 +2,9 @@
 
 Distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system uses a **single Raft group** to manage all ledgers and their transactions, providing strong consistency and simplified operations.
 
+Ledger v3 uses RocksDB for new data directories. The pre-release Pebble format
+has no migration path.
+
 ## Key Features
 
 | Feature                      | Description                                                     |

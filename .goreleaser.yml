@@ -14,21 +14,23 @@ builds:
   id: ledger-server
   builder: prebuilt
   prebuilt:
-    path: .release-prebuilt/linux_amd64/ledger-server
+    path: .release-prebuilt/{{ .Os }}_{{ .Arch }}/ledger-server
   goos:
   - linux
   goarch:
   - amd64
+  - arm64
 
 - binary: ledgerctl
   id: ledgerctl
   builder: prebuilt
   prebuilt:
-    path: .release-prebuilt/linux_amd64/ledgerctl
+    path: .release-prebuilt/{{ .Os }}_{{ .Arch }}/ledgerctl
   goos:
   - linux
   goarch:
   - amd64
+  - arm64
 
 nightly:
   tag_name: nightly
@@ -84,6 +86,7 @@ dockers_v2:
   - "{{ if not .IsNightly }}{{ if not .Prerelease }}latest{{ end }}{{ end }}"
   platforms:
   - linux/amd64
+  - linux/arm64
   sbom: false
   flags:
   - --provenance=false

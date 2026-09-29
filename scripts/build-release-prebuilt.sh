@@ -20,18 +20,20 @@ case "$mode" in
         ;;
 esac
 
-output=".release-prebuilt/linux_amd64"
-mkdir -p "$output"
-docker buildx build --platform linux/amd64 --target release-artifacts \
-    --build-arg "VERSION=$version" \
-    --build-arg "COMMIT=$commit" \
-    --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --output "type=local,dest=$output" .
+for arch in amd64 arm64; do
+    output=".release-prebuilt/linux_${arch}"
+    mkdir -p "$output"
+    docker buildx build --platform "linux/$arch" --target release-artifacts \
+        --build-arg "VERSION=$version" \
+        --build-arg "COMMIT=$commit" \
+        --build-arg "BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        --output "type=local,dest=$output" .
 
-# Smoke the exported binaries in plain Alpine, without RocksDB or C++ runtime
-# packages. A missing native dependency must fail the release before publish.
-for binary in ledger-server ledgerctl; do
-    docker run --rm --platform linux/amd64 \
-        --mount "type=bind,src=$PWD/$output,dst=/artifacts,readonly" \
-        --entrypoint "/artifacts/$binary" alpine:3.24 --help >/dev/null
+    # Smoke the exported binaries in plain Alpine, without RocksDB or C++
+    # runtime packages. A missing native dependency must fail before publish.
+    for binary in ledger-server ledgerctl; do
+        docker run --rm --platform "linux/$arch" \
+            --mount "type=bind,src=$PWD/$output,dst=/artifacts,readonly" \
+            --entrypoint "/artifacts/$binary" alpine:3.24 --help >/dev/null
+    done
 done

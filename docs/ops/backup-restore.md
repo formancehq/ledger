@@ -4,7 +4,7 @@
 
 The ledger provides a two-tier backup and restore pipeline:
 
-1. **Full backup** (`store backup`) — captures a complete Pebble checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
+1. **Full backup** (`store backup`) — captures a complete RocksDB checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
 2. **Incremental backup** (`store incremental-backup`) — exports only new log and audit entries since the last backup. Forwarded to the leader: the FSM owns a per-destination lock so only one backup runs against the same destination at a time, and only the leader can push Raft proposals. Done frequently.
 
 A restore combines the latest checkpoint with any incremental exports to reconstruct the full state.
@@ -158,7 +158,7 @@ manifest, is not a usable backup.
 │ 1a. FULL BACKUP (running cluster, leader only)                         │
 │                                                                        │
 │    ledgerctl store backup --driver s3 --s3-bucket my-bucket            │
-│    ─► Leader: create Pebble checkpoint                                │
+│    ─► Leader: create RocksDB checkpoint                               │
 │    ─► Leader: diff SSTs against previous checkpoint                   │
 │    ─► Leader: upload new/changed files, clean old exports             │
 │    ─► Leader: write manifest (checkpoint + empty exports)             │
@@ -235,7 +235,7 @@ The `store backup` command calls the `ClusterService.Backup` gRPC RPC (unary). I
 
 #### Step 1: Direct Pebble Checkpoint
 
-The leader creates a **temporary Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
+The leader creates a **temporary RocksDB checkpoint** — a point-in-time filesystem snapshot. Because boundaries (nextTransactionId, nextLogId per ledger) are written to RocksDB on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
 
 #### Step 2: Diff Against Previous Manifest
 
@@ -257,10 +257,10 @@ The temporary checkpoint is removed from the leader's filesystem after the backu
 
 ### Backup Preparation on Restore
 
-Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
+Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one RocksDB entry (no per-index history to fold):
 
 1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
-2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
+2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored RocksDB store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
 3. **Remove persisted config**: Node and cluster IDs are stripped for portability.
 4. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
 5. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
@@ -725,7 +725,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 
 | Guarantee | Mechanism |
 |-----------|-----------|
-| **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
+| **Consistent snapshot** | Backup checkpoint is created as a direct RocksDB checkpoint. Boundaries are always up-to-date in RocksDB (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
 | **Self-contained on restore** | During restore finalize, the applied index is preserved as the genesis boundary and persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. The new log's index space starts at the boundary; nothing depends on the original cluster's later Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |

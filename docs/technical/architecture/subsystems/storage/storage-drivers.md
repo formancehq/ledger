@@ -16,7 +16,9 @@ The Store is responsible for persisting:
 The primary store uses **RocksDB** through `internal/storage/kv` and
 `github.com/linxGnu/grocksdb`. The read index and usage projection are separate
 RocksDB databases. The server requires CGO and a compatible RocksDB 11 library.
-Old Pebble files require the [offline cutover](../../../../ops/rocksdb-cutover.md).
+Ledger v3 has no stable Pebble storage format to support. Start with a fresh
+RocksDB data directory; existing development Pebble directories are not opened
+or migrated by the server.
 
 ## RocksDB settings
 
