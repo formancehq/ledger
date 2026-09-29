@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestHardLink_SimpleDirectory(t *testing.T) {
@@ -72,6 +74,35 @@ func TestHardLink_RocksDBFiles(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, name == "000002.sst" || name == "000003.blob", os.SameFile(srcInfo, dstInfo), name)
 	}
+}
+
+func TestHardLink_IndependentRocksDBClones(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source, err := kv.Open(filepath.Join(root, "source"), kv.Options{})
+	require.NoError(t, err)
+	require.NoError(t, source.Set([]byte("key"), []byte("original"), kv.Sync))
+	checkpoint := filepath.Join(root, "checkpoint")
+	require.NoError(t, source.Checkpoint(checkpoint))
+	require.NoError(t, source.Close())
+
+	firstPath := filepath.Join(root, "first")
+	secondPath := filepath.Join(root, "second")
+	require.NoError(t, HardLink(checkpoint, firstPath))
+	require.NoError(t, HardLink(checkpoint, secondPath))
+	first, err := kv.Open(firstPath, kv.Options{})
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, first.Close()) })
+	second, err := kv.Open(secondPath, kv.Options{})
+	require.NoError(t, err, "independent clones must not share a RocksDB lock")
+	t.Cleanup(func() { require.NoError(t, second.Close()) })
+
+	require.NoError(t, first.Set([]byte("key"), []byte("changed"), kv.Sync))
+	value, closer, err := second.Get([]byte("key"))
+	require.NoError(t, err)
+	require.Equal(t, []byte("original"), value)
+	require.NoError(t, closer.Close())
 }
 
 func TestHardLink_DstAlreadyExists(t *testing.T) {
