@@ -108,7 +108,7 @@ go run . run
 
 ### Prerequisites
 
-- Kubernetes 1.28+ (1.30+ for PVC/PV deletion protection)
+- Kubernetes 1.19+
 - Helm 3.0+ (for deploying the operator)
 - PersistentVolume support
 
