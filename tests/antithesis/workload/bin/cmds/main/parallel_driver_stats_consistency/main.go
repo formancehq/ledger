@@ -1,13 +1,15 @@
 // parallel_driver_stats_consistency verifies that GetLedgerStats returns
 // self-consistent values and that AggregateVolumes sums to zero (double-entry).
 //
-// All invariants hold at any point in time regardless of concurrent writes:
-//   - Structural: logCount >= txCount, postingCount >= txCount, etc.
+// These invariants hold regardless of concurrent writes:
+//   - Main-store structural: logCount >= txCount.
 //   - Double-entry: sum(input) == sum(output) for each asset (AggregateVolumes
 //     reads from the sequentially-applied read-index, so a transaction is either
 //     fully included or not — partial postings are impossible).
 //
-// No Barrier is needed.
+// Usage counters are asynchronous and may be ahead of or behind the main
+// snapshot. eventually_stats_consistency checks them against complete logs at
+// a fixed source horizon after an independent usage witness has been observed.
 package main
 
 import (
@@ -16,6 +18,7 @@ import (
 	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -43,14 +46,9 @@ func main() {
 			"logCount":         stats.GetLogCount(),
 		})
 
-		// Self-consistency invariants.
 		assert.Always(stats.GetTransactionCount() >= 0, "transaction count must be non-negative", statsDetails)
-		assert.Always(stats.GetLogCount() >= stats.GetTransactionCount(),
+		assert.Always(mainStoreStatsConsistent(stats),
 			"log count must be >= transaction count (logs include metadata, reverts, etc.)", statsDetails)
-		assert.Always(stats.GetPostingCount() >= stats.GetTransactionCount(),
-			"posting count must be >= transaction count (each tx has at least one posting)", statsDetails)
-		assert.Always(stats.GetRevertCount() <= stats.GetTransactionCount(),
-			"revert count must be <= transaction count", statsDetails)
 
 		// Aggregate volumes must sum to zero (double-entry invariant).
 		aggResp, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
@@ -87,4 +85,8 @@ func main() {
 		log.Printf("stats: check passed for %s (txs=%d, vols=%d, logs=%d)",
 			ledger, stats.GetTransactionCount(), stats.GetVolumeCount(), stats.GetLogCount())
 	})
+}
+
+func mainStoreStatsConsistent(stats *commonpb.LedgerStats) bool {
+	return stats.GetLogCount() >= stats.GetTransactionCount()
 }

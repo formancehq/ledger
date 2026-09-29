@@ -55,6 +55,7 @@ const (
 	PrefixTimestampOrder   OwnedLedgerPrefix = "tsorder"
 	PrefixProjectionAlign  OwnedLedgerPrefix = "projection"
 	PrefixStaleReads       OwnedLedgerPrefix = "stale"
+	PrefixStatsWitness     OwnedLedgerPrefix = "stats-witness" // eventually_stats_consistency
 
 	// PrefixSentinel covers the witness-ledger family used by the
 	// operational singletons (scaling_structured, rolling_restart,
@@ -91,6 +92,7 @@ var ownedLedgerPrefixes = []OwnedLedgerPrefix{
 	PrefixTimestampOrder,
 	PrefixProjectionAlign,
 	PrefixStaleReads,
+	PrefixStatsWitness,
 	PrefixSentinel,
 	PrefixModel,
 }
