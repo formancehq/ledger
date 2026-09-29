@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nats-event-observer
+spec:
+  restartPolicy: Never
+  containers:
+    - name: observer
+      image: natsio/nats-box:0.19.2
+      imagePullPolicy: IfNotPresent
+      command:
+        - sh
+        - -ec
+        - |
+          nats --server nats://nats:4222 sub 'ledger.events.>' \
+            --stream LEDGER_EVENTS \
+            --all \
+            --count=2 \
+            --raw \
+            --wait=60s

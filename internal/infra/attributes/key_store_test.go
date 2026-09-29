@@ -110,7 +110,7 @@ func TestKeyStoreGet(t *testing.T) {
 	})
 }
 
-func TestKeyStoreDelete(t *testing.T) {
+func TestKeyStoreTombstone(t *testing.T) {
 	t.Parallel()
 
 	t.Run("existing key", func(t *testing.T) {
@@ -121,7 +121,7 @@ func TestKeyStoreDelete(t *testing.T) {
 		_, _, err := store.Put([]byte("to-delete"), "some-value")
 		require.NoError(t, err)
 
-		id, _, err := store.Delete([]byte("to-delete"))
+		id, _, err := store.Tombstone([]byte("to-delete"))
 		require.NoError(t, err)
 		require.NotEqual(t, U128{}, id)
 
@@ -135,7 +135,7 @@ func TestKeyStoreDelete(t *testing.T) {
 
 		store := newTestKeyStore()
 
-		_, _, err := store.Delete([]byte("never-existed"))
+		_, _, err := store.Tombstone([]byte("never-existed"))
 		require.ErrorIs(t, err, domain.ErrNotFound)
 	})
 }

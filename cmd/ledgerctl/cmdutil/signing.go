@@ -90,6 +90,11 @@ func BuildApplyRequest(cmd *cobra.Command, requests ...*servicepb.Request) (*ser
 		}
 	}
 
+	return BuildApplyRequestWithIdempotencyKey(cmd, idempotencyKey, requests...)
+}
+
+// BuildApplyRequestWithIdempotencyKey binds the key into the batch before signing.
+func BuildApplyRequestWithIdempotencyKey(cmd *cobra.Command, idempotencyKey string, requests ...*servicepb.Request) (*servicepb.ApplyRequest, error) {
 	keyID, privKey, err := LoadSigningKey(cmd)
 	if err != nil {
 		return nil, err

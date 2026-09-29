@@ -108,7 +108,11 @@ go run . run
 
 ### Prerequisites
 
-- Kubernetes 1.19+
+- Kubernetes with `StatefulSetAutoDeletePVC` enabled (default since 1.27,
+  stable since 1.32). PVC/PV deletion protection needs the
+  `ValidatingAdmissionPolicy` API (stable since 1.30). The operator has no
+  established, tested minimum Kubernetes version; see
+  [Deployment Profiles](./deployment-profiles.md#kubernetes-operator-specifics).
 - Helm 3.0+ (for deploying the operator)
 - PersistentVolume support
 
@@ -117,12 +121,11 @@ go run . run
 The Ledger operator manages the full lifecycle of Ledger clusters via a `Ledger` custom resource.
 
 ```bash
-# 1. Apply the CRD
-kubectl apply -f misc/operator/config/crd/bases/ledger.formance.com_ledgers.yaml
-
-# 2. Deploy the operator via its Helm chart
-helm install ledger-operator misc/operator/chart \
+# The chart installs the CRDs through its ledger-operator-crds dependency
+helm dependency build misc/operator/helm/operator
+helm install ledger-operator misc/operator/helm/operator \
   --namespace ledger \
+  --create-namespace \
   --set watchNamespace=ledger
 ```
 

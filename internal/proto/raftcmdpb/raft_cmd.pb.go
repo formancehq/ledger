@@ -1055,6 +1055,7 @@ func (x *AddEventsSinkOrder) GetConfig() *commonpb.SinkConfig {
 type RemoveEventsSinkOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	ControllerId  string                 `protobuf:"bytes,2,opt,name=controller_id,json=controllerId,proto3" json:"controller_id,omitempty"` // Replicated guard evaluated against the current SinkConfig at apply
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1092,6 +1093,13 @@ func (*RemoveEventsSinkOrder) Descriptor() ([]byte, []int) {
 func (x *RemoveEventsSinkOrder) GetName() string {
 	if x != nil {
 		return x.Name
+	}
+	return ""
+}
+
+func (x *RemoveEventsSinkOrder) GetControllerId() string {
+	if x != nil {
+		return x.ControllerId
 	}
 	return ""
 }
@@ -4932,7 +4940,7 @@ func (x *ExecutionPlan) GetIdempotencyKeys() []*ReloadIdempotencyKey {
 // `attr_code`. When `value` is set, the FSM's MirrorPreload seeds the
 // cache with it (CacheMiss + Pebble-load-hit at admission); when unset,
 // the entry is coverage-only and Preload skips it — AttributeCache.Get's
-// gen0→gen1 fallback and AttributeCache.Del's lazy Gen0-tombstone
+// gen0→gen1 fallback and KeyStore.Tombstone's lazy Gen0-tombstone
 // fabrication handle reads and deletes without a preemptive promote pass.
 // attr_code (dal.SubAttrXxx) lives on the envelope so coverage indexing,
 // dispatch, and unmarshal routing all read the same field.
@@ -5479,9 +5487,10 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x18DeletePreparedQueryOrder\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"@\n" +
 	"\x12AddEventsSinkOrder\x12*\n" +
-	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"+\n" +
+	"\x06config\x18\x01 \x01(\v2\x12.common.SinkConfigR\x06config\"P\n" +
 	"\x15RemoveEventsSinkOrder\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"s\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12#\n" +
+	"\rcontroller_id\x18\x02 \x01(\tR\fcontrollerId\"s\n" +
 	"\x17RegisterSigningKeyOrder\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x1d\n" +
 	"\n" +

@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nats
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: nats
+    spec:
+      containers:
+        - name: nats
+          image: nats:2.12.14-alpine
+          imagePullPolicy: IfNotPresent
+          args:
+            - --jetstream
+            - --store_dir=/data
+          ports:
+            - name: client
+              containerPort: 4222
+          readinessProbe:
+            tcpSocket:
+              port: client
+            periodSeconds: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nats
+spec:
+  selector:
+    app.kubernetes.io/name: nats
+  ports:
+    - name: client
+      port: 4222
+      targetPort: client
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nats-stream-setup
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: setup
+          image: natsio/nats-box:0.19.2
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+            - |
+              until nats --server nats://nats:4222 server check connection >/dev/null 2>&1; do
+                sleep 1
+              done
+              nats --server nats://nats:4222 stream add LEDGER_EVENTS \
+                --subjects 'ledger.events.>' \
+                --storage memory \
+                --retention limits \
+                --defaults
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nats-toolbox
+spec:
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 0
+  containers:
+    - name: toolbox
+      image: natsio/nats-box:0.19.2
+      imagePullPolicy: IfNotPresent
+      command:
+        - sleep
+        - "3600"

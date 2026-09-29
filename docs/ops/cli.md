@@ -757,6 +757,7 @@ ledgerctl indexes create [flags]
 | `--type` | | Index type: `address`, `source-address`, `destination-address`, `metadata`, `reference`, `timestamp`, `inserted-at`, `account-asset` |
 | `--target` | | Target type for metadata index: `account` or `transaction` |
 | `--key` | | Metadata key name (for metadata index) |
+| `--idempotency-key` | | Optional batch idempotency key, also included in signed batches and audit evidence |
 | `--timeout` | `10s` | Request timeout |
 
 **Index types:**
@@ -862,11 +863,16 @@ ledgerctl indexes list [flags]
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--ledger` | | Name of the ledger |
+| `--creation-key-prefix` | | Select current indexes supported by a successful singleton audit creation with this key prefix and matching creation date |
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
 - Shows all active indexes with their build status (BUILDING or READY)
 - If no indexes are configured, shows a hint to create one
+
+The creation-key filter reads audit history across pages and fails on read errors.
+It is attribution evidence, not an authorization check or an atomic deletion guard.
+Large histories can exceed the command timeout; no partial result is accepted.
 
 **Example:**
 
@@ -3698,10 +3704,13 @@ idle or max-stream timeouts (1.2 TB restores routinely take several hours).
 Press `Ctrl+C` to cancel the running download cleanly — the CLI issues a
 server-side `CancelDownload` so the staging directory is wiped before the
 process exits. Stopping the restore-mode server also cancels and joins the
-active job before its staging resources are closed. The current service runner
-passes no deadline to Fx `Stop`, so `--total-stop-timeout` does not bound this
-join. Backend initialization or staging cleanup can delay exit; forced process
-termination can leave staging files or an uncleanly closed staging store. See
+active job before its staging resources are closed. The service runner
+enforces `--total-stop-timeout` across all Fx stop hooks, including
+`--grace-period`. If that deadline expires, shutdown returns an error and the
+command exits unsuccessfully, even if a hook is still waiting for backend
+initialization or staging cleanup. Interrupted cleanup can leave staging files
+or an uncleanly closed staging store. Deferred log-export cleanup runs after
+the Fx lifecycle and is outside this timeout. See
 [restore shutdown](backup-restore.md#step-1-download) for the cleanup sequence.
 
 The server downloads files in parallel; tune the worker count with the server
@@ -4869,7 +4878,7 @@ ledgerctl events list
 
 ### `events add-sink`
 
-Add or update (upsert) a named event sink configuration. The configuration is replicated via Raft consensus.
+Add a named event sink configuration. An existing name is rejected; the configuration is replicated via Raft consensus.
 
 After a successful update, the displayed configuration applies the same URL
 credential masking as `events list`; the submitted configuration is unchanged.
@@ -4915,11 +4924,12 @@ ledgerctl events add-sink --name webhook --http-endpoint https://example.com/web
 ledgerctl events add-sink --name webhook --http-endpoint https://example.com/webhooks/ledger --http-secret my-secret
 ```
 
-**Aliases:** `add`, `upsert`
+**Alias:** `add`
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name` | *(required)* | Unique name for this sink |
+| `--controller-id` | | Opaque EventSink controller identity (CR UID); omit for a manually managed sink |
 | `--nats-url` | | NATS server URL (required for NATS sinks) |
 | `--nats-topic` | | NATS topic/subject for events (required for NATS sinks) |
 | `--clickhouse-dsn` | | ClickHouse DSN (required for ClickHouse sinks, e.g. `clickhouse://user:pass@host:9000/db`) |
@@ -4958,10 +4968,11 @@ The HTTP sink sends each event as an individual POST request with headers:
 
 ### `events remove-sink`
 
-Remove a named event sink. If this is the last sink, event emission is implicitly disabled.
+Remove a named event sink. If this is the last sink, event emission is implicitly disabled. With `--controller-id`, removal succeeds only if the current Raft-applied configuration carries the exact same identity; a missing sink or different owner returns an error without removing anything. Omit the flag for ordinary unconditional removal.
 
 ```bash
 ledgerctl events remove-sink --name primary
+ledgerctl events remove-sink --name primary --controller-id <event-sink-cr-uid>
 ```
 
 **Aliases:** `rm`, `delete-sink`
@@ -4969,6 +4980,7 @@ ledgerctl events remove-sink --name primary
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--name` | *(required)* | Name of the sink to remove |
+| `--controller-id` | | Require the current sink to belong to this controller before removal |
 | `--timeout` | `10s` | Request timeout |
 
 See [Event System Architecture](../technical/architecture/subsystems/events-mirror/events.md) for details on the event system design.

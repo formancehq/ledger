@@ -223,7 +223,8 @@ func TestSinkConfig(t *testing.T) {
 
 		batch := s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
-			Name: "primary-nats",
+			Name:         "primary-nats",
+			ControllerId: "uid-1",
 			Type: &commonpb.SinkConfig_Nats{
 				Nats: &commonpb.NatsSinkConfig{
 					Url:   "nats://localhost:4222",
@@ -244,6 +245,7 @@ func TestSinkConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.Equal(t, "primary-nats", cfg.GetName())
+		require.Equal(t, "uid-1", cfg.GetControllerId())
 		require.Equal(t, "json", cfg.GetFormat())
 		require.Equal(t, int32(32), cfg.GetBatchSize())
 		require.Equal(t, int64(50), cfg.GetBatchDelayMs())
@@ -259,8 +261,9 @@ func TestSinkConfig(t *testing.T) {
 
 		batch := s.OpenWriteSession()
 		require.NoError(t, saveSinkConfigBatch(batch, &commonpb.SinkConfig{
-			Name:   "sink-a",
-			Format: "json",
+			Name:         "sink-a",
+			ControllerId: "uid-1",
+			Format:       "json",
 			Type: &commonpb.SinkConfig_Nats{
 				Nats: &commonpb.NatsSinkConfig{Url: "nats://a:4222"},
 			},
@@ -281,6 +284,7 @@ func TestSinkConfig(t *testing.T) {
 		configs, err := query.ReadAllSinkConfigs(attributes.NewAttribute[*commonpb.SinkConfig](dal.SubAttrSinkConfig), handle)
 		require.NoError(t, err)
 		require.Len(t, configs, 2)
+		require.Equal(t, "uid-1", configs[0].GetControllerId())
 	})
 
 	t.Run("DeleteSinkConfig", func(t *testing.T) {

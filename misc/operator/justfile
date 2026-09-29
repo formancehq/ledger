@@ -50,10 +50,14 @@ e2e-cluster-up: _e2e-build-ledger
     docker build -t ledger-operator:e2e .
     docker pull minio/minio:latest
     docker pull minio/mc:latest
+    docker pull nats:2.12.14-alpine
+    docker pull natsio/nats-box:0.19.2
     kind load docker-image ledger-operator:e2e --name ledger-e2e
     kind load docker-image ledger:e2e --name ledger-e2e
     kind load docker-image minio/minio:latest --name ledger-e2e
     kind load docker-image minio/mc:latest --name ledger-e2e
+    kind load docker-image nats:2.12.14-alpine --name ledger-e2e
+    kind load docker-image natsio/nats-box:0.19.2 --name ledger-e2e
     kubectl apply -f e2e/manifests/minio.yaml --context kind-ledger-e2e
     kubectl wait --for=condition=available deployment/minio -n minio --context kind-ledger-e2e --timeout=300s
     helm dependency update ./helm/operator
@@ -65,9 +69,10 @@ e2e-cluster-up: _e2e-build-ledger
         --set pvcProtection.enabled=true \
         --kube-context kind-ledger-e2e --wait --timeout 120s
 
-# Build the ledger image from the local working tree (with S3 support).
+# Build the ledger image from the local working tree with the optional features
+# exercised by the operator E2E scenarios.
 _e2e-build-ledger:
-    docker build -t ledger:e2e --build-arg BUILD_TAGS=s3 {{ledger-v3-path}}
+    docker build -t ledger:e2e --build-arg BUILD_TAGS=s3,nats {{ledger-v3-path}}
 
 e2e-cluster-down:
     kind delete cluster --name ledger-e2e

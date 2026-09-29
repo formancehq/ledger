@@ -175,6 +175,12 @@ linters:
     - path: internal/infra/state/machine\.go
       linters: [forbidigo]
       source: 'sessions\.OpenWriteSession\(\)'
+    # The checker audit replayer owns an isolated temporary Pebble store. It
+    # uses a WriteSet to reproduce canonical FSM output and commits only into
+    # that disposable store; it has no handle to the live main store.
+    - path: internal/infra/state/audit_replay\.go
+      linters: [forbidigo]
+      source: 'r\.store\.OpenWriteSession\(\)'
     - path: internal/infra/attributes/prepare\.go
       linters: [forbidigo]
     - path: internal/infra/backup/

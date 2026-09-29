@@ -4,13 +4,15 @@ Kubernetes operator for deploying and managing high-availability [Formance Ledge
 
 ## Overview
 
-The Ledger Operator manages `Cluster` custom resources to automate the lifecycle of distributed ledger clusters on Kubernetes. It handles:
+The Ledger Operator manages `Cluster` and `EventSink` custom resources to automate the lifecycle of distributed ledger clusters and event delivery on Kubernetes. It handles:
 
 - **StatefulSet management** with Raft-based consensus (odd replica counts)
 - **Persistent storage** for WAL and data volumes
 - **Observability** with OpenTelemetry traces, Prometheus metrics, and Pyroscope profiling
 - **Security** with TLS, OIDC authentication, and Ed25519 response signing
 - **Backups** to S3-compatible backends, with [recoverable Job provisioning](../../docs/ops/backup-restore.md#scheduling-with-the-kubernetes-operator) and sibling-run exclusion
+- **Cold storage** archival to S3-compatible backends
+- **Event sinks** reconciled into Ledger's Raft-replicated runtime configuration
 - **Credentials** for application-level access control
 
 During StatefulSet scale-down, every removed ordinal must satisfy the Raft
@@ -43,23 +45,18 @@ already removed.
 
 ## Declarative ledger indexes
 
-Initial provisioning sends the ledger, metadata schema and all `spec.indexes`
-in one atomic `ledgerctl ledgers create` batch. Mirror ingestion cannot commit
-between creation and these initial indexes. A UID/generation idempotency key
-allows identical retries after response loss or a failed status update; only a
-successful response records initial ownership. A pre-existing ledger is not
-proof of index ownership.
+For a Ledger with `spec.indexes`, reconciliation creates missing indexes in
+separate batches tagged with the Ledger CR UID through the existing idempotency
+key. It reconstructs `status.appliedIndexes` from successful audit creation
+records matching the current index creation dates. A crash, lost CLI response,
+or failed status update therefore does not permanently lose attribution.
+Strict creation conflicts are surfaced and retried without adopting the index.
 
-For later changes to `spec.indexes`, reconciliation lists the current registry and
-creates only missing indexes. Creation is strict: if another writer creates the
-index after the list, `INDEX_ALREADY_EXISTS` is reported through
-`IndexesSynced=False` and reconciliation is retried. The failed creation adds
-no entry to `status.appliedIndexes`; successful earlier operations in the same
-pass remain recorded. For an identity that was not previously tracked, the next
-pass lists the registry again and leaves the external index unowned. Existing
-ownership entries are retained: replacement of a previously tracked index and
-recovery after a lost successful standalone index-create response or status update remain
-separate ownership concerns.
+Operator-created indexes must be managed through the Kubernetes spec. External
+indexes are not adopted; replacements already visible during attribution are
+excluded. Manual replacement between verification and the unconditional drop
+can still be deleted: this race is explicitly accepted, and no atomic deletion
+precondition is provided. See the [audit attribution contract](../../docs/technical/architecture/subsystems/indexer/operator-ownership.md).
 
 ## Pyroscope credentials
 
@@ -91,13 +88,17 @@ for runtime delivery, missing-key behavior and ambient authentication.
 | Resource | Scope | Description |
 |----------|-------|-------------|
 | `Cluster` | Namespaced | Main resource - deploys a ledger cluster |
+| `EventSink` | Namespaced | Configures a runtime event sink for a Cluster |
 | `Credentials` | Cluster | Cluster-level API credentials |
 
 ## Quick Start
 
 ### Prerequisites
 
-- Kubernetes cluster (1.28+)
+- Kubernetes cluster with `StatefulSetAutoDeletePVC` enabled (default since
+  1.27, stable since 1.32); a tested minimum version is not established.
+  PVC/PV deletion protection needs `ValidatingAdmissionPolicy` (stable since
+  1.30); see [Volume Deletion Protection](#volume-deletion-protection).
 - Helm 3
 - [Nix](https://nixos.org/) (optional, for development)
 
@@ -162,6 +163,46 @@ spec:
   # is 90; set it explicitly here so the resource policy is visible.
   goMemLimitRatio: 90
 ```
+
+### Configure a NATS Event Sink
+
+Create an `EventSink` in the same namespace as its referenced `Cluster`. The
+resource name is the Ledger sink name. Create the NATS JetStream stream first;
+its subjects must include the topics derived from the configured prefix
+(`<topic>.<ledger>.<event-type-lowercase>`). For this example, the stream should
+capture `ledger.events.>`:
+
+```yaml
+apiVersion: ledger.formance.com/v1alpha1
+kind: EventSink
+metadata:
+  name: primary
+spec:
+  clusterRef:
+    name: my-ledger
+  nats:
+    url: nats://nats.default.svc.cluster.local:4222
+    topic: ledger.events
+  format: json
+```
+
+A ready to apply example is in
+[`config/samples/ledger_v1alpha1_eventsink.yaml`](config/samples/ledger_v1alpha1_eventsink.yaml).
+
+The operator applies creation and edits through Ledger's replicated runtime
+API without restarting the StatefulSet. `status.conditions` reports
+reconciliation state; `status.cursor` and `status.error` expose delivery
+progress and the current delivery error. `Delivering=Unknown` means Ledger has
+not yet reported a sink status, even when its configuration is synced. The
+operator adds a finalizer and removes the runtime sink before the `EventSink`
+can be deleted. A same-name sink that this resource does not own is left
+untouched.
+
+The published Ledger image includes NATS sink support. When
+`Cluster.spec.networkPolicy.enabled` restricts egress, allow TCP access to the
+NATS service with `Cluster.spec.networkPolicy.additionalEgress`. Do not embed
+credentials in the NATS URL: Kubernetes custom resource specs are not secret
+storage.
 
 ## Helm Values
 

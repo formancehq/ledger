@@ -56,10 +56,7 @@ func ReadAppliedProposals(ctx context.Context, reader dal.PebbleReader, afterSeq
 
 	lowerBound := kb.Build()
 
-	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
-		PutBytes(dal.MaxUint64Bytes)
-	upperBound := kb2.Build()
+	upperBound := dal.ZonePrefixUpperBound(dal.ZoneHistory, dal.SubHistoryAppliedProposal)
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {
