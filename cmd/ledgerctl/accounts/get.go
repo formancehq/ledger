@@ -112,10 +112,23 @@ func runGet(cmd *cobra.Command, args []string) error {
 		raw := make([]cmdutil.RawVolume, 0, len(account.GetVolumes()))
 		for _, entry := range account.GetVolumes() {
 			vol := entry.GetVolumes()
-			var inputStr, outputStr string
-			if vol != nil {
-				inputStr = vol.GetInput().DecimalString()
-				outputStr = vol.GetOutput().DecimalString()
+			if vol == nil {
+				return fmt.Errorf("getAccount: asset %s color %q has no Volumes container",
+					entry.GetAsset(), entry.GetColor())
+			}
+			if err := vol.Validate(); err != nil {
+				return fmt.Errorf("getAccount: asset %s color %q is malformed: %w",
+					entry.GetAsset(), entry.GetColor(), err)
+			}
+			inputStr, err := vol.GetInput().Dec()
+			if err != nil {
+				return fmt.Errorf("getAccount: asset %s color %q input is malformed: %w",
+					entry.GetAsset(), entry.GetColor(), err)
+			}
+			outputStr, err := vol.GetOutput().Dec()
+			if err != nil {
+				return fmt.Errorf("getAccount: asset %s color %q output is malformed: %w",
+					entry.GetAsset(), entry.GetColor(), err)
 			}
 			raw = append(raw, cmdutil.RawVolume{
 				Asset:  entry.GetAsset(),
