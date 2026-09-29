@@ -204,11 +204,15 @@ can execute it, with identical results by construction:
   `compiled_vars` (the order's vars encoded against that program's variable
   layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled). The
   FSM decodes and verifies the program once per artifact — `NumscriptCache`
-  keeps one warm VM instance per artifact, keyed by the program bytes' hash,
-  never by the script's: the library's register allocator is not
-  deterministic across separate compiles, so one text can legitimately arrive
-  as different (equivalent, not identical) bytecode, and an order must execute
-  exactly the bytes bound to it — and executes it per apply
+  keeps one warm VM instance per script, keyed by `compiled_script_hash`
+  (already checked against the resolved text). The library's register
+  allocator is not deterministic across separate compiles, so one text can
+  arrive as different but equivalent bytecode; any current-version compile
+  runs the same program, so the entry serves them all. A hit still peeks the
+  program's bytecode version from its header (no decode) and rejects a
+  foreign one exactly as a cold node would — the rolling-upgrade case — and
+  the cache is in-memory, so an upgrade restarts it empty — and executes it
+  per apply
   (`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
   wire-supplied bytecode without per-instruction checks, and its cost (several
   interpreter runs) is why it is cached.
