@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -65,7 +66,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	defer c.finishRead(readID)
 	ledgerNames := liveLedgerNames(frozen, c.ledgerNamesSnapshot())
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	choice := internal.Rand().Uint64() % 6
+	choice := internal.Rand().Uint64() % 7
 	if choice == 0 || id == 0 {
 		runCheckpointListRead(readCtx, node, c)
 
@@ -109,7 +110,28 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		details["ledger"], details["transactionId"], details["returned"] = ledger, txID, response.GetTransaction()
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
 		concrete = err == nil && response.GetTransaction() != nil
-	default:
+	} else if choice == 6 {
+		ledger := c.ledgerNames[internal.Rand().Uint64()%uint64(len(c.ledgerNames))]
+		// A nil filter keeps the frozen fold clear of index readiness: every cell
+		// the checkpoint holds is required by its own primary-store state.
+		opts := aggOptions{collapseColors: oneIn(3), useMaxPrecision: oneIn(4), groupByPrefixes: genGroupPrefixes()}
+
+		var res *commonpb.AggregateResult
+		res, err = bucket.AggregateVolumes(readCtx, &servicepb.AggregateVolumesRequest{
+			Ledger:          ledger,
+			CheckpointId:    id,
+			CollapseColors:  opts.collapseColors,
+			UseMaxPrecision: opts.useMaxPrecision,
+			GroupByPrefixes: opts.groupByPrefixes,
+		})
+		maxTicket = c.ticketSeq.Load()
+		details["ledger"], details["prefixes"] = ledger, strings.Join(opts.groupByPrefixes, ",")
+		matches, concrete = checkpointAggregateMatches(frozen.Ledger(ledger), opts, res, err == nil)
+
+		if matches && err == nil {
+			details["returned"] = describeCheckpointAggregate(opts, res)
+		}
+	} else {
 		if len(ledgerNames) == 0 {
 			return
 		}
@@ -380,4 +402,57 @@ func checkpointAccountWindow(ls oracle.LedgerState, cursor string, pageSize int,
 	}
 
 	return want, cursorForbidden
+}
+
+// checkpointAggregateMatches compares an aggregate served from a frozen
+// checkpoint against that checkpoint's own state. The frozen state cannot move,
+// so the fold is exact; concrete reports whether the answer carried any total,
+// which is what makes the read coverage-worthy.
+func checkpointAggregateMatches(ls oracle.LedgerState, opts aggOptions, res *commonpb.AggregateResult, served bool) (matches, concrete bool) {
+	if !served {
+		return false, false
+	}
+
+	if len(opts.groupByPrefixes) > 0 {
+		if len(res.GetVolumes()) != 0 {
+			return false, false
+		}
+
+		groups, ok := serverAggregateGroups(res)
+		if !ok {
+			return false, false
+		}
+
+		for _, g := range groups {
+			if len(g.sums) > 0 {
+				concrete = true
+			}
+		}
+
+		return aggGroupsEqual(modelAggregateGroups(ls, nil, opts), groups), concrete
+	}
+
+	if len(res.GetGroups()) != 0 {
+		return false, false
+	}
+
+	sums, ok := serverAggregate(res)
+	if !ok {
+		return false, false
+	}
+
+	return aggEqual(modelAggregate(ls, nil, opts), sums), len(sums) > 0
+}
+
+// describeCheckpointAggregate renders whichever arm the request asked for.
+func describeCheckpointAggregate(opts aggOptions, res *commonpb.AggregateResult) string {
+	if len(opts.groupByPrefixes) > 0 {
+		groups, _ := serverAggregateGroups(res)
+
+		return renderAggGroups(groups)
+	}
+
+	sums, _ := serverAggregate(res)
+
+	return renderAgg(sums)
 }

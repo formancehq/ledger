@@ -1074,3 +1074,141 @@ func (c *Checker) describeServedLogAt(ctx context.Context, client servicepb.Buck
 
 	return served + "; " + model
 }
+
+// runAuditEntryRead fetches one entry by sequence. It is the only path that
+// carries an entry's per-order items, so it is what makes the item checks in
+// auditSuccessMismatch reachable at all — a listing leaves items empty. A
+// sequence past anything the trail can hold must resolve NotFound.
+func runAuditEntryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	seq, absent := c.pickAuditSequence()
+	if seq == 0 {
+		return
+	}
+
+	c.mu.Lock()
+	readID := c.registerRead()
+	c.mu.Unlock()
+	defer c.finishRead(readID)
+
+	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+
+	served, err := client.GetAuditEntry(readCtx, &servicepb.GetAuditEntryRequest{Sequence: seq})
+
+	// High-water at the read's response: only bulks dispatched by now could be
+	// reflected in what the server returned.
+	maxTicket := c.ticketSeq.Load()
+
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+
+		if absent && status.Code(err) == codes.NotFound {
+			// Coverage: a sequence the trail cannot hold resolves NotFound.
+			assert.Reachable("singleton_driver_model: audit entry read on an unassigned sequence returned NotFound", internal.Details{})
+
+			return
+		}
+
+		assert.Unreachable("singleton_driver_model: GetAuditEntry returned unexpected error", internal.Details{
+			"sequence": seq,
+			"absent":   absent,
+			"error":    err.Error(),
+		})
+
+		return
+	}
+
+	if absent {
+		assert.Unreachable("singleton_driver_model: audit entry served an unassigned sequence", internal.Details{"sequence": seq})
+
+		return
+	}
+
+	e := auditEntryOf(served)
+	if e.seq != seq {
+		assert.Unreachable("singleton_driver_model: audit entry read served a different sequence", internal.Details{
+			"asked":  seq,
+			"served": e.seq,
+		})
+
+		return
+	}
+
+	if verdict := c.validateAuditEntry(maxTicket, e); verdict.finding != "" {
+		assert.Unreachable("singleton_driver_model: "+verdict.finding, internal.Details{
+			"sequence": seq,
+			"entry":    verdict.entry,
+			"why":      verdict.why,
+		})
+
+		return
+	}
+
+	c.noteKnownAuditEntries([]auditEntry{e})
+
+	// Coverage: a directly-fetched entry was the model's own record of a bulk.
+	assert.Reachable("singleton_driver_model: audit entry read validated", internal.Details{})
+
+	if len(e.itemSeqs) > 0 {
+		// Coverage: the per-order items only this path serves were judged.
+		assert.Reachable("singleton_driver_model: audit entry carried its per-order items", internal.Details{"orders": len(e.itemSeqs)})
+	}
+}
+
+// pickAuditSequence chooses a sequence to fetch: one the trail served earlier,
+// or — one read in four — a sequence no audit zone can reach. Acquires c.mu.
+func (c *Checker) pickAuditSequence() (seq uint64, absent bool) {
+	if oneIn(4) {
+		return math.MaxUint64, true
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if len(c.auditSamples) == 0 {
+		return 0, false
+	}
+
+	return c.auditSamples[internal.Rand().Intn(len(c.auditSamples))].seq, false
+}
+
+// validateAuditEntry holds one directly-fetched entry to the rules a page's
+// entry is held to, minus the page-shaped ones: a single entry says nothing
+// about what else the trail holds, so neither the zone's density nor the
+// remembered set applies. Acquires c.mu.
+func (c *Checker) validateAuditEntry(maxTicket uint64, e auditEntry) auditVerdict {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	logs, firstLearned, committedMax := c.committedLogsBySequence()
+	unknownBulks := c.bulksOutstandingAt(maxTicket)
+
+	// System-scoped and setup-era entries are not modelled, the same exemptions
+	// validateAuditPage grants them.
+	if len(e.ledgers) == 0 || !e.failed && e.maxLog < firstLearned {
+		return auditVerdict{}
+	}
+
+	if e.failed {
+		if c.rejectionExplains(e) || unknownBulks {
+			return auditVerdict{}
+		}
+
+		return auditVerdict{finding: "audit failure entry unexplained by the model", entry: describeAuditEntry(e), why: "no recorded rejection with these ledgers, order count and reason"}
+	}
+
+	if e.minLog > committedMax {
+		if unknownBulks {
+			return auditVerdict{}
+		}
+
+		return auditVerdict{finding: "audit entry names logs the model never committed", entry: describeAuditEntry(e), why: "committed frontier is " + strconv.FormatUint(committedMax, 10)}
+	}
+
+	if why, missing := auditSuccessMismatch(e, logs, c.committedBulks, committedMax, firstLearned); why != "" {
+		return auditVerdict{finding: "audit entry outside model", entry: describeAuditEntry(e), why: why, missingSeq: missing}
+	}
+
+	return auditVerdict{}
+}

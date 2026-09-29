@@ -10,7 +10,9 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 	"github.com/holiman/uint256"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -26,16 +28,24 @@ import (
 // under the highest one seen, and the model folds the same way. Grouping by
 // prefix stays off.
 func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	ledger := random.RandomChoice(c.ledgerNames)
+	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
 
-	// Index-free filters only: every roll is servable, so an error is never
-	// the gate's legal refusal and the sums are computable on any base.
 	var filter *commonpb.QueryFilter
-	if random.RandomChoice([]uint8{0, 1, 2}) != 0 {
+	switch {
+	case oneIn(3):
+		filter = genAccountFilterIndexed(c.sampleAccountFieldSeeds(ledger), 0)
+	case oneIn(2):
 		filter = genAccountFilterFree(0)
 	}
 
-	opts := aggOptions{collapseColors: oneIn(3), useMaxPrecision: oneIn(4)}
+	needed := map[string]struct{}{}
+	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, needed)
+
+	opts := aggOptions{
+		collapseColors:  oneIn(3),
+		useMaxPrecision: oneIn(4),
+		groupByPrefixes: genGroupPrefixes(),
+	}
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -52,6 +62,7 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 		Filter:          filter,
 		CollapseColors:  opts.collapseColors,
 		UseMaxPrecision: opts.useMaxPrecision,
+		GroupByPrefixes: opts.groupByPrefixes,
 	})
 
 	// High-water at the read's response: only bulks dispatched by now could be
@@ -59,12 +70,27 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 	maxTicket := c.ticketSeq.Load()
 
 	if err != nil {
-		if internal.IsTransient(err) || isShutdownError(err) {
+		if internal.IsTransient(err) && !isIndexNotReady(err) || isShutdownError(err) {
+			return
+		}
+
+		if absent && status.Code(err) == codes.NotFound {
+			// Coverage: an aggregate over a ledger outside the fleet must resolve
+			// NotFound rather than sum an empty ledger.
+			assert.Reachable("singleton_driver_model: aggregate on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+
+			return
+		}
+
+		if len(needed) > 0 {
+			c.validateAggregate(maxTicket, ledger, filter, opts, needed, nil, err)
+
 			return
 		}
 
 		assert.Unreachable("singleton_driver_model: AggregateVolumes returned unexpected error", internal.Details{
 			"ledger": ledger,
+			"absent": absent,
 			"filter": describeFilter(filter),
 			"error":  err.Error(),
 		})
@@ -72,13 +98,59 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 		return
 	}
 
-	c.validateAggregate(maxTicket, ledger, filter, opts, res)
+	if absent {
+		assert.Unreachable("singleton_driver_model: aggregate served a ledger outside the fleet", internal.Details{"ledger": ledger})
+
+		return
+	}
+
+	c.validateAggregate(maxTicket, ledger, filter, opts, needed, res, nil)
 }
 
-// aggOptions are the result-stage options an aggregate request may set.
+// genGroupPrefixes rolls the account prefixes an aggregate groups by, one read
+// in four: one to three drawn from the address pool, with a prefix no account
+// carries mixed in so an empty group is served too.
+func genGroupPrefixes() []string {
+	if !oneIn(4) {
+		return nil
+	}
+
+	n := int(random.RandomChoice([]uint8{1, 2, 3}))
+	out := make([]string, 0, n)
+
+	for range n {
+		if oneIn(4) {
+			out = append(out, "no-such-prefix:")
+
+			continue
+		}
+
+		out = append(out, poolName()+":")
+	}
+
+	return out
+}
+
+// aggOptions are the result-stage options an aggregate request may set. A
+// non-empty groupByPrefixes moves every total into per-prefix groups, in the
+// order the request listed them.
 type aggOptions struct {
 	collapseColors  bool
 	useMaxPrecision bool
+	groupByPrefixes []string
+}
+
+// prefixOf assigns an account to the first prefix that matches it, mirroring
+// groupedAggregator.matchPrefix. An account matching none is left out of the
+// result entirely.
+func (o aggOptions) prefixOf(addr string) (string, bool) {
+	for _, prefix := range o.groupByPrefixes {
+		if strings.HasPrefix(addr, prefix) {
+			return prefix, true
+		}
+	}
+
+	return "", false
 }
 
 // aggPair is one bucket's summed volumes.
@@ -103,10 +175,44 @@ func addAgg(sums map[assetColor]*aggPair, key assetColor, in, out *uint256.Int) 
 // colors summed into the uncolored bucket, each when asked. Fully-zero sums are
 // dropped (a purge can zero a cell the server no longer reports).
 func modelAggregate(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) map[assetColor]*aggPair {
+	return aggregateFold(ls, filter, opts, nil)
+}
+
+// modelAggregateGroups is the per-prefix prediction: one entry per requested
+// prefix, in request order, each folding the accounts that prefix claims. A
+// prefix no account matches still gets its (empty) entry.
+func modelAggregateGroups(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions) []aggGroup {
+	groups := make([]aggGroup, 0, len(opts.groupByPrefixes))
+
+	for _, prefix := range opts.groupByPrefixes {
+		sums := aggregateFold(ls, filter, opts, func(addr string) bool {
+			claimed, ok := opts.prefixOf(addr)
+
+			return ok && claimed == prefix
+		})
+		groups = append(groups, aggGroup{prefix: prefix, sums: sums})
+	}
+
+	return groups
+}
+
+// aggGroup is one prefix's totals.
+type aggGroup struct {
+	prefix string
+	sums   map[assetColor]*aggPair
+}
+
+// aggregateFold sums the volume cells of the accounts filter selects and keep
+// admits. A nil keep admits every matching account.
+func aggregateFold(ls oracle.LedgerState, filter *commonpb.QueryFilter, opts aggOptions, keep func(addr string) bool) map[assetColor]*aggPair {
 	sums := map[assetColor]*aggPair{}
 
 	for k, vp := range ls.Volumes().All() {
 		if filter != nil && !matchAccountFilter(ls, filter, k.Address) {
+			continue
+		}
+
+		if keep != nil && !keep(k.Address) {
 			continue
 		}
 
@@ -205,6 +311,47 @@ func serverAggregate(res *commonpb.AggregateResult) (out map[assetColor]*aggPair
 	return out, true
 }
 
+// serverAggregateGroups decodes the grouped arm of a result, preserving the
+// order the server listed the prefixes in. ok is false when a group repeats a
+// bucket.
+func serverAggregateGroups(res *commonpb.AggregateResult) (out []aggGroup, ok bool) {
+	for _, g := range res.GetGroups() {
+		sums, decoded := serverAggregate(&commonpb.AggregateResult{Volumes: g.GetVolumes()})
+		if !decoded {
+			return nil, false
+		}
+
+		out = append(out, aggGroup{prefix: g.GetPrefix(), sums: sums})
+	}
+
+	return out, true
+}
+
+// aggGroupsEqual compares two grouped folds prefix for prefix, in order: the
+// server emits one group per requested prefix, in request order.
+func aggGroupsEqual(a, b []aggGroup) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i].prefix != b[i].prefix || !aggEqual(a[i].sums, b[i].sums) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func renderAggGroups(groups []aggGroup) string {
+	parts := make([]string, 0, len(groups))
+	for _, g := range groups {
+		parts = append(parts, g.prefix+"{"+renderAgg(g.sums)+"}")
+	}
+
+	return strings.Join(parts, " ")
+}
+
 func aggEqual(a, b map[assetColor]*aggPair) bool {
 	if len(a) != len(b) {
 		return false
@@ -237,38 +384,105 @@ func renderAgg(m map[assetColor]*aggPair) string {
 }
 
 // validateAggregate checks the aggregate against the model: legal iff some
-// candidate base's fold under the request's options equals the server's,
-// bucket for bucket.
-func (c *Checker) validateAggregate(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, opts aggOptions, res *commonpb.AggregateResult) {
-	server, ok := serverAggregate(res)
-	if !ok {
-		assert.Unreachable("singleton_driver_model: aggregate result repeats a bucket", internal.Details{
+// candidate base holds every index the filter reads and its fold under the
+// request's options equals the server's, bucket for bucket — or, when an index
+// is not ready on that base, iff the server refused the read.
+func (c *Checker) validateAggregate(maxTicket uint64, ledger string, filter *commonpb.QueryFilter, opts aggOptions, needed map[string]struct{}, res *commonpb.AggregateResult, err error) {
+	errKind, classified := classifyIndexedQueryError(err)
+	if !classified {
+		assert.Unreachable("singleton_driver_model: aggregate returned unexpected error", internal.Details{
 			"ledger": ledger,
 			"filter": describeFilter(filter),
+			"error":  err.Error(),
 		})
 
 		return
 	}
 
-	if c.matchesModel(maxTicket, "AGG", func(base oracle.GlobalState) bool {
-		return aggEqual(modelAggregate(base.Ledger(ledger), filter, opts), server)
-	}) {
-		// Coverage: an aggregate answered and matched a candidate base.
-		assert.Reachable("singleton_driver_model: aggregate volumes validated", internal.Details{"ledger": ledger})
+	grouped := len(opts.groupByPrefixes) > 0
+
+	var (
+		serverFlat   map[assetColor]*aggPair
+		serverGroups []aggGroup
+	)
+
+	if errKind == indexedErrNone {
+		// The two arms are exclusive: grouping moves every total into groups.
+		if grouped && len(res.GetVolumes()) != 0 || !grouped && len(res.GetGroups()) != 0 {
+			assert.Unreachable("singleton_driver_model: aggregate result mixes grouped and flat volumes", internal.Details{
+				"ledger":   ledger,
+				"prefixes": strings.Join(opts.groupByPrefixes, ","),
+				"volumes":  len(res.GetVolumes()),
+				"groups":   len(res.GetGroups()),
+			})
+
+			return
+		}
+
+		var decoded bool
+		if grouped {
+			serverGroups, decoded = serverAggregateGroups(res)
+		} else {
+			serverFlat, decoded = serverAggregate(res)
+		}
+
+		if !decoded {
+			assert.Unreachable("singleton_driver_model: aggregate result repeats a bucket", internal.Details{
+				"ledger": ledger,
+				"filter": describeFilter(filter),
+			})
+
+			return
+		}
+	}
+
+	rejectedIndex := rejectedIndexLabel(err)
+	matched := c.matchesModel(maxTicket, "AGG", func(base oracle.GlobalState) bool {
+		return indexedQueryOutcomeLegal(base.Ledger(ledger), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
+			if grouped {
+				return aggGroupsEqual(modelAggregateGroups(ls, filter, opts), serverGroups)
+			}
+
+			return aggEqual(modelAggregate(ls, filter, opts), serverFlat)
+		})
+	})
+
+	if matched {
+		switch {
+		case errKind != indexedErrNone:
+			// Coverage: an aggregate refused while an index it reads is not ready.
+			assert.Reachable("singleton_driver_model: aggregate gated on a missing index", internal.Details{"ledger": ledger})
+		case grouped:
+			// Coverage: a prefix-grouped aggregate matched a candidate base.
+			assert.Reachable("singleton_driver_model: grouped aggregate volumes validated", internal.Details{"ledger": ledger})
+		default:
+			// Coverage: an aggregate answered and matched a candidate base.
+			assert.Reachable("singleton_driver_model: aggregate volumes validated", internal.Details{"ledger": ledger})
+		}
 
 		return
 	}
 
 	c.mu.Lock()
-	committed := modelAggregate(c.modelState.Ledger(ledger), filter, opts)
+	committed := c.modelState.Ledger(ledger)
 	c.mu.Unlock()
 
-	assert.Unreachable("singleton_driver_model: aggregate volumes outside model", internal.Details{
+	details := internal.Details{
 		"ledger":          ledger,
 		"filter":          describeFilter(filter),
 		"collapseColors":  opts.collapseColors,
 		"useMaxPrecision": opts.useMaxPrecision,
-		"server":          renderAgg(server),
-		"model":           renderAgg(committed),
-	})
+		"prefixes":        strings.Join(opts.groupByPrefixes, ","),
+	}
+	if err != nil {
+		details["error"] = err.Error()
+	}
+
+	if grouped {
+		details["server"], details["model"] = renderAggGroups(serverGroups), renderAggGroups(modelAggregateGroups(committed, filter, opts))
+	} else {
+		details["server"], details["model"] = renderAgg(serverFlat), renderAgg(modelAggregate(committed, filter, opts))
+	}
+
+	assert.Unreachable("singleton_driver_model: aggregate volumes outside model", details)
 }

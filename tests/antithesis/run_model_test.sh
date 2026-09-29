@@ -104,9 +104,10 @@ RECOVER_TIMEOUT="${RECOVER_TIMEOUT:-90}"
 DEAD_TIME="${DEAD_TIME:-30}"
 COMPACTION_MARGIN="${COMPACTION_MARGIN:-200}"
 MAINTENANCE_INTERVAL="${MAINTENANCE_INTERVAL:-10s}"
-# WAL/data disk-usage guard (fraction). Default matches the server; raise it when
-# the host filesystem is already above 80% used (the guard blocks writes then).
-HEALTH_THRESHOLD="${HEALTH_THRESHOLD:-0.8}"
+# WAL/data disk-usage guard (fraction). A blocked write is retried forever, so a
+# host above the guard wedges the whole run; the guard is a production concern,
+# not this runner's.
+HEALTH_THRESHOLD="${HEALTH_THRESHOLD:-0.95}"
 CLUSTER_ID="model-test-cluster"
 # Fail-fast (on by default): stop the run the moment a finding appears instead
 # of running out the clock. Set to 0/off to run the full duration, or to a

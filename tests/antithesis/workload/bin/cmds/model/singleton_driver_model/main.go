@@ -569,7 +569,7 @@ func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguous
 // slot of the read mix, so the entity queries the coverage sondes depend on
 // keep their share of the worker's reads.
 func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5}) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
 	case 0:
 		runAggregateQuery(ctx, client, c)
 	case 1:
@@ -580,8 +580,16 @@ func runSecondaryRead(ctx context.Context, client servicepb.BucketServiceClient,
 		runLedgerStats(ctx, client, c)
 	case 4:
 		runIndexIntrospection(ctx, client, c)
-	default:
+	case 5:
 		runGetLog(ctx, client, c)
+	case 6:
+		runAuditEntryRead(ctx, client, c)
+	case 7:
+		runInspectIndex(ctx, client, c)
+	default:
+		// Every slot the roll can produce has an arm; a fall-through means the
+		// two lists drifted and a read surface stopped being dispatched.
+		assert.Unreachable("singleton_driver_model: secondary read dispatch has an unreachable slot", nil)
 	}
 }
 
