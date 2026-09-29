@@ -3,6 +3,30 @@
 // until the next movement or Close.
 package kv
 
+/*
+#include <stdlib.h>
+#include <string.h>
+#include <rocksdb/c.h>
+
+static void destroy_bytewise_comparator(void *name) { free(name); }
+
+static int compare_bytewise(void *state, const char *a, size_t a_len, const char *b, size_t b_len) {
+	(void)state;
+	size_t shared = a_len < b_len ? a_len : b_len;
+	int result = shared == 0 ? 0 : memcmp(a, b, shared);
+	if (result != 0) return result < 0 ? -1 : 1;
+	return (a_len > b_len) - (a_len < b_len);
+}
+
+static const char *bytewise_comparator_name(void *name) { return (const char *)name; }
+
+static rocksdb_comparator_t *new_bytewise_comparator(char *name) {
+	return rocksdb_comparator_create(name, destroy_bytewise_comparator,
+		compare_bytewise, bytewise_comparator_name);
+}
+*/
+import "C"
+
 import (
 	"bytes"
 	"context"
@@ -11,6 +35,7 @@ import (
 	"io"
 	"math"
 	"sync"
+	"unsafe"
 
 	"github.com/linxGnu/grocksdb"
 )
@@ -39,11 +64,21 @@ type DB struct {
 	table         *grocksdb.BlockBasedTableOptions
 }
 
+// SetNamedBytewiseComparator preserves a store's on-disk comparator name while
+// using RocksDB's native callback lifetime. The grocksdb Go callback registry
+// retains each comparator forever, including after a database is closed.
+func SetNamedBytewiseComparator(opts *grocksdb.Options, name string) {
+	opts.SetNativeComparator(unsafe.Pointer(C.new_bytewise_comparator(C.CString(name))))
+}
+
 func Open(path string, config Options) (*DB, error) {
 	opts := grocksdb.NewDefaultOptions()
 	opts.SetCreateIfMissing(!config.ReadOnly)
 	if config.ComparatorName != "" {
-		opts.SetComparator(grocksdb.NewComparator(config.ComparatorName, bytes.Compare))
+		// grocksdb.NewComparator retains each callback in a process-wide registry
+		// even after Options.Destroy. A native bytewise comparator keeps the same
+		// persisted name and ordering without accumulating callbacks on reopen.
+		SetNamedBytewiseComparator(opts, config.ComparatorName)
 	}
 	var cache *grocksdb.Cache
 	var table *grocksdb.BlockBasedTableOptions

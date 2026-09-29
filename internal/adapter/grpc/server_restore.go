@@ -457,6 +457,12 @@ func (s *RestoreServiceServerImpl) FinalizeRestore(_ context.Context, _ *restore
 	if err := dal.HardLink(stagingDir, checkpointPath); err != nil {
 		return nil, fmt.Errorf("hard linking staging to checkpoint: %w", err)
 	}
+	if err := dal.MarkCheckpointReady(checkpointPath); err != nil {
+		return nil, fmt.Errorf("marking restored checkpoint ready: %w", err)
+	}
+	if err := dal.FsyncDir(checkpointsDir); err != nil {
+		return nil, fmt.Errorf("syncing restored checkpoint directory: %w", err)
+	}
 
 	// The marker is the restore's commit point, so it goes in only after the
 	// checkpoint is in place: bootstrap plants the raft genesis snapshot at

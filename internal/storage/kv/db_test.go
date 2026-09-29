@@ -1,9 +1,12 @@
 package kv
 
 import (
+	"bytes"
 	"errors"
 	"path/filepath"
 	"testing"
+
+	"github.com/linxGnu/grocksdb"
 )
 
 func TestRocksDBStorageContract(t *testing.T) {
@@ -111,5 +114,70 @@ func TestRocksDBStorageContract(t *testing.T) {
 	}
 	if err := closer.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNamedBytewiseComparatorReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "named")
+	options := Options{ComparatorName: "formance.test.bytewise"}
+	keys := [][]byte{{0xff}, {0x00, 0xff}, {0x00}, {}}
+
+	// Seed with the former Go callback comparator to prove the existing
+	// comparator name and key order remain readable without a migration.
+	oldOptions := grocksdb.NewDefaultOptions()
+	oldOptions.SetCreateIfMissing(true)
+	oldOptions.SetComparator(grocksdb.NewComparator(options.ComparatorName, bytes.Compare))
+	seed, err := grocksdb.OpenDb(oldOptions, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeOptions := grocksdb.NewDefaultWriteOptions()
+	for _, key := range keys {
+		if err := seed.Put(writeOptions, key, []byte("value")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seed.Close()
+	writeOptions.Destroy()
+	oldOptions.Destroy()
+
+	for attempt := range 5 {
+		db, err := Open(path, options)
+		if err != nil {
+			t.Fatalf("open %d: %v", attempt, err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	db, err := Open(path, Options{ReadOnly: true, ComparatorName: options.ComparatorName})
+	if err != nil {
+		t.Fatal(err)
+	}
+	iter, err := db.NewIter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]byte{{}, {0x00}, {0x00, 0xff}, {0xff}}
+	i := 0
+	for ok := iter.First(); ok; ok = iter.Next() {
+		if i >= len(want) || !bytes.Equal(iter.Key(), want[i]) {
+			t.Fatalf("key %d: got %x", i, iter.Key())
+		}
+		i++
+	}
+	if i != len(want) {
+		t.Fatalf("got %d keys, want %d", i, len(want))
+	}
+	if err := iter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Open(path, Options{ReadOnly: true, ComparatorName: "formance.test.other"}); err == nil {
+		t.Fatal("opening with a different comparator name succeeded")
 	}
 }

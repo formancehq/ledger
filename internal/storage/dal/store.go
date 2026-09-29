@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,6 +29,8 @@ import (
 // ErrStoreClosed is returned when a store operation is attempted after the
 // Pebble database has been closed. This prevents panics during shutdown races.
 var ErrStoreClosed = errors.New("store closed")
+
+var ErrNoCompleteCheckpoint = errors.New("no complete checkpoint")
 
 const (
 	liveDir = "live"
@@ -57,8 +60,9 @@ const (
 	incomingCheckpointDir = "incoming-checkpoint"
 )
 
-// ScanLatestCheckpointID scans the checkpoints directory and returns the highest
-// numeric checkpoint ID found and whether any checkpoint exists.
+// ScanLatestCheckpointID returns the highest fully published checkpoint. A
+// numeric directory without a readiness marker may be left by a crash while
+// RocksDB is still building it and must never be used to recover live/.
 func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err error) {
 	dir := filepath.Join(dataDir, checkpointsDir)
 
@@ -71,6 +75,7 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 		return 0, false, fmt.Errorf("reading checkpoints directory: %w", err)
 	}
 
+	var incomplete bool
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -83,14 +88,61 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 			// editor scratch files) instead of failing boot.
 			continue
 		}
+		if !CheckpointDirReady(filepath.Join(dir, entry.Name())) {
+			incomplete = true
+			continue
+		}
 
 		if !found || id > latestID {
 			latestID = id
 			found = true
 		}
 	}
+	if !found && incomplete {
+		return 0, false, fmt.Errorf("%w in %s", ErrNoCompleteCheckpoint, dir)
+	}
 
 	return latestID, found, nil
+}
+
+// reconcileCheckpointReplacements repairs an interrupted replacement of a
+// checkpoint during RestoreCheckpoint. The old checkpoint remains under
+// .previous until the new directory is ready and published.
+func reconcileCheckpointReplacements(dataDir string) error {
+	parent := filepath.Join(dataDir, checkpointsDir)
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading checkpoints for replacement recovery: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() || !strings.HasSuffix(name, ".previous") {
+			continue
+		}
+		base := strings.TrimSuffix(name, ".previous")
+		if _, err := strconv.ParseUint(base, 10, 64); err != nil {
+			continue
+		}
+		oldPath := filepath.Join(parent, name)
+		publishedPath := filepath.Join(parent, base)
+		if !CheckpointDirReady(publishedPath) {
+			if err := os.RemoveAll(publishedPath); err != nil {
+				return fmt.Errorf("removing incomplete replacement checkpoint: %w", err)
+			}
+			if err := os.Rename(oldPath, publishedPath); err != nil {
+				return fmt.Errorf("recovering previous checkpoint: %w", err)
+			}
+		} else if err := os.RemoveAll(oldPath); err != nil {
+			return fmt.Errorf("removing previous checkpoint after publish: %w", err)
+		}
+		if err := FsyncDir(parent); err != nil {
+			return fmt.Errorf("syncing recovered checkpoint directory: %w", err)
+		}
+	}
+	return nil
 }
 
 // ValidateFreshRestoreTarget reports whether dataDir is safe to restore into,
@@ -116,16 +168,26 @@ func ValidateFreshRestoreTarget(dataDir string) error {
 		}
 	}
 
-	latestID, hasCheckpoint, err := ScanLatestCheckpointID(dataDir)
-	if err != nil {
-		return fmt.Errorf("scanning data directory: %w", err)
-	}
-
-	if !hasCheckpoint {
+	entries, err := os.ReadDir(filepath.Join(dataDir, checkpointsDir))
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-
-	if latestID != 0 {
+	if err != nil {
+		return fmt.Errorf("reading checkpoints directory: %w", err)
+	}
+	var numeric []uint64
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if id, parseErr := strconv.ParseUint(entry.Name(), 10, 64); parseErr == nil {
+			numeric = append(numeric, id)
+		}
+	}
+	if len(numeric) == 0 {
+		return nil
+	}
+	if len(numeric) != 1 || numeric[0] != 0 {
 		return fmt.Errorf("restore requires a fresh data directory: checkpoints already exist in %s", dataDir)
 	}
 
@@ -456,6 +518,9 @@ func NewStore(
 	if err := reconcileLiveAfterRestore(dataDir, logger); err != nil {
 		return nil, fmt.Errorf("reconciling live directory after restore: %w", err)
 	}
+	if err := reconcileCheckpointReplacements(dataDir); err != nil {
+		return nil, fmt.Errorf("reconciling checkpoint replacements: %w", err)
+	}
 
 	// With incremental 0xFF cache persistence, the live/ directory is always
 	// up-to-date after each Pebble batch commit. On restart we open it directly
@@ -469,7 +534,7 @@ func NewStore(
 	// Scan the checkpoints directory to find the latest checkpoint ID.
 	// The ID is derived from the highest-numbered directory in checkpoints/.
 	latestCheckpointID, hasCheckpoint, err := ScanLatestCheckpointID(dataDir)
-	if err != nil {
+	if err != nil && !(liveDirErr == nil && errors.Is(err, ErrNoCompleteCheckpoint)) {
 		return nil, fmt.Errorf("scanning checkpoints: %w", err)
 	}
 
@@ -484,6 +549,9 @@ func NewStore(
 
 			if err = HardLink(checkpointPath, liveDir); err != nil {
 				return nil, fmt.Errorf("hard linking checkpoint to live directory: %w", err)
+			}
+			if err := os.Remove(filepath.Join(liveDir, checkpointReadyMarker)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("removing checkpoint marker from live directory: %w", err)
 			}
 		} else {
 			logger.Infof("No live directory found, creating new database in %s", liveDir)
@@ -734,7 +802,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 
 	newCheckpointID := s.currentCheckPoint + 1
 
-	checkpointDir := filepath.Join(s.dataDir, "checkpoints", strconv.FormatUint(newCheckpointID, 10))
+	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(newCheckpointID, 10))
 	if err := os.MkdirAll(filepath.Dir(checkpointDir), 0o755); err != nil {
 		return 0, fmt.Errorf("creating checkpoints directory: %w", err)
 	}
@@ -746,6 +814,12 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 
 	if err := db.Checkpoint(checkpointDir); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
+	}
+	if err := MarkCheckpointReady(checkpointDir); err != nil {
+		return 0, fmt.Errorf("marking checkpoint ready: %w", err)
+	}
+	if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+		return 0, fmt.Errorf("syncing checkpoints directory: %w", err)
 	}
 
 	pebbleCheckpointDone := time.Now()
@@ -1198,9 +1272,15 @@ func (s *Store) ActivateIncomingRestore() (uint64, error) {
 	if err := os.RemoveAll(targetDir); err != nil {
 		return 0, fmt.Errorf("removing target checkpoint directory: %w", err)
 	}
+	if err := MarkCheckpointReady(incomingDir); err != nil {
+		return 0, fmt.Errorf("marking incoming checkpoint ready: %w", err)
+	}
 
 	if err := os.Rename(incomingDir, targetDir); err != nil {
 		return 0, fmt.Errorf("moving incoming checkpoint to %d: %w", newID, err)
+	}
+	if err := FsyncDir(targetParent); err != nil {
+		return 0, fmt.Errorf("syncing activated checkpoint: %w", err)
 	}
 
 	// Reserve the ID so the background goroutine skips it.
@@ -1347,12 +1427,20 @@ func reconcileLiveAfterRestore(dataDir string, logger logging.Logger) error {
 func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
+	if err := reconcileCheckpointReplacements(s.dataDir); err != nil {
+		return err
+	}
 
 	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(checkpointID, 10))
+	replacementDir := checkpointDir + ".replacement"
+	previousDir := checkpointDir + ".previous"
 
 	// Verify the checkpoint exists
 	if _, err := os.Stat(checkpointDir); err != nil {
 		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
+	}
+	if !CheckpointDirReady(checkpointDir) {
+		return fmt.Errorf("checkpoint %d is incomplete", checkpointID)
 	}
 
 	liveDirectory := filepath.Join(s.dataDir, liveDir)
@@ -1368,6 +1456,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 	if err := os.RemoveAll(discardDirectory); err != nil {
 		return fmt.Errorf("clearing stale live.discard directory: %w", err)
+	}
+	if err := os.RemoveAll(replacementDir); err != nil {
+		return fmt.Errorf("clearing stale checkpoint replacement: %w", err)
 	}
 
 	// Step 2: preserve this node's persisted-config from the live DB.
@@ -1435,11 +1526,26 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 				"error": err,
 			}).Errorf("Removing partial live.staging directory during rollback (continuing)")
 		}
+		if _, err := os.Stat(previousDir); err == nil {
+			if err := os.RemoveAll(checkpointDir); err != nil {
+				return fmt.Errorf("rollback failed removing replacement checkpoint: %w; original error: %w", err, reason)
+			}
+			if err := os.Rename(previousDir, checkpointDir); err != nil {
+				return fmt.Errorf("rollback failed restoring previous checkpoint: %w; original error: %w", err, reason)
+			}
+			if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+				return fmt.Errorf("rollback failed syncing restored checkpoint: %w; original error: %w", err, reason)
+			}
+		}
+		_ = os.RemoveAll(replacementDir)
 
 		// Revert live.discard/ -> live/. Atomic.
 		if _, statErr := os.Stat(discardDirectory); statErr == nil {
 			if err := os.Rename(discardDirectory, liveDirectory); err != nil {
 				return fmt.Errorf("rollback failed (could not restore live from live.discard): %w; original error: %w", err, reason)
+			}
+			if err := FsyncDir(s.dataDir); err != nil {
+				return fmt.Errorf("rollback failed syncing live directory: %w; original error: %w", err, reason)
 			}
 		}
 
@@ -1455,10 +1561,16 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 		return reason
 	}
+	if err := FsyncDir(s.dataDir); err != nil {
+		return rollback(fmt.Errorf("syncing live.discard publish: %w", err))
+	}
 
 	// Step 4: hard-link the checkpoint into a fresh live.staging/.
 	if err := HardLink(checkpointDir, stagingDirectory); err != nil {
 		return rollback(fmt.Errorf("hard linking checkpoint to live.staging directory: %w", err))
+	}
+	if err := os.Remove(filepath.Join(stagingDirectory, checkpointReadyMarker)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return rollback(fmt.Errorf("removing checkpoint marker from staging directory: %w", err))
 	}
 
 	// Step 5: open the staged RocksDB database with fresh native options.
@@ -1481,12 +1593,23 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 			return rollback(fmt.Errorf("flushing persisted config after checkpoint restore: %w", err))
 		}
 
-		if err := os.RemoveAll(checkpointDir); err != nil {
-			return rollback(fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err))
+		if err := newDB.Checkpoint(replacementDir); err != nil {
+			return rollback(fmt.Errorf("creating replacement checkpoint with preserved config: %w", err))
 		}
-
-		if err := newDB.Checkpoint(checkpointDir); err != nil {
-			return rollback(fmt.Errorf("re-creating checkpoint with preserved config: %w", err))
+		if err := MarkCheckpointReady(replacementDir); err != nil {
+			return rollback(fmt.Errorf("marking replacement checkpoint ready: %w", err))
+		}
+		if err := os.Rename(checkpointDir, previousDir); err != nil {
+			return rollback(fmt.Errorf("preserving source checkpoint before replacement: %w", err))
+		}
+		if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+			return rollback(fmt.Errorf("syncing previous checkpoint: %w", err))
+		}
+		if err := os.Rename(replacementDir, checkpointDir); err != nil {
+			return rollback(fmt.Errorf("publishing replacement checkpoint: %w", err))
+		}
+		if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+			return rollback(fmt.Errorf("syncing replacement checkpoint: %w", err))
 		}
 	}
 
@@ -1513,6 +1636,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	if err := os.Rename(stagingDirectory, liveDirectory); err != nil {
 		return rollback(fmt.Errorf("publishing live.staging to live: %w", err))
 	}
+	if err := FsyncDir(s.dataDir); err != nil {
+		return fmt.Errorf("syncing published live directory: %w", err)
+	}
 
 	// Restore committed — past this point any failure is non-fatal for
 	// correctness; the worst case is a stale live.discard/ that boot
@@ -1527,6 +1653,11 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	}
 
 	s.db = publishedDB
+	if err := os.RemoveAll(previousDir); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Removing previous checkpoint after successful restore (will be cleaned up on next boot)")
+	} else if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Syncing checkpoint cleanup after restore")
+	}
 
 	// Step 8: drop the rollback target.
 	if err := os.RemoveAll(discardDirectory); err != nil {

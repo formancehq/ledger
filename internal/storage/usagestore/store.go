@@ -13,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
@@ -123,8 +124,7 @@ func usageOptions(cfg rocksdbcfg.Config) (*grocksdb.Options, *grocksdb.Cache, *g
 		return nil, nil, nil, err
 	}
 	opts.SetCreateIfMissing(true)
-	cmp := newUsageStoreComparator()
-	opts.SetComparator(cmp)
+	kv.SetNamedBytewiseComparator(opts, usageStoreComparerName)
 	opts.SetWriteBufferSize(cfg.MemTableSize)
 	opts.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
 	opts.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)

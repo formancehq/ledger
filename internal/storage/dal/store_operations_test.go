@@ -68,6 +68,7 @@ func TestStore_CreateSnapshot(t *testing.T) {
 	checkpointDir := filepath.Join(s.DataDir(), "checkpoints", "1")
 	_, err = os.Stat(checkpointDir)
 	require.NoError(t, err)
+	require.True(t, CheckpointDirReady(checkpointDir))
 
 	// Create another snapshot
 	checkpointID2, err := s.CreateSnapshot()
@@ -318,7 +319,9 @@ func TestStore_CleanupOldCheckpoints_RemovesOrphansBelowTracker(t *testing.T) {
 	// latestID=101, the buggy init would compute oldestCheckpoint=100,
 	// leaving {5, 6} permanently unreachable.
 	for _, id := range []string{"5", "6", "100", "101"} {
-		require.NoError(t, os.MkdirAll(filepath.Join(checkpointsPath, id), 0o755))
+		path := filepath.Join(checkpointsPath, id)
+		require.NoError(t, os.MkdirAll(path, 0o755))
+		require.NoError(t, MarkCheckpointReady(path))
 	}
 
 	cfg := DefaultConfig()

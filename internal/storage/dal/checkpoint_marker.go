@@ -6,21 +6,17 @@ import (
 	"path/filepath"
 )
 
-// checkpointReadyMarker is the sentinel file written into a pebble checkpoint
+// checkpointReadyMarker is the sentinel file written into a RocksDB checkpoint
 // directory as the final step, only after the whole directory has been
 // atomically renamed into place. Its presence is the single authoritative
 // per-replica readiness signal for both halves of a query checkpoint — the main
 // store and the read index.
 //
 // A directory, or a manifest inside it, merely existing is NOT sufficient.
-// pebble.DB.Checkpoint owns its destination for the duration of the call: it
-// refuses a path that already exists and removes what it built on error, so the
-// destination is a private workspace rather than a published artifact. Anything
-// that watches the destination path sees intermediate states — a checkpoint can
-// fail mid-link (EN-1460's "link ... no such file or directory"), and the
-// MANIFEST that makes a directory openable is written BEFORE the WAL files are
-// copied, so an unmarked directory can open cleanly while missing every write
-// still resident in the source memtable. Never trust one: discard and rebuild.
+// A checkpoint producer may leave a partially populated directory if the
+// process stops during creation. A directory or MANIFEST existing is not
+// enough to prove that its SSTs and WAL are complete. Never recover from an
+// unmarked checkpoint: discard it or fall back to an older ready checkpoint.
 const checkpointReadyMarker = ".ready"
 
 // CheckpointDirReady reports whether a checkpoint directory has been fully
