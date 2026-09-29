@@ -66,6 +66,22 @@ build-full:
 build-client:
     go build -o ./build/ledgerctl ./cmd/ledgerctl
 
+# RocksDB POC (docs/drafts/rocksdb-poc.md): build and run the cgo
+# hello-world against the RocksDB pinned by flake.nix.
+rocksdb-hello:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${ROCKSDB_CGO_CFLAGS:?run inside nix develop}"
+    cd misc/rocksdb-poc/hello
+    CGO_ENABLED=1 CGO_CFLAGS="$ROCKSDB_CGO_CFLAGS" CGO_LDFLAGS="$ROCKSDB_CGO_LDFLAGS" \
+        go build -o ../../../build/rocksdb-hello .
+    ../../../build/rocksdb-hello
+
+# RocksDB POC: same hello-world built in Docker (linux, Alpine RocksDB).
+rocksdb-hello-docker platform="linux/arm64":
+    docker build --platform {{platform}} -t rocksdb-hello:poc misc/rocksdb-poc/hello
+    docker run --rm --platform {{platform}} rocksdb-hello:poc
+
 # Run the application locally (single node)
 run:
     go run . run --node-id 1 --cluster-id local-dev --bootstrap --bind-addr 127.0.0.1:7777 --grpc-port 8888 --wal-dir ./wal/node-1 --data-dir ./data/node-1
