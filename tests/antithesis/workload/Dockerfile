@@ -1,9 +1,34 @@
+# Workload drivers import the Ledger module, so they need the same glibc-linked
+# RocksDB release as the instrumented server.
+FROM debian:trixie AS rocksdb-build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake ninja-build ca-certificates curl \
+    libbz2-dev liblz4-dev libsnappy-dev zlib1g-dev libzstd-dev \
+    && rm -rf /var/lib/apt/lists/*
+ADD --checksum=sha256:3aba946031d27734eeea68ced7dd6f46629ba23a7b49945eb29aea68d1595311 \
+    https://github.com/facebook/rocksdb/archive/refs/tags/v11.1.2.tar.gz /tmp/rocksdb.tar.gz
+RUN mkdir -p /tmp/rocksdb && tar -xzf /tmp/rocksdb.tar.gz -C /tmp/rocksdb --strip-components=1 && \
+    cmake -S /tmp/rocksdb -B /tmp/rocksdb/build -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release -DPORTABLE=1 -DWITH_TESTS=OFF \
+      -DWITH_TOOLS=OFF -DWITH_CORE_TOOLS=OFF -DWITH_BENCHMARK_TOOLS=OFF \
+      -DWITH_GFLAGS=OFF -DWITH_LIBURING=OFF -DROCKSDB_BUILD_SHARED=ON \
+      -DUSE_RTTI=1 -DFAIL_ON_WARNINGS=NO && \
+    cmake --build /tmp/rocksdb/build --target rocksdb-shared --parallel 4 && \
+    mkdir -p /usr/local/include /usr/local/lib && \
+    cp -a /tmp/rocksdb/include/rocksdb /usr/local/include/ && \
+    cp -a /tmp/rocksdb/build/librocksdb.so* /usr/local/lib/
+
 # Compiler
 FROM golang:1.27-trixie AS compiler
 ARG GOARCH
 ARG GOOS
 
-RUN apt-get update && apt-get install -y bash git gcc
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash git gcc g++ libbz2-dev liblz4-dev libsnappy-dev zlib1g-dev libzstd-dev \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=rocksdb-build /usr/local/include/rocksdb /usr/local/include/rocksdb
+COPY --from=rocksdb-build /usr/local/lib/librocksdb.so* /usr/local/lib/
+ENV CGO_ENABLED=1 CGO_CFLAGS=-I/usr/local/include CGO_LDFLAGS=-L/usr/local/lib LD_LIBRARY_PATH=/usr/local/lib
 
 # Built from the Formance fork rather than `go install ...@version`: the fork
 # keeps the upstream module path, so it is reachable only through the go.mod
@@ -80,7 +105,11 @@ RUN set -e; \
 # Runner
 FROM debian:trixie AS runner
 
-RUN apt-get update && apt-get install -y curl jq
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl jq libstdc++6 libbz2-1.0 liblz4-1 libsnappy1v5 zlib1g libzstd1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=rocksdb-build /usr/local/lib/librocksdb.so* /usr/local/lib/
+ENV LD_LIBRARY_PATH=/usr/local/lib
 
 COPY --from=ghcr.io/grpc-ecosystem/grpc-health-probe:v0.4.44 /ko-app/grpc-health-probe /bin/grpc_health_probe
 
