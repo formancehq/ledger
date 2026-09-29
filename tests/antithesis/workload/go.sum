@@ -224,6 +224,8 @@ github.com/formancehq/numscript v0.0.27-0.20260928111323-ddb80b03e956 h1:I6Hqdtm
 github.com/formancehq/numscript v0.0.27-0.20260928111323-ddb80b03e956/go.mod h1:cD+unaG/vauN/IBZmU/td9EAr8UwKeErYLEizIzjaEc=
 github.com/formancehq/numscript v0.0.27-0.20260928134338-5ce901e5252a h1:3kAw4ggz37TVUX6nKTpkd89L2mxN+5Ifd5r7OwLkBLE=
 github.com/formancehq/numscript v0.0.27-0.20260928134338-5ce901e5252a/go.mod h1:cD+unaG/vauN/IBZmU/td9EAr8UwKeErYLEizIzjaEc=
+github.com/formancehq/numscript v0.0.27-0.20260929132002-52efa3834aa2 h1:Cznz4RCsCtxL7xQGGdtsNHUYKmsL1iegl8Dn4V0SpZE=
+github.com/formancehq/numscript v0.0.27-0.20260929132002-52efa3834aa2/go.mod h1:cD+unaG/vauN/IBZmU/td9EAr8UwKeErYLEizIzjaEc=
 github.com/fortytw2/leaktest v1.3.0 h1:u8491cBMTQ8ft8aeV+adlcytMZylmA5nnwwkRZjI8vw=
 github.com/fortytw2/leaktest v1.3.0/go.mod h1:jDsjWgpAGjm2CA7WthBh/CdZYEPF31XHquHwclZch5g=
 github.com/fsnotify/fsnotify v1.5.4 h1:jRbGcIw6P2Meqdwuo0H1p6JVLbL5DHKAKlYndzMwVZI=
