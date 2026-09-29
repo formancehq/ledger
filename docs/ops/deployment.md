@@ -769,6 +769,7 @@ Changes in this release line that fall under this rule:
 | Change | Outcome that flips | Exposure |
 |--------|--------------------|----------|
 | EN-2045 | `SaveLedgerMetadata`, `DeleteLedgerMetadata`, `SaveNumscript`, the prepared-query create/update/delete and `PromoteLedger` applied to a soft-deleted ledger stop succeeding and become an `ERROR_REASON_LEDGER_DELETED` failure | writes aimed at a tombstoned ledger, which a healthy client does not issue |
+| EN-1523 | an execution plan whose full-width `attr_code` is outside the byte domain but aliases a supported low byte stops authorising coverage or seeding the cache and becomes an `ERROR_REASON_INVALID_EXECUTION_PLAN` failure | malformed committed proposals only; ordinary admission builders emit byte-sized attribute codes |
 
 ### Audit hash keying — threat model
 

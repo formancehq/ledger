@@ -159,7 +159,7 @@ type gatedScope struct {
 // validatePlan rejects AttributeCoverages whose envelope is malformed:
 //   - missing AttributeID or an ID payload that is not the 16-byte U128
 //     we expect (attributes.U128FromBytes would silently zero-pad);
-//   - attr_code that the FSM does not handle (a seed intent's
+//   - attr_code outside the byte domain or that the FSM does not handle (a seed intent's
 //     MirrorPreload would route the write to an orphan 0xFF Pebble
 //     slot; scope validation only catches selected plans later).
 //
@@ -174,7 +174,14 @@ func validatePlan(plan *raftcmdpb.AttributeCoverage, idx int) *domain.ErrInvalid
 		}
 	}
 
-	kind := byte(plan.GetAttrCode())
+	attrCode := plan.GetAttrCode()
+	if attrCode > 0xff {
+		return &domain.ErrInvalidExecutionPlan{
+			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%x outside the byte domain", idx, attrCode),
+		}
+	}
+
+	kind := byte(attrCode)
 	if coverageSlotIndex[kind] < 0 {
 		return &domain.ErrInvalidExecutionPlan{
 			Reason_: fmt.Sprintf("plans[%d]: AttributeCoverage declares attr_code 0x%02x which the FSM does not handle", idx, kind),

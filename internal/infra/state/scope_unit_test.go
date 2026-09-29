@@ -193,6 +193,40 @@ func TestApplyPlans_Errors(t *testing.T) {
 		require.Contains(t, err.Reason_, "0xfe")
 	})
 
+	t.Run("coverage bit on plan with aliased attr_code", func(t *testing.T) {
+		t.Parallel()
+
+		var coverage coverageSlots
+
+		u128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+		plans := []*raftcmdpb.AttributeCoverage{{
+			Id:       &raftcmdpb.AttributeID{Id: u128[:]},
+			AttrCode: uint32(dal.SubAttrLedger) + 256,
+		}}
+
+		err := applyPlans(&coverage, plans, []byte{0b1})
+		require.NotNil(t, err)
+		require.Contains(t, err.Reason_, "plans[0]")
+		require.Contains(t, err.Reason_, fmt.Sprintf("0x%x", uint32(dal.SubAttrLedger)+256))
+	})
+
+	t.Run("proposal-wide plan with aliased attr_code", func(t *testing.T) {
+		t.Parallel()
+
+		var coverage coverageSlots
+
+		u128, _ := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+		plans := []*raftcmdpb.AttributeCoverage{{
+			Id:       &raftcmdpb.AttributeID{Id: u128[:]},
+			AttrCode: uint32(dal.SubAttrLedger) + 256,
+		}}
+
+		err := applyAllPlans(&coverage, plans)
+		require.NotNil(t, err)
+		require.Contains(t, err.Reason_, "plans[0]")
+		require.Contains(t, err.Reason_, fmt.Sprintf("0x%x", uint32(dal.SubAttrLedger)+256))
+	})
+
 	t.Run("plan with nil AttributeID", func(t *testing.T) {
 		t.Parallel()
 

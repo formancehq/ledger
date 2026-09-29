@@ -278,7 +278,7 @@ sequenceDiagram
 
 The phase order in the diagram is load-bearing, and the code calls it out: `checkStaleProposal` runs **before** `Preload` (`internal/infra/state/machine.go`, with an explicit *"Phase ordering matters"* comment). A stale proposal must be rejected before it can seed the cache. Note also that `checkStaleProposal` gates **both** `predicted_index` and `cache_epoch` — the two are one gate, not two.
 
-`Machine.Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error` (`internal/infra/state/machine.go`) validates **every** `AttributeCoverage` entry before performing the first `MirrorPreload`. Doing it up front is deliberate: a malformed entry or an unknown `attr_code` discovered halfway through would leave the batch half-applied, and an unvalidated entry would otherwise silently zero-pad its way through `MirrorPreload`.
+`Machine.Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error` (`internal/infra/state/machine.go`) validates **every** `AttributeCoverage` entry before performing the first `MirrorPreload`. Validation checks `attr_code` in its full `uint32` wire width before converting it to the byte used for cache dispatch, so an oversized code cannot alias a supported low byte. Doing it up front is deliberate: a malformed entry or an unknown `attr_code` discovered halfway through would leave the batch half-applied, and an unvalidated entry would otherwise silently zero-pad its way through `MirrorPreload`.
 
 ## Where enforcement happens
 

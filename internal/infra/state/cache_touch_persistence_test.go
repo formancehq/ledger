@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,58 @@ func TestPreload_RejectsUnknownAttrCode(t *testing.T) {
 	require.ErrorAs(t, err, &invalid)
 	require.Contains(t, invalid.Reason_, "0xff")
 	require.Contains(t, invalid.Reason_, "FSM does not handle")
+}
+
+// TestPreload_RejectsAliasedAttrCodeBeforeMutation pins the full-width
+// attr_code gate. The wire field is uint32, so narrowing a supported low byte
+// before validation would turn dal.SubAttrLedger+256 into a valid ledger seed.
+// The malformed late entry also proves that Preload validates the complete
+// plan before applying an earlier valid seed.
+func TestPreload_RejectsAliasedAttrCodeBeforeMutation(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+
+	validID, validTag := attributes.MakeKey(domain.LedgerKey{Name: "valid"}.Bytes())
+	aliasedID, aliasedTag := attributes.MakeKey(domain.LedgerKey{Name: "aliased"}.Bytes())
+	ledgerValue := rawPreload(t, dal.SubAttrLedger, &commonpb.LedgerInfo{Name: "seeded"})
+
+	plan := &raftcmdpb.ExecutionPlan{
+		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+		Attributes: []*raftcmdpb.AttributeCoverage{
+			preloadTestPlan(&raftcmdpb.AttributeID{Id: validID[:], Tag: validTag}, dal.SubAttrLedger, ledgerValue),
+			{
+				Id:       &raftcmdpb.AttributeID{Id: aliasedID[:], Tag: aliasedTag},
+				AttrCode: uint32(dal.SubAttrLedger) + 256,
+				Value:    ledgerValue,
+			},
+		},
+	}
+
+	batch := dataStore.OpenWriteSession()
+	err := machine.Preload(plan, batch, 0)
+	require.Error(t, err)
+
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid)
+	require.Contains(t, invalid.Reason_, fmt.Sprintf("0x%x", uint32(dal.SubAttrLedger)+256))
+
+	for _, id := range []attributes.U128{validID, aliasedID} {
+		_, gen0OK := machine.Registry.Cache.Ledgers.Gen0().Get(id)
+		_, gen1OK := machine.Registry.Cache.Ledgers.Gen1().Get(id)
+		require.False(t, gen0OK, "rejected plan must not mutate cache generation 0")
+		require.False(t, gen1OK, "rejected plan must not mutate cache generation 1")
+	}
+
+	// Committing the supposedly empty session makes staged mirror writes
+	// observable through a restore, without relying on WriteSession internals.
+	require.NoError(t, batch.Commit())
+	machine.Registry.Cache.Reset()
+	require.NoError(t, machine.cacheSnapshotter.RestoreFromStore(dataStore))
+	for _, id := range []attributes.U128{validID, aliasedID} {
+		_, ok := machine.Registry.Cache.Ledgers.Gen0().Get(id)
+		require.False(t, ok, "rejected plan must not stage a persisted mirror entry")
+	}
 }
 
 // TestPreload_IdempotencyOnlyProposalAppliesKeys pins the behaviour for a
