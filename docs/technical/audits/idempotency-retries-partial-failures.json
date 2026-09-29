@@ -22,7 +22,7 @@
     "pkg/actions/**",
     "tests/**"
   ],
-  "related_docs": ["AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md"],
+  "related_docs": ["docs/technical/audits/idempotency-retries-partial-failures.md", "AGENTS.md", "docs/technical/agent-context.md", "docs/technical/architecture/subsystems/admission/", "docs/technical/architecture/subsystems/api/", "docs/technical/architecture/subsystems/backup/incremental-restore-contract.md", "docs/technical/architecture/subsystems/consensus/", "docs/technical/architecture/subsystems/fsm/", "docs/technical/contributing/ai-audit.md", "docs/ops/cli.md", "docs/ops/deployment.md"],
   "invariants": [
     "Retrying one logical mutation must not create duplicate committed business effects when the API promises or relies on idempotence.",
     "A timeout or cancelled response must not be interpreted internally as proof that the mutation did not commit.",
@@ -37,6 +37,7 @@
   "adversarial_questions": [
     "Where can a request commit and then lose its response?",
     "What does a client retry after timeout, cancellation, connection reset, or leader change do?",
+    "Does the current client factory preserve a possibly committed operation when an exact bare forwarded peer-close status is followed by maintenance? Distinguish this from an immediate maintenance rejection or no-leader then maintenance; preserve the original key and payload through recovery. Pin the producer/consumer contract using the actual forwarded close error; post-invocation local shutdown does not prove status origin when an identical peer-authored status races closure.",
     "Which operations have no stable logical identity across retries?",
     "Can bulk handlers commit a prefix before a later element fails?",
     "Can storage retry repeat a non-idempotent side effect?",
@@ -44,5 +45,5 @@
     "Can retry metadata disappear on restart while the original effect remains?",
     "Can shutdown race with a retry worker and execute work after ownership has ended?"
   ],
-  "dynamic_checks_to_consider": ["fault injection after commit before response", "same-key same-content frozen success/failure replay and same-key different-content conflict property tests across TTL and eviction races", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
+  "dynamic_checks_to_consider": ["fault injection after commit before response", "Run tests/antithesis/workload/internal/client_transport_test.go and client_transport_controls_test.go against the actual NewGRPCConn factory as well as the retained native retry control; verify maintenance-after-close ambiguity, gate-disable recovery, stable identity, a single durable effect, and non-retry of caller/server terminal statuses", "same-key same-content frozen success/failure replay and same-key different-content conflict property tests across TTL and eviction races", "leader change during retry", "connection reset during bulk", "storage transient-error injection", "restart between effect and dedupe persistence"]
 }
