@@ -2,7 +2,9 @@
 
 The `Storage Performance Comparison` workflow runs when its benchmark harness changes in a pull request. It builds test binaries from the Pebble baseline (`c6a99fc92f43f5127c898fd9a727adee3424310d`) and the PR head on one Linux runner, warms both, then alternates five measured runs per engine. The workflow uploads raw Go benchmark output, runner details, and a median summary.
 
-The first comparison covers warm DAL point lookups at 64, 512, and 4,096 bytes, small and large write batches, and one populated account reverse-map index lookup. The benchmarks use fresh stores for each case and the same source fixtures where possible. A positive RocksDB delta means slower `ns/op` for that case. These microbenchmarks do not establish HTTP latency, write throughput under contention, checkpoint pause time, memory use, or production capacity.
+The microbenchmark comparison covers warm DAL point lookups at 64, 512, and 4,096 bytes, small and large write batches, and one populated account reverse-map index lookup. The benchmarks use fresh stores for each case and the same source fixtures where possible. A positive RocksDB delta means slower `ns/op` for that case. These microbenchmarks do not establish HTTP latency or production capacity.
+
+The workflow also runs a local single-node HTTP comparison on a separate isolated runner. It builds both server binaries, alternates engine order over two runs each, and offers 30 transaction writes and 15 account-list reads per second. Writes carry varied 4 KiB metadata. Each run has 20 seconds of warmup and 90 seconds of measurement against fresh data. The report includes p50/p95/p99 latency, successful request counts, failed and dropped iterations, and sampled process RSS. A run with errors or dropped iterations is invalid. The HTTP comparison is a limited signal: it does not measure three-node Raft capacity, high-load saturation, checkpoint pause time, or a production data distribution.
 
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
 
