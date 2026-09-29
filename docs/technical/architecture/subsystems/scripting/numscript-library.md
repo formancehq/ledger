@@ -220,12 +220,15 @@ its specific error — asset scaling, for instance, still fails with
 
 The FSM decodes and verifies the program once per artifact — `NumscriptCache`
 keeps one warm VM instance per script, keyed by `compiled_script_hash`
-(already checked against the resolved text) rather than by the program bytes:
-compilation is deterministic, so one library version compiles one text to one
-byte sequence, and the key avoids hashing the program again on every apply. A
-hit still peeks the program's
-bytecode version from its header (no decode) and rejects a foreign one exactly
-as a cold node would — the rolling-upgrade case — and the cache is in-memory,
+(already checked against the resolved text), and serves it only when the
+order's program bytes are identical to the ones it verified. Compilation is not
+assumed to be deterministic: every compilation of a script must mean the same
+thing, but two of them (a new leader, a rolling upgrade, the leader's parse
+cache evicting the script) may produce different bytes. On a mismatch the
+order's bytes are decoded, verified and replace the entry, so a node always
+runs the committed bytes and only redoes that work when the bytes change. The
+leader compiles a script once and reuses it, so in steady state every order of
+a script hits. A rejected artifact is never cached, and the cache is in-memory,
 so an upgrade restarts it empty. It then executes the artifact per apply
 (`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
 wire-supplied bytecode without per-instruction checks.
