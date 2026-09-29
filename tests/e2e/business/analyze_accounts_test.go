@@ -9,8 +9,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -19,7 +18,7 @@ import (
 
 // analyzeAccounts calls the streaming AnalyzeAccounts RPC and returns the final result.
 // Progress events are discarded; only the terminal Result event is returned.
-func analyzeAccounts(ctx context.Context, client servicepb.BucketServiceClient, req *servicepb.AnalyzeAccountsRequest) (*servicepb.AnalyzeAccountsResponse, error) {
+func analyzeAccounts(ctx context.Context, client commonpb.BucketServiceClient, req *commonpb.AnalyzeAccountsRequest) (*commonpb.AnalyzeAccountsResponse, error) {
 	return actions.AnalyzeAccounts(ctx, client, req.GetLedger(), req.GetVariableThreshold())
 }
 
@@ -29,12 +28,12 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		var ledgerName = "analyze-empty"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should return zero accounts and no patterns", func() {
-			resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+			resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -47,11 +46,11 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		var ledgerName = "analyze-fixed"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create transactions that produce fixed accounts: world, bank:main, bank:fees
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "bank:main", big.NewInt(1000), "USD"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -63,7 +62,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		It("Should return correct total accounts", func() {
 			// Index builder processes logs asynchronously; poll until indexes are up to date.
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -74,7 +73,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should discover patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -84,7 +83,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should discover patterns for fixed segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -97,11 +96,11 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		var ledgerName = "analyze-variable"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create 15 user accounts with UUID-like IDs to trigger variable detection
-			requests := make([]*servicepb.Request, 0, 15)
+			requests := make([]*commonpb.Request, 0, 15)
 			for i := range 15 {
 				userAddr := fmt.Sprintf("users:%08d-%04d-%04d-%04d-%012d", i, i, i, i, i)
 				requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -109,13 +108,13 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				}, nil, nil))
 			}
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", requests...))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", requests...))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should detect variable segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -126,7 +125,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				var hasVariable bool
 				for _, p := range resp.Patterns {
 					for _, s := range p.Segments {
-						if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+						if s.Type == commonpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
 							hasVariable = true
 							break
 						}
@@ -138,16 +137,16 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should include patterns with variable segments", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
 
 				// Find the users pattern
-				var usersPattern *servicepb.AccountPattern
+				var usersPattern *commonpb.AccountPattern
 				for _, p := range resp.Patterns {
 					for _, s := range p.Segments {
-						if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+						if s.Type == commonpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
 							usersPattern = p
 							break
 						}
@@ -167,12 +166,12 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		var ledgerName = "analyze-threshold"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create 5 distinct child accounts under "dept:"
 			for i := range 5 {
-				_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting("world", fmt.Sprintf("dept:%d", 1000+i), big.NewInt(100), "USD"),
 				}, nil, nil)))
 				Expect(err).To(Succeed())
@@ -181,7 +180,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should treat children as fixed with default threshold", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger:            ledgerName,
 					VariableThreshold: 0, // default = 10
 				})
@@ -195,7 +194,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should treat children as variable with low threshold", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger:            ledgerName,
 					VariableThreshold: 3, // 5 children > 3 threshold -> variable
 				})
@@ -205,7 +204,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				var hasVariable bool
 				for _, p := range resp.Patterns {
 					for _, s := range p.Segments {
-						if s.Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+						if s.Type == commonpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
 							hasVariable = true
 							break
 						}
@@ -218,7 +217,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 	Context("When analyzing a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
-			_, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+			_, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 				Ledger: "non-existent-ledger",
 			})
 			Expect(err).To(HaveOccurred())
@@ -233,11 +232,11 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		var ledgerName = "analyze-metadata"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create accounts and add metadata
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil, nil),
 				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -255,7 +254,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should include metadata keys in patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -273,7 +272,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should include multiple assets in patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -295,12 +294,12 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 		var ledgerName = "analyze-realistic"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Build a realistic account structure:
 			// world, bank:main, bank:fees, users:{id}:main, users:{id}:savings
-			requests := make([]*servicepb.Request, 0)
+			requests := make([]*commonpb.Request, 0)
 
 			// Fund bank:main from world
 			requests = append(requests, actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
@@ -325,13 +324,13 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				actions.NewPosting("bank:main", "bank:fees", big.NewInt(50), "USD"),
 			}, nil, nil))
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", requests...))
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", requests...))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should return the correct total accounts", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -342,7 +341,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should produce patterns covering bank, users, and world", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -366,7 +365,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 
 		It("Should detect variable user IDs in patterns", func() {
 			Eventually(func(g Gomega) {
-				resp, err := analyzeAccounts(sharedCtx, sharedClient, &servicepb.AnalyzeAccountsRequest{
+				resp, err := analyzeAccounts(sharedCtx, sharedClient, &commonpb.AnalyzeAccountsRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -376,7 +375,7 @@ var _ = Describe("AnalyzeAccounts", Ordered, func() {
 				for _, p := range resp.Patterns {
 					if len(p.Segments) >= 2 &&
 						p.Segments[0].FixedValue == "users" &&
-						p.Segments[1].Type == servicepb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
+						p.Segments[1].Type == commonpb.PatternSegmentType_PATTERN_SEGMENT_TYPE_VARIABLE {
 						hasVariableUser = true
 						break
 					}

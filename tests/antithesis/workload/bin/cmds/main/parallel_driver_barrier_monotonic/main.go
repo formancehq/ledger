@@ -13,8 +13,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -78,7 +77,7 @@ func main() {
 		// barriers that completed before this call starts are valid floors.
 		floor, hasFloor := readHWM()
 
-		resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+		resp, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
 		if err != nil {
 			if internal.IsTransient(err) || ctx.Err() != nil {
 				continue

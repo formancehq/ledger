@@ -10,10 +10,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -77,10 +76,10 @@ func TestRebuildYieldsIdenticalIndex(t *testing.T) {
 
 	for s := uint64(1); s <= 5; s++ {
 		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Sequence: s, ProposalId: s, Timestamp: &auditpb.Timestamp{Data: s * 1_000_000},
 			Outcome:     &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 			Ledgers:     []string{"main"},
-			Idempotency: &commonpb.Idempotency{Key: "retry-key"},
+			Idempotency: &auditpb.Idempotency{Key: "retry-key"},
 		})
 	}
 
@@ -128,7 +127,7 @@ func TestBootKeepsProjectionUnavailableUntilInitialCatchUp(t *testing.T) {
 	require.True(t, rebuilding, "an enabled projection must start conservatively unavailable")
 
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Sequence: 1, ProposalId: 1, Timestamp: &auditpb.Timestamp{Data: 1_000_000},
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers: []string{"main"},
 	})
@@ -169,7 +168,7 @@ func TestBootMarksAlreadyCaughtUpProjectionReady(t *testing.T) {
 
 	idx, mainStore, rs := newIndexerForTest(t)
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Sequence: 1, ProposalId: 1, Timestamp: &auditpb.Timestamp{Data: 1_000_000},
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers: []string{"main"},
 	})
@@ -201,7 +200,7 @@ func TestBootPublishesFailureThenRecoversReadiness(t *testing.T) {
 	require.ErrorIs(t, rs.WaitForAuditRaftProgress(context.Background(), 7), readstore.ErrAuditProjectionFailed)
 
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Sequence: 1, ProposalId: 1, Timestamp: &auditpb.Timestamp{Data: 1_000_000},
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers: []string{"main"},
 	})
@@ -236,7 +235,7 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
 		Sequence:   1,
 		ProposalId: 7,
-		Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+		Timestamp:  &auditpb.Timestamp{Data: 1_000_000},
 		Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers:    []string{"main"},
 	})
@@ -267,7 +266,7 @@ func TestIndexerCatchUpAndResume(t *testing.T) {
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
 		Sequence:   2,
 		ProposalId: 8,
-		Timestamp:  &commonpb.Timestamp{Data: 2_000_000},
+		Timestamp:  &auditpb.Timestamp{Data: 2_000_000},
 		Outcome:    &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{}},
 		Ledgers:    []string{"main"},
 	})
@@ -291,7 +290,7 @@ func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T)
 	for sequence := uint64(1); sequence <= 3; sequence++ {
 		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
 			Sequence: sequence, ProposalId: sequence,
-			Timestamp: &commonpb.Timestamp{Data: sequence * 1_000_000},
+			Timestamp: &auditpb.Timestamp{Data: sequence * 1_000_000},
 			Outcome:   &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 			Ledgers:   []string{"main"},
 		})
@@ -313,7 +312,7 @@ func TestProcessOncePublishesFixedRaftHorizonOnlyWithTerminalBatch(t *testing.T)
 	// A later commit must remain outside this ProcessOnce-equivalent snapshot.
 	// Otherwise sustained writes can keep boot in rebuilding indefinitely.
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence: 4, ProposalId: 4, Timestamp: &commonpb.Timestamp{Data: 4_000_000},
+		Sequence: 4, ProposalId: 4, Timestamp: &auditpb.Timestamp{Data: 4_000_000},
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers: []string{"main"},
 	})
@@ -386,7 +385,7 @@ func TestProcessOnceWakesAuditWaiters(t *testing.T) {
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
 		Sequence:   1,
 		ProposalId: 7,
-		Timestamp:  &commonpb.Timestamp{Data: 1_000_000},
+		Timestamp:  &auditpb.Timestamp{Data: 1_000_000},
 		Outcome:    &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers:    []string{"main"},
 	})
@@ -408,7 +407,7 @@ func TestStartStopIndexes(t *testing.T) {
 	idx, mainStore, rs := newIndexerForTest(t)
 
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Sequence: 1, ProposalId: 1, Timestamp: &auditpb.Timestamp{Data: 1_000_000},
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers: []string{"main"},
 	})
@@ -440,7 +439,7 @@ func TestProcessTickPublishesFailureThenRecoversReadiness(t *testing.T) {
 	require.ErrorIs(t, rs.WaitForAuditRaftProgress(context.Background(), 7), readstore.ErrAuditProjectionFailed)
 
 	writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-		Sequence: 1, ProposalId: 1, Timestamp: &commonpb.Timestamp{Data: 1_000_000},
+		Sequence: 1, ProposalId: 1, Timestamp: &auditpb.Timestamp{Data: 1_000_000},
 		Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 		Ledgers: []string{"main"},
 	})
@@ -463,7 +462,7 @@ func TestProcessOnceHonorsContextCancellation(t *testing.T) {
 
 	for s := uint64(1); s <= 5; s++ {
 		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Sequence: s, ProposalId: s, Timestamp: &auditpb.Timestamp{Data: s * 1_000_000},
 			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 			Ledgers: []string{"main"},
 		})
@@ -494,7 +493,7 @@ func TestIndexerKeepsUpUnderLoad(t *testing.T) {
 	const total = 200
 	for s := uint64(1); s <= total; s++ {
 		writeAuditEntry(t, mainStore, &auditpb.AuditEntry{
-			Sequence: s, ProposalId: s, Timestamp: &commonpb.Timestamp{Data: s * 1_000_000},
+			Sequence: s, ProposalId: s, Timestamp: &auditpb.Timestamp{Data: s * 1_000_000},
 			Outcome: &auditpb.AuditEntry_Success{Success: &auditpb.AuditSuccess{}},
 			Ledgers: []string{"main"},
 		})

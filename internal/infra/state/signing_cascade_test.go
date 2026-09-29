@@ -8,15 +8,14 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/keystore"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -129,7 +128,7 @@ func (r *signingBatchRunner) commit(orders ...*raftcmdpb.Order) []*commonpb.LogP
 func (r *signingBatchRunner) authenticates(keyID string, privKey ed25519.PrivateKey) bool {
 	r.t.Helper()
 
-	envelope, err := signing.Sign(&servicepb.ApplyBatch{IdempotencyKey: "cascade-probe"}, keyID, privKey)
+	envelope, err := signing.Sign(&commonpb.ApplyBatch{IdempotencyKey: "cascade-probe"}, keyID, privKey)
 	require.NoError(r.t, err)
 
 	pubKey := r.machine.keyStore.GetPublicKey(keyID)

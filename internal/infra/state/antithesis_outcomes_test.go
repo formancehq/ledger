@@ -9,9 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -73,12 +75,12 @@ func TestIdempotencyCoverageExclusions(t *testing.T) {
 			fsm, store, _ := newTestMachine(t)
 			proposal := makeProposal(1, createLedgerOrder("idempotency-coverage"))
 			proposal.Idempotency = &commonpb.Idempotency{Key: "key"}
-			stored := &commonpb.IdempotencyKeyValue{
+			stored := &internalcommonpb.IdempotencyKeyValue{
 				Hash: fsm.processor.HashProposal(proposal), CreatedAt: 1,
 				FirstLogSequence: 1, LogCount: 1,
 			}
 			if scenario == "frozen_failure" {
-				stored.Failure = &commonpb.IdempotencyFailure{
+				stored.Failure = &internalcommonpb.IdempotencyFailure{
 					Reason: domain.ReasonCode(domain.ErrReasonTransactionNotFound), Message: "original failure",
 				}
 			} else {

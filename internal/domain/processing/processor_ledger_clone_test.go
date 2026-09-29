@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // countingLedgerReader wraps a LedgerInfoReader and observes the clone
@@ -93,12 +93,12 @@ func TestProcessCreateTransaction_DoesNotCloneLedgerInfo(t *testing.T) {
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil)
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							{
 								Source:      "bank",

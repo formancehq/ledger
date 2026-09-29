@@ -11,15 +11,12 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_compaction", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_compaction", func(ctx context.Context, client clusterpb.BucketServiceClient, ledger string) {
 		details := internal.Details{"ledger": ledger}
 
 		conn, err := internal.NewGRPCConn()
@@ -43,7 +40,7 @@ func main() {
 	})
 }
 
-func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient, ledger string, details internal.Details) {
+func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient, ledger string, details internal.Details) {
 	log.Printf("compaction: triggering primary compaction")
 
 	resp, err := clusterClient.CompactPrimary(ctx, &clusterpb.CompactPrimaryRequest{})
@@ -66,7 +63,7 @@ func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceC
 	verifyReadable(ctx, client, ledger, details)
 }
 
-func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient, ledger string, details internal.Details) {
+func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient, ledger string, details internal.Details) {
 	log.Printf("compaction: triggering secondary (read-index) compaction")
 
 	resp, err := clusterClient.CompactSecondary(ctx, &clusterpb.CompactSecondaryRequest{})
@@ -96,9 +93,9 @@ func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServic
 	verifyReadable(ctx, client, ledger, details)
 }
 
-func verifyReadable(ctx context.Context, client servicepb.BucketServiceClient, ledger string, details internal.Details) {
+func verifyReadable(ctx context.Context, client clusterpb.BucketServiceClient, ledger string, details internal.Details) {
 	// Stats should work.
-	_, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: ledger})
+	_, err := client.GetLedgerStats(ctx, &clusterpb.GetLedgerStatsRequest{Ledger: ledger})
 	if err != nil {
 		if internal.IsTransient(err) {
 			return
@@ -110,7 +107,7 @@ func verifyReadable(ctx context.Context, client servicepb.BucketServiceClient, l
 	}
 
 	// Read a well-known account.
-	_, err = client.GetAccount(ctx, &servicepb.GetAccountRequest{
+	_, err = client.GetAccount(ctx, &clusterpb.GetAccountRequest{
 		Ledger:  ledger,
 		Address: "world",
 	})

@@ -5,8 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleRemoveMetadataType handles DELETE /{ledgerName}/metadata-schema/{targetType}/{key}.
@@ -30,9 +29,9 @@ func (s *Server) handleRemoveMetadataType(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
-		Type: &servicepb.Request_RemoveMetadataFieldType{
-			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &commonpb.Request{
+		Type: &commonpb.Request_RemoveMetadataFieldType{
+			RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
 				Ledger:     ledgerName,
 				TargetType: targetType,
 				Key:        key,

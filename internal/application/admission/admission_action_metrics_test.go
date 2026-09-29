@@ -11,10 +11,11 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/mock/gomock"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 const (
@@ -206,7 +207,7 @@ func TestAdmitActionCounters(t *testing.T) {
 		proposer.EXPECT().InitialIndex().Return(uint64(0)).AnyTimes()
 		proposer.EXPECT().
 			Propose(gomock.Any(), gomock.Any()).
-			Return(nil, commonpb.ErrNoLeader).
+			Return(nil, protoerr.ErrNoLeader).
 			AnyTimes()
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
@@ -216,7 +217,7 @@ func TestAdmitActionCounters(t *testing.T) {
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-propose-fail"},
 			},
 		}))
-		require.ErrorIs(t, err, commonpb.ErrNoLeader)
+		require.ErrorIs(t, err, protoerr.ErrNoLeader)
 
 		counts := recordedActionCounts(t, reader)
 		require.Equal(t, int64(1), counts[mActionTotal]["create_ledger"])
@@ -233,7 +234,7 @@ func TestAdmitActionCounters(t *testing.T) {
 		proposer.EXPECT().InitialIndex().Return(uint64(0)).AnyTimes()
 		proposer.EXPECT().
 			Propose(gomock.Any(), gomock.Any()).
-			Return(nil, commonpb.ErrNoLeader).
+			Return(nil, protoerr.ErrNoLeader).
 			AnyTimes()
 
 		a, reader := createTestAdmissionWithReader(t, store, proposer)
@@ -248,7 +249,7 @@ func TestAdmitActionCounters(t *testing.T) {
 				CreateLedger: &servicepb.CreateLedgerRequest{Name: "ledger-b"},
 			}},
 		))
-		require.ErrorIs(t, err, commonpb.ErrNoLeader)
+		require.ErrorIs(t, err, protoerr.ErrNoLeader)
 
 		counts := recordedActionCounts(t, reader)
 		require.Equal(t, int64(2), counts[mActionTotal]["create_ledger"])

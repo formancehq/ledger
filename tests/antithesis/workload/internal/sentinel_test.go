@@ -6,25 +6,21 @@ import (
 	"testing"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 )
 
 type sentinelSDKServer struct {
-	servicepb.UnimplementedBucketServiceServer
-
+	commonpb.UnimplementedBucketServiceServer
 	code  codes.Code
 	calls atomic.Int32
 }
 
-func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *servicepb.GetTransactionRequest) (*servicepb.GetTransactionResponse, error) {
+func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *commonpb.GetTransactionRequest) (*commonpb.GetTransactionResponse, error) {
 	s.calls.Add(1)
 	if request.GetLedger() != "sdk-sentinel" || request.GetTransactionId() != 42 {
 		return nil, status.Error(codes.InvalidArgument, "wrong sentinel identity")
@@ -32,8 +28,7 @@ func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *servicepb
 	if s.code != codes.OK {
 		return nil, status.Error(s.code, "sentinel read fixture")
 	}
-
-	return &servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{Id: 42}}, nil
+	return &commonpb.GetTransactionResponse{Transaction: &commonpb.Transaction{Id: 42}}, nil
 }
 
 func TestSentinelVerifySDK(t *testing.T) {

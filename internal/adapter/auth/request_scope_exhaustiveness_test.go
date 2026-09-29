@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // scopeCase pairs a well-formed request with the scope its dedicated
@@ -15,7 +14,7 @@ import (
 // truth: a batch path must never demand a different scope for the same
 // operation than the single-shot path does.
 type scopeCase struct {
-	req      *servicepb.Request
+	req      *commonpb.Request
 	expected Scope
 }
 
@@ -37,8 +36,8 @@ func TestRequiredScopeForRequest_ProtoExhaustive(t *testing.T) {
 
 	// ByName, not Get(0): proto3 `optional` fields generate synthetic oneofs,
 	// so the real oneof is not reliably the first one.
-	typeOneof := (&servicepb.Request{}).ProtoReflect().Descriptor().Oneofs().ByName("type")
-	require.NotNil(t, typeOneof, "servicepb.Request must declare a oneof named 'type'")
+	typeOneof := (&commonpb.Request{}).ProtoReflect().Descriptor().Oneofs().ByName("type")
+	require.NotNil(t, typeOneof, "commonpb.Request must declare a oneof named 'type'")
 
 	fields := typeOneof.Fields()
 	for i := range fields.Len() {
@@ -72,8 +71,8 @@ func TestRequiredScopeForLedgerApply_ProtoExhaustive(t *testing.T) {
 
 	cases := ledgerActionScopeCases()
 
-	dataOneof := (&servicepb.LedgerAction{}).ProtoReflect().Descriptor().Oneofs().ByName("data")
-	require.NotNil(t, dataOneof, "servicepb.LedgerAction must declare a oneof named 'data'")
+	dataOneof := (&commonpb.LedgerAction{}).ProtoReflect().Descriptor().Oneofs().ByName("data")
+	require.NotNil(t, dataOneof, "commonpb.LedgerAction must declare a oneof named 'data'")
 
 	fields := dataOneof.Fields()
 	for i := range fields.Len() {
@@ -84,7 +83,7 @@ func TestRequiredScopeForLedgerApply_ProtoExhaustive(t *testing.T) {
 			"LedgerAction.data.%s is declared in the proto but has no entry in "+
 				"ledgerActionScopeCases — add one", name)
 
-		scope, decided := requiredScopeForLedgerApply(&servicepb.LedgerApplyRequest{
+		scope, decided := requiredScopeForLedgerApply(&commonpb.LedgerApplyRequest{
 			Action: actionForField(name),
 		})
 		require.True(t, decided,
@@ -109,51 +108,51 @@ func TestRequiredScopeForLedgerApply_ProtoExhaustive(t *testing.T) {
 func requestScopeCases() map[string]scopeCase {
 	return map[string]scopeCase{
 		// Ledger lifecycle — HTTP requireLedgersWrite group (handler.go:172-179).
-		"create_ledger":  {&servicepb.Request{Type: &servicepb.Request_CreateLedger{}}, ScopeLedgersWrite},
-		"delete_ledger":  {&servicepb.Request{Type: &servicepb.Request_DeleteLedger{}}, ScopeLedgersWrite},
-		"promote_ledger": {&servicepb.Request{Type: &servicepb.Request_PromoteLedger{}}, ScopeLedgersWrite},
-		"create_index":   {&servicepb.Request{Type: &servicepb.Request_CreateIndex{}}, ScopeLedgersWrite},
-		"drop_index":     {&servicepb.Request{Type: &servicepb.Request_DropIndex{}}, ScopeLedgersWrite},
-		"save_numscript": {&servicepb.Request{Type: &servicepb.Request_SaveNumscript{}}, ScopeLedgersWrite},
+		"create_ledger":  {&commonpb.Request{Type: &commonpb.Request_CreateLedger{}}, ScopeLedgersWrite},
+		"delete_ledger":  {&commonpb.Request{Type: &commonpb.Request_DeleteLedger{}}, ScopeLedgersWrite},
+		"promote_ledger": {&commonpb.Request{Type: &commonpb.Request_PromoteLedger{}}, ScopeLedgersWrite},
+		"create_index":   {&commonpb.Request{Type: &commonpb.Request_CreateIndex{}}, ScopeLedgersWrite},
+		"drop_index":     {&commonpb.Request{Type: &commonpb.Request_DropIndex{}}, ScopeLedgersWrite},
+		"save_numscript": {&commonpb.Request{Type: &commonpb.Request_SaveNumscript{}}, ScopeLedgersWrite},
 
 		// Cluster operations — ClusterService requires ledger:ClusterWrite
 		// (server_cluster.go:442, 481), granted only by ledger:admin.
-		"create_query_checkpoint":          {&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{}}, ScopeClusterWrite},
-		"delete_query_checkpoint":          {&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{}}, ScopeClusterWrite},
-		"set_query_checkpoint_schedule":    {&servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{}}, ScopeClusterWrite},
-		"delete_query_checkpoint_schedule": {&servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{}}, ScopeClusterWrite},
-		"set_cluster_policy":               {&servicepb.Request{Type: &servicepb.Request_SetClusterPolicy{}}, ScopeClusterWrite},
+		"create_query_checkpoint":          {&commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{}}, ScopeClusterWrite},
+		"delete_query_checkpoint":          {&commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{}}, ScopeClusterWrite},
+		"set_query_checkpoint_schedule":    {&commonpb.Request{Type: &commonpb.Request_SetQueryCheckpointSchedule{}}, ScopeClusterWrite},
+		"delete_query_checkpoint_schedule": {&commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpointSchedule{}}, ScopeClusterWrite},
+		"set_cluster_policy":               {&commonpb.Request{Type: &commonpb.Request_SetClusterPolicy{}}, ScopeClusterWrite},
 
 		// Metadata & chart of accounts — HTTP requireMetadataWrite group
 		// (handler.go:188-200).
-		"set_metadata_field_type":      {&servicepb.Request{Type: &servicepb.Request_SetMetadataFieldType{}}, ScopeMetadataWrite},
-		"remove_metadata_field_type":   {&servicepb.Request{Type: &servicepb.Request_RemoveMetadataFieldType{}}, ScopeMetadataWrite},
-		"save_ledger_metadata":         {&servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{}}, ScopeMetadataWrite},
-		"delete_ledger_metadata":       {&servicepb.Request{Type: &servicepb.Request_DeleteLedgerMetadata{}}, ScopeMetadataWrite},
-		"add_account_type":             {&servicepb.Request{Type: &servicepb.Request_AddAccountType{}}, ScopeMetadataWrite},
-		"remove_account_type":          {&servicepb.Request{Type: &servicepb.Request_RemoveAccountType{}}, ScopeMetadataWrite},
-		"set_default_enforcement_mode": {&servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{}}, ScopeMetadataWrite},
+		"set_metadata_field_type":      {&commonpb.Request{Type: &commonpb.Request_SetMetadataFieldType{}}, ScopeMetadataWrite},
+		"remove_metadata_field_type":   {&commonpb.Request{Type: &commonpb.Request_RemoveMetadataFieldType{}}, ScopeMetadataWrite},
+		"save_ledger_metadata":         {&commonpb.Request{Type: &commonpb.Request_SaveLedgerMetadata{}}, ScopeMetadataWrite},
+		"delete_ledger_metadata":       {&commonpb.Request{Type: &commonpb.Request_DeleteLedgerMetadata{}}, ScopeMetadataWrite},
+		"add_account_type":             {&commonpb.Request{Type: &commonpb.Request_AddAccountType{}}, ScopeMetadataWrite},
+		"remove_account_type":          {&commonpb.Request{Type: &commonpb.Request_RemoveAccountType{}}, ScopeMetadataWrite},
+		"set_default_enforcement_mode": {&commonpb.Request{Type: &commonpb.Request_SetDefaultEnforcementMode{}}, ScopeMetadataWrite},
 
 		// Prepared queries — HTTP requireQueriesWrite group (handler.go:212-216).
-		"create_prepared_query": {&servicepb.Request{Type: &servicepb.Request_CreatePreparedQuery{}}, ScopeQueriesWrite},
-		"update_prepared_query": {&servicepb.Request{Type: &servicepb.Request_UpdatePreparedQuery{}}, ScopeQueriesWrite},
-		"delete_prepared_query": {&servicepb.Request{Type: &servicepb.Request_DeletePreparedQuery{}}, ScopeQueriesWrite},
+		"create_prepared_query": {&commonpb.Request{Type: &commonpb.Request_CreatePreparedQuery{}}, ScopeQueriesWrite},
+		"update_prepared_query": {&commonpb.Request{Type: &commonpb.Request_UpdatePreparedQuery{}}, ScopeQueriesWrite},
+		"delete_prepared_query": {&commonpb.Request{Type: &commonpb.Request_DeletePreparedQuery{}}, ScopeQueriesWrite},
 
 		// Operator surface — no business identity, ledger:OpsWrite by design.
-		"register_signing_key": {&servicepb.Request{Type: &servicepb.Request_RegisterSigningKey{}}, ScopeOpsWrite},
-		"revoke_signing_key":   {&servicepb.Request{Type: &servicepb.Request_RevokeSigningKey{}}, ScopeOpsWrite},
-		"set_signing_config":   {&servicepb.Request{Type: &servicepb.Request_SetSigningConfig{}}, ScopeOpsWrite},
-		"add_events_sink":      {&servicepb.Request{Type: &servicepb.Request_AddEventsSink{}}, ScopeOpsWrite},
-		"remove_events_sink":   {&servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{}}, ScopeOpsWrite},
-		"set_maintenance_mode": {&servicepb.Request{Type: &servicepb.Request_SetMaintenanceMode{}}, ScopeOpsWrite},
+		"register_signing_key": {&commonpb.Request{Type: &commonpb.Request_RegisterSigningKey{}}, ScopeOpsWrite},
+		"revoke_signing_key":   {&commonpb.Request{Type: &commonpb.Request_RevokeSigningKey{}}, ScopeOpsWrite},
+		"set_signing_config":   {&commonpb.Request{Type: &commonpb.Request_SetSigningConfig{}}, ScopeOpsWrite},
+		"add_events_sink":      {&commonpb.Request{Type: &commonpb.Request_AddEventsSink{}}, ScopeOpsWrite},
+		"remove_events_sink":   {&commonpb.Request{Type: &commonpb.Request_RemoveEventsSink{}}, ScopeOpsWrite},
+		"set_maintenance_mode": {&commonpb.Request{Type: &commonpb.Request_SetMaintenanceMode{}}, ScopeOpsWrite},
 
 		// Batch apply — delegates to the LedgerAction classifier. A real
 		// action is required; see the doc comment above.
 		"apply": {
-			&servicepb.Request{Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_CreateTransaction{},
+			&commonpb.Request{Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_CreateTransaction{},
 					},
 				},
 			}},
@@ -178,26 +177,26 @@ func ledgerActionScopeCases() map[string]Scope {
 }
 
 // actionForField builds a LedgerAction whose oneof is set to the named field.
-func actionForField(name string) *servicepb.LedgerAction {
+func actionForField(name string) *commonpb.LedgerAction {
 	switch name {
 	case "create_transaction":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{}}
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{}}
 	case "revert_transaction":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{}}
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RevertTransaction{}}
 	case "add_metadata":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 			AddMetadata: &commonpb.SaveMetadataCommand{},
 		}}
 	case "delete_metadata":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_DeleteMetadata{
 			DeleteMetadata: &commonpb.DeleteMetadataCommand{},
 		}}
 	case "add_account_type":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{}}
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{}}
 	case "remove_account_type":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{}}
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{}}
 	case "set_default_enforcement_mode":
-		return &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{}}
+		return &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{}}
 	default:
 		// Unreachable: the exhaustiveness test fails on an unknown field name
 		// before it gets here, via the ledgerActionScopeCases lookup.

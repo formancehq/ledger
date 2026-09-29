@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // driverTimeout bounds a single parallel driver execution. Retries under fault

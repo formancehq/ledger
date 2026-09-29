@@ -7,8 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -21,12 +20,12 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-empty"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should return an empty result", func() {
-			result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+			result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -38,11 +37,11 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-nofilter"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -56,7 +55,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("Should return aggregated volumes across all accounts", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -86,11 +85,11 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-prefix"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD, world→users:bob 200 USD, world→bank:main 500 USD
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -104,7 +103,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("Should return aggregated volumes only for accounts matching the prefix", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger: ledgerName,
 					Filter: actions.AddressPrefixFilter("users:"),
 				})
@@ -124,7 +123,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-meta"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "role",
@@ -137,7 +136,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")).To(Succeed())
 
 			// world→alice 100 USD, world→alice 50 EUR, world→bob 200 USD
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -148,14 +147,14 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 				}, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{"role": "admin"}),
 				actions.SaveAccountMetadataAction(ledgerName, "bob", map[string]string{"role": "user"})))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should return aggregated volumes only for admin accounts", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger: ledgerName,
 					Filter: actions.StringMetadataFilter("role", "admin"),
 				})
@@ -186,7 +185,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-max-prec"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Create postings with different precisions for the same asset base:
@@ -194,7 +193,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 			// world→bob:   10000 USD/4 (= $1.0000)
 			// world→carol: 1000 USD/3 (= $1.000)
 			// world→alice: 50 EUR/2
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD/2"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -211,7 +210,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("Without use_max_precision, should return separate entries per precision", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -231,7 +230,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("With use_max_precision, should merge USD precisions under USD/4", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger:          ledgerName,
 					UseMaxPrecision: true,
 				})
@@ -267,11 +266,11 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-max-prec-filter"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4, world→bank:main 500 USD/2
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -285,7 +284,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("Should merge precisions only for filtered accounts", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger:          ledgerName,
 					Filter:          actions.AddressPrefixFilter("users:"),
 					UseMaxPrecision: true,
@@ -307,12 +306,12 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-group-prefix"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD, world→users:bob 200 USD
 			// world→merchants:shop1 500 USD, world→merchants:shop2 300 EUR
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -329,7 +328,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("Should return grouped results by prefix", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger:          ledgerName,
 					GroupByPrefixes: []string{"users:", "merchants:"},
 				})
@@ -362,11 +361,11 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 		const ledgerName = "agg-vol-group-maxprec"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// world→users:alice 100 USD/2, world→users:bob 10000 USD/4
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "users:alice", big.NewInt(100), "USD/2"),
 			}, nil),
 				actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
@@ -377,7 +376,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 		It("Should merge precisions within each group", func() {
 			Eventually(func(g Gomega) {
-				result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+				result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 					Ledger:          ledgerName,
 					UseMaxPrecision: true,
 					GroupByPrefixes: []string{"users:"},
@@ -397,7 +396,7 @@ var _ = Describe("AggregateVolumes", Ordered, func() {
 
 	Context("When aggregating volumes for a non-existent ledger", func() {
 		It("Should return a NotFound error", func() {
-			_, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+			_, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 				Ledger: "non-existent-ledger",
 			})
 			Expect(err).To(HaveOccurred())

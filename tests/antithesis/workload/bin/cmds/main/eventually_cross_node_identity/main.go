@@ -54,9 +54,7 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -157,10 +155,10 @@ type readyNode struct {
 // neither is part of IsTransient. Narrow IsUnavailable matching would trip
 // the assertion below on retry-safe fault-window noise and undermine the
 // cross-node identity oracle's reliability.
-func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
+func waitForQuiescence(ctx context.Context, client clusterpb.BucketServiceClient) uint64 {
 	var last uint64
 	for attempt := 1; attempt <= quiescenceAttempts; attempt++ {
-		resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+		resp, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
 		if err != nil {
 			if internal.IsTransient(err) {
 				continue
@@ -185,8 +183,8 @@ func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient
 }
 
 // singleBarrier issues one Barrier and returns its commit index (0 on error).
-func singleBarrier(ctx context.Context, client servicepb.BucketServiceClient) uint64 {
-	resp, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+func singleBarrier(ctx context.Context, client clusterpb.BucketServiceClient) uint64 {
+	resp, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
 	if err != nil {
 		return 0
 	}
@@ -303,14 +301,14 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 
 	for _, addr := range addrs {
 		var (
-			ref     *commonpb.Account
+			ref     *clusterpb.Account
 			refNode string
 			refOK   bool
 		)
 
 		for _, n := range nodes {
 			staleCtx := internal.WithStaleConsistency(ctx)
-			acc, err := n.conn.Bucket.GetAccount(staleCtx, &servicepb.GetAccountRequest{
+			acc, err := n.conn.Bucket.GetAccount(staleCtx, &clusterpb.GetAccountRequest{
 				Ledger:  ledger,
 				Address: addr,
 			})
@@ -351,7 +349,7 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 // volumesString renders an account's per-asset balances in a stable form for
 // assertion details (proto map iteration order is irrelevant to this triage
 // string; it is not used for the equality decision).
-func volumesString(acc *commonpb.Account) string {
+func volumesString(acc *clusterpb.Account) string {
 	if acc == nil {
 		return "<nil>"
 	}
@@ -368,7 +366,7 @@ func volumesString(acc *commonpb.Account) string {
 // node returns the same hash and
 // hash_version for it. Sequences that NotFound on any node (applied-index
 // skew) are skipped, never failed.
-func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb.BucketServiceClient, index uint64) {
+func compareAuditHashes(ctx context.Context, nodes []readyNode, driver clusterpb.BucketServiceClient, index uint64) {
 	seq, ok := pickRecentAuditSequence(ctx, driver)
 	if !ok {
 		log.Println("composer: no audit sequence available to compare, skipping audit-hash check")
@@ -385,7 +383,7 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb
 
 	for _, n := range nodes {
 		staleCtx := internal.WithStaleConsistency(ctx)
-		entry, err := n.conn.Bucket.GetAuditEntry(staleCtx, &servicepb.GetAuditEntryRequest{Sequence: seq})
+		entry, err := n.conn.Bucket.GetAuditEntry(staleCtx, &clusterpb.GetAuditEntryRequest{Sequence: seq})
 		if err != nil {
 			// NotFound on a node = applied-index skew; skip.
 			if !internal.IsTransient(err) && !internal.IsNotFound(err) {
@@ -427,9 +425,9 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb
 // pickRecentAuditSequence pages through the audit trail and returns the highest
 // sequence seen within auditSampleWindow entries, which is in the live window
 // and most likely present on every caught-up node.
-func pickRecentAuditSequence(ctx context.Context, driver servicepb.BucketServiceClient) (uint64, bool) {
-	stream, err := driver.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
-		Options: &commonpb.ListOptions{PageSize: auditSampleWindow},
+func pickRecentAuditSequence(ctx context.Context, driver clusterpb.BucketServiceClient) (uint64, bool) {
+	stream, err := driver.ListAuditEntries(ctx, &clusterpb.ListAuditEntriesRequest{
+		Options: &clusterpb.ListOptions{PageSize: auditSampleWindow},
 	})
 	if err != nil {
 		return 0, false

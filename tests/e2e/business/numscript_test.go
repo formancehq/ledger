@@ -8,9 +8,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
@@ -23,7 +22,7 @@ var _ = Describe("Numscript", Ordered, func() {
 		var ledgerName = "numscript-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -40,7 +39,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"source":      "world",
 				"destination": "bank",
 				"amount":      "USD/2 1000",
@@ -64,7 +63,7 @@ send $amount (
 
 			// Verify account balance (use Eventually to handle potential timing issues)
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "bank",
 				})
@@ -86,7 +85,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"destination": "users:alice",
 				"amount":      "EUR/2 5000",
 			}, nil)))
@@ -96,7 +95,7 @@ send $amount (
 
 			// Verify account balance
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "users:alice",
 				})
@@ -108,7 +107,7 @@ send $amount (
 
 		It("Should create a transaction with multiple destinations (percentage split)", func() {
 			// First fund the source account
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 10000] (
   source = @world
   destination = @sales:revenue
@@ -133,7 +132,7 @@ send $amount (
   }
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"source":       "sales:revenue",
 				"tax_account":  "taxes:vat",
 				"main_account": "bank:main",
@@ -151,7 +150,7 @@ send $amount (
 
 			// Verify account balances
 			Eventually(func(g Gomega) {
-				taxAccount, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				taxAccount, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "taxes:vat",
 				})
@@ -161,7 +160,7 @@ send $amount (
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				mainAccount, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				mainAccount, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "bank:main",
 				})
@@ -173,7 +172,7 @@ send $amount (
 
 		It("Should create a transaction with multiple sources (fallback)", func() {
 			// Fund the wallet and bank accounts
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 50] (
   source = @world
   destination = @users:bob:wallet
@@ -204,7 +203,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"wallet":      "users:bob:wallet",
 				"bank":        "users:bob:bank",
 				"destination": "merchants:shop",
@@ -216,7 +215,7 @@ send $amount (
 
 			// Verify account balances
 			Eventually(func(g Gomega) {
-				wallet, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				wallet, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "users:bob:wallet",
 				})
@@ -226,7 +225,7 @@ send $amount (
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				bank, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				bank, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "users:bob:bank",
 				})
@@ -236,7 +235,7 @@ send $amount (
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
 
 			Eventually(func(g Gomega) {
-				shop, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				shop, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "merchants:shop",
 				})
@@ -248,7 +247,7 @@ send $amount (
 
 		It("Should create a transaction with bounded overdraft", func() {
 			// Fund the account with some initial balance
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [EUR/2 100] (
   source = @world
   destination = @users:charlie
@@ -271,7 +270,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"source":      "users:charlie",
 				"destination": "merchants:store",
 				"amount":      "EUR/2 400",
@@ -282,7 +281,7 @@ send $amount (
 
 			// Verify charlie's balance is now negative (-300 = 100 - 400)
 			Eventually(func(g Gomega) {
-				charlie, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				charlie, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "users:charlie",
 				})
@@ -294,7 +293,7 @@ send $amount (
 
 		It("Should fail when overdraft limit is exceeded", func() {
 			// Fund the account with some initial balance
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 100] (
   source = @world
   destination = @users:dave
@@ -317,7 +316,7 @@ send $amount (
   destination = $destination
 )
 `
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"source":      "users:dave",
 				"destination": "merchants:store",
 				"amount":      "USD/2 500", // 100 balance + 200 overdraft = 300 max, but we try 500
@@ -348,7 +347,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"credit_line": "credit:eve",
 				"destination": "bank:main",
 				"amount":      "USD/2 100000",
@@ -358,7 +357,7 @@ send $amount (
 
 			// Verify credit line is negative
 			Eventually(func(g Gomega) {
-				creditLine, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				creditLine, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "credit:eve",
 				})
@@ -384,7 +383,7 @@ send $amount (
   destination = $seller
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"buyer":  "users:frank",
 				"seller": "merchants:gadgets",
 				"amount": "USD/2 299",
@@ -418,7 +417,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"destination": "users:grace:savings",
 				"amount":      "USD/2 1000",
 			}, nil)))
@@ -426,7 +425,7 @@ send $amount (
 			Expect(resp).NotTo(BeNil())
 
 			// Verify account metadata
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "users:grace:savings",
 			})
@@ -452,7 +451,7 @@ send $amount (
 )
 `
 			// First fund the buyer
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 1000] (
   source = @world
   destination = @users:henry
@@ -461,7 +460,7 @@ send [USD/2 1000] (
 			Expect(err).To(Succeed())
 
 			// Create escrow transaction with dynamic address
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"buyer":    "users:henry",
 				"order_id": "order-12345",
 				"amount":   "USD/2 500",
@@ -470,7 +469,7 @@ send [USD/2 1000] (
 			Expect(resp).NotTo(BeNil())
 
 			// Verify the escrow account was created with the dynamic address
-			escrow, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			escrow, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "escrow:order-12345",
 			})
@@ -485,7 +484,7 @@ send [USD/2 100] (
   destination = // missing destination
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -511,7 +510,7 @@ send $amount (
   destination = $destination
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"source": "world",
 				// missing "destination" and "amount"
 			}, nil)))
@@ -530,7 +529,7 @@ send $amount (
   destination = $destination
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"destination": "bulk:account1",
 				"amount":      "USD/2 100",
 			}, nil),
@@ -551,7 +550,7 @@ send $amount (
 				address := fmt.Sprintf("bulk:account%d", i+1)
 				expectedBalance := expected
 				Eventually(func(g Gomega) {
-					account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+					account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 						Ledger:  ledgerName,
 						Address: address,
 					})
@@ -570,13 +569,13 @@ send $amount (
 		var ledgerName = "numscript-meta-supported"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should resolve a var origin via meta() and send to the resolved account", func() {
 			// Seed the routing account's metadata that meta() will read.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.SaveAccountMetadataAction(ledgerName, "routing:orders", map[string]string{
 					"destination": "orders:fulfilled",
 				})))
@@ -593,7 +592,7 @@ send $amount (
   destination = $dest
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 				"amount": "USD/2 5000",
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -615,14 +614,14 @@ send $amount (
 		var ledgerName = "numscript-cm209"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
 			// Fund two accounts so both are balance-checked sources.
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, `send [USD/2 1000] (source = @world destination = @cm209:a)`, nil, nil)))
 			Expect(err).To(Succeed())
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, `send [USD/2 1000] (source = @world destination = @cm209:b)`, nil, nil)))
 			Expect(err).To(Succeed())
 		})
@@ -637,7 +636,7 @@ send [USD/2 300] (
   destination = @cm209:sink
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
@@ -654,10 +653,10 @@ send [USD/2 300] (
 		var ledgerName = "numscript-cm206"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, `send [USD/2 500] (source = @world destination = @cm206:wallet)`, nil, nil)))
 			Expect(err).To(Succeed())
 		})
@@ -670,14 +669,14 @@ send [USD/2 200] (
   destination = @cm206:out
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 			Expect(resp.Logs).To(HaveLen(1))
 
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "cm206:wallet",
 				})

@@ -5,9 +5,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Markers used when redacting secrets in structured (--json / --yaml /
@@ -111,12 +111,12 @@ func redactSinkConfig(cfg *commonpb.SinkConfig) *commonpb.SinkConfig {
 // redactGetEventsSinksResponse returns a deep clone of resp with every sink
 // config redacted. Sink statuses are cloned but otherwise untouched (they do
 // not carry secrets).
-func redactGetEventsSinksResponse(resp *servicepb.GetEventsSinksResponse) *servicepb.GetEventsSinksResponse {
+func redactGetEventsSinksResponse(resp *commonpb.GetEventsSinksResponse) *commonpb.GetEventsSinksResponse {
 	if resp == nil {
 		return nil
 	}
 
-	cloned, _ := proto.Clone(resp).(*servicepb.GetEventsSinksResponse)
+	cloned, _ := proto.Clone(resp).(*commonpb.GetEventsSinksResponse)
 	for _, s := range cloned.GetSinks() {
 		redactSinkConfigInPlace(s)
 	}

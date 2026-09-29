@@ -8,8 +8,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ExtractGRPCErrorInfo extracts the ErrorInfo detail from a gRPC error.
@@ -28,10 +27,10 @@ func ExtractGRPCErrorInfo(err error) *errdetails.ErrorInfo {
 }
 
 // CreateLedgerAction creates an action for creating a new ledger.
-func CreateLedgerAction(name string, _ map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
+func CreateLedgerAction(name string, _ map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{
 				Name: name,
 			},
 		},
@@ -39,10 +38,10 @@ func CreateLedgerAction(name string, _ map[string]string) *servicepb.Request {
 }
 
 // DeleteLedgerAction creates an action for deleting a ledger.
-func DeleteLedgerAction(ledgerName string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedger{
-			DeleteLedger: &servicepb.DeleteLedgerRequest{
+func DeleteLedgerAction(ledgerName string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DeleteLedger{
+			DeleteLedger: &commonpb.DeleteLedgerRequest{
 				Name: ledgerName,
 			},
 		},
@@ -50,13 +49,13 @@ func DeleteLedgerAction(ledgerName string) *servicepb.Request {
 }
 
 // CreateTransactionAction creates an action for creating a transaction.
-func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.MetadataMap) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string, accountMetadata map[string]*commonpb.MetadataMap) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings:        postings,
 						Metadata:        commonpb.MetadataFromGoMap(metadata),
 						AccountMetadata: accountMetadata,
@@ -68,13 +67,13 @@ func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 }
 
 // CreateForceTransactionAction creates an action for creating a transaction with force=true (bypasses balance checks).
-func CreateForceTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func CreateForceTransactionAction(ledgerName string, postings []*commonpb.Posting, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: postings,
 						Metadata: commonpb.MetadataFromGoMap(metadata),
 						Force:    true,
@@ -86,13 +85,13 @@ func CreateForceTransactionAction(ledgerName string, postings []*commonpb.Postin
 }
 
 // CreateForceScriptTransactionAction creates an action for creating a transaction using Numscript with force=true.
-func CreateForceScriptTransactionAction(ledgerName string, script string, vars map[string]string, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func CreateForceScriptTransactionAction(ledgerName string, script string, vars map[string]string, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: script,
 							Vars:  vars,
@@ -107,13 +106,13 @@ func CreateForceScriptTransactionAction(ledgerName string, script string, vars m
 }
 
 // CreateScriptTransactionAction creates an action for creating a transaction using Numscript.
-func CreateScriptTransactionAction(ledgerName string, script string, vars map[string]string, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func CreateScriptTransactionAction(ledgerName string, script string, vars map[string]string, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Script: &commonpb.Script{
 							Plain: script,
 							Vars:  vars,
@@ -127,10 +126,10 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 }
 
 // AddAccountTypeAction creates an action for adding an account type to a ledger.
-func AddAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_AddAccountType{
-			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+func AddAccountTypeAction(ledgerName, name, pattern string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_AddAccountType{
+			AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				AccountType: &commonpb.AccountType{
 					Name:    name,
@@ -143,15 +142,15 @@ func AddAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
 
 // AddEphemeralAccountTypeAction creates an action for adding an ephemeral account type to a ledger.
 // Ephemeral accounts have their volumes purged when input == output (zero balance).
-func AddEphemeralAccountTypeAction(ledgerName, name, pattern string) *servicepb.Request {
+func AddEphemeralAccountTypeAction(ledgerName, name, pattern string) *commonpb.Request {
 	return AddAccountTypeWithPersistenceAction(ledgerName, name, pattern, commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL)
 }
 
 // AddAccountTypeWithPersistenceAction creates an action for adding an account type with a specific persistence mode.
-func AddAccountTypeWithPersistenceAction(ledgerName, name, pattern string, persistence commonpb.AccountTypePersistence) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_AddAccountType{
-			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+func AddAccountTypeWithPersistenceAction(ledgerName, name, pattern string, persistence commonpb.AccountTypePersistence) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_AddAccountType{
+			AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				AccountType: &commonpb.AccountType{
 					Name:        name,
@@ -164,10 +163,10 @@ func AddAccountTypeWithPersistenceAction(ledgerName, name, pattern string, persi
 }
 
 // RemoveAccountTypeAction creates an action for removing an account type.
-func RemoveAccountTypeAction(ledgerName, name string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_RemoveAccountType{
-			RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+func RemoveAccountTypeAction(ledgerName, name string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_RemoveAccountType{
+			RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{
 				Ledger: ledgerName,
 				Name:   name,
 			},
@@ -176,12 +175,12 @@ func RemoveAccountTypeAction(ledgerName, name string) *servicepb.Request {
 }
 
 // SaveAccountMetadataAction creates an action for saving account metadata.
-func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -197,12 +196,12 @@ func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 }
 
 // DeleteAccountMetadataAction creates an action for deleting account metadata.
-func DeleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func DeleteAccountMetadataAction(ledgerName, address, key string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -218,12 +217,12 @@ func DeleteAccountMetadataAction(ledgerName, address, key string) *servicepb.Req
 }
 
 // SaveTransactionMetadataAction creates an action for saving transaction metadata.
-func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
@@ -237,12 +236,12 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 }
 
 // DeleteTransactionMetadataAction creates an action for deleting transaction metadata.
-func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, key string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, key string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_DeleteMetadata{
 					DeleteMetadata: &commonpb.DeleteMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
@@ -256,10 +255,10 @@ func DeleteTransactionMetadataAction(ledgerName string, transactionID uint64, ke
 }
 
 // SaveLedgerMetadataAction creates an action for saving ledger metadata.
-func SaveLedgerMetadataAction(ledgerName string, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SaveLedgerMetadata{
-			SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{
+func SaveLedgerMetadataAction(ledgerName string, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_SaveLedgerMetadata{
+			SaveLedgerMetadata: &commonpb.SaveLedgerMetadataRequest{
 				Ledger:   ledgerName,
 				Metadata: commonpb.MetadataFromGoMap(metadata),
 			},
@@ -268,10 +267,10 @@ func SaveLedgerMetadataAction(ledgerName string, metadata map[string]string) *se
 }
 
 // DeleteLedgerMetadataAction creates an action for deleting a ledger metadata key.
-func DeleteLedgerMetadataAction(ledgerName, key string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedgerMetadata{
-			DeleteLedgerMetadata: &servicepb.DeleteLedgerMetadataRequest{
+func DeleteLedgerMetadataAction(ledgerName, key string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DeleteLedgerMetadata{
+			DeleteLedgerMetadata: &commonpb.DeleteLedgerMetadataRequest{
 				Ledger: ledgerName,
 				Key:    key,
 			},
@@ -280,13 +279,13 @@ func DeleteLedgerMetadataAction(ledgerName, key string) *servicepb.Request {
 }
 
 // RevertTransactionAction creates an action for reverting a transaction.
-func RevertTransactionAction(ledgerName string, transactionID uint64, force, atEffectiveDate bool, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func RevertTransactionAction(ledgerName string, transactionID uint64, force, atEffectiveDate bool, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{
-					RevertTransaction: &servicepb.RevertTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RevertTransaction{
+					RevertTransaction: &commonpb.RevertTransactionPayload{
 						TransactionId:   transactionID,
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
@@ -299,9 +298,9 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 }
 
 // WithTimestamp sets the timestamp on a create transaction request.
-func WithTimestamp(req *servicepb.Request, t time.Time) *servicepb.Request {
-	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
-		if d, ok := reqType.Apply.GetAction().GetData().(*servicepb.LedgerAction_CreateTransaction); ok {
+func WithTimestamp(req *commonpb.Request, t time.Time) *commonpb.Request {
+	if reqType, ok := req.GetType().(*commonpb.Request_Apply); ok {
+		if d, ok := reqType.Apply.GetAction().GetData().(*commonpb.LedgerAction_CreateTransaction); ok {
 			d.CreateTransaction.Timestamp = &commonpb.Timestamp{Data: uint64(t.UnixMicro())}
 		}
 	}
@@ -320,10 +319,10 @@ func NewColoredPosting(source, destination string, amount *big.Int, asset, color
 }
 
 // RegisterSigningKeyAction creates a RegisterSigningKey request.
-func RegisterSigningKeyAction(keyID string, pubKey ed25519.PublicKey) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_RegisterSigningKey{
-			RegisterSigningKey: &servicepb.RegisterSigningKeyRequest{
+func RegisterSigningKeyAction(keyID string, pubKey ed25519.PublicKey) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_RegisterSigningKey{
+			RegisterSigningKey: &commonpb.RegisterSigningKeyRequest{
 				KeyId:     keyID,
 				PublicKey: []byte(pubKey),
 			},
@@ -332,10 +331,10 @@ func RegisterSigningKeyAction(keyID string, pubKey ed25519.PublicKey) *servicepb
 }
 
 // RevokeSigningKeyAction creates a RevokeSigningKey request.
-func RevokeSigningKeyAction(keyID string, cascade bool) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_RevokeSigningKey{
-			RevokeSigningKey: &servicepb.RevokeSigningKeyRequest{
+func RevokeSigningKeyAction(keyID string, cascade bool) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_RevokeSigningKey{
+			RevokeSigningKey: &commonpb.RevokeSigningKeyRequest{
 				KeyId:   keyID,
 				Cascade: cascade,
 			},
@@ -344,10 +343,10 @@ func RevokeSigningKeyAction(keyID string, cascade bool) *servicepb.Request {
 }
 
 // SetSigningConfigAction creates a SetSigningConfig request.
-func SetSigningConfigAction(requireSignatures bool) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SetSigningConfig{
-			SetSigningConfig: &servicepb.SetSigningConfigRequest{
+func SetSigningConfigAction(requireSignatures bool) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_SetSigningConfig{
+			SetSigningConfig: &commonpb.SetSigningConfigRequest{
 				RequireSignatures: requireSignatures,
 			},
 		},
@@ -375,10 +374,10 @@ func FindMetadataValue(m map[string]*commonpb.MetadataValue, key string) *common
 }
 
 // SetMaintenanceModeAction creates a request to enable or disable maintenance mode.
-func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SetMaintenanceMode{
-			SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+func SetMaintenanceModeAction(enabled bool) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_SetMaintenanceMode{
+			SetMaintenanceMode: &commonpb.SetMaintenanceModeRequest{
 				Enabled: enabled,
 			},
 		},
@@ -386,10 +385,10 @@ func SetMaintenanceModeAction(enabled bool) *servicepb.Request {
 }
 
 // SetMetadataFieldTypeAction creates a request to declare a metadata field type.
-func SetMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SetMetadataFieldType{
-			SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+func SetMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, key string, metadataType commonpb.MetadataType) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_SetMetadataFieldType{
+			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
 				Ledger:     ledger,
 				TargetType: targetType,
 				Key:        key,
@@ -400,10 +399,10 @@ func SetMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, k
 }
 
 // RemoveMetadataFieldTypeAction creates a request to remove a metadata field type declaration.
-func RemoveMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, key string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_RemoveMetadataFieldType{
-			RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+func RemoveMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType, key string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_RemoveMetadataFieldType{
+			RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
 				Ledger:     ledger,
 				TargetType: targetType,
 				Key:        key,
@@ -413,10 +412,10 @@ func RemoveMetadataFieldTypeAction(ledger string, targetType commonpb.TargetType
 }
 
 // CreateLedgerWithSchemaAction creates a ledger with an initial metadata schema.
-func CreateLedgerWithSchemaAction(name string, _ map[string]string, schema []*commonpb.SetMetadataFieldTypeCommand) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
+func CreateLedgerWithSchemaAction(name string, _ map[string]string, schema []*commonpb.SetMetadataFieldTypeCommand) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{
 				Name:          name,
 				InitialSchema: schema,
 			},
@@ -426,10 +425,10 @@ func CreateLedgerWithSchemaAction(name string, _ map[string]string, schema []*co
 
 // CreateLedgerWithAccountTypesAction creates a ledger with account types declared
 // at creation time (CreateLedgerRequest.account_types).
-func CreateLedgerWithAccountTypesAction(name string, accountTypes map[string]*commonpb.AccountType) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
+func CreateLedgerWithAccountTypesAction(name string, accountTypes map[string]*commonpb.AccountType) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{
 				Name:         name,
 				AccountTypes: accountTypes,
 			},
@@ -438,12 +437,12 @@ func CreateLedgerWithAccountTypesAction(name string, accountTypes map[string]*co
 }
 
 // SaveTypedAccountMetadataAction creates a request with a typed metadata map (not map[string]string).
-func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[string]*commonpb.MetadataValue) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[string]*commonpb.MetadataValue) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_Account{
@@ -459,12 +458,12 @@ func SaveTypedAccountMetadataAction(ledgerName, address string, metadata map[str
 }
 
 // SaveTypedTransactionMetadataAction creates a request with a typed metadata map (not map[string]string).
-func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata map[string]*commonpb.MetadataValue) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata map[string]*commonpb.MetadataValue) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddMetadata{
 					AddMetadata: &commonpb.SaveMetadataCommand{
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_TransactionId{TransactionId: txID},
@@ -478,10 +477,10 @@ func SaveTypedTransactionMetadataAction(ledgerName string, txID uint64, metadata
 }
 
 // SaveNumscriptWithVersionAction creates an action for saving a numscript with a specific version.
-func SaveNumscriptWithVersionAction(ledger, name, content, version string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_SaveNumscript{
-			SaveNumscript: &servicepb.SaveNumscriptRequest{
+func SaveNumscriptWithVersionAction(ledger, name, content, version string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_SaveNumscript{
+			SaveNumscript: &commonpb.SaveNumscriptRequest{
 				Ledger:  ledger,
 				Name:    name,
 				Content: content,
@@ -494,14 +493,14 @@ func SaveNumscriptWithVersionAction(ledger, name, content, version string) *serv
 // CreateScriptRefTransactionAction creates a transaction using a script reference
 // from the library. version is required: the literal "latest" or an exact full
 // semver.
-func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, vars map[string]string, metadata map[string]string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, vars map[string]string, metadata map[string]string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
-						ScriptReference: &servicepb.ScriptReference{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
+						ScriptReference: &commonpb.ScriptReference{
 							Name:    scriptName,
 							Version: version,
 							Vars:    vars,
@@ -515,10 +514,10 @@ func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, va
 }
 
 // CreateBuiltinTxIndexAction creates an action for creating a builtin transaction index.
-func CreateBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIndex) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
+func CreateBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIndex) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateIndex{
+			CreateIndex: &commonpb.CreateIndexRequest{
 				Ledger: ledger,
 				Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: idx}},
 			},
@@ -527,10 +526,10 @@ func CreateBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIn
 }
 
 // DropBuiltinTxIndexAction creates an action for dropping a builtin transaction index.
-func DropBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIndex) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DropIndex{
-			DropIndex: &servicepb.DropIndexRequest{
+func DropBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinIndex) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DropIndex{
+			DropIndex: &commonpb.DropIndexRequest{
 				Ledger: ledger,
 				Id:     &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{TxBuiltin: idx}},
 			},
@@ -539,10 +538,10 @@ func DropBuiltinTxIndexAction(ledger string, idx commonpb.TransactionBuiltinInde
 }
 
 // CreateAccountMetadataIndexAction creates an action for creating an account metadata index.
-func CreateAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
+func CreateAccountMetadataIndexAction(ledger, metadataKey string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateIndex{
+			CreateIndex: &commonpb.CreateIndexRequest{
 				Ledger: ledger,
 				Id:     metadataIndexID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadataKey),
 			},
@@ -551,10 +550,10 @@ func CreateAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Req
 }
 
 // DropAccountMetadataIndexAction creates an action for dropping an account metadata index.
-func DropAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DropIndex{
-			DropIndex: &servicepb.DropIndexRequest{
+func DropAccountMetadataIndexAction(ledger, metadataKey string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DropIndex{
+			DropIndex: &commonpb.DropIndexRequest{
 				Ledger: ledger,
 				Id:     metadataIndexID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, metadataKey),
 			},
@@ -563,10 +562,10 @@ func DropAccountMetadataIndexAction(ledger, metadataKey string) *servicepb.Reque
 }
 
 // CreateTransactionMetadataIndexAction creates an action for creating a transaction metadata index.
-func CreateTransactionMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateIndex{
-			CreateIndex: &servicepb.CreateIndexRequest{
+func CreateTransactionMetadataIndexAction(ledger, metadataKey string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateIndex{
+			CreateIndex: &commonpb.CreateIndexRequest{
 				Ledger: ledger,
 				Id:     metadataIndexID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadataKey),
 			},
@@ -575,10 +574,10 @@ func CreateTransactionMetadataIndexAction(ledger, metadataKey string) *servicepb
 }
 
 // DropTransactionMetadataIndexAction creates an action for dropping a transaction metadata index.
-func DropTransactionMetadataIndexAction(ledger, metadataKey string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DropIndex{
-			DropIndex: &servicepb.DropIndexRequest{
+func DropTransactionMetadataIndexAction(ledger, metadataKey string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DropIndex{
+			DropIndex: &commonpb.DropIndexRequest{
 				Ledger: ledger,
 				Id:     metadataIndexID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, metadataKey),
 			},
@@ -594,10 +593,10 @@ func metadataIndexID(target commonpb.TargetType, key string) *commonpb.IndexID {
 }
 
 // CreatePreparedQueryAction creates an action for creating a prepared query.
-func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreatePreparedQuery{
-			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 				Ledger: ledger,
 				Query: &commonpb.PreparedQuery{
 					Name:   name,
@@ -610,10 +609,10 @@ func CreatePreparedQueryAction(name, ledger string, target commonpb.QueryTarget,
 }
 
 // UpdatePreparedQueryAction creates an action for updating a prepared query's filter.
-func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_UpdatePreparedQuery{
-			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
 				Ledger: ledger,
 				Name:   name,
 				Filter: filter,
@@ -623,10 +622,10 @@ func UpdatePreparedQueryAction(ledger, name string, filter *commonpb.QueryFilter
 }
 
 // DeletePreparedQueryAction creates an action for removing a prepared query.
-func DeletePreparedQueryAction(ledger, name string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeletePreparedQuery{
-			DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+func DeletePreparedQueryAction(ledger, name string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DeletePreparedQuery{
+			DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 				Ledger: ledger,
 				Name:   name,
 			},
@@ -642,19 +641,19 @@ func DeletePreparedQueryAction(ledger, name string) *servicepb.Request {
 // the checkpoint; it makes no current readiness/existence guarantee. With skip_response,
 // only the leader is guaranteed ready; a forwarding follower skips its local
 // wait because the leader has already stripped the checkpoint ID.
-func CreateQueryCheckpointAction() *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreateQueryCheckpoint{
-			CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+func CreateQueryCheckpointAction() *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreateQueryCheckpoint{
+			CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
 		},
 	}
 }
 
 // DeleteQueryCheckpointAction creates an action for removing a query checkpoint.
-func DeleteQueryCheckpointAction(checkpointID uint64) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeleteQueryCheckpoint{
-			DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{
+func DeleteQueryCheckpointAction(checkpointID uint64) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DeleteQueryCheckpoint{
+			DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{
 				CheckpointId: checkpointID,
 			},
 		},
@@ -662,9 +661,9 @@ func DeleteQueryCheckpointAction(checkpointID uint64) *servicepb.Request {
 }
 
 // WithReference sets the reference on a create transaction request.
-func WithReference(req *servicepb.Request, reference string) *servicepb.Request {
-	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
-		if d, ok := reqType.Apply.GetAction().GetData().(*servicepb.LedgerAction_CreateTransaction); ok {
+func WithReference(req *commonpb.Request, reference string) *commonpb.Request {
+	if reqType, ok := req.GetType().(*commonpb.Request_Apply); ok {
+		if d, ok := reqType.Apply.GetAction().GetData().(*commonpb.LedgerAction_CreateTransaction); ok {
 			d.CreateTransaction.Reference = reference
 		}
 	}
@@ -676,8 +675,8 @@ func WithReference(req *servicepb.Request, reference string) *servicepb.Request 
 // Apply request. Each reason is a business-level error the caller accepts to
 // see converted into an OrderSkippedLog instead of failing the proposal.
 // Validated at admission against a per-action whitelist.
-func WithSkippableReasons(req *servicepb.Request, reasons ...commonpb.ErrorReason) *servicepb.Request {
-	if reqType, ok := req.GetType().(*servicepb.Request_Apply); ok {
+func WithSkippableReasons(req *commonpb.Request, reasons ...commonpb.ErrorReason) *commonpb.Request {
+	if reqType, ok := req.GetType().(*commonpb.Request_Apply); ok {
 		reqType.Apply.SkippableReasons = reasons
 	}
 
@@ -686,13 +685,13 @@ func WithSkippableReasons(req *servicepb.Request, reasons ...commonpb.ErrorReaso
 
 // WithIdempotencyKey wraps requests into an unsigned ApplyRequest under the
 // given idempotency key — idempotency is keyed per atomic batch.
-func WithIdempotencyKey(key string, reqs ...*servicepb.Request) *servicepb.ApplyRequest {
-	return servicepb.UnsignedApplyRequest(key, reqs...)
+func WithIdempotencyKey(key string, reqs ...*commonpb.Request) *commonpb.ApplyRequest {
+	return commonpb.UnsignedApplyRequest(key, reqs...)
 }
 
 // GetCreatedTransactionID extracts the first created transaction ID from an ApplyResponse.
 // Returns (id, true) on success or (0, false) if no transaction was found.
-func GetCreatedTransactionID(resp *servicepb.ApplyResponse) (uint64, bool) {
+func GetCreatedTransactionID(resp *commonpb.ApplyResponse) (uint64, bool) {
 	if len(resp.GetLogs()) == 0 {
 		return 0, false
 	}
@@ -713,7 +712,7 @@ func GetCreatedTransactionID(resp *servicepb.ApplyResponse) (uint64, bool) {
 // always the last action of a batch, but the log carrying it is located by
 // payload type rather than by position. Returns (0, 0, false) when the batch
 // created no checkpoint, including when the caller set skip_response.
-func GetCreatedQueryCheckpoint(resp *servicepb.ApplyResponse) (checkpointID, maxSequence uint64, ok bool) {
+func GetCreatedQueryCheckpoint(resp *commonpb.ApplyResponse) (checkpointID, maxSequence uint64, ok bool) {
 	for _, entry := range resp.GetLogs() {
 		cp := entry.GetPayload().GetCreatedQueryCheckpoint()
 		if cp == nil {
@@ -727,7 +726,7 @@ func GetCreatedQueryCheckpoint(resp *servicepb.ApplyResponse) (checkpointID, max
 }
 
 // GetAllCreatedTransactionIDs extracts all created transaction IDs from a batched ApplyResponse.
-func GetAllCreatedTransactionIDs(resp *servicepb.ApplyResponse) []uint64 {
+func GetAllCreatedTransactionIDs(resp *commonpb.ApplyResponse) []uint64 {
 	var ids []uint64
 	for _, entry := range resp.GetLogs() {
 		applyLog := entry.GetPayload().GetApply()

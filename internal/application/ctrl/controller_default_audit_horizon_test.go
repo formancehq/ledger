@@ -10,11 +10,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -49,10 +48,10 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	require.NoError(t, indexBatch.SetBytes(readstore.AuditIndexStringKey(kb, readstore.AuditFieldLedger, "main", 2), nil))
 	require.NoError(t, indexBatch.Commit())
 
-	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
-		Field: commonpb.AuditField_AUDIT_FIELD_LEDGER,
-		Condition: &commonpb.AuditCondition_StringCond{StringCond: &commonpb.StringCondition{
-			Value: &commonpb.StringCondition_Hardcoded{Hardcoded: "main"},
+	filter := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Audit{Audit: &auditpb.AuditCondition{
+		Field: auditpb.AuditField_AUDIT_FIELD_LEDGER,
+		Condition: &auditpb.AuditCondition_StringCond{StringCond: &auditpb.StringCondition{
+			Value: &auditpb.StringCondition_Hardcoded{Hardcoded: "main"},
 		}},
 	}}}
 	ctrl := NewDefaultController(nil, store, logger, attributes.New(), rs, nil, meter)
@@ -65,6 +64,6 @@ func TestListAuditEntriesTrimsProjectionAheadOfMainSnapshot(t *testing.T) {
 	require.Len(t, entries, 1, "audit candidates beyond the main-store audit head must be trimmed before materialization")
 	require.Equal(t, uint64(1), entries[0].GetSequence())
 
-	_, err = ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, &commonpb.QueryFilter{}, false)
+	_, err = ctrl.ListAuditEntriesFrom(context.Background(), store, rs, 10, 0, &auditpb.QueryFilter{}, false)
 	require.Equal(t, codes.InvalidArgument, status.Code(err), "a malformed filter must fail in audit-filter compilation")
 }

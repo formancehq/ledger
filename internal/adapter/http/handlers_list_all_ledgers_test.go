@@ -9,8 +9,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleListAllLedgers_Success(t *testing.T) {
@@ -58,7 +60,7 @@ func TestHandleListAllLedgers_BackendError(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListLedgers(gomock.Any()).DoAndReturn(
 		func(_ context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
-			return nil, commonpb.ErrNoLeader
+			return nil, protoerr.ErrNoLeader
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

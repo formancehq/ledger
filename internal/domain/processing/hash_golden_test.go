@@ -8,7 +8,7 @@ import (
 	"github.com/zeebo/blake3"
 	"github.com/zeebo/xxh3"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // Golden tests pin the entire audit-hash specification against an

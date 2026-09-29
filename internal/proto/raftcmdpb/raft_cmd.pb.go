@@ -7,8 +7,8 @@
 package raftcmdpb
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	signaturepb "github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
@@ -822,8 +822,8 @@ func (*SystemScopedOrder_DeleteQueryCheckpointSchedule) isSystemScopedOrder_Payl
 func (*SystemScopedOrder_SetClusterPolicy) isSystemScopedOrder_Payload() {}
 
 type CreatePreparedQueryOrder struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Query         *commonpb.PreparedQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Query         *grpc.PreparedQuery    `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -858,7 +858,7 @@ func (*CreatePreparedQueryOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{4}
 }
 
-func (x *CreatePreparedQueryOrder) GetQuery() *commonpb.PreparedQuery {
+func (x *CreatePreparedQueryOrder) GetQuery() *grpc.PreparedQuery {
 	if x != nil {
 		return x.Query
 	}
@@ -868,7 +868,7 @@ func (x *CreatePreparedQueryOrder) GetQuery() *commonpb.PreparedQuery {
 type UpdatePreparedQueryOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Filter        *commonpb.QueryFilter  `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	Filter        *grpc.QueryFilter      `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -910,7 +910,7 @@ func (x *UpdatePreparedQueryOrder) GetName() string {
 	return ""
 }
 
-func (x *UpdatePreparedQueryOrder) GetFilter() *commonpb.QueryFilter {
+func (x *UpdatePreparedQueryOrder) GetFilter() *grpc.QueryFilter {
 	if x != nil {
 		return x.Filter
 	}
@@ -963,7 +963,7 @@ func (x *DeletePreparedQueryOrder) GetName() string {
 
 type AddEventsSinkOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Config        *commonpb.SinkConfig   `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
+	Config        *grpc.SinkConfig       `protobuf:"bytes,1,opt,name=config,proto3" json:"config,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -998,7 +998,7 @@ func (*AddEventsSinkOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{7}
 }
 
-func (x *AddEventsSinkOrder) GetConfig() *commonpb.SinkConfig {
+func (x *AddEventsSinkOrder) GetConfig() *grpc.SinkConfig {
 	if x != nil {
 		return x.Config
 	}
@@ -1261,8 +1261,8 @@ func (x *SetMaintenanceModeOrder) GetEnabled() bool {
 // SetClusterPolicyOrder updates the Raft-replicated cluster policy. The FSM
 // validates the revision before applying (see ClusterPolicy.revision).
 type SetClusterPolicyOrder struct {
-	state         protoimpl.MessageState  `protogen:"open.v1"`
-	Policy        *commonpb.ClusterPolicy `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Policy        *grpc.ClusterPolicy    `protobuf:"bytes,1,opt,name=policy,proto3" json:"policy,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1297,7 +1297,7 @@ func (*SetClusterPolicyOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{13}
 }
 
-func (x *SetClusterPolicyOrder) GetPolicy() *commonpb.ClusterPolicy {
+func (x *SetClusterPolicyOrder) GetPolicy() *grpc.ClusterPolicy {
 	if x != nil {
 		return x.Policy
 	}
@@ -1458,7 +1458,7 @@ type QueryCheckpointState struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	CheckpointId       uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
 	MaxSequence        uint64                 `protobuf:"fixed64,2,opt,name=max_sequence,json=maxSequence,proto3" json:"max_sequence,omitempty"`                       // next_sequence - 1 at creation
-	CreatedAt          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                               // Creation timestamp (from proposal date)
+	CreatedAt          *grpc.Timestamp        `protobuf:"bytes,3,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                               // Creation timestamp (from proposal date)
 	AppliedIndex       uint64                 `protobuf:"fixed64,4,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`                    // Raft horizon of the checkpoint snapshot
 	RestoredFromBackup bool                   `protobuf:"varint,5,opt,name=restored_from_backup,json=restoredFromBackup,proto3" json:"restored_from_backup,omitempty"` // Technical provenance: physical checkpoint files were not restored
 	unknownFields      protoimpl.UnknownFields
@@ -1509,7 +1509,7 @@ func (x *QueryCheckpointState) GetMaxSequence() uint64 {
 	return 0
 }
 
-func (x *QueryCheckpointState) GetCreatedAt() *commonpb.Timestamp {
+func (x *QueryCheckpointState) GetCreatedAt() *grpc.Timestamp {
 	if x != nil {
 		return x.CreatedAt
 	}
@@ -1611,12 +1611,12 @@ func (*DeleteQueryCheckpointScheduleOrder) Descriptor() ([]byte, []int) {
 }
 
 type CreateLedgerOrder struct {
-	state                  protoimpl.MessageState                  `protogen:"open.v1"`
-	InitialSchema          []*commonpb.SetMetadataFieldTypeCommand `protobuf:"bytes,1,rep,name=initial_schema,json=initialSchema,proto3" json:"initial_schema,omitempty"`
-	Mode                   commonpb.LedgerMode                     `protobuf:"varint,2,opt,name=mode,proto3,enum=common.LedgerMode" json:"mode,omitempty"`
-	MirrorSource           *commonpb.MirrorSourceConfig            `protobuf:"bytes,3,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
-	AccountTypes           map[string]*commonpb.AccountType        `protobuf:"bytes,4,rep,name=account_types,json=accountTypes,proto3" json:"account_types,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Initial account types
-	DefaultEnforcementMode commonpb.ChartEnforcementMode           `protobuf:"varint,5,opt,name=default_enforcement_mode,json=defaultEnforcementMode,proto3,enum=common.ChartEnforcementMode" json:"default_enforcement_mode,omitempty"`         // Default enforcement for unmatched accounts
+	state                  protoimpl.MessageState              `protogen:"open.v1"`
+	InitialSchema          []*grpc.SetMetadataFieldTypeCommand `protobuf:"bytes,1,rep,name=initial_schema,json=initialSchema,proto3" json:"initial_schema,omitempty"`
+	Mode                   grpc.LedgerMode                     `protobuf:"varint,2,opt,name=mode,proto3,enum=common.LedgerMode" json:"mode,omitempty"`
+	MirrorSource           *grpc.MirrorSourceConfig            `protobuf:"bytes,3,opt,name=mirror_source,json=mirrorSource,proto3" json:"mirror_source,omitempty"`
+	AccountTypes           map[string]*grpc.AccountType        `protobuf:"bytes,4,rep,name=account_types,json=accountTypes,proto3" json:"account_types,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Initial account types
+	DefaultEnforcementMode grpc.ChartEnforcementMode           `protobuf:"varint,5,opt,name=default_enforcement_mode,json=defaultEnforcementMode,proto3,enum=common.ChartEnforcementMode" json:"default_enforcement_mode,omitempty"`         // Default enforcement for unmatched accounts
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -1651,39 +1651,39 @@ func (*CreateLedgerOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *CreateLedgerOrder) GetInitialSchema() []*commonpb.SetMetadataFieldTypeCommand {
+func (x *CreateLedgerOrder) GetInitialSchema() []*grpc.SetMetadataFieldTypeCommand {
 	if x != nil {
 		return x.InitialSchema
 	}
 	return nil
 }
 
-func (x *CreateLedgerOrder) GetMode() commonpb.LedgerMode {
+func (x *CreateLedgerOrder) GetMode() grpc.LedgerMode {
 	if x != nil {
 		return x.Mode
 	}
-	return commonpb.LedgerMode(0)
+	return grpc.LedgerMode(0)
 }
 
-func (x *CreateLedgerOrder) GetMirrorSource() *commonpb.MirrorSourceConfig {
+func (x *CreateLedgerOrder) GetMirrorSource() *grpc.MirrorSourceConfig {
 	if x != nil {
 		return x.MirrorSource
 	}
 	return nil
 }
 
-func (x *CreateLedgerOrder) GetAccountTypes() map[string]*commonpb.AccountType {
+func (x *CreateLedgerOrder) GetAccountTypes() map[string]*grpc.AccountType {
 	if x != nil {
 		return x.AccountTypes
 	}
 	return nil
 }
 
-func (x *CreateLedgerOrder) GetDefaultEnforcementMode() commonpb.ChartEnforcementMode {
+func (x *CreateLedgerOrder) GetDefaultEnforcementMode() grpc.ChartEnforcementMode {
 	if x != nil {
 		return x.DefaultEnforcementMode
 	}
-	return commonpb.ChartEnforcementMode(0)
+	return grpc.ChartEnforcementMode(0)
 }
 
 type MirrorIngestOrder struct {
@@ -1733,7 +1733,7 @@ func (x *MirrorIngestOrder) GetEntry() *MirrorLogEntry {
 type MirrorLogEntry struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	V2LogId uint64                 `protobuf:"fixed64,1,opt,name=v2_log_id,json=v2LogId,proto3" json:"v2_log_id,omitempty"`
-	Date    *commonpb.Timestamp    `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
+	Date    *grpc.Timestamp        `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
 	// Types that are valid to be assigned to Data:
 	//
 	//	*MirrorLogEntry_CreatedTransaction
@@ -1783,7 +1783,7 @@ func (x *MirrorLogEntry) GetV2LogId() uint64 {
 	return 0
 }
 
-func (x *MirrorLogEntry) GetDate() *commonpb.Timestamp {
+func (x *MirrorLogEntry) GetDate() *grpc.Timestamp {
 	if x != nil {
 		return x.Date
 	}
@@ -1921,13 +1921,13 @@ func (x *MirrorFillGap) GetSkippedTransactionIds() []uint64 {
 }
 
 type MirrorCreatedTransaction struct {
-	state           protoimpl.MessageState             `protogen:"open.v1"`
-	TransactionId   uint64                             `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
-	Postings        []*commonpb.Posting                `protobuf:"bytes,2,rep,name=postings,proto3" json:"postings,omitempty"`
-	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Timestamp       *commonpb.Timestamp                `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference       string                             `protobuf:"bytes,5,opt,name=reference,proto3" json:"reference,omitempty"`
-	AccountMetadata map[string]*commonpb.MetadataMap   `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState         `protogen:"open.v1"`
+	TransactionId   uint64                         `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	Postings        []*grpc.Posting                `protobuf:"bytes,2,rep,name=postings,proto3" json:"postings,omitempty"`
+	Metadata        map[string]*grpc.MetadataValue `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp       *grpc.Timestamp                `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference       string                         `protobuf:"bytes,5,opt,name=reference,proto3" json:"reference,omitempty"`
+	AccountMetadata map[string]*grpc.MetadataMap   `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -1969,21 +1969,21 @@ func (x *MirrorCreatedTransaction) GetTransactionId() uint64 {
 	return 0
 }
 
-func (x *MirrorCreatedTransaction) GetPostings() []*commonpb.Posting {
+func (x *MirrorCreatedTransaction) GetPostings() []*grpc.Posting {
 	if x != nil {
 		return x.Postings
 	}
 	return nil
 }
 
-func (x *MirrorCreatedTransaction) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *MirrorCreatedTransaction) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (x *MirrorCreatedTransaction) GetTimestamp() *commonpb.Timestamp {
+func (x *MirrorCreatedTransaction) GetTimestamp() *grpc.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -1997,7 +1997,7 @@ func (x *MirrorCreatedTransaction) GetReference() string {
 	return ""
 }
 
-func (x *MirrorCreatedTransaction) GetAccountMetadata() map[string]*commonpb.MetadataMap {
+func (x *MirrorCreatedTransaction) GetAccountMetadata() map[string]*grpc.MetadataMap {
 	if x != nil {
 		return x.AccountMetadata
 	}
@@ -2005,9 +2005,9 @@ func (x *MirrorCreatedTransaction) GetAccountMetadata() map[string]*commonpb.Met
 }
 
 type MirrorSavedMetadata struct {
-	state         protoimpl.MessageState             `protogen:"open.v1"`
-	Target        *commonpb.Target                   `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
-	Metadata      map[string]*commonpb.MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	Target        *grpc.Target                   `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Metadata      map[string]*grpc.MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2042,14 +2042,14 @@ func (*MirrorSavedMetadata) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{25}
 }
 
-func (x *MirrorSavedMetadata) GetTarget() *commonpb.Target {
+func (x *MirrorSavedMetadata) GetTarget() *grpc.Target {
 	if x != nil {
 		return x.Target
 	}
 	return nil
 }
 
-func (x *MirrorSavedMetadata) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *MirrorSavedMetadata) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
@@ -2057,12 +2057,12 @@ func (x *MirrorSavedMetadata) GetMetadata() map[string]*commonpb.MetadataValue {
 }
 
 type MirrorRevertedTransaction struct {
-	state                 protoimpl.MessageState             `protogen:"open.v1"`
-	RevertedTransactionId uint64                             `protobuf:"fixed64,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
-	NewTransactionId      uint64                             `protobuf:"fixed64,2,opt,name=new_transaction_id,json=newTransactionId,proto3" json:"new_transaction_id,omitempty"`
-	ReversePostings       []*commonpb.Posting                `protobuf:"bytes,3,rep,name=reverse_postings,json=reversePostings,proto3" json:"reverse_postings,omitempty"`
-	Metadata              map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Timestamp             *commonpb.Timestamp                `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	state                 protoimpl.MessageState         `protogen:"open.v1"`
+	RevertedTransactionId uint64                         `protobuf:"fixed64,1,opt,name=reverted_transaction_id,json=revertedTransactionId,proto3" json:"reverted_transaction_id,omitempty"`
+	NewTransactionId      uint64                         `protobuf:"fixed64,2,opt,name=new_transaction_id,json=newTransactionId,proto3" json:"new_transaction_id,omitempty"`
+	ReversePostings       []*grpc.Posting                `protobuf:"bytes,3,rep,name=reverse_postings,json=reversePostings,proto3" json:"reverse_postings,omitempty"`
+	Metadata              map[string]*grpc.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Timestamp             *grpc.Timestamp                `protobuf:"bytes,5,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -2111,21 +2111,21 @@ func (x *MirrorRevertedTransaction) GetNewTransactionId() uint64 {
 	return 0
 }
 
-func (x *MirrorRevertedTransaction) GetReversePostings() []*commonpb.Posting {
+func (x *MirrorRevertedTransaction) GetReversePostings() []*grpc.Posting {
 	if x != nil {
 		return x.ReversePostings
 	}
 	return nil
 }
 
-func (x *MirrorRevertedTransaction) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *MirrorRevertedTransaction) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (x *MirrorRevertedTransaction) GetTimestamp() *commonpb.Timestamp {
+func (x *MirrorRevertedTransaction) GetTimestamp() *grpc.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -2134,7 +2134,7 @@ func (x *MirrorRevertedTransaction) GetTimestamp() *commonpb.Timestamp {
 
 type MirrorDeletedMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Target        *commonpb.Target       `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Target        *grpc.Target           `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
 	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2170,7 +2170,7 @@ func (*MirrorDeletedMetadata) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{27}
 }
 
-func (x *MirrorDeletedMetadata) GetTarget() *commonpb.Target {
+func (x *MirrorDeletedMetadata) GetTarget() *grpc.Target {
 	if x != nil {
 		return x.Target
 	}
@@ -2296,7 +2296,7 @@ type LedgerApplyOrder struct {
 	// variants can be idempotent-skipped today — CreateLedger,
 	// SystemScoped signing key operations, etc.
 	// have no business error that maps to a legitimate skip semantic.
-	SkippableReasons []commonpb.ErrorReason `protobuf:"varint,12,rep,packed,name=skippable_reasons,json=skippableReasons,proto3,enum=common.ErrorReason" json:"skippable_reasons,omitempty"`
+	SkippableReasons []grpc.ErrorReason `protobuf:"varint,12,rep,packed,name=skippable_reasons,json=skippableReasons,proto3,enum=common.ErrorReason" json:"skippable_reasons,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2437,7 +2437,7 @@ func (x *LedgerApplyOrder) GetUpdateDefaultEnforcementMode() *UpdateDefaultEnfor
 	return nil
 }
 
-func (x *LedgerApplyOrder) GetSkippableReasons() []commonpb.ErrorReason {
+func (x *LedgerApplyOrder) GetSkippableReasons() []grpc.ErrorReason {
 	if x != nil {
 		return x.SkippableReasons
 	}
@@ -2517,7 +2517,7 @@ func (*LedgerApplyOrder_UpdateDefaultEnforcementMode) isLedgerApplyOrder_Data() 
 // CreateIndexOrder requests the creation of a new index.
 type CreateIndexOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            *commonpb.IndexID      `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            *grpc.IndexID          `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2552,7 +2552,7 @@ func (*CreateIndexOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{31}
 }
 
-func (x *CreateIndexOrder) GetId() *commonpb.IndexID {
+func (x *CreateIndexOrder) GetId() *grpc.IndexID {
 	if x != nil {
 		return x.Id
 	}
@@ -2562,7 +2562,7 @@ func (x *CreateIndexOrder) GetId() *commonpb.IndexID {
 // DropIndexOrder requests the removal of an index.
 type DropIndexOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            *commonpb.IndexID      `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id            *grpc.IndexID          `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2597,7 +2597,7 @@ func (*DropIndexOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{32}
 }
 
-func (x *DropIndexOrder) GetId() *commonpb.IndexID {
+func (x *DropIndexOrder) GetId() *grpc.IndexID {
 	if x != nil {
 		return x.Id
 	}
@@ -2607,7 +2607,7 @@ func (x *DropIndexOrder) GetId() *commonpb.IndexID {
 // AddAccountTypeOrder adds a new account type to the ledger.
 type AddAccountTypeOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	AccountType   *commonpb.AccountType  `protobuf:"bytes,1,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
+	AccountType   *grpc.AccountType      `protobuf:"bytes,1,opt,name=account_type,json=accountType,proto3" json:"account_type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2642,7 +2642,7 @@ func (*AddAccountTypeOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{33}
 }
 
-func (x *AddAccountTypeOrder) GetAccountType() *commonpb.AccountType {
+func (x *AddAccountTypeOrder) GetAccountType() *grpc.AccountType {
 	if x != nil {
 		return x.AccountType
 	}
@@ -2696,8 +2696,8 @@ func (x *RemoveAccountTypeOrder) GetName() string {
 
 // UpdateDefaultEnforcementModeOrder updates the ledger's default enforcement mode for unmatched accounts.
 type UpdateDefaultEnforcementModeOrder struct {
-	state           protoimpl.MessageState        `protogen:"open.v1"`
-	EnforcementMode commonpb.ChartEnforcementMode `protobuf:"varint,1,opt,name=enforcement_mode,json=enforcementMode,proto3,enum=common.ChartEnforcementMode" json:"enforcement_mode,omitempty"`
+	state           protoimpl.MessageState    `protogen:"open.v1"`
+	EnforcementMode grpc.ChartEnforcementMode `protobuf:"varint,1,opt,name=enforcement_mode,json=enforcementMode,proto3,enum=common.ChartEnforcementMode" json:"enforcement_mode,omitempty"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -2732,19 +2732,19 @@ func (*UpdateDefaultEnforcementModeOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{35}
 }
 
-func (x *UpdateDefaultEnforcementModeOrder) GetEnforcementMode() commonpb.ChartEnforcementMode {
+func (x *UpdateDefaultEnforcementModeOrder) GetEnforcementMode() grpc.ChartEnforcementMode {
 	if x != nil {
 		return x.EnforcementMode
 	}
-	return commonpb.ChartEnforcementMode(0)
+	return grpc.ChartEnforcementMode(0)
 }
 
 // Stored metadata values are immutable; the FSM never rewrites them.
 type SetMetadataFieldTypeOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    commonpb.TargetType    `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	TargetType    grpc.TargetType        `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
 	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Type          commonpb.MetadataType  `protobuf:"varint,3,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
+	Type          grpc.MetadataType      `protobuf:"varint,3,opt,name=type,proto3,enum=common.MetadataType" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2779,11 +2779,11 @@ func (*SetMetadataFieldTypeOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{36}
 }
 
-func (x *SetMetadataFieldTypeOrder) GetTargetType() commonpb.TargetType {
+func (x *SetMetadataFieldTypeOrder) GetTargetType() grpc.TargetType {
 	if x != nil {
 		return x.TargetType
 	}
-	return commonpb.TargetType(0)
+	return grpc.TargetType(0)
 }
 
 func (x *SetMetadataFieldTypeOrder) GetKey() string {
@@ -2793,16 +2793,16 @@ func (x *SetMetadataFieldTypeOrder) GetKey() string {
 	return ""
 }
 
-func (x *SetMetadataFieldTypeOrder) GetType() commonpb.MetadataType {
+func (x *SetMetadataFieldTypeOrder) GetType() grpc.MetadataType {
 	if x != nil {
 		return x.Type
 	}
-	return commonpb.MetadataType(0)
+	return grpc.MetadataType(0)
 }
 
 type RemoveMetadataFieldTypeOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	TargetType    commonpb.TargetType    `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
+	TargetType    grpc.TargetType        `protobuf:"varint,1,opt,name=target_type,json=targetType,proto3,enum=common.TargetType" json:"target_type,omitempty"`
 	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2838,11 +2838,11 @@ func (*RemoveMetadataFieldTypeOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{37}
 }
 
-func (x *RemoveMetadataFieldTypeOrder) GetTargetType() commonpb.TargetType {
+func (x *RemoveMetadataFieldTypeOrder) GetTargetType() grpc.TargetType {
 	if x != nil {
 		return x.TargetType
 	}
-	return commonpb.TargetType(0)
+	return grpc.TargetType(0)
 }
 
 func (x *RemoveMetadataFieldTypeOrder) GetKey() string {
@@ -2853,15 +2853,15 @@ func (x *RemoveMetadataFieldTypeOrder) GetKey() string {
 }
 
 type CreateTransactionOrder struct {
-	state              protoimpl.MessageState             `protogen:"open.v1"`
-	Postings           []*commonpb.Posting                `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
-	Script             *commonpb.Script                   `protobuf:"bytes,2,opt,name=script,proto3" json:"script,omitempty"`
-	Timestamp          *commonpb.Timestamp                `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
-	Reference          string                             `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
-	Metadata           map[string]*commonpb.MetadataValue `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	AccountMetadata    map[string]*commonpb.MetadataMap   `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	Force              bool                               `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"` // Skip balance checks when true
-	NumscriptReference *NumscriptReference                `protobuf:"bytes,8,opt,name=numscript_reference,json=numscriptReference,proto3" json:"numscript_reference,omitempty"`
+	state              protoimpl.MessageState         `protogen:"open.v1"`
+	Postings           []*grpc.Posting                `protobuf:"bytes,1,rep,name=postings,proto3" json:"postings,omitempty"`
+	Script             *grpc.Script                   `protobuf:"bytes,2,opt,name=script,proto3" json:"script,omitempty"`
+	Timestamp          *grpc.Timestamp                `protobuf:"bytes,3,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Reference          string                         `protobuf:"bytes,4,opt,name=reference,proto3" json:"reference,omitempty"`
+	Metadata           map[string]*grpc.MetadataValue `protobuf:"bytes,5,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	AccountMetadata    map[string]*grpc.MetadataMap   `protobuf:"bytes,6,rep,name=account_metadata,json=accountMetadata,proto3" json:"account_metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Force              bool                           `protobuf:"varint,7,opt,name=force,proto3" json:"force,omitempty"` // Skip balance checks when true
+	NumscriptReference *NumscriptReference            `protobuf:"bytes,8,opt,name=numscript_reference,json=numscriptReference,proto3" json:"numscript_reference,omitempty"`
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -2896,21 +2896,21 @@ func (*CreateTransactionOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{38}
 }
 
-func (x *CreateTransactionOrder) GetPostings() []*commonpb.Posting {
+func (x *CreateTransactionOrder) GetPostings() []*grpc.Posting {
 	if x != nil {
 		return x.Postings
 	}
 	return nil
 }
 
-func (x *CreateTransactionOrder) GetScript() *commonpb.Script {
+func (x *CreateTransactionOrder) GetScript() *grpc.Script {
 	if x != nil {
 		return x.Script
 	}
 	return nil
 }
 
-func (x *CreateTransactionOrder) GetTimestamp() *commonpb.Timestamp {
+func (x *CreateTransactionOrder) GetTimestamp() *grpc.Timestamp {
 	if x != nil {
 		return x.Timestamp
 	}
@@ -2924,14 +2924,14 @@ func (x *CreateTransactionOrder) GetReference() string {
 	return ""
 }
 
-func (x *CreateTransactionOrder) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *CreateTransactionOrder) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
 	return nil
 }
 
-func (x *CreateTransactionOrder) GetAccountMetadata() map[string]*commonpb.MetadataMap {
+func (x *CreateTransactionOrder) GetAccountMetadata() map[string]*grpc.MetadataMap {
 	if x != nil {
 		return x.AccountMetadata
 	}
@@ -3019,9 +3019,9 @@ func (x *NumscriptReference) GetVars() map[string]string {
 }
 
 type SaveMetadataOrder struct {
-	state         protoimpl.MessageState             `protogen:"open.v1"`
-	Target        *commonpb.Target                   `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
-	Metadata      map[string]*commonpb.MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	Target        *grpc.Target                   `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Metadata      map[string]*grpc.MetadataValue `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3056,14 +3056,14 @@ func (*SaveMetadataOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{40}
 }
 
-func (x *SaveMetadataOrder) GetTarget() *commonpb.Target {
+func (x *SaveMetadataOrder) GetTarget() *grpc.Target {
 	if x != nil {
 		return x.Target
 	}
 	return nil
 }
 
-func (x *SaveMetadataOrder) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *SaveMetadataOrder) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
@@ -3071,11 +3071,11 @@ func (x *SaveMetadataOrder) GetMetadata() map[string]*commonpb.MetadataValue {
 }
 
 type RevertTransactionOrder struct {
-	state           protoimpl.MessageState             `protogen:"open.v1"`
-	TransactionId   uint64                             `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
-	Force           bool                               `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
-	AtEffectiveDate bool                               `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
-	Metadata        map[string]*commonpb.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state           protoimpl.MessageState         `protogen:"open.v1"`
+	TransactionId   uint64                         `protobuf:"fixed64,1,opt,name=transaction_id,json=transactionId,proto3" json:"transaction_id,omitempty"`
+	Force           bool                           `protobuf:"varint,2,opt,name=force,proto3" json:"force,omitempty"`
+	AtEffectiveDate bool                           `protobuf:"varint,3,opt,name=at_effective_date,json=atEffectiveDate,proto3" json:"at_effective_date,omitempty"`
+	Metadata        map[string]*grpc.MetadataValue `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields   protoimpl.UnknownFields
 	sizeCache       protoimpl.SizeCache
 }
@@ -3131,7 +3131,7 @@ func (x *RevertTransactionOrder) GetAtEffectiveDate() bool {
 	return false
 }
 
-func (x *RevertTransactionOrder) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *RevertTransactionOrder) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
@@ -3140,7 +3140,7 @@ func (x *RevertTransactionOrder) GetMetadata() map[string]*commonpb.MetadataValu
 
 type DeleteMetadataOrder struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Target        *commonpb.Target       `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
+	Target        *grpc.Target           `protobuf:"bytes,1,opt,name=target,proto3" json:"target,omitempty"`
 	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3176,7 +3176,7 @@ func (*DeleteMetadataOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{42}
 }
 
-func (x *DeleteMetadataOrder) GetTarget() *commonpb.Target {
+func (x *DeleteMetadataOrder) GetTarget() *grpc.Target {
 	if x != nil {
 		return x.Target
 	}
@@ -3192,8 +3192,8 @@ func (x *DeleteMetadataOrder) GetKey() string {
 
 // SaveLedgerMetadataOrder sets metadata key-value pairs on a ledger.
 type SaveLedgerMetadataOrder struct {
-	state         protoimpl.MessageState             `protogen:"open.v1"`
-	Metadata      map[string]*commonpb.MetadataValue `protobuf:"bytes,1,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state         protoimpl.MessageState         `protogen:"open.v1"`
+	Metadata      map[string]*grpc.MetadataValue `protobuf:"bytes,1,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3228,7 +3228,7 @@ func (*SaveLedgerMetadataOrder) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{43}
 }
 
-func (x *SaveLedgerMetadataOrder) GetMetadata() map[string]*commonpb.MetadataValue {
+func (x *SaveLedgerMetadataOrder) GetMetadata() map[string]*grpc.MetadataValue {
 	if x != nil {
 		return x.Metadata
 	}
@@ -3286,7 +3286,7 @@ type Proposal struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            uint64                 `protobuf:"fixed64,1,opt,name=id,proto3" json:"id,omitempty"`       // Random proposal ID
 	Orders        []*Order               `protobuf:"bytes,2,rep,name=orders,proto3" json:"orders,omitempty"` // List of orders to execute atomically
-	Date          *commonpb.Timestamp    `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`     // Creation date in UTC
+	Date          *grpc.Timestamp        `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`     // Creation date in UTC
 	ExecutionPlan *ExecutionPlan         `protobuf:"bytes,4,opt,name=execution_plan,json=executionPlan,proto3" json:"execution_plan,omitempty"`
 	// predicted_index is the Raft log index predicted by the IndexTracker at
 	// admission time. The FSM compares it with the actual entry.Index: a mismatch
@@ -3294,16 +3294,16 @@ type Proposal struct {
 	// executionPlan is invalid. The entry is rejected without audit and the caller
 	// receives Unavailable so it can retry with fresh preloads.
 	// A value of 0 means no prediction (e.g. barrier, mirror sync).
-	PredictedIndex uint64                   `protobuf:"fixed64,5,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
-	CallerSnapshot *commonpb.CallerSnapshot `protobuf:"bytes,6,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"` // Required admission-time principal; persisted into AuditEntry by the FSM.
+	PredictedIndex uint64               `protobuf:"fixed64,5,opt,name=predicted_index,json=predictedIndex,proto3" json:"predicted_index,omitempty"`
+	CallerSnapshot *grpc.CallerSnapshot `protobuf:"bytes,6,opt,name=caller_snapshot,json=callerSnapshot,proto3" json:"caller_snapshot,omitempty"` // Required admission-time principal; persisted into AuditEntry by the FSM.
 	// idempotency is the batch's single idempotency identity (from
 	// ApplyBatch.idempotency_key). The whole proposal dedups/freezes under it —
 	// matching the atomic unit. Empty for system/technical proposals.
-	Idempotency *commonpb.Idempotency `protobuf:"bytes,7,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Idempotency *grpc.Idempotency `protobuf:"bytes,7,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
 	// signature is the client's signature over the whole ApplyBatch (composition
 	// + ordering). The FSM propagates it onto every Log this proposal commits, so
 	// each log records the batch-level authenticity/non-repudiation proof.
-	Signature *signaturepb.SignedApplyBatch `protobuf:"bytes,8,opt,name=signature,proto3" json:"signature,omitempty"`
+	Signature *grpc.SignedApplyBatch `protobuf:"bytes,8,opt,name=signature,proto3" json:"signature,omitempty"`
 	// technical_updates carries every FSM-level update that bypasses the
 	// Order/Log channel. Each entry wraps a single payload (sink update,
 	// mirror sync, cluster configuration, backup lifecycle, …) with its own
@@ -3358,7 +3358,7 @@ func (x *Proposal) GetOrders() []*Order {
 	return nil
 }
 
-func (x *Proposal) GetDate() *commonpb.Timestamp {
+func (x *Proposal) GetDate() *grpc.Timestamp {
 	if x != nil {
 		return x.Date
 	}
@@ -3379,21 +3379,21 @@ func (x *Proposal) GetPredictedIndex() uint64 {
 	return 0
 }
 
-func (x *Proposal) GetCallerSnapshot() *commonpb.CallerSnapshot {
+func (x *Proposal) GetCallerSnapshot() *grpc.CallerSnapshot {
 	if x != nil {
 		return x.CallerSnapshot
 	}
 	return nil
 }
 
-func (x *Proposal) GetIdempotency() *commonpb.Idempotency {
+func (x *Proposal) GetIdempotency() *grpc.Idempotency {
 	if x != nil {
 		return x.Idempotency
 	}
 	return nil
 }
 
-func (x *Proposal) GetSignature() *signaturepb.SignedApplyBatch {
+func (x *Proposal) GetSignature() *grpc.SignedApplyBatch {
 	if x != nil {
 		return x.Signature
 	}
@@ -3502,7 +3502,7 @@ func (x *TechnicalUpdate) GetIdempotencyEviction() *IdempotencyEviction {
 	return nil
 }
 
-func (x *TechnicalUpdate) GetClusterConfig() *commonpb.ClusterConfig {
+func (x *TechnicalUpdate) GetClusterConfig() *grpc.ClusterConfig {
 	if x != nil {
 		if x, ok := x.Kind.(*TechnicalUpdate_ClusterConfig); ok {
 			return x.ClusterConfig
@@ -3555,7 +3555,7 @@ type TechnicalUpdate_IdempotencyEviction struct {
 }
 
 type TechnicalUpdate_ClusterConfig struct {
-	ClusterConfig *commonpb.ClusterConfig `protobuf:"bytes,5,opt,name=cluster_config,json=clusterConfig,proto3,oneof"`
+	ClusterConfig *grpc.ClusterConfig `protobuf:"bytes,5,opt,name=cluster_config,json=clusterConfig,proto3,oneof"`
 }
 
 type TechnicalUpdate_BackupOrder struct {
@@ -4480,11 +4480,11 @@ func (x *IdempotencyEviction) GetLastScannedTimeIndexKey() []byte {
 // cursor — LedgerBoundaries.last_mirror_v2_log_id is the sole durable
 // authority for the applied position (EN-1513).
 type MirrorSyncUpdate struct {
-	state          protoimpl.MessageState    `protogen:"open.v1"`
-	LedgerName     string                    `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
-	Error          *commonpb.MirrorSyncError `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
-	ClearError     bool                      `protobuf:"varint,3,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"`
-	SourceLogCount uint64                    `protobuf:"fixed64,4,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"` // Latest known log ID in v2 source
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	LedgerName     string                 `protobuf:"bytes,1,opt,name=ledger_name,json=ledgerName,proto3" json:"ledger_name,omitempty"`
+	Error          *grpc.MirrorSyncError  `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
+	ClearError     bool                   `protobuf:"varint,3,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"`
+	SourceLogCount uint64                 `protobuf:"fixed64,4,opt,name=source_log_count,json=sourceLogCount,proto3" json:"source_log_count,omitempty"` // Latest known log ID in v2 source
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -4526,7 +4526,7 @@ func (x *MirrorSyncUpdate) GetLedgerName() string {
 	return ""
 }
 
-func (x *MirrorSyncUpdate) GetError() *commonpb.MirrorSyncError {
+func (x *MirrorSyncUpdate) GetError() *grpc.MirrorSyncError {
 	if x != nil {
 		return x.Error
 	}
@@ -4552,7 +4552,7 @@ type EventsSinkUpdate struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	SinkName      string                 `protobuf:"bytes,1,opt,name=sink_name,json=sinkName,proto3" json:"sink_name,omitempty"`
 	Cursor        uint64                 `protobuf:"fixed64,2,opt,name=cursor,proto3" json:"cursor,omitempty"`                          // New log cursor position (0 = no change)
-	Error         *commonpb.SinkError    `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`                              // Set error (nil = no change unless clear_error)
+	Error         *grpc.SinkError        `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`                              // Set error (nil = no change unless clear_error)
 	ClearError    bool                   `protobuf:"varint,4,opt,name=clear_error,json=clearError,proto3" json:"clear_error,omitempty"` // If true, clear any existing error
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -4602,7 +4602,7 @@ func (x *EventsSinkUpdate) GetCursor() uint64 {
 	return 0
 }
 
-func (x *EventsSinkUpdate) GetError() *commonpb.SinkError {
+func (x *EventsSinkUpdate) GetError() *grpc.SinkError {
 	if x != nil {
 		return x.Error
 	}
@@ -4664,7 +4664,7 @@ func (x *CreatedLogOrReference) GetType() isCreatedLogOrReference_Type {
 	return nil
 }
 
-func (x *CreatedLogOrReference) GetCreatedLog() *commonpb.Log {
+func (x *CreatedLogOrReference) GetCreatedLog() *grpc.Log {
 	if x != nil {
 		if x, ok := x.Type.(*CreatedLogOrReference_CreatedLog); ok {
 			return x.CreatedLog
@@ -4687,7 +4687,7 @@ type isCreatedLogOrReference_Type interface {
 }
 
 type CreatedLogOrReference_CreatedLog struct {
-	CreatedLog *commonpb.Log `protobuf:"bytes,1,opt,name=created_log,json=createdLog,proto3,oneof"`
+	CreatedLog *grpc.Log `protobuf:"bytes,1,opt,name=created_log,json=createdLog,proto3,oneof"`
 }
 
 type CreatedLogOrReference_ReferenceSequence struct {
@@ -4767,8 +4767,8 @@ func (x *LedgerBoundaries) GetLastMirrorV2LogId() uint64 {
 
 type VolumePair struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Input         *commonpb.Uint256      `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
-	Output        *commonpb.Uint256      `protobuf:"bytes,2,opt,name=output,proto3" json:"output,omitempty"`
+	Input         *grpc.Uint256          `protobuf:"bytes,1,opt,name=input,proto3" json:"input,omitempty"`
+	Output        *grpc.Uint256          `protobuf:"bytes,2,opt,name=output,proto3" json:"output,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -4803,14 +4803,14 @@ func (*VolumePair) Descriptor() ([]byte, []int) {
 	return file_raft_cmd_proto_rawDescGZIP(), []int{61}
 }
 
-func (x *VolumePair) GetInput() *commonpb.Uint256 {
+func (x *VolumePair) GetInput() *grpc.Uint256 {
 	if x != nil {
 		return x.Input
 	}
 	return nil
 }
 
-func (x *VolumePair) GetOutput() *commonpb.Uint256 {
+func (x *VolumePair) GetOutput() *grpc.Uint256 {
 	if x != nil {
 		return x.Output
 	}
@@ -5059,9 +5059,9 @@ func (x *AttributeValue) GetRawValue() []byte {
 // "Reload" rather than the cache-attribute pre-loading the AttributePlan
 // variants feed.
 type ReloadIdempotencyKey struct {
-	state         protoimpl.MessageState        `protogen:"open.v1"`
-	Key           string                        `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
-	Value         *commonpb.IdempotencyKeyValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	state         protoimpl.MessageState                `protogen:"open.v1"`
+	Key           string                                `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         *internalcommonpb.IdempotencyKeyValue `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -5103,7 +5103,7 @@ func (x *ReloadIdempotencyKey) GetKey() string {
 	return ""
 }
 
-func (x *ReloadIdempotencyKey) GetValue() *commonpb.IdempotencyKeyValue {
+func (x *ReloadIdempotencyKey) GetValue() *internalcommonpb.IdempotencyKeyValue {
 	if x != nil {
 		return x.Value
 	}
@@ -5405,7 +5405,7 @@ var File_raft_cmd_proto protoreflect.FileDescriptor
 
 const file_raft_cmd_proto_rawDesc = "" +
 	"\n" +
-	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xc3\x01\n" +
+	"\x0eraft_cmd.proto\x12\x04raft\x1a\fcommon.proto\x1a\x15internal_common.proto\x1a\x0fsignature.proto\"\xc3\x01\n" +
 	"\x05Order\x12>\n" +
 	"\rledger_scoped\x18\x01 \x01(\v2\x17.raft.LedgerScopedOrderH\x00R\fledgerScoped\x12>\n" +
 	"\rsystem_scoped\x18\x02 \x01(\v2\x17.raft.SystemScopedOrderH\x00R\fsystemScoped\x122\n" +
@@ -5881,34 +5881,34 @@ var file_raft_cmd_proto_goTypes = []any{
 	nil,                                          // 81: raft.SaveMetadataOrder.MetadataEntry
 	nil,                                          // 82: raft.RevertTransactionOrder.MetadataEntry
 	nil,                                          // 83: raft.SaveLedgerMetadataOrder.MetadataEntry
-	(*commonpb.PreparedQuery)(nil),               // 84: common.PreparedQuery
-	(*commonpb.QueryFilter)(nil),                 // 85: common.QueryFilter
-	(*commonpb.SinkConfig)(nil),                  // 86: common.SinkConfig
-	(*commonpb.ClusterPolicy)(nil),               // 87: common.ClusterPolicy
-	(*commonpb.Timestamp)(nil),                   // 88: common.Timestamp
-	(*commonpb.SetMetadataFieldTypeCommand)(nil), // 89: common.SetMetadataFieldTypeCommand
-	(commonpb.LedgerMode)(0),                     // 90: common.LedgerMode
-	(*commonpb.MirrorSourceConfig)(nil),          // 91: common.MirrorSourceConfig
-	(commonpb.ChartEnforcementMode)(0),           // 92: common.ChartEnforcementMode
-	(*commonpb.Posting)(nil),                     // 93: common.Posting
-	(*commonpb.Target)(nil),                      // 94: common.Target
-	(commonpb.ErrorReason)(0),                    // 95: common.ErrorReason
-	(*commonpb.IndexID)(nil),                     // 96: common.IndexID
-	(*commonpb.AccountType)(nil),                 // 97: common.AccountType
-	(commonpb.TargetType)(0),                     // 98: common.TargetType
-	(commonpb.MetadataType)(0),                   // 99: common.MetadataType
-	(*commonpb.Script)(nil),                      // 100: common.Script
-	(*commonpb.CallerSnapshot)(nil),              // 101: common.CallerSnapshot
-	(*commonpb.Idempotency)(nil),                 // 102: common.Idempotency
-	(*signaturepb.SignedApplyBatch)(nil),         // 103: signature.SignedApplyBatch
-	(*commonpb.ClusterConfig)(nil),               // 104: common.ClusterConfig
-	(*commonpb.MirrorSyncError)(nil),             // 105: common.MirrorSyncError
-	(*commonpb.SinkError)(nil),                   // 106: common.SinkError
-	(*commonpb.Log)(nil),                         // 107: common.Log
-	(*commonpb.Uint256)(nil),                     // 108: common.Uint256
-	(*commonpb.IdempotencyKeyValue)(nil),         // 109: common.IdempotencyKeyValue
-	(*commonpb.MetadataValue)(nil),               // 110: common.MetadataValue
-	(*commonpb.MetadataMap)(nil),                 // 111: common.MetadataMap
+	(*grpc.PreparedQuery)(nil),                   // 84: common.PreparedQuery
+	(*grpc.QueryFilter)(nil),                     // 85: common.QueryFilter
+	(*grpc.SinkConfig)(nil),                      // 86: common.SinkConfig
+	(*grpc.ClusterPolicy)(nil),                   // 87: common.ClusterPolicy
+	(*grpc.Timestamp)(nil),                       // 88: common.Timestamp
+	(*grpc.SetMetadataFieldTypeCommand)(nil),     // 89: common.SetMetadataFieldTypeCommand
+	(grpc.LedgerMode)(0),                         // 90: common.LedgerMode
+	(*grpc.MirrorSourceConfig)(nil),              // 91: common.MirrorSourceConfig
+	(grpc.ChartEnforcementMode)(0),               // 92: common.ChartEnforcementMode
+	(*grpc.Posting)(nil),                         // 93: common.Posting
+	(*grpc.Target)(nil),                          // 94: common.Target
+	(grpc.ErrorReason)(0),                        // 95: common.ErrorReason
+	(*grpc.IndexID)(nil),                         // 96: common.IndexID
+	(*grpc.AccountType)(nil),                     // 97: common.AccountType
+	(grpc.TargetType)(0),                         // 98: common.TargetType
+	(grpc.MetadataType)(0),                       // 99: common.MetadataType
+	(*grpc.Script)(nil),                          // 100: common.Script
+	(*grpc.CallerSnapshot)(nil),                  // 101: common.CallerSnapshot
+	(*grpc.Idempotency)(nil),                     // 102: common.Idempotency
+	(*grpc.SignedApplyBatch)(nil),                // 103: signature.SignedApplyBatch
+	(*grpc.ClusterConfig)(nil),                   // 104: common.ClusterConfig
+	(*grpc.MirrorSyncError)(nil),                 // 105: common.MirrorSyncError
+	(*grpc.SinkError)(nil),                       // 106: common.SinkError
+	(*grpc.Log)(nil),                             // 107: common.Log
+	(*grpc.Uint256)(nil),                         // 108: common.Uint256
+	(*internalcommonpb.IdempotencyKeyValue)(nil), // 109: common.IdempotencyKeyValue
+	(*grpc.MetadataValue)(nil),                   // 110: common.MetadataValue
+	(*grpc.MetadataMap)(nil),                     // 111: common.MetadataMap
 }
 var file_raft_cmd_proto_depIdxs = []int32{
 	4,   // 0: raft.Order.ledger_scoped:type_name -> raft.LedgerScopedOrder

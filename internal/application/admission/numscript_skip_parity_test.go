@@ -5,9 +5,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -78,7 +80,7 @@ func writeReference(t *testing.T, admission *Admission, ledger, reference string
 
 	key := domain.TransactionReferenceKey{LedgerName: ledger, Reference: reference}
 	batch := admission.store.OpenWriteSession()
-	_, err := admission.attrs.References.Set(batch, key.Bytes(), &commonpb.TransactionReferenceValue{TransactionId: txID})
+	_, err := admission.attrs.References.Set(batch, key.Bytes(), &internalcommonpb.TransactionReferenceValue{TransactionId: txID})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }

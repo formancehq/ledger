@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -80,7 +79,7 @@ func TestLendingLifecycle(t *testing.T) {
 
 	// --- Phase 2: Loan Disbursements ---
 	t.Run("Disbursements", func(t *testing.T) {
-		reqs := make([]*servicepb.Request, 0, numBorrowers)
+		reqs := make([]*commonpb.Request, 0, numBorrowers)
 		for i := 1; i <= numBorrowers; i++ {
 			action := actions.CreateScriptRefTransactionAction(ledger, "disburse_loan", "1.0.0", map[string]string{
 				"borrower_loan":   fmt.Sprintf("borrower:%d:loan", i),
@@ -104,7 +103,7 @@ func TestLendingLifecycle(t *testing.T) {
 	t.Run("RepayCycles", func(t *testing.T) {
 		for month := 1; month <= numMonths; month++ {
 			t.Run(fmt.Sprintf("Month%d", month), func(t *testing.T) {
-				var reqs []*servicepb.Request
+				var reqs []*commonpb.Request
 
 				for i := 1; i <= numBorrowers; i++ {
 					outstanding := borrowerLoanBalance[i]
@@ -221,7 +220,7 @@ func TestLendingLifecycle(t *testing.T) {
 	// --- Phase 4: Provision for Doubtful Debts ---
 	t.Run("Provisions", func(t *testing.T) {
 		// Provision the full outstanding balance of defaulters
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for id := range defaulters {
 			outstanding := borrowerLoanBalance[id]
 			if outstanding.Sign() > 0 {
@@ -243,7 +242,7 @@ func TestLendingLifecycle(t *testing.T) {
 
 	// --- Phase 5: Write-off Defaulted Loans ---
 	t.Run("WriteOffs", func(t *testing.T) {
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for id := range defaulters {
 			outstanding := borrowerLoanBalance[id]
 			if outstanding.Sign() > 0 {
@@ -380,7 +379,7 @@ func TestLendingLifecycle(t *testing.T) {
 	})
 
 	// --- Tail phases ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 	})

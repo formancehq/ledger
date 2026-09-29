@@ -8,9 +8,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewGetCommand creates the ledgers get command.
@@ -47,7 +47,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching ledger %s...", ledgerName))
 
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{
 		Ledger: ledgerName,
 		Read:   cmdutil.BuildReadOptions(cmdutil.GetConsistencyFlags(cmd)),
 	})

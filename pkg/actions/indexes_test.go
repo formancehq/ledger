@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestIndexVersionAdvancedOnReplica(t *testing.T) {
@@ -57,8 +57,8 @@ func TestIndexVersionAdvancedOnReplica(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			resp := &servicepb.GetIndexStatusResponse{
-				Indexes: []*servicepb.IndexEntry{
+			resp := &commonpb.GetIndexStatusResponse{
+				Indexes: []*commonpb.IndexEntry{
 					{
 						Ledger:         ledger,
 						Index:          &commonpb.Index{Id: id},

@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -29,7 +28,7 @@ func TestRejectedWriteOracleDetectsCommittedTransaction(t *testing.T) {
 			Amount: commonpb.NewUint256FromUint64(1), Asset: "USD/2",
 		}}, nil)
 		request.GetApply().GetAction().GetCreateTransaction().Reference = reference
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("sensitivity-seed", request))
+		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("sensitivity-seed", request))
 		require.NoError(t, err)
 		txID, ok := actions.GetCreatedTransactionID(resp)
 		require.True(t, ok)

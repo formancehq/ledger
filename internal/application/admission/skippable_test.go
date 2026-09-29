@@ -6,9 +6,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason validates the
@@ -19,11 +19,11 @@ import (
 func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T) {
 	t.Parallel()
 
-	apply := &servicepb.LedgerApplyRequest{
+	apply := &commonpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{},
+		Action: &commonpb.LedgerAction{
+			Data: &commonpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &commonpb.CreateTransactionPayload{},
 			},
 		},
 		SkippableReasons: []commonpb.ErrorReason{
@@ -43,11 +43,11 @@ func TestExtractSkippableReasonsFromApply_AcceptsWhitelistedReason(t *testing.T)
 func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 	t.Parallel()
 
-	apply := &servicepb.LedgerApplyRequest{
+	apply := &commonpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{},
+		Action: &commonpb.LedgerAction{
+			Data: &commonpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &commonpb.CreateTransactionPayload{},
 			},
 		},
 	}
@@ -64,11 +64,11 @@ func TestExtractSkippableReasonsFromApply_EmptyListReturnsNil(t *testing.T) {
 func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 	t.Parallel()
 
-	apply := &servicepb.LedgerApplyRequest{
+	apply := &commonpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{},
+		Action: &commonpb.LedgerAction{
+			Data: &commonpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &commonpb.CreateTransactionPayload{},
 			},
 		},
 		SkippableReasons: []commonpb.ErrorReason{
@@ -88,11 +88,11 @@ func TestExtractSkippableReasonsFromApply_RejectsUnspecified(t *testing.T) {
 func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 	t.Parallel()
 
-	apply := &servicepb.LedgerApplyRequest{
+	apply := &commonpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_CreateTransaction{
-				CreateTransaction: &servicepb.CreateTransactionPayload{},
+		Action: &commonpb.LedgerAction{
+			Data: &commonpb.LedgerAction_CreateTransaction{
+				CreateTransaction: &commonpb.CreateTransactionPayload{},
 			},
 		},
 		SkippableReasons: []commonpb.ErrorReason{
@@ -113,10 +113,10 @@ func TestExtractSkippableReasonsFromApply_RejectsOutOfWhitelist(t *testing.T) {
 func TestExtractSkippableReasonsFromApply_RejectsOnUnsupportedAction(t *testing.T) {
 	t.Parallel()
 
-	apply := &servicepb.LedgerApplyRequest{
+	apply := &commonpb.LedgerApplyRequest{
 		Ledger: "L",
-		Action: &servicepb.LedgerAction{
-			Data: &servicepb.LedgerAction_AddMetadata{
+		Action: &commonpb.LedgerAction{
+			Data: &commonpb.LedgerAction_AddMetadata{
 				AddMetadata: &commonpb.SaveMetadataCommand{},
 			},
 		},

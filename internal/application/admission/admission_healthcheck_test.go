@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/health"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
@@ -27,9 +27,9 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.writeGate = mockWriteGate
 
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: "test-ledger-rejected",
 				},
 			},
@@ -50,21 +50,21 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a.writeGate = mockWriteGate
 
 		_, err := a.Admit(attributedTestContext(context.Background()),
-			servicepb.UnsignedApplyRequest("",
-				&servicepb.Request{
-					Type: &servicepb.Request_CreateLedger{
-						CreateLedger: &servicepb.CreateLedgerRequest{
+			commonpb.UnsignedApplyRequest("",
+				&commonpb.Request{
+					Type: &commonpb.Request_CreateLedger{
+						CreateLedger: &commonpb.CreateLedgerRequest{
 							Name: "ledger1",
 						},
 					},
 				},
-				&servicepb.Request{
-					Type: &servicepb.Request_Apply{
-						Apply: &servicepb.LedgerApplyRequest{
+				&commonpb.Request{
+					Type: &commonpb.Request_Apply{
+						Apply: &commonpb.LedgerApplyRequest{
 							Ledger: "ledger1",
-							Action: &servicepb.LedgerAction{
-								Data: &servicepb.LedgerAction_CreateTransaction{
-									CreateTransaction: &servicepb.CreateTransactionPayload{
+							Action: &commonpb.LedgerAction{
+								Data: &commonpb.LedgerAction_CreateTransaction{
+									CreateTransaction: &commonpb.CreateTransactionPayload{
 										Postings: []*commonpb.Posting{
 											{
 												Source:      "world",
@@ -96,13 +96,13 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.writeGate = mockWriteGate
 
-		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := a.Admit(attributedTestContext(context.Background()), commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: testLedgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{
 									{
 										Source:      "world",

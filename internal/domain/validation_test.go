@@ -6,8 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/invariants"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // TestValidateWrapping pins the wrapper contract: each Validate* function in

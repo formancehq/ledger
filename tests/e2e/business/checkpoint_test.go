@@ -6,9 +6,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -18,10 +16,10 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 	BeforeAll(func() {
 
 		// Create a ledger with some data so the checkpoint is non-trivial
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-test", nil)))
+		_, err := sharedClient.Apply(sharedCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-test", nil)))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*clusterpb.Posting{
 			actions.NewPosting("world", "bank", big.NewInt(10000), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
@@ -53,7 +51,7 @@ var _ = Describe("CreateCheckpoint", Ordered, func() {
 		Expect(state.Leader).NotTo(BeZero())
 
 		// Verify we can still create transactions after checkpoint
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*commonpb.Posting{
+		_, err = sharedClient.Apply(sharedCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("checkpoint-test", []*clusterpb.Posting{
 			actions.NewPosting("world", "user", big.NewInt(500), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())

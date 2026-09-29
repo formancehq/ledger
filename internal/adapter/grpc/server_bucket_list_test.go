@@ -10,12 +10,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // newListHandlerHarness wires the minimum fields BucketServiceServerImpl needs
@@ -50,12 +49,12 @@ func TestListLedgers(t *testing.T) {
 
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(
-			page(&commonpb.LedgerInfo{Name: "a"}, &commonpb.LedgerInfo{Name: "b"}, &commonpb.LedgerInfo{Name: "c"}, &commonpb.LedgerInfo{Name: "d"}),
+			page(&auditpb.LedgerInfo{Name: "a"}, &auditpb.LedgerInfo{Name: "b"}, &auditpb.LedgerInfo{Name: "c"}, &auditpb.LedgerInfo{Name: "d"}),
 			nil,
 		)
 
-		stream := newFakeServerStream[commonpb.LedgerInfo](t)
-		req := &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 3}}
+		stream := newFakeServerStream[auditpb.LedgerInfo](t)
+		req := &auditpb.ListLedgersRequest{Options: &auditpb.ListOptions{PageSize: 3}}
 
 		require.NoError(t, impl.ListLedgers(req, stream))
 		require.Equal(t, []string{"a", "b", "c"}, sentLedgerNames(stream))
@@ -67,12 +66,12 @@ func TestListLedgers(t *testing.T) {
 
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(
-			page(&commonpb.LedgerInfo{Name: "a"}, &commonpb.LedgerInfo{Name: "b"}, &commonpb.LedgerInfo{Name: "c"}),
+			page(&auditpb.LedgerInfo{Name: "a"}, &auditpb.LedgerInfo{Name: "b"}, &auditpb.LedgerInfo{Name: "c"}),
 			nil,
 		)
 
-		stream := newFakeServerStream[commonpb.LedgerInfo](t)
-		req := &servicepb.ListLedgersRequest{Options: &commonpb.ListOptions{PageSize: 3}}
+		stream := newFakeServerStream[auditpb.LedgerInfo](t)
+		req := &auditpb.ListLedgersRequest{Options: &auditpb.ListOptions{PageSize: 3}}
 
 		require.NoError(t, impl.ListLedgers(req, stream))
 		require.Empty(t, stream.trailerCursor())
@@ -85,8 +84,8 @@ func TestListLedgers(t *testing.T) {
 		boom := errors.New("ctrl blew up")
 		mockCtrl.EXPECT().ListLedgers(gomock.Any()).Return(nil, boom)
 
-		stream := newFakeServerStream[commonpb.LedgerInfo](t)
-		err := impl.ListLedgers(&servicepb.ListLedgersRequest{}, stream)
+		stream := newFakeServerStream[auditpb.LedgerInfo](t)
+		err := impl.ListLedgers(&auditpb.ListLedgersRequest{}, stream)
 		require.ErrorIs(t, err, boom)
 	})
 }
@@ -103,15 +102,15 @@ func TestListTransactions(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", uint32(3), uint64(0), gomock.Any(), false).
 			Return(page(
-				&commonpb.Transaction{Id: 1},
-				&commonpb.Transaction{Id: 2},
-				&commonpb.Transaction{Id: 3},
+				&auditpb.Transaction{Id: 1},
+				&auditpb.Transaction{Id: 2},
+				&auditpb.Transaction{Id: 3},
 			), nil)
 
-		stream := newFakeServerStream[commonpb.Transaction](t)
-		req := &servicepb.ListTransactionsRequest{
+		stream := newFakeServerStream[auditpb.Transaction](t)
+		req := &auditpb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{PageSize: 2},
+			Options: &auditpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListTransactions(req, stream))
@@ -123,7 +122,7 @@ func TestListTransactions(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		err := impl.ListTransactions(&servicepb.ListTransactionsRequest{}, newFakeServerStream[commonpb.Transaction](t))
+		err := impl.ListTransactions(&auditpb.ListTransactionsRequest{}, newFakeServerStream[auditpb.Transaction](t))
 		require.ErrorContains(t, err, "ledger name is required")
 	})
 
@@ -131,11 +130,11 @@ func TestListTransactions(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		req := &servicepb.ListTransactionsRequest{
+		req := &auditpb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{Cursor: "not-a-uint"},
+			Options: &auditpb.ListOptions{Cursor: "not-a-uint"},
 		}
-		err := impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t))
+		err := impl.ListTransactions(req, newFakeServerStream[auditpb.Transaction](t))
 		require.Error(t, err)
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
@@ -145,13 +144,13 @@ func TestListTransactions(t *testing.T) {
 
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListTransactions(gomock.Any(), "main", gomock.Any(), uint64(42), gomock.Any(), gomock.Any()).
-			Return(page[commonpb.Transaction](), nil)
+			Return(page[auditpb.Transaction](), nil)
 
-		req := &servicepb.ListTransactionsRequest{
+		req := &auditpb.ListTransactionsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{Cursor: "42"},
+			Options: &auditpb.ListOptions{Cursor: "42"},
 		}
-		require.NoError(t, impl.ListTransactions(req, newFakeServerStream[commonpb.Transaction](t)))
+		require.NoError(t, impl.ListTransactions(req, newFakeServerStream[auditpb.Transaction](t)))
 	})
 }
 
@@ -167,15 +166,15 @@ func TestListAccounts(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListAccounts(gomock.Any(), "main", uint32(3), "", gomock.Any(), false).
 			Return(page(
-				&commonpb.Account{Address: "alpha"},
-				&commonpb.Account{Address: "beta"},
-				&commonpb.Account{Address: "gamma"},
+				&auditpb.Account{Address: "alpha"},
+				&auditpb.Account{Address: "beta"},
+				&auditpb.Account{Address: "gamma"},
 			), nil)
 
-		stream := newFakeServerStream[commonpb.Account](t)
-		req := &servicepb.ListAccountsRequest{
+		stream := newFakeServerStream[auditpb.Account](t)
+		req := &auditpb.ListAccountsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{PageSize: 2},
+			Options: &auditpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListAccounts(req, stream))
@@ -187,7 +186,7 @@ func TestListAccounts(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		err := impl.ListAccounts(&servicepb.ListAccountsRequest{}, newFakeServerStream[commonpb.Account](t))
+		err := impl.ListAccounts(&auditpb.ListAccountsRequest{}, newFakeServerStream[auditpb.Account](t))
 		require.ErrorContains(t, err, "ledger name is required")
 	})
 }
@@ -198,12 +197,12 @@ func TestListAccounts(t *testing.T) {
 func TestListLogs(t *testing.T) {
 	t.Parallel()
 
-	applyLog := func(id uint64) *commonpb.Log {
-		return &commonpb.Log{
-			Payload: &commonpb.LogPayload{
-				Type: &commonpb.LogPayload_Apply{
-					Apply: &commonpb.ApplyLedgerLog{
-						Log: &commonpb.LedgerLog{Id: id},
+	applyLog := func(id uint64) *auditpb.Log {
+		return &auditpb.Log{
+			Payload: &auditpb.LogPayload{
+				Type: &auditpb.LogPayload_Apply{
+					Apply: &auditpb.ApplyLedgerLog{
+						Log: &auditpb.LedgerLog{Id: id},
 					},
 				},
 			},
@@ -217,10 +216,10 @@ func TestListLogs(t *testing.T) {
 		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", uint64(0), uint32(3), gomock.Any()).
 			Return(page(applyLog(1), applyLog(2), applyLog(3)), nil)
 
-		stream := newFakeServerStream[commonpb.Log](t)
-		req := &servicepb.ListLogsRequest{
+		stream := newFakeServerStream[auditpb.Log](t)
+		req := &auditpb.ListLogsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{PageSize: 2},
+			Options: &auditpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListLogs(req, stream))
@@ -231,14 +230,14 @@ func TestListLogs(t *testing.T) {
 		t.Parallel()
 
 		impl, mockCtrl := newListHandlerHarness(t)
-		nonApply := &commonpb.Log{Payload: &commonpb.LogPayload{}} // no Apply oneof set
+		nonApply := &auditpb.Log{Payload: &auditpb.LogPayload{}} // no Apply oneof set
 		mockCtrl.EXPECT().ListLogs(gomock.Any(), "main", gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(page(applyLog(1), nonApply, applyLog(3)), nil)
 
-		stream := newFakeServerStream[commonpb.Log](t)
-		req := &servicepb.ListLogsRequest{
+		stream := newFakeServerStream[auditpb.Log](t)
+		req := &auditpb.ListLogsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{PageSize: 2},
+			Options: &auditpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListLogs(req, stream))
@@ -252,7 +251,7 @@ func TestListLogs(t *testing.T) {
 		t.Parallel()
 
 		impl, _ := newListHandlerHarness(t)
-		err := impl.ListLogs(&servicepb.ListLogsRequest{}, newFakeServerStream[commonpb.Log](t))
+		err := impl.ListLogs(&auditpb.ListLogsRequest{}, newFakeServerStream[auditpb.Log](t))
 		require.ErrorContains(t, err, "ledger name is required")
 	})
 }
@@ -274,7 +273,7 @@ func TestListAuditEntries(t *testing.T) {
 			), nil)
 
 		stream := newFakeServerStream[auditpb.AuditEntry](t)
-		req := &servicepb.ListAuditEntriesRequest{Options: &commonpb.ListOptions{PageSize: 2}}
+		req := &auditpb.ListAuditEntriesRequest{Options: &auditpb.ListOptions{PageSize: 2}}
 
 		require.NoError(t, impl.ListAuditEntries(req, stream))
 		require.Equal(t, "2", stream.trailerCursor())
@@ -292,15 +291,15 @@ func TestListSigningKeys(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		mockCtrl.EXPECT().ListSigningKeys(gomock.Any()).Return(
 			page(
-				&commonpb.SigningKey{KeyId: "kms-1"},
-				&commonpb.SigningKey{KeyId: "kms-2"},
-				&commonpb.SigningKey{KeyId: "kms-3"},
+				&auditpb.SigningKey{KeyId: "kms-1"},
+				&auditpb.SigningKey{KeyId: "kms-2"},
+				&auditpb.SigningKey{KeyId: "kms-3"},
 			),
 			nil,
 		)
 
-		stream := newFakeServerStream[commonpb.SigningKey](t)
-		req := &servicepb.ListSigningKeysRequest{Options: &commonpb.ListOptions{PageSize: 2}}
+		stream := newFakeServerStream[auditpb.SigningKey](t)
+		req := &auditpb.ListSigningKeysRequest{Options: &auditpb.ListOptions{PageSize: 2}}
 
 		require.NoError(t, impl.ListSigningKeys(req, stream))
 		require.Equal(t, "kms-2", stream.trailerCursor())
@@ -318,7 +317,7 @@ func TestListNumscripts(t *testing.T) {
 		impl, mockCtrl := newListHandlerHarness(t)
 		// Returned unordered — the handler sorts by name and then paginates.
 		mockCtrl.EXPECT().ListNumscripts(gomock.Any(), "main").Return(
-			[]*commonpb.NumscriptInfo{
+			[]*auditpb.NumscriptInfo{
 				{Name: "z-last"},
 				{Name: "a-first"},
 				{Name: "m-mid"},
@@ -326,10 +325,10 @@ func TestListNumscripts(t *testing.T) {
 			nil,
 		)
 
-		stream := newFakeServerStream[commonpb.NumscriptInfo](t)
-		req := &servicepb.ListNumscriptsRequest{
+		stream := newFakeServerStream[auditpb.NumscriptInfo](t)
+		req := &auditpb.ListNumscriptsRequest{
 			Ledger:  "main",
-			Options: &commonpb.ListOptions{PageSize: 2},
+			Options: &auditpb.ListOptions{PageSize: 2},
 		}
 
 		require.NoError(t, impl.ListNumscripts(req, stream))
@@ -341,7 +340,7 @@ func TestListNumscripts(t *testing.T) {
 
 // Sent-item helpers; keep the test bodies readable.
 
-func sentLedgerNames(s *fakeServerStream[commonpb.LedgerInfo]) []string {
+func sentLedgerNames(s *fakeServerStream[auditpb.LedgerInfo]) []string {
 	out := make([]string, len(s.sent))
 	for i, l := range s.sent {
 		out[i] = l.GetName()
@@ -350,7 +349,7 @@ func sentLedgerNames(s *fakeServerStream[commonpb.LedgerInfo]) []string {
 	return out
 }
 
-func sentTxIDs(s *fakeServerStream[commonpb.Transaction]) []uint64 {
+func sentTxIDs(s *fakeServerStream[auditpb.Transaction]) []uint64 {
 	out := make([]uint64, len(s.sent))
 	for i, tx := range s.sent {
 		out[i] = tx.GetId()
@@ -359,7 +358,7 @@ func sentTxIDs(s *fakeServerStream[commonpb.Transaction]) []uint64 {
 	return out
 }
 
-func sentAccountAddrs(s *fakeServerStream[commonpb.Account]) []string {
+func sentAccountAddrs(s *fakeServerStream[auditpb.Account]) []string {
 	out := make([]string, len(s.sent))
 	for i, a := range s.sent {
 		out[i] = a.GetAddress()

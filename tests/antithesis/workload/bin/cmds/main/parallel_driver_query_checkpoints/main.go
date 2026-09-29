@@ -6,13 +6,11 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -33,11 +31,11 @@ func main() {
 	client := clusterpb.NewClusterServiceClient(conn)
 	// Checkpoint mutations are audited writes: they travel as ledger.Request
 	// variants through BucketService.Apply. The read RPCs stay on ClusterService.
-	bucketClient := servicepb.NewBucketServiceClient(conn)
+	bucketClient := clusterpb.NewBucketServiceClient(conn)
 	runQueryCheckpointDriver(ctx, client, bucketClient)
 }
 
-func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServiceClient, bucketClient servicepb.BucketServiceClient) {
+func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServiceClient, bucketClient clusterpb.BucketServiceClient) {
 	// 1. Create a query checkpoint.
 	cpID, maxSeq, err := actions.CreateQueryCheckpoint(ctx, bucketClient)
 	// Observe both outcomes so Antithesis can explore shared-pool saturation.

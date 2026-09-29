@@ -7,9 +7,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewCreateCommand creates the indexes create command.
@@ -91,7 +91,7 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	req := &servicepb.CreateIndexRequest{
+	req := &commonpb.CreateIndexRequest{
 		Ledger: ledgerName,
 	}
 
@@ -116,9 +116,9 @@ func runCreateIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Creating index %s on %s...", indexDesc, ledgerName))
 
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_CreateIndex{
+			Type: &commonpb.Request_CreateIndex{
 				CreateIndex: req,
 			},
 		},

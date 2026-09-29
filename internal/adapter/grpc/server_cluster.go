@@ -9,6 +9,7 @@ import (
 	ggrpc "google.golang.org/grpc"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	backupapp "github.com/formancehq/ledger/v3/internal/application/backup"
 	"github.com/formancehq/ledger/v3/internal/application/indexbuilder"
@@ -20,8 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -102,12 +102,12 @@ func (impl *ClusterServiceServerImpl) GetClusterState(ctx context.Context, req *
 				"localNodeID": impl.node.GetNodeID(),
 			}).Infof("GetClusterState: no leader known, returning ErrNoLeader")
 
-			return nil, commonpb.ErrNoLeader
+			return nil, protoerr.ErrNoLeader
 		}
 
 		conn := impl.servicePool.GetConnection(leaderID)
 		if conn == nil {
-			return nil, commonpb.ErrNoLeader
+			return nil, protoerr.ErrNoLeader
 		}
 
 		return clusterpb.NewClusterServiceClient(conn).GetClusterState(ctx, req)
@@ -150,7 +150,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	if persistedState, err := query.ReadClusterState(impl.store); err == nil && persistedState != nil {
 		clusterState.ClusterConfig = persistedState.GetConfig()
 	} else {
-		clusterState.ClusterConfig = &commonpb.ClusterConfig{
+		clusterState.ClusterConfig = &clusterpb.ClusterConfig{
 			RotationThreshold: impl.cache.GenerationThreshold(),
 		}
 	}
@@ -215,16 +215,16 @@ func (impl *ClusterServiceServerImpl) fetchPeerState(ctx context.Context, nodeID
 }
 
 // leaderClient returns a ClusterServiceClient connected to the current leader.
-// Returns commonpb.ErrNoLeader if no leader is known or unreachable.
+// Returns protoerr.ErrNoLeader if no leader is known or unreachable.
 func (impl *ClusterServiceServerImpl) leaderClient() (clusterpb.ClusterServiceClient, error) {
 	leaderID := impl.node.GetLeader()
 	if leaderID == 0 {
-		return nil, commonpb.ErrNoLeader
+		return nil, protoerr.ErrNoLeader
 	}
 
 	grpcConn := impl.servicePool.GetConnection(leaderID)
 	if grpcConn == nil {
-		return nil, commonpb.ErrNoLeader
+		return nil, protoerr.ErrNoLeader
 	}
 
 	return clusterpb.NewClusterServiceClient(grpcConn), nil
@@ -447,7 +447,7 @@ func (impl *ClusterServiceServerImpl) GetQueryCheckpointInfo(ctx context.Context
 		// after List on another node has already seen it; clients
 		// (notably the Antithesis cross-node oracle) need a typed code
 		// to classify this as transient and retry.
-		return nil, commonpb.NewNotFoundError("query checkpoint %d not found", req.GetCheckpointId())
+		return nil, protoerr.NewNotFoundError("query checkpoint %d not found", req.GetCheckpointId())
 	}
 
 	return queryCheckpointToInfo(cp), nil
@@ -486,7 +486,7 @@ func queryCheckpointToInfo(cp *raftcmdpb.QueryCheckpointState) *clusterpb.QueryC
 // a concurrent Backup against a byte-equal destination — same node or
 // any other — gets state.ErrBackupInProgress back through the apply
 // path; the orchestrator surfaces it as-is to the handler.
-func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *commonpb.BackupStorage, basePath, bucketIDRaw string) (backup.Storage, *raftcmdpb.BackupDestination, error) {
+func (impl *ClusterServiceServerImpl) extractBackupDestination(storageProto *clusterpb.BackupStorage, basePath, bucketIDRaw string) (backup.Storage, *raftcmdpb.BackupDestination, error) {
 	cfg, err := storageConfigFromProto(storageProto)
 	if err != nil {
 		return nil, nil, err

@@ -7,9 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -90,7 +89,7 @@ func TestRetypeWindowOpenFor(t *testing.T) {
 	// A window opens only once the index exists over a declared field and the
 	// declaration then changes: the served version may still be bound to the
 	// superseded type.
-	apply := func(reqs ...*servicepb.Request) {
+	apply := func(reqs ...*commonpb.Request) {
 		t.Helper()
 
 		res := c.modelState.Apply(oracle.Bulk{Requests: reqs})
@@ -188,9 +187,9 @@ func TestBulkHasInvalidSkippableReason_RequiresDisallowedReason(t *testing.T) {
 	t.Parallel()
 
 	validReason := commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
-	validButOtherwiseInvalid := oracle.Bulk{Requests: []*servicepb.Request{
-		applyCreate("L", &servicepb.CreateTransactionPayload{}, validReason),
-		applyCreate("L", &servicepb.CreateTransactionPayload{Reference: "valid-opt-in"}, validReason),
+	validButOtherwiseInvalid := oracle.Bulk{Requests: []*commonpb.Request{
+		applyCreate("L", &commonpb.CreateTransactionPayload{}, validReason),
+		applyCreate("L", &commonpb.CreateTransactionPayload{Reference: "valid-opt-in"}, validReason),
 	}}
 	require.False(t, bulkHasInvalidSkippableReason(validButOtherwiseInvalid),
 		"a valid opt-in must not receive credit for an unrelated validation failure")
@@ -199,5 +198,5 @@ func TestBulkHasInvalidSkippableReason_RequiresDisallowedReason(t *testing.T) {
 	disallowed.GetApply().SkippableReasons = []commonpb.ErrorReason{
 		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND,
 	}
-	require.True(t, bulkHasInvalidSkippableReason(oracle.Bulk{Requests: []*servicepb.Request{disallowed}}))
+	require.True(t, bulkHasInvalidSkippableReason(oracle.Bulk{Requests: []*commonpb.Request{disallowed}}))
 }

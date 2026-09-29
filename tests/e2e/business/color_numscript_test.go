@@ -6,8 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -22,7 +21,7 @@ var _ = Describe("ColorNumscript", Ordered, func() {
 	const ledgerName = "color-numscript"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerName, nil),
 		))
 		Expect(err).To(Succeed())
@@ -31,7 +30,7 @@ var _ = Describe("ColorNumscript", Ordered, func() {
 		//   uncolored ""  : 300
 		//   GRANTS         : 200
 		//   OPS            : 100
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(300), "USD/2", ""),
 				actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
@@ -53,7 +52,7 @@ send [USD/2 60] (
   destination = @bob
 )
 `
-		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
 		))
 		Expect(err).To(Succeed())
@@ -70,7 +69,7 @@ send [USD/2 60] (
 		Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64()).To(Equal(int64(60)))
 
 		Eventually(func(g Gomega) {
-			alice, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			alice, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
 			})
@@ -82,7 +81,7 @@ send [USD/2 60] (
 			g.Expect(alice.FindVolume("USD/2", "OPS").GetBalance()).To(Equal("100"))
 
 			// bob received under the same color and only under that color.
-			bob, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			bob, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "bob",
 			})
@@ -104,7 +103,7 @@ send [USD/2 1] (
   destination = @bob
 )
 `
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
 		))
 		Expect(err).To(HaveOccurred(),
@@ -121,13 +120,13 @@ send [USD/2 90] (
   destination = @bob
 )
 `
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil),
 		))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			alice, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			alice, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
 			})
@@ -141,7 +140,7 @@ send [USD/2 90] (
 	})
 
 	It("Should expose every (asset, color) bucket when GetAccount is called without collapse", func() {
-		acct, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+		acct, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 			Ledger:  ledgerName,
 			Address: "alice",
 		})
@@ -160,7 +159,7 @@ send [USD/2 90] (
 	})
 
 	It("Should collapse colors on GetAccount when collapseColors=true", func() {
-		acct, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+		acct, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 			Ledger:         ledgerName,
 			Address:        "alice",
 			CollapseColors: true,
@@ -183,7 +182,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 	const ledgerName = "agg-vol-color"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerName, nil),
 		))
 		Expect(err).To(Succeed())
@@ -194,7 +193,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 		//   alice / USD/2 / "GRANTS" : 100
 		//   alice / USD/2 / "OPS"    :  40
 		//   alice / EUR/2 / "GRANTS" :  50
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(10), "USD/2", ""),
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", "GRANTS"),
@@ -207,7 +206,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 
 	It("Should return one entry per (asset, color) by default", func() {
 		Eventually(func(g Gomega) {
-			result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+			result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 				Ledger: ledgerName,
 			})
 			g.Expect(err).To(Succeed())
@@ -242,7 +241,7 @@ var _ = Describe("AggregateVolumesColor", Ordered, func() {
 
 	It("Should collapse colors to one entry per asset when collapseColors=true", func() {
 		Eventually(func(g Gomega) {
-			result, err := sharedClient.AggregateVolumes(sharedCtx, &servicepb.AggregateVolumesRequest{
+			result, err := sharedClient.AggregateVolumes(sharedCtx, &commonpb.AggregateVolumesRequest{
 				Ledger:         ledgerName,
 				CollapseColors: true,
 			})
@@ -279,13 +278,13 @@ var _ = Describe("ColorRevert", Ordered, func() {
 	var revertTargetTxID uint64
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerName, nil),
 		))
 		Expect(err).To(Succeed())
 
 		// world → alice 200 USD/2 color=GRANTS, world → alice 100 USD/2 uncolored.
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(100), "USD/2", ""),
 			}, nil, nil),
@@ -293,7 +292,7 @@ var _ = Describe("ColorRevert", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// The colored transaction is the one we'll revert.
-		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewColoredPosting("world", "alice", big.NewInt(200), "USD/2", "GRANTS"),
 			}, nil, nil),
@@ -306,13 +305,13 @@ var _ = Describe("ColorRevert", Ordered, func() {
 	})
 
 	It("Should drive the revert against the same color bucket", func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.RevertTransactionAction(ledgerName, revertTargetTxID, false, false, nil),
 		))
 		Expect(err).To(Succeed())
 
 		Eventually(func(g Gomega) {
-			alice, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			alice, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
 			})

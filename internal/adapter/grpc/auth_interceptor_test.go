@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	admissionapp "github.com/formancehq/ledger/v3/internal/application/admission"
@@ -30,17 +31,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 type authInterceptorBucketServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	clusterpb.UnimplementedBucketServiceServer
 
 	barrierCalls     atomic.Int32
 	barrierHasScope  atomic.Bool
@@ -49,41 +46,41 @@ type authInterceptorBucketServer struct {
 	getLogCalls      atomic.Int32
 	listLogsCalls    atomic.Int32
 	applyCalls       atomic.Int32
-	applyFn          func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)
+	applyFn          func(context.Context, *clusterpb.ApplyRequest) (*domain.ApplyResult, error)
 }
 
-func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
+func (s *authInterceptorBucketServer) Barrier(ctx context.Context, _ *clusterpb.BarrierRequest) (*clusterpb.BarrierResponse, error) {
 	s.barrierCalls.Add(1)
 	s.barrierHasScope.Store(internalauth.HasScope(internalauth.ExpandedScopesFromContext(ctx), internalauth.ScopeOpsRead))
 
-	return &servicepb.BarrierResponse{}, nil
+	return &clusterpb.BarrierResponse{}, nil
 }
 
-func (s *authInterceptorBucketServer) Discovery(context.Context, *servicepb.DiscoveryRequest) (*servicepb.DiscoveryResponse, error) {
+func (s *authInterceptorBucketServer) Discovery(context.Context, *clusterpb.DiscoveryRequest) (*clusterpb.DiscoveryResponse, error) {
 	s.discoveryCalls.Add(1)
 
-	return &servicepb.DiscoveryResponse{}, nil
+	return &clusterpb.DiscoveryResponse{}, nil
 }
 
-func (s *authInterceptorBucketServer) ListIndexes(*servicepb.ListIndexesRequest, servicepb.BucketService_ListIndexesServer) error {
+func (s *authInterceptorBucketServer) ListIndexes(*clusterpb.ListIndexesRequest, clusterpb.BucketService_ListIndexesServer) error {
 	s.listIndexesCalls.Add(1)
 
 	return nil
 }
 
-func (s *authInterceptorBucketServer) GetLog(context.Context, *servicepb.GetLogRequest) (*commonpb.Log, error) {
+func (s *authInterceptorBucketServer) GetLog(context.Context, *clusterpb.GetLogRequest) (*clusterpb.Log, error) {
 	s.getLogCalls.Add(1)
 
-	return &commonpb.Log{}, nil
+	return &clusterpb.Log{}, nil
 }
 
-func (s *authInterceptorBucketServer) ListLogs(*servicepb.ListLogsRequest, servicepb.BucketService_ListLogsServer) error {
+func (s *authInterceptorBucketServer) ListLogs(*clusterpb.ListLogsRequest, clusterpb.BucketService_ListLogsServer) error {
 	s.listLogsCalls.Add(1)
 
 	return nil
 }
 
-func (s *authInterceptorBucketServer) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *authInterceptorBucketServer) Apply(ctx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 	s.applyCalls.Add(1)
 	if s.applyFn != nil {
 		if _, err := s.applyFn(ctx, req); err != nil {
@@ -91,7 +88,7 @@ func (s *authInterceptorBucketServer) Apply(ctx context.Context, req *servicepb.
 		}
 	}
 
-	return &servicepb.ApplyResponse{}, nil
+	return &clusterpb.ApplyResponse{}, nil
 }
 
 func TestAuthInterceptorsEnforcePoliciesBeforeGeneratedHandlers(t *testing.T) {
@@ -105,12 +102,12 @@ func TestAuthInterceptorsEnforcePoliciesBeforeGeneratedHandlers(t *testing.T) {
 	}
 	server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, cfg)
 
-	_, err := client.Barrier(context.Background(), &servicepb.BarrierRequest{})
+	_, err := client.Barrier(context.Background(), &clusterpb.BarrierRequest{})
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.Zero(t, server.barrierCalls.Load(), "fixed-scope denial must precede handler invocation")
 
-	stream, err := client.ListIndexes(context.Background(), &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+	stream, err := client.ListIndexes(context.Background(), &clusterpb.ListIndexesRequest{
+		Scope:  clusterpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: "main",
 	})
 	require.NoError(t, err)
@@ -118,8 +115,8 @@ func TestAuthInterceptorsEnforcePoliciesBeforeGeneratedHandlers(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF)
 	require.EqualValues(t, 1, server.listIndexesCalls.Load())
 
-	stream, err = client.ListIndexes(context.Background(), &servicepb.ListIndexesRequest{
-		Scope: servicepb.ListIndexesRequest_SCOPE_ALL,
+	stream, err = client.ListIndexes(context.Background(), &clusterpb.ListIndexesRequest{
+		Scope: clusterpb.ListIndexesRequest_SCOPE_ALL,
 	})
 	require.NoError(t, err)
 	_, err = stream.Recv()
@@ -127,7 +124,7 @@ func TestAuthInterceptorsEnforcePoliciesBeforeGeneratedHandlers(t *testing.T) {
 	require.EqualValues(t, 1, server.listIndexesCalls.Load(), "first-message denial must precede handler invocation")
 
 	invalidToken := metadata.AppendToOutgoingContext(context.Background(), "authorization", "Bearer invalid")
-	_, err = client.Discovery(invalidToken, &servicepb.DiscoveryRequest{})
+	_, err = client.Discovery(invalidToken, &clusterpb.DiscoveryRequest{})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, server.discoveryCalls.Load(), "public methods must bypass credential evaluation")
 }
@@ -143,7 +140,7 @@ func TestAuthInterceptorAllowsFixedScopeAndEnrichesContext(t *testing.T) {
 	}
 	server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, cfg)
 
-	_, err := client.Barrier(context.Background(), &servicepb.BarrierRequest{})
+	_, err := client.Barrier(context.Background(), &clusterpb.BarrierRequest{})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, server.barrierCalls.Load())
 	require.True(t, server.barrierHasScope.Load())
@@ -177,20 +174,20 @@ func TestProfiledRPCAuthDenialsEmitRequestedProfileThroughServerChain(t *testing
 
 	t.Run("unary", func(t *testing.T) {
 		var trailer metadata.MD
-		_, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{}, ggrpc.Trailer(&trailer))
+		_, err := client.AggregateVolumes(ctx, &clusterpb.AggregateVolumesRequest{}, ggrpc.Trailer(&trailer))
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
 		require.NotEmpty(t, trailer.Get(metadataKeyQueryProfileResult))
 	})
 
 	t.Run("unprofiled unary", func(t *testing.T) {
 		var trailer metadata.MD
-		_, err := client.Barrier(ctx, &servicepb.BarrierRequest{}, ggrpc.Trailer(&trailer))
+		_, err := client.Barrier(ctx, &clusterpb.BarrierRequest{}, ggrpc.Trailer(&trailer))
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
 		require.NotEmpty(t, trailer.Get(metadataKeyQueryProfileResult))
 	})
 
 	t.Run("stream", func(t *testing.T) {
-		stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{})
+		stream, err := client.ListTransactions(ctx, &clusterpb.ListTransactionsRequest{})
 		require.NoError(t, err)
 		_, err = stream.Recv()
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -198,7 +195,7 @@ func TestProfiledRPCAuthDenialsEmitRequestedProfileThroughServerChain(t *testing
 	})
 }
 
-func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, servicepb.BucketServiceClient) {
+func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internalauth.AuthConfig) (*authInterceptorBucketServer, clusterpb.BucketServiceClient) {
 	t.Helper()
 
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
@@ -206,7 +203,7 @@ func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internal
 	server, err := NewServiceServer(mode, cfg, "", 0, noopLogger{}, false, time.Second, nil, true, WithListener(listener))
 	require.NoError(t, err)
 	implementation := &authInterceptorBucketServer{}
-	servicepb.RegisterBucketServiceServer(server.GetServer(), implementation)
+	clusterpb.RegisterBucketServiceServer(server.GetServer(), implementation)
 	if mode == ServiceAuthPolicyPublic {
 		clusterpb.RegisterClusterServiceServer(server.GetServer(), &clusterpb.UnimplementedClusterServiceServer{})
 	}
@@ -221,14 +218,14 @@ func newAuthInterceptorServer(t *testing.T, mode ServiceAuthPolicy, cfg internal
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return implementation, servicepb.NewBucketServiceClient(conn)
+	return implementation, clusterpb.NewBucketServiceClient(conn)
 }
 
 func TestRestoreServiceDoesNotInstallPublicJWTAuthorization(t *testing.T) {
 	t.Parallel()
 
 	server, client := newAuthInterceptorServer(t, ServiceAuthPolicyRestore, internalauth.AuthConfig{Enabled: true})
-	_, err := client.Barrier(context.Background(), &servicepb.BarrierRequest{})
+	_, err := client.Barrier(context.Background(), &clusterpb.BarrierRequest{})
 	require.NoError(t, err)
 	require.EqualValues(t, 1, server.barrierCalls.Load())
 }
@@ -281,7 +278,7 @@ func TestFixedPolicyCredentialModes(t *testing.T) {
 			t.Parallel()
 
 			server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, test.cfg)
-			_, err := client.Barrier(test.ctx, &servicepb.BarrierRequest{})
+			_, err := client.Barrier(test.ctx, &clusterpb.BarrierRequest{})
 			require.Equal(t, test.wantCode, status.Code(err))
 			if test.wantCode == codes.OK {
 				require.EqualValues(t, 1, server.barrierCalls.Load())
@@ -301,7 +298,7 @@ func TestFixedPolicyValidTokenWithoutScopeReturnsPermissionDenied(t *testing.T) 
 	ctx := metadata.NewOutgoingContext(context.Background(), md)
 	server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, cfg)
 
-	_, err := client.Barrier(ctx, &servicepb.BarrierRequest{})
+	_, err := client.Barrier(ctx, &clusterpb.BarrierRequest{})
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 	require.Zero(t, server.barrierCalls.Load())
 }
@@ -313,13 +310,13 @@ func TestListLogsAndGetLogKeepDistinctFixedScopes(t *testing.T) {
 		t.Parallel()
 
 		server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, anonymousAuthConfig(internalauth.ScopeLedgersRead))
-		stream, err := client.ListLogs(context.Background(), &servicepb.ListLogsRequest{})
+		stream, err := client.ListLogs(context.Background(), &clusterpb.ListLogsRequest{})
 		require.NoError(t, err)
 		_, err = stream.Recv()
 		require.ErrorIs(t, err, io.EOF)
 		require.EqualValues(t, 1, server.listLogsCalls.Load())
 
-		_, err = client.GetLog(context.Background(), &servicepb.GetLogRequest{})
+		_, err = client.GetLog(context.Background(), &clusterpb.GetLogRequest{})
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
 		require.Zero(t, server.getLogCalls.Load())
 	})
@@ -328,11 +325,11 @@ func TestListLogsAndGetLogKeepDistinctFixedScopes(t *testing.T) {
 		t.Parallel()
 
 		server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, anonymousAuthConfig(internalauth.ScopeOpsRead))
-		_, err := client.GetLog(context.Background(), &servicepb.GetLogRequest{})
+		_, err := client.GetLog(context.Background(), &clusterpb.GetLogRequest{})
 		require.NoError(t, err)
 		require.EqualValues(t, 1, server.getLogCalls.Load())
 
-		stream, err := client.ListLogs(context.Background(), &servicepb.ListLogsRequest{})
+		stream, err := client.ListLogs(context.Background(), &clusterpb.ListLogsRequest{})
 		require.NoError(t, err)
 		_, err = stream.Recv()
 		require.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -345,19 +342,19 @@ func TestApplyDynamicPolicyUsesEveryEmbeddedBusinessScope(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		request   *servicepb.Request
+		request   *clusterpb.Request
 		granted   internalauth.Scope
 		wantCode  codes.Code
 		wantScope internalauth.Scope
 	}{
-		{"numscript save with LedgerWrite", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{SaveNumscript: &servicepb.SaveNumscriptRequest{}}}, internalauth.ScopeLedgersWrite, codes.OK, ""},
-		{"numscript save with OpsWrite", &servicepb.Request{Type: &servicepb.Request_SaveNumscript{SaveNumscript: &servicepb.SaveNumscriptRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeLedgersWrite},
-		{"add account type with MetadataWrite", &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{}}}, internalauth.ScopeMetadataWrite, codes.OK, ""},
-		{"add account type with OpsWrite", &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeMetadataWrite},
-		{"save ledger metadata with MetadataWrite", &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{}}}, internalauth.ScopeMetadataWrite, codes.OK, ""},
-		{"checkpoint with ClusterWrite", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}}, internalauth.ScopeClusterWrite, codes.OK, ""},
-		{"checkpoint with OpsWrite", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeClusterWrite},
-		{"delete checkpoint with OpsWrite", &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeClusterWrite},
+		{"numscript save with LedgerWrite", &clusterpb.Request{Type: &clusterpb.Request_SaveNumscript{SaveNumscript: &clusterpb.SaveNumscriptRequest{}}}, internalauth.ScopeLedgersWrite, codes.OK, ""},
+		{"numscript save with OpsWrite", &clusterpb.Request{Type: &clusterpb.Request_SaveNumscript{SaveNumscript: &clusterpb.SaveNumscriptRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeLedgersWrite},
+		{"add account type with MetadataWrite", &clusterpb.Request{Type: &clusterpb.Request_AddAccountType{AddAccountType: &clusterpb.AddAccountTypeLedgerRequest{}}}, internalauth.ScopeMetadataWrite, codes.OK, ""},
+		{"add account type with OpsWrite", &clusterpb.Request{Type: &clusterpb.Request_AddAccountType{AddAccountType: &clusterpb.AddAccountTypeLedgerRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeMetadataWrite},
+		{"save ledger metadata with MetadataWrite", &clusterpb.Request{Type: &clusterpb.Request_SaveLedgerMetadata{SaveLedgerMetadata: &clusterpb.SaveLedgerMetadataRequest{}}}, internalauth.ScopeMetadataWrite, codes.OK, ""},
+		{"checkpoint with ClusterWrite", &clusterpb.Request{Type: &clusterpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &clusterpb.CreateQueryCheckpointRequest{}}}, internalauth.ScopeClusterWrite, codes.OK, ""},
+		{"checkpoint with OpsWrite", &clusterpb.Request{Type: &clusterpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &clusterpb.CreateQueryCheckpointRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeClusterWrite},
+		{"delete checkpoint with OpsWrite", &clusterpb.Request{Type: &clusterpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &clusterpb.DeleteQueryCheckpointRequest{}}}, internalauth.ScopeOpsWrite, codes.Unauthenticated, internalauth.ScopeClusterWrite},
 	}
 
 	for _, test := range tests {
@@ -365,7 +362,7 @@ func TestApplyDynamicPolicyUsesEveryEmbeddedBusinessScope(t *testing.T) {
 			t.Parallel()
 
 			server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, anonymousAuthConfig(test.granted))
-			_, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("", test.request))
+			_, err := client.Apply(context.Background(), clusterpb.UnsignedApplyRequest("", test.request))
 			require.Equal(t, test.wantCode, status.Code(err))
 			if test.wantCode == codes.OK {
 				require.EqualValues(t, 1, server.applyCalls.Load())
@@ -382,12 +379,12 @@ func TestApplyDynamicPolicyAuthorizesEveryEmbeddedRequest(t *testing.T) {
 	t.Parallel()
 
 	server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, anonymousAuthConfig(internalauth.ScopeMetadataWrite))
-	_, err := client.Apply(context.Background(), servicepb.UnsignedApplyRequest("",
-		&servicepb.Request{Type: &servicepb.Request_AddAccountType{
-			AddAccountType: &servicepb.AddAccountTypeLedgerRequest{},
+	_, err := client.Apply(context.Background(), clusterpb.UnsignedApplyRequest("",
+		&clusterpb.Request{Type: &clusterpb.Request_AddAccountType{
+			AddAccountType: &clusterpb.AddAccountTypeLedgerRequest{},
 		}},
-		&servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{
-			CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+		&clusterpb.Request{Type: &clusterpb.Request_CreateQueryCheckpoint{
+			CreateQueryCheckpoint: &clusterpb.CreateQueryCheckpointRequest{},
 		}},
 	))
 	require.Equal(t, codes.Unauthenticated, status.Code(err))
@@ -398,10 +395,10 @@ func TestApplyDynamicPolicyAuthorizesEveryEmbeddedRequest(t *testing.T) {
 func TestDistinctApplyScopesPreservesFirstRequestOrder(t *testing.T) {
 	t.Parallel()
 
-	requests := []*servicepb.Request{
-		{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{}}},
-		{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{}}},
-		{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}},
+	requests := []*clusterpb.Request{
+		{Type: &clusterpb.Request_AddAccountType{AddAccountType: &clusterpb.AddAccountTypeLedgerRequest{}}},
+		{Type: &clusterpb.Request_AddAccountType{AddAccountType: &clusterpb.AddAccountTypeLedgerRequest{}}},
+		{Type: &clusterpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &clusterpb.CreateQueryCheckpointRequest{}}},
 	}
 
 	require.Equal(t, []indexedScope{
@@ -432,31 +429,31 @@ func TestApplyDynamicAuthorizationPreservesSignedPayloadPrecedence(t *testing.T)
 
 	tests := []struct {
 		name     string
-		request  *servicepb.ApplyRequest
+		request  *clusterpb.ApplyRequest
 		wantCode codes.Code
 	}{
 		{
 			name: "authorized request",
-			request: servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_AddAccountType{},
+			request: clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+				Type: &clusterpb.Request_AddAccountType{},
 			}),
 			wantCode: codes.OK,
 		},
 		{
 			name: "unauthorized embedded request",
-			request: servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateQueryCheckpoint{},
+			request: clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+				Type: &clusterpb.Request_CreateQueryCheckpoint{},
 			}),
 			wantCode: codes.Unauthenticated,
 		},
 		{
 			name:     "malformed unsigned payload",
-			request:  &servicepb.ApplyRequest{},
+			request:  &clusterpb.ApplyRequest{},
 			wantCode: codes.InvalidArgument,
 		},
 		{
 			name: "malformed signed payload reaches signature admission",
-			request: servicepb.SignedApplyRequest(&signaturepb.SignedApplyBatch{
+			request: clusterpb.SignedApplyRequest(&clusterpb.SignedApplyBatch{
 				Payload: []byte{0xff},
 			}),
 			wantCode: codes.OK,
@@ -467,7 +464,7 @@ func TestApplyDynamicAuthorizationPreservesSignedPayloadPrecedence(t *testing.T)
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
 
-			authorizedCtx, err := authorizeDynamicUnaryRPC(ctx, test.request, commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY)
+			authorizedCtx, err := authorizeDynamicUnaryRPC(ctx, test.request, clusterpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY)
 			require.Equal(t, test.wantCode, status.Code(err))
 			if test.name == "authorized request" {
 				require.Equal(t, 1, authorizedCtx.Value(applyBatchSizeKey{}))
@@ -485,7 +482,7 @@ func TestMalformedSignedApplyReachesAdmissionSignatureVerification(t *testing.T)
 	server, client := newAuthInterceptorServer(t, ServiceAuthPolicyPublic, internalauth.AuthConfig{})
 	server.applyFn = admission.Admit
 
-	invalidSignature := servicepb.SignedApplyRequest(&signaturepb.SignedApplyBatch{
+	invalidSignature := clusterpb.SignedApplyRequest(&clusterpb.SignedApplyBatch{
 		KeyId:     "test-key",
 		Payload:   []byte{0xff},
 		Signature: make([]byte, ed25519.SignatureSize),
@@ -494,7 +491,7 @@ func TestMalformedSignedApplyReachesAdmissionSignatureVerification(t *testing.T)
 	require.Equal(t, codes.PermissionDenied, status.Code(err))
 
 	malformedPayload := []byte{0xff}
-	validSignature := servicepb.SignedApplyRequest(&signaturepb.SignedApplyBatch{
+	validSignature := clusterpb.SignedApplyRequest(&clusterpb.SignedApplyBatch{
 		KeyId:     "test-key",
 		Payload:   malformedPayload,
 		Signature: ed25519.Sign(privateKey, malformedPayload),
@@ -556,9 +553,9 @@ func TestAuthScopeMapsEveryDeclaredScope(t *testing.T) {
 	t.Parallel()
 
 	mapped := map[internalauth.Scope]struct{}{}
-	for number, name := range commonpb.AuthScope_name {
-		scope := commonpb.AuthScope(number)
-		if scope == commonpb.AuthScope_AUTH_SCOPE_UNSPECIFIED {
+	for number, name := range clusterpb.AuthScope_name {
+		scope := clusterpb.AuthScope(number)
+		if scope == clusterpb.AuthScope_AUTH_SCOPE_UNSPECIFIED {
 			continue
 		}
 
@@ -568,6 +565,6 @@ func TestAuthScopeMapsEveryDeclaredScope(t *testing.T) {
 	}
 
 	require.Equal(t, internalauth.AllGranularScopes, mapped)
-	_, err := authScope(commonpb.AuthScope(999))
+	_, err := authScope(clusterpb.AuthScope(999))
 	require.Equal(t, codes.Internal, status.Code(err))
 }

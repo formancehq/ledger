@@ -10,8 +10,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 )
@@ -22,7 +21,7 @@ import (
 var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, func() {
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 	)
 
 	const ledger = "degenerate-bounds"
@@ -34,7 +33,7 @@ var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, 
 	})
 
 	countLogs := func(g Gomega, filter *commonpb.QueryFilter) int {
-		stream, err := client.ListLogs(ctx, &servicepb.ListLogsRequest{
+		stream, err := client.ListLogs(ctx, &commonpb.ListLogsRequest{
 			Ledger:  ledger,
 			Options: &commonpb.ListOptions{Filter: filter},
 		})
@@ -54,11 +53,11 @@ var _ = Describe("Degenerate range bounds resolve to the empty match", Ordered, 
 	}
 
 	It("lists the whole universe under not() of an empty interval", func() {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 		Expect(err).To(Succeed())
 
 		for range 3 {
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("",
 				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
 					actions.NewPosting("world", "acc:1", big.NewInt(10), "USD"),
 				}, nil)))

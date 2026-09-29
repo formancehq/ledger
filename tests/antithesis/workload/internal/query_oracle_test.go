@@ -6,19 +6,16 @@ import (
 	"io"
 	"testing"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	workload "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-
-	workload "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 )
 
 const permanentOracleError = "query oracle encountered a permanent setup or read error"
@@ -48,7 +45,7 @@ func TestQueryOracleReadErrors(t *testing.T) {
 				} else {
 					seedOracle(t, ctx, client)
 				}
-				var reader = client
+				var reader commonpb.BucketServiceClient = client
 				if !tc.missingIndex {
 					reader = &faultedQueryClient{BucketServiceClient: client, failure: status.Error(tc.code, "injected read failure"), open: tc.open}
 				}
@@ -112,7 +109,7 @@ func TestQueryOracleUnfaultedStreamPreservesEOF(t *testing.T) {
 		ctx, client := drivertest.StartServer(t)
 		expected := seedOracle(t, ctx, client)
 		reader := &faultedQueryClient{BucketServiceClient: client}
-		stream, err := reader.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
+		stream, err := reader.ListTransactions(ctx, &commonpb.ListTransactionsRequest{
 			Ledger: "oracle", Options: &commonpb.ListOptions{Filter: actions.ReferenceFilter("reference")},
 		})
 		require.NoError(t, err)
@@ -171,12 +168,12 @@ func TestQueryOracleSkipsLedgerNameCollision(t *testing.T) {
 	})
 }
 
-func seedOracle(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient) []uint64 {
+func seedOracle(t *testing.T, ctx context.Context, client commonpb.BucketServiceClient) []uint64 {
 	t.Helper()
 	require.NoError(t, workload.CreateQueryOracleLedger(ctx, client, "oracle", commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE))
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("seed", &servicepb.Request{Type: &servicepb.Request_Apply{
-		Apply: &servicepb.LedgerApplyRequest{Ledger: "oracle", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-			CreateTransaction: &servicepb.CreateTransactionPayload{Reference: "reference", Force: true, Postings: []*commonpb.Posting{{
+	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("seed", &commonpb.Request{Type: &commonpb.Request_Apply{
+		Apply: &commonpb.LedgerApplyRequest{Ledger: "oracle", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+			CreateTransaction: &commonpb.CreateTransactionPayload{Reference: "reference", Force: true, Postings: []*commonpb.Posting{{
 				Source: "world", Destination: "account", Asset: "USD/2", Amount: commonpb.NewUint256FromUint64(1),
 			}}},
 		}}},
@@ -192,8 +189,7 @@ func seedOracle(t *testing.T, ctx context.Context, client servicepb.BucketServic
 // These decorators fault the response boundary of a real client/query. They
 // neither implement a substitute query engine nor manufacture missing indexes.
 type faultedQueryClient struct {
-	servicepb.BucketServiceClient
-
+	commonpb.BucketServiceClient
 	failure      error
 	open         bool
 	once         bool
@@ -201,7 +197,7 @@ type faultedQueryClient struct {
 	afterFailure func()
 }
 
-func (c *faultedQueryClient) ListTransactions(ctx context.Context, request *servicepb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
+func (c *faultedQueryClient) ListTransactions(ctx context.Context, request *commonpb.ListTransactionsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Transaction], error) {
 	c.calls++
 	if c.once && c.calls > 1 {
 		return c.BucketServiceClient.ListTransactions(ctx, request, opts...)

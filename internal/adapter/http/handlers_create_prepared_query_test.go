@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // validFieldFilterJSON is a minimal QueryFilter wire shape (v2-aligned query
@@ -25,7 +25,7 @@ func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
@@ -51,10 +51,10 @@ func TestHandleCreatePreparedQuery_Success(t *testing.T) {
 func TestHandleCreatePreparedQuery_NestedOneofs(t *testing.T) {
 	t.Parallel()
 
-	var captured *servicepb.Request
+	var captured *commonpb.Request
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, reqs *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
@@ -189,10 +189,10 @@ func TestHandleCreatePreparedQuery_LogsTargetAccepted(t *testing.T) {
 	// hydrates the log_data cursor field for it. A LOGS-target prepared query
 	// with a log-only condition (logId/date/ledger) must be accepted and the
 	// target must reach the persisted request unchanged.
-	var captured *servicepb.Request
+	var captured *commonpb.Request
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, reqs *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, reqs *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = reqs.GetUnsigned().GetRequests()[0]
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{}}}, nil
@@ -251,7 +251,7 @@ func TestHandleCreatePreparedQuery_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrPreparedQueryAlreadyExists{Ledger: "ledger1", Name: "my-query"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

@@ -7,12 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -38,9 +36,9 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 		errors, terminalErr := runMetadataAuditCheck(engine)
 		require.NoError(t, terminalErr)
 		require.Len(t, errors, 2)
-		logErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
+		logErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
 		require.Len(t, logErrors, 1)
-		metadataErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
+		metadataErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
 		require.Len(t, metadataErrors, 1)
 		require.Equal(t, log.GetSequence(), logErrors[0].GetLogSequence())
 	})
@@ -54,7 +52,7 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 		errors, terminalErr := runMetadataAuditCheck(engine)
 		require.NoError(t, terminalErr)
 		require.Len(t, errors, 1)
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
+		require.Equal(t, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
 	})
 
 	t.Run("mirror metadata", func(t *testing.T) {
@@ -78,16 +76,16 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 			errors, terminalErr := runMetadataAuditCheck(engine)
 			require.NoError(t, terminalErr)
 			require.Len(t, errors, 2)
-			logErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
+			logErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
 			require.Len(t, logErrors, 1)
-			metadataErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
+			metadataErrors := errorsOfType(errors, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
 			require.Len(t, metadataErrors, 1)
 			require.Equal(t, log.GetSequence(), logErrors[0].GetLogSequence())
 		})
 	})
 }
 
-func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64, key string) *commonpb.MetadataValue {
+func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64, key string) *auditpb.MetadataValue {
 	t.Helper()
 
 	snap, err := engine.store.NewReadHandle()
@@ -111,7 +109,7 @@ func auditedMetadataValue(t *testing.T, engine *testEngine, auditSequence uint64
 	return order.GetLedgerScoped().GetApply().GetAddMetadata().GetMetadata()[key]
 }
 
-func metadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
+func metadataAuditFixture(t *testing.T) (*testEngine, *auditpb.Log) {
 	t.Helper()
 
 	engine := newTestEngine(t)
@@ -122,7 +120,7 @@ func metadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
 	return engine, logs[0]
 }
 
-func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
+func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *auditpb.Log) {
 	t.Helper()
 
 	engine := newTestEngine(t)
@@ -135,7 +133,7 @@ func mirrorMetadataAuditFixture(t *testing.T) (*testEngine, *commonpb.Log) {
 
 func createMirrorLedgerOrder(name string) *raftcmdpb.Order {
 	order := createLedgerOrder(name)
-	order.GetLedgerScoped().GetCreateLedger().Mode = commonpb.LedgerMode_LEDGER_MODE_MIRROR
+	order.GetLedgerScoped().GetCreateLedger().Mode = auditpb.LedgerMode_LEDGER_MODE_MIRROR
 
 	return order
 }
@@ -151,12 +149,12 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 							V2LogId: 1,
 							Data: &raftcmdpb.MirrorLogEntry_SavedMetadata{
 								SavedMetadata: &raftcmdpb.MirrorSavedMetadata{
-									Target: &commonpb.Target{
-										Target: &commonpb.Target_Account{
-											Account: &commonpb.TargetAccount{Addr: account},
+									Target: &auditpb.Target{
+										Target: &auditpb.Target_Account{
+											Account: &auditpb.TargetAccount{Addr: account},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(metadata),
+									Metadata: auditpb.MetadataFromGoMap(metadata),
 								},
 							},
 						},
@@ -167,10 +165,10 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 	}
 }
 
-func tamperSavedMetadata(t *testing.T, engine *testEngine, log *commonpb.Log, ledger, account, key string, rewriteLog bool) {
+func tamperSavedMetadata(t *testing.T, engine *testEngine, log *auditpb.Log, ledger, account, key string, rewriteLog bool) {
 	t.Helper()
 
-	tampered := commonpb.NewStringValue("rejected")
+	tampered := auditpb.NewStringValue("rejected")
 	batch := engine.store.OpenWriteSession()
 	defer func() { _ = batch.Cancel() }() // Best-effort cleanup after commit or assertion failure.
 
@@ -190,10 +188,10 @@ func tamperSavedMetadata(t *testing.T, engine *testEngine, log *commonpb.Log, le
 	require.NoError(t, batch.Commit())
 }
 
-func runMetadataAuditCheck(engine *testEngine) ([]*servicepb.CheckStoreError, error) {
+func runMetadataAuditCheck(engine *testEngine) ([]*auditpb.CheckStoreError, error) {
 	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
-	var errors []*servicepb.CheckStoreError
-	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+	var errors []*auditpb.CheckStoreError
+	err := checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
 		if checkErr := event.GetError(); checkErr != nil {
 			errors = append(errors, checkErr)
 		}

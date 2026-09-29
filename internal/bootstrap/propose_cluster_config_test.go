@@ -7,9 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/node"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -22,7 +23,7 @@ func seedClusterState(t *testing.T, store *dal.Store, cfg *commonpb.ClusterConfi
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(
 		[]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig},
-		&commonpb.PersistedClusterState{Config: cfg},
+		&internalcommonpb.PersistedClusterState{Config: cfg},
 	))
 	require.NoError(t, batch.Commit())
 }

@@ -2,9 +2,9 @@ package eventspb
 
 import (
 	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // MarshalJSON implements json.Marshaler for Event.

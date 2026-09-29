@@ -9,12 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -163,7 +165,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	require.Equal(t, []uint64{1, 2, 3}, pinnedIDs, "an already acquired cursor must retain its pinned logs")
 	freshCursor, freshErr := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 6), ledger, 0, 3, nil)
 	require.Nil(t, freshCursor)
-	var freshNotFound *commonpb.NotFoundError
+	var freshNotFound *protoerr.NotFoundError
 	require.ErrorAs(t, freshErr, &freshNotFound, "fresh reads reject before alignment")
 
 	// The current ledger is absent while the fully acquired cursor above still

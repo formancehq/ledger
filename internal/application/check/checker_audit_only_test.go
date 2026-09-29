@@ -7,21 +7,19 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// auditOnlyClusterID matches the cluster id collectCheckErrors builds its
-// Checker with, so a fixture persisted under it re-hashes identically when the
-// full Check() walks the chain.
+// The fixture still carries a cluster ID, but audit hashing uses the persisted
+// audit key independently of that operational ID.
 const auditOnlyClusterID = "test-cluster"
 
 // newFailureAuditEntry builds the audit envelope a REJECTED proposal writes:
@@ -38,14 +36,14 @@ const auditOnlyClusterID = "test-cluster"
 func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
 		Sequence:       sequence,
-		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
+		Timestamp:      &auditpb.Timestamp{Data: 1700000000 + sequence},
 		ProposalId:     sequence,
 		OrderCount:     uint32(orderCount),
-		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		HashVersion:    uint32(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
 		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
-				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+				Reason:  auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 				Message: "balance too low",
 				Context: map[string]string{"account": "bank"},
 			},
@@ -77,7 +75,7 @@ func persistFailureOnlyHistory(
 ) ([]*auditpb.AuditEntry, [][]*auditpb.AuditItem) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
+	gen := processing.NewHashGenerator(auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -112,7 +110,7 @@ func persistFailureOnlyHistory(
 }
 
 // countErrorsOfType returns how many collected events carry the given type.
-func countErrorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckStoreErrorType) int {
+func countErrorsOfType(errs []*auditpb.CheckStoreError, want auditpb.CheckStoreErrorType) int {
 	count := 0
 
 	for _, e := range errs {
@@ -126,15 +124,15 @@ func countErrorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckSt
 
 // collectCheckProgress runs the full Check() and returns every progress event
 // it emitted, in order.
-func collectCheckProgress(t *testing.T, store *dal.Store) []*servicepb.CheckStoreProgress {
+func collectCheckProgress(t *testing.T, store *dal.Store) []*auditpb.CheckStoreProgress {
 	t.Helper()
 
 	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
-	var progress []*servicepb.CheckStoreProgress
+	var progress []*auditpb.CheckStoreProgress
 
-	require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if p, ok := event.GetType().(*servicepb.CheckStoreEvent_Progress); ok {
+	require.NoError(t, checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
+		if p, ok := event.GetType().(*auditpb.CheckStoreEvent_Progress); ok {
 			progress = append(progress, p.Progress)
 		}
 	}))
@@ -197,7 +195,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedAuditHash(t *testing.T) {
 	}{
 		{"failure message", func(e *auditpb.AuditEntry) { e.GetFailure().Message = "you have plenty of money" }},
 		{"failure reason", func(e *auditpb.AuditEntry) {
-			e.GetFailure().Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+			e.GetFailure().Reason = auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 		}},
 		{"proposal id", func(e *auditpb.AuditEntry) { e.ProposalId += 100 }},
 		{"stored hash", func(e *auditpb.AuditEntry) { e.Hash = []byte("forged-chain-hash") }},
@@ -217,7 +215,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedAuditHash(t *testing.T) {
 			rewriteAuditEntry(t, store, entries[0], items[0])
 
 			errs := collectCheckErrors(t, store, attributes.New())
-			require.Equal(t, 1, countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
+			require.Equal(t, 1, countErrorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 				"Check() must report exactly one HASH_MISMATCH on a failure-only history, got %v", errs)
 		})
 	}
@@ -247,18 +245,18 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 		store := createTestStore(t)
 
 		entry, items := newFailureAuditEntry(1, len(orders))
-		entry.Timestamp = &commonpb.Timestamp{Data: createdAt}
-		entry.Idempotency = &commonpb.Idempotency{Key: idemKey}
+		entry.Timestamp = &auditpb.Timestamp{Data: createdAt}
+		entry.Idempotency = &auditpb.Idempotency{Key: idemKey}
 		persistAuditEntry(t, store, entry, items, auditOnlyClusterID)
 
 		return store
 	}
 
-	faithful := &commonpb.IdempotencyKeyValue{
+	faithful := &internalcommonpb.IdempotencyKeyValue{
 		CreatedAt: createdAt,
 		Hash:      proposalHash,
-		Failure: &commonpb.IdempotencyFailure{
-			Reason:   commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
+		Failure: &internalcommonpb.IdempotencyFailure{
+			Reason:   auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
 			Message:  "balance too low",
 			Metadata: map[string]string{"account": "bank"},
 		},
@@ -276,16 +274,16 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 
 	cases := []struct {
 		name   string
-		mutate func(v *commonpb.IdempotencyKeyValue)
+		mutate func(v *internalcommonpb.IdempotencyKeyValue)
 	}{
-		{"failure message", func(v *commonpb.IdempotencyKeyValue) { v.Failure.Message = "you have plenty of money" }},
-		{"failure reason", func(v *commonpb.IdempotencyKeyValue) {
-			v.Failure.Reason = commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
+		{"failure message", func(v *internalcommonpb.IdempotencyKeyValue) { v.Failure.Message = "you have plenty of money" }},
+		{"failure reason", func(v *internalcommonpb.IdempotencyKeyValue) {
+			v.Failure.Reason = auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND
 		}},
-		{"proposal hash", func(v *commonpb.IdempotencyKeyValue) { v.Hash = []byte("forged-hash") }},
+		{"proposal hash", func(v *internalcommonpb.IdempotencyKeyValue) { v.Hash = []byte("forged-hash") }},
 		// A nil failure with a log range is how a SUCCESS is frozen; the audit
 		// entry says the proposal was rejected.
-		{"outcome flipped to success", func(v *commonpb.IdempotencyKeyValue) {
+		{"outcome flipped to success", func(v *internalcommonpb.IdempotencyKeyValue) {
 			v.Failure = nil
 			v.FirstLogSequence = 1
 			v.LogCount = 1
@@ -304,7 +302,7 @@ func TestCheck_FailureOnlyHistory_ReportsTamperedIdempotencyOutcome(t *testing.T
 
 			errs := collectCheckErrors(t, store, attributes.New())
 			require.NotZero(t,
-				countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH),
+				countErrorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH),
 				"Check() must report IDEMPOTENCY_MISMATCH on a failure-only history, got %v", errs)
 		})
 	}
@@ -420,11 +418,11 @@ func TestCheck_LogSequenceFieldMismatch(t *testing.T) {
 			require.Len(t, errs, 1,
 				"the tampered row must be the only finding, got %v", errs)
 			require.Equal(t, 1,
-				countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
+				countErrorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
 				"exactly one LOG_SEQUENCE_MISMATCH expected, got %v", errs)
 
 			for _, e := range errs {
-				if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH {
+				if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH {
 					require.Equal(t, tc.keySequence, e.GetLogSequence(),
 						"the event must name the KEY sequence, the position every projection is keyed on")
 				}
@@ -444,10 +442,10 @@ func TestCheck_LogSequenceFieldMismatch(t *testing.T) {
 
 		errs := collectCheckErrors(t, engine.store, engine.attrs)
 		require.NotZero(t,
-			countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
+			countErrorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH),
 			"LOG_SEQUENCE_MISMATCH expected, got %v", errs)
 		require.NotZero(t,
-			countErrorsOfType(errs, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
+			countErrorsOfType(errs, auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH),
 			"HASH_MISMATCH expected in the same run, got %v", errs)
 	})
 }
@@ -494,10 +492,10 @@ func TestCheck_EmptyStore_EmitsSingleProgressEvent(t *testing.T) {
 
 		checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 
-		var progress []*servicepb.CheckStoreProgress
+		var progress []*auditpb.CheckStoreProgress
 
-		require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-			if p, ok := event.GetType().(*servicepb.CheckStoreEvent_Progress); ok {
+		require.NoError(t, checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
+			if p, ok := event.GetType().(*auditpb.CheckStoreEvent_Progress); ok {
 				progress = append(progress, p.Progress)
 			}
 		}))

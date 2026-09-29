@@ -10,9 +10,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewAnalyzeCommand creates the transactions analyze command.
@@ -64,7 +64,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 
 	spinner := cmdutil.StartSpinner("Analyzing transactions...")
 
-	stream, err := client.AnalyzeTransactions(ctx, &servicepb.AnalyzeTransactionsRequest{
+	stream, err := client.AnalyzeTransactions(ctx, &commonpb.AnalyzeTransactionsRequest{
 		Ledger:            ledgerName,
 		VariableThreshold: threshold,
 	})
@@ -74,7 +74,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 		return cmdutil.FormatGRPCError("failed to analyze transactions", err)
 	}
 
-	var resp *servicepb.AnalyzeTransactionsResponse
+	var resp *commonpb.AnalyzeTransactionsResponse
 
 	for {
 		event, err := stream.Recv()
@@ -89,7 +89,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 		}
 
 		switch t := event.GetType().(type) {
-		case *servicepb.AnalyzeTransactionsEvent_Progress:
+		case *commonpb.AnalyzeTransactionsEvent_Progress:
 			p := t.Progress
 			if p.GetTotal() > 0 {
 				pct := p.GetProcessed() * 100 / p.GetTotal()
@@ -97,7 +97,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 			} else {
 				spinner.UpdateText(fmt.Sprintf("Analyzing transactions... %d logs scanned", p.GetProcessed()))
 			}
-		case *servicepb.AnalyzeTransactionsEvent_Result:
+		case *commonpb.AnalyzeTransactionsEvent_Result:
 			resp = t.Result
 		}
 
@@ -117,7 +117,7 @@ func runAnalyzeTransactions(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-func renderTransactionAnalysisResult(resp *servicepb.AnalyzeTransactionsResponse) {
+func renderTransactionAnalysisResult(resp *commonpb.AnalyzeTransactionsResponse) {
 	// Summary
 	pterm.DefaultHeader.WithFullWidth().Println("Transaction Flow Analysis")
 	pterm.Info.Printfln("Total transactions: %d", resp.GetTotalTransactions())
@@ -198,15 +198,15 @@ func renderTransactionAnalysisResult(resp *servicepb.AnalyzeTransactionsResponse
 	}
 }
 
-func postingStructureName(s servicepb.PostingStructure) string {
+func postingStructureName(s commonpb.PostingStructure) string {
 	switch s {
-	case servicepb.PostingStructure_POSTING_STRUCTURE_SIMPLE:
+	case commonpb.PostingStructure_POSTING_STRUCTURE_SIMPLE:
 		return "simple"
-	case servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
+	case commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_SOURCE:
 		return "multi-source"
-	case servicepb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
+	case commonpb.PostingStructure_POSTING_STRUCTURE_MULTI_DESTINATION:
 		return "multi-destination"
-	case servicepb.PostingStructure_POSTING_STRUCTURE_COMPLEX:
+	case commonpb.PostingStructure_POSTING_STRUCTURE_COMPLEX:
 		return "complex"
 	default:
 		return "unknown"

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"maps"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -137,7 +139,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	}
 
 	txKey := domain.TransactionKey{LedgerName: ledger, ID: nextTransactionID}
-	txState := &commonpb.TransactionState{
+	txState := &internalcommonpb.TransactionState{
 		CreatedByLog: s.GetNextSequenceID(),
 		Timestamp:    timestamp,
 		Postings:     result.Postings,
@@ -262,7 +264,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 	if order.GetReference() != "" {
 		s.TransactionReferences().Put(
 			domain.TransactionReferenceKey{LedgerName: ledger, Reference: order.GetReference()},
-			&commonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
+			&internalcommonpb.TransactionReferenceValue{TransactionId: nextTransactionID},
 		)
 	}
 

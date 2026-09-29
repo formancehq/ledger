@@ -2,9 +2,7 @@ package main
 
 import (
 	"github.com/antithesishq/antithesis-sdk-go/random"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
@@ -29,28 +27,27 @@ type checkpointSnapshot struct {
 // while the checkpoint Apply is in flight.
 func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 	ids := state.QueryCheckpointIDs()
-	var req *servicepb.Request
+	var req *commonpb.Request
 	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}) {
 	case 0:
-		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: random.RandomChoice(modelCheckpointCrons)}}}
+		req = &commonpb.Request{Type: &commonpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleRequest{Cron: random.RandomChoice(modelCheckpointCrons)}}}
 	case 1:
-		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &servicepb.DeleteQueryCheckpointScheduleRequest{}}}
+		req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpointSchedule{DeleteQueryCheckpointSchedule: &commonpb.DeleteQueryCheckpointScheduleRequest{}}}
 	case 2:
-		req = &servicepb.Request{Type: &servicepb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &servicepb.SetQueryCheckpointScheduleRequest{Cron: "invalid checkpoint cron"}}}
+		req = &commonpb.Request{Type: &commonpb.Request_SetQueryCheckpointSchedule{SetQueryCheckpointSchedule: &commonpb.SetQueryCheckpointScheduleRequest{Cron: "invalid checkpoint cron"}}}
 	case 3:
-		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{}}}
+		req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{}}}
 	case 4:
-		req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: state.NextQueryCheckpointID()}}}
+		req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: state.NextQueryCheckpointID()}}}
 	case 5, 6:
 		if len(ids) > 0 {
-			req = &servicepb.Request{Type: &servicepb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &servicepb.DeleteQueryCheckpointRequest{CheckpointId: random.RandomChoice(ids)}}}
+			req = &commonpb.Request{Type: &commonpb.Request_DeleteQueryCheckpoint{DeleteQueryCheckpoint: &commonpb.DeleteQueryCheckpointRequest{CheckpointId: random.RandomChoice(ids)}}}
 		}
 	}
 	if req == nil {
-		req = &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}}
+		req = &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}}
 	}
-
-	return oracle.Bulk{Requests: []*servicepb.Request{req}}
+	return oracle.Bulk{Requests: []*commonpb.Request{req}}
 }
 
 // checkpointOrdersMatch checks the independent lifecycle prediction against

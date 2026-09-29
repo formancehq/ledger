@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -21,7 +20,7 @@ import (
 var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 
 		chDSN string
 	)
@@ -50,7 +49,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 	It("Should deliver events to ClickHouse when transactions are created", func() {
 		// Add ClickHouse sink via Apply
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
 			Name:         "ch-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 50,
@@ -64,11 +63,11 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("ch-test", nil)))
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("ch-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("ch-test",
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("ch-test",
 			[]*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
@@ -137,7 +136,7 @@ var _ = Describe("Events Sinks ClickHouse", Ordered, func() {
 
 		// Verify sink status shows healthy
 		Eventually(func(g Gomega) {
-			resp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
 			g.Expect(err).To(Succeed())
 			g.Expect(resp.Sinks).To(HaveLen(1))
 			g.Expect(resp.Sinks[0].Name).To(Equal("ch-e2e"))

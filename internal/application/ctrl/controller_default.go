@@ -18,15 +18,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -112,7 +112,7 @@ var (
 
 //go:generate mockgen -write_source_comment=false -write_package_comment=false -source controller_default.go -destination controller_default_generated_test.go -package ctrl . Admission
 type Admission interface {
-	Admit(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error)
+	Admit(ctx context.Context, req *auditpb.ApplyRequest) (*domain.ApplyResult, error)
 	Barrier(ctx context.Context) (uint64, error)
 }
 
@@ -172,7 +172,7 @@ func NewDefaultController(
 }
 
 // ListLedgers returns a cursor over all active (non-deleted) ledgers.
-func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*auditpb.LedgerInfo], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -185,7 +185,7 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 		return nil, err
 	}
 	// Filter out soft-deleted ledgers, enrich with metadata, close handle when cursor closes
-	filtered := cursor.NewFilteredCursor(c, func(ledger *commonpb.LedgerInfo) bool {
+	filtered := cursor.NewFilteredCursor(c, func(ledger *auditpb.LedgerInfo) bool {
 		if ledger.GetDeletedAt() != nil {
 			return false
 		}
@@ -199,7 +199,7 @@ func (ctrl *DefaultController) ListLedgers(ctx context.Context) (cursor.Cursor[*
 	return cursor.NewClosingCursor(filtered, handle), nil
 }
 
-func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*auditpb.Transaction, error) {
 	return ctrl.GetTransactionFrom(ctx, ctrl.store, ledgerName, transactionID)
 }
 
@@ -219,7 +219,7 @@ func (ctrl *DefaultController) WithStores(store *dal.Store, readStore *readstore
 }
 
 // GetTransactionFrom reads a transaction using the provided store (live or checkpoint).
-func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *dal.Store, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *dal.Store, ledgerName string, transactionID uint64) (*auditpb.Transaction, error) {
 	_, span := tracer.Start(ctx, "ctrl.get_transaction",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -237,7 +237,7 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
@@ -247,14 +247,14 @@ func (ctrl *DefaultController) GetTransactionFrom(ctx context.Context, store *da
 }
 
 // buildTransaction builds a transaction from its stored state and creation log.
-func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.PebbleReader, ledgerName string, transactionID uint64) (*auditpb.Transaction, error) {
 	state, err := query.ReadTransactionState(ctx, reader, ctrl.attrs.Transaction, ledgerName, transactionID)
 	if err != nil {
 		return nil, fmt.Errorf("reading transaction state for %d: %w", transactionID, err)
 	}
 
 	if state == nil || state.GetCreatedByLog() == 0 {
-		return nil, commonpb.NewNotFoundError("transaction %d not found", transactionID)
+		return nil, protoerr.NewNotFoundError("transaction %d not found", transactionID)
 	}
 
 	return assembleTransactionFromState(ctx, reader, transactionID, state)
@@ -263,7 +263,7 @@ func (ctrl *DefaultController) buildTransaction(ctx context.Context, reader dal.
 // assembleTransactionFromState builds a transaction from its TransactionState and the creation log.
 // Metadata values are returned verbatim — declared_type is an index hint, not
 // an API contract, so reads do not coerce.
-func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *commonpb.TransactionState) (*commonpb.Transaction, error) {
+func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, transactionID uint64, state *internalcommonpb.TransactionState) (*auditpb.Transaction, error) {
 	log, err := query.ReadLogBySequence(ctx, reader, state.GetCreatedByLog())
 	if err != nil {
 		return nil, fmt.Errorf("getting system log %d: %w", state.GetCreatedByLog(), err)
@@ -275,23 +275,23 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 		return nil, fmt.Errorf("invariant: transaction %d has state but its creation log %d is missing", transactionID, state.GetCreatedByLog())
 	}
 
-	applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+	applyLog, ok := log.GetPayload().GetType().(*auditpb.LogPayload_Apply)
 	if !ok || applyLog.Apply == nil || applyLog.Apply.GetLog() == nil {
 		return nil, fmt.Errorf("log %d does not contain an apply log", state.GetCreatedByLog())
 	}
 
 	ledgerLog := applyLog.Apply.GetLog()
 
-	var tx *commonpb.Transaction
+	var tx *auditpb.Transaction
 
 	switch payload := ledgerLog.GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *auditpb.LedgerLogPayload_CreatedTransaction:
 		if payload.CreatedTransaction == nil || payload.CreatedTransaction.GetTransaction() == nil {
 			return nil, errors.New("invalid log payload: missing transaction")
 		}
 
 		tx = payload.CreatedTransaction.GetTransaction()
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *auditpb.LedgerLogPayload_RevertedTransaction:
 		if payload.RevertedTransaction == nil || payload.RevertedTransaction.GetRevertTransaction() == nil {
 			return nil, errors.New("invalid log payload: missing revert transaction")
 		}
@@ -321,12 +321,12 @@ func assembleTransactionFromState(ctx context.Context, reader dal.PebbleReader, 
 // ListTransactions returns a cursor over transactions for a ledger.
 // API convention: reverse=false means newest-first (descending), reverse=true means oldest-first.
 // Internally listEntities uses reverse=true for descending, so we invert the flag here.
-func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.Transaction], error) {
 	return ctrl.ListTransactionsFrom(ctx, ctrl.store, ctrl.readStore, ledgerName, pageSize, afterTxID, filter, reverse)
 }
 
 // ListTransactionsFrom returns a cursor over transactions using the provided stores (live or checkpoint).
-func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, ledgerName string, pageSize uint32, afterTxID uint64, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.Transaction], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_transactions",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -339,7 +339,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, store, filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, store, filter, auditpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -350,7 +350,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 		_ = handle.Close()
 
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
@@ -362,12 +362,12 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 	// unbounded slice.
 	pageSize = ClampFetchSize(pageSize)
 
-	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), auditpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
 
 	indexStart := time.Now()
 
 	result, err := listEntities(ctx, rs, entityListParams[uint64]{
-		target:        commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		target:        auditpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		ledgerName:    ledgerInfo.GetName(),
 		pageSize:      pageSize,
 		after:         afterTxID,
@@ -423,7 +423,7 @@ func (ctrl *DefaultController) ListTransactionsFrom(ctx context.Context, store *
 // ListAccounts returns a cursor over accounts for a ledger.
 // Default order (reverse=false) is ascending (A→Z); reverse=true gives reverse-alphabetical (Z→A).
 // Uses the Pebble read index for entity discovery and Pebble for enrichment.
-func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
+func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.Account], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_accounts",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -436,7 +436,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 
 	// Create a Pebble snapshot first so that GetLedgerByName and the listing
 	// read from the same consistent point-in-time view.
-	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -447,7 +447,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 		_ = handle.Close()
 
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
@@ -456,12 +456,12 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	// Defense in depth — see ListTransactionsFrom for rationale.
 	pageSize = ClampFetchSize(pageSize)
 
-	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	indexStart := time.Now()
 
 	result, err := listEntities(ctx, ctrl.readStore, entityListParams[string]{
-		target:        commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
+		target:        auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 		ledgerName:    ledgerInfo.GetName(),
 		pageSize:      pageSize,
 		after:         afterAddress,
@@ -511,7 +511,7 @@ func (ctrl *DefaultController) ListAccounts(ctx context.Context, ledgerName stri
 	return cursor.NewClosingCursor(cursor.NewSliceCursor(accounts), releasingCloser{handle: handle, release: releaseHold}), nil
 }
 
-func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string, opts GetAccountOptions) (*commonpb.Account, error) {
+func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string, address string, opts GetAccountOptions) (*auditpb.Account, error) {
 	_, span := tracer.Start(ctx, "ctrl.get_account",
 		trace.WithAttributes(
 			attribute.String("ledger", ledgerName),
@@ -531,7 +531,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
@@ -554,7 +554,7 @@ func (ctrl *DefaultController) GetAccount(ctx context.Context, ledgerName string
 // longer injects old metadata values, so the FSM-side counter could no
 // longer distinguish "new key" from "overwrite". It is disabled until it
 // comes back on a sound foundation (open question, no ticket yet).
-func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName string) (*auditpb.LedgerStats, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -575,7 +575,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 		return nil, fmt.Errorf("reading boundaries for stats: %w", err)
 	}
 
-	var stats commonpb.LedgerStats
+	var stats auditpb.LedgerStats
 	if boundaries != nil {
 		if nextTxID := boundaries.GetNextTransactionId(); nextTxID > 0 {
 			stats.TransactionCount = nextTxID - 1
@@ -638,7 +638,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 	return &stats, nil
 }
 
-func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string) (*auditpb.LedgerInfo, error) {
 	_, span := tracer.Start(ctx, "ctrl.get_ledger",
 		trace.WithAttributes(attribute.String("ledger", name)))
 	defer span.End()
@@ -655,13 +655,13 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, name)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", name)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", name)
 		}
 
 		return nil, err
 	}
 
-	if ledgerInfo.GetMode() == commonpb.LedgerMode_LEDGER_MODE_MIRROR {
+	if ledgerInfo.GetMode() == auditpb.LedgerMode_LEDGER_MODE_MIRROR {
 		progress, err := query.ReadMirrorSyncProgress(ctx, handle, ctrl.attrs.Boundary, name)
 		if err != nil {
 			return nil, fmt.Errorf("reading mirror sync progress: %w", err)
@@ -678,33 +678,33 @@ func (ctrl *DefaultController) GetLedgerByName(ctx context.Context, name string)
 }
 
 // GetMetadataSchemaStatus returns the declared type of every metadata field.
-func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*auditpb.GetMetadataSchemaStatusResponse, error) {
 	ledgerInfo, err := query.GetLedgerByName(ctx, ctrl.store, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
 	}
 
-	resp := &servicepb.GetMetadataSchemaStatusResponse{
-		AccountFields:     make(map[string]*servicepb.MetadataFieldStatus),
-		TransactionFields: make(map[string]*servicepb.MetadataFieldStatus),
-		LedgerFields:      make(map[string]*servicepb.MetadataFieldStatus),
+	resp := &auditpb.GetMetadataSchemaStatusResponse{
+		AccountFields:     make(map[string]*auditpb.MetadataFieldStatus),
+		TransactionFields: make(map[string]*auditpb.MetadataFieldStatus),
+		LedgerFields:      make(map[string]*auditpb.MetadataFieldStatus),
 	}
 
 	if ledgerInfo.GetMetadataSchema() != nil {
 		for key, field := range ledgerInfo.GetMetadataSchema().GetAccountFields() {
-			resp.AccountFields[key] = &servicepb.MetadataFieldStatus{DeclaredType: field.GetType()}
+			resp.AccountFields[key] = &auditpb.MetadataFieldStatus{DeclaredType: field.GetType()}
 		}
 
 		for key, field := range ledgerInfo.GetMetadataSchema().GetTransactionFields() {
-			resp.TransactionFields[key] = &servicepb.MetadataFieldStatus{DeclaredType: field.GetType()}
+			resp.TransactionFields[key] = &auditpb.MetadataFieldStatus{DeclaredType: field.GetType()}
 		}
 
 		for key, field := range ledgerInfo.GetMetadataSchema().GetLedgerFields() {
-			resp.LedgerFields[key] = &servicepb.MetadataFieldStatus{DeclaredType: field.GetType()}
+			resp.LedgerFields[key] = &auditpb.MetadataFieldStatus{DeclaredType: field.GetType()}
 		}
 	}
 
@@ -714,7 +714,7 @@ func (ctrl *DefaultController) GetMetadataSchemaStatus(ctx context.Context, ledg
 // AnalyzeAccounts scans all accounts in a ledger and suggests a Chart of Accounts.
 // Uses a direct Pebble key scan to extract account addresses, asset names, and
 // metadata key names without reading values or going through the read index.
-func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*auditpb.AnalyzeAccountsResponse, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -725,7 +725,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
@@ -744,7 +744,7 @@ func (ctrl *DefaultController) AnalyzeAccounts(ctx context.Context, ledgerName s
 // AnalyzeTransactions scans all transactions in a ledger and discovers flow patterns.
 // Uses two sequential Pebble log scans with streaming processing to avoid loading
 // all transactions into memory (O(unique addresses + unique signatures) instead of O(N)).
-func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(processed, total uint64)) (*auditpb.AnalyzeTransactionsResponse, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -754,7 +754,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 
 	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, fmt.Errorf("validating ledger for analysis: %w", err)
@@ -769,7 +769,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 
 	makeStreamIter := func() (func() (analysis.CompactTransaction, error), func()) {
 		var (
-			cursor cursor.Cursor[*commonpb.Log]
+			cursor cursor.Cursor[*auditpb.Log]
 			done   bool
 		)
 
@@ -803,7 +803,7 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 					continue
 				}
 
-				applyLog, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply)
+				applyLog, ok := log.GetPayload().GetType().(*auditpb.LogPayload_Apply)
 				if !ok {
 					continue
 				}
@@ -818,14 +818,14 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 				}
 
 				switch p := ledgerLog.GetData().GetPayload().(type) {
-				case *commonpb.LedgerLogPayload_CreatedTransaction:
+				case *auditpb.LedgerLogPayload_CreatedTransaction:
 					if p.CreatedTransaction.GetTransaction() == nil {
 						continue
 					}
 
 					return analysis.ExtractCompactTransaction(p.CreatedTransaction.GetTransaction()), nil
 
-				case *commonpb.LedgerLogPayload_RevertedTransaction:
+				case *auditpb.LedgerLogPayload_RevertedTransaction:
 					// Count reverted during pass 1 only
 					if !pass1Done {
 						totalReverted++
@@ -871,14 +871,14 @@ func (ctrl *DefaultController) AnalyzeTransactions(ctx context.Context, ledgerNa
 }
 
 // AggregateVolumes returns per-asset aggregated volumes for filtered accounts.
-func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName string, filter *auditpb.QueryFilter, opts query.AggregateOptions) (*auditpb.AggregateResult, error) {
 	ctx, span := tracer.Start(ctx, "ctrl.aggregate_volumes",
 		trace.WithAttributes(attribute.String("ledger", ledgerName)))
 	defer span.End()
 
 	profile := query.ProfileFromContext(ctx)
 
-	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -888,7 +888,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 	ledgerInfo, err := query.GetLedgerByName(ctx, handle, ledgerName)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
@@ -911,7 +911,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		return result, nil
 	}
 
-	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
+	schemaFields := query.SchemaFieldsForTarget(ledgerInfo.GetMetadataSchema(), auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS)
 
 	var (
 		indexReader     dal.PebbleReader
@@ -920,7 +920,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		horizonKeep     func([]byte) (bool, error)
 	)
 
-	if query.AlignmentOwed(filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS) {
+	if query.AlignmentOwed(filter, auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS) {
 		snap, alignedMainSeq, releaseLease, alignErr := query.AlignedIndexSnapshot(ctx, ctrl.readStore, handle, ledgerInfo.GetName(), releaseHold)
 		if alignErr != nil {
 			return nil, alignErr
@@ -932,7 +932,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 		indexReader = snap
 		mainSeq = alignedMainSeq
 		indexVersionFor = ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq)
-		horizonKeep = query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq)
+		horizonKeep = query.MainHorizonKeep(auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS, handle, snap, ledgerInfo.GetName(), mainSeq)
 	} else {
 		// Main-store-only filters still go through Compile for validation and
 		// boolean semantics, but must not wait for or lease the read projection.
@@ -949,7 +949,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 
 	indexStart := time.Now()
 
-	compiled, err := query.Compile(indexReader, kb, filter, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
+	compiled, err := query.Compile(indexReader, kb, filter, auditpb.QueryTarget_QUERY_TARGET_ACCOUNTS, ledgerInfo.GetName(), nil, schemaFields, ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), indexVersionFor, profile, handle, mainSeq)
 	if err != nil {
 		return nil, domain.WrapCompileError(err)
 	}
@@ -979,7 +979,7 @@ func (ctrl *DefaultController) AggregateVolumes(ctx context.Context, ledgerName 
 }
 
 // InspectIndex scans a metadata index and returns distinct values, facets, or a summary.
-func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *auditpb.InspectIndexRequest) (*auditpb.InspectIndexResponse, error) {
 	ctx, span := tracer.Start(ctx, "ctrl.inspect_index",
 		trace.WithAttributes(
 			attribute.String("ledger", req.GetLedger()),
@@ -1000,19 +1000,19 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 	ledgerInfo, err := query.GetLedgerByName(ctx, handleForIndex, req.GetLedger())
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", req.GetLedger())
+			return nil, protoerr.NewNotFoundError("ledger %s not found", req.GetLedger())
 		}
 
 		return nil, err
 	}
 
 	var (
-		fields    map[string]*commonpb.MetadataFieldSchema
+		fields    map[string]*auditpb.MetadataFieldSchema
 		namespace string
 	)
 
 	switch req.GetTargetType() {
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case auditpb.TargetType_TARGET_TYPE_TRANSACTION:
 		fields = ledgerInfo.GetMetadataSchema().GetTransactionFields()
 		namespace = readstore.NamespaceTransaction
 	default:
@@ -1088,9 +1088,9 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 
 	var mode readstore.InspectMode
 	switch req.GetMode() {
-	case servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS:
+	case auditpb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS:
 		mode = readstore.InspectFacetsMode
-	case servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY:
+	case auditpb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY:
 		mode = readstore.InspectSummaryMode
 	default:
 		mode = readstore.InspectDistinctValuesMode
@@ -1119,7 +1119,7 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 // answer to which question was asked, so it comes from the mode and never from
 // which result slice the scan happened to populate: an index holding no live
 // values answers on its own arm with an empty list.
-func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResult) *servicepb.InspectIndexResponse {
+func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResult) *auditpb.InspectIndexResponse {
 	var nextCursor string
 	if r.HasMore && len(r.NextCursor) > 0 {
 		nextCursor = encodeCursor(r.NextCursor)
@@ -1127,9 +1127,9 @@ func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResu
 
 	switch mode { //exhaustive:enforce
 	case readstore.InspectDistinctValuesMode:
-		return &servicepb.InspectIndexResponse{
-			Result: &servicepb.InspectIndexResponse_DistinctValues{
-				DistinctValues: &servicepb.InspectDistinctValues{
+		return &auditpb.InspectIndexResponse{
+			Result: &auditpb.InspectIndexResponse_DistinctValues{
+				DistinctValues: &auditpb.InspectDistinctValues{
 					Values:     r.Values,
 					HasMore:    r.HasMore,
 					NextCursor: nextCursor,
@@ -1138,17 +1138,17 @@ func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResu
 		}
 
 	case readstore.InspectFacetsMode:
-		facets := make([]*servicepb.InspectFacet, len(r.Facets))
+		facets := make([]*auditpb.InspectFacet, len(r.Facets))
 		for i, f := range r.Facets {
-			facets[i] = &servicepb.InspectFacet{
+			facets[i] = &auditpb.InspectFacet{
 				Value: f.Value,
 				Count: f.Count,
 			}
 		}
 
-		return &servicepb.InspectIndexResponse{
-			Result: &servicepb.InspectIndexResponse_Facets{
-				Facets: &servicepb.InspectFacets{
+		return &auditpb.InspectIndexResponse{
+			Result: &auditpb.InspectIndexResponse_Facets{
+				Facets: &auditpb.InspectFacets{
 					Facets:     facets,
 					HasMore:    r.HasMore,
 					NextCursor: nextCursor,
@@ -1157,9 +1157,9 @@ func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResu
 		}
 
 	case readstore.InspectSummaryMode:
-		return &servicepb.InspectIndexResponse{
-			Result: &servicepb.InspectIndexResponse_Summary{
-				Summary: &servicepb.InspectSummary{
+		return &auditpb.InspectIndexResponse{
+			Result: &auditpb.InspectIndexResponse_Summary{
+				Summary: &auditpb.InspectSummary{
 					Cardinality:      r.Cardinality,
 					Min:              r.Min,
 					Max:              r.Max,
@@ -1172,9 +1172,9 @@ func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResu
 
 	// Unreachable when the exhaustive linter is enabled. Distinct values is
 	// what the request-side mode resolution assigns to an unrecognized mode.
-	return &servicepb.InspectIndexResponse{
-		Result: &servicepb.InspectIndexResponse_DistinctValues{
-			DistinctValues: &servicepb.InspectDistinctValues{
+	return &auditpb.InspectIndexResponse{
+		Result: &auditpb.InspectIndexResponse_DistinctValues{
+			DistinctValues: &auditpb.InspectDistinctValues{
 				Values:     r.Values,
 				HasMore:    r.HasMore,
 				NextCursor: nextCursor,
@@ -1202,7 +1202,7 @@ func encodeCursor(b []byte) string {
 // and IndexVersionState could each read a different revision as the
 // indexer commits underneath — the response would look coherent on the
 // wire but the numbers would drift within a single call.
-func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *auditpb.GetIndexStatusRequest) (*auditpb.GetIndexStatusResponse, error) {
 	ledgerFilter := req.GetLedger()
 
 	readSnap := ctrl.readStore.NewSnapshot()
@@ -1286,7 +1286,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 	}
 	defer func() { _ = idxIter.Close() }()
 
-	var entries []*servicepb.IndexEntry
+	var entries []*auditpb.IndexEntry
 
 	for idxIter.Next() {
 		idx := idxIter.Entry().Value
@@ -1307,7 +1307,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 		}
 
 		canonical := indexes.Canonical(idx.GetId())
-		entry := &servicepb.IndexEntry{
+		entry := &auditpb.IndexEntry{
 			Ledger: name,
 			Index:  idx,
 			Cursor: cursors[cursorKey{ledger: name, canonical: canonical}],
@@ -1332,7 +1332,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 		return nil, fmt.Errorf("iterating index registry: %w", err)
 	}
 
-	return &servicepb.GetIndexStatusResponse{
+	return &auditpb.GetIndexStatusResponse{
 		LastIndexedSequence: lastIndexed,
 		LastLogSequence:     lastLog,
 		Lag:                 lag,
@@ -1345,7 +1345,7 @@ func (ctrl *DefaultController) GetIndexStatus(ctx context.Context, req *servicep
 // Ledger existence is checked upfront for ledger-scoped queries so
 // callers can distinguish "no such ledger" from "index not registered
 // on this ledger". Bucket-scoped queries (empty ledger) skip that check.
-func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+func (ctrl *DefaultController) GetIndex(ctx context.Context, req *auditpb.GetIndexRequest) (*auditpb.Index, error) {
 	if req.GetId() == nil {
 		return nil, domain.NewValidationSentinel("id is required")
 	}
@@ -1359,7 +1359,7 @@ func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetI
 	if ledger := req.GetLedger(); ledger != "" {
 		if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
-				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+				return nil, protoerr.NewNotFoundError("ledger %s not found", ledger)
 			}
 
 			return nil, fmt.Errorf("checking ledger %q: %w", ledger, err)
@@ -1374,7 +1374,7 @@ func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetI
 	}
 
 	if idx == nil {
-		return nil, commonpb.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
+		return nil, protoerr.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
 	}
 
 	return idx.Mutate(), nil
@@ -1384,7 +1384,7 @@ func (ctrl *DefaultController) GetIndex(ctx context.Context, req *servicepb.GetI
 // entry + backfill cursor + IndexVersionState) for a single index. Both
 // the primary handle and the read-store snapshot pin a coherent view so
 // the returned IndexEntry does not drift under the reader's feet.
-func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *auditpb.GetIndexEntryStatusRequest) (*auditpb.IndexEntry, error) {
 	if req.GetId() == nil {
 		return nil, domain.NewValidationSentinel("id is required")
 	}
@@ -1398,7 +1398,7 @@ func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *ser
 	if ledger := req.GetLedger(); ledger != "" {
 		if _, err := query.GetLedgerByName(ctx, handle, ledger); err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
-				return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+				return nil, protoerr.NewNotFoundError("ledger %s not found", ledger)
 			}
 
 			return nil, fmt.Errorf("checking ledger %q: %w", ledger, err)
@@ -1413,11 +1413,11 @@ func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *ser
 	}
 
 	if idx == nil {
-		return nil, commonpb.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
+		return nil, protoerr.NewNotFoundError("index %s not found on ledger %q", indexes.Canonical(req.GetId()), req.GetLedger())
 	}
 
 	canonical := indexes.Canonical(req.GetId())
-	entry := &servicepb.IndexEntry{
+	entry := &auditpb.IndexEntry{
 		Ledger: req.GetLedger(),
 		Index:  idx.Mutate(),
 	}
@@ -1468,8 +1468,8 @@ func (ctrl *DefaultController) GetIndexEntryStatus(ctx context.Context, req *ser
 // with empty Ledger (audit-style bucket indexes), SCOPE_LEDGER keeps only
 // entries owned by req.Ledger. SCOPE_LEDGER on an unknown ledger returns
 // a NotFound error (the caller has to distinguish "empty" from "bad name").
-func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER && req.GetLedger() == "" {
+func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *auditpb.ListIndexesRequest) (cursor.Cursor[*auditpb.Index], error) {
+	if req.GetScope() == auditpb.ListIndexesRequest_SCOPE_LEDGER && req.GetLedger() == "" {
 		return nil, domain.ErrLedgerNameRequired
 	}
 
@@ -1478,12 +1478,12 @@ func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *servicepb.L
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
 
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+	if req.GetScope() == auditpb.ListIndexesRequest_SCOPE_LEDGER {
 		if _, err := query.GetLedgerByName(ctx, handle, req.GetLedger()); err != nil {
 			_ = handle.Close()
 
 			if errors.Is(err, domain.ErrNotFound) {
-				return nil, commonpb.NewNotFoundError("ledger %s not found", req.GetLedger())
+				return nil, protoerr.NewNotFoundError("ledger %s not found", req.GetLedger())
 			}
 
 			return nil, fmt.Errorf("checking ledger %q: %w", req.GetLedger(), err)
@@ -1491,7 +1491,7 @@ func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *servicepb.L
 	}
 
 	var canonicalPrefix []byte
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+	if req.GetScope() == auditpb.ListIndexesRequest_SCOPE_LEDGER {
 		canonicalPrefix = domain.IndexKey{LedgerName: req.GetLedger()}.Bytes()
 	}
 
@@ -1516,13 +1516,13 @@ func (ctrl *DefaultController) ListIndexes(ctx context.Context, req *servicepb.L
 // same per-scope filtering the gRPC handler used to do inline.
 type listIndexesCursor struct {
 	ctx          context.Context
-	req          *servicepb.ListIndexesRequest
-	iter         *attributes.StreamingIter[*commonpb.Index]
+	req          *auditpb.ListIndexesRequest
+	iter         *attributes.StreamingIter[*auditpb.Index]
 	handle       *dal.ReadHandle
 	activeLedger map[string]bool
 }
 
-func (c *listIndexesCursor) Next() (*commonpb.Index, error) {
+func (c *listIndexesCursor) Next() (*auditpb.Index, error) {
 	for c.iter.Next() {
 		idx := c.iter.Entry().Value
 		if idx == nil || idx.GetId() == nil {
@@ -1530,15 +1530,15 @@ func (c *listIndexesCursor) Next() (*commonpb.Index, error) {
 		}
 
 		switch c.req.GetScope() {
-		case servicepb.ListIndexesRequest_SCOPE_BUCKET:
+		case auditpb.ListIndexesRequest_SCOPE_BUCKET:
 			if idx.GetLedger() != "" {
 				continue
 			}
-		case servicepb.ListIndexesRequest_SCOPE_LEDGER:
+		case auditpb.ListIndexesRequest_SCOPE_LEDGER:
 			if idx.GetLedger() != c.req.GetLedger() {
 				continue
 			}
-		case servicepb.ListIndexesRequest_SCOPE_ALL:
+		case auditpb.ListIndexesRequest_SCOPE_ALL:
 			name := idx.GetLedger()
 			if name != "" {
 				alive, cached := c.activeLedger[name]
@@ -1580,19 +1580,19 @@ func (c *listIndexesCursor) Close() error {
 
 // indexIDFromBackfillEntry rebuilds the IndexID associated with a persisted
 // backfill cursor, given the BB-key encoding used by the indexbuilder.
-func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
+func indexIDFromBackfillEntry(e readstore.BackfillEntry) *auditpb.IndexID {
 	switch e.Kind {
 	case readstore.BackfillKindTxBuiltin:
 		if len(e.Details) < 1 {
 			return nil
 		}
 
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_TxBuiltin{
-			TxBuiltin: commonpb.TransactionBuiltinIndex(e.Details[0]),
+		return &auditpb.IndexID{Kind: &auditpb.IndexID_TxBuiltin{
+			TxBuiltin: auditpb.TransactionBuiltinIndex(e.Details[0]),
 		}}
 	case readstore.BackfillKindTxMetadata:
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
+		return &auditpb.IndexID{Kind: &auditpb.IndexID_Metadata{Metadata: &auditpb.MetadataIndexID{
+			Target: auditpb.TargetType_TARGET_TYPE_TRANSACTION,
 			Key:    string(e.Details),
 		}}}
 	case readstore.BackfillKindAcctBuiltin:
@@ -1600,12 +1600,12 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 			return nil
 		}
 
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_AccountBuiltin{
-			AccountBuiltin: commonpb.AccountBuiltinIndex(e.Details[0]),
+		return &auditpb.IndexID{Kind: &auditpb.IndexID_AccountBuiltin{
+			AccountBuiltin: auditpb.AccountBuiltinIndex(e.Details[0]),
 		}}
 	case readstore.BackfillKindAcctMetadata:
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_Metadata{Metadata: &commonpb.MetadataIndexID{
-			Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+		return &auditpb.IndexID{Kind: &auditpb.IndexID_Metadata{Metadata: &auditpb.MetadataIndexID{
+			Target: auditpb.TargetType_TARGET_TYPE_ACCOUNT,
 			Key:    string(e.Details),
 		}}}
 	case readstore.BackfillKindLogBuiltin:
@@ -1613,8 +1613,8 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 			return nil
 		}
 
-		return &commonpb.IndexID{Kind: &commonpb.IndexID_LogBuiltin{
-			LogBuiltin: commonpb.LogBuiltinIndex(e.Details[0]),
+		return &auditpb.IndexID{Kind: &auditpb.IndexID_LogBuiltin{
+			LogBuiltin: auditpb.LogBuiltinIndex(e.Details[0]),
 		}}
 	}
 
@@ -1625,8 +1625,8 @@ func indexIDFromBackfillEntry(e readstore.BackfillEntry) *commonpb.IndexID {
 // ledger-local log ID. The per-ledger log index is unconditionally maintained
 // by the indexbuilder, so every read uses the Compile framework — boolean
 // filters and date ranges are honored on the single code path.
-func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
-	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, commonpb.QueryTarget_QUERY_TARGET_LOGS)
+func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *auditpb.QueryFilter) (cursor.Cursor[*auditpb.Log], error) {
+	handle, releaseHold, err := query.OpenQueryHandle(ctrl.readStore, ctrl.store, filter, auditpb.QueryTarget_QUERY_TARGET_LOGS)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -1637,7 +1637,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 		_ = handle.Close()
 
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, protoerr.NewNotFoundError("ledger %s not found", ledgerName)
 		}
 
 		return nil, err
@@ -1649,10 +1649,10 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	// respects the cursor position. LogId with min=afterSequence, min_exclusive=true
 	// excludes the entry at afterSequence and returns only newer entries.
 	if afterSequence > 0 {
-		afterFilter := &commonpb.QueryFilter{
-			Filter: &commonpb.QueryFilter_LogId{
-				LogId: &commonpb.LogIdCondition{
-					Cond: &commonpb.UintCondition{
+		afterFilter := &auditpb.QueryFilter{
+			Filter: &auditpb.QueryFilter_LogId{
+				LogId: &auditpb.LogIdCondition{
+					Cond: &auditpb.UintCondition{
 						Min:          &afterSequence,
 						MinExclusive: true,
 					},
@@ -1660,9 +1660,9 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 			},
 		}
 		if filter != nil {
-			filter = &commonpb.QueryFilter{
-				Filter: &commonpb.QueryFilter_And{
-					And: &commonpb.AndFilter{Filters: []*commonpb.QueryFilter{filter, afterFilter}},
+			filter = &auditpb.QueryFilter{
+				Filter: &auditpb.QueryFilter_And{
+					And: &auditpb.AndFilter{Filters: []*auditpb.QueryFilter{filter, afterFilter}},
 				},
 			}
 		} else {
@@ -1685,7 +1685,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 
 	compiled, err := query.Compile(
 		snap, kb, filter,
-		commonpb.QueryTarget_QUERY_TARGET_LOGS,
+		auditpb.QueryTarget_QUERY_TARGET_LOGS,
 		ledgerInfo.GetName(), nil, nil,
 		ledgerInfo, query.NewPebbleIndexReader(ctrl.attrs.Index, handle), ctrl.readStore.PinnedVersionResolver(snap, ledgerInfo.GetName(), mainSeq), nil, handle, mainSeq,
 	)
@@ -1697,7 +1697,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 	}
 
 	iter := readstore.NewFilterIterator(compiled,
-		query.MainHorizonKeep(commonpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq))
+		query.MainHorizonKeep(auditpb.QueryTarget_QUERY_TARGET_LOGS, handle, snap, ledgerInfo.GetName(), mainSeq))
 	defer iter.Close()
 
 	logIDs, _, paginateErr := readstore.PaginateForward(iter, pageSize, nil)
@@ -1730,7 +1730,7 @@ func (ctrl *DefaultController) ListLogs(ctx context.Context, ledgerName string, 
 // iterates ascending by sequence (oldest first) — this is the audit trail's
 // natural read order and is preserved from the pre-ListOptions behavior.
 // reverse=true iterates descending (newest first).
-func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	return ctrl.ListAuditEntriesFrom(ctx, ctrl.store, ctrl.readStore, pageSize, afterSequence, filter, reverse)
 }
 
@@ -1740,7 +1740,7 @@ func (ctrl *DefaultController) ListAuditEntries(ctx context.Context, pageSize ui
 // readstore snapshot (EN-1339), then trim candidates to the main snapshot's
 // audit horizon. There is no scan-time predicate fallback for unsupported
 // expressions; they are rejected with InvalidArgument.
-func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *dal.Store, rs *readstore.Store, pageSize uint32, afterSequence uint64, filter *auditpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 	ctx, span := tracer.Start(ctx, "ctrl.list_audit_entries",
 		trace.WithAttributes(
 			attribute.Int("page_size", int(pageSize)),
@@ -1875,7 +1875,7 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 }
 
 // GetLog returns a single system log by sequence number.
-func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*auditpb.Log, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1889,7 +1889,7 @@ func (ctrl *DefaultController) GetLog(ctx context.Context, sequence uint64) (*co
 	}
 
 	if log == nil {
-		return nil, commonpb.NewNotFoundError("log %d not found", sequence)
+		return nil, protoerr.NewNotFoundError("log %d not found", sequence)
 	}
 
 	return log, nil
@@ -1907,7 +1907,7 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 	entry, err := query.ReadAuditEntry(ctx, handle, sequence)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
+			return nil, protoerr.NewNotFoundError("audit entry %d not found", sequence)
 		}
 
 		return nil, fmt.Errorf("getting audit entry %d: %w", sequence, err)
@@ -1924,7 +1924,7 @@ func (ctrl *DefaultController) GetAuditEntry(ctx context.Context, sequence uint6
 }
 
 // ListSigningKeys returns a cursor over all registered signing keys.
-func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
+func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*auditpb.SigningKey], error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1941,7 +1941,7 @@ func (ctrl *DefaultController) ListSigningKeys(ctx context.Context) (cursor.Curs
 }
 
 // ListPreparedQueries returns all prepared queries for a ledger.
-func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger string) ([]*auditpb.PreparedQuery, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -1964,28 +1964,28 @@ func (ctrl *DefaultController) ListPreparedQueries(ctx context.Context, ledger s
 // and transaction assembly logic to hydrate raw entity IDs into full objects.
 func (ctrl *DefaultController) entityEnricher() *query.EntityEnricher {
 	return &query.EntityEnricher{
-		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*commonpb.Account, error) {
+		EnrichAccount: func(reader dal.PebbleReader, ledgerName string, address string) (*auditpb.Account, error) {
 			// List-style enrichment paths do not surface a per-call collapse
 			// flag; entries are returned color-segregated and the caller can
 			// collapse client-side if needed. Per-account GetAccount honors
 			// the flag through the GetAccountOptions path.
 			return scanAccount(reader, ctrl.attrs, ledgerName, address, false, ctrl.logger)
 		},
-		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*commonpb.Transaction, error) {
+		EnrichTransaction: func(ctx context.Context, reader dal.PebbleReader, ledgerName string, txID uint64) (*auditpb.Transaction, error) {
 			return ctrl.buildTransaction(ctx, reader, ledgerName, txID)
 		},
 	}
 }
 
 // ExecutePreparedQuery executes a prepared query against the read index store.
-func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+func (ctrl *DefaultController) ExecutePreparedQuery(ctx context.Context, req *auditpb.ExecutePreparedQueryRequest) (*auditpb.ExecutePreparedQueryResponse, error) {
 	profile := query.ProfileFromContext(ctx)
 
 	return query.Execute(ctx, ctrl.readStore, ctrl.store, ctrl.attrs.Volume, ctrl.attrs.PreparedQuery, ctrl.attrs.Index, req, profile, ctrl.entityEnricher())
 }
 
 // GetNumscript returns a numscript by ledger, name and optional version ("" = latest).
-func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name string, version string) (*commonpb.NumscriptInfo, error) {
+func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name string, version string) (*auditpb.NumscriptInfo, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -2008,7 +2008,7 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 	}
 
 	if info == nil {
-		return nil, commonpb.NewNotFoundError("numscript %q not found", name)
+		return nil, protoerr.NewNotFoundError("numscript %q not found", name)
 	}
 
 	return info, nil
@@ -2025,7 +2025,7 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 // surfaces the typed LEDGER_NOT_FOUND business error (HTTP 404) rather than a
 // zero-valued 200 — the same missing-ledger contract as GetLedgerStats,
 // GetNumscript, and ListNumscripts.
-func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, name string) (*auditpb.TemplateUsage, error) {
 	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledger); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			return nil, &domain.ErrLedgerNotFound{Name: ledger}
@@ -2040,14 +2040,14 @@ func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, nam
 	}
 
 	if usage == nil {
-		return &commonpb.TemplateUsage{}, nil
+		return &auditpb.TemplateUsage{}, nil
 	}
 
 	return usage, nil
 }
 
 // ListNumscripts returns the greatest version of every numscript for a ledger.
-func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
+func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string) ([]*auditpb.NumscriptInfo, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
@@ -2069,7 +2069,7 @@ func (ctrl *DefaultController) ListNumscripts(ctx context.Context, ledger string
 
 // ListNumscriptVersions returns a numscript's current latest (greatest stored
 // semver) and every stored version.
-func (ctrl *DefaultController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+func (ctrl *DefaultController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*auditpb.NumscriptVersionEntry, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return "", nil, fmt.Errorf("creating read handle: %w", err)
@@ -2085,7 +2085,7 @@ func (ctrl *DefaultController) ListNumscriptVersions(ctx context.Context, ledger
 	return query.ReadAllNumscriptVersions(ctrl.attrs.NumscriptVersion, ctrl.attrs.NumscriptContent, handle, ledgerInfo.GetName(), name)
 }
 
-func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
+func (ctrl *DefaultController) GetEventsSinks(_ context.Context) ([]*auditpb.SinkConfig, []*auditpb.SinkStatus, error) {
 	handle, err := ctrl.store.NewReadHandle()
 	if err != nil {
 		return nil, nil, fmt.Errorf("creating read handle: %w", err)
@@ -2122,13 +2122,13 @@ func (ctrl *DefaultController) Barrier(ctx context.Context) (uint64, error) {
 // verifies signatures (for signed envelopes) and unwraps them into Requests.
 // The FSM is responsible for interpreting orders, validating, and applying changes.
 // Idempotency is handled in the FSM to ensure consistency.
-func (ctrl *DefaultController) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+func (ctrl *DefaultController) Apply(ctx context.Context, req *auditpb.ApplyRequest) (*domain.ApplyResult, error) {
 	// Non-authoritative peek for metrics and the empty-batch guard. A signed
 	// payload is opaque until admission verifies its signature over the raw
 	// bytes, so a peek failure here (e.g. a tampered payload) must defer to
 	// admission — which rejects a bad signature with PermissionDenied — rather
 	// than reject early. Only guard an empty batch when the peek succeeded.
-	peeked, peekErr := servicepb.PeekBatch(req)
+	peeked, peekErr := auditpb.PeekBatch(req)
 
 	batchSize := 0
 	if peekErr == nil {

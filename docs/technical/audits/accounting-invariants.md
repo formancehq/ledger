@@ -43,7 +43,7 @@ and remain hypotheses until the independent
 
 | Boundary | Sources and required evidence |
 | --- | --- |
-| Posting arithmetic | `internal/domain/processing/processor_posting.go`, `processor_volumes.go`, `internal/proto/commonpb/`: trace amount decoding, ordered source-floor checks and overflow on both input/output sides. Prove the exact bucket key, prior value and typed error; a wire parse failure is not apply-arithmetic evidence. |
+| Posting arithmetic | `internal/domain/processing/processor_posting.go`, `processor_volumes.go`, `pkg/client/v3/grpc/`: trace amount decoding, ordered source-floor checks and overflow on both input/output sides. Prove the exact bucket key, prior value and typed error; a wire parse failure is not apply-arithmetic evidence. |
 | Transaction creation | `processor_transaction.go`, `processor_transaction_numscript.go`, `processor_skippable.go`, `processor_apply.go`: follow dry validation, posting production, ID allocation, transaction/reference/metadata writes and the operation outcome. Capture mutations before each failure and the final merged `WriteSet`. |
 | Reversion | `processor_revert_transaction.go` and the transaction-state accessors: establish target existence, immutable original postings, reverse links, double-revert behavior, force and effective-date semantics. |
 | Bulk atomicity | `processor.go`, overlay/scope files and `internal/infra/state/write_set*.go`: determine which per-order effects compose, which error discards the batch and what a skippable reason retains. Cache/preload enforcement is counterevidence here; its structural correctness belongs to the FSM domain. |

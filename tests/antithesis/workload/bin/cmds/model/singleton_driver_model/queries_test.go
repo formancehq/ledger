@@ -6,9 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -21,7 +20,7 @@ import (
 // semantics — a shared proposal date, and ephemeral cells judged once at the end
 // of the bulk. A fixture that reverts a transaction the same bulk creates must
 // use buildLedgerSeparateBulks instead.
-func buildLedger(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
+func buildLedger(t *testing.T, reqs ...*commonpb.Request) oracle.LedgerState {
 	t.Helper()
 
 	return buildGlobal(t, reqs...).Ledger("L")
@@ -31,7 +30,7 @@ func buildLedger(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
 // fixtures that revert a transaction an earlier request creates: the server
 // rejects that within one bulk, because admission cannot declare the volume
 // coverage the revert needs when the target is not yet in the local store.
-func buildLedgerSeparateBulks(t *testing.T, reqs ...*servicepb.Request) oracle.LedgerState {
+func buildLedgerSeparateBulks(t *testing.T, reqs ...*commonpb.Request) oracle.LedgerState {
 	t.Helper()
 
 	return buildGlobalSeparateBulks(t, reqs...).Ledger("L")
@@ -273,7 +272,7 @@ func stamp(v uint64) *commonpb.Timestamp { return &commonpb.Timestamp{Data: v} }
 // buildGlobal applies reqs as one bulk and returns the global state, for tests
 // that need LearnTxStamps on top of the applied records. See buildLedger for
 // why one bulk is the default.
-func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
+func buildGlobal(t *testing.T, reqs ...*commonpb.Request) oracle.GlobalState {
 	t.Helper()
 
 	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: reqs})
@@ -290,13 +289,13 @@ func buildGlobal(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
 // bulks is indexed by the first and then only dropped from the query universe by
 // the second, which is a different mechanism (TestMatchTxAddress_UniverseDrop).
 // Do not move a fixture here to make it pass.
-func buildGlobalSeparateBulks(t *testing.T, reqs ...*servicepb.Request) oracle.GlobalState {
+func buildGlobalSeparateBulks(t *testing.T, reqs ...*commonpb.Request) oracle.GlobalState {
 	t.Helper()
 
 	state := oracle.NewGlobalState()
 
 	for i, req := range reqs {
-		res := state.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}})
+		res := state.Apply(oracle.Bulk{Requests: []*commonpb.Request{req}})
 		require.True(t, res.OK, "setup request %d rejected: %s", i, res.Reason)
 
 		state = res.State
@@ -513,7 +512,7 @@ func TestMatchTxAddress_PurgedAccountHistory(t *testing.T) {
 	t.Parallel()
 
 	// Bulk 1 funds ephemeral e:1 (non-zero at end of bulk → kept and indexed).
-	res1 := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	res1 := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 		oracletest.TxReqL("L", "world", "e:1", "USD", 5),
 	}})
@@ -527,7 +526,7 @@ func TestMatchTxAddress_PurgedAccountHistory(t *testing.T) {
 
 	// Bulk 2 drains it to zero: the cell is purged from current state, while tx 1
 	// keeps its index membership and remains reachable through an address match.
-	res2 := res1.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	res2 := res1.State.Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		oracletest.TxReqL("L", "e:1", "world", "USD", 5),
 	}})
 	require.True(t, res2.OK)
@@ -567,14 +566,14 @@ func TestOracle_MetadataIndexLifecycle(t *testing.T) {
 	canonical := indexes.Canonical(id)
 
 	// CreateIndex on an undeclared field is rejected with the server's reason.
-	rejected := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	rejected := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		oracletest.CreateIndexReq(id),
 	}})
 	require.False(t, rejected.OK)
 	require.Equal(t, "METADATA_FIELD_NOT_IN_SCHEMA", rejected.Reason)
 
 	// Declared → create lands ambiguous; removing the declaration drops it.
-	declared := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	declared := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		oracletest.SetFieldTypeReq(acct, "k1", commonpb.MetadataType_METADATA_TYPE_INT64),
 		oracletest.CreateIndexReq(id),
 	}})
@@ -583,7 +582,7 @@ func TestOracle_MetadataIndexLifecycle(t *testing.T) {
 	require.True(t, exists)
 	require.False(t, active)
 
-	removed := declared.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	removed := declared.State.Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		oracletest.RemoveFieldTypeReq(acct, "k1"),
 	}})
 	require.True(t, removed.OK)

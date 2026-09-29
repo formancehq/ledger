@@ -14,8 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // endingBucketServer streams `rows` accounts and then ends the stream with
@@ -23,13 +22,13 @@ import (
 // dying mid-stream (the wire shape of a forwarded read whose serving node
 // is torn down while the follower still waits for rows).
 type endingBucketServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
 	rows   int
 	endErr error
 }
 
-func (s *endingBucketServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream ggrpc.ServerStreamingServer[commonpb.Account]) error {
+func (s *endingBucketServer) ListAccounts(_ *commonpb.ListAccountsRequest, stream ggrpc.ServerStreamingServer[commonpb.Account]) error {
 	for i := range s.rows {
 		if err := stream.Send(&commonpb.Account{Address: fmt.Sprintf("acc-%d", i)}); err != nil {
 			return err
@@ -41,12 +40,12 @@ func (s *endingBucketServer) ListAccounts(_ *servicepb.ListAccountsRequest, stre
 
 // dialBucketServer serves srv over an in-process bufconn listener and
 // returns a connected client.
-func dialBucketServer(t *testing.T, srv servicepb.BucketServiceServer) servicepb.BucketServiceClient {
+func dialBucketServer(t *testing.T, srv commonpb.BucketServiceServer) commonpb.BucketServiceClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
 	server := ggrpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, srv)
+	commonpb.RegisterBucketServiceServer(server, srv)
 
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
@@ -63,7 +62,7 @@ func dialBucketServer(t *testing.T, srv servicepb.BucketServiceServer) servicepb
 
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return servicepb.NewBucketServiceClient(conn)
+	return commonpb.NewBucketServiceClient(conn)
 }
 
 // drainPeekCursor consumes the cursor to its terminal error, the way
@@ -96,7 +95,7 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 
 		ctx := context.Background()
 
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: "l"})
+		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "l"})
 		if err != nil {
 			t.Fatalf("opening stream: %v", err)
 		}
@@ -130,7 +129,7 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 
 		ctx := context.Background()
 
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: "l"})
+		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "l"})
 		if err != nil {
 			t.Fatalf("opening stream: %v", err)
 		}
@@ -146,7 +145,7 @@ func TestUpstreamPeekCursorStreamDeath(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 
-		stream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: "l"})
+		stream, err := client.ListAccounts(ctx, &commonpb.ListAccountsRequest{Ledger: "l"})
 		if err != nil {
 			t.Fatalf("opening stream: %v", err)
 		}

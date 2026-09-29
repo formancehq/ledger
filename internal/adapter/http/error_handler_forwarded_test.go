@@ -11,9 +11,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
+	"github.com/formancehq/ledger/v3/internal/adapter/restbulk"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // leaderStatus builds the error a leader sends for a business rejection:
@@ -132,7 +134,7 @@ func TestHandleErrorForwardedFromLeader(t *testing.T) {
 			expectedCode:   "COVERAGE_MISS",
 		},
 		{
-			// The ~20 commonpb.NewNotFoundError sites send no ErrorInfo.
+			// The ~20 protoerr.NewNotFoundError sites send no ErrorInfo.
 			name:           "bare NotFound with no ErrorInfo",
 			leaderErr:      status.Error(codes.NotFound, "ledger foo not found"),
 			expectedStatus: http.StatusNotFound,
@@ -355,7 +357,7 @@ func TestBulkPerElementForwardedInvalidWirePairIsSanitized(t *testing.T) {
 				"ledger deleted: secret-ledger", domain.ErrReasonLedgerDeleted,
 				map[string]string{"name": "secret-ledger"})
 
-			elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
+			elements := []*restbulk.BulkElement{{Action: &servicepb.LedgerAction{
 				Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{},
 				},

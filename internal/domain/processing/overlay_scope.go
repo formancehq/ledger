@@ -1,8 +1,10 @@
 package processing
 
 import (
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -36,8 +38,8 @@ type orderOverlayScope struct {
 	volumes           *stagedAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	accountMetadata   *stagedAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	ledgerMetadata    *stagedAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	transactionRefs   *stagedAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
-	transactionStates *stagedAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	transactionRefs   *stagedAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
+	transactionStates *stagedAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
 	preparedQueries   *stagedAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
 	indexes           *stagedAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 
@@ -70,11 +72,13 @@ func newOrderOverlayScope(parent Scope) *orderOverlayScope {
 		ledgerMetadata: newStagedAccessor(parent.LedgerMetadata(),
 			func(v *commonpb.MetadataValue) commonpb.MetadataValueReader { return v.AsReader() }),
 		transactionRefs: newStagedAccessor(parent.TransactionReferences(),
-			func(v *commonpb.TransactionReferenceValue) commonpb.TransactionReferenceValueReader {
+			func(v *internalcommonpb.TransactionReferenceValue) internalcommonpb.TransactionReferenceValueReader {
 				return v.AsReader()
 			}),
 		transactionStates: newStagedAccessor(parent.TransactionStates(),
-			func(v *commonpb.TransactionState) commonpb.TransactionStateReader { return v.AsReader() }),
+			func(v *internalcommonpb.TransactionState) internalcommonpb.TransactionStateReader {
+				return v.AsReader()
+			}),
 		preparedQueries: newStagedAccessor(parent.PreparedQueries(),
 			func(v *commonpb.PreparedQuery) commonpb.PreparedQueryReader { return v.AsReader() }),
 		indexes: newStagedAccessor(parent.Indexes(),
@@ -106,11 +110,11 @@ func (o *orderOverlayScope) LedgerMetadata() Accessor[domain.LedgerMetadataKey, 
 	return o.ledgerMetadata
 }
 
-func (o *orderOverlayScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+func (o *orderOverlayScope) TransactionReferences() Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
 	return o.transactionRefs
 }
 
-func (o *orderOverlayScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+func (o *orderOverlayScope) TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
 	return o.transactionStates
 }
 

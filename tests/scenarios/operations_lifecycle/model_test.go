@@ -5,9 +5,8 @@ package operationslifecycle
 import (
 	"testing"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
@@ -23,10 +22,10 @@ import (
 func TestLifecycleModelMatchesService(t *testing.T) {
 	sc := scenariotest.SetupSingleNode(t)
 	state := oracle.NewGlobalState()
-	apply := func(reqs ...*servicepb.Request) {
+	apply := func(reqs ...*commonpb.Request) {
 		t.Helper()
 		predicted := state.Apply(oracle.Bulk{Requests: reqs})
-		response, err := sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", reqs...))
+		response, err := sc.Client.Apply(sc.Ctx(), commonpb.UnsignedApplyRequest("", reqs...))
 		if predicted.OK {
 			require.NoError(t, err)
 			require.Len(t, response.GetLogs(), len(reqs))
@@ -47,7 +46,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	apply(oracletest.RevertReqL("L", 1, false))
 	apply(actions.DeleteLedgerAction("L"))
 	require.NotContains(t, state.Ledgers(), "L")
-	_, err := sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "L"})
+	_, err := sc.Client.GetLedger(sc.Ctx(), &commonpb.GetLedgerRequest{Ledger: "L"})
 	require.Equal(t, codes.NotFound, status.Code(err))
 	apply(actions.CreateLedgerAction("L", nil))
 	apply(oracletest.TxReqL("L", "world", "cash:1", "USD/2", 1))
@@ -76,7 +75,7 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	// Repeated delete still operates on the retained LedgerInfo tombstone.
 	apply(actions.DeleteLedgerAction("L"))
 
-	apply(&servicepb.Request{Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
+	apply(&commonpb.Request{Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: "mirror", Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR, MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unconfigured"}}}}, actions.AddAccountTypeAction("mirror", "cash", "cash:{id}"))
 	mirrorAccountsBefore, err := actions.ListAccountsFiltered(sc.Ctx(), sc.Client, "mirror", 100, "", nil)
 	require.NoError(t, err)
 	mirrorTransactionsBefore, err := actions.ListTransactionsFiltered(sc.Ctx(), sc.Client, "mirror", 100, 0, nil)
@@ -88,24 +87,24 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, mirrorAccountsBefore, mirrorAccountsAfter)
 	require.Equal(t, mirrorTransactionsBefore, mirrorTransactionsAfter)
-	promote := &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: "mirror"}}}
+	promote := &commonpb.Request{Type: &commonpb.Request_PromoteLedger{PromoteLedger: &commonpb.PromoteLedgerRequest{Ledger: "mirror"}}}
 	apply(promote)
 	apply(promote)
 	apply(oracletest.TxReqL("mirror", "world", "cash:1", "USD/2", 1))
-	info, err := sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	info, err := sc.Client.GetLedger(sc.Ctx(), &commonpb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
 	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode())
 	require.Nil(t, info.GetMirrorSource())
 
 	t.Cleanup(func() {
-		_, cleanupErr := sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", actions.SetMaintenanceModeAction(false)))
+		_, cleanupErr := sc.Client.Apply(sc.Ctx(), commonpb.UnsignedApplyRequest("", actions.SetMaintenanceModeAction(false)))
 		require.NoError(t, cleanupErr)
 	})
 	apply(actions.SetMaintenanceModeAction(true))
 	require.True(t, state.MaintenanceMode())
-	_, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	_, err = sc.Client.GetLedger(sc.Ctx(), &commonpb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
-	_, err = sc.Client.Apply(sc.Ctx(), servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction("mirror", map[string]string{"k": "blocked"})))
+	_, err = sc.Client.Apply(sc.Ctx(), commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction("mirror", map[string]string{"k": "blocked"})))
 	require.Error(t, err)
 	found := false
 	for _, detail := range status.Convert(err).Details() {
@@ -114,12 +113,12 @@ func TestLifecycleModelMatchesService(t *testing.T) {
 		}
 	}
 	require.True(t, found, "maintenance rejection must carry the specific business reason")
-	info, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	info, err = sc.Client.GetLedger(sc.Ctx(), &commonpb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
 	require.NotContains(t, info.GetMetadata(), "k", "maintenance-rejected metadata must not commit")
 	apply(actions.SetMaintenanceModeAction(false))
 	apply(actions.SaveLedgerMetadataAction("mirror", map[string]string{"k": "recovered"}))
-	info, err = sc.Client.GetLedger(sc.Ctx(), &servicepb.GetLedgerRequest{Ledger: "mirror"})
+	info, err = sc.Client.GetLedger(sc.Ctx(), &commonpb.GetLedgerRequest{Ledger: "mirror"})
 	require.NoError(t, err)
 	require.Equal(t, "recovered", info.GetMetadata()["k"].GetStringValue())
 }

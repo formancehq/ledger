@@ -9,6 +9,10 @@ This file is the always-loaded entry point for AI agents working on Ledger v3. K
 - Do not add migrations, compatibility shims, version guards, or fallback paths for old v3 wire/storage formats.
 - When removing protobuf fields, delete them and realign field numbers sequentially. The EN-1551 cleanup removed every existing `reserved` declaration from `misc/proto/`; do not reintroduce any.
 - Read `docs/technical/contributing/protobuf.md` before changing `.proto` files.
+- The six public service schemas generate once into the nested
+  `github.com/formancehq/ledger/pkg/client/v3/grpc` module. Keep the public
+  dependency closure and release metadata described in
+  `docs/technical/architecture/subsystems/api/public-client.md` intact.
 
 ### Service protocol revision — required during pre-release
 

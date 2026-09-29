@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
@@ -19,10 +20,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -33,7 +32,7 @@ func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
 		t.Parallel()
 
 		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
-		err := advanceExpectedBoundaries(expected, "ledger", &commonpb.LedgerLog{Id: math.MaxUint64})
+		err := advanceExpectedBoundaries(expected, "ledger", &auditpb.LedgerLog{Id: math.MaxUint64})
 		var exhausted *domain.ErrSequenceExhausted
 		require.ErrorAs(t, err, &exhausted)
 		require.Equal(t, domain.SequenceCounterLedgerLogID, exhausted.Counter)
@@ -44,9 +43,9 @@ func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
 		t.Parallel()
 
 		expected := make(map[string]*raftcmdpb.LedgerBoundaries)
-		log := &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
-			Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{Id: math.MaxUint64},
+		log := &auditpb.LedgerLog{Id: 1, Data: &auditpb.LedgerLogPayload{
+			Payload: &auditpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &auditpb.CreatedTransaction{
+				Transaction: &auditpb.Transaction{Id: math.MaxUint64},
 			}},
 		}}
 		err := advanceExpectedBoundaries(expected, "ledger", log)
@@ -101,16 +100,16 @@ type testEngine struct {
 	// In-memory state tracking (mirroring the state machine)
 	nextSequenceID         uint64
 	lastLogHash            []byte
-	ledgers                map[string]*commonpb.LedgerInfo
+	ledgers                map[string]*auditpb.LedgerInfo
 	boundaries             map[string]*raftcmdpb.LedgerBoundaries
 	volumes                map[string]*raftcmdpb.VolumePair
-	metadata               map[string]*commonpb.MetadataValue
-	idempotency            map[string]*commonpb.IdempotencyKeyValue
-	references             map[string]*commonpb.TransactionReferenceValue
-	transactionStates      map[string]*commonpb.TransactionState
+	metadata               map[string]*auditpb.MetadataValue
+	idempotency            map[string]*internalcommonpb.IdempotencyKeyValue
+	references             map[string]*internalcommonpb.TransactionReferenceValue
+	transactionStates      map[string]*internalcommonpb.TransactionState
 	reversions             map[string]*bitset.Bitset
-	numscriptContent       map[string]*commonpb.NumscriptInfo // key = NumscriptEntryKey bytes
-	numscriptLatest        map[string]string                  // key = NumscriptVersionKey bytes
+	numscriptContent       map[string]*auditpb.NumscriptInfo // key = NumscriptEntryKey bytes
+	numscriptLatest        map[string]string                 // key = NumscriptVersionKey bytes
 	nextLedgerID           uint32
 	nextAuditSequenceID    uint64
 	lastAuditHash          []byte
@@ -140,15 +139,15 @@ func newTestEngine(t *testing.T) *testEngine {
 		clusterID:           checkerTestAuditKey,
 		nextSequenceID:      1,
 		nextLedgerID:        1,
-		ledgers:             make(map[string]*commonpb.LedgerInfo),
+		ledgers:             make(map[string]*auditpb.LedgerInfo),
 		boundaries:          make(map[string]*raftcmdpb.LedgerBoundaries),
 		volumes:             make(map[string]*raftcmdpb.VolumePair),
-		metadata:            make(map[string]*commonpb.MetadataValue),
-		idempotency:         make(map[string]*commonpb.IdempotencyKeyValue),
-		references:          make(map[string]*commonpb.TransactionReferenceValue),
-		transactionStates:   make(map[string]*commonpb.TransactionState),
+		metadata:            make(map[string]*auditpb.MetadataValue),
+		idempotency:         make(map[string]*internalcommonpb.IdempotencyKeyValue),
+		references:          make(map[string]*internalcommonpb.TransactionReferenceValue),
+		transactionStates:   make(map[string]*internalcommonpb.TransactionState),
 		reversions:          make(map[string]*bitset.Bitset),
-		numscriptContent:    make(map[string]*commonpb.NumscriptInfo),
+		numscriptContent:    make(map[string]*auditpb.NumscriptInfo),
 		numscriptLatest:     make(map[string]string),
 		nextAuditSequenceID: 1,
 		raftIndex:           1,
@@ -157,13 +156,13 @@ func newTestEngine(t *testing.T) *testEngine {
 
 // processAndCommit processes orders through the RequestProcessor, then writes the resulting
 // logs and attributes to the store, matching the real state machine's behavior.
-func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Log {
+func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*auditpb.Log {
 	e.t.Helper()
 
 	proposal := &raftcmdpb.Proposal{
 		Id:     e.raftIndex,
 		Orders: orders,
-		Date:   &commonpb.Timestamp{Data: 1700000000 + e.raftIndex},
+		Date:   &auditpb.Timestamp{Data: 1700000000 + e.raftIndex},
 	}
 
 	// Track which keys were modified in this batch
@@ -287,7 +286,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 	}
 
 	for keyStr, version := range e.numscriptLatest {
-		_, err := e.attrs.NumscriptVersion.Set(batch, []byte(keyStr), &commonpb.NumscriptVersionValue{Version: version})
+		_, err := e.attrs.NumscriptVersion.Set(batch, []byte(keyStr), &internalcommonpb.NumscriptVersionValue{Version: version})
 		require.NoError(e.t, err)
 	}
 
@@ -363,7 +362,7 @@ func (e *testEngine) processAndCommit(orders ...*raftcmdpb.Order) []*commonpb.Lo
 func (e *testEngine) appendAuditEntry(batch *dal.WriteSession, proposal *raftcmdpb.Proposal, results []*raftcmdpb.CreatedLogOrReference) {
 	e.t.Helper()
 
-	hashAlgorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	hashAlgorithm := auditpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
 	hashGenerator := processing.NewHashGenerator(hashAlgorithm, e.clusterID)
 	serializedOrders := marshalOrdersForTest(proposal.GetOrders())
 	minLogSeq, maxLogSeq := testLogSequenceRange(results)
@@ -479,7 +478,7 @@ func testAuditItems(serializedOrders [][]byte, results []*raftcmdpb.CreatedLogOr
 // scopeImpl implements processing.Scope using the testEngine's in-memory state.
 type scopeImpl struct {
 	engine           *testEngine
-	date             *commonpb.Timestamp
+	date             *auditpb.Timestamp
 	modifiedVolumes  map[string]struct{}
 	modifiedMetadata map[string]struct{}
 	modifiedTxStates map[string]struct{}
@@ -544,9 +543,9 @@ func (a *scopeFuncAccessor[K, V, R]) Delete(key K) error {
 	return nil
 }
 
-func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader] {
-	return &scopeFuncAccessor[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]{
-		get: func(key domain.LedgerKey) (commonpb.LedgerInfoReader, error) {
+func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *auditpb.LedgerInfo, auditpb.LedgerInfoReader] {
+	return &scopeFuncAccessor[domain.LedgerKey, *auditpb.LedgerInfo, auditpb.LedgerInfoReader]{
+		get: func(key domain.LedgerKey) (auditpb.LedgerInfoReader, error) {
 			info, ok := s.engine.ledgers[key.Name]
 			if !ok {
 				return nil, domain.ErrNotFound
@@ -554,7 +553,7 @@ func (s *scopeImpl) Ledgers() processing.Accessor[domain.LedgerKey, *commonpb.Le
 
 			return info.AsReader(), nil
 		},
-		put: func(key domain.LedgerKey, info *commonpb.LedgerInfo) {
+		put: func(key domain.LedgerKey, info *auditpb.LedgerInfo) {
 			s.engine.ledgers[key.Name] = info
 		},
 	}
@@ -583,8 +582,8 @@ func (s *scopeImpl) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.V
 			if !ok {
 				// Simulate preloaded zero volumes (in production, admission always preloads)
 				vp = &raftcmdpb.VolumePair{
-					Input:  commonpb.NewUint256FromUint64(0),
-					Output: commonpb.NewUint256FromUint64(0),
+					Input:  auditpb.NewUint256FromUint64(0),
+					Output: auditpb.NewUint256FromUint64(0),
 				}
 			}
 
@@ -598,9 +597,9 @@ func (s *scopeImpl) Volumes() processing.Accessor[domain.VolumeKey, *raftcmdpb.V
 	}
 }
 
-func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
-	return &scopeFuncAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{
-		get: func(key domain.MetadataKey) (commonpb.MetadataValueReader, error) {
+func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *auditpb.MetadataValue, auditpb.MetadataValueReader] {
+	return &scopeFuncAccessor[domain.MetadataKey, *auditpb.MetadataValue, auditpb.MetadataValueReader]{
+		get: func(key domain.MetadataKey) (auditpb.MetadataValueReader, error) {
 			v, ok := s.engine.metadata[string(key.Bytes())]
 			if !ok {
 				return nil, domain.ErrNotFound
@@ -608,7 +607,7 @@ func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *c
 
 			return v.AsReader(), nil
 		},
-		put: func(key domain.MetadataKey, value *commonpb.MetadataValue) {
+		put: func(key domain.MetadataKey, value *auditpb.MetadataValue) {
 			k := string(key.Bytes())
 			s.engine.metadata[k] = value
 			s.modifiedMetadata[k] = struct{}{}
@@ -621,17 +620,17 @@ func (s *scopeImpl) AccountMetadata() processing.Accessor[domain.MetadataKey, *c
 	}
 }
 
-func (s *scopeImpl) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader] {
-	return &scopeFuncAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{
-		get: func(_ domain.LedgerMetadataKey) (commonpb.MetadataValueReader, error) {
+func (s *scopeImpl) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey, *auditpb.MetadataValue, auditpb.MetadataValueReader] {
+	return &scopeFuncAccessor[domain.LedgerMetadataKey, *auditpb.MetadataValue, auditpb.MetadataValueReader]{
+		get: func(_ domain.LedgerMetadataKey) (auditpb.MetadataValueReader, error) {
 			return nil, domain.ErrNotFound
 		},
 	}
 }
 
-func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
-	return &scopeFuncAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]{
-		get: func(key domain.TransactionReferenceKey) (commonpb.TransactionReferenceValueReader, error) {
+func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
+	return &scopeFuncAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]{
+		get: func(key domain.TransactionReferenceKey) (internalcommonpb.TransactionReferenceValueReader, error) {
 			v, ok := s.engine.references[string(key.Bytes())]
 			if !ok {
 				return nil, domain.ErrNotFound
@@ -639,15 +638,15 @@ func (s *scopeImpl) TransactionReferences() processing.Accessor[domain.Transacti
 
 			return v.AsReader(), nil
 		},
-		put: func(key domain.TransactionReferenceKey, value *commonpb.TransactionReferenceValue) {
+		put: func(key domain.TransactionReferenceKey, value *internalcommonpb.TransactionReferenceValue) {
 			s.engine.references[string(key.Bytes())] = value
 		},
 	}
 }
 
-func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
-	return &scopeFuncAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{
-		get: func(key domain.TransactionKey) (commonpb.TransactionStateReader, error) {
+func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
+	return &scopeFuncAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{
+		get: func(key domain.TransactionKey) (internalcommonpb.TransactionStateReader, error) {
 			st := s.engine.transactionStates[string(key.Bytes())]
 			if st == nil {
 				return nil, nil
@@ -655,7 +654,7 @@ func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKe
 
 			return st.AsReader(), nil
 		},
-		put: func(key domain.TransactionKey, txState *commonpb.TransactionState) {
+		put: func(key domain.TransactionKey, txState *internalcommonpb.TransactionState) {
 			k := string(key.Bytes())
 			s.engine.transactionStates[k] = txState
 			s.modifiedTxStates[k] = struct{}{}
@@ -663,17 +662,17 @@ func (s *scopeImpl) TransactionStates() processing.Accessor[domain.TransactionKe
 	}
 }
 
-func (s *scopeImpl) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader] {
-	return &scopeFuncAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{
-		get: func(_ domain.PreparedQueryKey) (commonpb.PreparedQueryReader, error) {
+func (s *scopeImpl) PreparedQueries() processing.Accessor[domain.PreparedQueryKey, *auditpb.PreparedQuery, auditpb.PreparedQueryReader] {
+	return &scopeFuncAccessor[domain.PreparedQueryKey, *auditpb.PreparedQuery, auditpb.PreparedQueryReader]{
+		get: func(_ domain.PreparedQueryKey) (auditpb.PreparedQueryReader, error) {
 			return nil, nil
 		},
 	}
 }
 
-func (s *scopeImpl) Indexes() processing.Accessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader] {
-	return &scopeFuncAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{
-		get: func(_ domain.IndexKey) (commonpb.IndexReader, error) {
+func (s *scopeImpl) Indexes() processing.Accessor[domain.IndexKey, *auditpb.Index, auditpb.IndexReader] {
+	return &scopeFuncAccessor[domain.IndexKey, *auditpb.Index, auditpb.IndexReader]{
+		get: func(_ domain.IndexKey) (auditpb.IndexReader, error) {
 			return nil, domain.ErrNotFound
 		},
 	}
@@ -703,8 +702,8 @@ func (s *scopeImpl) SetMaintenanceMode(_ bool)                  {}
 
 // Replay applies the same orders the FSM applied, so it needs the same
 // committed policy: apply reads the metadata ceilings from it.
-func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy {
-	return &commonpb.ClusterPolicy{
+func (s *scopeImpl) GetClusterPolicy() *auditpb.ClusterPolicy {
+	return &auditpb.ClusterPolicy{
 		Revision:                    1,
 		QueryCheckpointLimit:        10,
 		MetadataMaxEntriesPerEntity: domain.DefaultMetadataMaxEntriesPerEntity,
@@ -714,8 +713,8 @@ func (s *scopeImpl) GetClusterPolicy() *commonpb.ClusterPolicy {
 		MetadataMaxCommandBytes:     domain.DefaultMetadataMaxCommandBytes,
 	}
 }
-func (s *scopeImpl) SetClusterPolicy(_ *commonpb.ClusterPolicy)                {}
-func (s *scopeImpl) GetSinkConfig(_ string) (commonpb.SinkConfigReader, error) { return nil, nil }
+func (s *scopeImpl) SetClusterPolicy(_ *auditpb.ClusterPolicy)                {}
+func (s *scopeImpl) GetSinkConfig(_ string) (auditpb.SinkConfigReader, error) { return nil, nil }
 
 func (s *scopeImpl) GetLastLogHash() []byte {
 	return s.engine.lastLogHash
@@ -752,7 +751,7 @@ func (s *scopeImpl) IncrementNextLedgerID() uint32 {
 	return id
 }
 
-func (s *scopeImpl) GetDate() commonpb.TimestampReader {
+func (s *scopeImpl) GetDate() auditpb.TimestampReader {
 	if s.date == nil {
 		return nil
 	}
@@ -760,11 +759,11 @@ func (s *scopeImpl) GetDate() commonpb.TimestampReader {
 	return s.date.AsReader()
 }
 
-func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (commonpb.PreparedQueryReader, error) {
+func (s *scopeImpl) GetPreparedQuery(_ string, _ string) (auditpb.PreparedQueryReader, error) {
 	return nil, nil
 }
-func (s *scopeImpl) PutPreparedQuery(_ string, _ *commonpb.PreparedQuery) {}
-func (s *scopeImpl) DeletePreparedQuery(_ string, _ string)               {}
+func (s *scopeImpl) PutPreparedQuery(_ string, _ *auditpb.PreparedQuery) {}
+func (s *scopeImpl) DeletePreparedQuery(_ string, _ string)              {}
 func (s *scopeImpl) GetNumscriptLatestVersion(ledger, name string) (string, error) {
 	return s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: name}.Bytes())], nil
 }
@@ -773,7 +772,7 @@ func (s *scopeImpl) NumscriptVersionExists(ledger, name, version string) (bool, 
 
 	return ok, nil
 }
-func (s *scopeImpl) PutNumscript(ledger string, info *commonpb.NumscriptInfo) {
+func (s *scopeImpl) PutNumscript(ledger string, info *auditpb.NumscriptInfo) {
 	s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: info.GetName(), Version: info.GetVersion()}.Bytes())] = info
 	s.engine.numscriptLatest[string(domain.NumscriptVersionKey{LedgerName: ledger, Name: info.GetName()}.Bytes())] = info.GetVersion()
 }
@@ -786,7 +785,7 @@ func (s *scopeImpl) SaveQueryCheckpoint(_ *raftcmdpb.QueryCheckpointState) {}
 func (s *scopeImpl) DeleteQueryCheckpoint(_ uint64)                        {}
 func (s *scopeImpl) LiveQueryCheckpointCount() uint64                      { return 0 }
 func (s *scopeImpl) QueryCheckpointExists(_ uint64) bool                   { return false }
-func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commonpb.NumscriptInfoReader, error) {
+func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (auditpb.NumscriptInfoReader, error) {
 	info, ok := s.engine.numscriptContent[string(domain.NumscriptEntryKey{LedgerName: ledger, Name: name, Version: version}.Bytes())]
 	if !ok {
 		return nil, nil
@@ -798,11 +797,11 @@ func (s *scopeImpl) ResolveNumscriptContent(ledger, name, version string) (commo
 // Index registry stubs — the check engine doesn't exercise CreateIndex /
 // DropIndex orders, so the test scope can no-op these. Tests that need
 // real index behavior use the MockScope generated by mockgen.
-func (s *scopeImpl) GetIndex(_ domain.IndexKey) (commonpb.IndexReader, error) {
+func (s *scopeImpl) GetIndex(_ domain.IndexKey) (auditpb.IndexReader, error) {
 	return nil, domain.ErrNotFound
 }
-func (s *scopeImpl) PutIndex(_ domain.IndexKey, _ *commonpb.Index) {}
-func (s *scopeImpl) DeleteIndex(_ domain.IndexKey)                 {}
+func (s *scopeImpl) PutIndex(_ domain.IndexKey, _ *auditpb.Index) {}
+func (s *scopeImpl) DeleteIndex(_ domain.IndexKey)                {}
 
 // emitterImpl satisfies processing.SignalSink for replay tests. Only
 // the DeleteLedger payload has observable state
@@ -811,28 +810,28 @@ func (s *scopeImpl) DeleteIndex(_ domain.IndexKey)                 {}
 // not from in-memory signal accumulation.
 type emitterImpl struct{ engine *testEngine }
 
-func (e *emitterImpl) Absorb(_ *raftcmdpb.Order, log *commonpb.Log) {
-	if p, ok := log.GetPayload().GetType().(*commonpb.LogPayload_DeleteLedger); ok {
+func (e *emitterImpl) Absorb(_ *raftcmdpb.Order, log *auditpb.Log) {
+	if p, ok := log.GetPayload().GetType().(*auditpb.LogPayload_DeleteLedger); ok {
 		e.engine.pendingLedgerDeletions = append(e.engine.pendingLedgerDeletions, p.DeleteLedger.GetName())
 	}
 }
 
 // Helper functions for building orders
 
-func newPosting(source, destination, asset string, amount int64) *commonpb.Posting {
-	return &commonpb.Posting{
+func newPosting(source, destination, asset string, amount int64) *auditpb.Posting {
+	return &auditpb.Posting{
 		Source:      source,
 		Destination: destination,
-		Amount:      commonpb.NewUint256FromUint64(uint64(amount)),
+		Amount:      auditpb.NewUint256FromUint64(uint64(amount)),
 		Asset:       asset,
 	}
 }
 
 func createLedgerOrder(name string) *raftcmdpb.Order {
-	return createLedgerOrderWithEnforcementMode(name, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
+	return createLedgerOrderWithEnforcementMode(name, auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT)
 }
 
-func createLedgerOrderWithEnforcementMode(name string, mode commonpb.ChartEnforcementMode) *raftcmdpb.Order {
+func createLedgerOrderWithEnforcementMode(name string, mode auditpb.ChartEnforcementMode) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -845,7 +844,7 @@ func createLedgerOrderWithEnforcementMode(name string, mode commonpb.ChartEnforc
 	}
 }
 
-func updateDefaultEnforcementModeOrder(ledger string, mode commonpb.ChartEnforcementMode) *raftcmdpb.Order {
+func updateDefaultEnforcementModeOrder(ledger string, mode auditpb.ChartEnforcementMode) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -860,7 +859,7 @@ func updateDefaultEnforcementModeOrder(ledger string, mode commonpb.ChartEnforce
 	}
 }
 
-func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.AccountTypePersistence) *raftcmdpb.Order {
+func addAccountTypeOrder(ledger, name, pattern string, persistence auditpb.AccountTypePersistence) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -868,7 +867,7 @@ func addAccountTypeOrder(ledger, name, pattern string, persistence commonpb.Acco
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddAccountType{
 						AddAccountType: &raftcmdpb.AddAccountTypeOrder{
-							AccountType: &commonpb.AccountType{
+							AccountType: &auditpb.AccountType{
 								Name:        name,
 								Pattern:     pattern,
 								Persistence: persistence,
@@ -910,7 +909,7 @@ func deleteLedgerOrder(name string) *raftcmdpb.Order {
 	}
 }
 
-func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Posting) *raftcmdpb.Order {
+func createTransactionOrder(ledger string, force bool, postings ...*auditpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -929,7 +928,7 @@ func createTransactionOrder(ledger string, force bool, postings ...*commonpb.Pos
 	}
 }
 
-func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*commonpb.MetadataMap, postings ...*commonpb.Posting) *raftcmdpb.Order {
+func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[string]string, accountMeta map[string]*auditpb.MetadataMap, postings ...*auditpb.Posting) *raftcmdpb.Order {
 	return &raftcmdpb.Order{
 		Type: &raftcmdpb.Order_LedgerScoped{
 			LedgerScoped: &raftcmdpb.LedgerScopedOrder{
@@ -939,7 +938,7 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 							Postings:        postings,
 							Force:           force,
-							Metadata:        commonpb.MetadataFromGoMap(metadata),
+							Metadata:        auditpb.MetadataFromGoMap(metadata),
 							AccountMetadata: accountMeta,
 						},
 					},
@@ -994,14 +993,14 @@ func saveAccountMetadataOrder(ledger, account string, metadata map[string]string
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 						AddMetadata: &raftcmdpb.SaveMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{
+							Target: &auditpb.Target{
+								Target: &auditpb.Target_Account{
+									Account: &auditpb.TargetAccount{
 										Addr: account,
 									},
 								},
 							},
-							Metadata: commonpb.MetadataFromGoMap(metadata),
+							Metadata: auditpb.MetadataFromGoMap(metadata),
 						},
 					},
 					},
@@ -1019,9 +1018,9 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_Account{
-									Account: &commonpb.TargetAccount{
+							Target: &auditpb.Target{
+								Target: &auditpb.Target_Account{
+									Account: &auditpb.TargetAccount{
 										Addr: account,
 									},
 								},
@@ -1037,15 +1036,15 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 }
 
 // collectCheckErrors runs the checker and returns all error events.
-func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
+func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*auditpb.CheckStoreError {
 	t.Helper()
 
 	checker := NewChecker(store, attrs, nil, logging.Testing())
 
-	var errors []*servicepb.CheckStoreError
+	var errors []*auditpb.CheckStoreError
 
-	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	err := checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*auditpb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	})
@@ -1088,9 +1087,9 @@ func TestCheckerAuditKeyMissingCorruptOrMismatched(t *testing.T) {
 			}
 			require.NoError(t, batch.Commit())
 			checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
-			var findings []*servicepb.CheckStoreError
-			err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+			var findings []*auditpb.CheckStoreError
+			err := checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
+				if e, ok := event.GetType().(*auditpb.CheckStoreEvent_Error); ok {
 					findings = append(findings, e.Error)
 				}
 			})
@@ -1100,8 +1099,8 @@ func TestCheckerAuditKeyMissingCorruptOrMismatched(t *testing.T) {
 				return
 			}
 			require.NoError(t, err)
-			require.True(t, slices.ContainsFunc(findings, func(f *servicepb.CheckStoreError) bool {
-				return f.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH
+			require.True(t, slices.ContainsFunc(findings, func(f *auditpb.CheckStoreError) bool {
+				return f.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH
 			}))
 		})
 	}
@@ -1193,8 +1192,8 @@ func TestCheckerComprehensive(t *testing.T) {
 	// --- Step 7: Transactions with account metadata attached ---
 	engine.processAndCommit(createTransactionWithMetadataOrder("payments", true,
 		map[string]string{"type": "deposit"},
-		map[string]*commonpb.MetadataMap{
-			"customer:dave": commonpb.MetadataMapFromGoMap(map[string]string{
+		map[string]*auditpb.MetadataMap{
+			"customer:dave": auditpb.MetadataMapFromGoMap(map[string]string{
 				"joined": "2026-01-01",
 			}),
 		},
@@ -1260,7 +1259,7 @@ func TestCheckerReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 		"ledger",
 		"orders",
 		"orders:{id}",
-		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 	))
 
 	fund := createTransactionOrder("ledger", true,
@@ -1286,7 +1285,7 @@ func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testi
 	engine.processAndCommit(createLedgerOrder("ledger"))
 	engine.processAndCommit(addAccountTypeOrder(
 		"ledger", "orders", "orders:{id}",
-		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 	))
 	engine.processAndCommit(createTransactionOrder("ledger", true,
 		newPosting("world", "orders:1", "USD", 5),
@@ -1298,15 +1297,15 @@ func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testi
 	batch := engine.store.OpenWriteSession()
 	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
 	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(5),
-		Output: commonpb.NewUint256FromUint64(5),
+		Input:  auditpb.NewUint256FromUint64(5),
+		Output: auditpb.NewUint256FromUint64(5),
 	})
 	require.NoError(t, err)
 	metadataKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
 		Key:        "stale",
 	}
-	_, err = engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	_, err = engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), auditpb.NewStringValue("survivor"))
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
@@ -1317,9 +1316,9 @@ func TestCheckerRejectsPrimaryRowsSurvivingDerivedEphemeralAccountPurge(t *testi
 			continue
 		}
 		switch checkErr.GetErrorType() {
-		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH:
+		case auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH:
 			volumeMismatch = true
-		case servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH:
+		case auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH:
 			metadataMismatch = true
 		}
 	}
@@ -1334,7 +1333,7 @@ func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
 	engine.processAndCommit(createLedgerOrder("ledger"))
 	engine.processAndCommit(addAccountTypeOrder(
 		"ledger", "orders", "orders:{id}",
-		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 	))
 	engine.processAndCommit(createTransactionOrder("ledger", true,
 		newPosting("world", "orders:1", "USD", 5),
@@ -1349,8 +1348,8 @@ func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
 	batch := engine.store.OpenWriteSession()
 	volumeKey := domain.NewVolumeKey("ledger", "orders:1", "USD", "")
 	_, err := engine.attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
-		Output: commonpb.NewUint256FromUint64(0),
+		Input:  auditpb.NewUint256FromUint64(0),
+		Output: auditpb.NewUint256FromUint64(0),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -1358,7 +1357,7 @@ func TestCheckerRejectsPurgedCellSurvivingAfterAccountRefund(t *testing.T) {
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	var found bool
 	for _, checkErr := range errors {
-		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+		if checkErr.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
 			checkErr.GetAccount() == "orders:1" && checkErr.GetAsset() == "USD" {
 			found = true
 
@@ -1375,7 +1374,7 @@ func TestCheckerRejectsMetadataSurvivingDeletionAfterAccountRecreation(t *testin
 	engine.processAndCommit(createLedgerOrder("ledger"))
 	engine.processAndCommit(addAccountTypeOrder(
 		"ledger", "orders", "orders:{id}",
-		commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+		auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 	))
 	engine.processAndCommit(createTransactionOrder("ledger", true,
 		newPosting("world", "orders:1", "USD", 5),
@@ -1394,14 +1393,14 @@ func TestCheckerRejectsMetadataSurvivingDeletionAfterAccountRecreation(t *testin
 		AccountKey: domain.AccountKey{LedgerName: "ledger", Account: "orders:1"},
 		Key:        "status",
 	}
-	_, err := engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("survivor"))
+	_, err := engine.attrs.Metadata.Set(batch, metadataKey.Bytes(), auditpb.NewStringValue("survivor"))
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 	var found bool
 	for _, checkErr := range errors {
-		if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH &&
+		if checkErr.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH &&
 			checkErr.GetAccount() == "orders:1" &&
 			strings.Contains(checkErr.GetMessage(), "unexpected metadata for orders:1/status") {
 			found = true
@@ -1420,13 +1419,13 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	attrs := attributes.New()
 
 	// Write log at sequence 1
-	log1 := &commonpb.Log{
+	log1 := &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreateLedger{
+				CreateLedger: &auditpb.CreatedLedgerLog{
 					Name:      "test",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+					CreatedAt: &auditpb.Timestamp{Data: 1700000000},
 				},
 			},
 		},
@@ -1434,13 +1433,13 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	// Hash chain is now verified via audit entries, not per-log.
 
 	// Skip sequence 2 and write log at sequence 3
-	log3 := &commonpb.Log{
+	log3 := &auditpb.Log{
 		Sequence: 3,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreateLedger{
+				CreateLedger: &auditpb.CreatedLedgerLog{
 					Name:      "test2",
-					CreatedAt: &commonpb.Timestamp{Data: 1700000002},
+					CreatedAt: &auditpb.Timestamp{Data: 1700000002},
 				},
 			},
 		},
@@ -1448,7 +1447,7 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	// Even with correct chaining from log1, the gap will be detected
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log3}))
+	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{log1, log3}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetName(), log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
@@ -1456,10 +1455,10 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 	errors := collectCheckErrors(t, store, attrs)
 
 	// Should detect the gap at sequence 2
-	var gapErrors []*servicepb.CheckStoreError
+	var gapErrors []*auditpb.CheckStoreError
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP {
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP {
 			gapErrors = append(gapErrors, e)
 		}
 	}
@@ -1485,10 +1484,10 @@ func TestCheckerProgressEvents(t *testing.T) {
 
 	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 
-	var progressEvents []*servicepb.CheckStoreProgress
+	var progressEvents []*auditpb.CheckStoreProgress
 
-	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-		if p, ok := event.GetType().(*servicepb.CheckStoreEvent_Progress); ok {
+	err := checker.Check(context.Background(), func(event *auditpb.CheckStoreEvent) {
+		if p, ok := event.GetType().(*auditpb.CheckStoreEvent_Progress); ok {
 			progressEvents = append(progressEvents, p.Progress)
 		}
 	})
@@ -1616,10 +1615,10 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{
 						AddMetadata: &raftcmdpb.SaveMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							Target: &auditpb.Target{
+								Target: &auditpb.Target_TransactionId{TransactionId: txID},
 							},
-							Metadata: commonpb.MetadataFromGoMap(metadata),
+							Metadata: auditpb.MetadataFromGoMap(metadata),
 						},
 					},
 					},
@@ -1637,8 +1636,8 @@ func deleteTransactionMetadataOrder(ledger string, txID uint64, key string) *raf
 				Payload: &raftcmdpb.LedgerScopedOrder_Apply{
 					Apply: &raftcmdpb.LedgerApplyOrder{Data: &raftcmdpb.LedgerApplyOrder_DeleteMetadata{
 						DeleteMetadata: &raftcmdpb.DeleteMetadataOrder{
-							Target: &commonpb.Target{
-								Target: &commonpb.Target_TransactionId{TransactionId: txID},
+							Target: &auditpb.Target{
+								Target: &auditpb.Target_TransactionId{TransactionId: txID},
 							},
 							Key: key,
 						},
@@ -1666,7 +1665,7 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 	// Use a high raft index so it overrides the correct state.
 	batch := engine.store.OpenWriteSession()
 	txKey := domain.TransactionKey{LedgerName: "test", ID: 1}
-	_, err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
+	_, err := engine.attrs.Transaction.Set(batch, txKey.Bytes(), &internalcommonpb.TransactionState{
 		CreatedByLog: 999,
 	})
 	require.NoError(t, err)
@@ -1674,10 +1673,10 @@ func TestCheckerDetectsTransactionUpdateMismatch(t *testing.T) {
 
 	errors := collectCheckErrors(t, engine.store, engine.attrs)
 
-	var txErrors []*servicepb.CheckStoreError
+	var txErrors []*auditpb.CheckStoreError
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH {
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH {
 			txErrors = append(txErrors, e)
 		}
 	}
@@ -1706,7 +1705,7 @@ func TestCheckerDetectsLiveOnlyTransaction(t *testing.T) {
 	// fabricated state or a direct Pebble write.
 	batch := engine.store.OpenWriteSession()
 	rogueKey := domain.TransactionKey{LedgerName: "test", ID: 9999}
-	_, err := engine.attrs.Transaction.Set(batch, rogueKey.Bytes(), &commonpb.TransactionState{
+	_, err := engine.attrs.Transaction.Set(batch, rogueKey.Bytes(), &internalcommonpb.TransactionState{
 		CreatedByLog: 9999,
 	})
 	require.NoError(t, err)
@@ -1720,7 +1719,7 @@ func TestCheckerDetectsLiveOnlyTransaction(t *testing.T) {
 	)
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH &&
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH &&
 			e.GetTransactionId() == 9999 {
 			hasRogue = true
 		}
@@ -1763,8 +1762,8 @@ func TestCheckerDetectsSymmetricVolumeMutation(t *testing.T) {
 		Asset:      "USD",
 	}
 	_, err := engine.attrs.Volume.Set(batch, tamperedKey.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(999),
-		Output: commonpb.NewUint256FromUint64(999),
+		Input:  auditpb.NewUint256FromUint64(999),
+		Output: auditpb.NewUint256FromUint64(999),
 	})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
@@ -1774,7 +1773,7 @@ func TestCheckerDetectsSymmetricVolumeMutation(t *testing.T) {
 	var hasVolErr bool
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH &&
 			e.GetAccount() == "user:alice" {
 			hasVolErr = true
 		}
@@ -1811,7 +1810,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.Commit())
 
 	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
-	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
+	err := checker.Check(context.Background(), func(_ *auditpb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the
 	// unmarshal error and the integrity scan completed "successfully".
@@ -1878,25 +1877,25 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
-	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+	log1 := buildLog(&lastHash, &seqID, &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_CreateLedger{
+			CreateLedger: &auditpb.CreatedLedgerLog{
+				Name: "test", CreatedAt: &auditpb.Timestamp{Data: 1700000000},
 			},
 		},
 	})
 
 	// Log 2: Create transaction (tx 1)
 	posting := newPosting("world", "user:alice", "USD", 1000)
-	log2 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log2 := buildLog(&lastHash, &seqID, &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_Apply{
+			Apply: &auditpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+				Log: &auditpb.LedgerLog{
+					Data: &auditpb.LedgerLogPayload{
+						Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+							CreatedTransaction: &auditpb.CreatedTransaction{
+								Transaction: &auditpb.Transaction{Id: 1, Postings: []*auditpb.Posting{posting}},
 							},
 						},
 					},
@@ -1906,16 +1905,16 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	// Log 3: Revert tx 1 (valid)
-	log3 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log3 := buildLog(&lastHash, &seqID, &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_Apply{
+			Apply: &auditpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+				Log: &auditpb.LedgerLog{
+					Data: &auditpb.LedgerLogPayload{
+						Payload: &auditpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &auditpb.RevertedTransaction{
 								RevertedTransactionId: 1,
-								RevertTransaction:     &commonpb.Transaction{Id: 2, Postings: []*commonpb.Posting{reversePosting(posting)}},
+								RevertTransaction:     &auditpb.Transaction{Id: 2, Postings: []*auditpb.Posting{reversePosting(posting)}},
 							},
 						},
 					},
@@ -1925,16 +1924,16 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	// Log 4: Revert tx 1 AGAIN (double revert)
-	log4 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log4 := buildLog(&lastHash, &seqID, &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_Apply{
+			Apply: &auditpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+				Log: &auditpb.LedgerLog{
+					Data: &auditpb.LedgerLogPayload{
+						Payload: &auditpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &auditpb.RevertedTransaction{
 								RevertedTransactionId: 1,
-								RevertTransaction:     &commonpb.Transaction{Id: 3, Postings: []*commonpb.Posting{reversePosting(posting)}},
+								RevertTransaction:     &auditpb.Transaction{Id: 3, Postings: []*auditpb.Posting{reversePosting(posting)}},
 							},
 						},
 					},
@@ -1944,17 +1943,17 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 	})
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2, log3, log4}))
+	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{log1, log2, log3, log4}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
 
-	var revertErrors []*servicepb.CheckStoreError
+	var revertErrors []*auditpb.CheckStoreError
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
 			revertErrors = append(revertErrors, e)
 		}
 	}
@@ -1976,26 +1975,26 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	seqID := uint64(1)
 
 	// Log 1: Create ledger
-	log1 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_CreateLedger{
-			CreateLedger: &commonpb.CreatedLedgerLog{
-				Name: "test", CreatedAt: &commonpb.Timestamp{Data: 1700000000},
+	log1 := buildLog(&lastHash, &seqID, &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_CreateLedger{
+			CreateLedger: &auditpb.CreatedLedgerLog{
+				Name: "test", CreatedAt: &auditpb.Timestamp{Data: 1700000000},
 			},
 		},
 	})
 
 	// Log 2: Revert tx 999 (which was never created)
 	posting := newPosting("user:alice", "world", "USD", 1000)
-	log2 := buildLog(&lastHash, &seqID, &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_Apply{
-			Apply: &commonpb.ApplyLedgerLog{
+	log2 := buildLog(&lastHash, &seqID, &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_Apply{
+			Apply: &auditpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: &commonpb.LedgerLog{
-					Data: &commonpb.LedgerLogPayload{
-						Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
-							RevertedTransaction: &commonpb.RevertedTransaction{
+				Log: &auditpb.LedgerLog{
+					Data: &auditpb.LedgerLogPayload{
+						Payload: &auditpb.LedgerLogPayload_RevertedTransaction{
+							RevertedTransaction: &auditpb.RevertedTransaction{
 								RevertedTransactionId: 999,
-								RevertTransaction:     &commonpb.Transaction{Id: 1, Postings: []*commonpb.Posting{posting}},
+								RevertTransaction:     &auditpb.Transaction{Id: 1, Postings: []*auditpb.Posting{posting}},
 							},
 						},
 					},
@@ -2005,16 +2004,16 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 	})
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{log1, log2}))
+	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{log1, log2}))
 	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
 
-	var revertErrors []*servicepb.CheckStoreError
+	var revertErrors []*auditpb.CheckStoreError
 
 	for _, e := range errors {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH {
 			revertErrors = append(revertErrors, e)
 		}
 	}
@@ -2024,8 +2023,8 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 }
 
 // buildLog creates a log entry for testing.
-func buildLog(_ *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.Log {
-	log := &commonpb.Log{
+func buildLog(_ *[]byte, seqID *uint64, payload *auditpb.LogPayload) *auditpb.Log {
+	log := &auditpb.Log{
 		Sequence: *seqID,
 		Payload:  payload,
 	}
@@ -2035,8 +2034,8 @@ func buildLog(_ *[]byte, seqID *uint64, payload *commonpb.LogPayload) *commonpb.
 }
 
 // reversePosting returns a posting with source and destination swapped.
-func reversePosting(p *commonpb.Posting) *commonpb.Posting {
-	return &commonpb.Posting{
+func reversePosting(p *auditpb.Posting) *auditpb.Posting {
+	return &auditpb.Posting{
 		Source:      p.GetDestination(),
 		Destination: p.GetSource(),
 		Amount:      p.GetAmount(),
@@ -2045,7 +2044,7 @@ func reversePosting(p *commonpb.Posting) *commonpb.Posting {
 }
 
 // writeVolumes writes volume attributes for a posting to make the store consistent.
-func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting *commonpb.Posting, ledger string) error {
+func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting *auditpb.Posting, ledger string) error {
 	sourceKey := domain.VolumeKey{
 		AccountKey: domain.AccountKey{LedgerName: "test", Account: posting.GetSource()},
 		Asset:      posting.GetAsset(),
@@ -2056,7 +2055,7 @@ func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting
 	}
 
 	_, err := attrs.Volume.Set(batch, sourceKey.Bytes(), &raftcmdpb.VolumePair{
-		Input:  commonpb.NewUint256FromUint64(0),
+		Input:  auditpb.NewUint256FromUint64(0),
 		Output: posting.GetAmount(),
 	})
 	if err != nil {
@@ -2065,7 +2064,7 @@ func writeVolumes(batch *dal.WriteSession, attrs *attributes.Attributes, posting
 
 	_, err = attrs.Volume.Set(batch, destKey.Bytes(), &raftcmdpb.VolumePair{
 		Input:  posting.GetAmount(),
-		Output: commonpb.NewUint256FromUint64(0),
+		Output: auditpb.NewUint256FromUint64(0),
 	})
 
 	return err
@@ -2097,8 +2096,8 @@ func TestCompareExclusionProjections_Identical(t *testing.T) {
 		},
 	}
 
-	var events []*servicepb.CheckStoreEvent
-	compareExclusionProjections(set, other, func(e *servicepb.CheckStoreEvent) {
+	var events []*auditpb.CheckStoreEvent
+	compareExclusionProjections(set, other, func(e *auditpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -2124,8 +2123,8 @@ func TestCompareExclusionProjections_ExtraInStored(t *testing.T) {
 		},
 	}
 
-	var events []*servicepb.CheckStoreEvent
-	compareExclusionProjections(stored, derived, func(e *servicepb.CheckStoreEvent) {
+	var events []*auditpb.CheckStoreEvent
+	compareExclusionProjections(stored, derived, func(e *auditpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -2133,7 +2132,7 @@ func TestCompareExclusionProjections_ExtraInStored(t *testing.T) {
 	err := events[0].GetError()
 	require.NotNil(t, err)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 		err.GetErrorType())
 	require.Equal(t, "L1", err.GetLedger())
 	require.Equal(t, "tampered:phantom", err.GetAccount())
@@ -2159,8 +2158,8 @@ func TestCompareExclusionProjections_MissingFromStored(t *testing.T) {
 		},
 	}
 
-	var events []*servicepb.CheckStoreEvent
-	compareExclusionProjections(stored, derived, func(e *servicepb.CheckStoreEvent) {
+	var events []*auditpb.CheckStoreEvent
+	compareExclusionProjections(stored, derived, func(e *auditpb.CheckStoreEvent) {
 		events = append(events, e)
 	})
 
@@ -2168,7 +2167,7 @@ func TestCompareExclusionProjections_MissingFromStored(t *testing.T) {
 	err := events[0].GetError()
 	require.NotNil(t, err)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 		err.GetErrorType())
 	require.Equal(t, "L1", err.GetLedger())
 	require.Equal(t, "ephemeral:b", err.GetAccount())
@@ -2178,7 +2177,7 @@ func TestCompareExclusionProjections_MissingFromStored(t *testing.T) {
 // indexCheckerFor wires a Checker against a fresh store and writes the given
 // Index entries directly so the projection-compare path can be exercised
 // without driving CreateIndex orders through the full pipeline.
-func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (*Checker, *dal.Store) {
+func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*auditpb.Index) (*Checker, *dal.Store) {
 	t.Helper()
 
 	store := createTestStore(t)
@@ -2203,10 +2202,10 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 func TestCompareIndexes_Identical(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2214,10 +2213,10 @@ func TestCompareIndexes_Identical(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
-	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "compareIndexes must stay silent on matching sets")
 }
@@ -2228,10 +2227,10 @@ func TestCompareIndexes_Identical(t *testing.T) {
 func TestCompareIndexes_ExtraInStored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(auditpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	storedKey := domain.IndexKey{LedgerName: "phantom", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		storedKey: {Id: id, Ledger: "phantom"},
 	})
 
@@ -2239,12 +2238,12 @@ func TestCompareIndexes_ExtraInStored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "phantom", events[0].GetError().GetLedger())
 }
@@ -2256,7 +2255,7 @@ func TestCompareIndexes_ExtraInStored(t *testing.T) {
 func TestCompareIndexes_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")
+	id := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_TRANSACTION, "tier")
 	key := domain.IndexKey{LedgerName: "L2", Canonical: indexes.Canonical(id)}
 
 	checker, store := indexCheckerFor(t, nil)
@@ -2265,14 +2264,14 @@ func TestCompareIndexes_MissingFromStored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L2"},
-	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L2", events[0].GetError().GetLedger())
 }
@@ -2284,10 +2283,10 @@ func TestCompareIndexes_MissingFromStored(t *testing.T) {
 func TestCompareIndexes_LedgerDrift(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
+	id := indexes.TxBuiltinID(auditpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP)
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "tampered"},
 	})
 
@@ -2295,14 +2294,14 @@ func TestCompareIndexes_LedgerDrift(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
-	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Contains(t, events[0].GetError().GetMessage(), "stored Ledger")
 }
@@ -2316,10 +2315,10 @@ func TestCompareIndexes_LedgerDrift(t *testing.T) {
 func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	id := indexes.TxBuiltinID(auditpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
 	bucketKey := domain.IndexKey{LedgerName: "", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		bucketKey: {Id: id, Ledger: ""},
 	})
 
@@ -2327,8 +2326,8 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "bucket-scoped entries must be silently skipped until a producer lands")
 }
@@ -2346,10 +2345,10 @@ func TestCompareIndexes_BucketScopeIgnored(t *testing.T) {
 func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	id := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2357,12 +2356,12 @@ func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1, "a stored entry the replay did not account for must be flagged")
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -2375,10 +2374,10 @@ func TestCompareIndexes_UnexpectedEntryFlagged(t *testing.T) {
 func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	id := indexes.AccountBuiltinID(auditpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2386,10 +2385,10 @@ func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
-	}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Empty(t, events, "compareIndexes must stay silent when account-asset registry matches audit-derived set")
 }
@@ -2401,10 +2400,10 @@ func TestCompareIndexes_AccountBuiltinAsset_Identical(t *testing.T) {
 func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.AccountBuiltinID(commonpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
+	id := indexes.AccountBuiltinID(auditpb.AccountBuiltinIndex_ACCT_BUILTIN_INDEX_ASSET)
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2413,12 +2412,12 @@ func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 	t.Cleanup(func() { _ = reader.Close() })
 
 	// Pass an empty expected map (no CreateIndex in audit chain).
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{}}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -2430,10 +2429,10 @@ func TestCompareIndexes_AccountBuiltinAsset_ExtraInStored(t *testing.T) {
 func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	t.Parallel()
 
-	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
+	id := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "role")
 	key := domain.IndexKey{LedgerName: "L1", Canonical: indexes.Canonical(id)}
 
-	checker, store := indexCheckerFor(t, map[domain.IndexKey]*commonpb.Index{
+	checker, store := indexCheckerFor(t, map[domain.IndexKey]*auditpb.Index{
 		key: {Id: id, Ledger: "L1"},
 	})
 
@@ -2444,18 +2443,18 @@ func TestCompareIndexes_DeletedInReplayFlagged(t *testing.T) {
 	// DeleteLedger replayed → a surviving stored entry must surface.
 	deleted := map[string]struct{}{"L1": {}}
 
-	var events []*servicepb.CheckStoreEvent
-	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*commonpb.Index{}, deletedInReplay: deleted}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) })
+	var events []*auditpb.CheckStoreEvent
+	checker.compareIndexes(compareIndexesScope{reader: reader, expected: map[domain.IndexKey]*auditpb.Index{}, deletedInReplay: deleted}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) })
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Contains(t, events[0].GetError().GetMessage(), "surviving a replayed DeleteLedger")
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
 
-func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *dal.Store) {
+func schemaCheckerFor(t *testing.T, ledgers []*auditpb.LedgerInfo) (*Checker, *dal.Store) {
 	t.Helper()
 
 	store := createTestStore(t)
@@ -2474,9 +2473,9 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
 }
 
-func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {
-	return &commonpb.MetadataSchema{
-		AccountFields: map[string]*commonpb.MetadataFieldSchema{key: {Type: typ}},
+func accountFieldSchema(key string, typ auditpb.MetadataType) *auditpb.MetadataSchema {
+	return &auditpb.MetadataSchema{
+		AccountFields: map[string]*auditpb.MetadataFieldSchema{key: {Type: typ}},
 	}
 }
 
@@ -2485,18 +2484,18 @@ func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.Metadat
 func TestCompareSchema_Identical(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", auditpb.MetadataType_METADATA_TYPE_STRING)},
 	})
 
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
-		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
-	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	var events []*auditpb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*auditpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", auditpb.MetadataType_METADATA_TYPE_STRING),
+	}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Empty(t, events, "compareSchema must stay silent on a matching schema")
 }
@@ -2506,7 +2505,7 @@ func TestCompareSchema_Identical(t *testing.T) {
 func TestCompareSchema_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2514,14 +2513,14 @@ func TestCompareSchema_MissingFromStored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{
-		"L1": accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING),
-	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	var events []*auditpb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*auditpb.MetadataSchema{
+		"L1": accountFieldSchema("tier", auditpb.MetadataType_METADATA_TYPE_STRING),
+	}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -2531,20 +2530,20 @@ func TestCompareSchema_MissingFromStored(t *testing.T) {
 func TestCompareSchema_ExtraInStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", commonpb.MetadataType_METADATA_TYPE_STRING)},
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
+		{Name: "L1", Id: 1, MetadataSchema: accountFieldSchema("tier", auditpb.MetadataType_METADATA_TYPE_STRING)},
 	})
 
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*commonpb.MetadataSchema{}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	var events []*auditpb.CheckStoreEvent
+	require.NoError(t, checker.compareSchema(context.Background(), reader, map[string]*auditpb.MetadataSchema{}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
 		events[0].GetError().GetErrorType())
 }
 
@@ -2553,7 +2552,7 @@ func TestCompareSchema_ExtraInStored(t *testing.T) {
 func TestCompareLedgerPresence_Present(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2561,10 +2560,10 @@ func TestCompareLedgerPresence_Present(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
+	var events []*auditpb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
 		map[string]struct{}{"L1": {}},
-		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+		func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Empty(t, events)
 }
@@ -2575,7 +2574,7 @@ func TestCompareLedgerPresence_Present(t *testing.T) {
 func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2583,14 +2582,14 @@ func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
+	var events []*auditpb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
 		map[string]struct{}{"L1": {}, "L2": {}},
-		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+		func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L2", events[0].GetError().GetLedger())
 }
@@ -2602,22 +2601,22 @@ func TestCompareLedgerPresence_MissingFromStored(t *testing.T) {
 func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, DeletedAt: &commonpb.Timestamp{Data: 1_700_000_000_000_000}},
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
+		{Name: "L1", Id: 1, DeletedAt: &auditpb.Timestamp{Data: 1_700_000_000_000_000}},
 	})
 
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
+	var events []*auditpb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
 		map[string]struct{}{"L1": {}},
-		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+		func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -2628,7 +2627,7 @@ func TestCompareLedgerPresence_SoftDeletedTreatedAsMissing(t *testing.T) {
 func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 		{Name: "ghost", Id: 2},
 	})
@@ -2637,14 +2636,14 @@ func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
+	var events []*auditpb.CheckStoreEvent
 	require.NoError(t, checker.compareLedgerPresence(context.Background(), reader,
 		map[string]struct{}{"L1": {}},
-		func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+		func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "ghost", events[0].GetError().GetLedger())
 }
@@ -2654,8 +2653,8 @@ func TestCompareLedgerPresence_UnauditedStored(t *testing.T) {
 func TestCompareAccountTypes_Identical(t *testing.T) {
 	t.Parallel()
 
-	at := map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}}
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	at := map[string]*auditpb.AccountType{"asset": {Name: "asset", Pattern: "assets:*"}}
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
 		{Name: "L1", Id: 1, AccountTypes: at},
 	})
 
@@ -2663,10 +2662,10 @@ func TestCompareAccountTypes_Identical(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+	var events []*auditpb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*auditpb.AccountType{
 		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
-	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Empty(t, events)
 }
@@ -2676,7 +2675,7 @@ func TestCompareAccountTypes_Identical(t *testing.T) {
 func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
 		{Name: "L1", Id: 1},
 	})
 
@@ -2684,14 +2683,14 @@ func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+	var events []*auditpb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*auditpb.AccountType{
 		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
-	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 		events[0].GetError().GetErrorType())
 	require.Equal(t, "L1", events[0].GetError().GetLedger())
 }
@@ -2701,22 +2700,22 @@ func TestCompareAccountTypes_MissingFromStored(t *testing.T) {
 func TestCompareAccountTypes_PatternTampered(t *testing.T) {
 	t.Parallel()
 
-	checker, store := schemaCheckerFor(t, []*commonpb.LedgerInfo{
-		{Name: "L1", Id: 1, AccountTypes: map[string]*commonpb.AccountType{"asset": {Name: "asset", Pattern: "tampered:*"}}},
+	checker, store := schemaCheckerFor(t, []*auditpb.LedgerInfo{
+		{Name: "L1", Id: 1, AccountTypes: map[string]*auditpb.AccountType{"asset": {Name: "asset", Pattern: "tampered:*"}}},
 	})
 
 	reader, err := store.NewReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = reader.Close() })
 
-	var events []*servicepb.CheckStoreEvent
-	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*commonpb.AccountType{
+	var events []*auditpb.CheckStoreEvent
+	require.NoError(t, checker.compareAccountTypes(context.Background(), reader, map[string]map[string]*auditpb.AccountType{
 		"L1": {"asset": {Name: "asset", Pattern: "assets:*"}},
-	}, func(e *servicepb.CheckStoreEvent) { events = append(events, e) }))
+	}, func(e *auditpb.CheckStoreEvent) { events = append(events, e) }))
 
 	require.Len(t, events, 1)
 	require.Equal(t,
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 		events[0].GetError().GetErrorType())
 }
 
@@ -2732,14 +2731,14 @@ func TestCheckerDetectsTamperedDefaultEnforcementMode(t *testing.T) {
 		{
 			name: "creation mode",
 			setup: func(engine *testEngine) {
-				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
+				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
 			},
 		},
 		{
 			name: "updated mode",
 			setup: func(engine *testEngine) {
-				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT))
-				engine.processAndCommit(updateDefaultEnforcementModeOrder("ledger", commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
+				engine.processAndCommit(createLedgerOrderWithEnforcementMode("ledger", auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT))
+				engine.processAndCommit(updateDefaultEnforcementModeOrder("ledger", auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT))
 			},
 		},
 	}
@@ -2753,7 +2752,7 @@ func TestCheckerDetectsTamperedDefaultEnforcementMode(t *testing.T) {
 			require.Empty(t, collectCheckErrors(t, engine.store, engine.attrs), "healthy projection must pass")
 
 			info := engine.ledgers["ledger"].CloneVT()
-			info.DefaultEnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
+			info.DefaultEnforcementMode = auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT
 
 			batch := engine.store.OpenWriteSession()
 			require.NoError(t, state.SaveLedger(batch, "ledger", info))
@@ -2761,7 +2760,7 @@ func TestCheckerDetectsTamperedDefaultEnforcementMode(t *testing.T) {
 
 			var found bool
 			for _, checkErr := range collectCheckErrors(t, engine.store, engine.attrs) {
-				if checkErr.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH && checkErr.GetLedger() == "ledger" {
+				if checkErr.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH && checkErr.GetLedger() == "ledger" {
 					found = true
 				}
 			}
@@ -2793,7 +2792,7 @@ func TestCompareBoundaries_DetectsTamperedRow(t *testing.T) {
 
 	var found bool
 	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH && e.GetLedger() == "ldg" {
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH && e.GetLedger() == "ldg" {
 			found = true
 		}
 	}
@@ -2817,7 +2816,7 @@ func TestCompareBoundaries_DetectsForeignRow(t *testing.T) {
 
 	var found bool
 	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH && e.GetLedger() == "ghost" {
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH && e.GetLedger() == "ghost" {
 			found = true
 		}
 	}
@@ -2843,13 +2842,13 @@ func TestCompareReferences_DetectsMissingAndUnaudited(t *testing.T) {
 		domain.TransactionReferenceKey{LedgerName: "ldg", Reference: "ref-1"}.Bytes()))
 	_, err := engine.attrs.References.Set(batch,
 		domain.TransactionReferenceKey{LedgerName: "ldg", Reference: "ghost"}.Bytes(),
-		&commonpb.TransactionReferenceValue{TransactionId: 42})
+		&internalcommonpb.TransactionReferenceValue{TransactionId: 42})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	var missing, unaudited bool
 	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
-		if e.GetErrorType() != servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH {
+		if e.GetErrorType() != auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH {
 			continue
 		}
 
@@ -2913,13 +2912,13 @@ func TestCompareReferences_FlagsRowSurvivingDeletedLedger(t *testing.T) {
 	batch := engine.store.OpenWriteSession()
 	_, err := engine.attrs.References.Set(batch,
 		domain.TransactionReferenceKey{LedgerName: "doomed", Reference: "ref-1"}.Bytes(),
-		&commonpb.TransactionReferenceValue{TransactionId: 1})
+		&internalcommonpb.TransactionReferenceValue{TransactionId: 1})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 
 	var leftover bool
 	for _, e := range collectCheckErrors(t, engine.store, engine.attrs) {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH &&
+		if e.GetErrorType() == auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH &&
 			strings.Contains(e.GetMessage(), "non-live ledger") {
 			leftover = true
 		}

@@ -4,17 +4,15 @@ import (
 	"strings"
 	"testing"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 const logTestPageSize = 8

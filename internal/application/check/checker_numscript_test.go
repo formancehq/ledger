@@ -5,10 +5,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 const numscriptTestContent = "send [USD 1] (source = @world destination = @x)"
@@ -44,15 +45,15 @@ func tamperNumscriptLatest(t *testing.T, e *testEngine, ledger, name, version st
 
 	batch := e.store.OpenWriteSession()
 	key := domain.NumscriptVersionKey{LedgerName: ledger, Name: name}
-	_, err := e.attrs.NumscriptVersion.Set(batch, key.Bytes(), &commonpb.NumscriptVersionValue{Version: version})
+	_, err := e.attrs.NumscriptVersion.Set(batch, key.Bytes(), &internalcommonpb.NumscriptVersionValue{Version: version})
 	require.NoError(t, err)
 	require.NoError(t, batch.Commit())
 }
 
-func numscriptMismatches(errs []*servicepb.CheckStoreError) []*servicepb.CheckStoreError {
-	var out []*servicepb.CheckStoreError
+func numscriptMismatches(errs []*commonpb.CheckStoreError) []*commonpb.CheckStoreError {
+	var out []*commonpb.CheckStoreError
 	for _, e := range errs {
-		if e.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH {
+		if e.GetErrorType() == commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH {
 			out = append(out, e)
 		}
 	}

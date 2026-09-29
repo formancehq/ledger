@@ -9,8 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/encoding/protojson"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func TestRedactSinkConfig_Databricks_PAT(t *testing.T) {
@@ -208,7 +207,7 @@ func TestRedactGetEventsSinksResponse_NoSecretInJSON(t *testing.T) {
 		"clickhouse-query-leak",
 	}
 
-	resp := &servicepb.GetEventsSinksResponse{
+	resp := &commonpb.GetEventsSinksResponse{
 		Sinks: []*commonpb.SinkConfig{
 			{
 				Name: "db-pat",

@@ -3,7 +3,9 @@ package query
 import (
 	"fmt"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -39,8 +41,8 @@ func ReadMaintenanceMode(reader dal.PebbleGetter) (bool, error) {
 
 // ReadClusterState loads the persisted cluster state from the given reader.
 // Returns nil if the key does not exist (first boot).
-func ReadClusterState(reader dal.PebbleGetter) (*commonpb.PersistedClusterState, error) {
-	state, err := dal.ReadProto[*commonpb.PersistedClusterState](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterConfig})
+func ReadClusterState(reader dal.PebbleGetter) (*internalcommonpb.PersistedClusterState, error) {
+	state, err := dal.ReadProto[*internalcommonpb.PersistedClusterState](reader, []byte{dal.ZoneGlobal, dal.SubGlobClusterConfig})
 	if err != nil {
 		return nil, fmt.Errorf("loading cluster state: %w", err)
 	}
@@ -79,8 +81,8 @@ func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error)
 // Lives in this leaf package — rather than internal/bootstrap — so that
 // adapter and CLI code can read ClusterID from an opened store without
 // pulling in the composition root (which would create an import cycle).
-func ReadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
-	cfg, err := dal.ReadProto[*commonpb.PersistedConfig](reader, []byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
+func ReadPersistedConfig(reader dal.PebbleGetter) (*internalcommonpb.PersistedConfig, error) {
+	cfg, err := dal.ReadProto[*internalcommonpb.PersistedConfig](reader, []byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
 	if err != nil {
 		return nil, fmt.Errorf("loading persisted config: %w", err)
 	}

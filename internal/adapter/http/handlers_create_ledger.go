@@ -7,9 +7,9 @@ import (
 
 	"google.golang.org/protobuf/encoding/protojson"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/json"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // createLedgerBody holds optional fields for ledger creation.
@@ -77,7 +77,7 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	createReq := &servicepb.CreateLedgerRequest{
+	createReq := &commonpb.CreateLedgerRequest{
 		Name: ledgerName,
 	}
 
@@ -145,8 +145,8 @@ func (s *Server) handleCreateLedger(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
 			CreateLedger: createReq,
 		},
 	})

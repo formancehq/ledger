@@ -8,8 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -36,7 +35,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil),
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil),
 			actions.AddEphemeralAccountTypeAction(ledgerName, "wallets", "wallets:{id}")))
 		Expect(err).To(Succeed())
 	})
@@ -49,7 +48,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 
 			// Seed the ephemeral account with a non-zero balance so the leader's
 			// cache holds it at the moment admission inspects CheckCache.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", account, big.NewInt(100), "USD"),
 			}, nil)))
 			Expect(err).To(Succeed())
@@ -66,7 +65,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errA = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+				_, errA = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting(account, "world", big.NewInt(100), "USD"),
 				}, nil, nil)))
 			}()
@@ -74,7 +73,7 @@ var _ = Describe("EphemeralPurgeRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errB = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+				_, errB = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 					actions.NewPosting(account, "world", big.NewInt(50), "USD"),
 				}, nil)))
 			}()

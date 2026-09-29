@@ -4,7 +4,7 @@
 package proposalpb
 
 import (
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // AppliedProposalReader provides read-only access to AppliedProposal.
@@ -123,14 +123,14 @@ func (m appliedProposal_transientVolumesMapReadonly) Range(yield func(string, To
 // TouchedVolumeListReader provides read-only access to TouchedVolumeList.
 // Call Mutate() to obtain a mutable clone.
 type TouchedVolumeListReader interface {
-	GetVolumes() commonpb.TouchedVolumeListReader
+	GetVolumes() grpc.TouchedVolumeListReader
 	Mutate() *TouchedVolumeList
 }
 
 type touchedVolumeListReadonly TouchedVolumeList
 
-func (r *touchedVolumeListReadonly) GetVolumes() commonpb.TouchedVolumeListReader {
-	return commonpb.NewTouchedVolumeListReader((*TouchedVolumeList)(r).GetVolumes())
+func (r *touchedVolumeListReadonly) GetVolumes() grpc.TouchedVolumeListReader {
+	return grpc.NewTouchedVolumeListReader((*TouchedVolumeList)(r).GetVolumes())
 }
 
 func (r *touchedVolumeListReadonly) Mutate() *TouchedVolumeList {

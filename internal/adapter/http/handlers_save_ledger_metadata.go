@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleSaveLedgerMetadata handles POST /{ledgerName}/metadata to save ledger metadata.

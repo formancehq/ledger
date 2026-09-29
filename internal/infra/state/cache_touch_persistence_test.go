@@ -6,9 +6,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -179,7 +181,7 @@ func TestPreload_IdempotencyOnlyProposalAppliesKeys(t *testing.T) {
 
 	const gen0Byte byte = 0
 
-	value := &commonpb.IdempotencyKeyValue{FirstLogSequence: 42, LogCount: 1, Hash: []byte("h"), HashVersion: 1, CreatedAt: 1700000000}
+	value := &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 42, LogCount: 1, Hash: []byte("h"), HashVersion: 1, CreatedAt: 1700000000}
 
 	executionPlan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,

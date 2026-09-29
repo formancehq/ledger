@@ -11,14 +11,12 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 )
 
 type balanceSDKServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
 	scenario string
 	lists    atomic.Int32
@@ -33,7 +31,7 @@ func sdkAccount(balance string) *commonpb.Account {
 	}}}
 }
 
-func (s *balanceSDKServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream grpc.ServerStreamingServer[commonpb.Account]) error {
+func (s *balanceSDKServer) ListAccounts(_ *commonpb.ListAccountsRequest, stream grpc.ServerStreamingServer[commonpb.Account]) error {
 	s.lists.Add(1)
 	if s.scenario == "empty" {
 		return nil
@@ -42,7 +40,7 @@ func (s *balanceSDKServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream
 	return stream.Send(sdkAccount("10"))
 }
 
-func (s *balanceSDKServer) GetAccount(context.Context, *servicepb.GetAccountRequest) (*commonpb.Account, error) {
+func (s *balanceSDKServer) GetAccount(context.Context, *commonpb.GetAccountRequest) (*commonpb.Account, error) {
 	s.gets.Add(1)
 	switch s.scenario {
 	case "transient":
@@ -60,7 +58,7 @@ func (s *balanceSDKServer) GetAccount(context.Context, *servicepb.GetAccountRequ
 	return sdkAccount("10"), nil
 }
 
-func (s *balanceSDKServer) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
+func (s *balanceSDKServer) Barrier(context.Context, *commonpb.BarrierRequest) (*commonpb.BarrierResponse, error) {
 	call := s.barriers.Add(1)
 	if call > 2 {
 		return nil, status.Error(codes.Internal, "unexpected extra barrier")
@@ -76,7 +74,7 @@ func (s *balanceSDKServer) Barrier(context.Context, *servicepb.BarrierRequest) (
 		index++
 	}
 
-	return &servicepb.BarrierResponse{CommitIndex: index}, nil
+	return &commonpb.BarrierResponse{CommitIndex: index}, nil
 }
 
 func TestCheckVolumesConsistentSDK(t *testing.T) {

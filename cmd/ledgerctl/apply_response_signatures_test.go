@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/queries"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/querycheckpoint"
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Exercise each migrated command through its real Apply RPC: verification must
@@ -68,8 +68,8 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 					listener, err := net.Listen("tcp4", "127.0.0.1:0")
 					require.NoError(t, err)
 					server := grpc.NewServer()
-					fixture := &queryMutationSignatureServer{response: &servicepb.ApplyResponse{Logs: []*commonpb.Log{log}}}
-					servicepb.RegisterBucketServiceServer(server, fixture)
+					fixture := &queryMutationSignatureServer{response: &commonpb.ApplyResponse{Logs: []*commonpb.Log{log}}}
+					commonpb.RegisterBucketServiceServer(server, fixture)
 					go func() { _ = server.Serve(listener) }() // Stop closes the owned listener.
 					t.Cleanup(server.Stop)
 
@@ -99,13 +99,13 @@ func TestQueryMutationResponseSignatures(t *testing.T) {
 }
 
 type queryMutationSignatureServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
-	response *servicepb.ApplyResponse
+	response *commonpb.ApplyResponse
 	calls    atomic.Int32
 }
 
-func (s *queryMutationSignatureServer) Apply(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *queryMutationSignatureServer) Apply(context.Context, *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
 	s.calls.Add(1)
 
 	return s.response, nil

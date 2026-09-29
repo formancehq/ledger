@@ -3,7 +3,7 @@ package indexbuilder
 import (
 	"google.golang.org/protobuf/proto"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // resetLogForReuse prepares a *commonpb.Log for reuse by UnmarshalVT without

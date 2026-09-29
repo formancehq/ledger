@@ -8,8 +8,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleRevertTransaction handles POST /{ledgerName}/transactions/{transactionId}/revert to revert a transaction.
@@ -47,7 +46,7 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Build request payload
-	payload := &servicepb.RevertTransactionPayload{
+	payload := &commonpb.RevertTransactionPayload{
 		TransactionId: transactionID,
 	}
 
@@ -78,12 +77,12 @@ func (s *Server) handleRevertTransaction(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	logs, err := s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{
-					Data: &servicepb.LedgerAction_RevertTransaction{
+				Action: &commonpb.LedgerAction{
+					Data: &commonpb.LedgerAction_RevertTransaction{
 						RevertTransaction: payload,
 					},
 				},

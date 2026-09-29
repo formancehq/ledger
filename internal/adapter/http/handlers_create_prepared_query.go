@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleCreatePreparedQuery handles POST /{ledgerName}/prepared-queries.
@@ -59,9 +59,9 @@ func (s *Server) handleCreatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &servicepb.Request{
-		Type: &servicepb.Request_CreatePreparedQuery{
-			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+	_, err = s.applyUnsigned(r.Context(), r.Header.Get("Idempotency-Key"), &commonpb.Request{
+		Type: &commonpb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 				Ledger: ledgerName,
 				Query: &commonpb.PreparedQuery{
 					Name:   body.Name,

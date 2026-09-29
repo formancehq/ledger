@@ -3,8 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // metadataFieldStatusJSON is the camelCase JSON DTO for MetadataFieldStatus.
@@ -19,13 +18,13 @@ type metadataSchemaStatusJSON struct {
 	LedgerFields      map[string]*metadataFieldStatusJSON `json:"ledgerFields"`
 }
 
-func toFieldStatusJSON(fs *servicepb.MetadataFieldStatus) *metadataFieldStatusJSON {
+func toFieldStatusJSON(fs *commonpb.MetadataFieldStatus) *metadataFieldStatusJSON {
 	return &metadataFieldStatusJSON{
 		DeclaredType: commonpb.MetadataTypeToString(fs.GetDeclaredType()),
 	}
 }
 
-func toSchemaStatusJSON(resp *servicepb.GetMetadataSchemaStatusResponse) *metadataSchemaStatusJSON {
+func toSchemaStatusJSON(resp *commonpb.GetMetadataSchemaStatusResponse) *metadataSchemaStatusJSON {
 	result := &metadataSchemaStatusJSON{
 		AccountFields:     make(map[string]*metadataFieldStatusJSON, len(resp.GetAccountFields())),
 		TransactionFields: make(map[string]*metadataFieldStatusJSON, len(resp.GetTransactionFields())),

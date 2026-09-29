@@ -7,7 +7,7 @@ package eventspb
 import (
 	binary "encoding/binary"
 	fmt "fmt"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -245,7 +245,7 @@ func (m *Event) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Type |= commonpb.EventType(b&0x7F) << shift
+				m.Type |= grpc.EventType(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -312,7 +312,7 @@ func (m *Event) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Date == nil {
-				m.Date = &commonpb.Timestamp{}
+				m.Date = &grpc.Timestamp{}
 			}
 			if err := m.Date.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -358,7 +358,7 @@ func (m *Event) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Log == nil {
-				m.Log = &commonpb.Log{}
+				m.Log = &grpc.Log{}
 			}
 			if err := m.Log.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err

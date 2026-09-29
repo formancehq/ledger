@@ -10,19 +10,19 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleListLedgerIndexes_Success(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.ListIndexesRequest
+	var capturedReq *commonpb.ListIndexesRequest
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+		func(_ context.Context, req *commonpb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 			capturedReq = req
 
 			return cursor.NewSliceCursor([]*commonpb.Index{{}}), nil
@@ -38,7 +38,7 @@ func TestHandleListLedgerIndexes_Success(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, w.Code)
 	require.NotNil(t, capturedReq)
-	require.Equal(t, servicepb.ListIndexesRequest_SCOPE_LEDGER, capturedReq.GetScope())
+	require.Equal(t, commonpb.ListIndexesRequest_SCOPE_LEDGER, capturedReq.GetScope())
 	require.Equal(t, "ledger1", capturedReq.GetLedger())
 }
 
@@ -60,7 +60,7 @@ func TestHandleListLedgerIndexes_BackendError(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListIndexes(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+		func(_ context.Context, _ *commonpb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
 			return nil, errors.New("boom")
 		}).AnyTimes()
 	srv := newTestServer(t, backend)

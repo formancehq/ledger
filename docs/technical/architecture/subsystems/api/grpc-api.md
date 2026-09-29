@@ -48,13 +48,12 @@ The gRPC service server listens on port `8888` by default (configurable via `--g
 import (
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
-    "github.com/formancehq/ledger/v3/internal/proto/servicepb"
-    "github.com/formancehq/ledger/v3/pkg/grpcprotocol"
+    servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 conn, err := grpc.NewClient(
     "localhost:8888",
-    grpcprotocol.ClientOption(),
+    servicepb.ClientOption(),
     grpc.WithTransportCredentials(insecure.NewCredentials()),
 )
 if err != nil {
@@ -66,7 +65,7 @@ client := servicepb.NewBucketServiceClient(conn)
 ```
 
 Every business RPC must declare the client's compiled service protocol revision.
-`grpcprotocol.ClientOption()` supplies it on each unary and streaming call;
+`servicepb.ClientOption()` supplies it on each unary and streaming call;
 omitting it causes `FailedPrecondition` on servers enforcing EN-1851. Other
 clients must send the revision they implement as `ledger-protocol-version`
 metadata. See [service protocol compatibility](protocol-compatibility.md) for

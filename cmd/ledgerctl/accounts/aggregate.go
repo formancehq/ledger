@@ -9,10 +9,9 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewAggregateVolumesCommand creates the accounts aggregate-volumes command.
@@ -91,7 +90,7 @@ func runAggregateVolumes(cmd *cobra.Command, _ []string) error {
 	// contract in main.go), so the merge is gated off there.
 	useMaxPrecision := rescale != nil && !cmdutil.IsStructuredOutput(cmd)
 
-	result, err := client.AggregateVolumes(ctx, &servicepb.AggregateVolumesRequest{
+	result, err := client.AggregateVolumes(ctx, &commonpb.AggregateVolumesRequest{
 		Ledger:          ledgerName,
 		Filter:          filter,
 		CheckpointId:    checkpointID,

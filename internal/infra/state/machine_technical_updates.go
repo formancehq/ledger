@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -199,7 +201,7 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 	// The epoch is deterministic (incremented only by ResetWithThreshold
 	// in the FSM apply path) and must be persisted so that nodes
 	// restoring from a checkpoint have the correct epoch.
-	if err := saveClusterState(batch, &commonpb.PersistedClusterState{
+	if err := saveClusterState(batch, &internalcommonpb.PersistedClusterState{
 		Config:     cfg,
 		CacheEpoch: fsm.Registry.Cache.Epoch(),
 	}); err != nil {

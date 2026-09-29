@@ -6,8 +6,9 @@ import (
 	"errors"
 	"fmt"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // DecodeDualFormat parses a filter supplied in EITHER of the two supported

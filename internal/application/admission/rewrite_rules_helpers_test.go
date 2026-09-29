@@ -1,6 +1,6 @@
 package admission
 
-import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+import commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 // Small builder helpers for constructing MirrorRewriteRule protos in tests.
 // The proto oneof nesting is verbose; these keep the test tables readable.

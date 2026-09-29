@@ -7,8 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -19,17 +18,17 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-lifecycle"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should declare a field type and expose it via the schema API", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age",
 				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
-			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -38,13 +37,13 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should remove a field type and verify it is absent", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction(ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "age")))
 			Expect(err).To(Succeed())
 
 			// Poll the declaration read until the removal is visible.
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -57,7 +56,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-initial-schema"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "verified",
@@ -73,7 +72,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should expose both field declarations", func() {
-			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -90,7 +89,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-account-enforce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
@@ -101,10 +100,10 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should preserve string account metadata under an int64 declaration", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"age": "42"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "user1", map[string]string{"age": "42"})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "user1",
 			})
@@ -127,7 +126,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-tx-enforce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_TRANSACTION,
 					Key:        "priority",
@@ -138,14 +137,14 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should preserve string transaction metadata under a uint64 declaration", func() {
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "user1", big.NewInt(100), "USD"),
 			}, map[string]string{"priority": "100"})))
 			Expect(err).To(Succeed())
 
 			txID := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction().Transaction.Id
 
-			txResp, err := sharedClient.GetTransaction(sharedCtx, &servicepb.GetTransactionRequest{
+			txResp, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
 				Ledger:        ledgerName,
 				TransactionId: txID,
 			})
@@ -162,7 +161,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-bool-conv"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "active",
@@ -173,10 +172,10 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should preserve the 'true' string under a bool declaration", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "acct1", map[string]string{"active": "true"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "acct1", map[string]string{"active": "true"})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "acct1",
 			})
@@ -189,10 +188,10 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should preserve the '0' string under a bool declaration", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "acct2", map[string]string{"active": "0"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "acct2", map[string]string{"active": "0"})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "acct2",
 			})
@@ -209,7 +208,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-null-conv"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
@@ -220,10 +219,10 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		})
 
 		It("Should return the persisted string verbatim", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "bad-data", map[string]string{"age": "not-a-number"})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "bad-data",
 			})
@@ -250,24 +249,24 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-existing-data"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should preserve existing string data after schema declaration", func() {
 			// Save metadata before any schema exists (stored as string)
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "scored-user", map[string]string{"score": "99"})))
 			Expect(err).To(Succeed())
 
 			// Declare the type
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_ACCOUNT, "score",
 				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
 			// Wait until the declaration is visible through the read API.
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -275,7 +274,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			}).Within(10 * time.Second).ProbeEvery(200 * time.Millisecond).Should(Succeed())
 
 			// Verify the existing primary value was not rewritten.
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "scored-user",
 			})
@@ -292,7 +291,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 		const ledgerName = "typed-meta-numscript"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "account_type",
@@ -310,10 +309,10 @@ send [USD/2 100] (
 )
 set_account_meta(@user, "account_type", "true")
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateForceScriptTransactionAction(ledgerName, script, nil, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateForceScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "user",
 			})
@@ -330,7 +329,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-mixed"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "age",
@@ -341,13 +340,13 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should preserve declared and undeclared fields as written", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "alice", map[string]string{
 				"age":  "25",
 				"name": "Alice",
 			})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "alice",
 			})
@@ -372,7 +371,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-multi-types"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "count",
@@ -393,14 +392,14 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should preserve each field's written string branch", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "multi", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "multi", map[string]string{
 				"count":   "42",
 				"enabled": "true",
 				"label":   "test",
 			})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "multi",
 			})
@@ -431,7 +430,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-small-ints"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "field_int8",
@@ -467,7 +466,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should preserve strings under narrow integer declarations", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction(ledgerName, "small-ints", map[string]string{
 				"field_int8":   "-42",
 				"field_int16":  "1000",
 				"field_int32":  "100000",
@@ -477,7 +476,7 @@ set_account_meta(@user, "account_type", "true")
 			})))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "small-ints",
 			})
@@ -517,7 +516,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should return correct strings via ToMap()", func() {
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "small-ints",
 			})
@@ -537,7 +536,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-all-types"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "f_string",
@@ -593,7 +592,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should expose all 10 field declarations with their types", func() {
-			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -624,18 +623,18 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-ledger-lifecycle"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should declare a ledger field type and expose it via the schema API", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
 				commonpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -645,12 +644,12 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should remove a ledger field type and verify it is absent", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction(ledgerName,
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_LEDGER, "env")))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -663,7 +662,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-ledger-enforce"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_LEDGER,
 					Key:        "max_tx",
@@ -674,7 +673,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should preserve string ledger metadata under an int64 declaration", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "1000"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "1000"})))
 			Expect(err).To(Succeed())
 
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -687,7 +686,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should return raw string for inconvertible ledger metadata", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "not-a-number"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"max_tx": "not-a-number"})))
 			Expect(err).To(Succeed())
 
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -704,7 +703,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should keep untyped ledger metadata as strings", func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"label": "production"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"label": "production"})))
 			Expect(err).To(Succeed())
 
 			info, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
@@ -722,24 +721,24 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-ledger-bg"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should preserve existing ledger metadata after schema declaration", func() {
 			// Save metadata before any schema exists (stored as string)
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"version": "42"})))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveLedgerMetadataAction(ledgerName, map[string]string{"version": "42"})))
 			Expect(err).To(Succeed())
 
 			// Declare the type
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName,
 				commonpb.TargetType_TARGET_TYPE_LEDGER, "version",
 				commonpb.MetadataType_METADATA_TYPE_INT64)))
 			Expect(err).To(Succeed())
 
 			// Wait until the declaration is visible through the read API.
 			Eventually(func(g Gomega) {
-				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+				resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 					Ledger: ledgerName,
 				})
 				g.Expect(err).To(Succeed())
@@ -761,7 +760,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-initial-ledger"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "role",
@@ -782,7 +781,7 @@ set_account_meta(@user, "account_type", "true")
 		})
 
 		It("Should expose every initial field declaration", func() {
-			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &servicepb.GetMetadataSchemaStatusRequest{
+			resp, err := sharedClient.GetMetadataSchemaStatus(sharedCtx, &commonpb.GetMetadataSchemaStatusRequest{
 				Ledger: ledgerName,
 			})
 			Expect(err).To(Succeed())
@@ -801,7 +800,7 @@ set_account_meta(@user, "account_type", "true")
 		const ledgerName = "typed-meta-direct-proto"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{
 					TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:        "score",
@@ -815,10 +814,10 @@ set_account_meta(@user, "account_type", "true")
 			typedMeta := map[string]*commonpb.MetadataValue{
 				"score": commonpb.NewIntValue(42),
 			}
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SaveTypedAccountMetadataAction(ledgerName, "proto-user", typedMeta)))
 			Expect(err).To(Succeed())
 
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: "proto-user",
 			})

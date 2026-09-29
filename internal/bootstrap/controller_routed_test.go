@@ -8,13 +8,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/application/ctrl"
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -94,8 +94,8 @@ func TestRoutedController_FinishLeaderFallback(t *testing.T) {
 		t.Parallel()
 
 		ctx, profile := query.WithProfile(context.Background())
-		selected, barrier, err := routed.finishLeaderFallback(ctx, nil, commonpb.ErrNoLeader, barrierErr)
-		require.ErrorIs(t, err, commonpb.ErrNoLeader)
+		selected, barrier, err := routed.finishLeaderFallback(ctx, nil, protoerr.ErrNoLeader, barrierErr)
+		require.ErrorIs(t, err, protoerr.ErrNoLeader)
 		assert.Nil(t, selected)
 		assert.Nil(t, barrier)
 		assert.False(t, profile.Forwarded)
@@ -134,7 +134,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list transactions",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListTransactions(barrierHorizonMatcher(42), "ledger", uint32(10), uint64(0), nil, false).
-					Return(cursor.NewSliceCursor([]*commonpb.Transaction{}), nil)
+					Return(cursor.NewSliceCursor([]*auditpb.Transaction{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListTransactions(ctx, "ledger", 10, 0, nil, false)
@@ -146,7 +146,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list logs",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListLogs(barrierHorizonMatcher(42), "ledger", uint64(0), uint32(10), nil).
-					Return(cursor.NewSliceCursor([]*commonpb.Log{}), nil)
+					Return(cursor.NewSliceCursor([]*auditpb.Log{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListLogs(ctx, "ledger", 0, 10, nil)
@@ -170,7 +170,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "list accounts",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ListAccounts(barrierHorizonMatcher(42), "ledger", uint32(10), "", nil, false).
-					Return(cursor.NewSliceCursor([]*commonpb.Account{}), nil)
+					Return(cursor.NewSliceCursor([]*auditpb.Account{}), nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.ListAccounts(ctx, "ledger", 10, "", nil, false)
@@ -182,7 +182,7 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "aggregate volumes",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().AggregateVolumes(barrierHorizonMatcher(42), "ledger", nil, query.AggregateOptions{}).
-					Return(&commonpb.AggregateResult{}, nil)
+					Return(&auditpb.AggregateResult{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
 				_, err := routed.AggregateVolumes(ctx, "ledger", nil, query.AggregateOptions{})
@@ -194,10 +194,10 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "execute prepared query",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().ExecutePreparedQuery(barrierHorizonMatcher(42), gomock.Any()).
-					Return(&servicepb.ExecutePreparedQueryResponse{}, nil)
+					Return(&auditpb.ExecutePreparedQueryResponse{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
-				_, err := routed.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{})
+				_, err := routed.ExecutePreparedQuery(ctx, &auditpb.ExecutePreparedQueryRequest{})
 
 				return err
 			},
@@ -206,10 +206,10 @@ func TestRoutedController_IndexedReadsForwardLocalBarrierHorizon(t *testing.T) {
 			name: "inspect index",
 			expect: func(local *ctrlmock.MockController) {
 				local.EXPECT().InspectIndex(barrierHorizonMatcher(42), gomock.Any()).
-					Return(&servicepb.InspectIndexResponse{}, nil)
+					Return(&auditpb.InspectIndexResponse{}, nil)
 			},
 			call: func(ctx context.Context, routed *RoutedController) error {
-				_, err := routed.InspectIndex(ctx, &servicepb.InspectIndexRequest{})
+				_, err := routed.InspectIndex(ctx, &auditpb.InspectIndexRequest{})
 
 				return err
 			},

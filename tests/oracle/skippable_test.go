@@ -5,12 +5,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func skipRequest(req *servicepb.Request, reason commonpb.ErrorReason) *servicepb.Request {
+func skipRequest(req *commonpb.Request, reason commonpb.ErrorReason) *commonpb.Request {
 	req.GetApply().SkippableReasons = []commonpb.ErrorReason{reason}
 
 	return req

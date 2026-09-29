@@ -7,9 +7,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewDeleteMetadataCommand creates the accounts delete-metadata command.
@@ -113,13 +113,13 @@ func runDeleteMetadata(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Deleting metadata key %q from account %s...", key, address))
 
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_DeleteMetadata{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_DeleteMetadata{
 							DeleteMetadata: &commonpb.DeleteMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_Account{

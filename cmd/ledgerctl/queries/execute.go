@@ -11,10 +11,9 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/invariants"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewExecuteCommand creates the queries execute command.
@@ -101,7 +100,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 
 		var trailer metadata.MD
 
-		resp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		resp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
 			Ledger:     ledgerName,
 			QueryName:  queryName,
 			Parameters: params,
@@ -117,7 +116,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 		}
 
 		switch result := resp.GetResult().(type) {
-		case *servicepb.ExecutePreparedQueryResponse_Cursor:
+		case *commonpb.ExecutePreparedQueryResponse_Cursor:
 			renderCursorPage(cmd, result.Cursor, pageNum)
 
 			if showProfile {
@@ -147,7 +146,7 @@ func runExecute(cmd *cobra.Command, args []string) error {
 			cursor = result.Cursor.GetNext()
 			pageNum++
 
-		case *servicepb.ExecutePreparedQueryResponse_Aggregate:
+		case *commonpb.ExecutePreparedQueryResponse_Aggregate:
 			err := renderAggregate(cmd, result.Aggregate)
 			if err != nil {
 				return err

@@ -10,12 +10,12 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetAuditEntry_Success(t *testing.T) {
@@ -59,7 +59,7 @@ func TestHandleGetAuditEntry_NotFound(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetAuditEntry(gomock.Any(), uint64(99)).DoAndReturn(
 		func(_ context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
-			return nil, commonpb.NewNotFoundError("audit entry %d not found", sequence)
+			return nil, protoerr.NewNotFoundError("audit entry %d not found", sequence)
 		}).Times(1)
 	srv := newTestServer(t, backend)
 
@@ -112,7 +112,7 @@ func TestAuditRoutes_FullRouteIntegration(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().ListAuditEntries(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ uint32, _ uint64, _ *commonpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+		func(_ context.Context, _ uint32, _ uint64, _ *auditpb.QueryFilter, _ bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
 			return cursor.NewSliceCursor([]*auditpb.AuditEntry{{Sequence: 1}}), nil
 		}).AnyTimes()
 	backend.EXPECT().GetAuditEntry(gomock.Any(), uint64(1)).DoAndReturn(

@@ -10,9 +10,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleCreateLedger_Success(t *testing.T) {
@@ -20,7 +20,7 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{
 					Payload: &commonpb.LogPayload{
@@ -48,11 +48,11 @@ func TestHandleCreateLedger_Success(t *testing.T) {
 func TestHandleCreateLedger_InitialSchemaAndAccountTypes(t *testing.T) {
 	t.Parallel()
 
-	var captured *servicepb.CreateLedgerRequest
+	var captured *commonpb.CreateLedgerRequest
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			captured = req.GetUnsigned().GetRequests()[0].GetCreateLedger()
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
@@ -202,7 +202,7 @@ func TestHandleCreateLedger_AlreadyExists(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, &domain.ErrLedgerAlreadyExists{Name: "test-ledger"}
 		})
 	srv := newTestServer(t, backend)

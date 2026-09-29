@@ -125,7 +125,7 @@ Reference: `internal/infra/state/machine.go:1370-1384`. The hash is bound to the
 
 **Exactly one `AuditEntry` per Raft proposal.** The outcome is either `Success` (with the resulting log range) or `Failure` (with a reason and message). **Both outcomes write `order_count` `AuditItem` rows** — one per order in the proposal, each carrying that order's `SerializedOrder`. The difference is `LogSequence`: a success binds each item to the log its order produced, while a failure produced no log at all and every one of its items therefore carries `LogSequence = 0` (`writeAuditEntry(failureEntry, nil, …)` in `internal/infra/state/machine.go` reaches `buildAuditItems(serializedOrders, nil)` in `internal/infra/state/audit.go`). The items enter the hash identically in both cases: `writeAuditEntry` appends `BuildPerItemPayload` for every item before computing the hash, whatever the outcome. Both outcomes are bound by the hash chain — a rejected proposal is just as auditable as an accepted one.
 
-Each successful order produces a `Log` (`internal/proto/commonpb/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
+Each successful order produces a `Log` (`misc/proto/common.proto`, `message Log { LogPayload payload = …; }`). The audit chain binds the orders via `AuditItem.SerializedOrder` (the order's canonical vtprotobuf bytes); the resulting `Log` rows are addressable separately by `LogSequence` and bound transitively through the items.
 
 The log surface has **two levels**:
 

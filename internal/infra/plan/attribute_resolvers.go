@@ -2,12 +2,13 @@ package plan
 
 import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -114,7 +115,7 @@ func buildAttrResolvers(
 			getValue: attrs.Volume.Get,
 			bloom:    filter(dal.SubAttrVolume),
 		},
-		dal.SubAttrReference: &protoAttrResolver[*commonpb.TransactionReferenceValue]{
+		dal.SubAttrReference: &protoAttrResolver[*internalcommonpb.TransactionReferenceValue]{
 			attrCode: dal.SubAttrReference,
 			typeName: "references",
 			cache:    c.References,
@@ -130,7 +131,7 @@ func buildAttrResolvers(
 			getValue: attrs.SinkConfig.Get,
 			bloom:    filter(dal.SubAttrSinkConfig),
 		},
-		dal.SubAttrNumscriptVersion: &protoAttrResolver[*commonpb.NumscriptVersionValue]{
+		dal.SubAttrNumscriptVersion: &protoAttrResolver[*internalcommonpb.NumscriptVersionValue]{
 			attrCode: dal.SubAttrNumscriptVersion,
 			typeName: "numscript_versions",
 			cache:    c.NumscriptVersions,
@@ -146,7 +147,7 @@ func buildAttrResolvers(
 			getValue: attrs.NumscriptContent.Get,
 			bloom:    filter(dal.SubAttrNumscriptContent),
 		},
-		dal.SubAttrTransaction: &protoAttrResolver[*commonpb.TransactionState]{
+		dal.SubAttrTransaction: &protoAttrResolver[*internalcommonpb.TransactionState]{
 			attrCode: dal.SubAttrTransaction,
 			typeName: "transactions",
 			cache:    c.Transactions,

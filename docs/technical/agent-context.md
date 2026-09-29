@@ -39,6 +39,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/application/events/**`, `internal/application/mirror/**` | `docs/technical/architecture/subsystems/events-mirror/` |
 | Numscript runtime/library | `docs/technical/architecture/subsystems/scripting/`, `docs/technical/contributing/numscript.md` |
 | `misc/proto/**`, generated protobuf code | `docs/technical/contributing/protobuf.md` |
+| `pkg/client/v3/**`, `internal/adapter/restbulk/**`, public-client release tooling | `docs/technical/contributing/protobuf.md`, `docs/technical/architecture/subsystems/api/public-client.md`, `docs/technical/architecture/subsystems/api/protocol-compatibility.md` |
 | `cmd/ledgerctl/**` | `docs/ops/cli.md`, `docs/technical/contributing/conventions.md` |
 | `internal/bootstrap/**` | `docs/technical/architecture/overview.md`, relevant subsystem docs, and `docs/ops/deployment.md` for persisted/config behavior |
 | tests only | `docs/technical/contributing/testing.md` plus the subsystem documentation for the behavior under test |

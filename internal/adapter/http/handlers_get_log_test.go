@@ -11,7 +11,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestHandleGetLog_Success(t *testing.T) {
@@ -168,7 +170,7 @@ func TestHandleGetLog_NotFound(t *testing.T) {
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetLog(gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _ uint64) (*commonpb.Log, error) {
-			return nil, commonpb.NewNotFoundError("log %d not found", 9999)
+			return nil, protoerr.NewNotFoundError("log %d not found", 9999)
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 

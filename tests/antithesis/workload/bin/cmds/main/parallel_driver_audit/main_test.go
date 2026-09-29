@@ -14,16 +14,13 @@ import (
 	"testing"
 	"time"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestAuditDriverStream(t *testing.T) {
@@ -60,7 +57,7 @@ func TestAuditDriverStream(t *testing.T) {
 			listener, err := net.Listen("tcp", "127.0.0.1:0")
 			require.NoError(t, err)
 			server := grpc.NewServer()
-			servicepb.RegisterBucketServiceServer(server, fixture)
+			auditpb.RegisterBucketServiceServer(server, fixture)
 			serverDone := make(chan error, 1)
 			go func() { serverDone <- server.Serve(listener) }()
 			t.Cleanup(func() {
@@ -147,7 +144,7 @@ func runAuditCancellation(t *testing.T, mode string) {
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithStreamInterceptor(func(ctx context.Context, desc *grpc.StreamDesc, conn *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 			stream, err := streamer(ctx, desc, conn, method, opts...)
-			if err != nil || method != servicepb.BucketService_ListAuditEntries_FullMethodName {
+			if err != nil || method != auditpb.BucketService_ListAuditEntries_FullMethodName {
 				return stream, err
 			}
 			receiver = &cancelingAuditStream{ClientStream: stream, cancel: cancel, mode: mode, prefix: entries}
@@ -157,7 +154,7 @@ func runAuditCancellation(t *testing.T, mode string) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	runAuditCycle(ctx, servicepb.NewBucketServiceClient(conn), "default")
+	runAuditCycle(ctx, auditpb.NewBucketServiceClient(conn), "default")
 	require.NotNil(t, receiver, "must enter the audit receive loop")
 	require.Equal(t, entries, receiver.received, "must receive the prefix before canceling")
 	require.ErrorIs(t, ctx.Err(), context.Canceled, "must cancel the actual caller context")
@@ -232,7 +229,7 @@ func readAuditAssertions(t *testing.T, path string) map[string][]auditAssertion 
 }
 
 type auditStreamServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	auditpb.UnimplementedBucketServiceServer
 
 	entries       int
 	terminal      error
@@ -242,21 +239,21 @@ type auditStreamServer struct {
 	sentEntries   atomic.Int32
 }
 
-func (s *auditStreamServer) ListLedgers(_ *servicepb.ListLedgersRequest, stream grpc.ServerStreamingServer[commonpb.LedgerInfo]) error {
-	return stream.Send(&commonpb.LedgerInfo{Name: "default"})
+func (s *auditStreamServer) ListLedgers(_ *auditpb.ListLedgersRequest, stream grpc.ServerStreamingServer[auditpb.LedgerInfo]) error {
+	return stream.Send(&auditpb.LedgerInfo{Name: "default"})
 }
 
-func (s *auditStreamServer) Apply(_ context.Context, request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *auditStreamServer) Apply(_ context.Context, request *auditpb.ApplyRequest) (*auditpb.ApplyResponse, error) {
 	requests := request.GetUnsigned().GetRequests()
 	if len(requests) != 1 || requests[0].GetApply().GetLedger() != "default" || requests[0].GetApply().GetAction().GetCreateTransaction() == nil {
 		return nil, status.Error(codes.InvalidArgument, "fixture expected one audit setup transaction")
 	}
 	s.applyCalls.Add(1)
 
-	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 1}}}, nil
+	return &auditpb.ApplyResponse{Logs: []*auditpb.Log{{Sequence: 1}}}, nil
 }
 
-func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[auditpb.AuditEntry]) error {
+func (s *auditStreamServer) ListAuditEntries(request *auditpb.ListAuditEntriesRequest, stream grpc.ServerStreamingServer[auditpb.AuditEntry]) error {
 	if request.GetOptions().GetPageSize() != 10 || s.applyCalls.Load() != 1 {
 		return status.Error(codes.InvalidArgument, "fixture expected audit page after the confirmed transaction")
 	}

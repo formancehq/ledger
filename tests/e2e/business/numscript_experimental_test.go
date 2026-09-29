@@ -7,9 +7,8 @@ import (
 	"sync"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,7 +30,7 @@ var _ = Describe("NumscriptExperimental (EN-1406)", Ordered, func() {
 	// absorb read-side projection lag.
 	getVolume := func(ledgerName, address, asset string) func(g Gomega) string {
 		return func(g Gomega) string {
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: address,
 			})
@@ -50,7 +49,7 @@ var _ = Describe("NumscriptExperimental (EN-1406)", Ordered, func() {
 
 	fund := func(ledgerName, address, monetary string) {
 		script := fmt.Sprintf(`send [%s] (source = @world destination = @%s)`, monetary, address)
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 		Expect(err).To(Succeed())
 	}
@@ -59,7 +58,7 @@ var _ = Describe("NumscriptExperimental (EN-1406)", Ordered, func() {
 		const ledgerName = "nsx-oneof"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -80,7 +79,7 @@ send [USD/2 400] (
   destination = @oneof:sink
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -111,7 +110,7 @@ send [USD/2 250] (
   destination = @oneof:sink2
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -127,7 +126,7 @@ send [USD/2 250] (
 		const ledgerName = "nsx-meta"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -135,7 +134,7 @@ send [USD/2 250] (
 			// Seed routing metadata that meta() reads to determine both the
 			// source and destination accounts. The resolved source must have
 			// its volume preloaded (it is a balance-checked source).
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.SaveAccountMetadataAction(ledgerName, "routing:cfg", map[string]string{
 					"src": "vault:main",
 					"dst": "payouts:eur",
@@ -156,7 +155,7 @@ send $amount (
   destination = $dst
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, map[string]string{
 					"amount": "EUR/2 350",
 				}, nil)))
@@ -175,7 +174,7 @@ send $amount (
 		const ledgerName = "nsx-balance-fn"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -200,7 +199,7 @@ send [USD/2 300] (
   destination = @cm209:merchant
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp.Logs).To(HaveLen(1))
@@ -225,7 +224,7 @@ send $bal (
   destination = @cm209:drain
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -241,7 +240,7 @@ send $bal (
 		const ledgerName = "nsx-cm206"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -260,7 +259,7 @@ send [USD/2 400] (
   destination = @cm206:out
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -277,7 +276,7 @@ send [USD/2 400] (
 		const ledgerName = "nsx-overdraft"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -288,7 +287,7 @@ send [GBP/2 75000] (
   destination = @od:beneficiary
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			expectBalance(ledgerName, "od:credit", "GBP/2", "-75000")
@@ -305,7 +304,7 @@ send [GBP/2 450] (
   destination = @od:shop
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, okScript, nil, nil)))
 			Expect(err).To(Succeed())
 			expectBalance(ledgerName, "od:acct", "GBP/2", "-250")
@@ -318,7 +317,7 @@ send [GBP/2 100] (
   destination = @od:shop
 )
 `
-			_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, overScript, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
@@ -334,7 +333,7 @@ send [GBP/2 100] (
 		const ledgerName = "nsx-multisend"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -359,7 +358,7 @@ send [USD/2 300] (
   destination = @ms:c
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -376,7 +375,7 @@ send [USD/2 300] (
 		const ledgerName = "nsx-meta-writes"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -397,7 +396,7 @@ send [USD/2 100] (
   destination = @vts:dest
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -420,12 +419,12 @@ send [USD/2 100] (
   destination = @vts:acct
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 
 			Eventually(func(g Gomega) {
-				account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "vts:acct",
 				})
@@ -441,7 +440,7 @@ send [USD/2 100] (
 		const ledgerName = "nsx-portions"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -459,7 +458,7 @@ send [USD/2 1000] (
   }
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -476,7 +475,7 @@ send [USD/2 1000] (
 		const ledgerName = "nsx-colors"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -494,7 +493,7 @@ send [COIN 100] (
   destination = @clr:pool
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
 				info.Reason == domain.ErrReasonNumscriptParseError {
@@ -511,7 +510,7 @@ send [COIN 100] (
 			Expect(createdTx.Transaction.Postings[0].Amount.ToBigInt().Int64()).To(Equal(int64(100)))
 
 			Eventually(func(g Gomega) {
-				pool, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				pool, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "clr:pool",
 				})
@@ -536,7 +535,7 @@ send [COIN 40] (
   destination = @clr:spent
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
 				info.Reason == domain.ErrReasonNumscriptParseError {
@@ -551,7 +550,7 @@ send [COIN 40] (
 			Expect(createdTx.Transaction.Postings[0].GetColor()).To(Equal("RED"))
 
 			Eventually(func(g Gomega) {
-				pool, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				pool, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "clr:pool",
 				})
@@ -559,7 +558,7 @@ send [COIN 40] (
 				// RED drained by 40 (100 - 40 = 60).
 				g.Expect(pool.FindVolume("COIN", "RED").GetBalance()).To(Equal("60"))
 
-				spent, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				spent, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "clr:spent",
 				})
@@ -580,7 +579,7 @@ send [COIN 1000] (
   destination = @clr:spent
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			if info := actions.ExtractGRPCErrorInfo(err); info != nil &&
 				info.Reason == domain.ErrReasonNumscriptParseError {
@@ -591,7 +590,7 @@ send [COIN 1000] (
 
 			// pool RED untouched.
 			Eventually(func(g Gomega) {
-				pool, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+				pool, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 					Ledger:  ledgerName,
 					Address: "clr:pool",
 				})
@@ -613,7 +612,7 @@ send [COIN 1000] (
 		const ledgerName = "nsx-fns"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -638,7 +637,7 @@ send $od (
 )
 `
 			// Establish the negative balance.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, `
 send [USD/2 200] (
   source = @fns:od allowing unbounded overdraft
@@ -648,7 +647,7 @@ send [USD/2 200] (
 			Expect(err).To(Succeed())
 			expectBalance(ledgerName, "fns:od", "USD/2", "-200")
 
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -674,7 +673,7 @@ send [USD/2 $n] (
   destination = @fns:ga_dst
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -704,7 +703,7 @@ send [$a 120] (
   destination = @fns:as_dst
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -731,7 +730,7 @@ send [USD/2 10] (
 
 set_tx_meta("probe_balance", balance(@fns:ms_probe, USD/2))
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
@@ -760,7 +759,7 @@ set_tx_meta("probe_balance", balance(@fns:ms_probe, USD/2))
 		const ledgerName = "nsx-stale"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -790,7 +789,7 @@ send [USD/2 100] (
 				go func() {
 					defer GinkgoRecover()
 					defer wg.Done()
-					_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+					_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 						actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 					if err == nil {
 						mu.Lock()
@@ -832,7 +831,7 @@ send [USD/2 100] (
 		const ledgerName = "nsx-intrabatch"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -850,7 +849,7 @@ send $all (
   destination = @bulk:dest
 )
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, depositScript, nil, nil),
 				actions.CreateScriptTransactionAction(ledgerName, forwardScript, nil, nil),
 			))
@@ -881,7 +880,7 @@ vars {
 }
 send [USD/2 25] (source = @world destination = $dst)
 `
-			resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, setMetaScript, nil, nil),
 				actions.CreateScriptTransactionAction(ledgerName, useMetaScript, nil, nil),
 			))
@@ -907,7 +906,7 @@ send [USD/2 25] (source = @world destination = $dst)
 		const ledgerName = "nsx-color-reject"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -931,7 +930,7 @@ send [COIN 80] (
   destination = @clr:out
 )
 `
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
@@ -953,7 +952,7 @@ send [COIN 80] (
 		const ledgerName = "nsx-idem"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -974,7 +973,7 @@ send [USD/2 10] (
   destination = @idem:dst
 )
 `
-			resp1, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idemKey,
+			resp1, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest(idemKey,
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			Expect(resp1.Logs).To(HaveLen(1))
@@ -985,7 +984,7 @@ send [USD/2 10] (
 
 			// Retry under the same key: must replay the original log (same tx id),
 			// NOT conflict and NOT double-spend.
-			resp2, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest(idemKey,
+			resp2, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest(idemKey,
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed(), "identical keyed retry must replay, not conflict")
 			Expect(resp2.Logs).To(HaveLen(1))

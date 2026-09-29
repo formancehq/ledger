@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/auditindexer"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -23,8 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -66,25 +66,25 @@ func coldAuditKey(seq uint64) []byte {
 
 // createLedgerLog builds a log whose replay writes a ledger row to the global
 // zone, so the test can observe whether the rebuild batch was committed.
-func createLedgerLog(seq uint64, name string, id uint32) *commonpb.Log {
-	return &commonpb.Log{
+func createLedgerLog(seq uint64, name string, id uint32) *auditpb.Log {
+	return &auditpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{Name: name, Id: id},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreateLedger{
+				CreateLedger: &auditpb.CreatedLedgerLog{Name: name, Id: id},
 			},
 		},
 	}
 }
 
-func applyLedgerLog(seq uint64, ledger string, payload *commonpb.LedgerLogPayload) *commonpb.Log {
-	return &commonpb.Log{
+func applyLedgerLog(seq uint64, ledger string, payload *auditpb.LedgerLogPayload) *auditpb.Log {
+	return &auditpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_Apply{
-				Apply: &commonpb.ApplyLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_Apply{
+				Apply: &auditpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: &commonpb.LedgerLog{
+					Log: &auditpb.LedgerLog{
 						Id:   seq,
 						Data: payload,
 					},
@@ -94,11 +94,11 @@ func applyLedgerLog(seq uint64, ledger string, payload *commonpb.LedgerLogPayloa
 	}
 }
 
-func addAccountTypePayload(name, pattern string, persistence commonpb.AccountTypePersistence) *commonpb.LedgerLogPayload {
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_AddedAccountType{
-			AddedAccountType: &commonpb.AddedAccountTypeLog{
-				AccountType: &commonpb.AccountType{
+func addAccountTypePayload(name, pattern string, persistence auditpb.AccountTypePersistence) *auditpb.LedgerLogPayload {
+	return &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_AddedAccountType{
+			AddedAccountType: &auditpb.AddedAccountTypeLog{
+				AccountType: &auditpb.AccountType{
 					Name:        name,
 					Pattern:     pattern,
 					Persistence: persistence,
@@ -108,11 +108,11 @@ func addAccountTypePayload(name, pattern string, persistence commonpb.AccountTyp
 	}
 }
 
-func createdTransactionPayload(id uint64, postings ...*commonpb.Posting) *commonpb.LedgerLogPayload {
-	return &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
-			CreatedTransaction: &commonpb.CreatedTransaction{
-				Transaction: &commonpb.Transaction{
+func createdTransactionPayload(id uint64, postings ...*auditpb.Posting) *auditpb.LedgerLogPayload {
+	return &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreatedTransaction{
+			CreatedTransaction: &auditpb.CreatedTransaction{
+				Transaction: &auditpb.Transaction{
 					Id:       id,
 					Postings: postings,
 				},
@@ -121,12 +121,12 @@ func createdTransactionPayload(id uint64, postings ...*commonpb.Posting) *common
 	}
 }
 
-func rebuildTestPosting(source, destination, asset string, amount uint64) *commonpb.Posting {
-	return &commonpb.Posting{
+func rebuildTestPosting(source, destination, asset string, amount uint64) *auditpb.Posting {
+	return &auditpb.Posting{
 		Source:      source,
 		Destination: destination,
 		Asset:       asset,
-		Amount:      commonpb.NewUint256FromUint64(amount),
+		Amount:      auditpb.NewUint256FromUint64(amount),
 	}
 }
 
@@ -255,15 +255,15 @@ func TestRebuildDelta_PreparedQueryUpdateFailsThenRetries(t *testing.T) {
 	const ledger = "ledger"
 
 	store := newRebuildTestStore(t)
-	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{}}}
-	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
+	oldFilter := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Reverted{Reverted: &auditpb.RevertedCondition{}}}
+	newFilter := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Reverted{Reverted: &auditpb.RevertedCondition{Value: true}}}
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, ledger, 1)))
-	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(2), &auditpb.Log{
 		Sequence: 2,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{
-			UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+		Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_UpdatedPreparedQuery{
+			UpdatedPreparedQuery: &auditpb.UpdatedPreparedQueryLog{
 				Ledger:         ledger,
 				Name:           "q",
 				PreviousFilter: oldFilter,
@@ -286,9 +286,9 @@ func TestRebuildDelta_PreparedQueryUpdateFailsThenRetries(t *testing.T) {
 	// Repair the checkpoint seed and retry the same durable log stream. This is
 	// a real fail-then-success sequence, not two independently constructed runs.
 	seed := store.OpenWriteSession()
-	require.NoError(t, state.SavePreparedQuery(seed, ledger, &commonpb.PreparedQuery{
+	require.NoError(t, state.SavePreparedQuery(seed, ledger, &auditpb.PreparedQuery{
 		Name:   "q",
-		Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+		Target: auditpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		Filter: oldFilter,
 	}))
 	require.NoError(t, seed.Commit())
@@ -309,35 +309,35 @@ func TestRebuildDelta_PreparedQueryUpdateAcrossBatchBoundary(t *testing.T) {
 	const ledger = "ledger"
 
 	store := newRebuildTestStore(t)
-	oldFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{}}}
-	newFilter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Reverted{Reverted: &commonpb.RevertedCondition{Value: true}}}
+	oldFilter := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Reverted{Reverted: &auditpb.RevertedCondition{}}}
+	newFilter := &auditpb.QueryFilter{Filter: &auditpb.QueryFilter_Reverted{Reverted: &auditpb.RevertedCondition{Value: true}}}
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(1), &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedPreparedQuery{
-			CreatedPreparedQuery: &commonpb.CreatedPreparedQueryLog{
+		Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_CreatedPreparedQuery{
+			CreatedPreparedQuery: &auditpb.CreatedPreparedQueryLog{
 				Ledger: ledger,
-				Query: &commonpb.PreparedQuery{
+				Query: &auditpb.PreparedQuery{
 					Name:   "q",
-					Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+					Target: auditpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 					Filter: oldFilter,
 				},
 			},
 		}},
 	}))
 	for seq := uint64(2); seq <= 5000; seq++ {
-		require.NoError(t, batch.SetProto(coldLogKey(seq), &commonpb.Log{
+		require.NoError(t, batch.SetProto(coldLogKey(seq), &auditpb.Log{
 			Sequence: seq,
-			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
-				RemovedEventsSink: &commonpb.RemovedEventsSinkLog{},
+			Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_RemovedEventsSink{
+				RemovedEventsSink: &auditpb.RemovedEventsSinkLog{},
 			}},
 		}))
 	}
-	require.NoError(t, batch.SetProto(coldLogKey(5001), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(5001), &auditpb.Log{
 		Sequence: 5001,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_UpdatedPreparedQuery{
-			UpdatedPreparedQuery: &commonpb.UpdatedPreparedQueryLog{
+		Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_UpdatedPreparedQuery{
+			UpdatedPreparedQuery: &auditpb.UpdatedPreparedQueryLog{
 				Ledger:         ledger,
 				Name:           "q",
 				PreviousFilter: oldFilter,
@@ -366,7 +366,7 @@ func TestRebuildDelta_ReplaysEphemeralPurgeAtProposalBoundary(t *testing.T) {
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
-		addAccountTypePayload("orders", "orders:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
+		addAccountTypePayload("orders", "orders:{id}", auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL),
 	)))
 	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLog(3, "ledger",
 		createdTransactionPayload(1, rebuildTestPosting("world", "orders:1", "USD", 5)),
@@ -443,8 +443,8 @@ func TestRebuildDelta_AdvancesBoundariesForMirrorFillGap(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
-	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_FillGap{FillGap: &commonpb.FilledGapLog{OriginalId: 7}},
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_FillGap{FillGap: &auditpb.FilledGapLog{OriginalId: 7}},
 	})))
 	require.NoError(t, batch.SetProto(coldAuditItemKey(1, 0), auditItem(t, 2, fillGapOrder("ledger", 7, 5, 9))))
 	require.NoError(t, batch.Commit())
@@ -543,28 +543,28 @@ func TestRebuildDelta_ReplaysLedgerMetadata(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	strValue := func(s string) *commonpb.MetadataValue {
-		return &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: s}}
+	strValue := func(s string) *auditpb.MetadataValue {
+		return &auditpb.MetadataValue{Type: &auditpb.MetadataValue_StringValue{StringValue: s}}
 	}
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
-	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(2), &auditpb.Log{
 		Sequence: 2,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_SavedLedgerMetadata{
-				SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_SavedLedgerMetadata{
+				SavedLedgerMetadata: &auditpb.SavedLedgerMetadataLog{
 					Ledger:   "ledger",
-					Metadata: map[string]*commonpb.MetadataValue{"env": strValue("prod"), "tier": strValue("gold")},
+					Metadata: map[string]*auditpb.MetadataValue{"env": strValue("prod"), "tier": strValue("gold")},
 				},
 			},
 		},
 	}))
-	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(3), &auditpb.Log{
 		Sequence: 3,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeletedLedgerMetadata{
-				DeletedLedgerMetadata: &commonpb.DeletedLedgerMetadataLog{Ledger: "ledger", Key: "tier"},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_DeletedLedgerMetadata{
+				DeletedLedgerMetadata: &auditpb.DeletedLedgerMetadataLog{Ledger: "ledger", Key: "tier"},
 			},
 		},
 	}))
@@ -595,14 +595,14 @@ func TestRebuildDelta_ReplaysClusterPolicy(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	policy := &commonpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 5000, QueryCheckpointLimit: 12}
+	policy := &auditpb.ClusterPolicy{Revision: 4, IdempotencyTtlMicros: 5000, QueryCheckpointLimit: 12}
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(1), &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_SetClusterPolicy{
-				SetClusterPolicy: &commonpb.SetClusterPolicyLog{Policy: policy},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_SetClusterPolicy{
+				SetClusterPolicy: &auditpb.SetClusterPolicyLog{Policy: policy},
 			},
 		},
 	}))
@@ -628,10 +628,10 @@ func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	created := func(seq, id, maxSeq, createdAt, appliedIndex uint64) *commonpb.Log {
-		return &commonpb.Log{Sequence: seq, Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &commonpb.CreatedQueryCheckpointLog{
-				CheckpointId: id, MaxSequence: maxSeq, CreatedAt: &commonpb.Timestamp{Data: createdAt}, AppliedIndex: appliedIndex,
+	created := func(seq, id, maxSeq, createdAt, appliedIndex uint64) *auditpb.Log {
+		return &auditpb.Log{Sequence: seq, Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreatedQueryCheckpoint{CreatedQueryCheckpoint: &auditpb.CreatedQueryCheckpointLog{
+				CheckpointId: id, MaxSequence: maxSeq, CreatedAt: &auditpb.Timestamp{Data: createdAt}, AppliedIndex: appliedIndex,
 			}},
 		}}
 	}
@@ -639,8 +639,8 @@ func TestRebuildDelta_ReplaysQueryCheckpoint(t *testing.T) {
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), created(1, 1, 10, 100, 1000)))
 	require.NoError(t, batch.SetProto(coldLogKey(2), created(2, 2, 20, 200, 2000)))
-	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{Sequence: 3, Payload: &commonpb.LogPayload{
-		Type: &commonpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &commonpb.DeletedQueryCheckpointLog{CheckpointId: 1}},
+	require.NoError(t, batch.SetProto(coldLogKey(3), &auditpb.Log{Sequence: 3, Payload: &auditpb.LogPayload{
+		Type: &auditpb.LogPayload_DeletedQueryCheckpoint{DeletedQueryCheckpoint: &auditpb.DeletedQueryCheckpointLog{CheckpointId: 1}},
 	}}))
 	require.NoError(t, batch.Commit())
 
@@ -677,11 +677,11 @@ func TestRebuildDelta_ReplaysDeletedQueryCheckpointSchedule(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "* * * * * *"))
-	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(1), &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
-				DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &auditpb.DeletedQueryCheckpointScheduleLog{},
 			},
 		},
 	}))
@@ -728,11 +728,11 @@ func TestRebuildDelta_DeletedQueryCheckpointScheduleErrorKeepsCheckpointSeed(t *
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.SaveQueryCheckpointSchedule(batch, "* * * * * *"))
-	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(1), &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteQueryCheckpointSchedule{
-				DeleteQueryCheckpointSchedule: &commonpb.DeletedQueryCheckpointScheduleLog{},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_DeleteQueryCheckpointSchedule{
+				DeleteQueryCheckpointSchedule: &auditpb.DeletedQueryCheckpointScheduleLog{},
 			},
 		},
 	}))
@@ -768,22 +768,22 @@ func TestRebuildDelta_ReplaysDeleteLedger(t *testing.T) {
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
 		createdTransactionPayload(1, rebuildTestPosting("world", "alice", "USD", 10)),
 	)))
-	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(3), &auditpb.Log{
 		Sequence: 3,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_SavedLedgerMetadata{
-				SavedLedgerMetadata: &commonpb.SavedLedgerMetadataLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_SavedLedgerMetadata{
+				SavedLedgerMetadata: &auditpb.SavedLedgerMetadataLog{
 					Ledger:   "ledger",
-					Metadata: map[string]*commonpb.MetadataValue{"team": commonpb.NewStringValue("payments")},
+					Metadata: map[string]*auditpb.MetadataValue{"team": auditpb.NewStringValue("payments")},
 				},
 			},
 		},
 	}))
-	require.NoError(t, batch.SetProto(coldLogKey(4), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(4), &auditpb.Log{
 		Sequence: 4,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_DeleteLedger{
-				DeleteLedger: &commonpb.DeletedLedgerLog{Name: "ledger", DeletedAt: &commonpb.Timestamp{Data: 999}},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_DeleteLedger{
+				DeleteLedger: &auditpb.DeletedLedgerLog{Name: "ledger", DeletedAt: &auditpb.Timestamp{Data: 999}},
 			},
 		},
 	}))
@@ -820,24 +820,24 @@ func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {
 	store := newRebuildTestStore(t)
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetProto(coldLogKey(1), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(1), &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreateLedger{
+				CreateLedger: &auditpb.CreatedLedgerLog{
 					Name:         "ledger",
 					Id:           1,
-					Mode:         commonpb.LedgerMode_LEDGER_MODE_MIRROR,
-					MirrorSource: &commonpb.MirrorSourceConfig{},
+					Mode:         auditpb.LedgerMode_LEDGER_MODE_MIRROR,
+					MirrorSource: &auditpb.MirrorSourceConfig{},
 				},
 			},
 		},
 	}))
-	require.NoError(t, batch.SetProto(coldLogKey(2), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(2), &auditpb.Log{
 		Sequence: 2,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_PromoteLedger{
-				PromoteLedger: &commonpb.PromotedLedgerLog{Name: "ledger"},
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_PromoteLedger{
+				PromoteLedger: &auditpb.PromotedLedgerLog{Name: "ledger"},
 			},
 		},
 	}))
@@ -854,7 +854,7 @@ func TestRebuildDelta_ReplaysPromoteLedger(t *testing.T) {
 	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	require.Equal(t, commonpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode(), "promotion must end mirror mode")
+	require.Equal(t, auditpb.LedgerMode_LEDGER_MODE_NORMAL, info.GetMode(), "promotion must end mirror mode")
 	require.Nil(t, info.GetMirrorSource(), "promotion must clear the mirror source")
 }
 
@@ -865,10 +865,10 @@ func TestRebuildDelta_ReplaysDefaultEnforcementMode(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
-	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{
-			UpdatedDefaultEnforcementMode: &commonpb.UpdatedDefaultEnforcementModeLog{
-				EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_UpdatedDefaultEnforcementMode{
+			UpdatedDefaultEnforcementMode: &auditpb.UpdatedDefaultEnforcementModeLog{
+				EnforcementMode: auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 			},
 		},
 	})))
@@ -885,7 +885,7 @@ func TestRebuildDelta_ReplaysDefaultEnforcementMode(t *testing.T) {
 	info, err := attrs.Ledger.Get(handle, domain.LedgerKey{Name: "ledger"}.Bytes())
 	require.NoError(t, err)
 	require.NotNil(t, info)
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
+	require.Equal(t, auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
 }
 
 // TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog: a post-checkpoint
@@ -896,17 +896,17 @@ func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	createLog := &commonpb.Log{
+	createLog := &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreateLedger{
+				CreateLedger: &auditpb.CreatedLedgerLog{
 					Name: "ledger",
 					Id:   42,
-					AccountTypes: map[string]*commonpb.AccountType{
+					AccountTypes: map[string]*auditpb.AccountType{
 						"orders": {Name: "orders", Pattern: "orders:{id}"},
 					},
-					DefaultEnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
+					DefaultEnforcementMode: auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 				},
 			},
 		},
@@ -925,7 +925,7 @@ func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
 	info, err := query.GetLedgerByName(context.Background(), handle, "ledger")
 	require.NoError(t, err)
 	require.Equal(t, uint32(42), info.GetId())
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
+	require.Equal(t, auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, info.GetDefaultEnforcementMode())
 	require.Contains(t, info.GetAccountTypes(), "orders")
 	require.Equal(t, "orders:{id}", info.GetAccountTypes()["orders"].GetPattern())
 
@@ -938,7 +938,7 @@ func TestRebuildDelta_ReconstructsFullLedgerInfoFromCreateLog(t *testing.T) {
 	require.NotNil(t, attrInfo, "LedgerInfo must be written to the SubAttrLedger attribute, not only the Global zone")
 	require.Equal(t, uint32(42), attrInfo.GetId())
 	require.Contains(t, attrInfo.GetAccountTypes(), "orders")
-	require.Equal(t, commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, attrInfo.GetDefaultEnforcementMode())
+	require.Equal(t, auditpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, attrInfo.GetDefaultEnforcementMode())
 }
 
 func TestRebuildDelta_AdvancesNextLedgerIDPastDeletedDeltaLedger(t *testing.T) {
@@ -949,10 +949,10 @@ func TestRebuildDelta_AdvancesNextLedgerIDPastDeletedDeltaLedger(t *testing.T) {
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.StoreNextLedgerID(batch, 2))
 	require.NoError(t, batch.SetProto(coldLogKey(2), createLedgerLog(2, "delta-ledger", 2)))
-	require.NoError(t, batch.SetProto(coldLogKey(3), &commonpb.Log{
+	require.NoError(t, batch.SetProto(coldLogKey(3), &auditpb.Log{
 		Sequence: 3,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_DeleteLedger{
-			DeleteLedger: &commonpb.DeletedLedgerLog{Name: "delta-ledger"},
+		Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_DeleteLedger{
+			DeleteLedger: &auditpb.DeletedLedgerLog{Name: "delta-ledger"},
 		}},
 	}))
 	require.NoError(t, batch.Commit())
@@ -1000,7 +1000,7 @@ func TestRebuildDelta_PersistsPostCheckpointAccountTypeToLedgerInfo(t *testing.T
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
 	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger",
-		addAccountTypePayload("orders", "orders:{id}", commonpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
+		addAccountTypePayload("orders", "orders:{id}", auditpb.AccountTypePersistence_ACCOUNT_TYPE_NORMAL),
 	)))
 	require.NoError(t, batch.Commit())
 
@@ -1033,18 +1033,18 @@ func TestRebuildDelta_SeedsInitialAccountTypesForEphemeralPurge(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	createLog := &commonpb.Log{
+	createLog := &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_CreateLedger{
-				CreateLedger: &commonpb.CreatedLedgerLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_CreateLedger{
+				CreateLedger: &auditpb.CreatedLedgerLog{
 					Name: "ledger",
 					Id:   1,
-					AccountTypes: map[string]*commonpb.AccountType{
+					AccountTypes: map[string]*auditpb.AccountType{
 						"orders": {
 							Name:        "orders",
 							Pattern:     "orders:{id}",
-							Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+							Persistence: auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 						},
 					},
 				},
@@ -1091,19 +1091,19 @@ func TestRebuildDelta_PurgesCheckpointEraEphemeralAccountState(t *testing.T) {
 	metadataKey := domain.MetadataKey{AccountKey: volumeKey.AccountKey, Key: "holdId"}
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, state.SaveLedger(batch, "ledger", &commonpb.LedgerInfo{
+	require.NoError(t, state.SaveLedger(batch, "ledger", &auditpb.LedgerInfo{
 		Name: "ledger",
-		AccountTypes: map[string]*commonpb.AccountType{
+		AccountTypes: map[string]*auditpb.AccountType{
 			"orders": {
 				Name:        "orders",
 				Pattern:     "orders:{id}",
-				Persistence: commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
+				Persistence: auditpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL,
 			},
 		},
 	}))
-	_, err := attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{Input: commonpb.NewUint256FromUint64(5)})
+	_, err := attrs.Volume.Set(batch, volumeKey.Bytes(), &raftcmdpb.VolumePair{Input: auditpb.NewUint256FromUint64(5)})
 	require.NoError(t, err)
-	_, err = attrs.Metadata.Set(batch, metadataKey.Bytes(), commonpb.NewStringValue("hold-1"))
+	_, err = attrs.Metadata.Set(batch, metadataKey.Bytes(), auditpb.NewStringValue("hold-1"))
 	require.NoError(t, err)
 	purge := applyLedgerLog(2, "ledger",
 		createdTransactionPayload(2, rebuildTestPosting("orders:1", "world", "USD", 5)),
@@ -1148,17 +1148,17 @@ func newAttributeReplayWriter(t *testing.T) (*attributeReplayWriter, *attributes
 		references:             attrs.References,
 		boundary:               attrs.Boundary,
 		pendingVolumes:         make(map[string]*raftcmdpb.VolumePair),
-		pendingMetadata:        make(map[string]*commonpb.MetadataValue),
-		pendingTx:              make(map[string]*commonpb.TransactionState),
+		pendingMetadata:        make(map[string]*auditpb.MetadataValue),
+		pendingTx:              make(map[string]*internalcommonpb.TransactionState),
 		purgedVolumePrefixes:   make(map[string]struct{}),
 		purgedMetadataPrefixes: make(map[string]struct{}),
-		ledgerInfos:            make(map[string]*commonpb.LedgerInfo),
+		ledgerInfos:            make(map[string]*auditpb.LedgerInfo),
 		boundaries:             make(map[string]*raftcmdpb.LedgerBoundaries),
 		reversions:             make(map[string]*bitset.Bitset),
 		dirtyReversions:        make(map[string]struct{}),
 		readHandle:             readHandle,
 		index:                  attrs.Index,
-		pendingIndexes:         make(map[string]*commonpb.Index),
+		pendingIndexes:         make(map[string]*auditpb.Index),
 	}
 	t.Cleanup(func() { _ = writer.batch.Cancel() })
 
@@ -1179,10 +1179,10 @@ func TestAttributeReplayWriterPurgeShadowsCheckpointRowsUntilRefund(t *testing.T
 
 	seed := store.OpenWriteSession()
 	_, err := attrs.Volume.Set(seed, volumeKey.Bytes(), &raftcmdpb.VolumePair{
-		Input: commonpb.NewUint256FromUint64(5),
+		Input: auditpb.NewUint256FromUint64(5),
 	})
 	require.NoError(t, err)
-	_, err = attrs.Metadata.Set(seed, metadataKey.Bytes(), commonpb.NewStringValue("checkpoint"))
+	_, err = attrs.Metadata.Set(seed, metadataKey.Bytes(), auditpb.NewStringValue("checkpoint"))
 	require.NoError(t, err)
 	require.NoError(t, seed.Commit())
 
@@ -1203,7 +1203,7 @@ func TestAttributeReplayWriterPurgeShadowsCheckpointRowsUntilRefund(t *testing.T
 	volume, err = writer.GetVolume(volumeKey.Bytes())
 	require.NoError(t, err)
 	require.Equal(t, big.NewInt(2), volume.GetInput().ToBigInt())
-	require.NoError(t, writer.SetMetadata(metadataKey.Bytes(), commonpb.NewStringValue("fresh")))
+	require.NoError(t, writer.SetMetadata(metadataKey.Bytes(), auditpb.NewStringValue("fresh")))
 	require.NoError(t, writer.MoveMetadata(metadataKey.Bytes(), movedMetadataKey.Bytes()))
 	require.Equal(t, "fresh", writer.pendingMetadata[string(movedMetadataKey.Bytes())].GetStringValue())
 }
@@ -1244,10 +1244,10 @@ func TestAttributeReplayWriterAllowsLastBoundaryValues(t *testing.T) {
 	require.Equal(t, uint64(math.MaxUint64), writer.boundaries["ledger"].GetNextTransactionId())
 }
 
-func rebuildTestMetaMap(entries ...string) map[string]*commonpb.MetadataValue {
-	m := make(map[string]*commonpb.MetadataValue, len(entries)/2)
+func rebuildTestMetaMap(entries ...string) map[string]*auditpb.MetadataValue {
+	m := make(map[string]*auditpb.MetadataValue, len(entries)/2)
 	for i := 0; i < len(entries); i += 2 {
-		m[entries[i]] = &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: entries[i+1]}}
+		m[entries[i]] = &auditpb.MetadataValue{Type: &auditpb.MetadataValue_StringValue{StringValue: entries[i+1]}}
 	}
 
 	return m
@@ -1263,12 +1263,12 @@ func TestAttributeReplayWriter_SetRevertedByPreservesCreatedByLog(t *testing.T) 
 	key := domain.TransactionKey{LedgerName: "ledger", ID: 42}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 42,
-		&commonpb.Timestamp{Data: 100},
+		&auditpb.Timestamp{Data: 100},
 		rebuildTestMetaMap("env", "prod"),
-		[]*commonpb.Posting{rebuildTestPosting("world", "orders:1", "USD", 5)},
+		[]*auditpb.Posting{rebuildTestPosting("world", "orders:1", "USD", 5)},
 		0,
 	))
-	require.NoError(t, writer.SetRevertedBy(key, 99, &commonpb.Timestamp{Data: 150}))
+	require.NoError(t, writer.SetRevertedBy(key, 99, &auditpb.Timestamp{Data: 150}))
 	require.NoError(t, writer.batch.Commit())
 
 	handle, err := store.NewDirectReadHandle()
@@ -1296,7 +1296,7 @@ func TestAttributeReplayWriter_SaveTxMetadataPreservesCreatedByLog(t *testing.T)
 	key := domain.TransactionKey{LedgerName: "ledger", ID: 43}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 43,
-		&commonpb.Timestamp{Data: 200},
+		&auditpb.Timestamp{Data: 200},
 		rebuildTestMetaMap("env", "prod"),
 		nil,
 		0,
@@ -1327,7 +1327,7 @@ func TestAttributeReplayWriter_TwoMetadataUpsertsInSameBatchMerge(t *testing.T) 
 	key := domain.TransactionKey{LedgerName: "ledger", ID: 44}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 44,
-		&commonpb.Timestamp{Data: 300}, nil, nil, 0,
+		&auditpb.Timestamp{Data: 300}, nil, nil, 0,
 	))
 	require.NoError(t, writer.SaveTxMetadata(key, rebuildTestMetaMap("status", "pending")))
 	require.NoError(t, writer.SaveTxMetadata(key, rebuildTestMetaMap("owner", "alice")))
@@ -1354,7 +1354,7 @@ func TestAttributeReplayWriter_DeleteTxMetadataSeesPendingCreate(t *testing.T) {
 	key := domain.TransactionKey{LedgerName: "ledger", ID: 45}.Bytes()
 
 	require.NoError(t, writer.CreateTransaction(key, 45,
-		&commonpb.Timestamp{Data: 400},
+		&auditpb.Timestamp{Data: 400},
 		rebuildTestMetaMap("env", "prod", "region", "eu-west"),
 		nil,
 		0,
@@ -1381,13 +1381,13 @@ func TestAttributeReplayWriter_SchemaOpForUnknownLedgerFailsLoudly(t *testing.T)
 	t.Parallel()
 
 	writer, _, _ := newAttributeReplayWriter(t)
-	writer.ledgerInfos = make(map[string]*commonpb.LedgerInfo)
+	writer.ledgerInfos = make(map[string]*auditpb.LedgerInfo)
 
-	setErr := writer.SetMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k",
-		commonpb.MetadataType_METADATA_TYPE_STRING)
+	setErr := writer.SetMetadataFieldType("ghost", auditpb.TargetType_TARGET_TYPE_ACCOUNT, "k",
+		auditpb.MetadataType_METADATA_TYPE_STRING)
 	require.ErrorContains(t, setErr, "invariant")
 
-	removeErr := writer.RemoveMetadataFieldType("ghost", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k")
+	removeErr := writer.RemoveMetadataFieldType("ghost", auditpb.TargetType_TARGET_TYPE_ACCOUNT, "k")
 	require.ErrorContains(t, removeErr, "invariant")
 }
 
@@ -1398,9 +1398,9 @@ func TestAttributeReplayWriter_RemoveFieldTypeNoSchemaIsNoOp(t *testing.T) {
 	t.Parallel()
 
 	writer, _, _ := newAttributeReplayWriter(t)
-	writer.ledgerInfos = map[string]*commonpb.LedgerInfo{"ledger": {Name: "ledger"}}
+	writer.ledgerInfos = map[string]*auditpb.LedgerInfo{"ledger": {Name: "ledger"}}
 
-	require.NoError(t, writer.RemoveMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k"))
+	require.NoError(t, writer.RemoveMetadataFieldType("ledger", auditpb.TargetType_TARGET_TYPE_ACCOUNT, "k"))
 }
 
 // TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows: DeleteLedger
@@ -1416,10 +1416,10 @@ func TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows(t *testing.T) {
 	require.NoError(t, state.SaveReversionWord(writer.batch, "doomed", 0, 1<<3))
 	require.NoError(t, state.SaveReversionWord(writer.batch, "doomed", 1, 1<<7))
 
-	writer.ledgerInfos["doomed"] = &commonpb.LedgerInfo{Name: "doomed"}
+	writer.ledgerInfos["doomed"] = &auditpb.LedgerInfo{Name: "doomed"}
 	writer.reversions["doomed"] = &bitset.Bitset{}
 
-	require.NoError(t, writer.deleteLedger("doomed", &commonpb.Timestamp{Data: 42}))
+	require.NoError(t, writer.deleteLedger("doomed", &auditpb.Timestamp{Data: 42}))
 	require.NoError(t, writer.batch.Commit())
 
 	handle, err := store.NewReadHandle()
@@ -1439,19 +1439,19 @@ func TestAttributeReplayWriter_DeleteLedgerRemovesReversionRows(t *testing.T) {
 func keyedAuditSuccess(seq uint64, key string, tsMicros, minLog, maxLog uint64) *auditpb.AuditEntry {
 	return &auditpb.AuditEntry{
 		Sequence:    seq,
-		Timestamp:   &commonpb.Timestamp{Data: tsMicros},
-		Idempotency: &commonpb.Idempotency{Key: key},
+		Timestamp:   &auditpb.Timestamp{Data: tsMicros},
+		Idempotency: &auditpb.Idempotency{Key: key},
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
 		},
 	}
 }
 
-func keyedAuditFailure(seq uint64, key string, tsMicros uint64, reason commonpb.ErrorReason) *auditpb.AuditEntry {
+func keyedAuditFailure(seq uint64, key string, tsMicros uint64, reason auditpb.ErrorReason) *auditpb.AuditEntry {
 	return &auditpb.AuditEntry{
 		Sequence:    seq,
-		Timestamp:   &commonpb.Timestamp{Data: tsMicros},
-		Idempotency: &commonpb.Idempotency{Key: key},
+		Timestamp:   &auditpb.Timestamp{Data: tsMicros},
+		Idempotency: &auditpb.Idempotency{Key: key},
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{Reason: reason},
 		},
@@ -1459,8 +1459,8 @@ func keyedAuditFailure(seq uint64, key string, tsMicros uint64, reason commonpb.
 }
 
 const (
-	idemConflict     = commonpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT
-	idemFreshFailure = commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS
+	idemConflict     = auditpb.ErrorReason_ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT
+	idemFreshFailure = auditpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS
 )
 
 // A same-key/different-body reuse is audited as an IDEMPOTENCY_KEY_CONFLICT
@@ -1564,7 +1564,7 @@ func TestRebuildDelta_PreservesCheckpointExpiresAt(t *testing.T) {
 	batch := store.OpenWriteSession()
 	// Checkpoint-carried outcome with a finite expiry (Preserved via the SST
 	// copy); SaveIdempotencyKey also writes its eviction time-index entry.
-	require.NoError(t, state.SaveIdempotencyKey(batch, checkpointKey, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, state.SaveIdempotencyKey(batch, checkpointKey, &internalcommonpb.IdempotencyKeyValue{
 		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000, ExpiresAt: checkpointExp,
 	}))
 	// An unrelated keyed outcome in the exported delta, so RebuildDelta does real
@@ -1609,7 +1609,7 @@ func TestRebuildDelta_IdempotencyConflictKeepsCheckpointOutcome(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	// Original success frozen in the "checkpoint" (already in the store).
-	require.NoError(t, state.SaveIdempotencyKey(batch, key, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, state.SaveIdempotencyKey(batch, key, &internalcommonpb.IdempotencyKeyValue{
 		FirstLogSequence: 1, LogCount: 1, CreatedAt: 1_000_000,
 	}))
 	// Only the later conflict is in the exported delta.
@@ -1660,12 +1660,12 @@ func TestRebuildDelta_IdempotencyFreshFailureOverwrites(t *testing.T) {
 	require.NotNil(t, v.GetFailure(), "a fresh non-conflict failure overwrites the earlier outcome")
 }
 
-func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID string) *commonpb.Log {
-	return &commonpb.Log{
+func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID string) *auditpb.Log {
+	return &auditpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_RegisterSigningKey{
-				RegisterSigningKey: &commonpb.RegisteredSigningKeyLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_RegisterSigningKey{
+				RegisterSigningKey: &auditpb.RegisteredSigningKeyLog{
 					KeyId: keyID, PublicKey: pub, ParentKeyId: parentKeyID,
 				},
 			},
@@ -1673,12 +1673,12 @@ func registerSigningKeyLog(seq uint64, keyID string, pub []byte, parentKeyID str
 	}
 }
 
-func revokeSigningKeyLog(seq uint64, keyID string, cascaded []string) *commonpb.Log {
-	return &commonpb.Log{
+func revokeSigningKeyLog(seq uint64, keyID string, cascaded []string) *auditpb.Log {
+	return &auditpb.Log{
 		Sequence: seq,
-		Payload: &commonpb.LogPayload{
-			Type: &commonpb.LogPayload_RevokeSigningKey{
-				RevokeSigningKey: &commonpb.RevokedSigningKeyLog{
+		Payload: &auditpb.LogPayload{
+			Type: &auditpb.LogPayload_RevokeSigningKey{
+				RevokeSigningKey: &auditpb.RevokedSigningKeyLog{
 					KeyId: keyID, CascadedKeyIds: cascaded,
 				},
 			},
@@ -1700,13 +1700,13 @@ func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		logs        []*commonpb.Log
+		logs        []*auditpb.Log
 		wantPresent []string
 		wantAbsent  []string
 	}{
 		{
 			name: "non-cascade revoke deletes only the target",
-			logs: []*commonpb.Log{
+			logs: []*auditpb.Log{
 				registerSigningKeyLog(1, "root", rootPub, ""),
 				registerSigningKeyLog(2, "b", bPub, "root"),
 				revokeSigningKeyLog(3, "b", nil),
@@ -1716,7 +1716,7 @@ func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
 		},
 		{
 			name: "cascade revoke deletes the target and its descendants",
-			logs: []*commonpb.Log{
+			logs: []*auditpb.Log{
 				registerSigningKeyLog(1, "root", rootPub, ""),
 				registerSigningKeyLog(2, "b", bPub, "root"),
 				registerSigningKeyLog(3, "c", cPub, "b"),
@@ -1727,7 +1727,7 @@ func TestRebuildDelta_ReplaysRevokeSigningKey(t *testing.T) {
 		},
 		{
 			name: "register then revoke leaves nothing behind",
-			logs: []*commonpb.Log{
+			logs: []*auditpb.Log{
 				registerSigningKeyLog(1, "root", rootPub, ""),
 				revokeSigningKeyLog(2, "root", nil),
 			},
@@ -1791,7 +1791,7 @@ func TestRebuildDelta_RestoresACascadeOverAReregisteredChild(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		// delta is the post-checkpoint log stream, one batch's worth of logs.
-		delta       []*commonpb.Log
+		delta       []*auditpb.Log
 		wantPresent []string
 		wantAbsent  []string
 	}{
@@ -1799,7 +1799,7 @@ func TestRebuildDelta_RestoresACascadeOverAReregisteredChild(t *testing.T) {
 			// The reported sequence. C ends the batch under P, so the cascade names
 			// it and the restore must delete the row the checkpoint carried.
 			name: "revoked then re-registered under the revoked parent",
-			delta: []*commonpb.Log{
+			delta: []*auditpb.Log{
 				revokeSigningKeyLog(3, "C", nil),
 				registerSigningKeyLog(4, "C", replacementPub, "P"),
 				revokeSigningKeyLog(5, "P", []string{"C"}),
@@ -1811,7 +1811,7 @@ func TestRebuildDelta_RestoresACascadeOverAReregisteredChild(t *testing.T) {
 			// revoked subtree, the cascade names nobody, and the restore must keep
 			// the replacement row rather than dropping it with its old parent.
 			name: "revoked then re-registered as a root",
-			delta: []*commonpb.Log{
+			delta: []*auditpb.Log{
 				revokeSigningKeyLog(3, "C", nil),
 				registerSigningKeyLog(4, "C", replacementPub, ""),
 				revokeSigningKeyLog(5, "P", nil),
@@ -1869,9 +1869,9 @@ func TestRebuildDelta_RestoresACascadeOverAReregisteredChild(t *testing.T) {
 
 // applyLedgerLogAt is applyLedgerLog with an explicit log date — the replayed
 // CreateIndex stamps it on the registry row.
-func applyLedgerLogAt(seq uint64, ledger string, date uint64, payload *commonpb.LedgerLogPayload) *commonpb.Log {
+func applyLedgerLogAt(seq uint64, ledger string, date uint64, payload *auditpb.LedgerLogPayload) *auditpb.Log {
 	log := applyLedgerLog(seq, ledger, payload)
-	log.GetPayload().GetApply().GetLog().Date = &commonpb.Timestamp{Data: date}
+	log.GetPayload().GetApply().GetLog().Date = &auditpb.Timestamp{Data: date}
 
 	return log
 }
@@ -1881,59 +1881,59 @@ func TestRebuildDelta_ReplaysIndexRegistry(t *testing.T) {
 
 	store := newRebuildTestStore(t)
 
-	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
-	refID := indexes.TxBuiltinID(commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
-	dateID := indexes.LogBuiltinID(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
+	metaID := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	refID := indexes.TxBuiltinID(auditpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE)
+	dateID := indexes.LogBuiltinID(auditpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, batch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
-	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, batch.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &auditpb.SetMetadataFieldTypeLog{
+				TargetType: auditpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
-				Type:       commonpb.MetadataType_METADATA_TYPE_INT64,
+				Type:       auditpb.MetadataType_METADATA_TYPE_INT64,
 			},
 		},
 	})))
-	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLogAt(3, "ledger", 777, &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{Id: metaID},
+	require.NoError(t, batch.SetProto(coldLogKey(3), applyLedgerLogAt(3, "ledger", 777, &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &auditpb.CreatedIndexLog{Id: metaID},
 		},
 	})))
 	// Retype: bumps the covered index's forward-encoding version.
-	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLog(4, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, batch.SetProto(coldLogKey(4), applyLedgerLog(4, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &auditpb.SetMetadataFieldTypeLog{
+				TargetType: auditpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
-				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				Type:       auditpb.MetadataType_METADATA_TYPE_UINT64,
 			},
 		},
 	})))
-	require.NoError(t, batch.SetProto(coldLogKey(5), applyLedgerLogAt(5, "ledger", 888, &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{Id: refID},
+	require.NoError(t, batch.SetProto(coldLogKey(5), applyLedgerLogAt(5, "ledger", 888, &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &auditpb.CreatedIndexLog{Id: refID},
 		},
 	})))
-	require.NoError(t, batch.SetProto(coldLogKey(6), applyLedgerLogAt(6, "ledger", 999, &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_CreateIndex{
-			CreateIndex: &commonpb.CreatedIndexLog{Id: dateID},
+	require.NoError(t, batch.SetProto(coldLogKey(6), applyLedgerLogAt(6, "ledger", 999, &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_CreateIndex{
+			CreateIndex: &auditpb.CreatedIndexLog{Id: dateID},
 		},
 	})))
 	// The removal cascade: the log carries the dropped index id.
-	require.NoError(t, batch.SetProto(coldLogKey(7), applyLedgerLog(7, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_RemovedMetadataFieldType{
-			RemovedMetadataFieldType: &commonpb.RemovedMetadataFieldTypeLog{
-				TargetType:   commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, batch.SetProto(coldLogKey(7), applyLedgerLog(7, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_RemovedMetadataFieldType{
+			RemovedMetadataFieldType: &auditpb.RemovedMetadataFieldTypeLog{
+				TargetType:   auditpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:          "k0",
 				DroppedIndex: metaID,
 			},
 		},
 	})))
-	require.NoError(t, batch.SetProto(coldLogKey(8), applyLedgerLog(8, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_DropIndex{
-			DropIndex: &commonpb.DroppedIndexLog{Id: refID},
+	require.NoError(t, batch.SetProto(coldLogKey(8), applyLedgerLog(8, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_DropIndex{
+			DropIndex: &auditpb.DroppedIndexLog{Id: refID},
 		},
 	})))
 	require.NoError(t, batch.Commit())
@@ -1969,25 +1969,25 @@ func TestRebuildDelta_BumpsCheckpointIndexOnRetype(t *testing.T) {
 	store := newRebuildTestStore(t)
 	attrs := attributes.New()
 
-	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
+	metaID := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "k0")
 
 	// Checkpoint state: the index predates the delta, so the retype's bump
 	// must read it from the committed store, not from the replay window.
 	seed := store.OpenWriteSession()
-	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &auditpb.Index{
 		Id:                     metaID,
-		CreatedAt:              &commonpb.Timestamp{Data: 111},
+		CreatedAt:              &auditpb.Timestamp{Data: 111},
 		Ledger:                 "ledger",
 		ForwardEncodingVersion: 2,
 	})
 	require.NoError(t, err)
 	require.NoError(t, seed.SetProto(coldLogKey(1), createLedgerLog(1, "ledger", 1)))
-	require.NoError(t, seed.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &commonpb.LedgerLogPayload{
-		Payload: &commonpb.LedgerLogPayload_SetMetadataFieldType{
-			SetMetadataFieldType: &commonpb.SetMetadataFieldTypeLog{
-				TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	require.NoError(t, seed.SetProto(coldLogKey(2), applyLedgerLog(2, "ledger", &auditpb.LedgerLogPayload{
+		Payload: &auditpb.LedgerLogPayload_SetMetadataFieldType{
+			SetMetadataFieldType: &auditpb.SetMetadataFieldTypeLog{
+				TargetType: auditpb.TargetType_TARGET_TYPE_ACCOUNT,
 				Key:        "k0",
-				Type:       commonpb.MetadataType_METADATA_TYPE_UINT64,
+				Type:       auditpb.MetadataType_METADATA_TYPE_UINT64,
 			},
 		},
 	})))
@@ -2015,23 +2015,23 @@ func TestAttributeReplayWriter_SetMetadataFieldType_LedgerTarget(t *testing.T) {
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+	writer.ledgerInfos["ledger"] = &auditpb.LedgerInfo{Name: "ledger"}
 
-	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_LEDGER, "env",
-		commonpb.MetadataType_METADATA_TYPE_STRING))
-	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_TRANSACTION, "batch_id",
-		commonpb.MetadataType_METADATA_TYPE_UINT64))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", auditpb.TargetType_TARGET_TYPE_LEDGER, "env",
+		auditpb.MetadataType_METADATA_TYPE_STRING))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", auditpb.TargetType_TARGET_TYPE_TRANSACTION, "batch_id",
+		auditpb.MetadataType_METADATA_TYPE_UINT64))
 	require.NoError(t, writer.batch.Commit())
 
 	info, err := attrs.Ledger.Get(store, domain.LedgerKey{Name: "ledger"}.Bytes())
 	require.NoError(t, err)
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_STRING,
+	require.Equal(t, auditpb.MetadataType_METADATA_TYPE_STRING,
 		info.GetMetadataSchema().GetLedgerFields()["env"].GetType())
-	require.Equal(t, commonpb.MetadataType_METADATA_TYPE_UINT64,
+	require.Equal(t, auditpb.MetadataType_METADATA_TYPE_UINT64,
 		info.GetMetadataSchema().GetTransactionFields()["batch_id"].GetType())
 
 	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger",
-		indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_LEDGER, "env")).Bytes())
+		indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_LEDGER, "env")).Bytes())
 	require.NoError(t, err)
 	require.Nil(t, row)
 }
@@ -2043,12 +2043,12 @@ func TestAttributeReplayWriter_RetypeCascade_MissingRowIsNoOp(t *testing.T) {
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+	writer.ledgerInfos["ledger"] = &auditpb.LedgerInfo{Name: "ledger"}
 
-	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	metaID := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 
-	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
-		commonpb.MetadataType_METADATA_TYPE_INT64))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		auditpb.MetadataType_METADATA_TYPE_INT64))
 	require.NoError(t, writer.batch.Commit())
 
 	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
@@ -2064,13 +2064,13 @@ func TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow(t *te
 	t.Parallel()
 
 	writer, attrs, store := newAttributeReplayWriter(t)
-	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+	writer.ledgerInfos["ledger"] = &auditpb.LedgerInfo{Name: "ledger"}
 
-	metaID := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
+	metaID := indexes.MetadataID(auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier")
 
 	// Checkpoint state: the row is committed before the replay window opens.
 	seed := store.OpenWriteSession()
-	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &commonpb.Index{
+	_, err := attrs.Index.Set(seed, indexes.KeyFor("ledger", metaID).Bytes(), &auditpb.Index{
 		Id:                     metaID,
 		Ledger:                 "ledger",
 		ForwardEncodingVersion: 2,
@@ -2079,8 +2079,8 @@ func TestAttributeReplayWriter_RetypeCascade_TombstoneShadowsCheckpointRow(t *te
 	require.NoError(t, seed.Commit())
 
 	require.NoError(t, writer.DropIndex("ledger", metaID))
-	require.NoError(t, writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
-		commonpb.MetadataType_METADATA_TYPE_UINT64))
+	require.NoError(t, writer.SetMetadataFieldType("ledger", auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		auditpb.MetadataType_METADATA_TYPE_UINT64))
 	require.NoError(t, writer.batch.Commit())
 
 	row, err := attrs.Index.Get(store, indexes.KeyFor("ledger", metaID).Bytes())
@@ -2095,14 +2095,14 @@ func TestAttributeReplayWriter_RetypeCascade_ReadFailureSurfaces(t *testing.T) {
 	t.Parallel()
 
 	writer, _, _ := newAttributeReplayWriter(t)
-	writer.ledgerInfos["ledger"] = &commonpb.LedgerInfo{Name: "ledger"}
+	writer.ledgerInfos["ledger"] = &auditpb.LedgerInfo{Name: "ledger"}
 
 	closed := newRebuildTestStore(t)
 	require.NoError(t, closed.Close())
 	writer.store = closed
 
-	err := writer.SetMetadataFieldType("ledger", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
-		commonpb.MetadataType_METADATA_TYPE_INT64)
+	err := writer.SetMetadataFieldType("ledger", auditpb.TargetType_TARGET_TYPE_ACCOUNT, "tier",
+		auditpb.MetadataType_METADATA_TYPE_INT64)
 	require.ErrorContains(t, err, "retype cascade")
 }
 
@@ -2146,7 +2146,7 @@ func TestBackup_IdempotencyExpiresAtRestoreParity(t *testing.T) {
 	require.NoError(t, post.SetProto(coldLogKey(2), createLedgerLog(2, "ledger", 2)))
 	require.NoError(t, post.SetProto(coldAuditKey(2), entry))
 	require.NoError(t, post.SetProto(coldAuditItemKey(2, 0), auditItem(t, 0, fillGapOrder("ledger", 2))))
-	require.NoError(t, state.SaveIdempotencyKey(post, key, &commonpb.IdempotencyKeyValue{
+	require.NoError(t, state.SaveIdempotencyKey(post, key, &internalcommonpb.IdempotencyKeyValue{
 		FirstLogSequence: 2, LogCount: 1, CreatedAt: createdAt, ExpiresAt: expiresAt,
 	}))
 	require.NoError(t, post.Commit())
@@ -2222,17 +2222,17 @@ func TestRebuildDelta_RemovedEventSinkDeleteErrorCancels(t *testing.T) {
 	store := newRebuildTestStore(t)
 
 	attrs := attributes.New()
-	sink := &commonpb.SinkConfig{
+	sink := &auditpb.SinkConfig{
 		Name:   "sink-to-delete",
 		Format: "json",
 	}
 
 	// Seed the store with a pre-existing sink so the checkpoint holds it.
 	pre := store.OpenWriteSession()
-	require.NoError(t, pre.SetProto(coldLogKey(1), &commonpb.Log{
+	require.NoError(t, pre.SetProto(coldLogKey(1), &auditpb.Log{
 		Sequence: 1,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_AddedEventsSink{
-			AddedEventsSink: &commonpb.AddedEventsSinkLog{Config: sink},
+		Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_AddedEventsSink{
+			AddedEventsSink: &auditpb.AddedEventsSinkLog{Config: sink},
 		}},
 	}))
 	require.NoError(t, pre.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
@@ -2242,10 +2242,10 @@ func TestRebuildDelta_RemovedEventSinkDeleteErrorCancels(t *testing.T) {
 
 	// Delta: removal log at sequence 2.
 	delta := store.OpenWriteSession()
-	require.NoError(t, delta.SetProto(coldLogKey(2), &commonpb.Log{
+	require.NoError(t, delta.SetProto(coldLogKey(2), &auditpb.Log{
 		Sequence: 2,
-		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_RemovedEventsSink{
-			RemovedEventsSink: &commonpb.RemovedEventsSinkLog{Name: "sink-to-delete"},
+		Payload: &auditpb.LogPayload{Type: &auditpb.LogPayload_RemovedEventsSink{
+			RemovedEventsSink: &auditpb.RemovedEventsSinkLog{Name: "sink-to-delete"},
 		}},
 	}))
 	require.NoError(t, delta.SetProto(coldAuditKey(2), auditSuccess(2, 2, 2)))

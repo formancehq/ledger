@@ -79,7 +79,7 @@ func discoverRepositoryFuzzTargets(files []string) ([]locatedFuzzTarget, error) 
 			continue
 		}
 		var reason string
-		if module := nestedGoModuleForPath(path, nestedModules); module != "" {
+		if module := nestedGoModuleForPath(path, nestedModules); module != "" && module != "pkg/client/v3" {
 			reason = "the declaration belongs to nested Go module " + module
 		} else {
 			if platformSuffixes == nil {

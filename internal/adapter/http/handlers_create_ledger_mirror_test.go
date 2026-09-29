@@ -11,19 +11,19 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.Request
+	var capturedReq *commonpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{
@@ -69,11 +69,11 @@ func TestHandleCreateLedger_MirrorModeHTTP(t *testing.T) {
 func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.Request
+	var capturedReq *commonpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{
@@ -112,11 +112,11 @@ func TestHandleCreateLedger_MirrorModePostgres(t *testing.T) {
 func TestHandleCreateLedger_MirrorModeDefaultType(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.Request
+	var capturedReq *commonpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{
@@ -255,11 +255,11 @@ func TestMirrorSourceToProto_RewriteRules(t *testing.T) {
 func TestHandleCreateLedger_MirrorRewriteRules(t *testing.T) {
 	t.Parallel()
 
-	var capturedReq *servicepb.Request
+	var capturedReq *commonpb.Request
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			capturedReq = req.GetUnsigned().GetRequests()[0]
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{{

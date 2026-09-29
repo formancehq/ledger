@@ -13,25 +13,24 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 type eventsURLRedactionServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
-	response      *servicepb.GetEventsSinksResponse
-	applyRequests chan *servicepb.ApplyRequest
+	response      *commonpb.GetEventsSinksResponse
+	applyRequests chan *commonpb.ApplyRequest
 }
 
-func (s *eventsURLRedactionServer) GetEventsSinks(context.Context, *servicepb.GetEventsSinksRequest) (*servicepb.GetEventsSinksResponse, error) {
+func (s *eventsURLRedactionServer) GetEventsSinks(context.Context, *commonpb.GetEventsSinksRequest) (*commonpb.GetEventsSinksResponse, error) {
 	return s.response, nil
 }
 
-func (s *eventsURLRedactionServer) Apply(_ context.Context, request *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *eventsURLRedactionServer) Apply(_ context.Context, request *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
 	s.applyRequests <- request
 
-	return &servicepb.ApplyResponse{}, nil
+	return &commonpb.ApplyResponse{}, nil
 }
 
 // Sequential because command execution redirects process-global stdout and
@@ -47,7 +46,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	)
 
 	fixture := &eventsURLRedactionServer{
-		response: &servicepb.GetEventsSinksResponse{
+		response: &commonpb.GetEventsSinksResponse{
 			Sinks: []*commonpb.SinkConfig{
 				{
 					Name: "stream",
@@ -95,7 +94,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 				},
 			},
 		},
-		applyRequests: make(chan *servicepb.ApplyRequest, 16),
+		applyRequests: make(chan *commonpb.ApplyRequest, 16),
 	}
 	listControls := []string{
 		"stream", "operator", "events", "one:4222", "two:4222", "three:4222", "four:4222",
@@ -104,7 +103,7 @@ func TestEventsCommandsRedactURLCredentialsInOutput(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, fixture)
+	commonpb.RegisterBucketServiceServer(server, fixture)
 	serveResult := make(chan error, 1)
 	go func() { serveResult <- server.Serve(listener) }()
 	t.Cleanup(func() {

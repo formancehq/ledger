@@ -9,8 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -145,8 +144,8 @@ func TestClassifyAggregateTargetRejectionByCode(t *testing.T) {
 func TestPreparedLedgerOutcomeFollowsLifecycle(t *testing.T) {
 	t.Parallel()
 
-	live := buildGlobal(t, &servicepb.Request{Type: &servicepb.Request_CreateLedger{
-		CreateLedger: &servicepb.CreateLedgerRequest{Name: "L"},
+	live := buildGlobal(t, &commonpb.Request{Type: &commonpb.Request_CreateLedger{
+		CreateLedger: &commonpb.CreateLedgerRequest{Name: "L"},
 	}}, createPreparedQueryReq("L", &commonpb.PreparedQuery{
 		Name: "q", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS,
 	}))
@@ -160,8 +159,8 @@ func TestPreparedLedgerOutcomeFollowsLifecycle(t *testing.T) {
 	require.False(t, handled, "a live ledger must continue through prepared-query validation")
 	require.False(t, legal)
 
-	deleted := live.Apply(bulkOf(&servicepb.Request{Type: &servicepb.Request_DeleteLedger{
-		DeleteLedger: &servicepb.DeleteLedgerRequest{Name: "L"},
+	deleted := live.Apply(bulkOf(&commonpb.Request{Type: &commonpb.Request_DeleteLedger{
+		DeleteLedger: &commonpb.DeleteLedgerRequest{Name: "L"},
 	}}))
 	require.True(t, deleted.OK)
 
@@ -299,14 +298,14 @@ func TestPreparedTransactionContinuationMustMatchRemainingRows(t *testing.T) {
 func TestRegistryMatches(t *testing.T) {
 	t.Parallel()
 
-	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	res := oracle.NewGlobalState().Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		createPreparedQueryReq("L", &commonpb.PreparedQuery{
 			Name: "a", Target: commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, Filter: filterAddrPrefix("x:"),
 		}),
 	}})
 	require.True(t, res.OK, res.Reason)
 
-	second := res.State.Apply(oracle.Bulk{Requests: []*servicepb.Request{
+	second := res.State.Apply(oracle.Bulk{Requests: []*commonpb.Request{
 		createPreparedQueryReq("L", &commonpb.PreparedQuery{
 			Name: "b", Target: commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, Filter: filterReference("r"),
 		}),

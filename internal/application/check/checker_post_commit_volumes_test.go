@@ -5,9 +5,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // pcvRow is a single (account, asset, color) post-commit volume row for the
@@ -57,9 +57,9 @@ func runPCVCheck(t *testing.T, postings []*commonpb.Posting, pcv *commonpb.PostC
 
 	var msgs []string
 
-	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, func(e *servicepb.CheckStoreEvent) {
+	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, func(e *commonpb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
-			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
+			ev.GetErrorType() == commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			msgs = append(msgs, ev.GetMessage())
 		}
 	})
@@ -208,9 +208,9 @@ func TestCompareTransactionPostCommitVolumes_RevertBranch(t *testing.T) {
 
 	var msgs []string
 
-	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, func(e *servicepb.CheckStoreEvent) {
+	err := compareTransactionPostCommitVolumes("ledger", 7, data, rs, func(e *commonpb.CheckStoreEvent) {
 		if ev := e.GetError(); ev != nil &&
-			ev.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
+			ev.GetErrorType() == commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH {
 			msgs = append(msgs, ev.GetMessage())
 		}
 	})

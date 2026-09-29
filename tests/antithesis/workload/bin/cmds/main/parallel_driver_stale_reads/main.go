@@ -32,8 +32,7 @@ import (
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -59,7 +58,7 @@ func parseAmount(s string) *big.Int {
 }
 
 func main() {
-	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
+	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client commonpb.BucketServiceClient, _ string) {
 		r := internal.Rand()
 
 		run := r.Uint64()
@@ -85,12 +84,12 @@ func main() {
 		for i := range rounds {
 			attempted++
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_Apply{
-					Apply: &servicepb.LedgerApplyRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_Apply{
+					Apply: &commonpb.LedgerApplyRequest{
 						Ledger: ledger,
-						Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-							CreateTransaction: &servicepb.CreateTransactionPayload{
+						Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+							CreateTransaction: &commonpb.CreateTransactionPayload{
 								Postings: []*commonpb.Posting{{
 									Source:      "world",
 									Destination: probeAccount,
@@ -117,7 +116,7 @@ func main() {
 				// counts it, keeping the upper bound sound.
 			}
 
-			account, err := client.GetAccount(staleCtx, &servicepb.GetAccountRequest{
+			account, err := client.GetAccount(staleCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledger,
 				Address: probeAccount,
 			})

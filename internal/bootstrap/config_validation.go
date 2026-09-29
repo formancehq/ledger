@@ -8,7 +8,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -56,7 +56,7 @@ func ValidateOrPersistConfig(store *dal.Store, cfg Config, logger logging.Logger
 		return fmt.Errorf("loading persisted config: %w", err)
 	}
 
-	current := &commonpb.PersistedConfig{
+	current := &internalcommonpb.PersistedConfig{
 		NodeId:               cfg.RaftConfig.NodeID,
 		ClusterId:            cfg.ClusterID,
 		StorageSchemaVersion: CurrentStorageSchemaVersion,
@@ -213,7 +213,7 @@ func validateHealthThresholds(block, resume float64) error {
 }
 
 // persistConfig writes the given configuration to Pebble.
-func persistConfig(store *dal.Store, cfg *commonpb.PersistedConfig) error {
+func persistConfig(store *dal.Store, cfg *internalcommonpb.PersistedConfig) error {
 	batch := store.OpenWriteSession()
 
 	err := SavePersistedConfig(batch, cfg)

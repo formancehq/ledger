@@ -7,8 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/internal/proto/signaturepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 func generateTestKeypair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {
@@ -122,7 +121,7 @@ func TestVerifyEmptyPayload(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sr := &signaturepb.SignedApplyBatch{
+	sr := &servicepb.SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: make([]byte, ed25519.SignatureSize),
 		Payload:   nil,
@@ -163,7 +162,7 @@ func TestVerifyInvalidSignatureLength(t *testing.T) {
 
 	pub, _ := generateTestKeypair(t)
 
-	sr := &signaturepb.SignedApplyBatch{
+	sr := &servicepb.SignedApplyBatch{
 		KeyId:     "key-1",
 		Signature: []byte("too-short"),
 		Payload:   []byte("payload"),
@@ -183,7 +182,7 @@ func TestExtractBatchNil(t *testing.T) {
 func TestExtractBatchEmptyPayload(t *testing.T) {
 	t.Parallel()
 
-	sr := &signaturepb.SignedApplyBatch{
+	sr := &servicepb.SignedApplyBatch{
 		KeyId:   "key-1",
 		Payload: nil,
 	}
@@ -195,7 +194,7 @@ func TestExtractBatchEmptyPayload(t *testing.T) {
 func TestExtractBatchInvalidPayload(t *testing.T) {
 	t.Parallel()
 
-	sr := &signaturepb.SignedApplyBatch{
+	sr := &servicepb.SignedApplyBatch{
 		KeyId:   "key-1",
 		Payload: []byte("not-valid-proto"),
 	}

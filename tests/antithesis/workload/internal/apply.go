@@ -2,9 +2,7 @@ package internal
 
 import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // CreatedTransactionFromLog extracts the CreatedTransaction carried by one log,
@@ -37,7 +35,7 @@ func CreatedTransactionFromLog(log *commonpb.Log) *commonpb.CreatedTransaction {
 
 // ExtractCreatedTransaction extracts the CreatedTransaction from the first log
 // of an Apply response.
-func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedTransaction {
+func ExtractCreatedTransaction(resp *commonpb.ApplyResponse) *commonpb.CreatedTransaction {
 	if resp == nil || len(resp.GetLogs()) == 0 {
 		return nil
 	}
@@ -50,7 +48,7 @@ func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedT
 // every account it touches. Returns the extracted transaction so callers can
 // reuse its fields (TxId, postings, …), or nil if the response did not carry
 // one (ambiguous error path).
-func CheckCreatedTransaction(resp *servicepb.ApplyResponse, details Details) *commonpb.CreatedTransaction {
+func CheckCreatedTransaction(resp *commonpb.ApplyResponse, details Details) *commonpb.CreatedTransaction {
 	ct := ExtractCreatedTransaction(resp)
 	if ct == nil {
 		return nil

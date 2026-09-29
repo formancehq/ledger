@@ -205,7 +205,7 @@ This bound is what prevents a slow IdP from stalling node startup indefinitely.
 | HTTP auth middleware | `internal/adapter/auth/http_middleware.go` |
 | Scope definitions and mapping | `internal/adapter/auth/scopes.go` |
 | gRPC policy declarations | `misc/proto/bucket.proto`, `misc/proto/cluster.proto` |
-| Generated gRPC policy registry | `internal/proto/commonpb/common_rpc_auth_policy.pb.go` |
+| Generated gRPC policy registry | `pkg/client/v3/grpc/common_rpc_auth_policy.pb.go` |
 | Ed25519 static keyset | `internal/adapter/auth/ed25519_keys.go` |
 | Caller-attribution resolution | `internal/adapter/auth/caller_snapshot.go` |
 | Capability validation + system allowlist | `internal/domain/attribution/attribution.go` |

@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -15,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/infra/preload"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -75,8 +76,8 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 
 	key := attributes.NewU128(30, 40)
 
-	_, err := loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
-		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
+	_, err := loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
+		return &internalcommonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
 
@@ -96,10 +97,10 @@ func TestProposalGuard_ReleaseAll(t *testing.T) {
 	assert.Nil(t, guard.token)
 
 	loadCount := 0
-	_, err = loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
 		loadCount++
 
-		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
+		return &internalcommonpb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, loadCount, "Key should reload after ReleaseAll")
@@ -112,8 +113,8 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 
 	key := attributes.NewU128(50, 60)
 
-	_, err := loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
-		return &commonpb.TransactionReferenceValue{TransactionId: 1}, nil
+	_, err := loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
+		return &internalcommonpb.TransactionReferenceValue{TransactionId: 1}, nil
 	})
 	require.NoError(t, err)
 
@@ -131,10 +132,10 @@ func TestPreloadBuild_ReleaseLoaders(t *testing.T) {
 
 	// Key should have been released
 	loadCount := 0
-	_, err = loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*commonpb.TransactionReferenceValue, error) {
+	_, err = loaders.References.LoadOrWait(key, 100, testCacheEpoch, func() (*internalcommonpb.TransactionReferenceValue, error) {
 		loadCount++
 
-		return &commonpb.TransactionReferenceValue{TransactionId: 2}, nil
+		return &internalcommonpb.TransactionReferenceValue{TransactionId: 2}, nil
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 1, loadCount, "Key should reload after ReleaseLoaders")

@@ -1,0 +1,84 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb";
+
+import "common.proto";
+
+// PersistedClusterState wraps ClusterConfig with internal FSM state that must
+// be persisted for deterministic restore but is not part of the config proposal.
+message PersistedClusterState {
+  ClusterConfig config = 1;
+  fixed64 cache_epoch = 2;  // Incremented on each config-driven cache reset
+}
+
+// TransactionState stores the current state of a transaction as a single value.
+message TransactionState {
+  fixed64 created_by_log = 1;
+  fixed64 reverted_by_transaction = 2;  // 0 = not reverted
+  map<string, MetadataValue> metadata = 3;
+  // Effective timestamp of the transaction (user-provided or command date at
+  // creation). Required for at_effective_date reverts to be deterministic
+  // without re-reading the original log from Pebble.
+  Timestamp timestamp = 4;
+  // Postings captured at creation. Populated by processCreateTransaction (and
+  // the mirror equivalent) so a later revert reads them from the FSM cache
+  // without needing to scan the Pebble-backed log — invariant #3 (no Pebble
+  // reads on the hot path) and invariant #8 (business decisions belong in
+  // the audit chain, so a revert of a non-existent tx must reach the FSM
+  // apply loop rather than fail-fast at admission).
+  repeated Posting postings = 5;
+  // Effective timestamp at which this transaction was reverted (the
+  // compensating transaction's timestamp). Nil when not reverted.
+  Timestamp reverted_at = 6;
+  // On a compensating transaction, the id of the transaction it reverts.
+  // 0 = this transaction is not a revert.
+  fixed64 reverts_transaction = 7;
+}
+
+// IdempotencyKeyValue stores the outcome associated with a proposal's
+// idempotency key: the committed logs on success, or a replayed failure when
+// the first apply was a definitive business rejection (exactly-once: every
+// duplicate observes the same outcome). A proposal commits N contiguous logs,
+// so success is encoded as (first_log_sequence, log_count).
+message IdempotencyKeyValue {
+  fixed64 first_log_sequence = 1;  // sequence of the proposal's first committed log
+  bytes hash = 2;
+  uint32 hash_version = 3;  // Hash algorithm version (0 = legacy = v1)
+  fixed64 created_at = 4;    // HLC microseconds (from Raft entry timestamp)
+  IdempotencyFailure failure = 5;  // set instead of the log refs when the first apply was a definitive business failure
+  uint32 log_count = 6;  // number of contiguous logs the proposal committed; 0 with failure set
+  fixed64 expires_at = 7;  // HLC microseconds; 0 = never expires. Frozen at write time from the committed policy TTL (created_at + IdempotencyTtlMicros).
+}
+
+// IdempotencyFailure captures a definitive business rejection so a retried key
+// replays the original error instead of re-executing. The error kind is NOT
+// stored: it is re-derived from reason at replay time (domain.KindForReason),
+// so a reclassified error replays under its current kind and the checker can
+// verify this projection against the hash-chained AuditFailure.
+message IdempotencyFailure {
+  ErrorReason reason = 1;             // typed reason; kind derived via domain.KindForReason
+  string message = 2;                 // client-facing error message
+  map<string, string> metadata = 3;   // ErrorInfo metadata
+}
+
+// TransactionReferenceValue stores the transaction ID associated with a unique reference within a ledger.
+message TransactionReferenceValue {
+  fixed64 transaction_id = 1;
+}
+
+// NumscriptVersionValue stores the latest version pointer for a named numscript.
+message NumscriptVersionValue {
+  string version = 1;
+}
+
+// PersistedConfig stores critical configuration parameters that must not change
+// between restarts with existing data. Stored at Pebble key {0x08, 0x0C}
+// (ZoneClusterPersistent, SubGlobPersistedConfig). The old {0x06, 0x0C}
+// anchor from earlier development layouts is detected and rejected at boot.
+message PersistedConfig {
+  uint64 node_id = 1;
+  string cluster_id = 2;
+  uint32 storage_schema_version = 3;
+}

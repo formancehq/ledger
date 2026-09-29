@@ -6,10 +6,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing.T) {
@@ -38,19 +39,19 @@ func TestProcessCreateTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 	volumes.expectGet(domain.NewVolumeKey(ledger, "world", "USD", ""), zeroVolume, nil)
 	volumes.expectGet(domain.NewVolumeKey(ledger, "merchants:shop", "USD", ""), zeroVolume, nil)
 
-	transactionStates := &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{}
+	transactionStates := &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
 	mockStore.EXPECT().TransactionStates().Return(transactionStates).AnyTimes()
 
 	now := (&commonpb.Timestamp{Data: 1_234_567_890}).AsReader()
 	mockStore.EXPECT().GetDate().Return(now).AnyTimes()
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1)).AnyTimes()
 
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	request := &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{{
 							Source:      "world",
 							Destination: "merchants:shop",
@@ -97,8 +98,8 @@ func TestProcessRevertTransactionRejectsAccountOutsideConfiguredTypes(t *testing
 		Asset:       "USD",
 	}}
 
-	transactionStates := &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{}
-	transactionStates.expectGet(txKey, (&commonpb.TransactionState{
+	transactionStates := &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
+	transactionStates.expectGet(txKey, (&internalcommonpb.TransactionState{
 		CreatedByLog: 42,
 		Postings:     targetPostings,
 	}).AsReader(), nil)

@@ -6,8 +6,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -36,7 +35,7 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 	roleFilter := actions.AddressExactRoleFilter
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerA, nil),
 			actions.CreateLedgerAction(ledgerB, nil),
 			actions.AddEphemeralAccountTypeAction(ledgerA, "e", "e:{id}"),
@@ -59,7 +58,7 @@ var _ = Describe("Address index across a cross-ledger purge bulk", Ordered, func
 		// (e:1, USD) cell at zero — purged, so its log carries the annotation —
 		// while the ledger-B funding leaves its own (e:1, USD) cell non-zero
 		// and must be indexed.
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateTransactionAction(ledgerA, []*commonpb.Posting{
 				actions.NewPosting("world", "e:1", big.NewInt(5), "USD"),
 				actions.NewPosting("e:1", "world", big.NewInt(5), "USD"),

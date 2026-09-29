@@ -21,13 +21,9 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"k8s.io/client-go/kubernetes"
-
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"k8s.io/client-go/kubernetes"
 )
 
 var rrSentinelLedger = internal.PrefixSentinel.WithSuffix("rolling-restart")
@@ -77,7 +73,7 @@ func main() {
 	}
 }
 
-func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
+func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
 	pods, err := internal.ListLedgerPods(ctx, clientset)
 	if err != nil {
 		log.Printf("rolling-restart: list pods failed: %s", err)
@@ -183,7 +179,7 @@ func transferAwayFrom(ctx context.Context, clusterClient clusterpb.ClusterServic
 	return err
 }
 
-func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, committed *atomic.Int64) {
+func writeBurst(ctx context.Context, client clusterpb.BucketServiceClient, committed *atomic.Int64) {
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -192,13 +188,13 @@ func writeBurst(ctx context.Context, client servicepb.BucketServiceClient, commi
 			return
 		case <-tick.C:
 		}
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+			Type: &clusterpb.Request_Apply{
+				Apply: &clusterpb.LedgerApplyRequest{
 					Ledger: rrSentinelLedger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings: []*commonpb.Posting{commonpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
+					Action: &clusterpb.LedgerAction{Data: &clusterpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &clusterpb.CreateTransactionPayload{
+							Postings: []*clusterpb.Posting{clusterpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
 							Force:    true,
 						},
 					}},

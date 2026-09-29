@@ -10,9 +10,10 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewAnalyzeCommand creates the accounts analyze command.

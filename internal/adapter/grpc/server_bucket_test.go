@@ -8,9 +8,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal verifies that
@@ -32,7 +32,7 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 			},
 		},
 	}
-	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
+	req := &commonpb.ApplyRequest{ForwardedCallerSnapshot: snapshot}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
@@ -68,7 +68,7 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsMalformedTrustedSnapshot(t *test
 func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.ApplyRequest{
+	req := &commonpb.ApplyRequest{
 		ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
 			Principal: &commonpb.CallerSnapshot_Authenticated{
 				Authenticated: &commonpb.AuthenticatedCaller{
@@ -93,7 +93,7 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) 
 func TestAdoptForwardedSnapshotIfTrusted_AllowsClusterCallerWithoutSnapshot(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.ApplyRequest{}
+	req := &commonpb.ApplyRequest{}
 	impl := &BucketServiceServerImpl{logger: testLogger()}
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)

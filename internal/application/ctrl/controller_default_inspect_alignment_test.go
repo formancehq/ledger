@@ -7,12 +7,11 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -78,11 +77,11 @@ func TestInspectIndexUsesRoutedBarrierAndMainSnapshotHorizon(t *testing.T) {
 	rs.NotifyProgress()
 
 	ctrl := NewDefaultController(nil, store, logger, attrs, rs, nil, meter)
-	resp, err := ctrl.InspectIndex(query.WithReadBarrierHorizon(t.Context(), raftHorizon), &servicepb.InspectIndexRequest{
+	resp, err := ctrl.InspectIndex(query.WithReadBarrierHorizon(t.Context(), raftHorizon), &commonpb.InspectIndexRequest{
 		Ledger:      ledger,
 		TargetType:  commonpb.TargetType_TARGET_TYPE_ACCOUNT,
 		MetadataKey: metadataKey,
-		Mode:        servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
+		Mode:        commonpb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
 		PageSize:    10,
 	})
 	require.NoError(t, err)

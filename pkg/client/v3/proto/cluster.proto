@@ -1,0 +1,343 @@
+syntax = "proto3";
+
+package cluster;
+
+import "common.proto";
+
+option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
+
+// ============================================================================
+// gRPC Service
+// ============================================================================
+
+// ClusterService provides cluster operations
+service ClusterService {
+  // GetClusterState returns the current state of the Raft cluster
+  rpc GetClusterState(GetClusterStateRequest) returns (ClusterState) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+
+  // GetDiskUsage returns the disk usage of the local node
+  rpc GetDiskUsage(GetDiskUsageRequest) returns (DiskUsage) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+
+  // GetNodeTime returns the current physical clock time of the local node
+  rpc GetNodeTime(GetNodeTimeRequest) returns (NodeTime) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+
+  // TransferLeadership transfers Raft leadership to a specific node
+  rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // AddLearner adds a non-voting (learner) node to the Raft cluster.
+  // The request is forwarded to the leader.
+  rpc AddLearner(AddLearnerRequest) returns (AddLearnerResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // PromoteLearner promotes a learner node to a full voter.
+  // The request is forwarded to the leader.
+  rpc PromoteLearner(PromoteLearnerRequest) returns (PromoteLearnerResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // RemoveNode removes a node (voter or learner) from the Raft cluster.
+  // The request is forwarded to the leader. Cannot remove the leader itself.
+  rpc RemoveNode(RemoveNodeRequest) returns (RemoveNodeResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
+  // primary Pebble store. Node-local operation (not forwarded to leader).
+  rpc CompactPrimary(CompactPrimaryRequest) returns (CompactPrimaryResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
+  // Node-local operation (not forwarded to leader).
+  rpc CompactSecondary(CompactSecondaryRequest) returns (CompactSecondaryResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // CreateCheckpoint creates a Pebble checkpoint of the current live database state.
+  // Node-local operation (not forwarded to leader).
+  rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // Backup performs a full checkpoint backup of the Pebble store.
+  // The caller specifies the storage destination (filesystem or S3) in the request.
+  // The request is forwarded to the leader (SST files are node-local).
+  rpc Backup(BackupRequest) returns (BackupResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // IncrementalBackup exports new log and audit entries since the last export.
+  // Can run on any node (log/audit sequences are identical across replicas).
+  rpc IncrementalBackup(IncrementalBackupRequest) returns (IncrementalBackupResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
+  }
+
+  // ListQueryCheckpoints lists all existing query checkpoints.
+  // Reads from replicated Pebble state (available on any node).
+  rpc ListQueryCheckpoints(ListQueryCheckpointsRequest) returns (ListQueryCheckpointsResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+
+  // GetQueryCheckpointInfo returns detailed information about a query checkpoint.
+  // Reads from replicated Pebble state (available on any node).
+  rpc GetQueryCheckpointInfo(GetQueryCheckpointInfoRequest) returns (QueryCheckpointInfo) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+
+  // GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
+  // Reads from replicated Pebble state (available on any node).
+  rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQueryCheckpointScheduleResponse) {
+    option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
+  }
+}
+
+message GetClusterStateRequest {
+  // node_id indicates which node to query for cluster state (0 = route to leader)
+  uint32 node_id = 1;
+}
+
+// ============================================================================
+// Cluster State Messages
+// ============================================================================
+
+// NodeInfo represents information about a node in the cluster
+message NodeInfo {
+  uint32 id = 1;
+  string suffrage = 2;  // Voter or Learner
+  ProgressInfo progress = 3;  // Progress information (only available when querying leader)
+  string raft_address = 4;  // Raft transport address
+  string service_address = 5;  // Service API address
+  SyncProgress sync_progress = 6;  // Checkpoint sync progress (populated by leader querying each node)
+  IndexProgress index_progress = 7;  // Index builder progress (populated by leader querying each node)
+  string version = 8;  // Build version reported by this node (for skew detection)
+}
+
+// ProgressInfo represents the progress information for a node
+message ProgressInfo {
+  fixed64 match = 1;             // Match index: highest log entry known to be replicated to this node
+  fixed64 next = 2;              // Next index: index of the next log entry to send to this node
+  string state = 3;             // State: Probe, Replicate, or Snapshot
+  fixed64 pending_snapshot = 4;  // Index of pending snapshot (0 if none)
+  bool recent_active = 5;       // Whether this node is recently active
+  bool msg_app_flow_paused = 6; // Whether MsgApp flow to this node is paused
+  bool is_paused = 7;           // Whether this node is paused
+  bool is_learner = 8;          // Whether this node is a learner (non-voting)
+}
+
+// RaftStatus represents the complete Raft status information
+message RaftStatus {
+  string state = 1;             // Current Raft state (Leader, Follower, Candidate, PreCandidate)
+  fixed64 term = 2;              // Current term
+  uint64 leader = 3;            // ID of the current leader (0 if no leader)
+  fixed64 applied = 4;           // Raft-layer cursor: bumped when the local MsgStorageApplyResp is Step()-ed back into rawNode by the orchestrate goroutine. Under AsyncStorageWrites the response fires from runCommitter AFTER CommitPreparedBatch succeeds, so `applied` tracks FSM-durable state closely (unlike the old sync Advance-immediately-after-Submit path, which could sit whole batches ahead of Pebble).
+  fixed64 commit = 5;            // Index of the last committed entry
+  fixed64 last_index = 6;        // Index of the last entry in the log
+  uint64 vote = 7;              // ID of the node that received the vote (0 if no vote)
+  map<uint64, ProgressInfo> progress = 8;  // Progress information for each node
+  fixed64 last_persisted_index = 9; // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, inside CommitPreparedBatch after pb.batch.Commit() returns. Reads served from Pebble (stale-consistency GetAccount, cross-node identity oracles, audit reads) SHOULD gate on this because it is what "Pebble has the data" means by definition — no need to reason about the Raft state machine at all. Under AsyncStorageWrites the two cursors advance in lockstep (publishApplied fires just before runCommitter emits MsgStorageApplyResp, so `last_persisted_index` reaches N a few µs before `applied` does), but keep this field distinct: it names an FSM-durability property, not a Raft-consensus one, and remains the correct entry point for anything that assumes the Pebble batch is on disk.
+}
+
+// ClusterState represents the state of the Raft cluster
+message ClusterState {
+  string state = 1;             // Leader, Follower, Candidate, Shutdown
+  uint32 leader = 2;            // ID of the current leader (0 if no leader)
+  repeated NodeInfo nodes = 3;  // List of all nodes in the cluster
+  uint32 local_node = 4;        // ID of the local node
+  RaftStatus raft_status = 5;   // Complete Raft status information
+  bool maintenance_mode = 6;    // Whether maintenance mode is active
+  SyncProgress sync_progress = 7; // Local node checkpoint sync progress
+  IndexProgress index_progress = 8; // Local index builder progress
+  common.ClusterConfig cluster_config = 9; // Raft-replicated mutable cluster configuration
+  string node_version = 10;  // Build version of the responding (local) node
+}
+
+// IndexProgress tracks the index builder's position relative to Pebble.
+message IndexProgress {
+  fixed64 last_indexed_sequence = 1;  // Pebble progress cursor
+  fixed64 pebble_last_sequence = 2;   // latest Pebble log sequence
+}
+
+// SyncProgress tracks the progress of a checkpoint fetch on the local node.
+message SyncProgress {
+  string status = 1;              // "normal", "syncing", "snapshotting", "out_of_sync"
+  fixed64 bytes_received = 2;      // Bytes received so far during checkpoint fetch
+  fixed64 bytes_total = 3;         // Total bytes to fetch (0 if unknown)
+}
+
+// ============================================================================
+// Disk Usage Messages
+// ============================================================================
+
+message TransferLeadershipRequest {
+  uint32 transferee = 1;  // Target node ID
+}
+
+message TransferLeadershipResponse {
+  uint32 new_leader = 1;  // Confirmed new leader ID
+}
+
+message GetDiskUsageRequest {}
+
+// ============================================================================
+// Node Time Messages
+// ============================================================================
+
+message GetNodeTimeRequest {}
+
+// NodeTime represents the current physical clock time of a node
+message NodeTime {
+  fixed64 timestamp_us = 1;  // Current time in microseconds since epoch
+}
+
+// VolumeUsage represents the disk usage of a single filesystem volume.
+message VolumeUsage {
+  fixed64 used_bytes = 1;   // Used bytes on the filesystem
+  fixed64 total_bytes = 2;  // Total capacity of the filesystem in bytes
+}
+
+// DiskUsage represents the filesystem-level disk usage on a node.
+message DiskUsage {
+  VolumeUsage wal_volume = 1;   // WAL filesystem usage
+  VolumeUsage data_volume = 2;  // Data filesystem usage
+}
+
+// ============================================================================
+// Add Learner Messages
+// ============================================================================
+
+message AddLearnerRequest {
+  uint64 node_id = 1;          // Numeric ID for the new learner node
+  string raft_address = 2;     // Raft transport address of the learner
+  string service_address = 3;  // Service API address of the learner
+}
+
+message AddLearnerResponse {}
+
+// ============================================================================
+// Promote Learner Messages
+// ============================================================================
+
+message PromoteLearnerRequest {
+  uint64 node_id = 1;  // Numeric ID of the learner node to promote
+}
+
+message PromoteLearnerResponse {}
+
+// ============================================================================
+// Remove Node Messages
+// ============================================================================
+
+message RemoveNodeRequest {
+  uint64 node_id = 1;  // Numeric ID of the node to remove
+  bool force = 2;      // Bypass Raft consensus (unsafe, for permanently unreachable nodes)
+}
+
+message RemoveNodeResponse {}
+
+// ============================================================================
+// Backup Messages
+// ============================================================================
+
+message BackupRequest {
+  string base_path = 1;             // Reserved for future use
+  string bucket_id = 2;             // Namespace prefix for backup files (default: cluster-id)
+  common.BackupStorage storage = 3; // Backup storage backend (s3 or azure)
+}
+
+message BackupResponse {
+  uint32 files_uploaded = 1;      // Number of new/changed files uploaded
+  uint32 files_deleted = 2;       // Number of stale files deleted (diff vs previous manifest)
+  uint32 total_files = 3;         // Total files in the backup after this run
+  int64 duration_ms = 4;          // Wall-clock duration in milliseconds
+  fixed64 last_log_sequence = 5;   // Log sequence at checkpoint time
+  fixed64 last_audit_sequence = 6; // Audit sequence at checkpoint time
+  fixed64 last_applied_index = 7;  // Raft applied index at checkpoint time
+  uint32 orphans_deleted = 8;      // Orphan files pruned from storage (leftovers from failed runs)
+}
+
+// ============================================================================
+// Incremental Backup Messages
+// ============================================================================
+
+message IncrementalBackupRequest {
+  string base_path = 1;             // Reserved for future use
+  string bucket_id = 2;             // Namespace prefix for backup files (default: cluster-id)
+  common.BackupStorage storage = 3; // Backup storage backend (s3 or azure)
+}
+
+message IncrementalBackupResponse {
+  fixed64 log_entries_exported = 1;   // Number of log entries exported
+  fixed64 audit_entries_exported = 2; // Number of audit entries exported
+  uint32 segments_uploaded = 3;      // Number of segments uploaded
+  int64 duration_ms = 4;             // Wall-clock duration in milliseconds
+  fixed64 last_log_sequence = 5;      // Last exported log sequence
+  fixed64 last_audit_sequence = 6;    // Last exported audit sequence
+  uint32 orphans_deleted = 7;         // Orphan export segments pruned from storage
+}
+
+// ============================================================================
+// Compact Primary Messages
+// ============================================================================
+
+message CompactPrimaryRequest {}
+
+message CompactPrimaryResponse {
+  int64 duration_ms = 1;  // Wall-clock duration of the compaction in milliseconds
+}
+
+// ============================================================================
+// Compact Secondary Messages
+// ============================================================================
+
+message CompactSecondaryRequest {}
+
+message CompactSecondaryResponse {
+  int64 duration_ms = 1;       // Wall-clock duration of the compaction in milliseconds
+  fixed64 size_before_bytes = 2; // Read index file size before compaction in bytes
+  fixed64 size_after_bytes = 3;  // Read index file size after compaction in bytes
+}
+
+// ============================================================================
+// Create Checkpoint Messages
+// ============================================================================
+
+message CreateCheckpointRequest {}
+
+message CreateCheckpointResponse {
+  fixed64 checkpoint_id = 1;  // ID of the newly created checkpoint
+}
+
+// ============================================================================
+// Query Checkpoint Messages
+// ============================================================================
+
+message ListQueryCheckpointsRequest {}
+
+message ListQueryCheckpointsResponse {
+  repeated QueryCheckpointInfo checkpoints = 1;
+}
+
+message GetQueryCheckpointInfoRequest {
+  fixed64 checkpoint_id = 1;
+}
+
+message GetQueryCheckpointScheduleRequest {}
+
+message GetQueryCheckpointScheduleResponse {
+  string cron = 1;   // Current cron expression, empty if disabled
+}
+
+message QueryCheckpointInfo {
+  fixed64 checkpoint_id = 1;           // Sequential checkpoint identifier
+  fixed64 max_sequence = 2;            // Max global log sequence at checkpoint time
+  common.Timestamp created_at = 3;    // Creation timestamp
+}

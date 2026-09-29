@@ -25,9 +25,7 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -37,7 +35,7 @@ func main() {
 	internal.RunDriver("parallel_driver_reference_conflict_skip", run)
 }
 
-func run(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+func run(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 	ref := fmt.Sprintf("skipref-%d", internal.Rand().Uint64())
 	// The client retries ambiguous failures. Each logical step needs its own
 	// stable key so a lost response replays the committed outcome. Sharing one
@@ -46,12 +44,12 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 	details := internal.Details{"ledger": ledger, "reference": ref, "idempotencyKey": keyPrefix + ":first"}
 
 	// 1. Prime the reference with a first successful transaction.
-	firstReq := servicepb.UnsignedApplyRequest(keyPrefix+":first", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	firstReq := commonpb.UnsignedApplyRequest(keyPrefix+":first", &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings:  internal.RandomPostings(),
 						Reference: ref,
 						Force:     true,
@@ -80,13 +78,13 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 	// 2. Replay with the SAME reference AND skippable_reasons opt-in — the
 	// FSM must convert the reference-conflict failure into an
 	// OrderSkipped log carrying the first tx id in its context.
-	skipReq := servicepb.UnsignedApplyRequest(keyPrefix+":duplicate", actions.WithSkippableReasons(
-		&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+	skipReq := commonpb.UnsignedApplyRequest(keyPrefix+":duplicate", actions.WithSkippableReasons(
+		&commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings:  internal.RandomPostings(),
 							Reference: ref,
 							Force:     true,
@@ -167,13 +165,13 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 	freshRef := fmt.Sprintf("skipref-fresh-tx-%d", firstTx.GetTransaction().GetId())
 	freshDetails := internal.Details{"ledger": ledger, "reference": freshRef, "idempotencyKey": keyPrefix + ":fresh"}
 
-	freshReq := servicepb.UnsignedApplyRequest(keyPrefix+":fresh", actions.WithSkippableReasons(
-		&servicepb.Request{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+	freshReq := commonpb.UnsignedApplyRequest(keyPrefix+":fresh", actions.WithSkippableReasons(
+		&commonpb.Request{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledger,
-					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-						CreateTransaction: &servicepb.CreateTransactionPayload{
+					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings:  internal.RandomPostings(),
 							Reference: freshRef,
 							Force:     true,

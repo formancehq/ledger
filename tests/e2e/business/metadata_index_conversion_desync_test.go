@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -38,44 +37,44 @@ var _ = Describe("MetadataIndexConversionDesync", Ordered, func() {
 
 	acct := func(i int) string { return fmt.Sprintf("user:%05d", i) }
 
-	applyChunked := func(g Gomega, makeReq func(i int) *servicepb.Request) {
+	applyChunked := func(g Gomega, makeReq func(i int) *commonpb.Request) {
 		for start := 0; start < n; start += chunkSize {
-			var env []*servicepb.Request
+			var env []*commonpb.Request
 			for i := start; i < start+chunkSize && i < n; i++ {
 				env = append(env, makeReq(i))
 			}
 
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", env...))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", env...))
 			g.Expect(err).To(Succeed())
 		}
 	}
 
 	It("does not leave stale index entries after a mid-BUILDING overwrite", func() {
 		// Ledger with a STRING field + an index on it.
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 			{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_STRING},
 		})))
 		Expect(err).To(Succeed())
 
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, key)))
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 		Expect(err).To(Succeed())
 		Expect(actions.WaitForMetadataIndexReady(sharedCtx, sharedClient, ledgerName,
 			commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)).To(Succeed())
 
 		// Seed n accounts with score = str(i) (indexed in the string encoding).
-		applyChunked(Default, func(i int) *servicepb.Request {
+		applyChunked(Default, func(i int) *commonpb.Request {
 			return actions.SaveAccountMetadataAction(ledgerName, acct(i), map[string]string{key: fmt.Sprintf("%d", i)})
 		})
 
 		// Declare INT64: starts the index schema-rewrite (BUILDING) and the value
 		// converter (CONVERTING).
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key,
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key,
 			commonpb.MetadataType_METADATA_TYPE_INT64)))
 		Expect(err).To(Succeed())
 
 		// Immediately overwrite every account to a value >= 1_000_000, racing the
 		// background rewrite that is now re-encoding the index entries.
-		applyChunked(Default, func(i int) *servicepb.Request {
+		applyChunked(Default, func(i int) *commonpb.Request {
 			return actions.SaveAccountMetadataAction(ledgerName, acct(i), map[string]string{key: fmt.Sprintf("%d", 1_000_000+i)})
 		})
 

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"testing"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -50,7 +52,7 @@ type benchScope struct {
 	ledgers      *kindStub[domain.LedgerKey, *commonpb.LedgerInfo, commonpb.LedgerInfoReader]
 	boundaries   *kindStub[domain.LedgerKey, *raftcmdpb.LedgerBoundaries, raftcmdpb.LedgerBoundariesReader]
 	volumes      *kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
-	transactions *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	transactions *kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
 
 	date         commonpb.TimestampReader
 	nextSequence uint64
@@ -73,7 +75,7 @@ func (s *benchScope) Volumes() Accessor[domain.VolumeKey, *raftcmdpb.VolumePair,
 	return s.volumes
 }
 
-func (s *benchScope) TransactionStates() Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+func (s *benchScope) TransactionStates() Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
 	return s.transactions
 }
 
@@ -204,7 +206,7 @@ func newBenchScope(cfg benchLedgerConfig) *benchScope {
 		return zero.AsReader(), nil
 	})
 
-	s.transactions = &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{}
+	s.transactions = &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{}
 
 	return s
 }

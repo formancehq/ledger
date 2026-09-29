@@ -25,10 +25,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -46,7 +44,7 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 		t.Run(lostStep, func(t *testing.T) {
 			ctx, backend := referenceTestServer(t)
 			const ledger = "reference-retry"
-			_, err := backend.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+			_, err := backend.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 			require.NoError(t, err)
 			proxy := &lostResponseServer{backend: backend, lostStep: lostStep, attempts: make(map[string][]applyAttempt)}
 			client := retryingClient(t, proxy)
@@ -79,7 +77,7 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 				if step == "duplicate" {
 					skipped := applyPayload(t, delivered).GetOrderSkipped()
 					require.NotNil(t, skipped)
-					require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+					require.Equal(t, clusterpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 					firstID := applyPayload(t, attempts["first"][0].response).GetCreatedTransaction().GetTransaction().GetId()
 					require.Equal(t, strconv.FormatUint(firstID, 10), skipped.GetContext()["existingTransactionId"])
 					require.Equal(t, ledger, skipped.GetContext()["ledger"])
@@ -88,7 +86,7 @@ func TestReferenceConflictSkipLostResponse(t *testing.T) {
 					require.NotNil(t, applyPayload(t, original).GetCreatedTransaction(), "fault must follow a committed creation")
 					if skipped := applyPayload(t, delivered).GetOrderSkipped(); skipped != nil {
 						created := applyPayload(t, original).GetCreatedTransaction().GetTransaction()
-						require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+						require.Equal(t, clusterpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 						require.Equal(t, created.GetReference(), skipped.GetContext()["reference"])
 						require.Equal(t, ledger, skipped.GetContext()["ledger"])
 						require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetContext()["existingTransactionId"], "retry skipped its own committed transaction")
@@ -135,7 +133,7 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 
 	ctx, backend := referenceTestServer(t)
 	const ledger = "reference-unkeyed"
-	_, err := backend.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+	_, err := backend.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 	require.NoError(t, err)
 	proxy := &lostResponseServer{backend: backend, lostStep: "fresh", unkeyedFresh: true, attempts: make(map[string][]applyAttempt)}
 	run(ctx, retryingClient(t, proxy), ledger)
@@ -154,7 +152,7 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 	require.NotNil(t, created)
 	skipped := applyPayload(t, calls[1].response).GetOrderSkipped()
 	require.NotNil(t, skipped)
-	require.Equal(t, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
+	require.Equal(t, clusterpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT, skipped.GetReason())
 	require.Equal(t, created.GetReference(), skipped.GetContext()["reference"])
 	require.Equal(t, ledger, skipped.GetContext()["ledger"])
 	require.Equal(t, strconv.FormatUint(created.GetId(), 10), skipped.GetContext()["existingTransactionId"])
@@ -187,7 +185,7 @@ func TestReferenceConflictSkipUnexpectedFreshResponse(t *testing.T) {
 
 	ctx, backend := referenceTestServer(t)
 	const ledger = "reference-unexpected"
-	_, err := backend.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
+	_, err := backend.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledger, nil)))
 	require.NoError(t, err)
 	proxy := &lostResponseServer{backend: backend, freshResponseMode: mode, attempts: make(map[string][]applyAttempt)}
 	run(ctx, retryingClient(t, proxy), ledger)
@@ -229,17 +227,17 @@ func captureAssertions(t *testing.T, testName, childEnv string) []assertionEvent
 }
 
 type applyAttempt struct {
-	request      *servicepb.ApplyRequest
-	response     *servicepb.ApplyResponse
+	request      *clusterpb.ApplyRequest
+	response     *clusterpb.ApplyResponse
 	err          error
 	lostResponse bool
 }
 
 // This is a transport fault injector, not a mock of Ledger business semantics.
 type lostResponseServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	clusterpb.UnimplementedBucketServiceServer
 
-	backend           servicepb.BucketServiceClient
+	backend           clusterpb.BucketServiceClient
 	lostStep          string
 	unkeyedFresh      bool
 	freshResponseMode string
@@ -248,7 +246,7 @@ type lostResponseServer struct {
 	attempts          map[string][]applyAttempt
 }
 
-func (s *lostResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *lostResponseServer) Apply(ctx context.Context, req *clusterpb.ApplyRequest) (*clusterpb.ApplyResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	apply := req.GetUnsigned().GetRequests()[0].GetApply()
@@ -261,13 +259,13 @@ func (s *lostResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequ
 		step = "duplicate"
 	}
 	if s.unkeyedFresh && step == "fresh" {
-		req = proto.Clone(req).(*servicepb.ApplyRequest)
+		req = proto.Clone(req).(*clusterpb.ApplyRequest)
 		req.GetUnsigned().IdempotencyKey = ""
 	}
 	resp, err := s.backend.Apply(ctx, req)
-	entry := applyAttempt{request: proto.Clone(req).(*servicepb.ApplyRequest), err: err}
+	entry := applyAttempt{request: proto.Clone(req).(*clusterpb.ApplyRequest), err: err}
 	if resp != nil {
-		entry.response = proto.Clone(resp).(*servicepb.ApplyResponse)
+		entry.response = proto.Clone(resp).(*clusterpb.ApplyResponse)
 	}
 	entry.lostResponse = err == nil && step == s.lostStep && len(s.attempts[step]) == 0
 	s.attempts[step] = append(s.attempts[step], entry)
@@ -277,9 +275,9 @@ func (s *lostResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequ
 	if err == nil && step == "fresh" {
 		switch s.freshResponseMode {
 		case "empty":
-			return &servicepb.ApplyResponse{}, nil
+			return &clusterpb.ApplyResponse{}, nil
 		case "unknown":
-			resp = proto.Clone(resp).(*servicepb.ApplyResponse)
+			resp = proto.Clone(resp).(*clusterpb.ApplyResponse)
 			resp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().Payload = nil
 		}
 	}
@@ -298,12 +296,12 @@ func (s *lostResponseServer) snapshot() map[string][]applyAttempt {
 	return ret
 }
 
-func retryingClient(t *testing.T, proxy *lostResponseServer) servicepb.BucketServiceClient {
+func retryingClient(t *testing.T, proxy *lostResponseServer) clusterpb.BucketServiceClient {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	server := grpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, proxy)
+	clusterpb.RegisterBucketServiceServer(server, proxy)
 	finished := make(chan error, 1)
 	go func() { finished <- server.Serve(listener) }()
 	t.Cleanup(func() {
@@ -317,10 +315,10 @@ func retryingClient(t *testing.T, proxy *lostResponseServer) servicepb.BucketSer
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 
-	return servicepb.NewBucketServiceClient(conn)
+	return clusterpb.NewBucketServiceClient(conn)
 }
 
-func referenceTestServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) {
+func referenceTestServer(t *testing.T) (context.Context, clusterpb.BucketServiceClient) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -343,25 +341,25 @@ func referenceTestServer(t *testing.T) (context.Context, servicepb.BucketService
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	client := servicepb.NewBucketServiceClient(conn)
+	client := clusterpb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)
 
 	return ctx, client
 }
 
-func applyPayload(t *testing.T, resp *servicepb.ApplyResponse) *commonpb.LedgerLogPayload {
+func applyPayload(t *testing.T, resp *clusterpb.ApplyResponse) *clusterpb.LedgerLogPayload {
 	t.Helper()
 	require.Len(t, resp.GetLogs(), 1, "Apply must return exactly one log")
 
 	return resp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData()
 }
 
-func assertTransactions(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledger string, attempts map[string][]applyAttempt) {
+func assertTransactions(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledger string, attempts map[string][]applyAttempt) {
 	t.Helper()
 	ctx = metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{Ledger: ledger})
+	stream, err := client.ListTransactions(ctx, &clusterpb.ListTransactionsRequest{Ledger: ledger})
 	require.NoError(t, err)
-	byReference := make(map[string][]*commonpb.Transaction)
+	byReference := make(map[string][]*clusterpb.Transaction)
 	for {
 		tx, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -382,9 +380,9 @@ func assertTransactions(t *testing.T, ctx context.Context, client servicepb.Buck
 	}
 }
 
-func assertLogCount(t *testing.T, ctx context.Context, client servicepb.BucketServiceClient, ledger string, want int) {
+func assertLogCount(t *testing.T, ctx context.Context, client clusterpb.BucketServiceClient, ledger string, want int) {
 	t.Helper()
-	stream, err := client.ListLogs(metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable"), &servicepb.ListLogsRequest{Ledger: ledger})
+	stream, err := client.ListLogs(metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable"), &clusterpb.ListLogsRequest{Ledger: ledger})
 	require.NoError(t, err)
 	count := 0
 	for {

@@ -17,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
@@ -29,10 +30,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -120,7 +119,7 @@ func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
 // excluded from AuditItem.serialized_order, so audit replay has no trustworthy
 // value to compare it with. Its consistency with the checkpoint projection is
 // checked separately by compareQueryCheckpoints.
-func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
+func auditComparableLog(log *auditpb.Log, sequence uint64) *auditpb.Log {
 	ret := log.CloneVT()
 	ret.Sequence = sequence
 	if apply := ret.GetPayload().GetApply(); apply != nil && apply.GetLog() != nil {
@@ -140,7 +139,7 @@ func auditComparableLog(log *commonpb.Log, sequence uint64) *commonpb.Log {
 // while carrying forward execution metadata that the audit order does not bind.
 // This makes downstream projection checks compare the stored checkpoint row to
 // its source Log row instead of to the audit replayer's necessarily-zero value.
-func auditReplayLogWithExecutionMetadata(expected, stored *commonpb.Log) *commonpb.Log {
+func auditReplayLogWithExecutionMetadata(expected, stored *auditpb.Log) *auditpb.Log {
 	ret := expected.CloneVT()
 	if expectedCP := ret.GetPayload().GetCreatedQueryCheckpoint(); expectedCP != nil {
 		if storedCP := stored.GetPayload().GetCreatedQueryCheckpoint(); storedCP != nil {
@@ -154,20 +153,20 @@ func auditReplayLogWithExecutionMetadata(expected, stored *commonpb.Log) *common
 // emitSequenceGapRun reports one contiguous run of missing log sequences as a
 // single event. The single-sequence wording is kept verbatim: an isolated hole
 // is the common case, and it reads better than a range of one.
-func emitSequenceGapRun(first, last uint64, callback func(*servicepb.CheckStoreEvent)) {
+func emitSequenceGapRun(first, last uint64, callback func(*auditpb.CheckStoreEvent)) {
 	if first == last {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
 			fmt.Sprintf("log sequence %d is missing", first), first, "", "", ""))
 
 		return
 	}
 
-	callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
+	callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SEQUENCE_GAP,
 		fmt.Sprintf("log sequences %d..%d are missing (%d logs)", first, last, last-first+1),
 		first, "", "", ""))
 }
 
-func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) Check(ctx context.Context, callback func(*auditpb.CheckStoreEvent)) error {
 	// Pin the peer read-index snapshot FIRST — strictly BEFORE the primary one.
 	// The order is load-bearing for compareReverseMapOrphans, which compares the
 	// peer's fold cursor against lastSequence (read off the primary snapshot
@@ -296,14 +295,14 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// logs replay. Drives the
 		// ephemeral-purge simulation and is verified against the stored
 		// LedgerInfo.AccountTypes in compareAccountTypes.
-		rawLedgerTypes     = make(map[string]map[string]*commonpb.AccountType)
+		rawLedgerTypes     = make(map[string]map[string]*auditpb.AccountType)
 		ledgerAccountTypes = make(map[string][]accounttype.CompiledType)
 		// Expected SubAttrIndex registry state: advanced by the replayed
 		// CreateIndex / DropIndex / RemovedMetadataFieldType / DeleteLedger
 		// logs. The checker compares this against the stored projection in
 		// compareIndexes. Presence + identity (Ledger, Id) are the fields we
 		// can re-derive.
-		expectedIndexes = make(map[domain.IndexKey]*commonpb.Index)
+		expectedIndexes = make(map[domain.IndexKey]*auditpb.Index)
 		// Ledgers that had a DeleteLedger log replayed in the verified
 		// range. Lets compareIndexes / compareNumscripts / compareMirrorV2LogID
 		// name the cause when a stored row survives a replayed deletion.
@@ -312,11 +311,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// CreateLedger.initial_schema + SetMetadataFieldType /
 		// RemovedMetadataFieldType logs. Compared against the stored
 		// LedgerInfo.MetadataSchema in compareSchema.
-		expectedSchemas = make(map[string]*commonpb.MetadataSchema)
+		expectedSchemas = make(map[string]*auditpb.MetadataSchema)
 		// Expected default account-type enforcement per ledger, derived from
 		// CreateLedger.default_enforcement_mode and later audited updates.
 		// Compared against LedgerInfo.DefaultEnforcementMode.
-		expectedEnforcementModes = make(map[string]commonpb.ChartEnforcementMode)
+		expectedEnforcementModes = make(map[string]auditpb.ChartEnforcementMode)
 		// Expected LedgerBoundaries per ledger: id fields and replay-derivable
 		// counters, advanced per replayed log, then topped up with the
 		// chain-bound audit-order effects (mirror fill-gap advances, numscript
@@ -326,7 +325,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// DeleteLedger logs. compareNumscripts diffs these against the stored
 		// SubAttrNumscriptContent (immutable version entries) and
 		// SubAttrNumscriptVersion (latest pointer = greatest stored semver).
-		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo)
+		expectedNumscriptContent = make(map[domain.NumscriptEntryKey]*auditpb.NumscriptInfo)
 		expectedNumscriptLatest  = make(map[domain.NumscriptVersionKey]string)
 
 		// derivedLiveCheckpoints is the audit-derived set of live query checkpoints
@@ -334,7 +333,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// value so max_sequence / created_at can be verified. A create sets the
 		// entry, a later delete removes it. compareQueryCheckpoints diffs it
 		// against the stored rows both ways, contents included.
-		derivedLiveCheckpoints = make(map[uint64]*commonpb.CreatedQueryCheckpointLog)
+		derivedLiveCheckpoints = make(map[uint64]*auditpb.CreatedQueryCheckpointLog)
 	)
 
 	// excluded is built incrementally as SimulateEphemeralPurge decides to
@@ -470,7 +469,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// verifies. The row is still replayed, on the same grounds as a divergent
 		// `sequence` field below.
 		if seq == 0 {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_UNAUDITED,
 				"log sequence 0 has no audited origin: audited log sequences form an interval "+
 					"starting at 1, so a log at sequence 0 was allocated by no proposal",
 				seq, "", "", ""))
@@ -534,7 +533,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			return fmt.Errorf("reading log %d value: %w", seq, err)
 		}
 
-		log := &commonpb.Log{}
+		log := &auditpb.Log{}
 		if err := log.UnmarshalVT(value); err != nil {
 			return fmt.Errorf("unmarshaling log %d: %w", seq, err)
 		}
@@ -555,7 +554,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// emit a cascade of volume, boundary and transaction findings that
 		// misdescribe a store whose log is present and readable.
 		if log.GetSequence() != seq {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_SEQUENCE_MISMATCH,
 				fmt.Sprintf("log at key sequence %d carries sequence %d in its stored value", seq, log.GetSequence()),
 				seq, "", "", ""))
 		}
@@ -568,7 +567,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// from validating itself circularly.
 		if expectedLog, ok := auditExpected.logs[seq]; ok {
 			if !auditComparableLog(storedLog, seq).EqualVT(auditComparableLog(expectedLog, seq)) {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH,
+				callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH,
 					fmt.Sprintf("stored log %d payload differs from the log derived from its chain-verified audit order", seq),
 					seq, "", "", ""))
 			}
@@ -588,7 +587,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 			for _, account := range apply.GetLog().GetPurgedAccounts() {
 				key := domain.AccountKey{LedgerName: ledgerName, Account: account}
 				if prior, exists := storedPurgedAccounts[key]; exists {
-					callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+					callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 						fmt.Sprintf("stored account-purge annotation for %q occurs more than once in proposal (logs %d and %d)", account, prior, seq),
 						seq, ledgerName, account, ""))
 				}
@@ -601,7 +600,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		// 2. Replay log to update expected state
 		if log.GetPayload() != nil {
 			switch payload := log.GetPayload().GetType().(type) {
-			case *commonpb.LogPayload_CreateLedger:
+			case *auditpb.LogPayload_CreateLedger:
 				if payload.CreateLedger != nil {
 					name := payload.CreateLedger.GetName()
 					knownLedgers[name] = struct{}{}
@@ -610,7 +609,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					expectedBoundaries[name] = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
 					seedAccountTypes(rawLedgerTypes, ledgerAccountTypes, name, payload.CreateLedger.GetAccountTypes())
 				}
-			case *commonpb.LogPayload_DeleteLedger:
+			case *auditpb.LogPayload_DeleteLedger:
 				if payload.DeleteLedger != nil {
 					name := payload.DeleteLedger.GetName()
 					delete(knownLedgers, name)
@@ -658,7 +657,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						}
 					}
 				}
-			case *commonpb.LogPayload_SavedNumscript:
+			case *auditpb.LogPayload_SavedNumscript:
 				// A save writes an immutable content entry and advances the latest
 				// pointer to the greatest stored semver (versions may be saved out
 				// of order).
@@ -671,20 +670,20 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						expectedNumscriptLatest[vk] = info.GetVersion()
 					}
 				}
-			case *commonpb.LogPayload_CreatedQueryCheckpoint:
+			case *auditpb.LogPayload_CreatedQueryCheckpoint:
 				if cp := payload.CreatedQueryCheckpoint; cp != nil {
 					derivedLiveCheckpoints[cp.GetCheckpointId()] = cp
 				}
-			case *commonpb.LogPayload_DeletedQueryCheckpoint:
+			case *auditpb.LogPayload_DeletedQueryCheckpoint:
 				if cp := payload.DeletedQueryCheckpoint; cp != nil {
 					delete(derivedLiveCheckpoints, cp.GetCheckpointId())
 				}
-			case *commonpb.LogPayload_Apply:
+			case *auditpb.LogPayload_Apply:
 				if payload.Apply != nil {
 					ledgerName := payload.Apply.GetLedgerName()
 
 					if _, ok := knownLedgers[ledgerName]; !ok {
-						callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER,
+						callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNKNOWN_LEDGER,
 							fmt.Sprintf("log %d references unknown ledger %q", seq, ledgerName),
 							seq, ledgerName, "", ""))
 
@@ -735,15 +734,15 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 						// no index type has content verification today; adding it is
 						// a cross-cutting invariant-#8 effort tracked separately.
 						switch d := payload.Apply.GetLog().GetData().GetPayload().(type) {
-						case *commonpb.LedgerLogPayload_CreateIndex:
+						case *auditpb.LedgerLogPayload_CreateIndex:
 							if id := d.CreateIndex.GetId(); id != nil {
 								key := domain.IndexKey{
 									LedgerName: ledgerName,
 									Canonical:  indexes.Canonical(id),
 								}
-								expectedIndexes[key] = &commonpb.Index{Id: id, Ledger: ledgerName}
+								expectedIndexes[key] = &auditpb.Index{Id: id, Ledger: ledgerName}
 							}
-						case *commonpb.LedgerLogPayload_DropIndex:
+						case *auditpb.LedgerLogPayload_DropIndex:
 							if id := d.DropIndex.GetId(); id != nil {
 								key := domain.IndexKey{
 									LedgerName: ledgerName,
@@ -751,11 +750,11 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								}
 								delete(expectedIndexes, key)
 							}
-						case *commonpb.LedgerLogPayload_SetMetadataFieldType:
+						case *auditpb.LedgerLogPayload_SetMetadataFieldType:
 							if l := d.SetMetadataFieldType; l != nil {
 								setExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey(), l.GetType())
 							}
-						case *commonpb.LedgerLogPayload_RemovedMetadataFieldType:
+						case *auditpb.LedgerLogPayload_RemovedMetadataFieldType:
 							if l := d.RemovedMetadataFieldType; l != nil {
 								removeExpectedSchemaField(expectedSchemas, ledgerName, l.GetTargetType(), l.GetKey())
 							}
@@ -771,7 +770,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 								}
 								delete(expectedIndexes, key)
 							}
-						case *commonpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
+						case *auditpb.LedgerLogPayload_UpdatedDefaultEnforcementMode:
 							if update := d.UpdatedDefaultEnforcementMode; update != nil {
 								expectedEnforcementModes[ledgerName] = update.GetEnforcementMode()
 							}
@@ -818,9 +817,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		if seq%progressInterval == 0 {
 			lastProgressSeq, progressEmitted = seq, true
 
-			callback(&servicepb.CheckStoreEvent{
-				Type: &servicepb.CheckStoreEvent_Progress{
-					Progress: &servicepb.CheckStoreProgress{
+			callback(&auditpb.CheckStoreEvent{
+				Type: &auditpb.CheckStoreEvent_Progress{
+					Progress: &auditpb.CheckStoreProgress{
 						LogsChecked: seq,
 						TotalLogs:   storedMaxLogSeq,
 					},
@@ -841,9 +840,9 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// which is what happens whenever the highest log key is a multiple of
 	// progressInterval.
 	if !progressEmitted || lastProgressSeq != storedMaxLogSeq {
-		callback(&servicepb.CheckStoreEvent{
-			Type: &servicepb.CheckStoreEvent_Progress{
-				Progress: &servicepb.CheckStoreProgress{
+		callback(&auditpb.CheckStoreEvent{
+			Type: &auditpb.CheckStoreEvent_Progress{
+				Progress: &auditpb.CheckStoreProgress{
 					LogsChecked: storedMaxLogSeq,
 					TotalLogs:   storedMaxLogSeq,
 				},
@@ -993,7 +992,7 @@ func (c *Checker) comparePurgedAccountAbsence(
 	reader dal.PebbleReader,
 	purged map[domain.AccountKey]struct{},
 	purgedVolumes map[domain.VolumeKey]struct{},
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	if len(purged) == 0 && len(purgedVolumes) == 0 {
 		return
@@ -1001,14 +1000,14 @@ func (c *Checker) comparePurgedAccountAbsence(
 
 	volumes, err := c.attrs.Volume.NewStreamingIter(reader, nil)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("failed to scan purged-account volumes: %v", err), 0, "", "", ""))
 
 		return
 	}
 	for volumes.Next() {
 		if ctx.Err() != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("purged-account volume scan canceled: %v", ctx.Err()), 0, "", "", ""))
 
 			break
@@ -1016,7 +1015,7 @@ func (c *Checker) comparePurgedAccountAbsence(
 		entry := volumes.Entry()
 		var key domain.VolumeKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("decoding volume key during purged-account scan: %v", err), 0, "", "", ""))
 
 			continue
@@ -1024,30 +1023,30 @@ func (c *Checker) comparePurgedAccountAbsence(
 		_, accountPurged := purged[key.AccountKey]
 		_, volumePurged := purgedVolumes[key]
 		if accountPurged || volumePurged {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("volume row survives replay-derived account purge for %s/%s", key.Account, key.Asset),
 				0, key.LedgerName, key.Account, key.Asset))
 		}
 	}
 	if err := volumes.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("scanning purged-account volumes: %v", err), 0, "", "", ""))
 	}
 	if err := volumes.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("closing purged-account volume scan: %v", err), 0, "", "", ""))
 	}
 
 	metadata, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("failed to scan purged-account metadata: %v", err), 0, "", "", ""))
 
 		return
 	}
 	for metadata.Next() {
 		if ctx.Err() != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("purged-account metadata scan canceled: %v", ctx.Err()), 0, "", "", ""))
 
 			break
@@ -1055,23 +1054,23 @@ func (c *Checker) comparePurgedAccountAbsence(
 		entry := metadata.Entry()
 		var key domain.MetadataKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("decoding metadata key during purged-account scan: %v", err), 0, "", "", ""))
 
 			continue
 		}
 		if _, ok := purged[key.AccountKey]; ok {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("metadata row survives replay-derived account purge for %s/%s", key.Account, key.Key),
 				0, key.LedgerName, key.Account, key.Key))
 		}
 	}
 	if err := metadata.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("scanning purged-account metadata: %v", err), 0, "", "", ""))
 	}
 	if err := metadata.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("closing purged-account metadata scan: %v", err), 0, "", "", ""))
 	}
 }
@@ -1125,7 +1124,7 @@ func (c *Checker) collectStoredTransientVolumes(
 // / per-proposal scoping would require threading log_seq through the
 // replay-time ephemeralPurgeBuffer collector — a substantial refactor
 // of internal/domain/replay/replay.go that is deferred for now.
-func compareExclusionProjections(stored, derived excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) {
+func compareExclusionProjections(stored, derived excludedVolumesSet, callback func(*auditpb.CheckStoreEvent)) {
 	for ledger, set := range stored {
 		ref := derived[ledger]
 		for vk := range set {
@@ -1134,7 +1133,7 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 			}
 
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 				fmt.Sprintf("exclusion record for %q/%q exists in projections (AppliedProposal/LedgerLog) but not in the replay-derived set", vk.Account, vk.Asset),
 				0, ledger, vk.Account, vk.Asset,
 			))
@@ -1149,7 +1148,7 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 			}
 
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 				fmt.Sprintf("replay-derived exclusion for %q/%q is missing from projections (AppliedProposal/LedgerLog)", vk.Account, vk.Asset),
 				0, ledger, vk.Account, vk.Asset,
 			))
@@ -1157,19 +1156,19 @@ func compareExclusionProjections(stored, derived excludedVolumesSet, callback fu
 	}
 }
 
-func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derived map[domain.AccountKey]struct{}, lastFreshLogByLedger map[string]uint64, boundary uint64, callback func(*servicepb.CheckStoreEvent)) {
+func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derived map[domain.AccountKey]struct{}, lastFreshLogByLedger map[string]uint64, boundary uint64, callback func(*auditpb.CheckStoreEvent)) {
 	for account, sequence := range stored {
 		if _, ok := derived[account]; ok {
 			if sequence == lastFreshLogByLedger[account.LedgerName] {
 				continue
 			}
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 				fmt.Sprintf("stored account-purge annotation for %q is on log %d instead of terminal ledger log %d at proposal boundary %d", account.Account, sequence, lastFreshLogByLedger[account.LedgerName], boundary),
 				sequence, account.LedgerName, account.Account, ""))
 
 			continue
 		}
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 			fmt.Sprintf("stored account-purge annotation for %q is not audit-derived at proposal boundary %d", account.Account, boundary),
 			boundary, account.LedgerName, account.Account, ""))
 	}
@@ -1177,7 +1176,7 @@ func comparePurgedAccountProjections(stored map[domain.AccountKey]uint64, derive
 		if _, ok := stored[account]; ok {
 			continue
 		}
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_EXCLUSION_RECORD_MISMATCH,
 			fmt.Sprintf("audit-derived account purge for %q is missing from stored annotations at proposal boundary %d", account.Account, boundary),
 			boundary, account.LedgerName, account.Account, ""))
 	}
@@ -1190,7 +1189,7 @@ type compareIndexesScope struct {
 	reader dal.PebbleReader
 	// expected is the audit-derived registry state: the replayed CreateIndex /
 	// DropIndex / RemovedMetadataFieldType / DeleteLedger delta.
-	expected map[domain.IndexKey]*commonpb.Index
+	expected map[domain.IndexKey]*auditpb.Index
 	// deletedInReplay names ledgers whose DeleteLedger log was replayed in the
 	// verified range. Only used to give a surviving entry a more precise message
 	// than the generic unmatched one.
@@ -1221,7 +1220,7 @@ type compareIndexesScope struct {
 // Check() clean (EN-1458 review).
 func (c *Checker) compareIndexes(
 	scope compareIndexesScope,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	reader, expected := scope.reader, scope.expected
 	deletedInReplay := scope.deletedInReplay
@@ -1229,7 +1228,7 @@ func (c *Checker) compareIndexes(
 	iter, err := c.attrs.Index.NewStreamingIter(reader, nil)
 	if err != nil {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 			fmt.Sprintf("opening index registry iterator: %v", err),
 			0, "", "", "",
 		))
@@ -1252,7 +1251,7 @@ func (c *Checker) compareIndexes(
 		var key domain.IndexKey
 		if err := key.Unmarshal(entry.CanonicalKey); err != nil {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 				fmt.Sprintf("stored index has unparsable canonical key %x: %v", entry.CanonicalKey, err),
 				0, stored.GetLedger(), "", "",
 			))
@@ -1277,7 +1276,7 @@ func (c *Checker) compareIndexes(
 			// unmatched case only to name the cause — both are mismatches.
 			if _, deleted := deletedInReplay[key.LedgerName]; deleted {
 				callback(errorEvent(
-					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+					auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 					fmt.Sprintf("registry has Index entry for ledger %q with id %q surviving a replayed DeleteLedger", key.LedgerName, key.Canonical),
 					0, key.LedgerName, "", "",
 				))
@@ -1286,7 +1285,7 @@ func (c *Checker) compareIndexes(
 			}
 
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 				fmt.Sprintf("registry has Index entry for ledger %q with id %q that has no matching CreateIndex in the audit chain", key.LedgerName, key.Canonical),
 				0, key.LedgerName, "", "",
 			))
@@ -1296,7 +1295,7 @@ func (c *Checker) compareIndexes(
 
 		if stored.GetLedger() != exp.GetLedger() {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 				fmt.Sprintf("Index entry for ledger %q id %q: stored Ledger=%q diverges from audit-derived Ledger=%q",
 					key.LedgerName, key.Canonical, stored.GetLedger(), exp.GetLedger()),
 				0, key.LedgerName, "", "",
@@ -1305,7 +1304,7 @@ func (c *Checker) compareIndexes(
 
 		if !indexes.Equal(stored.GetId(), exp.GetId()) {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 				fmt.Sprintf("Index entry for ledger %q id %q: stored Id diverges from audit-derived",
 					key.LedgerName, key.Canonical),
 				0, key.LedgerName, "", "",
@@ -1315,7 +1314,7 @@ func (c *Checker) compareIndexes(
 
 	if err := iter.Err(); err != nil {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 			fmt.Sprintf("scanning index registry: %v", err),
 			0, "", "", "",
 		))
@@ -1327,7 +1326,7 @@ func (c *Checker) compareIndexes(
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INDEX_MISMATCH,
 			fmt.Sprintf("audit chain expects Index entry for ledger %q id %q but the registry has no matching row",
 				key.LedgerName, key.Canonical),
 			0, key.LedgerName, "", "",
@@ -1368,13 +1367,13 @@ func (c *Checker) compareIndexes(
 // its missing boundary is expected, not corruption. The present-row equality
 // checks (ahead/behind/corrupt-to-zero) still apply to every ledger whose row
 // is present.
-func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, deletedInReplay map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) {
+func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chainBoundState, deletedInReplay map[string]struct{}, callback func(*auditpb.CheckStoreEvent)) {
 	// Collect stored last_mirror_v2_log_id per ledger from the live boundary rows.
 	stored := make(map[string]uint64)
 
 	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("failed to create live boundaries iterator: %v", err), 0, "", "", ""))
 
 		return
@@ -1396,14 +1395,14 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 	}
 
 	if err := iter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("closing live boundaries iterator: %v", err), 0, "", "", ""))
 
 		return
 	}
 
 	if err := iter.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 			fmt.Sprintf("live boundaries iterator error: %v", err), 0, "", "", ""))
 
 		return
@@ -1450,7 +1449,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 				detail = "the ledger has audited MirrorIngest orders but no stored boundary row (last_mirror_v2_log_id lost)"
 			}
 
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MIRROR_V2LOGID_MISMATCH,
 				fmt.Sprintf("stored last_mirror_v2_log_id %d does not equal max audited MirrorIngest v2_log_id %d for ledger %q: %s",
 					storedV2, auditedMax, name, detail),
 				0, name, "", ""))
@@ -1478,7 +1477,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.PebbleReader, chainBound *chai
 // created_at, and applied_index)
 // from the logs, so a missing row is corruption, never a legitimate restore
 // artifact. Stored rows are keyed by the Pebble key id, not the payload.
-func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[uint64]*auditpb.CreatedQueryCheckpointLog, callback func(*auditpb.CheckStoreEvent)) error {
 	stored, err := query.ReadQueryCheckpointRows(reader)
 	if err != nil {
 		return fmt.Errorf("reading stored query checkpoints: %w", err)
@@ -1501,7 +1500,7 @@ func (c *Checker) compareQueryCheckpoints(reader dal.PebbleReader, derived map[u
 	slices.Sort(ids)
 
 	emit := func(msg string) {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, msg, 0, "", "", ""))
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_QUERY_CHECKPOINT_MISMATCH, msg, 0, "", "", ""))
 	}
 
 	for _, id := range ids {
@@ -1561,13 +1560,13 @@ func numscriptVersionGreater(a, b string) bool {
 // row the replay never produced is a surplus/injected row and is flagged.
 func (c *Checker) compareNumscripts(
 	reader dal.PebbleReader,
-	expectedContent map[domain.NumscriptEntryKey]*commonpb.NumscriptInfo,
+	expectedContent map[domain.NumscriptEntryKey]*auditpb.NumscriptInfo,
 	expectedLatest map[domain.NumscriptVersionKey]string,
 	deletedInReplay map[string]struct{},
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	mismatch := func(msg, ledger string) {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH, msg, 0, ledger, "", ""))
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_NUMSCRIPT_MISMATCH, msg, 0, ledger, "", ""))
 	}
 
 	// Content entries (immutable): every stored row must trace to a SavedNumscript.
@@ -1737,7 +1736,7 @@ func (e excludedVolumesSet) containsAccount(ledgerName, account string) bool {
 // compareVolumes compares the replayed volumes with the live rows.
 // `excluded` lists per-ledger accounts whose volumes legitimately diverge
 // (transient + purged ephemeral, sourced from the audit log).
-func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*auditpb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live volumes
@@ -1745,7 +1744,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 
 	liveIter, err := c.attrs.Volume.NewStreamingIter(reader, nil)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("failed to create live volume iterator: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1757,14 +1756,14 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 	}
 
 	if err := liveIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("closing live volume iterator: %v", err), 0, "", "", ""))
 
 		return 1
 	}
 
 	if err := liveIter.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("live volume iterator error: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1775,7 +1774,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 
 	replayIter, err := replay.newPrefixIter(replayPrefixVolume)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("failed to create replay volume iterator: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1788,7 +1787,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		if valErr != nil {
 			_ = replayIter.Close()
 
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("reading replay volume: %v", valErr), 0, "", "", ""))
 
 			return 1
@@ -1798,7 +1797,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		if err := pair.UnmarshalVT(valBytes); err != nil {
 			_ = replayIter.Close()
 
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("unmarshaling replay volume: %v", err), 0, "", "", ""))
 
 			return 1
@@ -1808,7 +1807,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 	}
 
 	if err := replayIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("closing replay volume iterator: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1830,7 +1829,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 	}
 	metadataIter, err := replay.newPrefixIter(replayPrefixMetadata)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("failed to scan replay metadata for active accounts: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1839,7 +1838,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		value, valueErr := metadataIter.ValueAndErr()
 		if valueErr != nil {
 			_ = metadataIter.Close()
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("reading replay metadata for active accounts: %v", valueErr), 0, "", "", ""))
 
 			return 1
@@ -1853,7 +1852,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		}
 	}
 	if err := metadataIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("closing replay metadata active-account scan: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1874,7 +1873,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 			// (invariant #7 — an impossible-by-design state must fail loudly). Emit
 			// a store error and move on; the key is unparseable, so there is no
 			// (ledger, account, asset) to compute an expectation against.
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("unparseable volume projection key %x: %v", key, err), 0, "", "", ""))
 
 			errorCount++
@@ -1917,7 +1916,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		}
 
 		if expectedInput.Cmp(actualInput) != 0 {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("input mismatch for %s/%s: expected %s, got %s",
 					vk.Account, vk.Asset, expectedInput.String(), actualInput.String()),
 				0, vk.LedgerName, vk.Account, vk.Asset))
@@ -1926,7 +1925,7 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 		}
 
 		if expectedOutput.Cmp(actualOutput) != 0 {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 				fmt.Sprintf("output mismatch for %s/%s: expected %s, got %s",
 					vk.Account, vk.Asset, expectedOutput.String(), actualOutput.String()),
 				0, vk.LedgerName, vk.Account, vk.Asset))
@@ -1941,27 +1940,27 @@ func (c *Checker) compareVolumes(ctx context.Context, reader dal.PebbleReader, r
 // metaValueDisplay renders a metadata value with its type for check events, so
 // a type-only divergence (bool false vs string "false") is visible in the
 // message.
-func metaValueDisplay(v *commonpb.MetadataValue) string {
+func metaValueDisplay(v *auditpb.MetadataValue) string {
 	var kind string
 
 	switch v.GetType().(type) {
-	case *commonpb.MetadataValue_StringValue:
+	case *auditpb.MetadataValue_StringValue:
 		kind = "string"
-	case *commonpb.MetadataValue_IntValue:
+	case *auditpb.MetadataValue_IntValue:
 		kind = "int"
-	case *commonpb.MetadataValue_UintValue:
+	case *auditpb.MetadataValue_UintValue:
 		kind = "uint"
-	case *commonpb.MetadataValue_BoolValue:
+	case *auditpb.MetadataValue_BoolValue:
 		kind = "bool"
-	case *commonpb.MetadataValue_DatetimeValue:
+	case *auditpb.MetadataValue_DatetimeValue:
 		kind = "datetime"
-	case *commonpb.MetadataValue_NullValue:
+	case *auditpb.MetadataValue_NullValue:
 		kind = "null"
 	default:
 		kind = "unset"
 	}
 
-	return fmt.Sprintf("%q (%s)", commonpb.MetadataValueToString(v), kind)
+	return fmt.Sprintf("%q (%s)", auditpb.MetadataValueToString(v), kind)
 }
 
 // compareMetadata compares replayed account metadata against the live rows.
@@ -1973,15 +1972,15 @@ func metaValueDisplay(v *commonpb.MetadataValue) string {
 // `excluded` lists per-ledger accounts whose state legitimately diverges
 // (transient + purged ephemeral, sourced from the audit log) — metadata on
 // such accounts is skipped to avoid false positives.
-func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, replay *replayStore, excluded excludedVolumesSet, callback func(*auditpb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	// Collect live metadata
-	liveMetadata := make(map[string]*commonpb.MetadataValue)
+	liveMetadata := make(map[string]*auditpb.MetadataValue)
 
 	liveIter, err := c.attrs.Metadata.NewStreamingIter(reader, nil)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("failed to create live metadata iterator: %v", err), 0, "", "", ""))
 
 		return 1
@@ -1993,14 +1992,14 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	if err := liveIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("closing live metadata iterator: %v", err), 0, "", "", ""))
 
 		return 1
 	}
 
 	if err := liveIter.Err(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("live metadata iterator error: %v", err), 0, "", "", ""))
 
 		return 1
@@ -2009,14 +2008,14 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	// Collect replay metadata state
 	type replayMeta struct {
 		deleted bool
-		value   *commonpb.MetadataValue // only valid when !deleted
+		value   *auditpb.MetadataValue // only valid when !deleted
 	}
 
 	replayEntries := make(map[string]replayMeta)
 	activeAccounts := make(map[domain.AccountKey]struct{})
 	volumeIter, err := replay.newPrefixIter(replayPrefixVolume)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("failed to scan replay volumes for metadata exclusions: %v", err), 0, "", "", ""))
 
 		return 1
@@ -2028,7 +2027,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		}
 	}
 	if err := volumeIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("closing replay-volume exclusion scan: %v", err), 0, "", "", ""))
 
 		return 1
@@ -2036,7 +2035,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 	replayIter, err := replay.newPrefixIter(replayPrefixMetadata)
 	if err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("failed to create replay metadata iterator: %v", err), 0, "", "", ""))
 
 		return 1
@@ -2049,7 +2048,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if valErr != nil {
 			_ = replayIter.Close()
 
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("reading replay metadata: %v", valErr), 0, "", "", ""))
 
 			return 1
@@ -2062,11 +2061,11 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		if valBytes[0] == metaFlagDeleted {
 			replayEntries[string(canonicalKey)] = replayMeta{deleted: true}
 		} else {
-			mv := &commonpb.MetadataValue{}
+			mv := &auditpb.MetadataValue{}
 			if err := mv.UnmarshalVT(valBytes[1:]); err != nil {
 				_ = replayIter.Close()
 
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 					fmt.Sprintf("unmarshaling replay metadata value: %v", err), 0, "", "", ""))
 
 				return 1
@@ -2086,7 +2085,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 	}
 
 	if err := replayIter.Close(); err != nil {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 			fmt.Sprintf("closing replay metadata iterator: %v", err), 0, "", "", ""))
 
 		return 1
@@ -2123,7 +2122,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 		}
 
 		// Compute expected value
-		var expectedValue *commonpb.MetadataValue
+		var expectedValue *auditpb.MetadataValue
 		expectedExists := false
 
 		if rm, hasReplay := replayEntries[key]; hasReplay && !rm.deleted {
@@ -2136,12 +2135,12 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 		if expectedExists != actualExists {
 			if expectedExists {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 					fmt.Sprintf("metadata missing for %s/%s: expected %s",
 						mk.Account, mk.Key, metaValueDisplay(expectedValue)),
 					0, mk.LedgerName, mk.Account, ""))
 			} else {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+				callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 					fmt.Sprintf("unexpected metadata for %s/%s: got %s",
 						mk.Account, mk.Key, metaValueDisplay(actualValue)),
 					0, mk.LedgerName, mk.Account, ""))
@@ -2149,7 +2148,7 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 
 			errorCount++
 		} else if expectedExists && !expectedValue.EqualVT(actualValue) {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 				fmt.Sprintf("metadata mismatch for %s/%s: expected %s, got %s",
 					mk.Account, mk.Key, metaValueDisplay(expectedValue), metaValueDisplay(actualValue)),
 				0, mk.LedgerName, mk.Account, ""))
@@ -2170,16 +2169,16 @@ func (c *Checker) compareMetadata(ctx context.Context, reader dal.PebbleReader, 
 // undetected. The fix in #347 widens allKeys to the union with live and
 // instruments every abort path with an error event so that swallowed
 // iterator/unmarshal failures cannot make the check look clean.
-func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, replay *replayStore, callback func(*servicepb.CheckStoreEvent)) int {
+func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleReader, replay *replayStore, callback func(*auditpb.CheckStoreEvent)) int {
 	errorCount := 0
 
 	emitErr := func(msg string) {
-		callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH, msg, "", 0))
+		callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH, msg, "", 0))
 	}
 
 	// Collect live transaction states up-front so that fabricated entries
 	// (live without replay) are part of allKeys.
-	liveTx := make(map[string]*commonpb.TransactionState)
+	liveTx := make(map[string]*internalcommonpb.TransactionState)
 
 	liveIter, err := c.attrs.Transaction.NewStreamingIter(reader, nil)
 	if err != nil {
@@ -2206,7 +2205,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 	}
 
 	// Collect replay transaction states.
-	replayTx := make(map[string]*commonpb.TransactionState)
+	replayTx := make(map[string]*internalcommonpb.TransactionState)
 
 	replayIter, err := replay.newPrefixIter(replayPrefixTransaction)
 	if err != nil {
@@ -2234,7 +2233,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 			return 1
 		}
 
-		state := &commonpb.TransactionState{}
+		state := &internalcommonpb.TransactionState{}
 		if err := state.UnmarshalVT(valBytes[1:]); err != nil {
 			_ = replayIter.Close()
 			emitErr(fmt.Sprintf("unmarshaling replay transaction at key %x: %v", canonicalKey, err))
@@ -2273,7 +2272,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 
 		// Expected: the replayed state. Stays nil when only the live store has
 		// the entry (fabricated state).
-		var expected *commonpb.TransactionState
+		var expected *internalcommonpb.TransactionState
 		if rs, ok := replayTx[key]; ok {
 			expected = rs
 		}
@@ -2282,7 +2281,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 
 		if expected == nil {
 			if actualState != nil {
-				callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
+				callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 					fmt.Sprintf("unexpected transaction in live store for tx %d (no matching log)", tk.ID),
 					tk.LedgerName, tk.ID))
 
@@ -2293,7 +2292,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		}
 
 		if actualState == nil {
-			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
+			callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 				fmt.Sprintf("transaction state missing for tx %d", tk.ID),
 				tk.LedgerName, tk.ID))
 
@@ -2309,7 +2308,7 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 		normalizeTransactionState(actualState)
 
 		if !proto.Equal(expected, actualState) {
-			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
+			callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_TRANSACTION_UPDATE_MISMATCH,
 				fmt.Sprintf("transaction state mismatch for tx %d: expected %s, got %s",
 					tk.ID, expected.String(), actualState.String()),
 				tk.LedgerName, tk.ID))
@@ -2339,16 +2338,16 @@ func (c *Checker) compareTransactions(ctx context.Context, reader dal.PebbleRead
 func compareTransactionPostCommitVolumes(
 	ledgerName string,
 	seq uint64,
-	data *commonpb.LedgerLogPayload,
+	data *auditpb.LedgerLogPayload,
 	replay *replayStore,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) error {
-	var tx *commonpb.Transaction
+	var tx *auditpb.Transaction
 
 	switch p := data.GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *auditpb.LedgerLogPayload_CreatedTransaction:
 		tx = p.CreatedTransaction.GetTransaction()
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *auditpb.LedgerLogPayload_RevertedTransaction:
 		tx = p.RevertedTransaction.GetRevertTransaction()
 	default:
 		return nil
@@ -2361,13 +2360,13 @@ func compareTransactionPostCommitVolumes(
 	type tupleKey struct{ account, asset, color string }
 
 	emit := func(account, asset, color, msg string) {
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_VOLUME_MISMATCH,
 			fmt.Sprintf("tx %d: post-commit volume %s for %s/%s/color=%q", tx.GetId(), msg, account, asset, color),
 			seq, ledgerName, account, asset))
 	}
 
 	// Index the stored snapshot, flagging duplicate rows for the same tuple.
-	storedByTuple := make(map[tupleKey]*commonpb.Volumes)
+	storedByTuple := make(map[tupleKey]*auditpb.Volumes)
 
 	for account, byAssets := range tx.GetPostCommitVolumes().GetVolumesByAccount() {
 		for _, entry := range byAssets.GetVolumes() {
@@ -2510,7 +2509,7 @@ func (f chainVerifierFolds) markLiveTruncated() {
 
 type auditVerification struct {
 	skippable map[uint64]*expectedSkippableOrder
-	logs      map[uint64]*commonpb.Log
+	logs      map[uint64]*auditpb.Log
 }
 
 func (c *Checker) verifyAuditHashChain(
@@ -2519,7 +2518,7 @@ func (c *Checker) verifyAuditHashChain(
 	auditKey string,
 	chainBound *chainBoundState,
 	folds chainVerifierFolds,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) (*auditVerification, error) {
 	auditCursor, err := query.ReadAuditEntries(ctx, reader, nil)
 	if err != nil {
@@ -2547,7 +2546,7 @@ func (c *Checker) verifyAuditHashChain(
 		// re-derived from the chain-bound Order. Consumed by
 		// verifySkippedOrder during the log iteration loop.
 		expectedSkippable = make(map[uint64]*expectedSkippableOrder)
-		expectedLogs      = make(map[uint64]*commonpb.Log)
+		expectedLogs      = make(map[uint64]*auditpb.Log)
 		// hasVerifiedRange records whether any entry was verified — the gate
 		// for the idempotency comparison, whose expectation is only complete
 		// once the audit range has been folded.
@@ -2580,7 +2579,7 @@ func (c *Checker) verifyAuditHashChain(
 		// this list). Flag and stop.
 		if len(entry.GetItems()) > 0 {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("audit entry %d carries %d embedded items in its persisted value; entry.items must be nil on disk",
 					entry.GetSequence(), len(entry.GetItems())),
 				logSequenceFromAuditEntry(entry), "", "", "",
@@ -2621,7 +2620,7 @@ func (c *Checker) verifyAuditHashChain(
 			// schema change. Either way the chain is unreproducible
 			// from here, so emit a mismatch and stop.
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("audit entry %d cannot be re-hashed: %v", entry.GetSequence(), headerErr),
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
@@ -2656,7 +2655,7 @@ func (c *Checker) verifyAuditHashChain(
 
 		gen, ok := generators[version]
 		if !ok {
-			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), auditKey)
+			gen = processing.NewHashGenerator(auditpb.HashAlgorithm(version), auditKey)
 			generators[version] = gen
 		}
 
@@ -2665,7 +2664,7 @@ func (c *Checker) verifyAuditHashChain(
 
 		if !bytes.Equal(computed, entry.GetHash()) {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("audit hash chain broken at sequence %d: stored=%x computed=%x",
 					entry.GetSequence(), entry.GetHash(), computed),
 				logSequenceFromAuditEntry(entry), "", "", "",
@@ -2903,7 +2902,7 @@ type chainBoundState struct {
 
 type chainBoundSavedMetadata struct {
 	ledger  string
-	payload *commonpb.SavedMetadata
+	payload *auditpb.SavedMetadata
 }
 
 // chainBoundMutation records one presence-flip observed on the audit
@@ -2939,9 +2938,9 @@ func newChainBoundState() *chainBoundState {
 func verifySavedMetadataAgainstAuditedOrder(
 	ledger string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *auditpb.LedgerLogPayload,
 	chainBound *chainBoundState,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	expected, ok := chainBound.savedMetadata[seq]
 	if !ok {
@@ -2961,7 +2960,7 @@ func verifySavedMetadataAgainstAuditedOrder(
 	}
 
 	callback(errorEvent(
-		servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
+		auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH,
 		fmt.Sprintf("log %d SavedMetadata payload on ledger %q does not match the chain-bound metadata order for ledger %q", seq, ledger, expected.ledger),
 		seq, ledger, "", "",
 	))
@@ -2993,7 +2992,7 @@ func mutationStateWithWitness(muts []chainBoundMutation, seq uint64) (state, wit
 // per-reason branches in verifySkippedOrder pick the field they need and
 // ignore the others.
 type expectedSkippableOrder struct {
-	reasons []commonpb.ErrorReason
+	reasons []auditpb.ErrorReason
 	ledger  string
 	// TRANSACTION_REFERENCE_CONFLICT correlator: reference the order declared.
 	reference string
@@ -3161,7 +3160,7 @@ func collectExpectedSkippable(
 		if am := apply.GetAddMetadata(); am != nil {
 			chainBound.savedMetadata[logSeq] = chainBoundSavedMetadata{
 				ledger: ledger,
-				payload: &commonpb.SavedMetadata{
+				payload: &auditpb.SavedMetadata{
 					Target:   am.GetTarget(),
 					Metadata: am.GetMetadata(),
 				},
@@ -3170,7 +3169,7 @@ func collectExpectedSkippable(
 			if sm := mi.GetEntry().GetSavedMetadata(); sm != nil {
 				chainBound.savedMetadata[logSeq] = chainBoundSavedMetadata{
 					ledger: ledger,
-					payload: &commonpb.SavedMetadata{
+					payload: &auditpb.SavedMetadata{
 						Target:   sm.GetTarget(),
 						Metadata: sm.GetMetadata(),
 					},
@@ -3232,7 +3231,7 @@ func collectExpectedSkippable(
 		if dm := apply.GetDeleteMetadata(); dm != nil {
 			exp.metadataKey = dm.GetKey()
 			exp.metadataTarget = formatTargetForSkipContext(dm.GetTarget())
-			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*commonpb.Target_TransactionId)
+			_, exp.metadataTargetIsTx = dm.GetTarget().GetTarget().(*auditpb.Target_TransactionId)
 		}
 
 		if aa := apply.GetAddAccountType(); aa != nil {
@@ -3377,7 +3376,7 @@ func recordChainBoundMutations(
 		// would drop a real presence and let a later forged
 		// METADATA_NOT_FOUND slip through (finding checker.go:2295). Gate the
 		// suppression on conflict-whitelist membership.
-		conflictSkippable := slices.Contains(apply.GetSkippableReasons(), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
+		conflictSkippable := slices.Contains(apply.GetSkippableReasons(), auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT)
 		createApplied := !conflictSkippable ||
 			(!chainBoundCreateTxSkipped(ledger, ct, logSeq, chainBound) &&
 				!chainBoundCreateTxApplicationUncertain(ledger, ct, logSeq, chainBound))
@@ -3770,11 +3769,11 @@ func appendAccountTypeMutation(
 // transaction targets carry the id as a decimal string. Kept in lockstep
 // with the sub-processor's formatting so the checker's context-tampering
 // check compares apples-to-apples.
-func formatTargetForSkipContext(target *commonpb.Target) string {
+func formatTargetForSkipContext(target *auditpb.Target) string {
 	switch t := target.GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *auditpb.Target_Account:
 		return t.Account.GetAddr()
-	case *commonpb.Target_TransactionId:
+	case *auditpb.Target_TransactionId:
 		return strconv.FormatUint(t.TransactionId, 10)
 	default:
 		return ""
@@ -3801,14 +3800,14 @@ func metadataTimelineTarget(isTx bool, target string) string {
 }
 
 // metadataTimelineTargetFromProto is metadataTimelineTarget for a
-// *commonpb.Target whose kind lives in the oneof (AddMetadata / DeleteMetadata
+// *auditpb.Target whose kind lives in the oneof (AddMetadata / DeleteMetadata
 // / mirror Saved/Deleted metadata). Returns "" when the target is unset so
 // callers keep their existing empty-target guard.
-func metadataTimelineTargetFromProto(target *commonpb.Target) string {
+func metadataTimelineTargetFromProto(target *auditpb.Target) string {
 	switch t := target.GetTarget().(type) {
-	case *commonpb.Target_Account:
+	case *auditpb.Target_Account:
 		return metadataTimelineTarget(false, t.Account.GetAddr())
-	case *commonpb.Target_TransactionId:
+	case *auditpb.Target_TransactionId:
 		return metadataTimelineTarget(true, strconv.FormatUint(t.TransactionId, 10))
 	default:
 		return ""
@@ -3887,12 +3886,12 @@ func rememberReferenceTxID(
 func verifySkippedOrder(
 	ledger string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *auditpb.LedgerLogPayload,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
-	skipped, ok := payload.GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped)
+	skipped, ok := payload.GetPayload().(*auditpb.LedgerLogPayload_OrderSkipped)
 	if !ok {
 		// The projection at `seq` is NOT an OrderSkippedLog. The elision
 		// check (inverse direction) is dispatched at the outer log
@@ -3911,7 +3910,7 @@ func verifySkippedOrder(
 		// it directly as invalid — a legitimate skip always carries a
 		// populated inner message (assignSkipLogIDAndDate + reason).
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d on ledger %q sets the OrderSkipped oneof but the inner OrderSkippedLog message is nil", seq, ledger),
 			seq, ledger, "", "",
 		))
@@ -3921,9 +3920,9 @@ func verifySkippedOrder(
 
 	reason := skipped.OrderSkipped.GetReason()
 
-	if reason == commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
+	if reason == auditpb.ErrorReason_ERROR_REASON_UNSPECIFIED {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records an OrderSkipped projection with UNSPECIFIED reason in ledger %q", seq, ledger),
 			seq, ledger, "", "",
 		))
@@ -3933,7 +3932,7 @@ func verifySkippedOrder(
 
 	if domain.KindForReason(reason) == domain.KindInternal {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records an OrderSkipped projection with KindInternal reason %s in ledger %q (structural failures must never skip)", seq, reason, ledger),
 			seq, ledger, "", "",
 		))
@@ -3944,7 +3943,7 @@ func verifySkippedOrder(
 	expected, ok := expectedSkippable[seq]
 	if !ok {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records an OrderSkipped projection (reason %s) but the originating order did not authorise any skippable reason", seq, reason),
 			seq, ledger, "", "",
 		))
@@ -3954,7 +3953,7 @@ func verifySkippedOrder(
 
 	if !slices.Contains(expected.reasons, reason) {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records an OrderSkipped projection with reason %s that is not in the originating order's skippable_reasons whitelist", seq, reason),
 			seq, ledger, "", "",
 		))
@@ -3971,7 +3970,7 @@ func verifySkippedOrder(
 	// just CONFLICT.
 	if expected.ledger != ledger {
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records OrderSkipped on ledger %q but the chain-bound order targets ledger %q", seq, ledger, expected.ledger),
 			seq, ledger, "", "",
 		))
@@ -3990,12 +3989,12 @@ func verifySkippedOrder(
 	// be replayed against the audit chain. The `default` branch is the
 	// tripwire.
 	switch reason {
-	case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT:
+	case auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT:
 		// Empty reference means the original order had no reference set —
 		// TRANSACTION_REFERENCE_CONFLICT is structurally impossible.
 		if expected.reference == "" {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but the audited order on ledger %q has no reference set", seq, ledger),
 				seq, ledger, "", "",
 			))
@@ -4028,7 +4027,7 @@ func verifySkippedOrder(
 
 		if got := ctx["reference"]; got != expected.reference {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.reference=%q but the chain-bound order references %q", seq, got, expected.reference),
 				seq, ledger, "", "",
 			))
@@ -4038,7 +4037,7 @@ func verifySkippedOrder(
 
 		if got := ctx["ledger"]; got != expected.ledger {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.ledger=%q but the chain-bound order targets ledger %q", seq, got, expected.ledger),
 				seq, ledger, "", "",
 			))
@@ -4071,7 +4070,7 @@ func verifySkippedOrder(
 			// document the absent case as accepted rather than reject it.
 			if got, present := ctx["existingTransactionId"]; present && got != want {
 				callback(errorEvent(
-					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+					auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 					fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip with context.existingTransactionId=%q but the reference %q on ledger %q is owned by transaction %s", seq, got, expected.reference, ledger, want),
 					seq, ledger, "", "",
 				))
@@ -4091,7 +4090,7 @@ func verifySkippedOrder(
 			// whole history, so a missing claim proves fabrication.
 
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_REFERENCE_CONFLICT skip but reference %q was not claimed on ledger %q before this sequence", seq, expected.reference, ledger),
 				seq, ledger, "", "",
 			))
@@ -4099,7 +4098,7 @@ func verifySkippedOrder(
 			return
 		}
 
-	case commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED:
+	case auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED:
 		// Chain-bound Order was a RevertTransactionOrder targeting
 		// transactionID. Two-layer verification:
 		//
@@ -4116,7 +4115,7 @@ func verifySkippedOrder(
 		//      when a strictly-earlier revert exists.
 		if expected.transactionID == 0 {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_ALREADY_REVERTED skip but the audited order on ledger %q is not a RevertTransactionOrder", seq, ledger),
 				seq, ledger, "", "",
 			))
@@ -4128,7 +4127,7 @@ func verifySkippedOrder(
 		want := strconv.FormatUint(expected.transactionID, 10)
 		if got := ctx["transactionId"]; got != want {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_ALREADY_REVERTED skip with context.transactionId=%q but the chain-bound order targets %s", seq, got, want),
 				seq, ledger, "", "",
 			))
@@ -4142,7 +4141,7 @@ func verifySkippedOrder(
 			// covers the whole history, so the skip is fabricated.
 
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records TRANSACTION_ALREADY_REVERTED skip but tx %d was not reverted on ledger %q before this sequence", seq, expected.transactionID, ledger),
 				seq, ledger, "", "",
 			))
@@ -4150,7 +4149,7 @@ func verifySkippedOrder(
 			return
 		}
 
-	case commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND:
+	case auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND:
 		// Chain-bound Order was a DeleteMetadataOrder with (target, key).
 		// Two-layer verification:
 		//
@@ -4166,7 +4165,7 @@ func verifySkippedOrder(
 		//      so a tampered log cannot influence it.
 		if expected.metadataKey == "" {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip but the audited order on ledger %q is not a DeleteMetadataOrder", seq, ledger),
 				seq, ledger, "", "",
 			))
@@ -4177,7 +4176,7 @@ func verifySkippedOrder(
 		ctx := skipped.OrderSkipped.GetContext()
 		if got := ctx["key"]; got != expected.metadataKey {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip with context.key=%q but the chain-bound order targets key %q", seq, got, expected.metadataKey),
 				seq, ledger, "", "",
 			))
@@ -4187,7 +4186,7 @@ func verifySkippedOrder(
 
 		if got := ctx["target"]; got != expected.metadataTarget {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip with context.target=%q but the chain-bound order targets %q", seq, got, expected.metadataTarget),
 				seq, ledger, "", "",
 			))
@@ -4206,7 +4205,7 @@ func verifySkippedOrder(
 			// seq — a DeleteMetadata that ran on that state would have
 			// succeeded, not skipped.
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records METADATA_NOT_FOUND skip on (target=%q, key=%q) but the audit chain shows the key was present at this sequence on ledger %q", seq, expected.metadataTarget, expected.metadataKey, ledger),
 				seq, ledger, "", "",
 			))
@@ -4214,8 +4213,8 @@ func verifySkippedOrder(
 			return
 		}
 
-	case commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
-		commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
+	case auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS,
+		auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND:
 		// Chain-bound Order was an AddAccountType (for ALREADY_EXISTS)
 		// or RemoveAccountType (for NOT_FOUND) targeting `name`.
 		// Two-layer verification:
@@ -4239,7 +4238,7 @@ func verifySkippedOrder(
 		// projection should not arise in practice — this is defense in depth.
 		if !expected.isAccountTypeOrder {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records %s skip but the audited order on ledger %q is not an AccountType order", seq, reason, ledger),
 				seq, ledger, "", "",
 			))
@@ -4250,7 +4249,7 @@ func verifySkippedOrder(
 		ctx := skipped.OrderSkipped.GetContext()
 		if got := ctx["name"]; got != expected.accountTypeName {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records %s skip with context.name=%q but the chain-bound order targets %q", seq, reason, got, expected.accountTypeName),
 				seq, ledger, "", "",
 			))
@@ -4260,7 +4259,7 @@ func verifySkippedOrder(
 
 		present, _ := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
-		mustBePresent := reason == commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
+		mustBePresent := reason == auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
 		if present != mustBePresent {
 			// The chain-bound timeline contradicts the skipped reason: the
 			// audit chain covers the whole history, so the timeline is
@@ -4271,7 +4270,7 @@ func verifySkippedOrder(
 			}
 
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 				fmt.Sprintf("log %d records %s skip on account type %q but the audit chain shows the name was not %s at this sequence on ledger %q", seq, reason, expected.accountTypeName, condition, ledger),
 				seq, ledger, "", "",
 			))
@@ -4285,7 +4284,7 @@ func verifySkippedOrder(
 		// entry in admission's allowedSkippableReasons must land a matching
 		// case above; until then, treat the projection as unverifiable.
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d records an OrderSkipped projection with reason %s on ledger %q, but the checker has no reason-specific replay branch — the reason was added to the whitelist without extending verifySkippedOrder", seq, reason, ledger),
 			seq, ledger, "", "",
 		))
@@ -4308,21 +4307,21 @@ func verifySkippedOrder(
 // the elision check entirely.
 func dispatchElisionCheck(
 	seq uint64,
-	log *commonpb.Log,
+	log *auditpb.Log,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	expected, isExpected := expectedSkippable[seq]
 	if !isExpected {
 		return
 	}
 
-	if apl, ok := log.GetPayload().GetType().(*commonpb.LogPayload_Apply); ok &&
+	if apl, ok := log.GetPayload().GetType().(*auditpb.LogPayload_Apply); ok &&
 		apl.Apply != nil &&
 		apl.Apply.GetLog() != nil &&
 		apl.Apply.GetLog().GetData() != nil {
-		if _, isSkip := apl.Apply.GetLog().GetData().GetPayload().(*commonpb.LedgerLogPayload_OrderSkipped); isSkip {
+		if _, isSkip := apl.Apply.GetLog().GetData().GetPayload().(*auditpb.LedgerLogPayload_OrderSkipped); isSkip {
 			// Well-formed OrderSkipped projection: verifySkippedOrder
 			// (called from the Apply branch of the iteration) already
 			// validated the forward direction.
@@ -4350,7 +4349,7 @@ func verifyExpectedSkipNotElided(
 	seq uint64,
 	expectedSkippable map[uint64]*expectedSkippableOrder,
 	chainBound *chainBoundState,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	expected, ok := expectedSkippable[seq]
 	if !ok {
@@ -4376,31 +4375,31 @@ func verifyExpectedSkipNotElided(
 	// skipped" (no correlator on expected, no state timeline) are left
 	// to the forward direction, which catches forged OrderSkipped logs.
 	switch {
-	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) && expected.reference != "":
+	case slices.Contains(expected.reasons, auditpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT) && expected.reference != "":
 		firstSeenSeq, claimed := chainBound.references[ledger][expected.reference]
 		if !claimed || firstSeenSeq >= seq {
 			return
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d on ledger %q is not an OrderSkipped projection but the chain-bound order opted into TRANSACTION_REFERENCE_CONFLICT skip and reference %q was already claimed at sequence %d", seq, ledger, expected.reference, firstSeenSeq),
 			seq, ledger, "", "",
 		))
 
-	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) && expected.transactionID != 0:
+	case slices.Contains(expected.reasons, auditpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED) && expected.transactionID != 0:
 		firstRevertSeq, seen := chainBound.reverted[ledger][expected.transactionID]
 		if !seen || firstRevertSeq >= seq {
 			return
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d on ledger %q is not an OrderSkipped projection but the chain-bound order opted into TRANSACTION_ALREADY_REVERTED skip and tx %d was already reverted at sequence %d", seq, ledger, expected.transactionID, firstRevertSeq),
 			seq, ledger, "", "",
 		))
 
-	case slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
+	case slices.Contains(expected.reasons, auditpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND) && expected.metadataKey != "":
 		present, _ := mutationStateWithWitness(chainBound.metadata[ledger][metadataTimelineTarget(expected.metadataTargetIsTx, expected.metadataTarget)][expected.metadataKey], seq)
 		if present {
 			// Chain shows PRESENT → a Delete would have succeeded, not
@@ -4409,16 +4408,16 @@ func verifyExpectedSkipNotElided(
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d on ledger %q is not an OrderSkipped projection but the chain-bound order opted into METADATA_NOT_FOUND skip and (target=%q, key=%q) was absent at this sequence", seq, ledger, expected.metadataTarget, expected.metadataKey),
 			seq, ledger, "", "",
 		))
 
-	case (slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
-		slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.isAccountTypeOrder:
+	case (slices.Contains(expected.reasons, auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS) ||
+		slices.Contains(expected.reasons, auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND)) && expected.isAccountTypeOrder:
 		present, _ := mutationStateWithWitness(chainBound.accountTypes[ledger][expected.accountTypeName], seq)
 
-		mustBePresent := slices.Contains(expected.reasons, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)
+		mustBePresent := slices.Contains(expected.reasons, auditpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS)
 		if present != mustBePresent {
 			// Chain-bound state contradicts the reason that would
 			// have been skipped: no elision to prove.
@@ -4426,7 +4425,7 @@ func verifyExpectedSkipNotElided(
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_INVALID_SKIP,
 			fmt.Sprintf("log %d on ledger %q is not an OrderSkipped projection but the chain-bound order opted into %s skip and account type %q was in the expected state at this sequence", seq, ledger, elidedReasonForAccountType(mustBePresent), expected.accountTypeName),
 			seq, ledger, "", "",
 		))
@@ -4459,7 +4458,7 @@ type expectedIdempotency struct {
 	proposalHash []byte
 	expiresAt    uint64
 	failure      bool
-	reason       commonpb.ErrorReason
+	reason       auditpb.ErrorReason
 	message      string
 	metadata     map[string]string
 	firstLog     uint64
@@ -4524,7 +4523,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 	reader dal.PebbleReader,
 	expected map[idemExpectedKey]expectedIdempotency,
 	hasVerifiedRange bool,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) error {
 	iter, err := reader.NewIter(&pebble.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
@@ -4542,7 +4541,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 			continue
 		}
 
-		var stored commonpb.IdempotencyKeyValue
+		var stored internalcommonpb.IdempotencyKeyValue
 		if err := stored.UnmarshalVT(iter.Value()); err != nil {
 			return fmt.Errorf("unmarshalling idempotency value: %w", err)
 		}
@@ -4557,7 +4556,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 			// entry.
 			if hasVerifiedRange {
 				callback(errorEvent(
-					servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
+					auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
 					fmt.Sprintf("frozen idempotency outcome (created_at=%d) has no matching audit entry — tampered created_at or fabricated entry",
 						stored.GetCreatedAt()),
 					0, "", "", "",
@@ -4569,7 +4568,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 
 		if msg := idempotencyMismatch(&stored, exp); msg != "" {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH,
 				fmt.Sprintf("frozen idempotency outcome (created_at=%d) diverges from its audit entry: %s",
 					stored.GetCreatedAt(), msg),
 				0, "", "", "",
@@ -4582,7 +4581,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 
 // idempotencyMismatch returns a human-readable reason the stored frozen outcome
 // diverges from the audit-derived expectation, or "" when they agree.
-func idempotencyMismatch(stored *commonpb.IdempotencyKeyValue, exp expectedIdempotency) string {
+func idempotencyMismatch(stored *internalcommonpb.IdempotencyKeyValue, exp expectedIdempotency) string {
 	if !bytes.Equal(stored.GetHash(), exp.proposalHash) {
 		return fmt.Sprintf("proposal hash %x does not match audit-derived %x", stored.GetHash(), exp.proposalHash)
 	}
@@ -4700,7 +4699,7 @@ func logSequenceFromAuditEntry(entry *auditpb.AuditEntry) uint64 {
 // from the audit. The schema is a projection of CreateLedger.initial_schema +
 // SetMetadataFieldType / RemovedMetadataFieldType orders; a stored schema that
 // diverges from the replay is tampering or a restore-rebuild gap.
-func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*commonpb.MetadataSchema, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, expected map[string]*auditpb.MetadataSchema, callback func(*auditpb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for schema verification: %w", err)
@@ -4721,7 +4720,7 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 		name := info.GetName()
 		if !schemaEqual(expected[name], info.GetMetadataSchema()) {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_SCHEMA_MISMATCH,
 				fmt.Sprintf("ledger %q metadata schema diverges from the audit-derived declarations", name),
 				0, name, "", "",
 			))
@@ -4736,12 +4735,12 @@ func (c *Checker) compareSchema(ctx context.Context, reader dal.PebbleReader, ex
 // compiled map (drives the ephemeral-purge simulation). The raw map is copied
 // so the replay's add/remove mutations don't touch the source. Serves the types
 // carried by CreateLedger.
-func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*commonpb.AccountType) {
+func seedAccountTypes(raw map[string]map[string]*auditpb.AccountType, compiled map[string][]accounttype.CompiledType, ledger string, types map[string]*auditpb.AccountType) {
 	if len(types) == 0 {
 		return
 	}
 
-	cloned := make(map[string]*commonpb.AccountType, len(types))
+	cloned := make(map[string]*auditpb.AccountType, len(types))
 	maps.Copy(cloned, types)
 
 	raw[ledger] = cloned
@@ -4753,7 +4752,7 @@ func seedAccountTypes(raw map[string]map[string]*commonpb.AccountType, compiled 
 // (AddAccountType / RemoveAccountType). The logged AccountType is the exact
 // object stored on LedgerInfo (processAddAccountType), so a proto.Equal
 // divergence is tampering or a restore-rebuild gap.
-func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*commonpb.AccountType, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleReader, expected map[string]map[string]*auditpb.AccountType, callback func(*auditpb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for account-type verification: %w", err)
@@ -4772,7 +4771,7 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 		name := info.GetName()
 		if !accountTypesEqual(expected[name], info.GetAccountTypes()) {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_ACCOUNT_TYPE_MISMATCH,
 				fmt.Sprintf("ledger %q account types diverge from the audit-derived declarations", name),
 				0, name, "", "",
 			))
@@ -4785,7 +4784,7 @@ func (c *Checker) compareAccountTypes(ctx context.Context, reader dal.PebbleRead
 // compareDefaultEnforcementModes verifies the persisted policy that controls
 // whether unmatched accounts are rejected. The expectation is reconstructed
 // from the ledger's creation log and subsequent audited mode-update logs.
-func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.PebbleReader, expected map[string]commonpb.ChartEnforcementMode, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal.PebbleReader, expected map[string]auditpb.ChartEnforcementMode, callback func(*auditpb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for default enforcement mode verification: %w", err)
@@ -4804,7 +4803,7 @@ func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal
 		name := info.GetName()
 		if mode, ok := expected[name]; ok && mode != info.GetDefaultEnforcementMode() {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH,
 				fmt.Sprintf("ledger %q default enforcement mode diverges from the audit-derived policy", name),
 				0, name, "", "",
 			))
@@ -4823,7 +4822,7 @@ func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal
 // nothing on one side. knownLedgers is the audit-derived set (replay), never
 // seeded from the live store, so both checks are honest. This is the
 // store-side counterpart of the replay's UNKNOWN_LEDGER gate.
-func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleReader, knownLedgers map[string]struct{}, callback func(*auditpb.CheckStoreEvent)) error {
 	ledgerCursor, err := query.ReadLedgers(ctx, reader)
 	if err != nil {
 		return fmt.Errorf("reading ledgers for presence verification: %w", err)
@@ -4854,7 +4853,7 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_MISSING_LEDGER,
 			fmt.Sprintf("ledger %q is live in the audit but its stored LedgerInfo is missing or soft-deleted", name),
 			0, name, "", "",
 		))
@@ -4867,7 +4866,7 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 		}
 
 		callback(errorEvent(
-			servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
+			auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_UNAUDITED_LEDGER,
 			fmt.Sprintf("ledger %q has a stored LedgerInfo with no CreateLedger in the audit", name),
 			0, name, "", "",
 		))
@@ -4878,7 +4877,7 @@ func (c *Checker) compareLedgerPresence(ctx context.Context, reader dal.PebbleRe
 
 // accountTypesEqual compares two account-type sets by content, treating a nil
 // map and an empty one as equal.
-func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
+func accountTypesEqual(a, b map[string]*auditpb.AccountType) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -4896,31 +4895,31 @@ func accountTypesEqual(a, b map[string]*commonpb.AccountType) bool {
 // setExpectedSchemaField records a field-type declaration on the ledger's
 // expected schema during replay, lazily creating it. Mirrors
 // processSetMetadataFieldType.
-func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string, typ commonpb.MetadataType) {
+func setExpectedSchemaField(schemas map[string]*auditpb.MetadataSchema, ledger string, target auditpb.TargetType, key string, typ auditpb.MetadataType) {
 	schema := schemas[ledger]
 	if schema == nil {
-		schema = &commonpb.MetadataSchema{}
+		schema = &auditpb.MetadataSchema{}
 		schemas[ledger] = schema
 	}
 
-	field := &commonpb.MetadataFieldSchema{Type: typ}
+	field := &auditpb.MetadataFieldSchema{Type: typ}
 
 	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case auditpb.TargetType_TARGET_TYPE_ACCOUNT:
 		if schema.AccountFields == nil {
-			schema.AccountFields = make(map[string]*commonpb.MetadataFieldSchema)
+			schema.AccountFields = make(map[string]*auditpb.MetadataFieldSchema)
 		}
 
 		schema.AccountFields[key] = field
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case auditpb.TargetType_TARGET_TYPE_TRANSACTION:
 		if schema.TransactionFields == nil {
-			schema.TransactionFields = make(map[string]*commonpb.MetadataFieldSchema)
+			schema.TransactionFields = make(map[string]*auditpb.MetadataFieldSchema)
 		}
 
 		schema.TransactionFields[key] = field
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case auditpb.TargetType_TARGET_TYPE_LEDGER:
 		if schema.LedgerFields == nil {
-			schema.LedgerFields = make(map[string]*commonpb.MetadataFieldSchema)
+			schema.LedgerFields = make(map[string]*auditpb.MetadataFieldSchema)
 		}
 
 		schema.LedgerFields[key] = field
@@ -4929,18 +4928,18 @@ func setExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger 
 
 // removeExpectedSchemaField drops a field-type declaration during replay.
 // Mirrors processRemoveMetadataFieldType.
-func removeExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledger string, target commonpb.TargetType, key string) {
+func removeExpectedSchemaField(schemas map[string]*auditpb.MetadataSchema, ledger string, target auditpb.TargetType, key string) {
 	schema := schemas[ledger]
 	if schema == nil {
 		return
 	}
 
 	switch target {
-	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
+	case auditpb.TargetType_TARGET_TYPE_ACCOUNT:
 		delete(schema.GetAccountFields(), key)
-	case commonpb.TargetType_TARGET_TYPE_TRANSACTION:
+	case auditpb.TargetType_TARGET_TYPE_TRANSACTION:
 		delete(schema.GetTransactionFields(), key)
-	case commonpb.TargetType_TARGET_TYPE_LEDGER:
+	case auditpb.TargetType_TARGET_TYPE_LEDGER:
 		delete(schema.GetLedgerFields(), key)
 	}
 }
@@ -4948,13 +4947,13 @@ func removeExpectedSchemaField(schemas map[string]*commonpb.MetadataSchema, ledg
 // schemaEqual compares two metadata schemas by field-type content, treating a
 // nil schema and one with no fields as equal (nil vs empty maps must not read
 // as a divergence).
-func schemaEqual(a, b *commonpb.MetadataSchema) bool {
+func schemaEqual(a, b *auditpb.MetadataSchema) bool {
 	return fieldTypesEqual(a.GetAccountFields(), b.GetAccountFields()) &&
 		fieldTypesEqual(a.GetTransactionFields(), b.GetTransactionFields()) &&
 		fieldTypesEqual(a.GetLedgerFields(), b.GetLedgerFields())
 }
 
-func fieldTypesEqual(a, b map[string]*commonpb.MetadataFieldSchema) bool {
+func fieldTypesEqual(a, b map[string]*auditpb.MetadataFieldSchema) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -4969,10 +4968,10 @@ func fieldTypesEqual(a, b map[string]*commonpb.MetadataFieldSchema) bool {
 	return true
 }
 
-func errorEvent(errorType servicepb.CheckStoreErrorType, message string, logSequence uint64, ledger, account, asset string) *servicepb.CheckStoreEvent {
-	return &servicepb.CheckStoreEvent{
-		Type: &servicepb.CheckStoreEvent_Error{
-			Error: &servicepb.CheckStoreError{
+func errorEvent(errorType auditpb.CheckStoreErrorType, message string, logSequence uint64, ledger, account, asset string) *auditpb.CheckStoreEvent {
+	return &auditpb.CheckStoreEvent{
+		Type: &auditpb.CheckStoreEvent_Error{
+			Error: &auditpb.CheckStoreError{
 				ErrorType:   errorType,
 				Message:     message,
 				LogSequence: logSequence,
@@ -4984,10 +4983,10 @@ func errorEvent(errorType servicepb.CheckStoreErrorType, message string, logSequ
 	}
 }
 
-func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger string, txID uint64) *servicepb.CheckStoreEvent {
-	return &servicepb.CheckStoreEvent{
-		Type: &servicepb.CheckStoreEvent_Error{
-			Error: &servicepb.CheckStoreError{
+func errorEventWithTx(errorType auditpb.CheckStoreErrorType, message, ledger string, txID uint64) *auditpb.CheckStoreEvent {
+	return &auditpb.CheckStoreEvent{
+		Type: &auditpb.CheckStoreEvent_Error{
+			Error: &auditpb.CheckStoreError{
 				ErrorType:     errorType,
 				Message:       message,
 				Ledger:        ledger,
@@ -5013,20 +5012,20 @@ func errorEventWithTx(errorType servicepb.CheckStoreErrorType, message, ledger s
 // too: DeleteLedger deletes the rows at apply time on both the live path and
 // the replay, so nothing legitimately lingers. Rows that fail to decode are
 // reported rather than silently narrowing the comparison.
-func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]*bitset.Bitset, knownLedgers map[string]struct{}, callback func(*auditpb.CheckStoreEvent)) error {
 	stored, malformed, err := query.ReadReversions(reader)
 	if err != nil {
 		return fmt.Errorf("reading stored reversion bitsets: %w", err)
 	}
 
 	for _, m := range malformed {
-		callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+		callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 			fmt.Sprintf("malformed reversion row at key %x: %s", m.Key, m.Reason), "", 0))
 	}
 
 	for name := range stored {
 		if _, live := knownLedgers[name]; !live {
-			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+			callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 				fmt.Sprintf("stored reversion rows for non-live ledger %q: DeleteLedger removes them at apply, so they are unaudited leftovers", name),
 				name, 0))
 		}
@@ -5058,11 +5057,11 @@ func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]
 				txID := uint64(i)*64 + uint64(bit)
 
 				if d&(1<<bit) != 0 {
-					callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+					callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 						fmt.Sprintf("reversion bit missing for tx %d in ledger %q: the audit reverts it but the stored bitset does not — the already-reverted gate would re-admit a double revert", txID, name),
 						name, txID))
 				} else {
-					callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+					callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 						fmt.Sprintf("unaudited reversion bit for tx %d in ledger %q: the stored bitset marks it reverted but no audit-backed revert exists", txID, name),
 						name, txID))
 				}
@@ -5078,18 +5077,18 @@ func (c *Checker) compareReversions(reader dal.PebbleReader, derived map[string]
 func checkReversionInvariants(
 	ledgerName string,
 	seq uint64,
-	payload *commonpb.LedgerLogPayload,
+	payload *auditpb.LedgerLogPayload,
 	knownTxIDs map[string]*bitset.Bitset,
 	revertedTxIDs map[string]*bitset.Bitset,
-	callback func(*servicepb.CheckStoreEvent),
+	callback func(*auditpb.CheckStoreEvent),
 ) {
 	switch p := payload.GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *auditpb.LedgerLogPayload_CreatedTransaction:
 		if p.CreatedTransaction != nil && p.CreatedTransaction.GetTransaction() != nil {
 			trackTxID(knownTxIDs, ledgerName, p.CreatedTransaction.GetTransaction().GetId())
 		}
 
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *auditpb.LedgerLogPayload_RevertedTransaction:
 		if p.RevertedTransaction == nil {
 			return
 		}
@@ -5099,7 +5098,7 @@ func checkReversionInvariants(
 		// Check that the target transaction exists
 		bs := knownTxIDs[ledgerName]
 		if bs == nil || !bs.Test(revertedID) {
-			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+			callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 				fmt.Sprintf("log %d reverts non-existent transaction %d in ledger %q", seq, revertedID, ledgerName),
 				ledgerName, revertedID))
 		}
@@ -5107,7 +5106,7 @@ func checkReversionInvariants(
 		// Check that the transaction is not already reverted
 		rbs := revertedTxIDs[ledgerName]
 		if rbs != nil && rbs.Test(revertedID) {
-			callback(errorEventWithTx(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
+			callback(errorEventWithTx(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH,
 				fmt.Sprintf("log %d double-reverts transaction %d in ledger %q", seq, revertedID, ledgerName),
 				ledgerName, revertedID))
 		}
@@ -5124,7 +5123,7 @@ func checkReversionInvariants(
 
 // normalizeTransactionState replaces an empty metadata map with nil so that
 // proto.Equal treats both representations as equivalent.
-func normalizeTransactionState(s *commonpb.TransactionState) {
+func normalizeTransactionState(s *internalcommonpb.TransactionState) {
 	if s.GetMetadata() != nil && len(s.GetMetadata()) == 0 {
 		s.Metadata = nil
 	}
@@ -5147,7 +5146,7 @@ func trackTxID(m map[string]*bitset.Bitset, ledgerName string, txID uint64) {
 // The per-ledger usage counters (posting / revert / numscript / volume /
 // metadata / reference) live in the usagestore peer secondary store and are
 // out of main-store checker scope, so they are not advanced here.
-func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, ledger string, log *commonpb.LedgerLog) error {
+func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, ledger string, log *auditpb.LedgerLog) error {
 	b, ok := expected[ledger]
 	if !ok {
 		b = &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
@@ -5166,14 +5165,14 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 	var txID uint64
 
 	switch d := log.GetData().GetPayload().(type) {
-	case *commonpb.LedgerLogPayload_CreatedTransaction:
+	case *auditpb.LedgerLogPayload_CreatedTransaction:
 		tx := d.CreatedTransaction.GetTransaction()
 		if tx == nil {
 			return nil
 		}
 
 		txID = tx.GetId()
-	case *commonpb.LedgerLogPayload_RevertedTransaction:
+	case *auditpb.LedgerLogPayload_RevertedTransaction:
 		revertTx := d.RevertedTransaction.GetRevertTransaction()
 		if revertTx == nil {
 			return nil
@@ -5269,7 +5268,7 @@ func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expe
 // longer live on LedgerBoundaries — they moved to the usagestore peer
 // secondary store and are out of main-store checker scope by construction
 // (their integrity is a peer-store rebuild-health concern, not invariant #8).
-func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries, callback func(*auditpb.CheckStoreEvent)) error {
 	stored := make(map[string]*raftcmdpb.LedgerBoundaries)
 
 	iter, err := c.attrs.Boundary.NewStreamingIter(reader, nil)
@@ -5282,7 +5281,7 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 
 		var lk domain.LedgerKey
 		if err := lk.Unmarshal(entry.CanonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
 				fmt.Sprintf("stored boundary row has unparsable key %x: %v", entry.CanonicalKey, err), 0, "", "", ""))
 
 			continue
@@ -5306,7 +5305,7 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 
 		st, ok := stored[name]
 		if !ok {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
 				fmt.Sprintf("ledger %q has no stored boundaries (expected nextTransactionId=%d nextLogId=%d)",
 					name, exp.GetNextTransactionId(), exp.GetNextLogId()), 0, name, "", ""))
 
@@ -5324,7 +5323,7 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 
 		for _, f := range fields {
 			if f.expected != f.stored {
-				callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+				callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
 					fmt.Sprintf("ledger %q boundary field %s mismatch: stored %d, expected %d",
 						name, f.field, f.stored, f.expected), 0, name, "", ""))
 			}
@@ -5336,7 +5335,7 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 	// or never created.
 	for name := range stored {
 		if _, ok := expected[name]; !ok {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_BOUNDARY_MISMATCH,
 				fmt.Sprintf("stored boundaries for ledger %q have no audit-derived expectation (ledger deleted or never created)", name),
 				0, name, "", ""))
 		}
@@ -5352,11 +5351,11 @@ func (c *Checker) compareBoundaries(ctx context.Context, reader dal.PebbleReader
 // deleted ledger's claims, but DeleteLedger removes the stored rows at apply.
 // A STORED row for a non-live ledger is flagged for the same reason: nothing
 // legitimately lingers past the same-apply purge.
-func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, replay *replayStore, knownLedgers map[string]struct{}, callback func(*servicepb.CheckStoreEvent)) error {
+func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader, replay *replayStore, knownLedgers map[string]struct{}, callback func(*auditpb.CheckStoreEvent)) error {
 	parseKey := func(canonicalKey []byte) (domain.TransactionReferenceKey, bool) {
 		var rk domain.TransactionReferenceKey
 		if err := rk.Unmarshal(canonicalKey); err != nil {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
 				fmt.Sprintf("reference row has unparsable key %x: %v", canonicalKey, err), 0, "", "", ""))
 
 			return rk, false
@@ -5430,7 +5429,7 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 
 		storedTxID, ok := stored[key]
 		if !ok {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
 				fmt.Sprintf("reference %q on ledger %q is missing from the store (audit assigned it to transaction %d)",
 					rk.Reference, rk.LedgerName, expTxID), 0, rk.LedgerName, "", ""))
 
@@ -5438,7 +5437,7 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 		}
 
 		if storedTxID != expTxID {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
 				fmt.Sprintf("reference %q on ledger %q points at transaction %d, audit assigned it to %d",
 					rk.Reference, rk.LedgerName, storedTxID, expTxID), 0, rk.LedgerName, "", ""))
 		}
@@ -5451,7 +5450,7 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 		}
 
 		if _, known := knownLedgers[rk.LedgerName]; !known {
-			callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+			callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
 				fmt.Sprintf("stored reference %q for non-live ledger %q (transaction %d): DeleteLedger removes reference rows at apply, so this is an unaudited leftover",
 					rk.Reference, rk.LedgerName, storedTxID), 0, rk.LedgerName, "", ""))
 
@@ -5462,7 +5461,7 @@ func (c *Checker) compareReferences(ctx context.Context, reader dal.PebbleReader
 			continue
 		}
 
-		callback(errorEvent(servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
+		callback(errorEvent(auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REFERENCE_MISMATCH,
 			fmt.Sprintf("stored reference %q on ledger %q (transaction %d) was never assigned by the audit",
 				rk.Reference, rk.LedgerName, storedTxID), 0, rk.LedgerName, "", ""))
 	}

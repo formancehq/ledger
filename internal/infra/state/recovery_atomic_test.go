@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -85,7 +85,7 @@ func TestRecoverStateRejectsPersistedExhaustedSequencesAtomically(t *testing.T) 
 			name:    "global log",
 			counter: domain.SequenceCounterLog,
 			seed: func(t *testing.T, store *dal.Store) {
-				appendLogs(t, store, 1, &commonpb.Log{Sequence: math.MaxUint64})
+				appendLogs(t, store, 1, &auditpb.Log{Sequence: math.MaxUint64})
 			},
 		},
 		{

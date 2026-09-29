@@ -4,7 +4,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // handleListBucketIndexes handles GET /indexes to list bucket-wide or

@@ -11,8 +11,7 @@ import (
 	"time"
 
 	_ "github.com/databricks/databricks-sql-go"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -22,7 +21,7 @@ import (
 var _ = Describe("Events Sinks Databricks", Ordered, func() {
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 
 		dbHost     string
 		dbHTTPPath string
@@ -74,7 +73,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 
 	It("Should deliver events to Databricks when transactions are created", func() {
 		// Add Databricks sink via Apply
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", addEventsSinkAction(&commonpb.SinkConfig{
 			Name:         "databricks-e2e",
 			BatchSize:    10,
 			BatchDelayMs: 500,
@@ -93,11 +92,11 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 		Expect(err).To(Succeed())
 
 		// Create a ledger
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("db-test", nil)))
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("db-test", nil)))
 		Expect(err).To(Succeed())
 
 		// Create a transaction (force=true to bypass balance checks)
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("db-test",
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction("db-test",
 			[]*commonpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			},
@@ -162,7 +161,7 @@ var _ = Describe("Events Sinks Databricks", Ordered, func() {
 
 		// Verify sink status shows healthy
 		Eventually(func(g Gomega) {
-			resp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &commonpb.GetEventsSinksRequest{})
 			g.Expect(err).To(Succeed())
 			g.Expect(resp.Sinks).To(HaveLen(1))
 			g.Expect(resp.Sinks[0].Name).To(Equal("databricks-e2e"))

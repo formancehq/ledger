@@ -16,10 +16,8 @@ import (
 	"github.com/formancehq/go-libs/v5/pkg/authn/oidc"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -114,7 +112,7 @@ var _ = Describe("Auth", Ordered, func() {
 	var (
 		ctx           context.Context
 		grpcConn      *grpc.ClientConn
-		client        servicepb.BucketServiceClient
+		client        clusterpb.BucketServiceClient
 		clusterClient clusterpb.ClusterServiceClient
 		privKey       *rsa.PrivateKey
 		oidcServer    *httptest.Server
@@ -200,13 +198,13 @@ var _ = Describe("Auth", Ordered, func() {
 		It("should allow health check without token", func() {
 			// Health check via gRPC health service is unauthenticated
 			// We test Discovery RPC which is also unauthenticated
-			resp, err := client.Discovery(ctx, &servicepb.DiscoveryRequest{})
+			resp, err := client.Discovery(ctx, &clusterpb.DiscoveryRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
 
 		It("should reject authenticated endpoints without token", func() {
-			_, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: "test"})
+			_, err := client.GetLedger(ctx, &clusterpb.GetLedgerRequest{Ledger: "test"})
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -218,7 +216,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("auth-test-ledger", nil)))
+			resp, err := client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("auth-test-ledger", nil)))
 			Expect(err).To(Succeed())
 			Expect(resp).NotTo(BeNil())
 		})
@@ -229,7 +227,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			_, err = client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("auth-test-ledger-2", nil)))
+			_, err = client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("auth-test-ledger-2", nil)))
 			Expect(err).To(HaveOccurred())
 			st, ok := status.FromError(err)
 			Expect(ok).To(BeTrue())
@@ -242,7 +240,7 @@ var _ = Describe("Auth", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			// GetLedger (may return not-found, but shouldn't be auth error)
-			_, err = client.GetLedger(authCtx, &servicepb.GetLedgerRequest{Ledger: "auth-test-ledger"})
+			_, err = client.GetLedger(authCtx, &clusterpb.GetLedgerRequest{Ledger: "auth-test-ledger"})
 			Expect(err).To(Succeed())
 		})
 
@@ -251,7 +249,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("auth-test-ledger", []*commonpb.Posting{
+			resp, err := client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", actions.CreateTransactionAction("auth-test-ledger", []*clusterpb.Posting{
 				actions.NewPosting("world", "bank", big.NewInt(1000), "USD"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -263,9 +261,9 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			resp, err := client.Apply(authCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_SetMaintenanceMode{
-					SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{
+			resp, err := client.Apply(authCtx, clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+				Type: &clusterpb.Request_SetMaintenanceMode{
+					SetMaintenanceMode: &clusterpb.SetMaintenanceModeRequest{
 						Enabled: false,
 					},
 				},
@@ -297,7 +295,7 @@ var _ = Describe("Auth", Ordered, func() {
 		})
 
 		It("should reject GetNumscript without token", func() {
-			_, err := client.GetNumscript(ctx, &servicepb.GetNumscriptRequest{
+			_, err := client.GetNumscript(ctx, &clusterpb.GetNumscriptRequest{
 				Ledger: "auth-test-ledger",
 				Name:   "missing-script",
 			})
@@ -308,7 +306,7 @@ var _ = Describe("Auth", Ordered, func() {
 		})
 
 		It("should reject ListNumscripts without token", func() {
-			stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{
+			stream, err := client.ListNumscripts(ctx, &clusterpb.ListNumscriptsRequest{
 				Ledger: "auth-test-ledger",
 			})
 			Expect(err).To(Succeed())
@@ -325,7 +323,7 @@ var _ = Describe("Auth", Ordered, func() {
 			authCtx := withAuthToken(ctx, token)
 
 			// Script doesn't exist; NotFound is the expected non-auth outcome.
-			_, err = client.GetNumscript(authCtx, &servicepb.GetNumscriptRequest{
+			_, err = client.GetNumscript(authCtx, &clusterpb.GetNumscriptRequest{
 				Ledger: "auth-test-ledger",
 				Name:   "missing-script",
 			})
@@ -342,7 +340,7 @@ var _ = Describe("Auth", Ordered, func() {
 			Expect(err).To(Succeed())
 			authCtx := withAuthToken(ctx, token)
 
-			stream, err := client.ListNumscripts(authCtx, &servicepb.ListNumscriptsRequest{
+			stream, err := client.ListNumscripts(authCtx, &clusterpb.ListNumscriptsRequest{
 				Ledger: "auth-test-ledger",
 			})
 			Expect(err).To(Succeed())

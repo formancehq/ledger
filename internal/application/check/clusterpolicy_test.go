@@ -7,11 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -35,7 +34,7 @@ func setClusterPolicyOrder(policy *commonpb.ClusterPolicy) *raftcmdpb.Order {
 	}
 }
 
-func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicyVerifier) []*servicepb.CheckStoreError {
+func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicyVerifier) []*commonpb.CheckStoreError {
 	t.Helper()
 
 	handle, err := store.NewReadHandle()
@@ -43,10 +42,10 @@ func collectClusterPolicyEvents(t *testing.T, store *dal.Store, v *clusterPolicy
 
 	defer func() { _ = handle.Close() }()
 
-	var got []*servicepb.CheckStoreError
+	var got []*commonpb.CheckStoreError
 
-	require.NoError(t, v.compare(handle, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	require.NoError(t, v.compare(handle, func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			got = append(got, e.Error)
 		}
 	}))
@@ -90,7 +89,7 @@ func TestClusterPolicyVerifier_InjectedFlagged(t *testing.T) {
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
+	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
 }
 
 // An audited policy with no stored row is flagged as lost.
@@ -119,7 +118,7 @@ func TestClusterPolicyVerifier_ContentMismatch(t *testing.T) {
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
+	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, events[0].GetErrorType())
 }
 
 // The fold keeps the highest revision regardless of the order orders arrive in.
@@ -151,7 +150,7 @@ func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 
 	events := collectClusterPolicyEvents(t, store, v)
 	require.Len(t, events, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE, events[0].GetErrorType())
+	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_VERIFICATION_INCOMPLETE, events[0].GetErrorType())
 }
 
 // TestCheck_ClusterPolicyProjection_EmptyAuditWiring pins that the cluster
@@ -164,7 +163,7 @@ func TestClusterPolicyVerifier_IncompleteReported(t *testing.T) {
 func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 	t.Parallel()
 
-	runCheck := func(t *testing.T, seed func(*dal.Store)) []*servicepb.CheckStoreError {
+	runCheck := func(t *testing.T, seed func(*dal.Store)) []*commonpb.CheckStoreError {
 		t.Helper()
 
 		store := createTestStore(t)
@@ -176,10 +175,10 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 		// events attributable to the policy comparison alone.
 		checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
-		var got []*servicepb.CheckStoreError
+		var got []*commonpb.CheckStoreError
 
-		require.NoError(t, checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
-			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+		require.NoError(t, checker.Check(context.Background(), func(event *commonpb.CheckStoreEvent) {
+			if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 				got = append(got, e.Error)
 			}
 		}))
@@ -199,7 +198,7 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 		})
 
 		require.Len(t, got, 1, "a cluster policy row with no audited order behind it must be reported")
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, got[0].GetErrorType())
+		require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_CLUSTER_POLICY_MISMATCH, got[0].GetErrorType())
 	})
 
 	t.Run("untouched store stays clean", func(t *testing.T) {

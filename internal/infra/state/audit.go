@@ -4,10 +4,10 @@ import (
 	"maps"
 	"slices"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -29,7 +29,7 @@ import (
 // cannot produce a false mismatch. On the checker's actual read path it never
 // even shows: a proto3 map with no entries emits no bytes, so an empty Context
 // unmarshals back as nil and both sides read nil out of Pebble.
-func describeFailure(d domain.SerializableError) (commonpb.ErrorReason, string) {
+func describeFailure(d domain.SerializableError) (auditpb.ErrorReason, string) {
 	return domain.ReasonCode(d.Reason()), d.Error()
 }
 

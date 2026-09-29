@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/attribution"
@@ -23,8 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	"github.com/formancehq/ledger/v3/internal/pkg/signal"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -1344,7 +1344,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	}
 
 	// Compute the effective date using the HLC to guarantee monotonicity
-	effectiveDate := &commonpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
+	effectiveDate := &auditpb.Timestamp{Data: fsm.State.AdvanceHLC(proposal.GetDate().GetData())}
 
 	// Freeze the retention window for any idempotency outcome this apply stores,
 	// from the policy committed before this proposal. Computed once so the audit
@@ -1507,7 +1507,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// expiry back from the chain without a node-local TTL. Signature stays
 		// shared (ResetVT only nils it).
 		if idem := proposal.GetIdempotency(); idem.GetKey() != "" {
-			entry.Idempotency = &commonpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
+			entry.Idempotency = &auditpb.Idempotency{Key: idem.GetKey(), ExpiresAt: idempotencyExpiresAt}
 		}
 		entry.Signature = proposal.GetSignature()
 
@@ -1662,7 +1662,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// duplicate replays the same committed logs instead of re-executing.
 	// Sequences are contiguous, so (first, count) reconstructs every reference.
 	if idempotencyKey != "" && len(createdLogs) > 0 {
-		value := &commonpb.IdempotencyKeyValue{
+		value := &internalcommonpb.IdempotencyKeyValue{
 			FirstLogSequence: createdLogs[0].GetSequence(),
 			LogCount:         uint32(len(createdLogs)),
 			Hash:             proposalHash,
@@ -1816,11 +1816,11 @@ func (fsm *Machine) recordIdempotencyFailure(batch *dal.WriteSession, key string
 
 	reason, message := describeFailure(d)
 
-	value := &commonpb.IdempotencyKeyValue{
+	value := &internalcommonpb.IdempotencyKeyValue{
 		Hash:      proposalHash,
 		CreatedAt: createdAt,
 		ExpiresAt: expiresAt,
-		Failure: &commonpb.IdempotencyFailure{
+		Failure: &internalcommonpb.IdempotencyFailure{
 			Reason:   reason,
 			Message:  message,
 			Metadata: d.Metadata(),
@@ -1978,7 +1978,7 @@ type ApplyResult struct {
 	volumeUpdates      []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]
 	purgedVolumeKeys   []domain.VolumeKey // keys removed by ephemeral purge
 	deletedLedgerNames []string           // ledgers removed by successful deletion cascades
-	createdLogs        []*commonpb.Log
+	createdLogs        []*auditpb.Log
 	ledgerNames        []string // ledger names touched by this proposal (for post-commit balance check)
 
 	// Bounded outcome facts captured before the reusable WriteSet is reset.

@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListKeysCommand creates the signing list-keys command.
@@ -51,7 +51,7 @@ func runListKeys(cmd *cobra.Command, _ []string) error {
 		page := pgn
 		page.Cursor = cur
 
-		stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
+		stream, err := client.ListSigningKeys(ctx, &commonpb.ListSigningKeysRequest{
 			Options: cmdutil.BuildListOptions(page, cmdutil.ConsistencyFlags{}, nil),
 		})
 		if err != nil {

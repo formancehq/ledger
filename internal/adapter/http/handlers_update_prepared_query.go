@@ -7,9 +7,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // handleUpdatePreparedQuery handles PUT /{ledgerName}/prepared-queries/{name}.
@@ -59,9 +59,9 @@ func (s *Server) handleUpdatePreparedQuery(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	_, err = s.applyUnsigned(r.Context(), "", &servicepb.Request{
-		Type: &servicepb.Request_UpdatePreparedQuery{
-			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+	_, err = s.applyUnsigned(r.Context(), "", &commonpb.Request{
+		Type: &commonpb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
 				Ledger: ledgerName,
 				Name:   queryName,
 				Filter: filter,

@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -17,7 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -491,8 +492,8 @@ func TestCacheSnapshotter_PersistAndRestoreReferences(t *testing.T) {
 
 	refKey := domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-1"}
 	u128 := attributes.HashU128(refKey.Bytes())
-	value := &commonpb.TransactionReferenceValue{TransactionId: 99}
-	registry.Cache.References.Gen0().Put(u128, attributes.Entry[*commonpb.TransactionReferenceValue]{
+	value := &internalcommonpb.TransactionReferenceValue{TransactionId: 99}
+	registry.Cache.References.Gen0().Put(u128, attributes.Entry[*internalcommonpb.TransactionReferenceValue]{
 		Tag: 6, Data: value,
 	})
 
@@ -513,8 +514,8 @@ func TestCacheSnapshotter_PersistAndRestoreTransactions(t *testing.T) {
 
 	txKey := domain.TransactionKey{LedgerName: "test", ID: 42}
 	u128 := attributes.HashU128(txKey.Bytes())
-	value := &commonpb.TransactionState{CreatedByLog: 10, RevertedByTransaction: 5}
-	registry.Cache.Transactions.Gen0().Put(u128, attributes.Entry[*commonpb.TransactionState]{
+	value := &internalcommonpb.TransactionState{CreatedByLog: 10, RevertedByTransaction: 5}
+	registry.Cache.Transactions.Gen0().Put(u128, attributes.Entry[*internalcommonpb.TransactionState]{
 		Tag: 7, Data: value,
 	})
 

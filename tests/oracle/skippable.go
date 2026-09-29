@@ -5,25 +5,25 @@ import (
 	"strconv"
 	"strings"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // The oracle declares the documented whitelist independently of the generated
 // admission table, so changing that table cannot silently change expectations.
-func validSkippableReasons(req *servicepb.LedgerApplyRequest) bool {
+func validSkippableReasons(req *commonpb.LedgerApplyRequest) bool {
 	var allowed commonpb.ErrorReason
 	switch req.GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
+	case *commonpb.LedgerAction_CreateTransaction:
 		allowed = commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT
-	case *servicepb.LedgerAction_RevertTransaction:
+	case *commonpb.LedgerAction_RevertTransaction:
 		allowed = commonpb.ErrorReason_ERROR_REASON_TRANSACTION_ALREADY_REVERTED
-	case *servicepb.LedgerAction_DeleteMetadata:
+	case *commonpb.LedgerAction_DeleteMetadata:
 		allowed = commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND
-	case *servicepb.LedgerAction_AddAccountType:
+	case *commonpb.LedgerAction_AddAccountType:
 		allowed = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS
-	case *servicepb.LedgerAction_RemoveAccountType:
+	case *commonpb.LedgerAction_RemoveAccountType:
 		allowed = commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND
 	}
 	for _, reason := range req.GetSkippableReasons() {
@@ -37,18 +37,18 @@ func validSkippableReasons(req *servicepb.LedgerApplyRequest) bool {
 
 // chartRequest lets both wire forms share chart prediction without mutating
 // the request retained for idempotency and replay.
-func chartRequest(req *servicepb.Request) *servicepb.Request {
+func chartRequest(req *commonpb.Request) *commonpb.Request {
 	switch a := req.GetApply().GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_AddAccountType:
-		return &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), AccountType: a.AddAccountType.GetAccountType()}}}
-	case *servicepb.LedgerAction_RemoveAccountType:
-		return &servicepb.Request{Type: &servicepb.Request_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), Name: a.RemoveAccountType.GetName()}}}
+	case *commonpb.LedgerAction_AddAccountType:
+		return &commonpb.Request{Type: &commonpb.Request_AddAccountType{AddAccountType: &commonpb.AddAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), AccountType: a.AddAccountType.GetAccountType()}}}
+	case *commonpb.LedgerAction_RemoveAccountType:
+		return &commonpb.Request{Type: &commonpb.Request_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{Ledger: req.GetApply().GetLedger(), Name: a.RemoveAccountType.GetName()}}}
 	default:
 		return req
 	}
 }
 
-func predictSkippedLog(s LedgerState, req *servicepb.Request, reason string) *commonpb.OrderSkippedLog {
+func predictSkippedLog(s LedgerState, req *commonpb.Request, reason string) *commonpb.OrderSkippedLog {
 	context := map[string]string{}
 	action := req.GetApply().GetAction()
 	switch reason {

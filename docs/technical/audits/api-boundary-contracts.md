@@ -7,6 +7,11 @@ they do not provide a focused inventory of transport presence, codecs, limits,
 schemas and stream framing. This domain adds that inventory to the native audit
 workflow without adding a runner or changing product guarantees.
 
+The service message codecs and descriptors now live in
+`pkg/client/v3/grpc/**`. Inspect that public package and its contract artifact
+when tracing JSON and gRPC behavior; root-only REST bulk envelopes remain in
+`internal/adapter/restbulk/**`. The manifest paths follow this ownership.
+
 ## Evidence contract
 
 For each hypothesis, identify a registered entry point, its middleware or

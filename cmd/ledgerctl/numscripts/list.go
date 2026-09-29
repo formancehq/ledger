@@ -5,9 +5,9 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the numscripts list command.
@@ -62,7 +62,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		page := pgn
 		page.Cursor = cur
 
-		stream, err := client.ListNumscripts(ctx, &servicepb.ListNumscriptsRequest{
+		stream, err := client.ListNumscripts(ctx, &commonpb.ListNumscriptsRequest{
 			Ledger:  ledgerName,
 			Options: cmdutil.BuildListOptions(page, cns, nil),
 		})

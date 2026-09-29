@@ -215,7 +215,7 @@ schema-rewrite barrier.
 | `misc/proto/bucket.proto` | Schema RPC requests and declared-type response. |
 | `misc/proto/raft_cmd.proto` | Set/remove schema orders. |
 | `internal/domain/processing/processor_metadata_schema.go` | O(1) schema and index-registry updates. |
-| `internal/proto/commonpb/metadata_convert.go` | Deterministic index coercion matrix. |
+| `pkg/client/v3/grpc/commonpb_metadata_convert.go` | Deterministic index coercion matrix. |
 | `internal/application/indexbuilder/schema_resolver.go` | Resolves raw values and coercion for a bound version. |
 | `internal/application/indexbuilder/backfill.go` | Pending-version schema rewrite and atomic switch. |
 | `internal/query/compile.go` | Bound-type condition validation and encoding. |

@@ -19,8 +19,8 @@ import (
 	grpcinsecure "google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
@@ -105,7 +105,7 @@ func run() error {
 
 	defer func() { _ = conn.Close() }()
 
-	client := servicepb.NewBucketServiceClient(conn)
+	client := commonpb.NewBucketServiceClient(conn)
 
 	// Fetch existing ledgers to skip duplicates.
 	existing := listExistingLedgers(ctx, client, *timeout)
@@ -275,11 +275,11 @@ func discoverLedgersInDB(ctx context.Context, dsn, database string) ([]v2Ledger,
 }
 
 // listExistingLedgers fetches ledgers already present on the v3 instance.
-func listExistingLedgers(ctx context.Context, client servicepb.BucketServiceClient, timeout time.Duration) map[string]struct{} {
+func listExistingLedgers(ctx context.Context, client commonpb.BucketServiceClient, timeout time.Duration) map[string]struct{} {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(ctx, &commonpb.ListLedgersRequest{})
 	if err != nil {
 		log.Printf("  WARN  could not list existing v3 ledgers: %v", err)
 
@@ -309,7 +309,7 @@ func listExistingLedgers(ctx context.Context, client servicepb.BucketServiceClie
 // createMirrorLedger creates a mirror ledger on v3 pointing to the v2 PG database.
 func createMirrorLedger(
 	ctx context.Context,
-	client servicepb.BucketServiceClient,
+	client commonpb.BucketServiceClient,
 	name, sourceLedgerName, dsn string,
 	batchSize uint32,
 	timeout time.Duration,
@@ -317,9 +317,9 @@ func createMirrorLedger(
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_CreateLedger{
-			CreateLedger: &servicepb.CreateLedgerRequest{
+	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_CreateLedger{
+			CreateLedger: &commonpb.CreateLedgerRequest{
 				Name: name,
 				Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 				MirrorSource: &commonpb.MirrorSourceConfig{

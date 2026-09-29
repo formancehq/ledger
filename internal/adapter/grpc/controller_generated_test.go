@@ -11,12 +11,10 @@ import (
 	context "context"
 	reflect "reflect"
 
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	ctrl "github.com/formancehq/ledger/v3/internal/application/ctrl"
 	domain "github.com/formancehq/ledger/v3/internal/domain"
 	cursor "github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	auditpb "github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	commonpb "github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	servicepb "github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	query "github.com/formancehq/ledger/v3/internal/query"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -46,10 +44,10 @@ func (m *MockController) EXPECT() *MockControllerMockRecorder {
 }
 
 // AggregateVolumes mocks base method.
-func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *commonpb.QueryFilter, opts query.AggregateOptions) (*commonpb.AggregateResult, error) {
+func (m *MockController) AggregateVolumes(ctx context.Context, ledgerName string, filter *grpc.QueryFilter, opts query.AggregateOptions) (*grpc.AggregateResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AggregateVolumes", ctx, ledgerName, filter, opts)
-	ret0, _ := ret[0].(*commonpb.AggregateResult)
+	ret0, _ := ret[0].(*grpc.AggregateResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -67,28 +65,28 @@ type MockControllerAggregateVolumesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerAggregateVolumesCall) Return(arg0 *commonpb.AggregateResult, arg1 error) *MockControllerAggregateVolumesCall {
+func (c *MockControllerAggregateVolumesCall) Return(arg0 *grpc.AggregateResult, arg1 error) *MockControllerAggregateVolumesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerAggregateVolumesCall) Do(f func(context.Context, string, *commonpb.QueryFilter, query.AggregateOptions) (*commonpb.AggregateResult, error)) *MockControllerAggregateVolumesCall {
+func (c *MockControllerAggregateVolumesCall) Do(f func(context.Context, string, *grpc.QueryFilter, query.AggregateOptions) (*grpc.AggregateResult, error)) *MockControllerAggregateVolumesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerAggregateVolumesCall) DoAndReturn(f func(context.Context, string, *commonpb.QueryFilter, query.AggregateOptions) (*commonpb.AggregateResult, error)) *MockControllerAggregateVolumesCall {
+func (c *MockControllerAggregateVolumesCall) DoAndReturn(f func(context.Context, string, *grpc.QueryFilter, query.AggregateOptions) (*grpc.AggregateResult, error)) *MockControllerAggregateVolumesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // AnalyzeAccounts mocks base method.
-func (m *MockController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error) {
+func (m *MockController) AnalyzeAccounts(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(uint64, uint64)) (*grpc.AnalyzeAccountsResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AnalyzeAccounts", ctx, ledgerName, variableThreshold, onProgress)
-	ret0, _ := ret[0].(*servicepb.AnalyzeAccountsResponse)
+	ret0, _ := ret[0].(*grpc.AnalyzeAccountsResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -106,28 +104,28 @@ type MockControllerAnalyzeAccountsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerAnalyzeAccountsCall) Return(arg0 *servicepb.AnalyzeAccountsResponse, arg1 error) *MockControllerAnalyzeAccountsCall {
+func (c *MockControllerAnalyzeAccountsCall) Return(arg0 *grpc.AnalyzeAccountsResponse, arg1 error) *MockControllerAnalyzeAccountsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerAnalyzeAccountsCall) Do(f func(context.Context, string, uint32, func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error)) *MockControllerAnalyzeAccountsCall {
+func (c *MockControllerAnalyzeAccountsCall) Do(f func(context.Context, string, uint32, func(uint64, uint64)) (*grpc.AnalyzeAccountsResponse, error)) *MockControllerAnalyzeAccountsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerAnalyzeAccountsCall) DoAndReturn(f func(context.Context, string, uint32, func(uint64, uint64)) (*servicepb.AnalyzeAccountsResponse, error)) *MockControllerAnalyzeAccountsCall {
+func (c *MockControllerAnalyzeAccountsCall) DoAndReturn(f func(context.Context, string, uint32, func(uint64, uint64)) (*grpc.AnalyzeAccountsResponse, error)) *MockControllerAnalyzeAccountsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // AnalyzeTransactions mocks base method.
-func (m *MockController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error) {
+func (m *MockController) AnalyzeTransactions(ctx context.Context, ledgerName string, variableThreshold uint32, onProgress func(uint64, uint64)) (*grpc.AnalyzeTransactionsResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AnalyzeTransactions", ctx, ledgerName, variableThreshold, onProgress)
-	ret0, _ := ret[0].(*servicepb.AnalyzeTransactionsResponse)
+	ret0, _ := ret[0].(*grpc.AnalyzeTransactionsResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -145,25 +143,25 @@ type MockControllerAnalyzeTransactionsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerAnalyzeTransactionsCall) Return(arg0 *servicepb.AnalyzeTransactionsResponse, arg1 error) *MockControllerAnalyzeTransactionsCall {
+func (c *MockControllerAnalyzeTransactionsCall) Return(arg0 *grpc.AnalyzeTransactionsResponse, arg1 error) *MockControllerAnalyzeTransactionsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerAnalyzeTransactionsCall) Do(f func(context.Context, string, uint32, func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error)) *MockControllerAnalyzeTransactionsCall {
+func (c *MockControllerAnalyzeTransactionsCall) Do(f func(context.Context, string, uint32, func(uint64, uint64)) (*grpc.AnalyzeTransactionsResponse, error)) *MockControllerAnalyzeTransactionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerAnalyzeTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, func(uint64, uint64)) (*servicepb.AnalyzeTransactionsResponse, error)) *MockControllerAnalyzeTransactionsCall {
+func (c *MockControllerAnalyzeTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, func(uint64, uint64)) (*grpc.AnalyzeTransactionsResponse, error)) *MockControllerAnalyzeTransactionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // Apply mocks base method.
-func (m *MockController) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+func (m *MockController) Apply(ctx context.Context, req *grpc.ApplyRequest) (*domain.ApplyResult, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Apply", ctx, req)
 	ret0, _ := ret[0].(*domain.ApplyResult)
@@ -190,13 +188,13 @@ func (c *MockControllerApplyCall) Return(arg0 *domain.ApplyResult, arg1 error) *
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerApplyCall) Do(f func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) Do(f func(context.Context, *grpc.ApplyRequest) (*domain.ApplyResult, error)) *MockControllerApplyCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerApplyCall) DoAndReturn(f func(context.Context, *servicepb.ApplyRequest) (*domain.ApplyResult, error)) *MockControllerApplyCall {
+func (c *MockControllerApplyCall) DoAndReturn(f func(context.Context, *grpc.ApplyRequest) (*domain.ApplyResult, error)) *MockControllerApplyCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
@@ -241,10 +239,10 @@ func (c *MockControllerBarrierCall) DoAndReturn(f func(context.Context) (uint64,
 }
 
 // ExecutePreparedQuery mocks base method.
-func (m *MockController) ExecutePreparedQuery(ctx context.Context, req *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error) {
+func (m *MockController) ExecutePreparedQuery(ctx context.Context, req *grpc.ExecutePreparedQueryRequest) (*grpc.ExecutePreparedQueryResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecutePreparedQuery", ctx, req)
-	ret0, _ := ret[0].(*servicepb.ExecutePreparedQueryResponse)
+	ret0, _ := ret[0].(*grpc.ExecutePreparedQueryResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -262,28 +260,28 @@ type MockControllerExecutePreparedQueryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerExecutePreparedQueryCall) Return(arg0 *servicepb.ExecutePreparedQueryResponse, arg1 error) *MockControllerExecutePreparedQueryCall {
+func (c *MockControllerExecutePreparedQueryCall) Return(arg0 *grpc.ExecutePreparedQueryResponse, arg1 error) *MockControllerExecutePreparedQueryCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerExecutePreparedQueryCall) Do(f func(context.Context, *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error)) *MockControllerExecutePreparedQueryCall {
+func (c *MockControllerExecutePreparedQueryCall) Do(f func(context.Context, *grpc.ExecutePreparedQueryRequest) (*grpc.ExecutePreparedQueryResponse, error)) *MockControllerExecutePreparedQueryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerExecutePreparedQueryCall) DoAndReturn(f func(context.Context, *servicepb.ExecutePreparedQueryRequest) (*servicepb.ExecutePreparedQueryResponse, error)) *MockControllerExecutePreparedQueryCall {
+func (c *MockControllerExecutePreparedQueryCall) DoAndReturn(f func(context.Context, *grpc.ExecutePreparedQueryRequest) (*grpc.ExecutePreparedQueryResponse, error)) *MockControllerExecutePreparedQueryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetAccount mocks base method.
-func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string, opts ctrl.GetAccountOptions) (*commonpb.Account, error) {
+func (m *MockController) GetAccount(ctx context.Context, ledgerName, address string, opts ctrl.GetAccountOptions) (*grpc.Account, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAccount", ctx, ledgerName, address, opts)
-	ret0, _ := ret[0].(*commonpb.Account)
+	ret0, _ := ret[0].(*grpc.Account)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -301,28 +299,28 @@ type MockControllerGetAccountCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetAccountCall) Return(arg0 *commonpb.Account, arg1 error) *MockControllerGetAccountCall {
+func (c *MockControllerGetAccountCall) Return(arg0 *grpc.Account, arg1 error) *MockControllerGetAccountCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetAccountCall) Do(f func(context.Context, string, string, ctrl.GetAccountOptions) (*commonpb.Account, error)) *MockControllerGetAccountCall {
+func (c *MockControllerGetAccountCall) Do(f func(context.Context, string, string, ctrl.GetAccountOptions) (*grpc.Account, error)) *MockControllerGetAccountCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetAccountCall) DoAndReturn(f func(context.Context, string, string, ctrl.GetAccountOptions) (*commonpb.Account, error)) *MockControllerGetAccountCall {
+func (c *MockControllerGetAccountCall) DoAndReturn(f func(context.Context, string, string, ctrl.GetAccountOptions) (*grpc.Account, error)) *MockControllerGetAccountCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetAuditEntry mocks base method.
-func (m *MockController) GetAuditEntry(ctx context.Context, sequence uint64) (*auditpb.AuditEntry, error) {
+func (m *MockController) GetAuditEntry(ctx context.Context, sequence uint64) (*grpc.AuditEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetAuditEntry", ctx, sequence)
-	ret0, _ := ret[0].(*auditpb.AuditEntry)
+	ret0, _ := ret[0].(*grpc.AuditEntry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -340,29 +338,29 @@ type MockControllerGetAuditEntryCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetAuditEntryCall) Return(arg0 *auditpb.AuditEntry, arg1 error) *MockControllerGetAuditEntryCall {
+func (c *MockControllerGetAuditEntryCall) Return(arg0 *grpc.AuditEntry, arg1 error) *MockControllerGetAuditEntryCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetAuditEntryCall) Do(f func(context.Context, uint64) (*auditpb.AuditEntry, error)) *MockControllerGetAuditEntryCall {
+func (c *MockControllerGetAuditEntryCall) Do(f func(context.Context, uint64) (*grpc.AuditEntry, error)) *MockControllerGetAuditEntryCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetAuditEntryCall) DoAndReturn(f func(context.Context, uint64) (*auditpb.AuditEntry, error)) *MockControllerGetAuditEntryCall {
+func (c *MockControllerGetAuditEntryCall) DoAndReturn(f func(context.Context, uint64) (*grpc.AuditEntry, error)) *MockControllerGetAuditEntryCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetEventsSinks mocks base method.
-func (m *MockController) GetEventsSinks(ctx context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error) {
+func (m *MockController) GetEventsSinks(ctx context.Context) ([]*grpc.SinkConfig, []*grpc.SinkStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEventsSinks", ctx)
-	ret0, _ := ret[0].([]*commonpb.SinkConfig)
-	ret1, _ := ret[1].([]*commonpb.SinkStatus)
+	ret0, _ := ret[0].([]*grpc.SinkConfig)
+	ret1, _ := ret[1].([]*grpc.SinkStatus)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -380,28 +378,28 @@ type MockControllerGetEventsSinksCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetEventsSinksCall) Return(arg0 []*commonpb.SinkConfig, arg1 []*commonpb.SinkStatus, arg2 error) *MockControllerGetEventsSinksCall {
+func (c *MockControllerGetEventsSinksCall) Return(arg0 []*grpc.SinkConfig, arg1 []*grpc.SinkStatus, arg2 error) *MockControllerGetEventsSinksCall {
 	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetEventsSinksCall) Do(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockControllerGetEventsSinksCall {
+func (c *MockControllerGetEventsSinksCall) Do(f func(context.Context) ([]*grpc.SinkConfig, []*grpc.SinkStatus, error)) *MockControllerGetEventsSinksCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*commonpb.SinkConfig, []*commonpb.SinkStatus, error)) *MockControllerGetEventsSinksCall {
+func (c *MockControllerGetEventsSinksCall) DoAndReturn(f func(context.Context) ([]*grpc.SinkConfig, []*grpc.SinkStatus, error)) *MockControllerGetEventsSinksCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetIndex mocks base method.
-func (m *MockController) GetIndex(ctx context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+func (m *MockController) GetIndex(ctx context.Context, req *grpc.GetIndexRequest) (*grpc.Index, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIndex", ctx, req)
-	ret0, _ := ret[0].(*commonpb.Index)
+	ret0, _ := ret[0].(*grpc.Index)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -419,28 +417,28 @@ type MockControllerGetIndexCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetIndexCall) Return(arg0 *commonpb.Index, arg1 error) *MockControllerGetIndexCall {
+func (c *MockControllerGetIndexCall) Return(arg0 *grpc.Index, arg1 error) *MockControllerGetIndexCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetIndexCall) Do(f func(context.Context, *servicepb.GetIndexRequest) (*commonpb.Index, error)) *MockControllerGetIndexCall {
+func (c *MockControllerGetIndexCall) Do(f func(context.Context, *grpc.GetIndexRequest) (*grpc.Index, error)) *MockControllerGetIndexCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetIndexCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexRequest) (*commonpb.Index, error)) *MockControllerGetIndexCall {
+func (c *MockControllerGetIndexCall) DoAndReturn(f func(context.Context, *grpc.GetIndexRequest) (*grpc.Index, error)) *MockControllerGetIndexCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetIndexEntryStatus mocks base method.
-func (m *MockController) GetIndexEntryStatus(ctx context.Context, req *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error) {
+func (m *MockController) GetIndexEntryStatus(ctx context.Context, req *grpc.GetIndexEntryStatusRequest) (*grpc.IndexEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIndexEntryStatus", ctx, req)
-	ret0, _ := ret[0].(*servicepb.IndexEntry)
+	ret0, _ := ret[0].(*grpc.IndexEntry)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -458,28 +456,28 @@ type MockControllerGetIndexEntryStatusCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetIndexEntryStatusCall) Return(arg0 *servicepb.IndexEntry, arg1 error) *MockControllerGetIndexEntryStatusCall {
+func (c *MockControllerGetIndexEntryStatusCall) Return(arg0 *grpc.IndexEntry, arg1 error) *MockControllerGetIndexEntryStatusCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetIndexEntryStatusCall) Do(f func(context.Context, *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error)) *MockControllerGetIndexEntryStatusCall {
+func (c *MockControllerGetIndexEntryStatusCall) Do(f func(context.Context, *grpc.GetIndexEntryStatusRequest) (*grpc.IndexEntry, error)) *MockControllerGetIndexEntryStatusCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetIndexEntryStatusCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexEntryStatusRequest) (*servicepb.IndexEntry, error)) *MockControllerGetIndexEntryStatusCall {
+func (c *MockControllerGetIndexEntryStatusCall) DoAndReturn(f func(context.Context, *grpc.GetIndexEntryStatusRequest) (*grpc.IndexEntry, error)) *MockControllerGetIndexEntryStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetIndexStatus mocks base method.
-func (m *MockController) GetIndexStatus(ctx context.Context, req *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error) {
+func (m *MockController) GetIndexStatus(ctx context.Context, req *grpc.GetIndexStatusRequest) (*grpc.GetIndexStatusResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetIndexStatus", ctx, req)
-	ret0, _ := ret[0].(*servicepb.GetIndexStatusResponse)
+	ret0, _ := ret[0].(*grpc.GetIndexStatusResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -497,28 +495,28 @@ type MockControllerGetIndexStatusCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetIndexStatusCall) Return(arg0 *servicepb.GetIndexStatusResponse, arg1 error) *MockControllerGetIndexStatusCall {
+func (c *MockControllerGetIndexStatusCall) Return(arg0 *grpc.GetIndexStatusResponse, arg1 error) *MockControllerGetIndexStatusCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetIndexStatusCall) Do(f func(context.Context, *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error)) *MockControllerGetIndexStatusCall {
+func (c *MockControllerGetIndexStatusCall) Do(f func(context.Context, *grpc.GetIndexStatusRequest) (*grpc.GetIndexStatusResponse, error)) *MockControllerGetIndexStatusCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetIndexStatusCall) DoAndReturn(f func(context.Context, *servicepb.GetIndexStatusRequest) (*servicepb.GetIndexStatusResponse, error)) *MockControllerGetIndexStatusCall {
+func (c *MockControllerGetIndexStatusCall) DoAndReturn(f func(context.Context, *grpc.GetIndexStatusRequest) (*grpc.GetIndexStatusResponse, error)) *MockControllerGetIndexStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLedgerByName mocks base method.
-func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*commonpb.LedgerInfo, error) {
+func (m *MockController) GetLedgerByName(ctx context.Context, name string) (*grpc.LedgerInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerByName", ctx, name)
-	ret0, _ := ret[0].(*commonpb.LedgerInfo)
+	ret0, _ := ret[0].(*grpc.LedgerInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -536,28 +534,28 @@ type MockControllerGetLedgerByNameCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetLedgerByNameCall) Return(arg0 *commonpb.LedgerInfo, arg1 error) *MockControllerGetLedgerByNameCall {
+func (c *MockControllerGetLedgerByNameCall) Return(arg0 *grpc.LedgerInfo, arg1 error) *MockControllerGetLedgerByNameCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetLedgerByNameCall) Do(f func(context.Context, string) (*commonpb.LedgerInfo, error)) *MockControllerGetLedgerByNameCall {
+func (c *MockControllerGetLedgerByNameCall) Do(f func(context.Context, string) (*grpc.LedgerInfo, error)) *MockControllerGetLedgerByNameCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetLedgerByNameCall) DoAndReturn(f func(context.Context, string) (*commonpb.LedgerInfo, error)) *MockControllerGetLedgerByNameCall {
+func (c *MockControllerGetLedgerByNameCall) DoAndReturn(f func(context.Context, string) (*grpc.LedgerInfo, error)) *MockControllerGetLedgerByNameCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLedgerStats mocks base method.
-func (m *MockController) GetLedgerStats(ctx context.Context, ledgerName string) (*commonpb.LedgerStats, error) {
+func (m *MockController) GetLedgerStats(ctx context.Context, ledgerName string) (*grpc.LedgerStats, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLedgerStats", ctx, ledgerName)
-	ret0, _ := ret[0].(*commonpb.LedgerStats)
+	ret0, _ := ret[0].(*grpc.LedgerStats)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -575,28 +573,28 @@ type MockControllerGetLedgerStatsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetLedgerStatsCall) Return(arg0 *commonpb.LedgerStats, arg1 error) *MockControllerGetLedgerStatsCall {
+func (c *MockControllerGetLedgerStatsCall) Return(arg0 *grpc.LedgerStats, arg1 error) *MockControllerGetLedgerStatsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetLedgerStatsCall) Do(f func(context.Context, string) (*commonpb.LedgerStats, error)) *MockControllerGetLedgerStatsCall {
+func (c *MockControllerGetLedgerStatsCall) Do(f func(context.Context, string) (*grpc.LedgerStats, error)) *MockControllerGetLedgerStatsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetLedgerStatsCall) DoAndReturn(f func(context.Context, string) (*commonpb.LedgerStats, error)) *MockControllerGetLedgerStatsCall {
+func (c *MockControllerGetLedgerStatsCall) DoAndReturn(f func(context.Context, string) (*grpc.LedgerStats, error)) *MockControllerGetLedgerStatsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetLog mocks base method.
-func (m *MockController) GetLog(ctx context.Context, sequence uint64) (*commonpb.Log, error) {
+func (m *MockController) GetLog(ctx context.Context, sequence uint64) (*grpc.Log, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetLog", ctx, sequence)
-	ret0, _ := ret[0].(*commonpb.Log)
+	ret0, _ := ret[0].(*grpc.Log)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -614,28 +612,28 @@ type MockControllerGetLogCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetLogCall) Return(arg0 *commonpb.Log, arg1 error) *MockControllerGetLogCall {
+func (c *MockControllerGetLogCall) Return(arg0 *grpc.Log, arg1 error) *MockControllerGetLogCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetLogCall) Do(f func(context.Context, uint64) (*commonpb.Log, error)) *MockControllerGetLogCall {
+func (c *MockControllerGetLogCall) Do(f func(context.Context, uint64) (*grpc.Log, error)) *MockControllerGetLogCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetLogCall) DoAndReturn(f func(context.Context, uint64) (*commonpb.Log, error)) *MockControllerGetLogCall {
+func (c *MockControllerGetLogCall) DoAndReturn(f func(context.Context, uint64) (*grpc.Log, error)) *MockControllerGetLogCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetMetadataSchemaStatus mocks base method.
-func (m *MockController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*servicepb.GetMetadataSchemaStatusResponse, error) {
+func (m *MockController) GetMetadataSchemaStatus(ctx context.Context, ledgerName string) (*grpc.GetMetadataSchemaStatusResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMetadataSchemaStatus", ctx, ledgerName)
-	ret0, _ := ret[0].(*servicepb.GetMetadataSchemaStatusResponse)
+	ret0, _ := ret[0].(*grpc.GetMetadataSchemaStatusResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -653,28 +651,28 @@ type MockControllerGetMetadataSchemaStatusCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetMetadataSchemaStatusCall) Return(arg0 *servicepb.GetMetadataSchemaStatusResponse, arg1 error) *MockControllerGetMetadataSchemaStatusCall {
+func (c *MockControllerGetMetadataSchemaStatusCall) Return(arg0 *grpc.GetMetadataSchemaStatusResponse, arg1 error) *MockControllerGetMetadataSchemaStatusCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetMetadataSchemaStatusCall) Do(f func(context.Context, string) (*servicepb.GetMetadataSchemaStatusResponse, error)) *MockControllerGetMetadataSchemaStatusCall {
+func (c *MockControllerGetMetadataSchemaStatusCall) Do(f func(context.Context, string) (*grpc.GetMetadataSchemaStatusResponse, error)) *MockControllerGetMetadataSchemaStatusCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetMetadataSchemaStatusCall) DoAndReturn(f func(context.Context, string) (*servicepb.GetMetadataSchemaStatusResponse, error)) *MockControllerGetMetadataSchemaStatusCall {
+func (c *MockControllerGetMetadataSchemaStatusCall) DoAndReturn(f func(context.Context, string) (*grpc.GetMetadataSchemaStatusResponse, error)) *MockControllerGetMetadataSchemaStatusCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetNumscript mocks base method.
-func (m *MockController) GetNumscript(ctx context.Context, ledger, name, version string) (*commonpb.NumscriptInfo, error) {
+func (m *MockController) GetNumscript(ctx context.Context, ledger, name, version string) (*grpc.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetNumscript", ctx, ledger, name, version)
-	ret0, _ := ret[0].(*commonpb.NumscriptInfo)
+	ret0, _ := ret[0].(*grpc.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -692,28 +690,28 @@ type MockControllerGetNumscriptCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetNumscriptCall) Return(arg0 *commonpb.NumscriptInfo, arg1 error) *MockControllerGetNumscriptCall {
+func (c *MockControllerGetNumscriptCall) Return(arg0 *grpc.NumscriptInfo, arg1 error) *MockControllerGetNumscriptCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetNumscriptCall) Do(f func(context.Context, string, string, string) (*commonpb.NumscriptInfo, error)) *MockControllerGetNumscriptCall {
+func (c *MockControllerGetNumscriptCall) Do(f func(context.Context, string, string, string) (*grpc.NumscriptInfo, error)) *MockControllerGetNumscriptCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetNumscriptCall) DoAndReturn(f func(context.Context, string, string, string) (*commonpb.NumscriptInfo, error)) *MockControllerGetNumscriptCall {
+func (c *MockControllerGetNumscriptCall) DoAndReturn(f func(context.Context, string, string, string) (*grpc.NumscriptInfo, error)) *MockControllerGetNumscriptCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetTemplateUsage mocks base method.
-func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
+func (m *MockController) GetTemplateUsage(ctx context.Context, ledger, name string) (*grpc.TemplateUsage, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTemplateUsage", ctx, ledger, name)
-	ret0, _ := ret[0].(*commonpb.TemplateUsage)
+	ret0, _ := ret[0].(*grpc.TemplateUsage)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -731,28 +729,28 @@ type MockControllerGetTemplateUsageCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetTemplateUsageCall) Return(arg0 *commonpb.TemplateUsage, arg1 error) *MockControllerGetTemplateUsageCall {
+func (c *MockControllerGetTemplateUsageCall) Return(arg0 *grpc.TemplateUsage, arg1 error) *MockControllerGetTemplateUsageCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetTemplateUsageCall) Do(f func(context.Context, string, string) (*commonpb.TemplateUsage, error)) *MockControllerGetTemplateUsageCall {
+func (c *MockControllerGetTemplateUsageCall) Do(f func(context.Context, string, string) (*grpc.TemplateUsage, error)) *MockControllerGetTemplateUsageCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetTemplateUsageCall) DoAndReturn(f func(context.Context, string, string) (*commonpb.TemplateUsage, error)) *MockControllerGetTemplateUsageCall {
+func (c *MockControllerGetTemplateUsageCall) DoAndReturn(f func(context.Context, string, string) (*grpc.TemplateUsage, error)) *MockControllerGetTemplateUsageCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // GetTransaction mocks base method.
-func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*commonpb.Transaction, error) {
+func (m *MockController) GetTransaction(ctx context.Context, ledgerName string, transactionID uint64) (*grpc.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTransaction", ctx, ledgerName, transactionID)
-	ret0, _ := ret[0].(*commonpb.Transaction)
+	ret0, _ := ret[0].(*grpc.Transaction)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -770,28 +768,28 @@ type MockControllerGetTransactionCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerGetTransactionCall) Return(arg0 *commonpb.Transaction, arg1 error) *MockControllerGetTransactionCall {
+func (c *MockControllerGetTransactionCall) Return(arg0 *grpc.Transaction, arg1 error) *MockControllerGetTransactionCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerGetTransactionCall) Do(f func(context.Context, string, uint64) (*commonpb.Transaction, error)) *MockControllerGetTransactionCall {
+func (c *MockControllerGetTransactionCall) Do(f func(context.Context, string, uint64) (*grpc.Transaction, error)) *MockControllerGetTransactionCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, string, uint64) (*commonpb.Transaction, error)) *MockControllerGetTransactionCall {
+func (c *MockControllerGetTransactionCall) DoAndReturn(f func(context.Context, string, uint64) (*grpc.Transaction, error)) *MockControllerGetTransactionCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // InspectIndex mocks base method.
-func (m *MockController) InspectIndex(ctx context.Context, req *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error) {
+func (m *MockController) InspectIndex(ctx context.Context, req *grpc.InspectIndexRequest) (*grpc.InspectIndexResponse, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InspectIndex", ctx, req)
-	ret0, _ := ret[0].(*servicepb.InspectIndexResponse)
+	ret0, _ := ret[0].(*grpc.InspectIndexResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -809,28 +807,28 @@ type MockControllerInspectIndexCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerInspectIndexCall) Return(arg0 *servicepb.InspectIndexResponse, arg1 error) *MockControllerInspectIndexCall {
+func (c *MockControllerInspectIndexCall) Return(arg0 *grpc.InspectIndexResponse, arg1 error) *MockControllerInspectIndexCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerInspectIndexCall) Do(f func(context.Context, *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)) *MockControllerInspectIndexCall {
+func (c *MockControllerInspectIndexCall) Do(f func(context.Context, *grpc.InspectIndexRequest) (*grpc.InspectIndexResponse, error)) *MockControllerInspectIndexCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerInspectIndexCall) DoAndReturn(f func(context.Context, *servicepb.InspectIndexRequest) (*servicepb.InspectIndexResponse, error)) *MockControllerInspectIndexCall {
+func (c *MockControllerInspectIndexCall) DoAndReturn(f func(context.Context, *grpc.InspectIndexRequest) (*grpc.InspectIndexResponse, error)) *MockControllerInspectIndexCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListAccounts mocks base method.
-func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Account], error) {
+func (m *MockController) ListAccounts(ctx context.Context, ledgerName string, pageSize uint32, afterAddress string, filter *grpc.QueryFilter, reverse bool) (cursor.Cursor[*grpc.Account], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAccounts", ctx, ledgerName, pageSize, afterAddress, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Account])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.Account])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -848,28 +846,28 @@ type MockControllerListAccountsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListAccountsCall) Return(arg0 cursor.Cursor[*commonpb.Account], arg1 error) *MockControllerListAccountsCall {
+func (c *MockControllerListAccountsCall) Return(arg0 cursor.Cursor[*grpc.Account], arg1 error) *MockControllerListAccountsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListAccountsCall) Do(f func(context.Context, string, uint32, string, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Account], error)) *MockControllerListAccountsCall {
+func (c *MockControllerListAccountsCall) Do(f func(context.Context, string, uint32, string, *grpc.QueryFilter, bool) (cursor.Cursor[*grpc.Account], error)) *MockControllerListAccountsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListAccountsCall) DoAndReturn(f func(context.Context, string, uint32, string, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Account], error)) *MockControllerListAccountsCall {
+func (c *MockControllerListAccountsCall) DoAndReturn(f func(context.Context, string, uint32, string, *grpc.QueryFilter, bool) (cursor.Cursor[*grpc.Account], error)) *MockControllerListAccountsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListAuditEntries mocks base method.
-func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*auditpb.AuditEntry], error) {
+func (m *MockController) ListAuditEntries(ctx context.Context, pageSize uint32, afterSequence uint64, filter *grpc.QueryFilter, reverse bool) (cursor.Cursor[*grpc.AuditEntry], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAuditEntries", ctx, pageSize, afterSequence, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*auditpb.AuditEntry])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.AuditEntry])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -887,28 +885,28 @@ type MockControllerListAuditEntriesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListAuditEntriesCall) Return(arg0 cursor.Cursor[*auditpb.AuditEntry], arg1 error) *MockControllerListAuditEntriesCall {
+func (c *MockControllerListAuditEntriesCall) Return(arg0 cursor.Cursor[*grpc.AuditEntry], arg1 error) *MockControllerListAuditEntriesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListAuditEntriesCall) Do(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
+func (c *MockControllerListAuditEntriesCall) Do(f func(context.Context, uint32, uint64, *grpc.QueryFilter, bool) (cursor.Cursor[*grpc.AuditEntry], error)) *MockControllerListAuditEntriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListAuditEntriesCall) DoAndReturn(f func(context.Context, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*auditpb.AuditEntry], error)) *MockControllerListAuditEntriesCall {
+func (c *MockControllerListAuditEntriesCall) DoAndReturn(f func(context.Context, uint32, uint64, *grpc.QueryFilter, bool) (cursor.Cursor[*grpc.AuditEntry], error)) *MockControllerListAuditEntriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListIndexes mocks base method.
-func (m *MockController) ListIndexes(ctx context.Context, req *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error) {
+func (m *MockController) ListIndexes(ctx context.Context, req *grpc.ListIndexesRequest) (cursor.Cursor[*grpc.Index], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListIndexes", ctx, req)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Index])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.Index])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -926,28 +924,28 @@ type MockControllerListIndexesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListIndexesCall) Return(arg0 cursor.Cursor[*commonpb.Index], arg1 error) *MockControllerListIndexesCall {
+func (c *MockControllerListIndexesCall) Return(arg0 cursor.Cursor[*grpc.Index], arg1 error) *MockControllerListIndexesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListIndexesCall) Do(f func(context.Context, *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error)) *MockControllerListIndexesCall {
+func (c *MockControllerListIndexesCall) Do(f func(context.Context, *grpc.ListIndexesRequest) (cursor.Cursor[*grpc.Index], error)) *MockControllerListIndexesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListIndexesCall) DoAndReturn(f func(context.Context, *servicepb.ListIndexesRequest) (cursor.Cursor[*commonpb.Index], error)) *MockControllerListIndexesCall {
+func (c *MockControllerListIndexesCall) DoAndReturn(f func(context.Context, *grpc.ListIndexesRequest) (cursor.Cursor[*grpc.Index], error)) *MockControllerListIndexesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLedgers mocks base method.
-func (m *MockController) ListLedgers(ctx context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error) {
+func (m *MockController) ListLedgers(ctx context.Context) (cursor.Cursor[*grpc.LedgerInfo], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLedgers", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.LedgerInfo])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.LedgerInfo])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -965,28 +963,28 @@ type MockControllerListLedgersCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListLedgersCall) Return(arg0 cursor.Cursor[*commonpb.LedgerInfo], arg1 error) *MockControllerListLedgersCall {
+func (c *MockControllerListLedgersCall) Return(arg0 cursor.Cursor[*grpc.LedgerInfo], arg1 error) *MockControllerListLedgersCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListLedgersCall) Do(f func(context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error)) *MockControllerListLedgersCall {
+func (c *MockControllerListLedgersCall) Do(f func(context.Context) (cursor.Cursor[*grpc.LedgerInfo], error)) *MockControllerListLedgersCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListLedgersCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*commonpb.LedgerInfo], error)) *MockControllerListLedgersCall {
+func (c *MockControllerListLedgersCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*grpc.LedgerInfo], error)) *MockControllerListLedgersCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListLogs mocks base method.
-func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error) {
+func (m *MockController) ListLogs(ctx context.Context, ledgerName string, afterSequence uint64, pageSize uint32, filter *grpc.QueryFilter) (cursor.Cursor[*grpc.Log], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListLogs", ctx, ledgerName, afterSequence, pageSize, filter)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Log])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.Log])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1004,29 +1002,29 @@ type MockControllerListLogsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListLogsCall) Return(arg0 cursor.Cursor[*commonpb.Log], arg1 error) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) Return(arg0 cursor.Cursor[*grpc.Log], arg1 error) *MockControllerListLogsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListLogsCall) Do(f func(context.Context, string, uint64, uint32, *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) Do(f func(context.Context, string, uint64, uint32, *grpc.QueryFilter) (cursor.Cursor[*grpc.Log], error)) *MockControllerListLogsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, string, uint64, uint32, *commonpb.QueryFilter) (cursor.Cursor[*commonpb.Log], error)) *MockControllerListLogsCall {
+func (c *MockControllerListLogsCall) DoAndReturn(f func(context.Context, string, uint64, uint32, *grpc.QueryFilter) (cursor.Cursor[*grpc.Log], error)) *MockControllerListLogsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListNumscriptVersions mocks base method.
-func (m *MockController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*commonpb.NumscriptVersionEntry, error) {
+func (m *MockController) ListNumscriptVersions(ctx context.Context, ledger, name string) (string, []*grpc.NumscriptVersionEntry, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListNumscriptVersions", ctx, ledger, name)
 	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].([]*commonpb.NumscriptVersionEntry)
+	ret1, _ := ret[1].([]*grpc.NumscriptVersionEntry)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
 }
@@ -1044,28 +1042,28 @@ type MockControllerListNumscriptVersionsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListNumscriptVersionsCall) Return(arg0 string, arg1 []*commonpb.NumscriptVersionEntry, arg2 error) *MockControllerListNumscriptVersionsCall {
+func (c *MockControllerListNumscriptVersionsCall) Return(arg0 string, arg1 []*grpc.NumscriptVersionEntry, arg2 error) *MockControllerListNumscriptVersionsCall {
 	c.Call = c.Call.Return(arg0, arg1, arg2)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListNumscriptVersionsCall) Do(f func(context.Context, string, string) (string, []*commonpb.NumscriptVersionEntry, error)) *MockControllerListNumscriptVersionsCall {
+func (c *MockControllerListNumscriptVersionsCall) Do(f func(context.Context, string, string) (string, []*grpc.NumscriptVersionEntry, error)) *MockControllerListNumscriptVersionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListNumscriptVersionsCall) DoAndReturn(f func(context.Context, string, string) (string, []*commonpb.NumscriptVersionEntry, error)) *MockControllerListNumscriptVersionsCall {
+func (c *MockControllerListNumscriptVersionsCall) DoAndReturn(f func(context.Context, string, string) (string, []*grpc.NumscriptVersionEntry, error)) *MockControllerListNumscriptVersionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListNumscripts mocks base method.
-func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*commonpb.NumscriptInfo, error) {
+func (m *MockController) ListNumscripts(ctx context.Context, ledger string) ([]*grpc.NumscriptInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListNumscripts", ctx, ledger)
-	ret0, _ := ret[0].([]*commonpb.NumscriptInfo)
+	ret0, _ := ret[0].([]*grpc.NumscriptInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1083,28 +1081,28 @@ type MockControllerListNumscriptsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListNumscriptsCall) Return(arg0 []*commonpb.NumscriptInfo, arg1 error) *MockControllerListNumscriptsCall {
+func (c *MockControllerListNumscriptsCall) Return(arg0 []*grpc.NumscriptInfo, arg1 error) *MockControllerListNumscriptsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListNumscriptsCall) Do(f func(context.Context, string) ([]*commonpb.NumscriptInfo, error)) *MockControllerListNumscriptsCall {
+func (c *MockControllerListNumscriptsCall) Do(f func(context.Context, string) ([]*grpc.NumscriptInfo, error)) *MockControllerListNumscriptsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListNumscriptsCall) DoAndReturn(f func(context.Context, string) ([]*commonpb.NumscriptInfo, error)) *MockControllerListNumscriptsCall {
+func (c *MockControllerListNumscriptsCall) DoAndReturn(f func(context.Context, string) ([]*grpc.NumscriptInfo, error)) *MockControllerListNumscriptsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListPreparedQueries mocks base method.
-func (m *MockController) ListPreparedQueries(ctx context.Context, ledger string) ([]*commonpb.PreparedQuery, error) {
+func (m *MockController) ListPreparedQueries(ctx context.Context, ledger string) ([]*grpc.PreparedQuery, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListPreparedQueries", ctx, ledger)
-	ret0, _ := ret[0].([]*commonpb.PreparedQuery)
+	ret0, _ := ret[0].([]*grpc.PreparedQuery)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1122,28 +1120,28 @@ type MockControllerListPreparedQueriesCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListPreparedQueriesCall) Return(arg0 []*commonpb.PreparedQuery, arg1 error) *MockControllerListPreparedQueriesCall {
+func (c *MockControllerListPreparedQueriesCall) Return(arg0 []*grpc.PreparedQuery, arg1 error) *MockControllerListPreparedQueriesCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListPreparedQueriesCall) Do(f func(context.Context, string) ([]*commonpb.PreparedQuery, error)) *MockControllerListPreparedQueriesCall {
+func (c *MockControllerListPreparedQueriesCall) Do(f func(context.Context, string) ([]*grpc.PreparedQuery, error)) *MockControllerListPreparedQueriesCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListPreparedQueriesCall) DoAndReturn(f func(context.Context, string) ([]*commonpb.PreparedQuery, error)) *MockControllerListPreparedQueriesCall {
+func (c *MockControllerListPreparedQueriesCall) DoAndReturn(f func(context.Context, string) ([]*grpc.PreparedQuery, error)) *MockControllerListPreparedQueriesCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListSigningKeys mocks base method.
-func (m *MockController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*commonpb.SigningKey], error) {
+func (m *MockController) ListSigningKeys(ctx context.Context) (cursor.Cursor[*grpc.SigningKey], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListSigningKeys", ctx)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.SigningKey])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.SigningKey])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1161,28 +1159,28 @@ type MockControllerListSigningKeysCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListSigningKeysCall) Return(arg0 cursor.Cursor[*commonpb.SigningKey], arg1 error) *MockControllerListSigningKeysCall {
+func (c *MockControllerListSigningKeysCall) Return(arg0 cursor.Cursor[*grpc.SigningKey], arg1 error) *MockControllerListSigningKeysCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListSigningKeysCall) Do(f func(context.Context) (cursor.Cursor[*commonpb.SigningKey], error)) *MockControllerListSigningKeysCall {
+func (c *MockControllerListSigningKeysCall) Do(f func(context.Context) (cursor.Cursor[*grpc.SigningKey], error)) *MockControllerListSigningKeysCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListSigningKeysCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*commonpb.SigningKey], error)) *MockControllerListSigningKeysCall {
+func (c *MockControllerListSigningKeysCall) DoAndReturn(f func(context.Context) (cursor.Cursor[*grpc.SigningKey], error)) *MockControllerListSigningKeysCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }
 
 // ListTransactions mocks base method.
-func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *commonpb.QueryFilter, reverse bool) (cursor.Cursor[*commonpb.Transaction], error) {
+func (m *MockController) ListTransactions(ctx context.Context, ledgerName string, pageSize uint32, afterTxID uint64, filter *grpc.QueryFilter, reverse bool) (cursor.Cursor[*grpc.Transaction], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListTransactions", ctx, ledgerName, pageSize, afterTxID, filter, reverse)
-	ret0, _ := ret[0].(cursor.Cursor[*commonpb.Transaction])
+	ret0, _ := ret[0].(cursor.Cursor[*grpc.Transaction])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -1200,19 +1198,19 @@ type MockControllerListTransactionsCall struct {
 }
 
 // Return rewrite *gomock.Call.Return
-func (c *MockControllerListTransactionsCall) Return(arg0 cursor.Cursor[*commonpb.Transaction], arg1 error) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) Return(arg0 cursor.Cursor[*grpc.Transaction], arg1 error) *MockControllerListTransactionsCall {
 	c.Call = c.Call.Return(arg0, arg1)
 	return c
 }
 
 // Do rewrite *gomock.Call.Do
-func (c *MockControllerListTransactionsCall) Do(f func(context.Context, string, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) Do(f func(context.Context, string, uint32, uint64, *grpc.QueryFilter, bool) (cursor.Cursor[*grpc.Transaction], error)) *MockControllerListTransactionsCall {
 	c.Call = c.Call.Do(f)
 	return c
 }
 
 // DoAndReturn rewrite *gomock.Call.DoAndReturn
-func (c *MockControllerListTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, uint64, *commonpb.QueryFilter, bool) (cursor.Cursor[*commonpb.Transaction], error)) *MockControllerListTransactionsCall {
+func (c *MockControllerListTransactionsCall) DoAndReturn(f func(context.Context, string, uint32, uint64, *grpc.QueryFilter, bool) (cursor.Cursor[*grpc.Transaction], error)) *MockControllerListTransactionsCall {
 	c.Call = c.Call.DoAndReturn(f)
 	return c
 }

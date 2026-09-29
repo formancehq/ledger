@@ -13,9 +13,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // TestIdempotencyFailureMessageMatchesAudit pins the equality the checker's
@@ -32,7 +32,7 @@ import (
 // an independent oracle. The independent half is the round trip through
 // state.IdempotencyValueFromAudit — the same derivation
 // check.expectedIdempotencyOutcome builds its expectation with — which crosses
-// the auditpb.AuditFailure to commonpb.IdempotencyFailure field mapping
+// the auditpb.AuditFailure to internalcommonpb.IdempotencyFailure field mapping
 // (Context to Metadata included) that describeFailure does not cover.
 func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 	t.Parallel()
@@ -79,7 +79,7 @@ func TestIdempotencyFailureMessageMatchesAudit(t *testing.T) {
 			// wire because that is how the checker reads it: a proto3 map with
 			// no entries comes back nil, so the empty Context does not survive.
 			entry := &auditpb.AuditEntry{
-				Timestamp: &commonpb.Timestamp{Data: proposalCreatedAt},
+				Timestamp: &auditpb.Timestamp{Data: proposalCreatedAt},
 				Outcome:   &auditpb.AuditEntry_Failure{Failure: buildAuditFailure(tc.err)},
 			}
 
@@ -397,7 +397,7 @@ func auditFailureCases() []auditFailureCase {
 			// The Provided enum is rendered through domain.ReasonString, so the
 			// projected value is the client-facing identifier, not the enum name.
 			name:        "InvalidSkippableReason",
-			err:         &domain.ErrInvalidSkippableReason{Provided: commonpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
+			err:         &domain.ErrInvalidSkippableReason{Provided: auditpb.ErrorReason_ERROR_REASON_LEDGER_NOT_FOUND},
 			wantReason:  domain.ErrReasonValidation,
 			wantContext: map[string]string{"reason": domain.ErrReasonLedgerNotFound},
 		},

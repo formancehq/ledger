@@ -13,7 +13,8 @@ import (
 	"github.com/IBM/sarama"
 	"github.com/xdg-go/scram"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 )
 

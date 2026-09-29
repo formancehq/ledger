@@ -14,10 +14,9 @@ import (
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -30,7 +29,7 @@ var (
 // ServiceWithClient holds a test service instance along with its gRPC clients and directory paths.
 type ServiceWithClient struct {
 	Service       *testservice.Service
-	Client        servicepb.BucketServiceClient
+	Client        clusterpb.BucketServiceClient
 	ClusterClient clusterpb.ClusterServiceClient
 	GRPCConn      *grpc.ClientConn
 	WalDir        string
@@ -44,12 +43,12 @@ type ServiceWithClient struct {
 }
 
 // NewGRPCClient creates a new gRPC client connection for a given port with automatic retry on Unavailable errors.
-func NewGRPCClient(grpcPort int) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClient(grpcPort int) (clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	return NewGRPCClientWithRetry(grpcPort, true)
 }
 
 // NewGRPCClientWithRetry creates a new gRPC client with optional retry policy.
-func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (servicepb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
+func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...grpc.DialOption) (clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient, *grpc.ClientConn, error) {
 	opts := []grpc.DialOption{
 		grpcprotocol.ClientOption(),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
@@ -69,7 +68,7 @@ func NewGRPCClientWithRetry(grpcPort int, withRetry bool, extraDialOptions ...gr
 		return nil, nil, nil, err
 	}
 
-	return servicepb.NewBucketServiceClient(conn), clusterpb.NewClusterServiceClient(conn), conn, nil
+	return clusterpb.NewBucketServiceClient(conn), clusterpb.NewClusterServiceClient(conn), conn, nil
 }
 
 // MultiNodeOptions holds configuration options for SetupMultiNodeCluster.

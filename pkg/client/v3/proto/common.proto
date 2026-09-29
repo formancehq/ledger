@@ -1,0 +1,1848 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
+
+import "signature.proto";
+import "google/protobuf/descriptor.proto";
+
+// AuthScope is the exhaustive set of granular scopes that may guard a fixed
+// public-service RPC. The wire values are build-time policy metadata; request
+// authentication continues to use the canonical scope strings in the auth
+// adapter.
+enum AuthScope {
+  AUTH_SCOPE_UNSPECIFIED = 0;
+  AUTH_SCOPE_LEDGER_READ = 1;
+  AUTH_SCOPE_LEDGER_WRITE = 2;
+  AUTH_SCOPE_TRANSACTION_READ = 3;
+  AUTH_SCOPE_TRANSACTION_WRITE = 4;
+  AUTH_SCOPE_ACCOUNT_READ = 5;
+  AUTH_SCOPE_METADATA_WRITE = 6;
+  AUTH_SCOPE_AUDIT_READ = 7;
+  AUTH_SCOPE_AUDIT_WRITE = 8;
+  AUTH_SCOPE_OPS_READ = 9;
+  AUTH_SCOPE_OPS_WRITE = 10;
+  AUTH_SCOPE_QUERY_READ = 11;
+  AUTH_SCOPE_QUERY_WRITE = 12;
+  AUTH_SCOPE_CLUSTER_READ = 13;
+  AUTH_SCOPE_CLUSTER_WRITE = 14;
+}
+
+// DynamicAuthResolver names request-dependent policies that cannot be reduced
+// to one fixed scope before the request message is inspected.
+enum DynamicAuthResolver {
+  DYNAMIC_AUTH_RESOLVER_UNSPECIFIED = 0;
+  DYNAMIC_AUTH_RESOLVER_APPLY = 1;
+  DYNAMIC_AUTH_RESOLVER_GET_INDEX = 2;
+  DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS = 3;
+  DYNAMIC_AUTH_RESOLVER_LIST_INDEXES = 4;
+}
+
+// MethodAuthPolicy requires every public-service RPC to choose exactly one
+// authentication policy. protoc-gen-rpcauth rejects missing and invalid
+// declarations and generates the runtime fail-closed registry.
+message MethodAuthPolicy {
+  oneof policy {
+    bool public = 1;
+    AuthScope fixed_scope = 2;
+    DynamicAuthResolver dynamic_resolver = 3;
+  }
+}
+
+extend google.protobuf.MethodOptions {
+  MethodAuthPolicy auth_policy = 71002;
+}
+
+// ============================================================================
+// Core Data Types
+// ============================================================================
+
+message Timestamp {
+  fixed64 data = 1;
+}
+
+// NullValue represents a metadata value that could not be converted to the
+// declared type. It preserves the original raw value for debugging, but
+// signals to consumers that the value is unusable in its expected type.
+message NullValue {
+  string original = 1;
+}
+
+message MetadataValue {
+  oneof type {
+    string string_value = 1;
+    int64 int_value = 2;
+    bool bool_value = 3;
+    NullValue null_value = 4;
+    uint64 uint_value = 5;
+    int64 datetime_value = 6;  // microseconds since the Unix epoch (signed; pre-1970 allowed)
+  }
+}
+
+// MetadataMap wraps a metadata map for use as a proto map value
+// (proto3 does not support nested maps like map<string, map<string, MetadataValue>>).
+message MetadataMap {
+  map<string, MetadataValue> values = 1;
+}
+
+// ParameterValue represents a typed parameter value for prepared query execution.
+message ParameterValue {
+  oneof value {
+    string string_value = 1;
+    int64 int64_value = 2;
+    uint64 uint64_value = 3;
+    bool bool_value = 4;
+  }
+}
+
+message Uint256 {
+  fixed64 v0 = 1;  // least significant limb
+  fixed64 v1 = 2;
+  fixed64 v2 = 3;
+  fixed64 v3 = 4;  // most significant limb
+}
+
+// Posting represents a single posting in a transaction
+message Posting {
+  string source = 1;
+  string destination = 2;
+  Uint256 amount = 3;
+  string asset = 4;
+  // Color of the funds being moved. The empty string is the "uncolored" bucket
+  // and is treated as just another color from a segregation standpoint.
+  // Color values are constrained to ^[A-Z]*$ at admission time.
+  string color = 5;
+}
+
+// Transaction represents a transaction
+message Transaction {
+  repeated Posting postings = 1;
+  map<string, MetadataValue> metadata = 2;
+  Timestamp timestamp = 3;
+  string reference = 4;
+  fixed64 id = 5;
+  bool reverted = 6;
+  Timestamp inserted_at = 7;
+  Timestamp updated_at = 8;
+  Timestamp reverted_at = 9;
+  // Id of the transaction that reverted this one. 0 = not reverted.
+  fixed64 reverted_by_transaction = 10;
+  // Id of the original transaction this transaction reverts. 0 = not a revert.
+  fixed64 reverts_transaction = 11;
+  // Post-commit volumes for every (account, asset, color) tuple touched by
+  // this transaction, captured at the transaction's sequence. Immutable
+  // historical snapshot: never recomputed from current balances.
+  PostCommitVolumes post_commit_volumes = 12;
+}
+
+message Script {
+  string plain = 1;
+  map<string, string> vars = 2;
+  bytes content_hash = 3;  // BLAKE3 hash of the script content (32 bytes)
+}
+
+// ============================================================================
+// Volumes
+// ============================================================================
+
+// Volumes represents input and output volumes
+message Volumes {
+  string input = 1;   // big.Int as string
+  string output = 2;  // big.Int as string
+}
+
+// VolumesWithBalance represents volumes with balance
+message VolumesWithBalance {
+  string input = 1;    // big.Int as string
+  string output = 2;   // big.Int as string
+  string balance = 3;  // big.Int as string
+}
+
+// VolumesByAssets is a sorted list of post-commit (asset, color) volume
+// entries for a single account. Sorted by (asset, color) ascending so the
+// serialization is deterministic and stable across reads.
+message VolumesByAssets {
+  repeated VolumeEntry volumes = 1;
+}
+
+// VolumeEntry is one (asset, color) row inside VolumesByAssets. The empty
+// color is the uncolored bucket and is itself just another segregated bucket.
+message VolumeEntry {
+  string asset = 1;
+  string color = 2;
+  Volumes volumes = 3;
+}
+
+// PostCommitVolumes represents volumes after commit, grouped by account.
+// Within each account, entries are flat-listed per (asset, color) tuple.
+message PostCommitVolumes {
+  map<string, VolumesByAssets> volumes_by_account = 1;
+}
+
+// ============================================================================
+// Account
+// ============================================================================
+
+// AccountVolume is one (asset, color) row in Account.volumes.
+message AccountVolume {
+  string asset = 1;
+  string color = 2;
+  VolumesWithBalance volumes = 3;
+}
+
+// Account represents an account in the ledger.
+message Account {
+  string address = 1;
+  map<string, MetadataValue> metadata = 2;
+  Timestamp first_usage = 3;
+  Timestamp insertion_date = 4;
+  Timestamp updated_at = 5;
+  // Volumes is a sorted list of per (asset, color) entries.
+  // Sorted by (asset, color) ascending for stable serialization.
+  // When the request opts into collapse_colors, the list collapses to one
+  // entry per asset with color = "" and amounts summed across colors.
+  repeated AccountVolume volumes = 6;
+}
+
+// ============================================================================
+// Target (for metadata operations)
+// ============================================================================
+
+enum TargetType {
+  TARGET_TYPE_ACCOUNT = 0;
+  TARGET_TYPE_TRANSACTION = 1;
+  TARGET_TYPE_LEDGER = 2;
+}
+
+message TargetAccount {
+  string addr = 1;
+}
+
+message Target {
+  oneof target {
+    TargetAccount account = 1;
+    fixed64 transaction_id = 2;
+  }
+}
+
+// ============================================================================
+// Metadata Schema
+// ============================================================================
+
+enum MetadataType {
+  METADATA_TYPE_STRING = 0;
+  METADATA_TYPE_INT64 = 1;
+  METADATA_TYPE_BOOL = 2;
+  METADATA_TYPE_UINT64 = 3;
+  METADATA_TYPE_INT8 = 4;
+  METADATA_TYPE_INT16 = 5;
+  METADATA_TYPE_INT32 = 6;
+  METADATA_TYPE_UINT8 = 7;
+  METADATA_TYPE_UINT16 = 8;
+  METADATA_TYPE_UINT32 = 9;
+  METADATA_TYPE_DATETIME = 10;
+}
+
+// Field-level conversion status was removed with the FSM-side value converter.
+// Schema/type changes do not rewrite stored values, and entity reads return
+// the persisted MetadataValue branch verbatim:
+// declared_type is an index hint only — it governs how the indexer
+// encodes forward entries, never the bytes returned to clients. There
+// is no transition state observable at the field level.
+
+message MetadataFieldSchema {
+  MetadataType type = 1;
+}
+
+message MetadataSchema {
+  map<string, MetadataFieldSchema> account_fields = 1;
+  map<string, MetadataFieldSchema> transaction_fields = 2;
+  map<string, MetadataFieldSchema> ledger_fields = 3;
+}
+
+message SetMetadataFieldTypeCommand {
+  TargetType target_type = 1;
+  string key = 2;
+  MetadataType type = 3;
+}
+
+// TransactionBuiltinIndex identifies a built-in transaction field that can be indexed.
+enum TransactionBuiltinIndex {
+  TX_BUILTIN_INDEX_REFERENCE = 0;        // requires Pebble "txref" index
+  TX_BUILTIN_INDEX_TIMESTAMP = 1;        // requires Pebble "tstmp" index
+  TX_BUILTIN_INDEX_ID = 2;               // range scan on existence bucket (no index)
+  TX_BUILTIN_INDEX_ADDRESS = 3;          // account→transaction mapping (any role)
+  TX_BUILTIN_INDEX_SOURCE_ADDRESS = 4;   // source account→transaction mapping
+  TX_BUILTIN_INDEX_DESTINATION_ADDRESS = 5;     // destination account→transaction mapping
+  TX_BUILTIN_INDEX_INSERTED_AT = 6;     // requires Pebble "txiat" index (inserted_at date)
+  TX_BUILTIN_INDEX_REVERTED_AT = 7;     // requires Pebble "rvat" index (reverted_at date)
+}
+
+// AccountBuiltinIndex identifies a built-in account field that can be indexed.
+enum AccountBuiltinIndex {
+  ACCT_BUILTIN_INDEX_UNSPECIFIED = 0;
+  ACCT_BUILTIN_INDEX_ASSET = 1;
+}
+
+// LogBuiltinIndex identifies a built-in log field that can be indexed.
+// The per-ledger log index (Pebble "llog") is always built by the indexbuilder
+// and is not exposed here — only opt-in fields appear below.
+enum LogBuiltinIndex {
+  LOG_BUILTIN_INDEX_UNSPECIFIED = 0;
+  LOG_BUILTIN_INDEX_DATE = 1;       // per-ledger log date index (Pebble "lldt")
+}
+
+// MetadataIndexID identifies a metadata-key index by its target entity and key.
+message MetadataIndexID {
+  TargetType target = 1;
+  string key = 2;
+}
+
+// IndexID uniquely identifies an index within a ledger across all kinds
+// (transaction builtins, log builtins, account builtins, metadata keys, ...).
+// Future kinds (e.g. account_type) extend the oneof without touching other code.
+message IndexID {
+  oneof kind {
+    TransactionBuiltinIndex tx_builtin = 1;
+    LogBuiltinIndex log_builtin = 2;
+    AccountBuiltinIndex account_builtin = 3;
+    MetadataIndexID metadata = 4;
+  }
+}
+
+// Index is the first-class representation of an index in the bucket-scoped
+// index registry. Holds its identifier, scope and audit metadata. Build
+// progress is a per-replica concern surfaced through
+// `readstore.IndexVersionState` (see forward_encoding_version below).
+//
+// Scope:
+//   - ledger == ""   → bucket-scoped (e.g. audit indexes), single entry across the bucket.
+//   - ledger == "X"  → ledger-scoped, one entry per (ledger, IndexID) tuple.
+//
+// Entries live in the SubAttrIndex attribute zone, not in LedgerInfo.
+message Index {
+  IndexID id = 1;
+  Timestamp created_at = 2;
+  string ledger = 3;  // empty for bucket-scoped indexes
+  // Cluster-wide forward-encoding version. Bumped at every event that
+  // requires the indexer to rewrite its forward index (CreateIndex,
+  // SetMetadataFieldType). The per-replica local view of this value
+  // lives in `readstore.IndexVersionState.CurrentVersion` (internal)
+  // and is exposed on the wire as `IndexEntry.current_version` on
+  // `GetIndexStatusResponse`. Queries read from the replica's local
+  // current_version, not from this cluster-wide field. The read path's Raft
+  // horizon certificate proves causal catch-up of the projection, but does
+  // NOT certify completion of a local build/rewrite; current/pending version
+  // remains the explicit readiness contract. See api-comparison.md.
+  uint32 forward_encoding_version = 4;
+}
+
+// ============================================================================
+// Idempotency
+// ============================================================================
+
+message Idempotency {
+  string key = 1;
+  // HLC microseconds when this frozen outcome expires; 0 = never. Server-derived
+  // (created_at + the policy TTL committed for that apply) and chain-bound in the
+  // audit header, so restore and the checker read it back without a node-local TTL.
+  fixed64 expires_at = 2;
+}
+
+// ============================================================================
+// Log
+// ============================================================================
+
+message Log {
+  fixed64 sequence = 1;
+  LogPayload payload = 2;
+  // Batch identity (idempotency key + signature) lives on AppliedProposal
+  // (proposal.proto), not on the log.
+  signature.SignedLog response_signature = 3;
+}
+
+message LogPayload {
+  oneof type {
+    CreatedLedgerLog create_ledger = 1;
+    DeletedLedgerLog delete_ledger = 2;
+    ApplyLedgerLog apply = 3;
+    RegisteredSigningKeyLog register_signing_key = 4;
+    RevokedSigningKeyLog revoke_signing_key = 5;
+    SetSigningConfigLog set_signing_config = 6;
+    AddedEventsSinkLog added_events_sink = 7;
+    RemovedEventsSinkLog removed_events_sink = 8;
+    SetMaintenanceModeLog set_maintenance_mode = 9;
+    PromotedLedgerLog promote_ledger = 10;
+    CreatedPreparedQueryLog created_prepared_query = 11;
+    UpdatedPreparedQueryLog updated_prepared_query = 12;
+    DeletedPreparedQueryLog deleted_prepared_query = 13;
+    SavedNumscriptLog saved_numscript = 14;
+    CreatedQueryCheckpointLog created_query_checkpoint = 15;
+    DeletedQueryCheckpointLog deleted_query_checkpoint = 16;
+    SetQueryCheckpointScheduleLog set_query_checkpoint_schedule = 17;
+    DeletedQueryCheckpointScheduleLog delete_query_checkpoint_schedule = 18;
+    SavedLedgerMetadataLog saved_ledger_metadata = 19;
+    DeletedLedgerMetadataLog deleted_ledger_metadata = 20;
+    SetClusterPolicyLog set_cluster_policy = 21;
+  }
+}
+
+message PromotedLedgerLog {
+  string name = 1;
+}
+
+// ============================================================================
+// Signing Key Log Messages
+// ============================================================================
+
+// RegisteredSigningKeyLog records a signing key registration.
+message RegisteredSigningKeyLog {
+  string key_id = 1;
+  bytes public_key = 2;
+  string parent_key_id = 3;
+}
+
+// RevokedSigningKeyLog records a signing key revocation.
+message RevokedSigningKeyLog {
+  string key_id = 1;
+  repeated string cascaded_key_ids = 2;
+}
+
+// SigningKey represents a registered signing key with its parent relationship.
+message SigningKey {
+  string key_id = 1;
+  bytes public_key = 2;
+  string parent_key_id = 3;
+}
+
+// SetSigningConfigLog records a signing configuration change.
+message SetSigningConfigLog {
+  bool require_signatures = 1;
+}
+
+// AddedEventsSinkLog records the addition of a named sink config.
+message AddedEventsSinkLog {
+  SinkConfig config = 1;
+}
+
+// RemovedEventsSinkLog records the removal of a named sink config.
+message RemovedEventsSinkLog {
+  string name = 1;
+}
+
+// SetMaintenanceModeLog records a maintenance mode change.
+message SetMaintenanceModeLog {
+  bool enabled = 1;
+}
+
+// SetClusterPolicyLog records a cluster policy change.
+message SetClusterPolicyLog {
+  ClusterPolicy policy = 1;
+}
+
+// BloomTypeConfig holds the configuration for a single bloom filter type.
+message BloomTypeConfig {
+  uint64 expected_keys = 1;
+  double fp_rate = 2;
+}
+
+// HashAlgorithm selects the hash function used for log chain integrity.
+enum HashAlgorithm {
+  HASH_ALGORITHM_BLAKE3 = 0;  // Cryptographic (tamper-resistant), 32-byte output. Default.
+  HASH_ALGORITHM_XXH3 = 1;    // Non-cryptographic (corruption detection only), 16-byte output. ~5-10x faster.
+}
+
+// ClusterConfig holds mutable cluster-wide configuration parameters.
+// These are updated via Raft to ensure deterministic application across all nodes.
+message ClusterConfig {
+  uint64 rotation_threshold = 1;
+  BloomTypeConfig bloom_volumes = 2;
+  BloomTypeConfig bloom_metadata = 3;
+  BloomTypeConfig bloom_references = 4;
+  BloomTypeConfig bloom_ledgers = 5;
+  BloomTypeConfig bloom_boundaries = 6;
+  BloomTypeConfig bloom_transactions = 7;
+  BloomTypeConfig bloom_sink_configs = 8;
+  BloomTypeConfig bloom_numscript_versions = 9;
+  BloomTypeConfig bloom_numscript_contents = 10;
+  HashAlgorithm hash_algorithm = 11;
+  BloomTypeConfig bloom_ledger_metadata = 12;
+  BloomTypeConfig bloom_prepared_queries = 13;
+  BloomTypeConfig bloom_indexes = 14;
+}
+
+
+// ClusterPolicy is the Raft-replicated cluster-wide policy for behavior that
+// must apply identically on every node during FSM apply (idempotency
+// expiration, query-checkpoint admission, metadata size ceilings). revision is
+// monotonic so a stale proposal can never overwrite a newer committed policy.
+//
+// The metadata ceilings are the configurable form of the canonical metadata
+// size contract (domain.MetadataLimits). They ride in the replicated policy
+// rather than in node-local flags because FSM apply validates the metadata a
+// Numscript program produces against them: a node-local limit would make one
+// committed entry apply differently per node.
+message ClusterPolicy {
+  fixed64 revision = 1;
+  fixed64 idempotency_ttl_micros = 2;  // 0 means never expires
+  fixed64 query_checkpoint_limit = 3;  // must be >= 1
+  // Metadata size ceilings, each scoped to a single command. Every value must
+  // be >= 1; see domain.MetadataLimits for the measurement rule and
+  // docs/technical/architecture/subsystems/admission/metadata-limits.md for the
+  // contract.
+  fixed64 metadata_max_entries_per_entity = 4;
+  fixed64 metadata_max_key_bytes = 5;
+  fixed64 metadata_max_value_bytes = 6;
+  fixed64 metadata_max_entity_bytes = 7;
+  fixed64 metadata_max_command_bytes = 8;
+}
+
+// CreatedPreparedQueryLog records the creation of a prepared query.
+message CreatedPreparedQueryLog {
+  string ledger = 1;
+  PreparedQuery query = 2;
+}
+
+// UpdatedPreparedQueryLog records the update of a prepared query filter.
+message UpdatedPreparedQueryLog {
+  string ledger = 1;
+  string name = 2;
+  QueryFilter previous_filter = 3;
+  QueryFilter new_filter = 4;
+}
+
+// DeletedPreparedQueryLog records the deletion of a prepared query.
+message DeletedPreparedQueryLog {
+  string ledger = 1;
+  string name = 2;
+}
+
+// ============================================================================
+// Ledger Metadata Log Messages
+// ============================================================================
+
+// SavedLedgerMetadataLog records metadata being set on a ledger.
+message SavedLedgerMetadataLog {
+  string ledger = 1;
+  map<string, MetadataValue> metadata = 2;
+}
+
+// DeletedLedgerMetadataLog records a metadata key being removed from a ledger.
+message DeletedLedgerMetadataLog {
+  string ledger = 1;
+  string key = 2;
+}
+
+// ============================================================================
+// Event Types
+// ============================================================================
+
+enum EventType {
+  EVENT_TYPE_UNSPECIFIED = 0;
+  COMMITTED_TRANSACTION = 1;
+  REVERTED_TRANSACTION = 2;
+  SAVED_METADATA = 3;
+  DELETED_METADATA = 4;
+  CREATED_LEDGER = 5;
+  DELETED_LEDGER = 6;
+  // SKIPPED_ORDER is emitted when a batch order tripped a whitelisted business
+  // failure (skippable_reasons) and was skipped instead of failing the whole
+  // proposal. The OrderSkippedLog carries the reason + context. See EN-1356.
+  SKIPPED_ORDER = 7;
+}
+
+// ============================================================================
+// Numscript Library Messages
+// ============================================================================
+
+// NumscriptInfo represents a stored, immutable numscript version.
+message NumscriptInfo {
+  string name = 1;
+  string content = 2;
+  string version = 3;
+  Timestamp created_at = 4;
+  string ledger = 5;
+}
+
+// SavedNumscriptLog records a numscript version being saved to the library.
+message SavedNumscriptLog {
+  NumscriptInfo info = 1;
+}
+
+// NumscriptVersionEntry describes one stored, immutable version of a numscript.
+message NumscriptVersionEntry {
+  string version = 1;
+  Timestamp created_at = 2;
+}
+
+// TemplateUsage tracks per-template invocation usage. Persisted as a
+// projection of the audit log by the usagebuilder subsystem — NOT part of
+// the FSM authoritative state. Rebuildable from cursor=0 on demand.
+message TemplateUsage {
+  fixed64 count = 1;
+  Timestamp last_used = 2;
+}
+
+// SetQueryCheckpointScheduleLog records a query checkpoint schedule change.
+message SetQueryCheckpointScheduleLog {
+  string cron = 1;
+}
+
+// DeletedQueryCheckpointScheduleLog records the removal of the query checkpoint schedule.
+message DeletedQueryCheckpointScheduleLog {}
+
+// CreatedQueryCheckpointLog records a query checkpoint being created.
+message CreatedQueryCheckpointLog {
+  fixed64 checkpoint_id = 1;
+  fixed64 max_sequence = 2;
+  Timestamp created_at = 3;
+  fixed64 applied_index = 4;
+}
+
+// DeletedQueryCheckpointLog records a query checkpoint being deleted.
+message DeletedQueryCheckpointLog {
+  fixed64 checkpoint_id = 1;
+}
+
+// SinkConfig wraps a single sink configuration with per-sink settings.
+message SinkConfig {
+  string name = 1;  // Stable identifier for per-sink cursor and status keys
+  oneof type {
+    NatsSinkConfig nats = 2;
+    ClickHouseSinkConfig clickhouse = 3;
+    KafkaSinkConfig kafka = 4;
+    HttpSinkConfig http = 5;
+    DatabricksSinkConfig databricks = 6;
+  }
+  string format = 7;          // "json" or "protobuf" (default: "json")
+  int32 batch_size = 8;       // Max events per batch (default: 64)
+  int64 batch_delay_ms = 9;   // Max delay before flush in ms (default: 10)
+  repeated EventType event_types = 10;  // Empty = all events (default)
+  string controller_id = 11;  // Opaque owner identity (EventSink CR UID); empty for manually managed sinks
+}
+
+// SinkStatus tracks per-sink operational state (replicated via Raft).
+message SinkStatus {
+  string sink_name = 1;
+  fixed64 cursor = 2;         // Last published sequence
+  SinkError error = 3;       // Most recent error (nil = healthy)
+}
+
+// SinkError records a sink failure.
+message SinkError {
+  string message = 1;
+  Timestamp occurred_at = 2;
+}
+
+// NatsSinkConfig holds NATS JetStream sink configuration.
+message NatsSinkConfig {
+  string url = 1;
+  string topic = 2;
+}
+
+// ClickHouseSinkConfig holds ClickHouse sink configuration.
+message ClickHouseSinkConfig {
+  string dsn = 1;    // e.g. "clickhouse://user:pass@host:9000/db"
+  string table = 2;  // Table name (default: "ledger_events")
+}
+
+// KafkaSinkConfig holds Apache Kafka sink configuration.
+message KafkaSinkConfig {
+  repeated string brokers = 1;  // e.g. ["localhost:9092"]
+  string topic = 2;             // Kafka topic name
+  bool tls = 3;                 // Enable TLS
+  string sasl_mechanism = 4;    // SASL mechanism: "", "PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-512"
+  string sasl_username = 5;
+  string sasl_password = 6;
+}
+
+// HttpSinkConfig holds HTTP webhook sink configuration.
+message HttpSinkConfig {
+  string endpoint = 1;          // Target URL (e.g. "https://example.com/webhooks/ledger")
+  string secret = 2;            // Optional HMAC-SHA256 secret for X-Webhook-Signature header
+}
+
+// DatabricksSinkConfig holds Databricks SQL Warehouse sink configuration.
+// Exactly one of the auth oneof fields must be set.
+message DatabricksSinkConfig {
+  string server_hostname = 1;  // e.g. "adb-123456.azuredatabricks.net"
+  string http_path = 2;        // SQL Warehouse HTTP path (e.g. "/sql/1.0/warehouses/abc123")
+  string catalog = 3;          // Unity Catalog name (e.g. "main")
+  string schema = 4;           // Schema name (e.g. "default")
+  string table = 5;            // Table name (default: "ledger_events")
+  int32 port = 6;              // Port number (default: 443)
+  oneof auth {
+    string token = 7;                  // Personal Access Token (PAT)
+    DatabricksOAuthM2M oauth_m2m = 8;  // OAuth M2M / service principal
+  }
+}
+
+// DatabricksOAuthM2M holds OAuth M2M (client credentials) for a Databricks service principal.
+message DatabricksOAuthM2M {
+  string client_id = 1;
+  string client_secret = 2;
+}
+
+// CreatedLedgerLog captures the creation-time parameters of a ledger.
+// Uses dedicated fields instead of embedding LedgerInfo to avoid sharing
+// a mutable pointer between the FSM store and the immutable log payload.
+message CreatedLedgerLog {
+  string name = 1;
+  Timestamp created_at = 2;
+  MetadataSchema metadata_schema = 3;
+  LedgerMode mode = 4;
+  MirrorSourceConfig mirror_source = 5;
+  map<string, AccountType> account_types = 6;
+  ChartEnforcementMode default_enforcement_mode = 7;
+  uint32 id = 8;                              // Numeric ledger ID assigned by FSM
+}
+
+message DeletedLedgerLog {
+  string name = 1;
+  Timestamp deleted_at = 2;
+}
+
+message ApplyLedgerLog {
+  string ledger_name = 1;
+  LedgerLog log = 2;
+}
+
+message LedgerLog {
+  LedgerLogPayload data = 1;
+  Timestamp date = 2;
+  fixed64 id = 3;
+  // Volumes (account+asset) DRAINED to zero by THIS log — the entry had a
+  // pre-existing non-zero balance in Pebble and this log brought it back to
+  // zero, causing the volume to be evicted from the attribute store at
+  // commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
+  // The index builder skips account->transaction mappings for
+  // purged ∪ ephemeral (both are evicted from Pebble). The usagebuilder
+  // subtracts len(purged_volumes) from VolumeCount — a draining eviction
+  // decreases the live cardinality by one.
+  repeated TouchedVolume purged_volumes = 4;
+  // Volumes (account+asset) whose PERSISTENT entry was newly created by
+  // THIS log AND SURVIVED past commit. New + kept — disjoint from
+  // purged_volumes and ephemeral_volumes. The usagebuilder increments
+  // VolumeCount by len(new_kept_volumes) — a newly-persisted key raises
+  // the live cardinality by one.
+  repeated TouchedVolume new_kept_volumes = 5;
+  // Volumes (account+asset) that were both newly created AND purged by
+  // THIS log — pure ephemeral. Written to Pebble briefly then evicted at
+  // commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
+  // and is tracked separately so:
+  //   - the index builder can skip acct->tx mappings for them (via
+  //     purged_volumes ∪ ephemeral_volumes);
+  //   - the log payload does not duplicate ephemeral tuples in two lists
+  //     (previous encoding carried them in both purged_volumes AND
+  //     new_volumes, doubling bytes on ephemeral-heavy workloads).
+  repeated TouchedVolume ephemeral_volumes = 6;
+  // Account addresses whose complete EPHEMERAL current state was removed by
+  // this log. Historical transaction mappings remain intact; consumers use
+  // this signal to purge only current-account secondary projections.
+  repeated string purged_accounts = 7;
+}
+
+// TouchedVolume identifies a (ledger-local) volume cell — an account paired
+// with an asset and a color. Used in transient/purged volume exclusion sets
+// where the indexer must distinguish per-(asset, color) state inside a
+// multi-bucket account. The empty color is the uncolored bucket and is itself
+// just another segregated cell.
+message TouchedVolume {
+  string account = 1;
+  string asset = 2;
+  string color = 3;
+}
+
+message LedgerLogPayload {
+  oneof payload {
+    CreatedTransaction created_transaction = 1 [(ledger_log_is_history) = true];
+    RevertedTransaction reverted_transaction = 2 [(ledger_log_is_history) = true];
+    SavedMetadata saved_metadata = 3 [(ledger_log_is_history) = true];
+    DeletedMetadata deleted_metadata = 4 [(ledger_log_is_history) = true];
+    SetMetadataFieldTypeLog set_metadata_field_type = 5 [(ledger_log_is_history) = false];
+    RemovedMetadataFieldTypeLog removed_metadata_field_type = 6 [(ledger_log_is_history) = false];
+    FilledGapLog fill_gap = 7 [(ledger_log_is_history) = false];
+    CreatedIndexLog create_index = 8 [(ledger_log_is_history) = false];
+    DroppedIndexLog drop_index = 9 [(ledger_log_is_history) = false];
+    AddedAccountTypeLog added_account_type = 10 [(ledger_log_is_history) = false];
+    RemovedAccountTypeLog removed_account_type = 11 [(ledger_log_is_history) = false];
+    UpdatedDefaultEnforcementModeLog updated_default_enforcement_mode = 12 [(ledger_log_is_history) = false];
+    OrderSkippedLog order_skipped = 13 [(ledger_log_is_history) = true];
+  }
+}
+
+// OrderSkippedLog records an order that the FSM rejected with a business
+// error whose reason was listed in the order's `skippable_reasons` whitelist.
+// No state mutation occurred for the skipped order, but the rest of the
+// proposal applied normally. The `reason` here is a PROJECTION and is NOT
+// hash-chain-bound — only the AuditItem.serialized_order (the submitted
+// order, including its allowed skippable_reasons whitelist) is bound. Because
+// the projected reason can be tampered with, the checker does not trust it:
+// it replays the serialized order against the audit-derived state at the
+// applied index, re-derives the failure the FSM must have produced, and
+// confirms that reason both matches the projection and was whitelisted
+// (defense against forged skip entries).
+message OrderSkippedLog {
+  ErrorReason reason = 1;
+  // Free-form context populated by the producing branch. Conventional keys
+  // are documented case-by-case (e.g. reference / existingTransactionId for
+  // TRANSACTION_REFERENCE_CONFLICT). Treat as opaque if the reason is unknown.
+  map<string, string> context = 2;
+}
+
+// CreatedIndexLog records the creation of an index.
+message CreatedIndexLog {
+  IndexID id = 1;
+  // bound_type is the declared type of the indexed metadata field at this
+  // log's sequence, stamped by the FSM when the log is minted. The index's
+  // first version binds to it: every replica encodes that version's rows —
+  // live folds and backfill replays alike — under this type until a retype's
+  // atomic switch rebinds. Stamping at mint time is what keeps the binding
+  // stable at any replay distance; the schema readable when a replica folds
+  // the log may already be many retypes ahead. EN-1724.
+  MetadataType bound_type = 2;
+  // bound_type_declared is false for builtin indexes, which have no metadata
+  // field and therefore no binding: their values keep the natural encoding.
+  // Metadata indexes always carry a binding — CreateIndex validates that the
+  // field is declared in the schema.
+  bool bound_type_declared = 3;
+}
+
+// DroppedIndexLog records the removal of an index.
+message DroppedIndexLog {
+  IndexID id = 1;
+}
+
+message FilledGapLog {
+  fixed64 original_id = 1;  // v2 log ID that this gap fills
+}
+
+
+message CreatedTransaction {
+  Transaction transaction = 1;
+  map<string, MetadataMap> account_metadata = 2;
+}
+
+message RevertedTransaction {
+  fixed64 reverted_transaction_id = 1;
+  Transaction revert_transaction = 2;
+}
+
+message SavedMetadata {
+  Target target = 1;
+  map<string, MetadataValue> metadata = 2;
+}
+
+message DeletedMetadata {
+  Target target = 1;
+  string key = 2;                           // Metadata key to delete
+}
+
+// SetMetadataFieldTypeLog records a metadata field type declaration.
+message SetMetadataFieldTypeLog {
+  TargetType target_type = 1;
+  string key = 2;
+  MetadataType type = 3;
+}
+
+// RemovedMetadataFieldTypeLog records the removal of a metadata field type declaration.
+// When the removed field had an index, dropped_index identifies it so the
+// indexbuilder can purge the read-store entries in the same handler pass.
+message RemovedMetadataFieldTypeLog {
+  TargetType target_type = 1;
+  string key = 2;
+  IndexID dropped_index = 3;  // nil when no index was attached to the field
+}
+
+// ============================================================================
+// Ledger Mode
+// ============================================================================
+
+enum LedgerMode {
+  LEDGER_MODE_NORMAL = 0;
+  LEDGER_MODE_MIRROR = 1;
+}
+
+message MirrorSourceConfig {
+  string ledger_name = 1;  // Source ledger name (common to all source types)
+  oneof type {
+    HttpMirrorSourceConfig http = 2;
+    PostgresMirrorSourceConfig postgres = 3;
+  }
+  uint32 batch_size = 4;  // Max logs per batch (0 = default 100). Client's responsibility to avoid saturating the instance.
+  // Ordered rewrite rules applied to every mirror log entry as v2 logs are
+  // translated into v3 orders. Each rule can rename address segments, transform
+  // metadata, or drop transactions. See MirrorRewriteRule.
+  repeated MirrorRewriteRule rewrite_rules = 5;
+}
+
+// MirrorRewriteRule transforms a mirror log entry during v2->v3 translation.
+//
+// A rule is scoped to exactly one variant of MirrorLogEntry.data: the `scope`
+// oneof selects which. That scope determines two things: (a) the CEL type of
+// `log` in the rule's `match` predicate, and (b) which actions are legal in
+// its `actions` list. This makes invalid combinations (e.g. set_metadata on a
+// deleted_metadata rule) impossible to represent on the wire — the proto oneof
+// nesting rejects them at deserialisation.
+//
+// Rules run top-to-bottom against every translated log entry. A rule whose
+// scope doesn't match the entry's variant is silently skipped. When `stop` is
+// true and the rule matches (scope + predicate), no further rules are
+// evaluated. Rewriting is a pure, deterministic translation-time projection
+// performed on the mirror leader; the source v2 ledger is never modified.
+message MirrorRewriteRule {
+  // Exactly one must be set.
+  oneof scope {
+    CreatedTransactionRule created_transaction = 1;
+    RevertedTransactionRule reverted_transaction = 2;
+    SavedMetadataRule saved_metadata = 3;
+    DeletedMetadataRule deleted_metadata = 4;
+    AnyVariantRule any_variant = 5;
+  }
+  bool stop = 6;
+}
+
+// Per-variant rules. In each rule's `match`, the CEL variable `log` is typed
+// as the corresponding variant proto message directly (e.g. inside a
+// CreatedTransactionRule, `log.metadata["k"]` — NOT
+// `log.created_transaction.metadata["k"]`). This keeps predicates concise and
+// forbids reading fields of other variants by construction.
+
+message CreatedTransactionRule {
+  string match = 1;
+  repeated CreatedTransactionAction actions = 2;
+}
+
+message RevertedTransactionRule {
+  string match = 1;
+  repeated RevertedTransactionAction actions = 2;
+}
+
+message SavedMetadataRule {
+  string match = 1;
+  repeated SavedMetadataAction actions = 2;
+}
+
+message DeletedMetadataRule {
+  string match = 1;
+  repeated DeletedMetadataAction actions = 2;
+}
+
+// AnyVariantRule runs on every variant. `log` is typed as MirrorLogEntry, so
+// its match must use `has(log.<variant>)` guards to read variant-specific
+// fields. Its action set is restricted to operations that are meaningful on
+// every variant.
+message AnyVariantRule {
+  string match = 1;
+  repeated AnyVariantAction actions = 2;
+}
+
+// Actions per variant. Each oneof exposes only the actions that make semantic
+// sense on that variant. E.g. DeletedMetadataAction has no set_metadata
+// because MirrorDeletedMetadata carries only a key, not a metadata map.
+
+message CreatedTransactionAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;
+    SetMetadataAction set_metadata = 2;
+    DeleteMetadataAction delete_metadata = 3;
+    SetAccountMetadataAction set_account_metadata = 4;
+    DeleteAccountMetadataAction delete_account_metadata = 5;
+    SetAccountMetadataFromAddressAction set_account_metadata_from_address = 6;
+    DropAction drop = 7;
+  }
+}
+
+message RevertedTransactionAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;
+    SetMetadataAction set_metadata = 2;
+    DeleteMetadataAction delete_metadata = 3;
+    DropAction drop = 4;
+  }
+}
+
+message SavedMetadataAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;  // acts on Target only
+    SetMetadataAction set_metadata = 2;
+    DeleteMetadataAction delete_metadata = 3;
+    DropAction drop = 4;
+  }
+}
+
+message DeletedMetadataAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;  // acts on Target only
+    DropAction drop = 2;
+  }
+}
+
+message AnyVariantAction {
+  oneof action {
+    RewriteAddressAction rewrite_address = 1;
+    DropAction drop = 2;
+  }
+}
+
+// Shared action payloads. Each carries the parameters an operator supplies for
+// that operation; there is no CEL evaluation involved — the values are
+// consumed by a typed Go executor.
+
+message RewriteAddressAction {
+  string pattern = 1;      // RE2 pattern, validated at admission
+  string replacement = 2;  // may reference groups from `pattern`
+}
+
+message SetMetadataAction {
+  string key = 1;
+  // Source of the metadata value. `value` is a literal string; `value_expr` is
+  // a CEL expression evaluated at commit time against the current variant
+  // (e.g. `log.reference`, `log.metadata["other_key"].string_value`). Neither
+  // set = literal empty string.
+  oneof source {
+    string value = 2;
+    string value_expr = 3;
+  }
+  // Optional metadata type token: one of "string" (default), "int64", "bool",
+  // "uint64", "int8", "int16", "int32", "uint8", "uint16", "uint32",
+  // "datetime". When set, the produced string is coerced into the matching
+  // typed MetadataValue via the platform conversion matrix — a value that does
+  // not parse as the declared type becomes a null value preserving the
+  // original string. Empty = string (unchanged behaviour).
+  string type = 4;
+}
+
+message DeleteMetadataAction {
+  string key = 1;
+}
+
+message SetAccountMetadataAction {
+  string account = 1;
+  string key = 2;
+  // See SetMetadataAction.source for the literal-vs-CEL semantics.
+  oneof source {
+    string value = 3;
+    string value_expr = 4;
+  }
+  // See SetMetadataAction.type — same tokens, same coercion semantics.
+  string type = 5;
+}
+
+message DeleteAccountMetadataAction {
+  string account = 1;
+  string key = 2;
+}
+
+// SetAccountMetadataFromAddressAction runs a single RE2 pattern over every
+// posting address in the current CreatedTransaction and, for each matching
+// address, writes one or more metadata entries on the *matched account* using
+// group-capturing replacements. Multiple replacements share the same pattern
+// so an operator can extract several fields from a single address in one pass
+// (e.g. worker id + acquirer name from `acquirer:acme:worker:001:bank`).
+message SetAccountMetadataFromAddressAction {
+  string pattern = 1;  // RE2 pattern, should anchor with ^…$ for exact match
+  repeated SetAccountMetadataFromAddressReplacement replacements = 2;
+}
+
+message SetAccountMetadataFromAddressReplacement {
+  string key = 1;
+  string replacement = 2;  // RE2 replacement (uses groups from the parent pattern)
+  string type = 3;         // optional metadata type token — see SetMetadataAction.type
+}
+
+message DropAction {}
+
+message HttpMirrorSourceConfig {
+  string base_url = 1;
+  OAuth2ClientCredentials oauth2_client_credentials = 2;
+}
+
+message OAuth2ClientCredentials {
+  string client_id = 1;
+  string client_secret = 2;
+  string token_endpoint = 3;
+  repeated string scopes = 4;
+}
+
+message PostgresMirrorSourceConfig {
+  string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+  // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
+  // authentication token on every new pool connection. Ambient AWS credentials
+  // (IRSA, instance profile, env vars, profile) are loaded via the default
+  // AWS SDK chain; this message only carries the region needed to sign the
+  // token, which must match the RDS instance's region.
+  PostgresAwsIamAuth aws_iam_auth = 2;
+}
+
+message PostgresAwsIamAuth {
+  string region = 1;  // AWS region of the RDS instance (e.g. "eu-west-1"); required for SigV4 signing
+  // Optional STS role ARN to assume before minting the RDS IAM token. When
+  // set, the mirror calls sts:AssumeRole on this ARN and signs the RDS token
+  // with the assumed credentials, decoupling the per-mirror IAM identity from
+  // the pod's ambient credentials. Enables multi-account / multi-tenant
+  // mirrors from a single Cluster whose base role only needs
+  // sts:AssumeRole on these targets (no direct rds-db:connect grant).
+  string assume_role_arn = 2;
+}
+
+message MirrorSyncError {
+  string message = 1;
+  Timestamp occurred_at = 2;
+}
+
+enum MirrorSyncState {
+  MIRROR_SYNC_STATE_SYNCING = 0;
+  MIRROR_SYNC_STATE_FOLLOWING = 1;
+}
+
+message MirrorSyncProgress {
+  MirrorSyncState state = 1;
+  // Highest source (v2) log ID actually applied to this mirror ledger by the
+  // FSM, read from LedgerBoundaries.last_mirror_v2_log_id. This is NOT an
+  // independent worker pointer: there is no separate persisted cursor
+  // (EN-1513).
+  fixed64 cursor = 2;
+  fixed64 source_log_count = 3;
+  fixed64 remaining_logs = 4;
+  MirrorSyncError error = 5;
+}
+
+// ============================================================================
+// Ledger Info
+// ============================================================================
+
+// LedgerInfo represents information about a ledger.
+//
+// Indexes do not live here: they are projected through the bucket-scoped
+// SubAttrIndex registry and surfaced via BucketService.ListIndexes.
+message LedgerInfo {
+  string name = 1;                          // Ledger name
+  Timestamp created_at = 2;                 // Creation timestamp
+  Timestamp deleted_at = 3;                 // Soft delete timestamp (nil if not deleted)
+  MetadataSchema metadata_schema = 4;       // Per-key metadata type declarations
+  LedgerMode mode = 5;                      // Normal or mirror mode
+  MirrorSourceConfig mirror_source = 6;     // Mirror source config (set when mode=MIRROR)
+  MirrorSyncProgress mirror_sync_progress = 7;  // Populated at read time for MIRROR ledgers
+  map<string, AccountType> account_types = 8; // Per-type account address validation
+  ChartEnforcementMode default_enforcement_mode = 9; // Default enforcement for unmatched accounts
+  map<string, MetadataValue> metadata = 10; // Populated at read time from separate attribute store
+  uint32 id = 11;                           // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
+}
+
+// ============================================================================
+// Metadata Commands (shared between bulk operations and raft)
+// ============================================================================
+
+// SaveMetadataCommand is used for adding metadata
+message SaveMetadataCommand {
+  Target target = 1;
+  map<string, MetadataValue> metadata = 2;
+}
+
+// DeleteMetadataCommand is used for deleting metadata
+message DeleteMetadataCommand {
+  Target target = 1;
+  string key = 2;
+}
+
+
+
+// ErrorReason is the typed, wire-bound form of a domain error's Reason()
+// identifier. Each value mirrors a domain.ErrReason* constant: the enum name is
+// "ERROR_REASON_" + that constant's string, so the two map mechanically
+// (domain.ReasonCode / domain.ReasonString) with no hand-maintained table.
+// AuditFailure and IdempotencyFailure store this instead of a free string so
+// the error kind is re-derivable from the reason (domain.KindForReason) at
+// replay and check time, and a typo cannot silently decode into a known reason.
+// While v3 remains unreleased and its state is wiped between revisions,
+// removing a value also realigns the remaining numbers sequentially, per the
+// repository protobuf policy. After release these persisted values become
+// append-only and must never be renumbered or removed. Completeness against
+// domain errors is enforced by TestEveryDomainErrorImplementsDescribable.
+enum ErrorReason {
+  ERROR_REASON_UNSPECIFIED = 0;
+  ERROR_REASON_LEDGER_ALREADY_EXISTS = 1;
+  ERROR_REASON_LEDGER_NOT_FOUND = 2;
+  ERROR_REASON_LEDGER_DELETED = 3;
+  ERROR_REASON_IDEMPOTENCY_KEY_CONFLICT = 4;
+  ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT = 5;
+  ERROR_REASON_TRANSACTION_REFERENCE_NOT_FOUND = 6;
+  ERROR_REASON_TRANSACTION_NOT_FOUND = 7;
+  ERROR_REASON_TRANSACTION_ALREADY_REVERTED = 8;
+  ERROR_REASON_INSUFFICIENT_FUNDS = 9;
+  ERROR_REASON_VOLUME_OVERFLOW = 10;
+  ERROR_REASON_BALANCE_NOT_PRELOADED = 11;
+  ERROR_REASON_NUMSCRIPT_PARSE_ERROR = 12;
+  ERROR_REASON_VALIDATION = 13;
+  ERROR_REASON_AUDIT_DISABLED = 14;
+  ERROR_REASON_SINK_ALREADY_EXISTS = 15;
+  ERROR_REASON_SINK_NOT_FOUND = 16;
+  ERROR_REASON_SINK_BATCH_SIZE_TOO_LARGE = 17;
+  ERROR_REASON_METADATA_NOT_FOUND = 18;
+  ERROR_REASON_MAINTENANCE_MODE = 19;
+  ERROR_REASON_STALE_PROPOSAL = 20;
+  ERROR_REASON_INVALID_CRON_EXPRESSION = 21;
+  ERROR_REASON_LEDGER_IN_MIRROR_MODE = 22;
+  ERROR_REASON_LEDGER_NOT_IN_MIRROR_MODE = 23;
+  ERROR_REASON_PREPARED_QUERY_ALREADY_EXISTS = 24;
+  ERROR_REASON_PREPARED_QUERY_NOT_FOUND = 25;
+  ERROR_REASON_INDEX_NOT_FOUND = 26;
+  ERROR_REASON_INDEX_BUILDING = 27;
+  ERROR_REASON_INDEX_INCONSISTENT = 28;
+  ERROR_REASON_METADATA_FIELD_NOT_IN_SCHEMA = 29;
+  ERROR_REASON_NUMSCRIPT_NOT_FOUND = 30;
+  ERROR_REASON_NUMSCRIPT_VERSION_ALREADY_EXISTS = 31;
+  ERROR_REASON_NUMSCRIPT_INVALID_VERSION = 32;
+  ERROR_REASON_ACCOUNT_NOT_MATCHING_TYPE = 33;
+  ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND = 34;
+  ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS = 35;
+  ERROR_REASON_INVALID_PATTERN = 36;
+  ERROR_REASON_ACCOUNT_TYPE_HAS_ACCOUNTS = 37;
+  ERROR_REASON_ACCOUNT_TYPE_CONFLICT = 38;
+  ERROR_REASON_TRANSIENT_ACCOUNT_NON_ZERO = 39;
+  ERROR_REASON_FILTER_COMPILATION_ERROR = 40;
+  ERROR_REASON_INVALID_ORDER_TYPE = 41;
+  ERROR_REASON_INVALID_APPLY_TYPE = 42;
+  ERROR_REASON_INVALID_EXECUTION_PLAN = 43;
+  ERROR_REASON_EXECUTION_PLAN_TOO_LARGE = 44;
+  ERROR_REASON_COVERAGE_MISS = 45;
+  ERROR_REASON_IDEMPOTENCY_CHECK_FAILED = 46;
+  ERROR_REASON_STORAGE_OPERATION_FAILED = 47;
+  ERROR_REASON_TRANSACTION_STATE_INCONSISTENT = 48;
+  ERROR_REASON_CHECKPOINT_ID_REQUIRED = 49;
+  ERROR_REASON_NUMSCRIPT_RUNTIME = 50;
+  ERROR_REASON_VOLUME_NOT_MATERIALIZED = 51;
+  ERROR_REASON_CLUSTER_UNHEALTHY = 52;
+  ERROR_REASON_WRITES_BLOCKED_DISK_FULL = 53;
+  ERROR_REASON_WRITES_BLOCKED_CLOCK_SKEW = 54;
+  ERROR_REASON_CHECKPOINT_NOT_READY = 55;
+  ERROR_REASON_MIRROR_V2_LOG_ID_GAP = 56;
+  ERROR_REASON_MIRROR_V2_LOG_ID_INVALID = 57;
+  // ERROR_REASON_STALE_INPUTS_RESOLUTION: the state admission read to compute
+  // the order's preload set changed before the FSM applied it, so the preloaded
+  // key set may be wrong. Raised by Numscript dependency resolution when the
+  // balances or metadata it read changed (see EN-1406), and by a revert whose
+  // target read as absent at admission and is present at apply. Retryable
+  // (Kind=Unavailable) — a second admission resolves against the current state.
+  ERROR_REASON_STALE_INPUTS_RESOLUTION = 58;
+  // ERROR_REASON_PRELOAD_UNAVAILABLE: admission could not build the preload set
+  // for an order (e.g. Numscript dependency discovery failed against current
+  // state). When the batch carries an idempotency key, admission forwards the
+  // order to the FSM (marked OrderTechnical.preload_unavailable) instead of
+  // failing fast, so the FSM can replay a frozen outcome. If no frozen outcome
+  // exists the FSM emits THIS reason: retryable (Kind=Unavailable), NOT frozen —
+  // a preparation gap, never an authoritative business verdict. See EN-1406.
+  ERROR_REASON_PRELOAD_UNAVAILABLE = 59;
+  ERROR_REASON_AGGREGATE_OVERFLOW = 60;
+  ERROR_REASON_BALANCE_NOT_FOUND = 61;
+  // ERROR_REASON_STALE_CLUSTER_POLICY: a cluster-policy update carried a
+  // revision lower than the applied one. Deterministic rejection — a newer
+  // policy already won; the leader-side reconciler re-evaluates on the next
+  // tick. See EN-1827.
+  ERROR_REASON_STALE_CLUSTER_POLICY = 62;
+  // ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT: two cluster-policy updates
+  // carried the same revision with different payloads. The control plane must
+  // assign a fresh revision per distinct policy, so this is a contract
+  // violation surfaced deterministically on every node. See EN-1827.
+  ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT = 63;
+  // ERROR_REASON_CLUSTER_POLICY_INVALID: a cluster-policy update carried a
+  // structurally invalid payload (missing policy, or query_checkpoint_limit
+  // below 1). See EN-1827.
+  ERROR_REASON_CLUSTER_POLICY_INVALID = 64;
+  // ERROR_REASON_CHECKPOINT_LIMIT_REACHED: a CreateQueryCheckpoint was rejected
+  // because the live query-checkpoint count is at the replicated policy limit.
+  // Creation never evicts; an existing checkpoint must be deleted first. See
+  // EN-1501.
+  ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 65;
+  // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
+  // that is not live (never created, or already deleted). See EN-1501.
+  ERROR_REASON_CHECKPOINT_NOT_FOUND = 66;
+  // ERROR_REASON_SEQUENCE_EXHAUSTED: an authoritative transaction, ledger-log,
+  // global-log, or audit sequence reached its final allocatable value. The
+  // operation is rejected before uint64 wrap can publish a zero/reused key.
+  // Permanent (Kind=ResourceExhausted): retrying cannot create another ID.
+  // See EN-1860.
+  ERROR_REASON_SEQUENCE_EXHAUSTED = 67;
+  // A fresh CreateIndex targets an existing ledger/canonical IndexID.
+  ERROR_REASON_INDEX_ALREADY_EXISTS = 68;
+  // ERROR_REASON_METADATA_LIMIT_EXCEEDED: a command carried — or a Numscript
+  // program produced — metadata beyond a ceiling of the canonical metadata size
+  // contract (entry count, key bytes, value bytes, per-entity bytes, or
+  // per-command bytes). Permanent (Kind=Validation): the caller must send less
+  // metadata, so a retry of the same payload cannot succeed. See EN-1829.
+  ERROR_REASON_METADATA_LIMIT_EXCEEDED = 69;
+  // ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH: a revert targeted a
+  // transaction created by an earlier order in the same atomic batch. Admission
+  // resolves a revert's original postings from the local store only, and the
+  // overlay does not carry transactions the batch itself creates, so it cannot
+  // declare the volume coverage that apply needs. Permanent
+  // (Kind=Validation): the whole batch is rejected, so the create never lands
+  // and re-admitting the identical batch reproduces the same observation.
+  // Submit the revert in a later batch.
+  ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
+  ERROR_REASON_SINK_CONTROLLER_MISMATCH = 71;
+}
+
+
+
+
+// ChartEnforcementMode controls how chart violations are handled.
+enum ChartEnforcementMode {
+  CHART_ENFORCEMENT_STRICT = 0;  // Reject transactions with invalid addresses (default)
+  CHART_ENFORCEMENT_AUDIT = 1;   // Log warning but allow the transaction
+}
+
+// ============================================================================
+// Account Types
+// ============================================================================
+
+// AccountTypePersistence controls how account volumes are stored and managed.
+enum AccountTypePersistence {
+  ACCOUNT_TYPE_NORMAL = 0;     // Default: fully persisted
+  ACCOUNT_TYPE_EPHEMERAL = 1;  // Persisted, purged when zero balance after commit
+  ACCOUNT_TYPE_TRANSIENT = 2;  // Never persisted, must be zero at end of batch
+}
+
+// SegmentType defines the constraint for a variable segment in an account type pattern.
+// When no constraint is set, the segment accepts any non-empty string.
+message SegmentType {
+  oneof constraint {
+    string regex = 1;         // Custom regex pattern (e.g. "[a-z]+")
+    UUIDConstraint uuid = 2;  // RFC 4122 UUID format
+    Uint64Constraint uint64 = 3;  // Decimal uint64
+    BytesConstraint bytes = 4;    // Hex-encoded bytes (even length)
+  }
+}
+
+message UUIDConstraint {}
+message Uint64Constraint {}
+message BytesConstraint {}
+
+// AccountType defines a single account address pattern for a ledger.
+message AccountType {
+  string name = 1;                           // Unique identifier: "user-checking"
+  string pattern = 2;                        // Address pattern: "users:{id}:checking"
+  AccountTypePersistence persistence = 3;    // How volumes are stored (replaces bool ephemeral)
+  map<string, SegmentType> segment_types = 4;  // variable_name -> type constraint
+}
+
+// AddedAccountTypeLog records the addition of an account type.
+message AddedAccountTypeLog {
+  AccountType account_type = 1;
+}
+
+// RemovedAccountTypeLog records the removal of an account type.
+message RemovedAccountTypeLog {
+  string name = 1;
+}
+
+// UpdatedDefaultEnforcementModeLog records a change to the ledger's default enforcement mode.
+message UpdatedDefaultEnforcementModeLog {
+  ChartEnforcementMode enforcement_mode = 1;
+}
+
+// ============================================================================
+// Prepared Queries — Filter Model
+// ============================================================================
+
+// allowed_query_targets is the single source of truth for per-target
+// QueryFilter condition validity (EN-1504). It annotates each arm of the
+// QueryFilter.filter oneof with the exact set of QueryTargets the condition is
+// valid on. protoc-gen-queryfilter-validity reads these annotations from the
+// descriptor and emits the query_target_validity.pb.go table consumed by both
+// the compile layer (internal/query) and the REST decode layer
+// (internal/adapter/http), so the two layers cannot drift and a new arm cannot
+// be added without declaring its validity.
+//
+// EVERY QueryFilter.filter oneof arm MUST carry an explicit validity
+// declaration: either a non-empty `allowed_query_targets`, OR
+// `valid_on_no_query_target = true` for an arm deliberately valid on no target.
+// protoc-gen-queryfilter-validity FAILS generation (so `just generate-proto`
+// fails) on an arm that declares neither — a forgotten annotation is a build
+// error, not a silently all-false row. An empty repeated `allowed_query_targets`
+// is indistinguishable from an absent one on the wire, which is exactly why the
+// "valid nowhere" intent needs its own boolean marker rather than being inferred
+// from absence.
+//
+// Extension numbers 50123-50125 are in the private, non-reserved range for
+// FieldOptions extensions (50000-99999, per descriptor.proto guidance).
+extend google.protobuf.FieldOptions {
+  repeated QueryTarget allowed_query_targets = 50123;
+  // valid_on_no_query_target declares that an arm is intentionally valid on no
+  // QueryTarget (rejected everywhere). It is the EXPLICIT opt-in the generator
+  // requires instead of inferring "valid nowhere" from a missing annotation.
+  bool valid_on_no_query_target = 50124;
+  // ledger_log_is_history is mandatory on every LedgerLogPayload.payload arm.
+  // Explicit false classifies CONTROL; true classifies HISTORY. The generator
+  // rejects a missing annotation, so proto's false default cannot classify by
+  // accident.
+  bool ledger_log_is_history = 50125;
+}
+
+message QueryFilter {
+  oneof filter {
+    // Metadata field conditions ($match/$gt/$exists on metadata[<key>]) are
+    // valid on ACCOUNTS and TRANSACTIONS, which have a populated metadata index.
+    // LOGS is deliberately excluded: there is no log-metadata index — the index
+    // builder never populates the NamespaceLog metadata keyspace that
+    // compileFieldCondition scans — so a metadata filter on LOGS would return
+    // empty or error at execute time. Advertising the capability without an
+    // index behind it is a lying contract, so it is rejected up front at
+    // admission/validation instead. Building a real log-metadata index is a
+    // separate feature (out of scope for EN-1503, tracked separately).
+    FieldCondition field = 1 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Address matches resolve to account addresses (ACCOUNTS) or to the
+    // account→transaction index (TRANSACTIONS). There is no account→log
+    // translation, so address is NOT valid on LOGS (it would silently feed
+    // transaction-keyed entities into a log result pipeline).
+    AddressMatch address = 2 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Combinators are structural — they recurse into children, each of which is
+    // validated on its own arm. And/Or are accepted by every compiler,
+    // including the audit compiler. Not is accepted by query.Compile
+    // (accounts/transactions/logs) but NOT by CompileAuditFilter, so it is not
+    // valid on the audit target.
+    AndFilter and = 3 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS,
+      (allowed_query_targets) = QUERY_TARGET_AUDIT
+    ];
+    OrFilter or = 4 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS,
+      (allowed_query_targets) = QUERY_TARGET_AUDIT
+    ];
+    NotFilter not = 5 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS,
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS,
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    // Reference matches read the transaction reference index and yield
+    // transaction-keyed entities: meaningful only on the transactions target.
+    // (No account or log translation exists.)
+    ReferenceCondition reference = 6 [
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Builtin uint fields (id/timestamp/insertedAt/revertedAt) read transaction
+    // indexes and yield transaction-keyed entities: transactions only.
+    BuiltinUintCondition builtin_uint = 7 [
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Log-only fields.
+    LedgerCondition ledger = 8 [
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    LogIdCondition log_id = 9 [
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    LogBuiltinUintCondition log_builtin_uint = 10 [
+      (allowed_query_targets) = QUERY_TARGET_LOGS
+    ];
+    // Account has-asset filter: accounts only.
+    AccountHasAssetCondition account_has_asset = 11 [
+      (allowed_query_targets) = QUERY_TARGET_ACCOUNTS
+    ];
+    // Reverted (revert-status) filter: transactions only.
+    RevertedCondition reverted = 12 [
+      (allowed_query_targets) = QUERY_TARGET_TRANSACTIONS
+    ];
+    // Audit conditions are valid only on the audit target: query.Compile
+    // (accounts/transactions/logs) rejects them, and CompileAuditFilter accepts
+    // them. Modeling audit as a first-class target keeps its condition validity
+    // in this single source of truth rather than as an undocumented exception.
+    // (An arm deliberately valid on no target must say so explicitly with
+    // [(common.valid_on_no_query_target) = true] — a missing annotation is a
+    // generation error, not a silent all-false row.)
+    AuditCondition audit = 13 [
+      (allowed_query_targets) = QUERY_TARGET_AUDIT
+    ];
+  }
+}
+
+// ReferenceCondition filters transactions by reference (exact match).
+message ReferenceCondition {
+  StringCondition cond = 1;
+}
+
+// RevertedCondition filters transactions by revert status. Served from the
+// per-ledger reversion bitset (no index required): value=true matches reverted
+// originals, value=false matches everything else.
+message RevertedCondition {
+  bool value = 1;
+}
+
+// AuditCondition filters audit entries by a single audit field, mirroring
+// BuiltinUintCondition's (field-enum × condition) shape. It is only meaningful
+// for the audit list path: the audit compiler (query.CompileAuditFilter) accepts
+// Audit/And/Or leaves and rejects every other QueryFilter variant with
+// InvalidArgument, while the index compiler used for accounts/transactions/logs
+// (query.Compile) never lists QueryFilter_Audit and rejects it there too.
+// Audit is a first-class QueryFilter target (QUERY_TARGET_AUDIT): the audit
+// arm above is annotated valid only for that target, so its condition validity
+// lives in the same generated source of truth as the other targets. Dispatch is
+// still internal — ListAuditEntries routes QUERY_TARGET_AUDIT to
+// CompileAuditFilter rather than query.Compile — but the target itself is
+// modeled here rather than treated as an undocumented exception.
+//
+// Every exposed field is answerable from the readstore audit secondary index
+// (EN-1339) — outcome, ledger, caller_subject, order_type, timestamp,
+// proposal_id, log_seq, idempotency_key — except AUDIT_FIELD_SEQUENCE, which
+// is the audit-zone key itself and is served by bounding the entry scan.
+// idempotency_key supports exact lookup (string_cond) and prefix lookup
+// (string_prefix); prefix operands containing NUL are rejected.
+// There is deliberately no scan-time predicate fallback: a field the index
+// cannot answer is not exposed.
+message AuditCondition {
+  AuditField field = 1;
+  oneof condition {
+    StringCondition string_cond = 2;
+    UintCondition   uint_cond   = 3;
+    // Prefix match for indexed string fields. Currently accepted only for
+    // idempotency_key, whose historical values live in the audit projection.
+    string          string_prefix = 4;
+  }
+}
+
+// AuditField enumerates the audit fields that can be filtered. The set is
+// intentionally limited to what the audit access path can resolve efficiently
+// (index lookup or key-range bound); NOT / non-indexed fields are rejected
+// rather than degrading to a full-chain scan.
+enum AuditField {
+  AUDIT_FIELD_UNSPECIFIED    = 0;
+  AUDIT_FIELD_SEQUENCE       = 1;  // uint   -> AuditEntry.sequence (audit-zone key range)
+  AUDIT_FIELD_PROPOSAL_ID    = 2;  // uint   -> AuditEntry.proposal_id (index range)
+  AUDIT_FIELD_TIMESTAMP      = 3;  // uint   -> AuditEntry.timestamp.data, unix micros (index range)
+  AUDIT_FIELD_LOG_SEQUENCE   = 4;  // uint   -> item log_sequence, match-any (index range)
+  AUDIT_FIELD_OUTCOME        = 5;  // string in {success, failure} (index)
+  AUDIT_FIELD_CALLER_SUBJECT = 6;  // string -> caller_snapshot.authenticated.identity.subject (index)
+  AUDIT_FIELD_LEDGER         = 7;  // string -> AuditEntry.ledgers, match-any (index)
+  AUDIT_FIELD_ORDER_TYPE     = 8;  // string -> order payload variant, match-any (index)
+  AUDIT_FIELD_IDEMPOTENCY_KEY = 9; // string -> AuditEntry.idempotency.key (index, exact or prefix)
+}
+
+// LedgerCondition filters logs by ledger name (exact match).
+message LedgerCondition {
+  StringCondition cond = 1;
+}
+
+// LogIdCondition filters logs by ledger-local log ID (uint64 range).
+message LogIdCondition {
+  UintCondition cond = 1;
+}
+
+// BuiltinUintCondition filters transactions by a built-in uint64 field (id, timestamp, inserted_at, or reverted_at).
+message BuiltinUintCondition {
+  TransactionBuiltinIndex field = 1;
+  UintCondition cond = 2;
+}
+
+// LogBuiltinUintCondition filters logs by a built-in uint64 field (date).
+message LogBuiltinUintCondition {
+  LogBuiltinIndex field = 1;
+  UintCondition cond = 2;
+}
+
+// AccountHasAssetCondition matches accounts that have ever held a volume cell
+// for the given asset (base + precision). Volume-cell presence semantics, not
+// balance. Resolved exclusively via the ACCT_BUILTIN_INDEX_ASSET readstore
+// index; there is no on-scan fallback.
+message AccountHasAssetCondition {
+  string asset_base = 1;
+  uint32 precision = 2;
+}
+
+message AndFilter {
+  repeated QueryFilter filters = 1;
+}
+
+message OrFilter {
+  repeated QueryFilter filters = 1;
+}
+
+message NotFilter {
+  QueryFilter filter = 1;
+}
+
+// FieldRef identifies the metadata key for a condition.
+// The execution context (QueryTarget) determines whether this refers to
+// account or transaction metadata.
+message FieldRef {
+  string metadata = 1;
+}
+
+// FieldCondition = FieldRef × Condition.
+message FieldCondition {
+  FieldRef field = 1;
+  oneof condition {
+    StringCondition string_cond = 2;
+    IntCondition int_cond = 3;
+    UintCondition uint_cond = 4;
+    BoolCondition bool_cond = 5;
+    ExistsCondition exists_cond = 6;
+  }
+}
+
+message StringCondition {
+  oneof value {
+    string hardcoded = 1;
+    string param = 2;
+  }
+}
+
+message IntCondition {
+  optional int64 min = 1;
+  optional int64 max = 2;
+  bool min_exclusive = 3;
+  bool max_exclusive = 4;
+  string param_min = 5;
+  string param_max = 6;
+}
+
+message UintCondition {
+  optional fixed64 min = 1;
+  optional fixed64 max = 2;
+  bool min_exclusive = 3;
+  bool max_exclusive = 4;
+  string param_min = 5;
+  string param_max = 6;
+}
+
+message BoolCondition {
+  oneof value {
+    bool hardcoded = 1;
+    string param = 2;
+  }
+}
+
+message ExistsCondition {
+  bool include_null = 1;
+}
+
+enum AddressRole {
+  ADDRESS_ROLE_ANY = 0;
+  ADDRESS_ROLE_SOURCE = 1;
+  ADDRESS_ROLE_DESTINATION = 2;
+}
+
+message AddressMatch {
+  oneof match {
+    string hardcoded_prefix = 1;
+    string hardcoded_exact = 2;
+    string param_prefix = 3;
+    string param_exact = 4;
+  }
+  AddressRole role = 5;
+}
+
+enum QueryTarget {
+  QUERY_TARGET_ACCOUNTS = 0;
+  QUERY_TARGET_TRANSACTIONS = 1;
+  QUERY_TARGET_LOGS = 2;
+  // Audit entries. Dispatched internally to query.CompileAuditFilter (not
+  // query.Compile), but modeled here as a first-class QueryFilter target so
+  // audit condition validity lives in the same source of truth as the other
+  // targets (EN-1241 / EN-1305 / EN-1339 / EN-1481 move ListAuditEntries onto
+  // the shared ListOptions.filter contract). CompileAuditFilter accepts only
+  // audit-condition leaves combined with and/or — not, and every non-audit
+  // condition, are rejected — which the per-arm annotations below reflect. On
+  // the textual DSL these are the bare audit fields (outcome, ledger, seq, …)
+  // resolved against QUERY_TARGET_AUDIT (EN-1549).
+  QUERY_TARGET_AUDIT = 3;
+}
+
+enum QueryMode {
+  QUERY_MODE_LIST = 0;
+  QUERY_MODE_AGGREGATE_VOLUMES = 1;
+}
+
+// PreparedQuery is a named, parameterized query template stored in the primary
+// store. The ledger the query belongs to lives on the storage key prefix and
+// (where the query is being created or invoked) on the surrounding request /
+// LedgerScopedOrder; it is intentionally NOT a field on the value itself.
+message PreparedQuery {
+  string name = 1;
+  QueryFilter filter = 2;
+  QueryTarget target = 3;
+}
+
+// AggregatedVolume represents aggregated input/output volumes for a single
+// (asset, color) bucket. When collapse_colors is requested on the aggregate
+// query, all entries are produced with color = "" and amounts summed across
+// colors.
+message AggregatedVolume {
+  string asset = 1;
+  Uint256 input = 2;
+  Uint256 output = 3;
+  string color = 4;
+}
+
+message AggregateResult {
+  repeated AggregatedVolume volumes = 1;
+  // When group_by_prefixes is set, contains per-prefix aggregated volumes.
+  repeated GroupedAggregateResult groups = 2;
+}
+
+// GroupedAggregateResult holds aggregated volumes for a single account prefix.
+message GroupedAggregateResult {
+  string prefix = 1;
+  repeated AggregatedVolume volumes = 2;
+}
+
+// PreparedQueryCursor follows the cursor-based pagination pattern.
+message PreparedQueryCursor {
+  uint32 page_size = 1;
+  bool has_more = 2;
+  string previous = 3;
+  string next = 4;
+  repeated Account account_data = 5;
+  repeated Transaction transaction_data = 6;
+  repeated Log log_data = 7;
+}
+
+// LedgerStats contains aggregate statistics for a ledger.
+message LedgerStats {
+  fixed64 transaction_count = 1;
+  fixed64 volume_count = 2;
+  fixed64 reference_count = 3;
+  fixed64 posting_count = 4;
+  fixed64 ephemeral_evicted_count = 5;
+  fixed64 transient_used_count = 6;
+  fixed64 revert_count = 7;
+  fixed64 numscript_execution_count = 8;
+  fixed64 log_count = 9;
+}
+
+
+// CallerIdentity uniquely identifies who initiated an action. It is
+// strictly an *identification* — subject plus the mechanism that
+// authenticated it — and carries no authorization decision.
+//
+// It is safe to propagate across nodes (e.g. when a follower forwards
+// a request to the leader) because no downstream code makes an
+// authorization decision based on it: the admission point that issued
+// it already vetted the call.
+//
+// source records the credential mechanism. An absent source means the
+// authenticated identity is a bare subject with no known origin.
+message CallerIdentity {
+  string subject = 1;
+  // scopes and god live on AuthenticatedCaller, not here: CallerIdentity is
+  // identification only and carries no authorization decision.
+  oneof source {
+    string issuer = 2;  // OIDC token issuer URL
+    string key_id = 3;  // Ed25519 signing key ID
+  }
+}
+
+message AuthenticatedCaller {
+  CallerIdentity identity = 1;
+  repeated string scopes = 2;
+  bool god = 3;
+}
+
+message AnonymousCaller {
+  repeated string scopes = 1;
+}
+
+message SystemCaller {
+  string component = 1;
+}
+
+message AuthDisabledCaller {}
+
+// CallerSnapshot is the *admission-time* record of who initiated an action.
+// Its required principal union keeps authenticated users, authorized anonymous
+// callers, system components, and authentication-disabled mode observably
+// distinct. Authorization is frozen here for audit only and MUST NOT be
+// re-evaluated downstream (FSM, leader after a follower forward, etc.).
+//
+// Carried on Proposals through Raft, then copied to AuditEntry by the FSM.
+// Application code must always set exactly one principal variant.
+message CallerSnapshot {
+  oneof principal {
+    AuthenticatedCaller authenticated = 1;
+    AnonymousCaller anonymous = 2;
+    SystemCaller system = 3;
+    AuthDisabledCaller auth_disabled = 4;
+  }
+}
+
+// ============================================================================
+// Backup Storage
+// ============================================================================
+
+// S3StorageConfig configures an S3 / S3-compatible backup backend.
+message S3StorageConfig {
+  string bucket            = 1; // Bucket name (required)
+  string region            = 2; // AWS region
+  string endpoint          = 3; // Custom endpoint (for MinIO)
+  string access_key_id     = 4; // Optional static access key ID (default: credential chain)
+  string secret_access_key = 5; // Optional static secret access key (default: credential chain)
+}
+
+// AzureStorageConfig configures an Azure Blob Storage backup backend.
+message AzureStorageConfig {
+  string account_name = 1; // Storage account name (required)
+  string account_key  = 2; // Storage account key (omit to use DefaultAzureCredential)
+  string container    = 3; // Blob container name (required)
+  string endpoint     = 4; // Custom endpoint (for Azurite)
+}
+
+// BackupStorage selects and configures the backup storage backend. The provider
+// oneof is the single source of truth for the driver — adding a new backend is
+// a new oneof case, no parallel "driver" string to keep in sync.
+message BackupStorage {
+  oneof provider {
+    S3StorageConfig s3       = 1;
+    AzureStorageConfig azure = 2;
+  }
+}
+
+// ReadOptions carries the canonical consistency parameters every read RPC
+// understands. Embed it as a field on the Request so the contract stays DRY:
+// every endpoint that reads from the read store accepts the same knobs.
+message ReadOptions {
+  // checkpoint_id, when non-zero, reads from a query checkpoint instead of
+  // the live store. Endpoints that do not support checkpoint reads MUST
+  // reject any non-zero value with InvalidArgument.
+  fixed64 checkpoint_id = 1;
+}
+
+// ListOptions carries the canonical pagination + consistency + filter
+// parameters every streaming read endpoint understands. Embed it as a field
+// on the Request so the contract stays DRY across resources.
+//
+// cursor is OPAQUE from the client's POV: the server encodes the next-page
+// resume token internally (entity address, sequence number, …) and the client
+// round-trips whatever value it received as the "x-next-cursor" trailer of
+// the previous response. This lets the server evolve its on-wire cursor
+// format without breaking deployed clients.
+//
+// Not every endpoint honors every option: a reverse-uncapable or filter-less
+// endpoint MUST reject a non-default value with InvalidArgument rather than
+// silently ignoring it.
+message ListOptions {
+  ReadOptions read = 1;
+  // page_size is the maximum number of items per page. 0 lets the server
+  // pick a sane default (currently 100); the server clamps to MaxPageSize.
+  uint32 page_size = 2;
+  // cursor is the opaque resume token from the previous page's
+  // x-next-cursor trailer. Empty starts at the iteration head.
+  string cursor = 3;
+  // reverse inverts the default iteration order for endpoints that support it.
+  bool reverse = 4;
+  // filter is a rich boolean filter (metadata conditions, address matching,
+  // AND/OR/NOT, log_id ranges, …) applied alongside the cursor. The set of
+  // valid conditions depends on the endpoint's QueryTarget; the server
+  // rejects unsupported variants with InvalidArgument.
+  QueryFilter filter = 5;
+}

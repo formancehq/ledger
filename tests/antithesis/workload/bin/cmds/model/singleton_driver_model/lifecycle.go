@@ -3,19 +3,18 @@ package main
 import (
 	"errors"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // validateLifecycleLog checks the top-level payloads that carry no ledger-local
 // log. An absent payload is never equivalent to a false maintenance toggle.
-func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
+func validateLifecycleLog(req *commonpb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
 	if expectedPreparedQuery != nil && !expectedPreparedQuery.EqualVT(payload) {
 		return errors.New("prepared-query response does not match committed change")
 	}
 
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_CreateLedger:
+	case *commonpb.Request_CreateLedger:
 		log := payload.GetCreateLedger()
 		if log == nil || log.GetId() == 0 || log.GetCreatedAt() == nil || log.GetName() != r.CreateLedger.GetName() ||
 			log.GetMode() != r.CreateLedger.GetMode() || !log.GetMirrorSource().EqualVT(r.CreateLedger.GetMirrorSource()) ||
@@ -24,17 +23,17 @@ func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload
 			log.GetDefaultEnforcementMode() != r.CreateLedger.GetDefaultEnforcementMode() {
 			return errors.New("create-ledger response does not match request")
 		}
-	case *servicepb.Request_DeleteLedger:
+	case *commonpb.Request_DeleteLedger:
 		log := payload.GetDeleteLedger()
 		if log == nil || log.GetName() != r.DeleteLedger.GetName() || log.GetDeletedAt() == nil {
 			return errors.New("delete-ledger response does not match request")
 		}
-	case *servicepb.Request_PromoteLedger:
+	case *commonpb.Request_PromoteLedger:
 		log := payload.GetPromoteLedger()
 		if log == nil || log.GetName() != r.PromoteLedger.GetLedger() {
 			return errors.New("promote-ledger response does not match request")
 		}
-	case *servicepb.Request_SetMaintenanceMode:
+	case *commonpb.Request_SetMaintenanceMode:
 		log := payload.GetSetMaintenanceMode()
 		if log == nil || log.GetEnabled() != r.SetMaintenanceMode.GetEnabled() {
 			return errors.New("maintenance response does not match requested mode")

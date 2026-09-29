@@ -10,12 +10,14 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -174,8 +176,8 @@ type WriteSet struct {
 	volumes               *recorderAccessor[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	accountMetadata       *rawAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	ledgerMetadata        *rawAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	transactionReferences *rawAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
-	transactionStates     *rawAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
+	transactionReferences *rawAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
+	transactionStates     *rawAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
 	preparedQueries       *rawAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
 	indexes               *rawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
@@ -907,8 +909,8 @@ func NewWriteSet(fsm *Machine) *WriteSet {
 	)
 	ws.accountMetadata = newRawAccessor[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](ws.Derived.AccountMetadata)
 	ws.ledgerMetadata = newRawAccessor[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader](ws.Derived.LedgerMetadata)
-	ws.transactionReferences = newRawAccessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader](ws.Derived.References)
-	ws.transactionStates = newRawAccessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader](ws.Derived.Transactions)
+	ws.transactionReferences = newRawAccessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader](ws.Derived.References)
+	ws.transactionStates = newRawAccessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader](ws.Derived.Transactions)
 	ws.preparedQueries = newRawAccessor[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader](ws.Derived.PreparedQueries)
 	ws.indexes = newRawAccessor[domain.IndexKey, *commonpb.Index, commonpb.IndexReader](ws.Derived.Indexes)
 
@@ -1086,12 +1088,12 @@ func (b *WriteSet) LedgerMetadata() processing.Accessor[domain.LedgerMetadataKey
 }
 
 // TransactionReferences returns the bare transaction-reference accessor.
-func (b *WriteSet) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader] {
+func (b *WriteSet) TransactionReferences() processing.Accessor[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader] {
 	return b.transactionReferences
 }
 
 // TransactionStates returns the bare transaction-state accessor.
-func (b *WriteSet) TransactionStates() processing.Accessor[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader] {
+func (b *WriteSet) TransactionStates() processing.Accessor[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader] {
 	return b.transactionStates
 }
 
@@ -1339,7 +1341,7 @@ func (b *WriteSet) PutReverted(key domain.TransactionKey, reverted bool) {
 // filtering. Not part of the Scope contract — production code goes
 // through fsm.Registry.Idempotency directly — but exposed on the
 // WriteSet so unit tests can drive the overlay end-to-end.
-func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.IdempotencyKeyValueReader, error) {
+func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (internalcommonpb.IdempotencyKeyValueReader, error) {
 	value, err := b.Derived.Idempotency.Get(key.Key)
 	if err != nil || value == nil {
 		return nil, err
@@ -1355,7 +1357,7 @@ func (b *WriteSet) GetIdempotencyKey(key domain.IdempotencyKey) (commonpb.Idempo
 // PutIdempotencyKey stamps the proposal HLC and writes through the
 // idempotency overlay. Not part of the Scope contract; kept on the
 // WriteSet for parity with GetIdempotencyKey and the unit tests.
-func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *commonpb.IdempotencyKeyValue) {
+func (b *WriteSet) PutIdempotencyKey(key domain.IdempotencyKey, value *internalcommonpb.IdempotencyKeyValue) {
 	value.CreatedAt = b.Date.GetData() // HLC timestamp
 	b.Derived.Idempotency.Put(key.Key, value)
 }
@@ -1630,7 +1632,7 @@ func (b *WriteSet) GetNumscriptLatestVersion(ledgerName string, name string) (st
 }
 
 func (b *WriteSet) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: info.GetName()}, &commonpb.NumscriptVersionValue{Version: info.GetVersion()})
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: info.GetName()}, &internalcommonpb.NumscriptVersionValue{Version: info.GetVersion()})
 	b.Derived.NumscriptContents.Put(domain.NumscriptEntryKey{LedgerName: ledgerName, Name: info.GetName(), Version: info.GetVersion()}, info)
 }
 
@@ -1638,7 +1640,7 @@ func (b *WriteSet) PutNumscript(ledgerName string, info *commonpb.NumscriptInfo)
 // keep the pointer at the greatest stored semver when versions are added out
 // of order.
 func (b *WriteSet) SetNumscriptLatestVersion(ledgerName string, name, version string) {
-	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}, &commonpb.NumscriptVersionValue{Version: version})
+	b.Derived.NumscriptVersions.Put(domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}, &internalcommonpb.NumscriptVersionValue{Version: version})
 }
 
 func (b *WriteSet) NumscriptVersionExists(ledgerName string, name, version string) (bool, error) {

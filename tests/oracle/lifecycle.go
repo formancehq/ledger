@@ -1,6 +1,6 @@
 package oracle
 
-import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+import commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 // LedgerLifecycle tracks explicitly created names independently of their data.
 // Deletion removes the data projection but permanently reserves the name.

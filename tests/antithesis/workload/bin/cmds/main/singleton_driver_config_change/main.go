@@ -24,14 +24,10 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 var ccSentinelLedger = internal.PrefixSentinel.WithSuffix("config-change")
@@ -56,7 +52,7 @@ type configChange struct {
 	category  string
 	value     any
 	apply     func(ctx context.Context, lsClient dynamic.ResourceInterface) error
-	predicate func(cfg *commonpb.ClusterConfig) bool
+	predicate func(cfg *clusterpb.ClusterConfig) bool
 }
 
 func main() {
@@ -103,7 +99,7 @@ func main() {
 	}
 }
 
-func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client servicepb.BucketServiceClient) {
+func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset kubernetes.Interface, clusterClient clusterpb.ClusterServiceClient, client clusterpb.BucketServiceClient) {
 	change := pickChange(internal.Rand())
 
 	sentinel, err := internal.PreCommitSentinel(ctx, client, ccSentinelLedger)
@@ -184,7 +180,7 @@ func pickChange(r *rand.Rand) configChange {
 			apply: func(ctx context.Context, lsClient dynamic.ResourceInterface) error {
 				return internal.PatchCacheRotationThreshold(ctx, lsClient, internal.ClusterName, v)
 			},
-			predicate: func(cfg *commonpb.ClusterConfig) bool {
+			predicate: func(cfg *clusterpb.ClusterConfig) bool {
 				return cfg.GetRotationThreshold() == uint64(v)
 			},
 		}
@@ -217,27 +213,27 @@ func pickChange(r *rand.Rand) configChange {
 	}
 }
 
-func bloomKeysPredicate(category string, want uint64) func(cfg *commonpb.ClusterConfig) bool {
-	return func(cfg *commonpb.ClusterConfig) bool {
+func bloomKeysPredicate(category string, want uint64) func(cfg *clusterpb.ClusterConfig) bool {
+	return func(cfg *clusterpb.ClusterConfig) bool {
 		bt := bloomForCategory(cfg, category)
 
 		return bt != nil && bt.GetExpectedKeys() == want
 	}
 }
 
-func bloomFPRatePredicate(category, want string) func(cfg *commonpb.ClusterConfig) bool {
+func bloomFPRatePredicate(category, want string) func(cfg *clusterpb.ClusterConfig) bool {
 	// We only assert the persisted FP rate exists and parses to a non-zero
 	// value: comparing the raw float bit-for-bit would be brittle.
 	_ = want
 
-	return func(cfg *commonpb.ClusterConfig) bool {
+	return func(cfg *clusterpb.ClusterConfig) bool {
 		bt := bloomForCategory(cfg, category)
 
 		return bt != nil && bt.GetFpRate() > 0
 	}
 }
 
-func bloomForCategory(cfg *commonpb.ClusterConfig, category string) *commonpb.BloomTypeConfig {
+func bloomForCategory(cfg *clusterpb.ClusterConfig, category string) *clusterpb.BloomTypeConfig {
 	switch category {
 	case "volumes":
 		return cfg.GetBloomVolumes()

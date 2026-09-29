@@ -19,11 +19,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
@@ -50,7 +49,7 @@ func TestQueryCheckpointDriverProcess(t *testing.T) {
 			}))
 		require.NoError(t, err)
 		defer func() { _ = conn.Close() }()
-		runQueryCheckpointDriver(ctx, clusterpb.NewClusterServiceClient(conn), servicepb.NewBucketServiceClient(conn))
+		runQueryCheckpointDriver(ctx, clusterpb.NewClusterServiceClient(conn), clusterpb.NewBucketServiceClient(conn))
 
 		return
 	}
@@ -137,7 +136,7 @@ func requireCheckpointEvent(t *testing.T, assertions []sdkAssertion, message str
 	t.Fatalf("missing successful driver event %q", message)
 }
 
-func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.BucketServiceClient, clusterpb.ClusterServiceClient) {
+func checkpointTestServer(t *testing.T) (context.Context, string, clusterpb.BucketServiceClient, clusterpb.ClusterServiceClient) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
 	t.Cleanup(cancel)
@@ -163,14 +162,14 @@ func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.Buck
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
 	cluster := clusterpb.NewClusterServiceClient(conn)
-	client := servicepb.NewBucketServiceClient(conn)
+	client := clusterpb.NewBucketServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	testserver.WaitForWriteAdmission(t, ctx, client)
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))
+	_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))
 	require.NoError(t, err)
 
 	return ctx, address, client, cluster

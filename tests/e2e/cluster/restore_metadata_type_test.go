@@ -14,11 +14,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -69,31 +66,31 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		minioEndpoint  string
 	)
 
-	typedValues := map[string]*commonpb.MetadataValue{
-		"flag":  commonpb.NewBoolValue(true),
-		"count": commonpb.NewIntValue(42),
+	typedValues := map[string]*clusterpb.MetadataValue{
+		"flag":  clusterpb.NewBoolValue(true),
+		"count": clusterpb.NewIntValue(42),
 	}
 
 	// expectTypedMetadata asserts the read-back values kept their oneof arm.
 	// Used both as the live-side premise guard and as the post-restore check.
-	expectTypedMetadata := func(acct *commonpb.Account, phase string) {
+	expectTypedMetadata := func(acct *clusterpb.Account, phase string) {
 		meta := acct.GetMetadata()
 
 		flag := meta["flag"]
 		Expect(flag).ToNot(BeNil(), "%s: %s metadata flag missing", phase, acct.GetAddress())
-		Expect(flag.GetType()).To(BeAssignableToTypeOf(&commonpb.MetadataValue_BoolValue{}),
+		Expect(flag.GetType()).To(BeAssignableToTypeOf(&clusterpb.MetadataValue_BoolValue{}),
 			"%s: %s metadata flag arm (value: %v)", phase, acct.GetAddress(), flag)
 		Expect(flag.GetBoolValue()).To(BeTrue(), "%s: %s metadata flag", phase, acct.GetAddress())
 
 		count := meta["count"]
 		Expect(count).ToNot(BeNil(), "%s: %s metadata count missing", phase, acct.GetAddress())
-		Expect(count.GetType()).To(BeAssignableToTypeOf(&commonpb.MetadataValue_IntValue{}),
+		Expect(count.GetType()).To(BeAssignableToTypeOf(&clusterpb.MetadataValue_IntValue{}),
 			"%s: %s metadata count arm (value: %v)", phase, acct.GetAddress(), count)
 		Expect(count.GetIntValue()).To(Equal(int64(42)), "%s: %s metadata count", phase, acct.GetAddress())
 	}
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *clusterpb.BackupStorage {
+		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -147,7 +144,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 	Describe("Phase 1: typed metadata in the exported delta", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -198,26 +195,26 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		})
 
 		It("writes typed account metadata through both command shapes", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "flag", commonpb.MetadataType_METADATA_TYPE_BOOL),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "count", commonpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, "flag", clusterpb.MetadataType_METADATA_TYPE_BOOL),
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, "count", clusterpb.MetadataType_METADATA_TYPE_INT64),
 			))
 			Expect(err).To(Succeed())
 
 			// Transaction-embedded account metadata.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 					actions.NewPosting("world", txAccount, big.NewInt(100), "USD"),
-				}, nil, map[string]*commonpb.MetadataMap{
+				}, nil, map[string]*clusterpb.MetadataMap{
 					txAccount: {Values: typedValues},
 				}),
 			))
 			Expect(err).To(Succeed())
 
 			// Standalone SaveMetadata with typed values.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.CreateTransactionAction(ledgerName, []*clusterpb.Posting{
 					actions.NewPosting("world", saveAccount, big.NewInt(100), "USD"),
 				}, nil, nil),
 				actions.SaveTypedAccountMetadataAction(ledgerName, saveAccount, typedValues),
@@ -244,7 +241,7 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 
 	Describe("Phase 2: restore", Ordered, func() {
 		var (
-			restoreClient restorepb.RestoreServiceClient
+			restoreClient clusterpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -279,25 +276,25 @@ var _ = Describe("Restore typed account metadata", Ordered, func() {
 		})
 
 		It("downloads and finalizes the backup", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 
-			Eventually(func() restorepb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() clusterpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
 
 	Describe("Phase 3: verify the restored metadata", Ordered, func() {
 		var (
-			client   servicepb.BucketServiceClient
+			client   clusterpb.BucketServiceClient
 			grpcConn *grpc.ClientConn
 			server   *testservice.Service
 		)

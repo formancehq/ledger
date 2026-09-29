@@ -24,8 +24,7 @@
     "misc/proto/audit.proto",
     "misc/proto/bucket.proto",
     "misc/proto/restore.proto",
-    "internal/proto/auditpb/**",
-    "internal/proto/servicepb/**",
+    "pkg/client/v3/grpc/**",
     "tests/e2e/business/**",
     "tests/e2e/cluster/**",
     "internal/query/config.go"
@@ -34,6 +33,7 @@
     "AGENTS.md",
     "docs/technical/agent-context.md",
     "docs/technical/audits/integrity-verifier-soundness.md",
+    "docs/technical/architecture/subsystems/api/public-client.md",
     "docs/technical/contributing/ai-audit.md",
     "docs/technical/contributing/ai-audit-challenge.md",
     "docs/technical/contributing/testing.md",

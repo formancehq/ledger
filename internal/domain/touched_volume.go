@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+import commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 // TouchedVolumeSet builds an AccountAssetKey set from a list of
 // commonpb.TouchedVolume entries. Shared by the index builder (which

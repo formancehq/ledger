@@ -21,7 +21,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 func TestKindResourceExhaustedMapsTo429(t *testing.T) {
@@ -41,7 +41,7 @@ func TestHandleError(t *testing.T) {
 	}{
 		{
 			name:           "no leader",
-			err:            commonpb.ErrNoLeader,
+			err:            protoerr.ErrNoLeader,
 			expectedStatus: http.StatusServiceUnavailable,
 			expectedCode:   "NO_LEADER",
 			checkRetry:     true,
@@ -62,7 +62,7 @@ func TestHandleError(t *testing.T) {
 		},
 		{
 			name:           "not found error",
-			err:            commonpb.NewNotFoundError("item %d", 1),
+			err:            protoerr.NewNotFoundError("item %d", 1),
 			expectedStatus: http.StatusNotFound,
 			expectedCode:   "NOT_FOUND",
 		},

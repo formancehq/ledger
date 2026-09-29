@@ -27,6 +27,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1
 	github.com/formancehq/go-libs/v5 v5.9.0
 	github.com/formancehq/invariants v0.11.0
+	github.com/formancehq/ledger/pkg/client/v3 v3.0.0-beta.6
 	github.com/formancehq/numscript v0.0.25-0.20260713092057-edde2b17f0a0 // pinned to numscript main @edde2b17 (#169, ResolveDependencies); repin to v0.0.25 once tagged off main
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/go-chi/chi/v5 v5.3.0
@@ -36,7 +37,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/grafana/pyroscope-go v1.2.7
 	github.com/holiman/uint256 v1.3.2
-	github.com/invopop/jsonschema v0.13.0
+	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/nats-io/nats-server/v2 v2.12.6
 	github.com/nats-io/nats.go v1.49.0
@@ -323,3 +324,5 @@ require (
 replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204
 
 replace github.com/cockroachdb/pebble/v2 => github.com/formancehq/pebble/v2 v2.1.7
+
+replace github.com/formancehq/ledger/pkg/client/v3 => ./pkg/client/v3

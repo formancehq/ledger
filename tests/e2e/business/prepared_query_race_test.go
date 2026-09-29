@@ -7,8 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -36,7 +35,7 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
@@ -64,8 +63,8 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 
 			// Seed: pre-create the query so it lives in the leader's cache
 			// at the moment admission inspects CheckCache for the racing ops.
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 					Ledger: ledgerName,
 					Query:  query(name),
 				}},
@@ -84,8 +83,8 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errDelete = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-					Type: &servicepb.Request_DeletePreparedQuery{DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+				_, errDelete = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+					Type: &commonpb.Request_DeletePreparedQuery{DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 						Ledger: ledgerName,
 						Name:   name,
 					}},
@@ -95,8 +94,8 @@ var _ = Describe("PreparedQueryDeleteCreateRace", Ordered, func() {
 			go func() {
 				defer wg.Done()
 				<-barrier
-				_, errCreate = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-					Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				_, errCreate = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+					Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 						Ledger: ledgerName,
 						Query:  query(name),
 					}},

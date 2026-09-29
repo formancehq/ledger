@@ -12,11 +12,10 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -103,9 +102,9 @@ func TestApplyWaitsForCreatedQueryCheckpoint(t *testing.T) {
 			// A caller cannot bypass fresh-creation readiness by spoofing provenance.
 			ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(metadataKeyApplyReplayed, "true"))
 
-			req := servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateQueryCheckpoint{
-					CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+			req := commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateQueryCheckpoint{
+					CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{},
 				},
 			})
 			req.SkipResponse = test.skipResponse

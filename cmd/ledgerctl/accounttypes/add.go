@@ -6,9 +6,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewAddCommand creates the account-types add command.
@@ -62,10 +62,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Adding account type %s...", name))
 
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_AddAccountType{
-				AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+			Type: &commonpb.Request_AddAccountType{
+				AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 					Ledger: ledgerName,
 					AccountType: &commonpb.AccountType{
 						Name:        name,

@@ -9,10 +9,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -163,12 +162,12 @@ func authorizeUnaryRPC(ctx context.Context, req any, policy *commonpb.MethodAuth
 func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.DynamicAuthResolver) (context.Context, error) {
 	switch resolver {
 	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_APPLY:
-		applyReq, ok := req.(*servicepb.ApplyRequest)
+		applyReq, ok := req.(*commonpb.ApplyRequest)
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
 		}
 
-		batch, err := servicepb.PeekBatch(applyReq)
+		batch, err := commonpb.PeekBatch(applyReq)
 		if err != nil {
 			if applyReq.GetSigned() != nil {
 				return ctx, nil
@@ -187,14 +186,14 @@ func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.Dy
 
 		return context.WithValue(ctx, applyBatchSizeKey{}, len(batch.GetRequests())), nil
 	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX:
-		indexReq, ok := req.(*servicepb.GetIndexRequest)
+		indexReq, ok := req.(*commonpb.GetIndexRequest)
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
 		}
 
 		return ctx, internalauth.AuthorizeGRPC(ctx, indexAuthScope(indexReq.GetLedger()))
 	case commonpb.DynamicAuthResolver_DYNAMIC_AUTH_RESOLVER_GET_INDEX_ENTRY_STATUS:
-		entryReq, ok := req.(*servicepb.GetIndexEntryStatusRequest)
+		entryReq, ok := req.(*commonpb.GetIndexEntryStatusRequest)
 		if !ok {
 			return ctx, unexpectedAuthRequest(resolver, req)
 		}
@@ -205,7 +204,7 @@ func authorizeDynamicUnaryRPC(ctx context.Context, req any, resolver commonpb.Dy
 	}
 }
 
-func distinctApplyScopes(requests []*servicepb.Request) []indexedScope {
+func distinctApplyScopes(requests []*commonpb.Request) []indexedScope {
 	seen := make(map[internalauth.Scope]struct{})
 	required := make([]indexedScope, 0, len(requests))
 	for index, request := range requests {
@@ -291,7 +290,7 @@ func (s *listIndexesAuthServerStream) RecvMsg(message any) error {
 		return nil
 	}
 
-	req, ok := message.(*servicepb.ListIndexesRequest)
+	req, ok := message.(*commonpb.ListIndexesRequest)
 	if !ok {
 		return status.Errorf(codes.Internal, "ListIndexes authentication received %T", message)
 	}
@@ -303,8 +302,8 @@ func (s *listIndexesAuthServerStream) RecvMsg(message any) error {
 	return nil
 }
 
-func indexAuthScopeForList(req *servicepb.ListIndexesRequest) internalauth.Scope {
-	if req.GetScope() == servicepb.ListIndexesRequest_SCOPE_LEDGER {
+func indexAuthScopeForList(req *commonpb.ListIndexesRequest) internalauth.Scope {
+	if req.GetScope() == commonpb.ListIndexesRequest_SCOPE_LEDGER {
 		return internalauth.ScopeLedgersRead
 	}
 

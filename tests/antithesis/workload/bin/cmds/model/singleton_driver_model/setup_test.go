@@ -6,13 +6,11 @@ import (
 	"testing"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
@@ -21,7 +19,7 @@ func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
 	listener := bufconn.Listen(1024 * 1024)
 	server := grpc.NewServer()
 	applyEntered := make(chan struct{})
-	servicepb.RegisterBucketServiceServer(server, &blockingSetupServer{applyEntered: applyEntered})
+	commonpb.RegisterBucketServiceServer(server, &blockingSetupServer{applyEntered: applyEntered})
 	go func() {
 		_ = server.Serve(listener) // Stop terminates Serve with an expected error.
 	}()
@@ -39,7 +37,7 @@ func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
 	setupCtx, cancelSetup := context.WithCancel(context.Background())
 	setupDone := make(chan bool, 1)
 	go func() {
-		setupDone <- setupLedgers(setupCtx, servicepb.NewBucketServiceClient(conn), []string{"model-blocked-0"}, map[string][]*commonpb.SetMetadataFieldTypeCommand{})
+		setupDone <- setupLedgers(setupCtx, commonpb.NewBucketServiceClient(conn), []string{"model-blocked-0"}, map[string][]*commonpb.SetMetadataFieldTypeCommand{})
 	}()
 
 	requireSignal(t, applyEntered, "first setup Apply was not entered")
@@ -68,12 +66,11 @@ func requireSignal(t *testing.T, signal <-chan struct{}, message string) {
 }
 
 type blockingSetupServer struct {
-	servicepb.UnimplementedBucketServiceServer
-
+	commonpb.UnimplementedBucketServiceServer
 	applyEntered chan struct{}
 }
 
-func (s *blockingSetupServer) Apply(ctx context.Context, _ *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s *blockingSetupServer) Apply(ctx context.Context, _ *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
 	close(s.applyEntered)
 	<-ctx.Done()
 

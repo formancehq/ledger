@@ -10,12 +10,12 @@ import (
 	"go.uber.org/mock/gomock"
 	"google.golang.org/protobuf/proto"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -34,7 +34,7 @@ func (c *checkpointWaitObservedContext) Done() <-chan struct{} {
 
 type checkpointAuthenticatedPeer struct{ *BucketServiceServerImpl }
 
-func (s checkpointAuthenticatedPeer) Apply(ctx context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
+func (s checkpointAuthenticatedPeer) Apply(ctx context.Context, req *commonpb.ApplyRequest) (*commonpb.ApplyResponse, error) {
 	return s.BucketServiceServerImpl.Apply(internalauth.WithClusterInternal(ctx, true), req)
 }
 
@@ -59,8 +59,8 @@ func TestApplyCheckpointReplayWhileOriginalWaits(t *testing.T) {
 			require.NoError(t, err)
 			observed := &checkpointWaitObservedContext{Context: ctx, observed: make(chan struct{})}
 			originalDone := make(chan error, 1)
-			request := func() *servicepb.ApplyRequest {
-				return servicepb.UnsignedApplyRequest("same-key", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}})
+			request := func() *commonpb.ApplyRequest {
+				return commonpb.UnsignedApplyRequest("same-key", &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}})
 			}
 			go func() { _, err := leader.Apply(observed, request()); originalDone <- err }()
 			select {
@@ -132,12 +132,12 @@ func TestApplyCheckpointDeletedWhileFreshCreationWaits(t *testing.T) {
 	defer cancel()
 	observed := &checkpointWaitObservedContext{Context: ctx, observed: make(chan struct{})}
 	type applyOutcome struct {
-		response *servicepb.ApplyResponse
+		response *commonpb.ApplyResponse
 		err      error
 	}
 	done := make(chan applyOutcome, 1)
 	go func() {
-		response, err := impl.Apply(observed, servicepb.UnsignedApplyRequest("delete-during-wait", &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}}))
+		response, err := impl.Apply(observed, commonpb.UnsignedApplyRequest("delete-during-wait", &commonpb.Request{Type: &commonpb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &commonpb.CreateQueryCheckpointRequest{}}}))
 		done <- applyOutcome{response, err}
 	}()
 	select {

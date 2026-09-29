@@ -11,12 +11,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Exercise NewHandler so URL.Path/RawPath and chi's route segmentation are real.
@@ -26,13 +25,13 @@ func TestMetadataKeyRouting(t *testing.T) {
 	t.Parallel()
 	routes := []struct {
 		name, method, path string
-		key                func(*servicepb.Request) string
+		key                func(*commonpb.Request) string
 	}{
-		{"account", http.MethodDelete, "/accounts/users:001/metadata/", func(r *servicepb.Request) string { return r.GetApply().GetAction().GetDeleteMetadata().GetKey() }},
-		{"transaction", http.MethodDelete, "/transactions/0/metadata/", func(r *servicepb.Request) string { return r.GetApply().GetAction().GetDeleteMetadata().GetKey() }},
-		{"ledger", http.MethodDelete, "/metadata/", func(r *servicepb.Request) string { return r.GetDeleteLedgerMetadata().GetKey() }},
-		{"schema_put", http.MethodPut, "/metadata-schema/account/", func(r *servicepb.Request) string { return r.GetSetMetadataFieldType().GetKey() }},
-		{"schema_delete", http.MethodDelete, "/metadata-schema/account/", func(r *servicepb.Request) string { return r.GetRemoveMetadataFieldType().GetKey() }},
+		{"account", http.MethodDelete, "/accounts/users:001/metadata/", func(r *commonpb.Request) string { return r.GetApply().GetAction().GetDeleteMetadata().GetKey() }},
+		{"transaction", http.MethodDelete, "/transactions/0/metadata/", func(r *commonpb.Request) string { return r.GetApply().GetAction().GetDeleteMetadata().GetKey() }},
+		{"ledger", http.MethodDelete, "/metadata/", func(r *commonpb.Request) string { return r.GetDeleteLedgerMetadata().GetKey() }},
+		{"schema_put", http.MethodPut, "/metadata-schema/account/", func(r *commonpb.Request) string { return r.GetSetMetadataFieldType().GetKey() }},
+		{"schema_delete", http.MethodDelete, "/metadata-schema/account/", func(r *commonpb.Request) string { return r.GetRemoveMetadataFieldType().GetKey() }},
 	}
 	keys := []struct {
 		name, encoded, decoded string
@@ -53,9 +52,9 @@ func TestMetadataKeyRouting(t *testing.T) {
 		for _, key := range keys {
 			t.Run(route.name+"/"+key.name, func(t *testing.T) {
 				t.Parallel()
-				var captured *servicepb.Request
+				var captured *commonpb.Request
 				backend := NewMockBackend(gomock.NewController(t))
-				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+				backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 					require.Len(t, req.GetUnsigned().GetRequests(), 1)
 					captured = req.GetUnsigned().GetRequests()[0]
 
@@ -84,9 +83,9 @@ func TestCanonicalIDRoutingSingleDecode(t *testing.T) {
 		} {
 			t.Run(scope+"/"+key.encoded, func(t *testing.T) {
 				t.Parallel()
-				var captured *servicepb.GetIndexRequest
+				var captured *commonpb.GetIndexRequest
 				backend := NewMockBackend(gomock.NewController(t))
-				backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *servicepb.GetIndexRequest) (*commonpb.Index, error) {
+				backend.EXPECT().GetIndex(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, req *commonpb.GetIndexRequest) (*commonpb.Index, error) {
 					captured = req
 
 					return &commonpb.Index{Ledger: req.GetLedger()}, nil

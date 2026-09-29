@@ -5,18 +5,18 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func enforcementRequest(mode commonpb.ChartEnforcementMode, nested bool) *servicepb.Request {
+func enforcementRequest(mode commonpb.ChartEnforcementMode, nested bool) *commonpb.Request {
 	if nested {
-		return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: mode}}}}}}
+		return &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: "L", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeRequest{EnforcementMode: mode}}}}}}
 	}
 
-	return &servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{Ledger: "L", EnforcementMode: mode}}}
+	return &commonpb.Request{Type: &commonpb.Request_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{Ledger: "L", EnforcementMode: mode}}}
 }
 
 func TestGlobalState_Apply_EnforcementOrdering(t *testing.T) {
@@ -48,7 +48,7 @@ func TestGlobalState_Apply_EnforcementAffectedOrders(t *testing.T) {
 	require.True(t, base.OK)
 	audit := base.State.Apply(bulkOf(enforcementRequest(commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT, true)))
 	require.True(t, audit.OK)
-	for name, req := range map[string]*servicepb.Request{
+	for name, req := range map[string]*commonpb.Request{
 		"revert":           oracletest.RevertReqL("L", 1, false),
 		"account metadata": oracletest.AddAccountMetaReq("unknown:1", "key", &commonpb.MetadataValue{Type: &commonpb.MetadataValue_StringValue{StringValue: "value"}}),
 	} {

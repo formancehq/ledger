@@ -5,23 +5,20 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
-	internal.RunDriver("parallel_driver_queries", func(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+	internal.RunDriver("parallel_driver_queries", func(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 		queryName := fmt.Sprintf("q-%d", internal.Rand().Uint64()%100)
 		details := internal.Details{"ledger": ledger, "queryName": queryName}
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreatePreparedQuery{
-				CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreatePreparedQuery{
+				CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 					Ledger: ledger,
 
 					Query: &commonpb.PreparedQuery{
@@ -52,7 +49,7 @@ func main() {
 			}
 		}
 
-		execResp, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+		execResp, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
 			Ledger:    ledger,
 			QueryName: queryName,
 			PageSize:  10,
@@ -72,9 +69,9 @@ func main() {
 
 		assert.AlwaysOrUnreachable(execResp != nil, "prepared query should return a response", details)
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_DeletePreparedQuery{
-				DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_DeletePreparedQuery{
+				DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 					Ledger: ledger,
 					Name:   queryName,
 				},

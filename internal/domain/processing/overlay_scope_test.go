@@ -7,8 +7,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
@@ -25,8 +27,8 @@ type overlayMockStubs struct {
 	volumes           *kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]
 	accountMetadata   *kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
 	ledgerMetadata    *kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]
-	transactionStates *kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]
-	transactionRefs   *kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]
+	transactionStates *kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]
+	transactionRefs   *kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]
 	preparedQueries   *kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]
 	indexes           *kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]
 }
@@ -39,8 +41,8 @@ func wireOverlayParent(ctrl *gomock.Controller) *overlayMockStubs {
 		volumes:           &kindStub[domain.VolumeKey, *raftcmdpb.VolumePair, raftcmdpb.VolumePairReader]{},
 		accountMetadata:   &kindStub[domain.MetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{},
 		ledgerMetadata:    &kindStub[domain.LedgerMetadataKey, *commonpb.MetadataValue, commonpb.MetadataValueReader]{},
-		transactionStates: &kindStub[domain.TransactionKey, *commonpb.TransactionState, commonpb.TransactionStateReader]{},
-		transactionRefs:   &kindStub[domain.TransactionReferenceKey, *commonpb.TransactionReferenceValue, commonpb.TransactionReferenceValueReader]{},
+		transactionStates: &kindStub[domain.TransactionKey, *internalcommonpb.TransactionState, internalcommonpb.TransactionStateReader]{},
+		transactionRefs:   &kindStub[domain.TransactionReferenceKey, *internalcommonpb.TransactionReferenceValue, internalcommonpb.TransactionReferenceValueReader]{},
 		preparedQueries:   &kindStub[domain.PreparedQueryKey, *commonpb.PreparedQuery, commonpb.PreparedQueryReader]{},
 		indexes:           &kindStub[domain.IndexKey, *commonpb.Index, commonpb.IndexReader]{},
 	}
@@ -92,13 +94,13 @@ func (s *overlayMockStubs) failOnAnyParentWrite(t *testing.T) {
 	s.ledgerMetadata.onDelete(func(k domain.LedgerMetadataKey) {
 		t.Errorf("rollback leak: parent LedgerMetadata().Delete(%v) called", k)
 	})
-	s.transactionStates.onPut(func(k domain.TransactionKey, _ *commonpb.TransactionState) {
+	s.transactionStates.onPut(func(k domain.TransactionKey, _ *internalcommonpb.TransactionState) {
 		t.Errorf("rollback leak: parent TransactionStates().Put(%v) called", k)
 	})
 	s.transactionStates.onDelete(func(k domain.TransactionKey) {
 		t.Errorf("rollback leak: parent TransactionStates().Delete(%v) called", k)
 	})
-	s.transactionRefs.onPut(func(k domain.TransactionReferenceKey, _ *commonpb.TransactionReferenceValue) {
+	s.transactionRefs.onPut(func(k domain.TransactionReferenceKey, _ *internalcommonpb.TransactionReferenceValue) {
 		t.Errorf("rollback leak: parent TransactionReferences().Put(%v) called", k)
 	})
 	s.transactionRefs.onDelete(func(k domain.TransactionReferenceKey) {
@@ -196,7 +198,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	// Transaction reference
 	trk := domain.TransactionReferenceKey{LedgerName: "L", Reference: "ref"}
-	overlay.TransactionReferences().Put(trk, &commonpb.TransactionReferenceValue{TransactionId: 7})
+	overlay.TransactionReferences().Put(trk, &internalcommonpb.TransactionReferenceValue{TransactionId: 7})
 
 	trGot, err := overlay.TransactionReferences().Get(trk)
 	require.NoError(t, err)
@@ -204,7 +206,7 @@ func TestOrderOverlayScope_ReadYourWritesAcrossCategories(t *testing.T) {
 
 	// Transaction state
 	tsk := domain.TransactionKey{LedgerName: "L", ID: 7}
-	overlay.TransactionStates().Put(tsk, &commonpb.TransactionState{CreatedByLog: 42})
+	overlay.TransactionStates().Put(tsk, &internalcommonpb.TransactionState{CreatedByLog: 42})
 
 	stGot, err := overlay.TransactionStates().Get(tsk)
 	require.NoError(t, err)
@@ -302,8 +304,8 @@ func TestOrderOverlayScope_CommitFlushesEveryCategory(t *testing.T) {
 	overlay.AccountMetadata().Put(mk, commonpb.NewStringValue("v1"))
 	overlay.LedgerMetadata().Put(lmk, commonpb.NewStringValue("v1"))
 	overlay.PutReverted(tk, true)
-	overlay.TransactionReferences().Put(trk, &commonpb.TransactionReferenceValue{TransactionId: 7})
-	overlay.TransactionStates().Put(tsk, &commonpb.TransactionState{})
+	overlay.TransactionReferences().Put(trk, &internalcommonpb.TransactionReferenceValue{TransactionId: 7})
+	overlay.TransactionStates().Put(tsk, &internalcommonpb.TransactionState{})
 	overlay.PreparedQueries().Put(pqk, &commonpb.PreparedQuery{Name: "q1"})
 	overlay.Indexes().Put(ik, &commonpb.Index{})
 	_, err := overlay.IncrementNextSequenceID()

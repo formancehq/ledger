@@ -3,8 +3,9 @@ package querycheckpoint
 import (
 	"github.com/spf13/cobra"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // newDeleteScheduleCommand creates the query-checkpoint delete-schedule command.

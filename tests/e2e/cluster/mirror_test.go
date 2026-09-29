@@ -15,10 +15,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	v2 "github.com/formancehq/ledger/v3/internal/adapter/v2"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -218,7 +217,7 @@ func newV2SetMetadataLog(id uint64, targetType, targetID string, metadata map[st
 var _ = Describe("Mirror", Ordered, func() {
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 	)
 
 	BeforeAll(func() {
@@ -232,9 +231,9 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2 := newMockV2Server()
 			defer mockV2.Close()
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-http",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -251,7 +250,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Verify the ledger exists and is in mirror mode
-			ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+			ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{
 				Ledger: "mirror-http",
 			})
 			Expect(err).To(Succeed())
@@ -260,9 +259,9 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should create a mirror ledger with Postgres source config", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-pg",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -278,7 +277,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			}))
 			Expect(err).To(Succeed())
 
-			ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+			ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{
 				Ledger: "mirror-pg",
 			})
 			Expect(err).To(Succeed())
@@ -291,9 +290,9 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2 := newMockV2Server()
 			DeferCleanup(mockV2.Close)
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-guard",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -311,7 +310,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should reject creating transactions on mirror ledger", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("mirror-guard", []*commonpb.Posting{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction("mirror-guard", []*commonpb.Posting{
 				actions.NewPosting("world", "users:001", big.NewInt(100), "USD"),
 			}, nil, nil)))
 			Expect(err).To(HaveOccurred())
@@ -326,7 +325,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should reject saving metadata on mirror ledger", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction("mirror-guard", "users:001", map[string]string{"key": "val"})))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.SaveAccountMetadataAction("mirror-guard", "users:001", map[string]string{"key": "val"})))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -335,7 +334,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should reject deleting metadata on mirror ledger", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction("mirror-guard", "users:001", "key")))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.DeleteAccountMetadataAction("mirror-guard", "users:001", "key")))
 			Expect(err).To(HaveOccurred())
 
 			st, ok := status.FromError(err)
@@ -344,12 +343,12 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should allow setting metadata field type on mirror ledger", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category", commonpb.MetadataType_METADATA_TYPE_STRING)))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.SetMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category", commonpb.MetadataType_METADATA_TYPE_STRING)))
 			Expect(err).To(Succeed())
 		})
 
 		It("Should allow removing metadata field type on mirror ledger", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.RemoveMetadataFieldTypeAction("mirror-guard", commonpb.TargetType_TARGET_TYPE_ACCOUNT, "category")))
 			Expect(err).To(Succeed())
 		})
 	})
@@ -370,9 +369,9 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2.addLog(second)
 			mockV2.addLog(newV2SetMetadataLog(3, "ACCOUNT", "users:001", map[string]string{"role": "admin"}))
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-sync",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -409,7 +408,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should query the source insertion chronology through the inserted_at index", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateBuiltinTxIndexAction(
 				"mirror-sync",
 				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
 			)))
@@ -421,8 +420,8 @@ var _ = Describe("Mirror", Ordered, func() {
 				commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT,
 			)).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreatePreparedQuery{CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreatePreparedQuery{CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 					Ledger: "mirror-sync",
 					Query: &commonpb.PreparedQuery{
 						Name:   "first-source-ingestion-window",
@@ -433,7 +432,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			}))
 			Expect(err).To(Succeed())
 
-			result, err := client.ExecutePreparedQuery(ctx, &servicepb.ExecutePreparedQueryRequest{
+			result, err := client.ExecutePreparedQuery(ctx, &commonpb.ExecutePreparedQueryRequest{
 				Ledger:    "mirror-sync",
 				QueryName: "first-source-ingestion-window",
 				Mode:      commonpb.QueryMode_QUERY_MODE_LIST,
@@ -445,7 +444,7 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should sync account metadata from v2", func() {
 			Eventually(func(g Gomega) {
-				account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
 					Ledger:  "mirror-sync",
 					Address: "users:001",
 				})
@@ -466,9 +465,9 @@ var _ = Describe("Mirror", Ordered, func() {
 		for id := uint64(1); id <= 3; id++ {
 			mockV2.addLog(newV2TransactionLog(id, id-1, "world", fmt.Sprintf("users:%d", id), strconv.FormatUint(id*100, 10), "USD/2"))
 		}
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_CreateLedger{
-				CreateLedger: &servicepb.CreateLedgerRequest{
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+			Type: &commonpb.Request_CreateLedger{
+				CreateLedger: &commonpb.CreateLedgerRequest{
 					Name: ledgerName,
 					Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 					MirrorSource: &commonpb.MirrorSourceConfig{
@@ -497,7 +496,7 @@ var _ = Describe("Mirror", Ordered, func() {
 					g.Expect(byID[id].GetPostings()).To(HaveLen(1))
 					g.Expect(byID[id].GetPostings()[0].GetDestination()).To(Equal(fmt.Sprintf("users:%d", id+1)))
 				}
-				info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+				info, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
 				g.Expect(err).To(Succeed())
 				g.Expect(info.GetMirrorSyncProgress().GetCursor()).To(Equal(count))
 				g.Expect(info.GetMirrorSyncProgress().GetSourceLogCount()).To(Equal(count))
@@ -527,9 +526,9 @@ var _ = Describe("Mirror", Ordered, func() {
 			// tx 2: ordinary transaction that survives untouched.
 			mockV2.addLog(newV2TransactionLog(3, 2, "world", "users:carol", "7", "USD/2"))
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-cel",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -624,9 +623,9 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should reject creating a mirror ledger with an invalid CEL rule", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-cel-invalid",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -662,9 +661,9 @@ var _ = Describe("Mirror", Ordered, func() {
 
 			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "50", "USD/2"))
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-promote",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -689,9 +688,9 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should promote ledger from mirror to normal mode", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_PromoteLedger{
-					PromoteLedger: &servicepb.PromoteLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_PromoteLedger{
+					PromoteLedger: &commonpb.PromoteLedgerRequest{
 						Ledger: "mirror-promote",
 					},
 				},
@@ -699,7 +698,7 @@ var _ = Describe("Mirror", Ordered, func() {
 			Expect(err).To(Succeed())
 
 			// Verify mode changed to NORMAL
-			ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{
+			ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{
 				Ledger: "mirror-promote",
 			})
 			Expect(err).To(Succeed())
@@ -708,7 +707,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should allow writing to the promoted ledger", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction("mirror-promote", []*commonpb.Posting{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction("mirror-promote", []*commonpb.Posting{
 				actions.NewPosting("world", "users:002", big.NewInt(200), "USD/2"),
 			}, nil, nil)))
 			Expect(err).To(Succeed())
@@ -731,9 +730,9 @@ var _ = Describe("Mirror", Ordered, func() {
 
 			mockV2.addLog(newV2TransactionLog(1, 0, "world", "users:001", "50", "USD/2"))
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-delete",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -757,7 +756,7 @@ var _ = Describe("Mirror", Ordered, func() {
 		})
 
 		It("Should stop the mirror worker once the ledger is deleted", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.DeleteLedgerAction("mirror-delete")))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.DeleteLedgerAction("mirror-delete")))
 			Expect(err).To(Succeed())
 
 			// The worker may be mid-poll when the delete applies, so wait for the
@@ -790,9 +789,9 @@ var _ = Describe("Mirror", Ordered, func() {
 		// here is the guard that makes the recreate path unreachable in the
 		// first place.
 		It("Should reject recreating a deleted mirror ledger under the same name", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-delete",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -820,12 +819,12 @@ var _ = Describe("Mirror", Ordered, func() {
 
 	Context("When promoting a non-mirror ledger", func() {
 		It("Should fail with LEDGER_NOT_IN_MIRROR_MODE", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("normal-ledger-promote", nil)))
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("normal-ledger-promote", nil)))
 			Expect(err).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_PromoteLedger{
-					PromoteLedger: &servicepb.PromoteLedgerRequest{
+			_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_PromoteLedger{
+					PromoteLedger: &commonpb.PromoteLedgerRequest{
 						Ledger: "normal-ledger-promote",
 					},
 				},
@@ -859,9 +858,9 @@ var _ = Describe("Mirror", Ordered, func() {
 			mockV2.addLog(newV2TransactionLog(1, 0, "world", "oauth2:user1", "500", "USD/2"))
 			mockV2.addLog(newV2SetMetadataLog(2, "ACCOUNT", "oauth2:user1", map[string]string{"provider": "oauth2"}))
 
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-				Type: &servicepb.Request_CreateLedger{
-					CreateLedger: &servicepb.CreateLedgerRequest{
+			_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+				Type: &commonpb.Request_CreateLedger{
+					CreateLedger: &commonpb.CreateLedgerRequest{
 						Name: "mirror-oauth2",
 						Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,
 						MirrorSource: &commonpb.MirrorSourceConfig{
@@ -903,7 +902,7 @@ var _ = Describe("Mirror", Ordered, func() {
 
 		It("Should sync account metadata via OAuth2-authenticated requests", func() {
 			Eventually(func(g Gomega) {
-				account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				account, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
 					Ledger:  "mirror-oauth2",
 					Address: "oauth2:user1",
 				})

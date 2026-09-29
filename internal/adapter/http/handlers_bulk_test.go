@@ -12,12 +12,11 @@ import (
 	"go.uber.org/mock/gomock"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // bulkWriteBody is a single-element bulk payload whose action (CREATE_TRANSACTION)
@@ -90,11 +89,11 @@ func TestHandleBulk_SizeLimitExceeded(t *testing.T) {
 func TestHandleBulk_OrderSkippedSurfacesInResponse(t *testing.T) {
 	t.Parallel()
 
-	var received *servicepb.ApplyRequest
+	var received *commonpb.ApplyRequest
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, req *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, req *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			received = req
 
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
@@ -187,12 +186,12 @@ func TestRunBulkAtomic_AllFail(t *testing.T) {
 	expectedErr := errors.New("atomic failure")
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return nil, expectedErr
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	requests := []*servicepb.Request{{}, {}}
+	requests := []*commonpb.Request{{}, {}}
 	results := srv.runBulkAtomic(context.Background(), "", requests)
 
 	require.Len(t, results, 2)
@@ -207,7 +206,7 @@ func TestRunBulkAtomic_Success(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 1}}}}},
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{Id: 2}}}}},
@@ -215,7 +214,7 @@ func TestRunBulkAtomic_Success(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	requests := []*servicepb.Request{{}, {}}
+	requests := []*commonpb.Request{{}, {}}
 	results := srv.runBulkAtomic(context.Background(), "", requests)
 
 	require.Len(t, results, 2)
@@ -232,7 +231,7 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -244,7 +243,7 @@ func TestRunBulkSequential_StopOnError(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	requests := []*servicepb.Request{{}, {}, {}}
+	requests := []*commonpb.Request{{}, {}, {}}
 	keys := []string{"", "", ""}
 	results := srv.runBulkSequential(context.Background(), requests, keys, false)
 
@@ -260,7 +259,7 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 	callCount := 0
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			callCount++
 			if callCount == 1 {
 				return nil, errors.New("first fails")
@@ -272,7 +271,7 @@ func TestRunBulkSequential_ContinueOnFailure(t *testing.T) {
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
-	requests := []*servicepb.Request{{}, {}}
+	requests := []*commonpb.Request{{}, {}}
 	keys := []string{"", ""}
 	results := srv.runBulkSequential(context.Background(), requests, keys, true)
 
@@ -312,7 +311,7 @@ func TestHandleBulk_AuthDisabled_NoToken_Allowed(t *testing.T) {
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().Apply(gomock.Any(), gomock.Any()).DoAndReturn(
-		func(_ context.Context, _ *servicepb.ApplyRequest) (*domain.ApplyResult, error) {
+		func(_ context.Context, _ *commonpb.ApplyRequest) (*domain.ApplyResult, error) {
 			return &domain.ApplyResult{Logs: []*commonpb.Log{
 				{Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{Log: &commonpb.LedgerLog{}}}}},
 			}}, nil

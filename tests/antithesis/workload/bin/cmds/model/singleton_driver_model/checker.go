@@ -6,8 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 )
 
@@ -117,7 +116,7 @@ type Checker struct {
 type observation struct {
 	ticket          uint64
 	bulk            oracle.Bulk
-	resp            *servicepb.ApplyResponse
+	resp            *commonpb.ApplyResponse
 	err             error
 	ambiguousEnable bool
 	recoverySeq     uint64
@@ -148,8 +147,8 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		// setupLedgers created these outside the modeled Apply stream. Seed their
 		// identities so lifecycle generation can delete or otherwise target even
 		// a still-empty initial ledger without predicting LEDGER_NOT_FOUND.
-		created := modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{{
-			Type: &servicepb.Request_CreateLedger{CreateLedger: &servicepb.CreateLedgerRequest{Name: ledger}},
+		created := modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{{
+			Type: &commonpb.Request_CreateLedger{CreateLedger: &commonpb.CreateLedgerRequest{Name: ledger}},
 		}}})
 		modelState = created.State
 
@@ -158,11 +157,11 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 			continue
 		}
 
-		reqs := make([]*servicepb.Request, 0, len(cmds))
+		reqs := make([]*commonpb.Request, 0, len(cmds))
 		for _, cmd := range cmds {
-			reqs = append(reqs, &servicepb.Request{
-				Type: &servicepb.Request_SetMetadataFieldType{
-					SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+			reqs = append(reqs, &commonpb.Request{
+				Type: &commonpb.Request_SetMetadataFieldType{
+					SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
 						Ledger:     ledger,
 						TargetType: cmd.GetTargetType(),
 						Key:        cmd.GetKey(),

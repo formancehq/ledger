@@ -11,6 +11,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/application/check"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -19,9 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/pkg/commands"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -297,10 +296,10 @@ func TestBackup_EphemeralPurgeRestoreParity(t *testing.T) {
 	require.NotNil(t, tx, "the draining transaction mapping must survive restore")
 	require.NoError(t, handle.Close())
 
-	var findings []*servicepb.CheckStoreError
+	var findings []*commonpb.CheckStoreError
 	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
-	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	require.NoError(t, checker.Check(ctx, func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
 		}
 	}))
@@ -406,11 +405,11 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 
 	// The checker re-derives the cascade from the audit chain and compares it to
 	// the restored rows, so agreement here is the audit side of the same claim.
-	var findings []*servicepb.CheckStoreError
+	var findings []*commonpb.CheckStoreError
 
 	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
-	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	require.NoError(t, checker.Check(ctx, func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
 		}
 	}))

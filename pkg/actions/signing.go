@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // GenerateTestKeypair generates an Ed25519 keypair for testing.
@@ -21,26 +21,26 @@ func GenerateTestKeypair() (ed25519.PublicKey, ed25519.PrivateKey, error) {
 // SignBatch signs an ApplyBatch (the atomic unit: ordered requests + idempotency
 // key) and returns a signed ApplyRequest ready to pass to Apply. Signing the
 // whole batch authenticates its composition and ordering.
-func SignBatch(batch *servicepb.ApplyBatch, keyID string, privKey ed25519.PrivateKey) (*servicepb.ApplyRequest, error) {
+func SignBatch(batch *commonpb.ApplyBatch, keyID string, privKey ed25519.PrivateKey) (*commonpb.ApplyRequest, error) {
 	sb, err := signing.Sign(batch, keyID, privKey)
 	if err != nil {
 		return nil, fmt.Errorf("signing batch: %w", err)
 	}
 
-	return servicepb.SignedApplyRequest(sb), nil
+	return commonpb.SignedApplyRequest(sb), nil
 }
 
 // ListAllSigningKeys collects every signing key from the ListSigningKeys
 // stream, following the x-next-cursor trailer chain so clusters with more
 // keys than the server's default page still surface them all.
-func ListAllSigningKeys(ctx context.Context, client servicepb.BucketServiceClient) ([]*commonpb.SigningKey, error) {
+func ListAllSigningKeys(ctx context.Context, client commonpb.BucketServiceClient) ([]*commonpb.SigningKey, error) {
 	var (
 		keys   []*commonpb.SigningKey
 		cursor string
 	)
 
 	for {
-		stream, err := client.ListSigningKeys(ctx, &servicepb.ListSigningKeysRequest{
+		stream, err := client.ListSigningKeys(ctx, &commonpb.ListSigningKeysRequest{
 			Options: &commonpb.ListOptions{PageSize: listAllPageSize, Cursor: cursor},
 		})
 		if err != nil {

@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -87,7 +86,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 
 	// --- Phase 2: Top-Ups (buy coins with real money) ---
 	t.Run("TopUps", func(t *testing.T) {
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 1; i <= numPlayers; i++ {
 			action := actions.CreateScriptRefTransactionAction(ledger, "top_up", "1.0.0", map[string]string{
 				"player_usd":   fmt.Sprintf("player:%d:usd", i),
@@ -110,7 +109,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	// --- Phase 3: Promotional Credits (force transactions from @world) ---
 	t.Run("Promotions", func(t *testing.T) {
 		// Give free coins to first 10 players
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 1; i <= 10; i++ {
 			reqs = append(reqs,
 				actions.CreateForceTransactionAction(ledger, []*commonpb.Posting{
@@ -132,7 +131,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 		itemCosts := []int64{100, 250, 500}
 
 		for round, cost := range itemCosts {
-			var reqs []*servicepb.Request
+			var reqs []*commonpb.Request
 			for i := 1; i <= numPlayers; i++ {
 				// Only buy if player has enough coins
 				if playerCoins[i].Cmp(big.NewInt(cost)) < 0 {
@@ -187,7 +186,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 			{2, 3, 30}, {4, 5, 60}, {6, 7, 80}, {8, 9, 40}, {10, 1, 90},
 		}
 
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for _, trade := range trades {
 			from, to, amount := trade[0], trade[1], int64(trade[2])
 
@@ -273,7 +272,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	t.Run("PromoClawback", func(t *testing.T) {
 		// Clawback remaining promo coins from players 8-10
 		// (simulating expired promotional balance)
-		var reqs []*servicepb.Request
+		var reqs []*commonpb.Request
 		for i := 8; i <= 10; i++ {
 			clawAmount := big.NewInt(promoCoins)
 			// Can only claw back if they still have enough
@@ -481,7 +480,7 @@ func TestGamingWalletLifecycle(t *testing.T) {
 	})
 
 	// --- Tail phases ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckNoNegativeBalances(t, ctx, client, ledger, []string{"world"})
 	})

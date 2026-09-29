@@ -1,6 +1,6 @@
 # Protocol Buffers and gRPC
 
-The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in `misc/proto/`, and generated Go code is placed in internal packages.
+The Raft transport layer and ledger service use gRPC for communication. Protocol buffer definitions are stored in `misc/proto/`. The six public service schemas generate into the nested `pkg/client/v3/grpc` module; internal protocols remain under `internal/proto/`.
 
 ## File Locations
 
@@ -18,20 +18,18 @@ The Raft transport layer and ledger service use gRPC for communication. Protocol
 | `signature.proto` | Request signature types |
 | `events.proto` | Domain event types |
 | `restore.proto` | Restore service |
+| `internal_common.proto` | Persisted-only common messages (not public) |
 
-### Generated Code (`internal/proto/`)
+### Generated Code
 
 | Package | Contents |
 |---------|----------|
-| `commonpb/` | Common types |
+| `pkg/client/v3/grpc/` | Public common, signature, audit, bucket, cluster, and restore descriptors, messages, stubs, and JSON helpers |
 | `raftcmdpb/` | FSM command types |
-| `servicepb/` | gRPC service |
-| `clusterpb/` | Cluster state |
-| `signaturepb/` | Signature types |
+| `internalcommonpb/` | Persisted-only common messages |
 | `snapshotpb/` | Snapshot service |
-| `auditpb/` | Audit log types |
 | `eventspb/` | Domain event types |
-| `restorepb/` | Restore service |
+| `rafttransportpb/` | Internal Raft transport |
 
 Raft transport generated code lives in `internal/proto/rafttransportpb/` (`raft_transport.pb.go`, `raft_transport_grpc.pb.go`).
 
@@ -42,6 +40,12 @@ just generate-proto
 ```
 
 This reads `.proto` files, generates Go code using `protoc-gen-go`, `protoc-gen-go-grpc`, `protoc-gen-go-vtproto`, and the custom plugins under `tools/` — `protoc-gen-dethash`, `protoc-gen-reader`, `protoc-gen-queryfilter-validity`, `protoc-gen-ledger-log-category`, and `protoc-gen-rpcauth` — and places files according to the `go_package` option.
+It also copies the six public `.proto` sources into the client module, writes a
+deterministic descriptor set, tidies the nested module, and refreshes its
+descriptor digest and protocol revision. `bash scripts/check-public-client.sh`
+checks regeneration, nested tests, an external-module import, and a real
+same-process `pkg/testserver` call. The client has no server or internal-protocol
+imports. See [public client distribution](../architecture/subsystems/api/public-client.md).
 
 ### Custom plugins
 
@@ -140,7 +144,7 @@ All monetary amounts use the `Uint256` protobuf message - a fixed-size 4 x `fixe
 - All amounts are non-negative: the sign byte in BigInt was wasted
 - 2^256 range (1.16 x 10^77) covers any real-world monetary quantity
 
-**Key file**: `internal/proto/commonpb/uint256.go` (`IntoUint256()`, `SetFromUint256()`, `ToBigInt()`, `IsZero()`, `Dec()`)
+**Key file**: `pkg/client/v3/grpc/commonpb_uint256.go` (`IntoUint256()`, `SetFromUint256()`, `ToBigInt()`, `IsZero()`, `Dec()`)
 
 See [architecture/uint256-wire-format.md](../architecture/primitives/uint256-wire-format.md) for the full design rationale.
 

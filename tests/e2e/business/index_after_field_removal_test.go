@@ -6,8 +6,7 @@ import (
 	"context"
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -25,7 +24,7 @@ import (
 var _ = Describe("Query after metadata field removal", Ordered, func() {
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 	)
 
 	const metaKey = "k2"
@@ -36,10 +35,10 @@ var _ = Describe("Query after metadata field removal", Ordered, func() {
 		client = node.Client
 	})
 
-	apply := func(reqs ...*servicepb.Request) {
+	apply := func(reqs ...*commonpb.Request) {
 		GinkgoHelper()
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...))
 		Expect(err).To(Succeed())
 	}
 

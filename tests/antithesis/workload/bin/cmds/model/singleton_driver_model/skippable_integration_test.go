@@ -7,6 +7,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
+	"github.com/formancehq/ledger/v3/pkg/actions"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
+	"github.com/formancehq/ledger/v3/pkg/testserver"
+	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
+	"github.com/formancehq/ledger/v3/tests/oracle"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -14,19 +23,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
-	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
-	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/formancehq/ledger/v3/tests/oracle"
-	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
-
-	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Exercise the same wire requests through the real admission/FSM path and the
@@ -34,14 +30,14 @@ import (
 func TestSkippableOrdersAgainstServer(t *testing.T) {
 	t.Parallel()
 	ctx, client := skippableTestServer(t)
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("L", nil)))
+	_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction("L", nil)))
 	require.NoError(t, err)
 	checker := NewChecker([]string{"L"}, nil)
-	commit := func(t *testing.T, reqs ...*servicepb.Request) *servicepb.ApplyResponse {
+	commit := func(t *testing.T, reqs ...*commonpb.Request) *commonpb.ApplyResponse {
 		t.Helper()
 		bulk := oracle.Bulk{Requests: reqs}
 		before := len(checker.modelState.Ledger("L").LogRows())
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...))
+		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...))
 		require.NoError(t, err)
 		require.Len(t, resp.GetLogs(), len(reqs))
 		checker.crossCheckCommit(bulk, resp)
@@ -49,13 +45,13 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 
 		return resp
 	}
-	rejectCorruption := func(t *testing.T, mutate func(*servicepb.ApplyResponse), reqs ...*servicepb.Request) *servicepb.ApplyResponse {
+	rejectCorruption := func(t *testing.T, mutate func(*commonpb.ApplyResponse), reqs ...*commonpb.Request) *commonpb.ApplyResponse {
 		t.Helper()
 		bulk := oracle.Bulk{Requests: reqs}
-		resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...))
+		resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...))
 		require.NoError(t, err)
 		before := checker.modelState.Fingerprint()
-		corrupted := proto.Clone(resp).(*servicepb.ApplyResponse)
+		corrupted := proto.Clone(resp).(*commonpb.ApplyResponse)
 		mutate(corrupted)
 		checker.crossCheckCommit(bulk, corrupted)
 		require.Equal(t, before, checker.modelState.Fingerprint(), "a rejected response must not advance the model")
@@ -66,7 +62,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 	}
 
 	t.Run("commit response checks reject mutations", func(t *testing.T) {
-		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+		rejectCorruption(t, func(resp *commonpb.ApplyResponse) {
 			resp.Logs[0].GetPayload().GetApply().GetLog().Id++
 		}, oracletest.TxReqRefL("L", "identity-check", "world", "typed:1", "USD", 1))
 
@@ -74,21 +70,21 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 			oracletest.TxReqRefL("L", "identity-check", "world", "typed:1", "USD", 1),
 			commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT,
 		)
-		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+		rejectCorruption(t, func(resp *commonpb.ApplyResponse) {
 			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Reason = commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED
 		}, duplicate, oracletest.TxReq("world", "typed:1", "USD", 1))
 
-		mode := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		mode := &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
 			Ledger: "L",
-			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{
-				SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT},
+			Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{
+				SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeRequest{EnforcementMode: commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT},
 			}},
 		}}}
-		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+		rejectCorruption(t, func(resp *commonpb.ApplyResponse) {
 			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetUpdatedDefaultEnforcementMode().EnforcementMode = commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT
 		}, mode)
 
-		rejectCorruption(t, func(resp *servicepb.ApplyResponse) {
+		rejectCorruption(t, func(resp *commonpb.ApplyResponse) {
 			resp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetAddedAccountType().AccountType.Name = "corrupted"
 		}, actions.AddAccountTypeAction("L", "response-check", "response-check:{id}"))
 	})
@@ -96,13 +92,13 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 	first := commit(t, oracletest.TxReqRefL("L", "original", "world", "typed:1", "USD", 10))
 	txID := first.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction().GetTransaction().GetId()
 	commit(t, oracletest.RevertReqL("L", txID, true))
-	addType := func() *servicepb.Request {
-		return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: &commonpb.AccountType{Name: "typed", Pattern: "typed:{id}"}}}}}}}
+	addType := func() *commonpb.Request {
+		return &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: "L", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{AddAccountType: &commonpb.AddAccountTypeRequest{AccountType: &commonpb.AccountType{Name: "typed", Pattern: "typed:{id}"}}}}}}}
 	}
 	commit(t, addType())
 	cases := []struct {
 		name    string
-		request *servicepb.Request
+		request *commonpb.Request
 		reason  commonpb.ErrorReason
 	}{
 		{"reference conflict", oracletest.TxReqRefL("L", "original", "world", "typed:1", "USD", 2), commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT},
@@ -110,7 +106,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		{"missing account metadata", actions.DeleteAccountMetadataAction("L", "typed:1", "missing"), commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
 		{"missing transaction metadata", actions.DeleteTransactionMetadataAction("L", txID, "missing"), commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND},
 		{"existing account type", addType(), commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_ALREADY_EXISTS},
-		{"missing account type", &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: "L", Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: "absent"}}}}}}, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
+		{"missing account type", &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: "L", Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeRequest{Name: "absent"}}}}}}, commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,8 +119,8 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		})
 	}
 	t.Run("keyed skipped batch replays original result", func(t *testing.T) {
-		bulk := oracle.Bulk{IdempotencyKey: "skip-replay", Requests: []*servicepb.Request{cases[0].request, oracletest.TxReq("world", "typed:1", "USD", 4)}}
-		first, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(bulk.IdempotencyKey, bulk.Requests...))
+		bulk := oracle.Bulk{IdempotencyKey: "skip-replay", Requests: []*commonpb.Request{cases[0].request, oracletest.TxReq("world", "typed:1", "USD", 4)}}
+		first, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(bulk.IdempotencyKey, bulk.Requests...))
 		require.NoError(t, err)
 		before := len(checker.modelState.Ledger("L").LogRows())
 		checker.crossCheckCommit(bulk, first)
@@ -133,22 +129,22 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		expected := checker.modelState.Apply(bulk)
 		require.True(t, expected.OK)
 		require.Equal(t, fingerprint, expected.State.Fingerprint())
-		replay, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(bulk.IdempotencyKey, bulk.Requests...))
+		replay, err := client.Apply(ctx, commonpb.UnsignedApplyRequest(bulk.IdempotencyKey, bulk.Requests...))
 		require.NoError(t, err)
 		require.True(t, replayOrdersMatch(bulk, expected.Orders, replay.GetLogs()))
 		require.True(t, proto.Equal(first, replay), "replay must preserve original logs and sequences")
 		require.Equal(t, fingerprint, checker.modelState.Fingerprint())
-		corrupted := proto.Clone(replay).(*servicepb.ApplyResponse)
+		corrupted := proto.Clone(replay).(*commonpb.ApplyResponse)
 		corrupted.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped().Context["reference"] = "wrong"
 		require.False(t, replayOrdersMatch(bulk, expected.Orders, corrupted.GetLogs()))
 	})
 	t.Run("later fatal order rolls back skipped log and earlier success", func(t *testing.T) {
-		reqs := []*servicepb.Request{oracletest.TxReq("world", "typed:1", "USD", 3), cases[0].request, oracletest.TxReq("typed:empty", "typed:1", "USD", 1)}
+		reqs := []*commonpb.Request{oracletest.TxReq("world", "typed:1", "USD", 3), cases[0].request, oracletest.TxReq("typed:empty", "typed:1", "USD", 1)}
 		predicted := checker.modelState.Apply(oracle.Bulk{Requests: reqs})
 		require.False(t, predicted.OK)
 		require.Equal(t, "INSUFFICIENT_FUNDS", predicted.Reason)
 		require.Equal(t, checker.modelState.Ledger("L").LogRows(), predicted.State.Ledger("L").LogRows())
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", reqs...))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", reqs...))
 		require.Error(t, err)
 		require.True(t, workloadinternal.HasErrorReason(err, "INSUFFICIENT_FUNDS"))
 		// The next successful response pins IDs and volumes against the unchanged
@@ -157,13 +153,13 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 	})
 	t.Run("disallowed opt in is rejected at admission", func(t *testing.T) {
 		req := actions.WithSkippableReasons(actions.SaveAccountMetadataAction("L", "typed:1", map[string]string{"key": "value"}), commonpb.ErrorReason_ERROR_REASON_METADATA_NOT_FOUND)
-		require.False(t, checker.modelState.Apply(oracle.Bulk{Requests: []*servicepb.Request{req}}).OK)
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", req))
+		require.False(t, checker.modelState.Apply(oracle.Bulk{Requests: []*commonpb.Request{req}}).OK)
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", req))
 		require.Equal(t, codes.InvalidArgument, status.Code(err))
 	})
 	t.Run("listed skipped logs preserve their correlators", func(t *testing.T) {
 		readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
-		logs, err := actions.ListLogsFiltered(readCtx, client, &servicepb.ListLogsRequest{Ledger: "L", Options: &commonpb.ListOptions{PageSize: 100}})
+		logs, err := actions.ListLogsFiltered(readCtx, client, &commonpb.ListLogsRequest{Ledger: "L", Options: &commonpb.ListOptions{PageSize: 100}})
 		require.NoError(t, err)
 		require.Len(t, logs, len(checker.modelState.Ledger("L").LogRows()))
 		require.True(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs)))
@@ -183,7 +179,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 	})
 }
 
-func skippableTestServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) {
+func skippableTestServer(t *testing.T) (context.Context, commonpb.BucketServiceClient) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	t.Cleanup(cancel)
@@ -200,13 +196,13 @@ func skippableTestServer(t *testing.T) (context.Context, servicepb.BucketService
 	conn, err := grpc.NewClient(fmt.Sprintf("localhost:%d", lease.Ports().GRPC()), grpcprotocol.ClientOption(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
-	cluster := clusterpb.NewClusterServiceClient(conn)
+	cluster := commonpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
-		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+		state, err := cluster.GetClusterState(ctx, &commonpb.GetClusterStateRequest{})
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-	client := servicepb.NewBucketServiceClient(conn)
+	client := commonpb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)
 
 	return ctx, client

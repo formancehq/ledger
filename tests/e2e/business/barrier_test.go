@@ -5,8 +5,7 @@ package business
 import (
 	"math/big"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -16,28 +15,28 @@ var _ = Describe("Barrier", Ordered, func() {
 	var ledgerName = "test-barrier"
 
 	BeforeAll(func() {
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 	})
 
 	It("Should succeed on an idle cluster", func() {
-		_, err := sharedClient.Barrier(sharedCtx, &servicepb.BarrierRequest{})
+		_, err := sharedClient.Barrier(sharedCtx, &commonpb.BarrierRequest{})
 		Expect(err).To(Succeed())
 	})
 
 	It("Should guarantee prior writes are visible after return", func() {
 		// Create a transaction
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "barrier-test-account", big.NewInt(500), "USD"),
 		}, nil, nil)))
 		Expect(err).To(Succeed())
 
 		// Call Barrier to ensure the write is fully applied
-		_, err = sharedClient.Barrier(sharedCtx, &servicepb.BarrierRequest{})
+		_, err = sharedClient.Barrier(sharedCtx, &commonpb.BarrierRequest{})
 		Expect(err).To(Succeed())
 
 		// The account should be visible with correct balance
-		account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+		account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 			Ledger:  ledgerName,
 			Address: "barrier-test-account",
 		})

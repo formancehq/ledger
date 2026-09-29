@@ -11,11 +11,11 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/robfig/cron/v3"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // TypeState is the model's view of one account type.
@@ -569,7 +569,7 @@ type GlobalState struct {
 // committed (to tell a genuine replay from a same-key/different-body conflict)
 // and the per-order results the server will echo on every replay.
 type frozenOutcome struct {
-	requests []*servicepb.Request
+	requests []*commonpb.Request
 	orders   []OrderResult
 }
 
@@ -776,43 +776,43 @@ type ApplyResult struct {
 }
 
 // LedgerOf returns the request ledger, or empty for cluster-scoped orders.
-func LedgerOf(req *servicepb.Request) string {
+func LedgerOf(req *commonpb.Request) string {
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_SetDefaultEnforcementMode:
+	case *commonpb.Request_SetDefaultEnforcementMode:
 		return r.SetDefaultEnforcementMode.GetLedger()
-	case *servicepb.Request_CreateLedger:
+	case *commonpb.Request_CreateLedger:
 		return r.CreateLedger.GetName()
-	case *servicepb.Request_DeleteLedger:
+	case *commonpb.Request_DeleteLedger:
 		return r.DeleteLedger.GetName()
-	case *servicepb.Request_PromoteLedger:
+	case *commonpb.Request_PromoteLedger:
 		return r.PromoteLedger.GetLedger()
-	case *servicepb.Request_SetMaintenanceMode,
-		*servicepb.Request_CreateQueryCheckpoint, *servicepb.Request_DeleteQueryCheckpoint,
-		*servicepb.Request_SetQueryCheckpointSchedule, *servicepb.Request_DeleteQueryCheckpointSchedule:
+	case *commonpb.Request_SetMaintenanceMode,
+		*commonpb.Request_CreateQueryCheckpoint, *commonpb.Request_DeleteQueryCheckpoint,
+		*commonpb.Request_SetQueryCheckpointSchedule, *commonpb.Request_DeleteQueryCheckpointSchedule:
 		return ""
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		return r.Apply.GetLedger()
-	case *servicepb.Request_AddAccountType:
+	case *commonpb.Request_AddAccountType:
 		return r.AddAccountType.GetLedger()
-	case *servicepb.Request_RemoveAccountType:
+	case *commonpb.Request_RemoveAccountType:
 		return r.RemoveAccountType.GetLedger()
-	case *servicepb.Request_SaveLedgerMetadata:
+	case *commonpb.Request_SaveLedgerMetadata:
 		return r.SaveLedgerMetadata.GetLedger()
-	case *servicepb.Request_DeleteLedgerMetadata:
+	case *commonpb.Request_DeleteLedgerMetadata:
 		return r.DeleteLedgerMetadata.GetLedger()
-	case *servicepb.Request_SetMetadataFieldType:
+	case *commonpb.Request_SetMetadataFieldType:
 		return r.SetMetadataFieldType.GetLedger()
-	case *servicepb.Request_RemoveMetadataFieldType:
+	case *commonpb.Request_RemoveMetadataFieldType:
 		return r.RemoveMetadataFieldType.GetLedger()
-	case *servicepb.Request_CreateIndex:
+	case *commonpb.Request_CreateIndex:
 		return r.CreateIndex.GetLedger()
-	case *servicepb.Request_DropIndex:
+	case *commonpb.Request_DropIndex:
 		return r.DropIndex.GetLedger()
-	case *servicepb.Request_CreatePreparedQuery:
+	case *commonpb.Request_CreatePreparedQuery:
 		return r.CreatePreparedQuery.GetLedger()
-	case *servicepb.Request_UpdatePreparedQuery:
+	case *commonpb.Request_UpdatePreparedQuery:
 		return r.UpdatePreparedQuery.GetLedger()
-	case *servicepb.Request_DeletePreparedQuery:
+	case *commonpb.Request_DeletePreparedQuery:
 		return r.DeletePreparedQuery.GetLedger()
 	default:
 		panic(fmt.Sprintf("LedgerOf: unmodeled request type %T", req.GetType()))
@@ -834,7 +834,7 @@ func LedgerOf(req *servicepb.Request) string {
 // ListLogs. Seeding through Apply would therefore put one phantom log at the
 // head of the stream per declared field and shift every real log's id by that
 // many.
-func (g GlobalState) SeedInitialSchema(reqs []*servicepb.Request) GlobalState {
+func (g GlobalState) SeedInitialSchema(reqs []*commonpb.Request) GlobalState {
 	next := g.clone()
 
 	for _, req := range reqs {
@@ -1084,37 +1084,37 @@ func (g GlobalState) Apply(bulk Bulk) ApplyResult {
 	return ApplyResult{OK: true, State: next, Orders: orders}
 }
 
-func requestMutatesAccountTypes(req *servicepb.Request) bool {
+func requestMutatesAccountTypes(req *commonpb.Request) bool {
 	switch req.GetType().(type) {
-	case *servicepb.Request_AddAccountType, *servicepb.Request_RemoveAccountType:
+	case *commonpb.Request_AddAccountType, *commonpb.Request_RemoveAccountType:
 		return true
 	}
 	switch req.GetApply().GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_AddAccountType, *servicepb.LedgerAction_RemoveAccountType:
+	case *commonpb.LedgerAction_AddAccountType, *commonpb.LedgerAction_RemoveAccountType:
 		return true
 	default:
 		return false
 	}
 }
 
-func requestAccountTouches(req *servicepb.Request) map[string]bool {
+func requestAccountTouches(req *commonpb.Request) map[string]bool {
 	out := map[string]bool{}
 	apply := req.GetApply()
 	if apply == nil {
 		return out
 	}
 	switch action := apply.GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_CreateTransaction:
+	case *commonpb.LedgerAction_CreateTransaction:
 		for account, metadata := range action.CreateTransaction.GetAccountMetadata() {
 			if len(metadata.GetValues()) > 0 {
 				out[account] = true
 			}
 		}
-	case *servicepb.LedgerAction_AddMetadata:
+	case *commonpb.LedgerAction_AddMetadata:
 		if account := action.AddMetadata.GetTarget().GetAccount(); account != nil && len(action.AddMetadata.GetMetadata()) > 0 {
 			out[account.GetAddr()] = true
 		}
-	case *servicepb.LedgerAction_DeleteMetadata:
+	case *commonpb.LedgerAction_DeleteMetadata:
 		if account := action.DeleteMetadata.GetTarget().GetAccount(); account != nil {
 			out[account.GetAddr()] = true
 		}
@@ -1127,7 +1127,7 @@ func requestAccountTouches(req *servicepb.Request) map[string]bool {
 // actions have equivalent top-level and ledger-action wire forms, which admission
 // normalizes before hashing. Preserve the ledger, payload and skip opt-ins while
 // comparing those forms independently of the production converter.
-func RequestsEqual(a, b []*servicepb.Request) bool {
+func RequestsEqual(a, b []*commonpb.Request) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -1141,24 +1141,24 @@ func RequestsEqual(a, b []*servicepb.Request) bool {
 	return true
 }
 
-func canonicalIdempotencyRequest(req *servicepb.Request) *servicepb.Request {
+func canonicalIdempotencyRequest(req *commonpb.Request) *commonpb.Request {
 	var ledger string
-	var action *servicepb.LedgerAction
+	var action *commonpb.LedgerAction
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_AddAccountType:
+	case *commonpb.Request_AddAccountType:
 		ledger = r.AddAccountType.GetLedger()
-		action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{AddAccountType: &servicepb.AddAccountTypeRequest{AccountType: r.AddAccountType.GetAccountType()}}}
-	case *servicepb.Request_RemoveAccountType:
+		action = &commonpb.LedgerAction{Data: &commonpb.LedgerAction_AddAccountType{AddAccountType: &commonpb.AddAccountTypeRequest{AccountType: r.AddAccountType.GetAccountType()}}}
+	case *commonpb.Request_RemoveAccountType:
 		ledger = r.RemoveAccountType.GetLedger()
-		action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{RemoveAccountType: &servicepb.RemoveAccountTypeRequest{Name: r.RemoveAccountType.GetName()}}}
-	case *servicepb.Request_SetDefaultEnforcementMode:
+		action = &commonpb.LedgerAction{Data: &commonpb.LedgerAction_RemoveAccountType{RemoveAccountType: &commonpb.RemoveAccountTypeRequest{Name: r.RemoveAccountType.GetName()}}}
+	case *commonpb.Request_SetDefaultEnforcementMode:
 		ledger = r.SetDefaultEnforcementMode.GetLedger()
-		action = &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: r.SetDefaultEnforcementMode.GetEnforcementMode()}}}
+		action = &commonpb.LedgerAction{Data: &commonpb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeRequest{EnforcementMode: r.SetDefaultEnforcementMode.GetEnforcementMode()}}}
 	default:
 		return req
 	}
 
-	return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: ledger, Action: action}}}
+	return &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{Ledger: ledger, Action: action}}}
 }
 
 // LogIDs returns the ledger-local ids of every committed log, ascending. The
@@ -1187,45 +1187,45 @@ func (s LedgerState) LogIDs() []uint64 {
 // delete twin are dispatched as their own LedgerScopedOrder and return a
 // top-level SavedLedgerMetadata / DeletedLedgerMetadata payload, so they take
 // no ledger-local id and never appear in ListLogs.
-func logKindFor(req *servicepb.Request) string {
+func logKindFor(req *commonpb.Request) string {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_SetDefaultEnforcementMode:
+	case *commonpb.Request_SetDefaultEnforcementMode:
 		return "updated_default_enforcement_mode"
-	case *servicepb.Request_AddAccountType:
+	case *commonpb.Request_AddAccountType:
 		return "added_account_type"
-	case *servicepb.Request_RemoveAccountType:
+	case *commonpb.Request_RemoveAccountType:
 		return "removed_account_type"
-	case *servicepb.Request_SaveLedgerMetadata, *servicepb.Request_DeleteLedgerMetadata:
+	case *commonpb.Request_SaveLedgerMetadata, *commonpb.Request_DeleteLedgerMetadata:
 		return ""
-	case *servicepb.Request_SetMetadataFieldType:
+	case *commonpb.Request_SetMetadataFieldType:
 		return "set_metadata_field_type"
-	case *servicepb.Request_RemoveMetadataFieldType:
+	case *commonpb.Request_RemoveMetadataFieldType:
 		return "removed_metadata_field_type"
-	case *servicepb.Request_CreateIndex:
+	case *commonpb.Request_CreateIndex:
 		return "create_index"
-	case *servicepb.Request_DropIndex:
+	case *commonpb.Request_DropIndex:
 		return "drop_index"
-	case *servicepb.Request_CreatePreparedQuery,
-		*servicepb.Request_UpdatePreparedQuery,
-		*servicepb.Request_DeletePreparedQuery:
+	case *commonpb.Request_CreatePreparedQuery,
+		*commonpb.Request_UpdatePreparedQuery,
+		*commonpb.Request_DeletePreparedQuery:
 		// Prepared-query orders return a TOP-LEVEL LogPayload arm
 		// (created/updated/deleted_prepared_query), not the Apply arm, so like
 		// ledger metadata they take no ledger-local log id and never appear in
 		// ListLogs. Naming a kind here would consume an id and shift every
 		// subsequent log's id past the server's.
 		return ""
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		switch r.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+		case *commonpb.LedgerAction_SetDefaultEnforcementMode:
 			return "updated_default_enforcement_mode"
-		case *servicepb.LedgerAction_CreateTransaction:
+		case *commonpb.LedgerAction_CreateTransaction:
 			return "created_transaction"
-		case *servicepb.LedgerAction_AddMetadata:
+		case *commonpb.LedgerAction_AddMetadata:
 			return "saved_metadata"
-		case *servicepb.LedgerAction_DeleteMetadata:
+		case *commonpb.LedgerAction_DeleteMetadata:
 			return "deleted_metadata"
-		case *servicepb.LedgerAction_RevertTransaction:
+		case *commonpb.LedgerAction_RevertTransaction:
 			return "reverted_transaction"
 		}
 	}
@@ -1240,35 +1240,35 @@ func logKindFor(req *servicepb.Request) string {
 // Transaction logs render empty: their content is server-assigned and is
 // validated against the model's transaction records by the ListTransactions
 // path, which compares ids, references, revert relationships and stamps.
-func logPayloadFor(req *servicepb.Request) string {
+func logPayloadFor(req *commonpb.Request) string {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_SetDefaultEnforcementMode:
+	case *commonpb.Request_SetDefaultEnforcementMode:
 		return "mode=" + strconv.Itoa(int(r.SetDefaultEnforcementMode.GetEnforcementMode()))
-	case *servicepb.Request_AddAccountType:
+	case *commonpb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 
 		return "type=" + at.GetName() + "|pattern=" + at.GetPattern()
-	case *servicepb.Request_RemoveAccountType:
+	case *commonpb.Request_RemoveAccountType:
 		return "type=" + r.RemoveAccountType.GetName()
-	case *servicepb.Request_SetMetadataFieldType:
+	case *commonpb.Request_SetMetadataFieldType:
 		return "target=" + strconv.Itoa(int(r.SetMetadataFieldType.GetTargetType())) +
 			"|key=" + r.SetMetadataFieldType.GetKey() +
 			"|type=" + strconv.Itoa(int(r.SetMetadataFieldType.GetType()))
-	case *servicepb.Request_RemoveMetadataFieldType:
+	case *commonpb.Request_RemoveMetadataFieldType:
 		return "target=" + strconv.Itoa(int(r.RemoveMetadataFieldType.GetTargetType())) +
 			"|key=" + r.RemoveMetadataFieldType.GetKey()
-	case *servicepb.Request_CreateIndex:
+	case *commonpb.Request_CreateIndex:
 		return "index=" + indexes.Canonical(r.CreateIndex.GetId())
-	case *servicepb.Request_DropIndex:
+	case *commonpb.Request_DropIndex:
 		return "index=" + indexes.Canonical(r.DropIndex.GetId())
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+		case *commonpb.LedgerAction_SetDefaultEnforcementMode:
 			return "mode=" + strconv.Itoa(int(a.SetDefaultEnforcementMode.GetEnforcementMode()))
-		case *servicepb.LedgerAction_AddMetadata:
+		case *commonpb.LedgerAction_AddMetadata:
 			return "target=" + canonicalTarget(a.AddMetadata.GetTarget()) + "|" + canonicalMetadata(a.AddMetadata.GetMetadata())
-		case *servicepb.LedgerAction_DeleteMetadata:
+		case *commonpb.LedgerAction_DeleteMetadata:
 			return "target=" + canonicalTarget(a.DeleteMetadata.GetTarget()) + "|key=" + a.DeleteMetadata.GetKey()
 		}
 	}
@@ -1348,7 +1348,7 @@ func canonicalMetadata(m map[string]*commonpb.MetadataValue) string {
 
 // appendLog records the log a committed request produced, if it produced one.
 // The id is the stream's position, dense from 1.
-func (s *LedgerState) appendLog(req *servicepb.Request, txID uint64) {
+func (s *LedgerState) appendLog(req *commonpb.Request, txID uint64) {
 	kind := logKindFor(req)
 	if kind == "" {
 		return
@@ -1470,14 +1470,14 @@ func (s *LedgerState) annotateLog(idx int, cells map[VolumeKey]bool, ann volumeA
 
 // applyOne mutates the (already-forked) working state for one request and
 // returns its predicted outcome, recording touched volume cells.
-func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
+func (s *LedgerState) applyOne(req *commonpb.Request, touched map[VolumeKey]bool, batchInitialTxCount uint64) OrderResult {
 	req = chartRequest(req)
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_SetDefaultEnforcementMode:
+	case *commonpb.Request_SetDefaultEnforcementMode:
 		s.defaultEnforcementMode = r.SetDefaultEnforcementMode.GetEnforcementMode()
 
 		return OrderResult{OK: true}
-	case *servicepb.Request_AddAccountType:
+	case *commonpb.Request_AddAccountType:
 		at := r.AddAccountType.GetAccountType()
 		name := at.GetName()
 		if s.types.Has(name) {
@@ -1489,7 +1489,7 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 
 		return OrderResult{OK: true}
 
-	case *servicepb.Request_RemoveAccountType:
+	case *commonpb.Request_RemoveAccountType:
 		name := r.RemoveAccountType.GetName()
 		if !s.types.Has(name) {
 			return OrderResult{Reason: domain.ErrReasonAccountTypeNotFound}
@@ -1500,46 +1500,46 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 
 		return OrderResult{OK: true}
 
-	case *servicepb.Request_SaveLedgerMetadata:
+	case *commonpb.Request_SaveLedgerMetadata:
 		return s.applySaveLedgerMetadata(r.SaveLedgerMetadata)
 
-	case *servicepb.Request_DeleteLedgerMetadata:
+	case *commonpb.Request_DeleteLedgerMetadata:
 		return s.applyDeleteLedgerMetadata(r.DeleteLedgerMetadata)
 
-	case *servicepb.Request_SetMetadataFieldType:
+	case *commonpb.Request_SetMetadataFieldType:
 		return s.applySetMetadataFieldType(r.SetMetadataFieldType)
 
-	case *servicepb.Request_RemoveMetadataFieldType:
+	case *commonpb.Request_RemoveMetadataFieldType:
 		return s.applyRemoveMetadataFieldType(r.RemoveMetadataFieldType)
 
-	case *servicepb.Request_CreateIndex:
+	case *commonpb.Request_CreateIndex:
 		return s.applyCreateIndex(r.CreateIndex)
 
-	case *servicepb.Request_DropIndex:
+	case *commonpb.Request_DropIndex:
 		return s.applyDropIndex(r.DropIndex)
 
-	case *servicepb.Request_CreatePreparedQuery:
+	case *commonpb.Request_CreatePreparedQuery:
 		return s.applyCreatePreparedQuery(r.CreatePreparedQuery)
 
-	case *servicepb.Request_UpdatePreparedQuery:
+	case *commonpb.Request_UpdatePreparedQuery:
 		return s.applyUpdatePreparedQuery(r.UpdatePreparedQuery)
 
-	case *servicepb.Request_DeletePreparedQuery:
+	case *commonpb.Request_DeletePreparedQuery:
 		return s.applyDeletePreparedQuery(r.DeletePreparedQuery)
 
-	case *servicepb.Request_Apply:
+	case *commonpb.Request_Apply:
 		switch a := r.Apply.GetAction().GetData().(type) {
-		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+		case *commonpb.LedgerAction_SetDefaultEnforcementMode:
 			s.defaultEnforcementMode = a.SetDefaultEnforcementMode.GetEnforcementMode()
 
 			return OrderResult{OK: true}
-		case *servicepb.LedgerAction_CreateTransaction:
+		case *commonpb.LedgerAction_CreateTransaction:
 			return s.applyTransaction(a.CreateTransaction, touched)
-		case *servicepb.LedgerAction_AddMetadata:
+		case *commonpb.LedgerAction_AddMetadata:
 			return s.applyAddMetadata(a.AddMetadata)
-		case *servicepb.LedgerAction_DeleteMetadata:
+		case *commonpb.LedgerAction_DeleteMetadata:
 			return s.applyDeleteMetadata(a.DeleteMetadata)
-		case *servicepb.LedgerAction_RevertTransaction:
+		case *commonpb.LedgerAction_RevertTransaction:
 			return s.applyRevert(a.RevertTransaction, touched, batchInitialTxCount)
 		default:
 			// The generator emits only the actions above; any other is unmodeled
@@ -1563,7 +1563,7 @@ func (s *LedgerState) applyOne(req *servicepb.Request, touched map[VolumeKey]boo
 // types (produce() then validatePostingsAgainstAccountTypes). So an underfunded
 // transaction reports INSUFFICIENT_FUNDS even when an address also fails the
 // chart; match that order — floor first, then STRICT chart enforcement.
-func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
+func (s *LedgerState) applyTransaction(ct *commonpb.CreateTransactionPayload, touched map[VolumeKey]bool) OrderResult {
 	postings := ct.GetPostings()
 
 	// A reference must be unique; the FSM checks this first, before producing
@@ -1623,7 +1623,7 @@ func (s *LedgerState) applyTransaction(ct *servicepb.CreateTransactionPayload, t
 // floor unless force is set (see applyPostings), moves the volumes, marks the
 // original reverted, and consumes a new transaction id for the revert itself.
 func (s *LedgerState) applyRevert(
-	rt *servicepb.RevertTransactionPayload,
+	rt *commonpb.RevertTransactionPayload,
 	touched map[VolumeKey]bool,
 	batchInitialTxCount uint64,
 ) OrderResult {
@@ -2016,7 +2016,7 @@ func (s *LedgerState) applyDeleteMetadata(cmd *commonpb.DeleteMetadataCommand) O
 // applySaveLedgerMetadata predicts a SaveLedgerMetadata: a last-writer-wins set of
 // each key into the ledger's own metadata. Ledger metadata is keyed only by key
 // (no account), so there is no chart enforcement.
-func (s *LedgerState) applySaveLedgerMetadata(req *servicepb.SaveLedgerMetadataRequest) OrderResult {
+func (s *LedgerState) applySaveLedgerMetadata(req *commonpb.SaveLedgerMetadataRequest) OrderResult {
 	saved := make(map[string]*commonpb.MetadataValue, len(req.GetMetadata()))
 
 	for key, val := range req.GetMetadata() {
@@ -2029,7 +2029,7 @@ func (s *LedgerState) applySaveLedgerMetadata(req *servicepb.SaveLedgerMetadataR
 
 // applyDeleteLedgerMetadata predicts a DeleteLedgerMetadata: deleting a key the
 // ledger doesn't carry rejects the bulk with METADATA_NOT_FOUND.
-func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetadataRequest) OrderResult {
+func (s *LedgerState) applyDeleteLedgerMetadata(req *commonpb.DeleteLedgerMetadataRequest) OrderResult {
 	key := req.GetKey()
 	if !s.ledgerMeta.Has(key) {
 		return OrderResult{Reason: domain.ErrReasonMetadataNotFound}
@@ -2044,7 +2044,7 @@ func (s *LedgerState) applyDeleteLedgerMetadata(req *servicepb.DeleteLedgerMetad
 // until the driver's poller confirms it READY). Creating one that already
 // exists is rejected (EN-2009); the checks run in processCreateIndex's order,
 // existence before target validation.
-func (s *LedgerState) applyCreateIndex(req *servicepb.CreateIndexRequest) OrderResult {
+func (s *LedgerState) applyCreateIndex(req *commonpb.CreateIndexRequest) OrderResult {
 	canonical := indexes.Canonical(req.GetId())
 	if s.indexes.Has(canonical) {
 		return OrderResult{Reason: domain.ErrReasonIndexAlreadyExists}
@@ -2091,7 +2091,7 @@ func (s *LedgerState) fieldTypes(target commonpb.TargetType) Map[string, commonp
 // The stored definition is cloned so the model never aliases the request
 // message: a later mutation of the submitted proto must not reach committed
 // state.
-func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQueryRequest) OrderResult {
+func (s *LedgerState) applyCreatePreparedQuery(req *commonpb.CreatePreparedQueryRequest) OrderResult {
 	q := req.GetQuery()
 	if q == nil {
 		return OrderResult{Reason: domain.ErrPreparedQueryRequired.Reason()}
@@ -2128,7 +2128,7 @@ func (s *LedgerState) applyCreatePreparedQuery(req *servicepb.CreatePreparedQuer
 // filter gates. The target is fixed at creation — an update carries no target
 // field and the FSM validates the new filter against the STORED target — so the
 // model keeps it and swaps only the filter.
-func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQueryRequest) OrderResult {
+func (s *LedgerState) applyUpdatePreparedQuery(req *commonpb.UpdatePreparedQueryRequest) OrderResult {
 	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
 		return OrderResult{Reason: err.Reason()}
 	}
@@ -2169,7 +2169,7 @@ func (s *LedgerState) applyUpdatePreparedQuery(req *servicepb.UpdatePreparedQuer
 // applyDeletePreparedQuery removes a stored query, mirroring
 // processDeletePreparedQuery. Unlike DropIndex, deleting an absent query is NOT
 // a no-op: the FSM rejects it with PREPARED_QUERY_NOT_FOUND.
-func (s *LedgerState) applyDeletePreparedQuery(req *servicepb.DeletePreparedQueryRequest) OrderResult {
+func (s *LedgerState) applyDeletePreparedQuery(req *commonpb.DeletePreparedQueryRequest) OrderResult {
 	if err := domain.ValidatePreparedQueryName(req.GetName()); err != nil {
 		return OrderResult{Reason: err.Reason()}
 	}
@@ -2191,7 +2191,7 @@ func (s *LedgerState) applyDeletePreparedQuery(req *servicepb.DeletePreparedQuer
 // applyDropIndex removes an index. Drop is instantaneous: once this order is in
 // the committed prefix, a linearizable read issued after its response observes
 // it gone. Dropping an absent index is a harmless no-op.
-func (s *LedgerState) applyDropIndex(req *servicepb.DropIndexRequest) OrderResult {
+func (s *LedgerState) applyDropIndex(req *commonpb.DropIndexRequest) OrderResult {
 	canonical := indexes.Canonical(req.GetId())
 	s.indexes = s.indexes.Delete(canonical)
 	s.retypeWindows = s.retypeWindows.Delete(canonical)
@@ -2205,7 +2205,7 @@ func (s *LedgerState) applyDropIndex(req *servicepb.DropIndexRequest) OrderResul
 // and never rewrites stored values. The declared type is applied at read time, so
 // a value survives any retype chain losslessly (a STRING "01" retyped INT64 then
 // back to STRING still reads "01"). Always succeeds.
-func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldTypeRequest) OrderResult {
+func (s *LedgerState) applySetMetadataFieldType(req *commonpb.SetMetadataFieldTypeRequest) OrderResult {
 	// A retype of an indexed key opens a serving window: the index keeps
 	// answering under the type it was built with until the background rewrite
 	// switches, so both types stay legal until the driver observes the switch
@@ -2247,7 +2247,7 @@ func (s *LedgerState) applySetMetadataFieldType(req *servicepb.SetMetadataFieldT
 // A metadata index on the removed field cannot outlive its declaration — the
 // server drops it in the same order (the RemovedMetadataFieldType log carries
 // the DroppedIndex), so the model removes it too.
-func (s *LedgerState) applyRemoveMetadataFieldType(req *servicepb.RemoveMetadataFieldTypeRequest) OrderResult {
+func (s *LedgerState) applyRemoveMetadataFieldType(req *commonpb.RemoveMetadataFieldTypeRequest) OrderResult {
 	switch req.GetTargetType() {
 	case commonpb.TargetType_TARGET_TYPE_ACCOUNT:
 		s.accountFieldTypes = s.accountFieldTypes.Delete(req.GetKey())
@@ -2431,9 +2431,9 @@ func (g GlobalState) QueryCheckpointSchedule() string { return g.checkpointSched
 // applyCheckpoint handles cluster-scoped lifecycle orders without introducing
 // a ledger or ledger-local log. Frozen business state belongs to the checker;
 // the forward model only predicts deterministic registry and schedule effects.
-func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool) {
+func (g *GlobalState) applyCheckpoint(req *commonpb.Request) (OrderResult, bool) {
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_CreateQueryCheckpoint:
+	case *commonpb.Request_CreateQueryCheckpoint:
 		if g.checkpointLimit != 0 && uint64(g.checkpoints.Len()) >= g.checkpointLimit {
 			return OrderResult{Reason: domain.ErrReasonCheckpointLimitReached}, true
 		}
@@ -2442,7 +2442,7 @@ func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool
 		g.checkpoints = g.checkpoints.Set(strconv.FormatUint(id, 10), id)
 
 		return OrderResult{OK: true, CheckpointID: id}, true
-	case *servicepb.Request_DeleteQueryCheckpoint:
+	case *commonpb.Request_DeleteQueryCheckpoint:
 		id := r.DeleteQueryCheckpoint.GetCheckpointId()
 		if id == 0 {
 			return OrderResult{Reason: domain.ErrReasonCheckpointIDRequired}, true
@@ -2453,7 +2453,7 @@ func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool
 		g.checkpoints = g.checkpoints.Delete(strconv.FormatUint(id, 10))
 
 		return OrderResult{OK: true, CheckpointID: id}, true
-	case *servicepb.Request_SetQueryCheckpointSchedule:
+	case *commonpb.Request_SetQueryCheckpointSchedule:
 		parser := cron.NewParser(cron.SecondOptional | cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
 		if _, err := parser.Parse(r.SetQueryCheckpointSchedule.GetCron()); err != nil {
 			return OrderResult{Reason: domain.ErrReasonInvalidCronExpression}, true
@@ -2461,7 +2461,7 @@ func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool
 		g.checkpointSchedule = r.SetQueryCheckpointSchedule.GetCron()
 
 		return OrderResult{OK: true}, true
-	case *servicepb.Request_DeleteQueryCheckpointSchedule:
+	case *commonpb.Request_DeleteQueryCheckpointSchedule:
 		g.checkpointSchedule = ""
 
 		return OrderResult{OK: true}, true
@@ -2482,7 +2482,7 @@ func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
 // reject business requests while enabled.
 func (g GlobalState) MaintenanceMode() bool { return g.maintenance }
 
-func allMaintenanceRequests(requests []*servicepb.Request) bool {
+func allMaintenanceRequests(requests []*commonpb.Request) bool {
 	for _, req := range requests {
 		if req.GetSetMaintenanceMode() == nil {
 			return false
@@ -2492,13 +2492,13 @@ func allMaintenanceRequests(requests []*servicepb.Request) bool {
 	return true
 }
 
-func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool) {
+func (g *GlobalState) applyLifecycle(req *commonpb.Request) (OrderResult, bool) {
 	switch r := req.GetType().(type) {
-	case *servicepb.Request_SetMaintenanceMode:
+	case *commonpb.Request_SetMaintenanceMode:
 		g.maintenance = r.SetMaintenanceMode.GetEnabled()
 
 		return OrderResult{OK: true}, true
-	case *servicepb.Request_CreateLedger:
+	case *commonpb.Request_CreateLedger:
 		name := r.CreateLedger.GetName()
 		if lc, exists := g.lifecycle.Get(name); exists {
 			if lc.Deleted {
@@ -2520,13 +2520,13 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 			ls.types = ls.types.Set(key, TypeState{Name: key, Pattern: at.GetPattern(), Persistence: at.GetPersistence()})
 		}
 		for _, field := range r.CreateLedger.GetInitialSchema() {
-			ls.applySetMetadataFieldType(&servicepb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
+			ls.applySetMetadataFieldType(&commonpb.SetMetadataFieldTypeRequest{Ledger: name, TargetType: field.GetTargetType(), Key: field.GetKey(), Type: field.GetType()})
 		}
 		g.lifecycle = g.lifecycle.Set(name, LedgerLifecycle{Mode: r.CreateLedger.GetMode(), MirrorSource: r.CreateLedger.GetMirrorSource().CloneVT()})
 		g.ledgers[name] = ls
 
 		return OrderResult{OK: true}, true
-	case *servicepb.Request_PromoteLedger:
+	case *commonpb.Request_PromoteLedger:
 		name := r.PromoteLedger.GetLedger()
 		lc, exists := g.lifecycle.Get(name)
 		if !exists {
@@ -2546,7 +2546,7 @@ func (g *GlobalState) applyLifecycle(req *servicepb.Request) (OrderResult, bool)
 		g.lifecycle = g.lifecycle.Set(name, lc)
 
 		return OrderResult{OK: true}, true
-	case *servicepb.Request_DeleteLedger:
+	case *commonpb.Request_DeleteLedger:
 		name := r.DeleteLedger.GetName()
 		lc, exists := g.lifecycle.Get(name)
 		if exists && lc.Deleted {
@@ -2588,24 +2588,24 @@ func (g GlobalState) SeedQueryCheckpoints(ids []uint64, nextID uint64) GlobalSta
 	return g
 }
 
-func mirrorSafeRequest(req *servicepb.Request) bool {
+func mirrorSafeRequest(req *commonpb.Request) bool {
 	switch req.GetType().(type) {
-	case *servicepb.Request_SetMetadataFieldType,
-		*servicepb.Request_RemoveMetadataFieldType,
-		*servicepb.Request_CreateIndex,
-		*servicepb.Request_DropIndex,
-		*servicepb.Request_SaveLedgerMetadata,
-		*servicepb.Request_DeleteLedgerMetadata,
-		*servicepb.Request_AddAccountType,
-		*servicepb.Request_RemoveAccountType,
-		*servicepb.Request_SetDefaultEnforcementMode:
+	case *commonpb.Request_SetMetadataFieldType,
+		*commonpb.Request_RemoveMetadataFieldType,
+		*commonpb.Request_CreateIndex,
+		*commonpb.Request_DropIndex,
+		*commonpb.Request_SaveLedgerMetadata,
+		*commonpb.Request_DeleteLedgerMetadata,
+		*commonpb.Request_AddAccountType,
+		*commonpb.Request_RemoveAccountType,
+		*commonpb.Request_SetDefaultEnforcementMode:
 		return true
 	}
 
 	switch req.GetApply().GetAction().GetData().(type) {
-	case *servicepb.LedgerAction_AddAccountType,
-		*servicepb.LedgerAction_RemoveAccountType,
-		*servicepb.LedgerAction_SetDefaultEnforcementMode:
+	case *commonpb.LedgerAction_AddAccountType,
+		*commonpb.LedgerAction_RemoveAccountType,
+		*commonpb.LedgerAction_SetDefaultEnforcementMode:
 		return true
 	default:
 		return false

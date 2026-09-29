@@ -7,6 +7,12 @@ diagnostics, observability, exports and operator surfaces. It does not decide
 who may call an operation, whether a path is root-confined, or whether a
 downstream system is trustworthy.
 
+The public service, common, and audit codecs now live in
+`pkg/client/v3/grpc/**`, and the manifest inspects that package for disclosure
+through serialization. Server logging, diagnostics, and access decisions remain
+in their root-owned adapters; the move changes the inspection path, not their
+confidentiality contract.
+
 ## Preparation and execution gate
 
 This change prepares the domain only. **Do not run the product audit as part of

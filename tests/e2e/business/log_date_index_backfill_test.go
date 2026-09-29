@@ -8,8 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,7 +17,7 @@ import (
 // listLedgerLogIDs drains one ListLogs page into per-ledger log ids, reporting
 // a transport error through g so a polling caller retries instead of failing.
 func listLedgerLogIDs(g Gomega, ledger string, filter *commonpb.QueryFilter) []uint64 {
-	stream, err := sharedClient.ListLogs(sharedCtx, &servicepb.ListLogsRequest{
+	stream, err := sharedClient.ListLogs(sharedCtx, &commonpb.ListLogsRequest{
 		Ledger: ledger,
 		Options: &commonpb.ListOptions{
 			PageSize: 100,
@@ -61,7 +60,7 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 	BeforeAll(func() {
 		// History with no log-date index yet: schema logs and a data log, so the
 		// backfill has both kinds to replay.
-		resp, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		resp, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(ledgerName, nil),
 			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING),
 			actions.AddAccountTypeAction(ledgerName, "customer", "customer:{id}"),
@@ -80,14 +79,14 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 		Expect(beforeIndex).To(HaveLen(3), "the pre-index history must hold both schema logs and the data log")
 
 		// Turn the index on: its own log, then the backfill over the history.
-		_, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLogBuiltinIndexAction(ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)))
 		Expect(err).To(Succeed())
 
 		Expect(actions.WaitForLogBuiltinIndexReady(sharedCtx, sharedClient, ledgerName, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)).To(Succeed())
 
 		// Post-index logs, of both kinds again: these take the live fold.
-		resp, err = sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		resp, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.AddAccountTypeAction(ledgerName, "merchant", "merchant:{id}"),
 			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{actions.NewPosting("world", "merchant:bob", big.NewInt(200), "USD")}, nil),
 		))
@@ -132,7 +131,7 @@ var _ = Describe("Log date index backfill", Ordered, func() {
 	It("Should serve the logs of a ledger whose index was declared at birth", func() {
 		const bornEmpty = "log-date-born-empty"
 
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerAction(bornEmpty, nil),
 			actions.SetMetadataFieldTypeAction(bornEmpty, commonpb.TargetType_TARGET_TYPE_ACCOUNT, "tier", commonpb.MetadataType_METADATA_TYPE_STRING),
 			actions.CreateLogBuiltinIndexAction(bornEmpty, commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE),

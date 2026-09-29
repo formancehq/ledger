@@ -8,9 +8,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
+	"github.com/formancehq/ledger/v3/internal/adapter/restbulk"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestErrorMessageParityThroughRoutingWrappers(t *testing.T) {
@@ -52,7 +54,7 @@ func TestErrorMessageParityThroughRoutingWrappers(t *testing.T) {
 					})
 
 					t.Run("bulk", func(t *testing.T) {
-						elements := []*servicepb.BulkElement{{Action: &servicepb.LedgerAction{
+						elements := []*restbulk.BulkElement{{Action: &servicepb.LedgerAction{
 							Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{}},
 						}}}
 						w := httptest.NewRecorder()

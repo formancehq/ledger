@@ -6,8 +6,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -35,7 +35,7 @@ func MarketplaceBlocks() *BlockGroup {
 	}
 }
 
-func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplaceDeposit(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
 	address := fmt.Sprintf("customer:%d", customerID)
 	amount := int64(100_000) + RandInt64N(r, int64(MarketplaceDepositAmt))
@@ -48,7 +48,7 @@ func marketplaceDeposit(ctx context.Context, client servicepb.BucketServiceClien
 	)
 }
 
-func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplacePurchase(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	customerID := 1 + RandIntN(r, MarketplaceNumCustomers)
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	customer := fmt.Sprintf("customer:%d", customerID)
@@ -71,7 +71,7 @@ func marketplacePurchase(ctx context.Context, client servicepb.BucketServiceClie
 	)
 }
 
-func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplaceRevert(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	tx, ok := GetNonRevertedTransaction(ctx, client, MarketplaceLedger, r)
 	if !ok {
 		return nil, ErrSkip
@@ -82,7 +82,7 @@ func marketplaceRevert(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplacePayout(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	merchantID := 1 + RandIntN(r, MarketplaceNumMerchants)
 	merchant := fmt.Sprintf("merchant:%d", merchantID)
 
@@ -99,7 +99,7 @@ func marketplacePayout(ctx context.Context, client servicepb.BucketServiceClient
 	)
 }
 
-func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClient, r RandFunc) (*servicepb.ApplyResponse, error) {
+func marketplaceMetadata(ctx context.Context, client commonpb.BucketServiceClient, r RandFunc) (*commonpb.ApplyResponse, error) {
 	var address string
 	if RandIntN(r, 2) == 0 {
 		address = fmt.Sprintf("customer:%d", 1+RandIntN(r, MarketplaceNumCustomers))
@@ -128,8 +128,8 @@ func marketplaceMetadata(ctx context.Context, client servicepb.BucketServiceClie
 
 // MarketplaceSetupActions returns the Apply requests that create the ledger,
 // account types, and numscript library for the marketplace scenario.
-func MarketplaceSetupActions() []*servicepb.Request {
-	return []*servicepb.Request{
+func MarketplaceSetupActions() []*commonpb.Request {
+	return []*commonpb.Request{
 		actions.CreateLedgerAction(MarketplaceLedger, nil),
 		actions.AddAccountTypeAction(MarketplaceLedger, "customer", "customer:{id}"),
 		actions.AddAccountTypeAction(MarketplaceLedger, "merchant", "merchant:{id}"),
@@ -214,7 +214,7 @@ func RunMarketplace(r *Runner) error {
 
 	// --- Customer Deposits ---
 	{
-		reqs := make([]*servicepb.Request, 0, numCustomers)
+		reqs := make([]*commonpb.Request, 0, numCustomers)
 		for i := 1; i <= numCustomers; i++ {
 			reqs = append(reqs, actions.CreateScriptRefTransactionAction(MarketplaceLedger, "deposit", "1.0.0", map[string]string{
 				"customer": fmt.Sprintf("customer:%d", i),
@@ -228,7 +228,7 @@ func RunMarketplace(r *Runner) error {
 
 	// --- Purchases with Fees (batched) ---
 	{
-		reqs := make([]*servicepb.Request, 0, numPurchases)
+		reqs := make([]*commonpb.Request, 0, numPurchases)
 		for i := range numPurchases {
 			customer := 1 + i%numCustomers
 			merchant := 1 + i%numMerchants

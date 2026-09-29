@@ -7,9 +7,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewSetMetadataCommand creates the transactions set-metadata command.
@@ -133,13 +133,13 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Setting metadata on transaction #%d...", txID))
 
 	// Build request
-	requests := []*servicepb.Request{
+	requests := []*commonpb.Request{
 		{
-			Type: &servicepb.Request_Apply{
-				Apply: &servicepb.LedgerApplyRequest{
+			Type: &commonpb.Request_Apply{
+				Apply: &commonpb.LedgerApplyRequest{
 					Ledger: ledgerName,
-					Action: &servicepb.LedgerAction{
-						Data: &servicepb.LedgerAction_AddMetadata{
+					Action: &commonpb.LedgerAction{
+						Data: &commonpb.LedgerAction_AddMetadata{
 							AddMetadata: &commonpb.SaveMetadataCommand{
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_TransactionId{TransactionId: txID},

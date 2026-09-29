@@ -5,10 +5,8 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 

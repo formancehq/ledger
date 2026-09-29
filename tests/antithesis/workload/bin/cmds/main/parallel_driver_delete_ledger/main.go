@@ -6,10 +6,7 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -37,12 +34,12 @@ func main() {
 	}
 
 	// Create a transaction in it so it's not empty.
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledgerName,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 						},
@@ -59,9 +56,9 @@ func main() {
 	}
 
 	// Delete the ledger.
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_DeleteLedger{
-			DeleteLedger: &servicepb.DeleteLedgerRequest{
+	_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_DeleteLedger{
+			DeleteLedger: &commonpb.DeleteLedgerRequest{
 				Name: ledgerName,
 			},
 		},
@@ -73,7 +70,7 @@ func main() {
 	}
 
 	// Verify the ledger no longer appears in ListLedgers.
-	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(ctx, &commonpb.ListLedgersRequest{})
 	if err != nil {
 		internal.LogCleanupError("list ledgers after delete", err)
 

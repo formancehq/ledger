@@ -31,6 +31,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -42,7 +43,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -615,7 +616,7 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 		errors.Is(err, node.ErrNotLeader) ||
 		errors.Is(err, node.ErrNodeSyncing) ||
 		errors.Is(err, node.ErrTransferLeaderTimeout) ||
-		errors.Is(err, commonpb.ErrNoLeader) ||
+		errors.Is(err, protoerr.ErrNoLeader) ||
 		errors.Is(err, plan.ErrCacheHorizonExceeded) ||
 		errors.Is(err, ErrNodeNotReachable) {
 		return status.Error(codes.Unavailable, err.Error())
@@ -664,7 +665,7 @@ func convertToGRPCErrorWithContext(ctx context.Context, err error, logger loggin
 	}
 
 	// Convert NotFoundError to NotFound
-	if notFoundErr, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
+	if notFoundErr, ok := errors.AsType[*protoerr.NotFoundError](err); ok {
 		return status.Error(codes.NotFound, notFoundErr.Error())
 	}
 

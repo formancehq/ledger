@@ -7,10 +7,10 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -18,7 +18,7 @@ func hashState(g GlobalState) Digest {
 	return g.Fingerprint()
 }
 
-func keyedBulk(key string, reqs ...*servicepb.Request) Bulk {
+func keyedBulk(key string, reqs ...*commonpb.Request) Bulk {
 	return Bulk{Requests: reqs, IdempotencyKey: key}
 }
 
@@ -26,7 +26,7 @@ func keyedBulk(key string, reqs ...*servicepb.Request) Bulk {
 // takes an addressable copy for call sites on non-addressable map/return values).
 func dec(v uint256.Int) string { return v.Dec() }
 
-func bulkOf(reqs ...*servicepb.Request) Bulk { return Bulk{Requests: reqs} }
+func bulkOf(reqs ...*commonpb.Request) Bulk { return Bulk{Requests: reqs} }
 
 // Color splits one (account, asset) into strictly isolated buckets: the
 // balance floor is per bucket, so funds under one color cannot pay a posting
@@ -205,7 +205,7 @@ func TestGlobalState_Apply_CrossLedgerAtomicRejection(t *testing.T) {
 	// A bulk spanning two ledgers: a fine transaction on A, then a doomed
 	// remove on B. The whole bulk fails atomically, so A's transaction must
 	// NOT commit — the case a per-ledger model could not represent.
-	res := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{
+	res := NewGlobalState().Apply(Bulk{Requests: []*commonpb.Request{
 		oracletest.TxReqL("A", "world", "x:1", "USD", 5),
 		oracletest.RemoveReqL("B", "missing"),
 	}})
@@ -221,7 +221,7 @@ func TestGlobalState_Apply_CrossLedgerCommit(t *testing.T) {
 	t.Parallel()
 
 	// Both requests succeed on distinct ledgers; each ledger gets its own cell.
-	res := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{
+	res := NewGlobalState().Apply(Bulk{Requests: []*commonpb.Request{
 		oracletest.TxReqL("A", "world", "x:1", "USD", 5),
 		oracletest.TxReqL("B", "world", "y:1", "USD", 7),
 	}})
@@ -644,7 +644,7 @@ func TestApplyTransaction_VolumeOverflow_DestInput(t *testing.T) {
 func TestApplyTransaction_EmptyBeatsFsmRejection(t *testing.T) {
 	t.Parallel()
 
-	res := NewGlobalState().Apply(Bulk{Requests: []*servicepb.Request{
+	res := NewGlobalState().Apply(Bulk{Requests: []*commonpb.Request{
 		oracletest.TxReq("a:1", "b:1", "USD", 100), // unfunded non-world debit → INSUFFICIENT_FUNDS at the FSM
 		oracletest.TxReqMulti(false),               // empty → VALIDATION at admission
 	}})
@@ -838,10 +838,10 @@ func TestApplyRevert_TargetCreatedInSameBatch(t *testing.T) {
 }
 
 // pqReq builds a CreatePreparedQuery request on ledger "L".
-func pqReq(name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_CreatePreparedQuery{
-			CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+func pqReq(name string, target commonpb.QueryTarget, filter *commonpb.QueryFilter) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_CreatePreparedQuery{
+			CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 				Ledger: "L",
 				Query:  &commonpb.PreparedQuery{Name: name, Target: target, Filter: filter},
 			},
@@ -850,10 +850,10 @@ func pqReq(name string, target commonpb.QueryTarget, filter *commonpb.QueryFilte
 }
 
 // pqUpdateReq builds an UpdatePreparedQuery request on ledger "L".
-func pqUpdateReq(name string, filter *commonpb.QueryFilter) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_UpdatePreparedQuery{
-			UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+func pqUpdateReq(name string, filter *commonpb.QueryFilter) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_UpdatePreparedQuery{
+			UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
 				Ledger: "L",
 				Name:   name,
 				Filter: filter,
@@ -863,10 +863,10 @@ func pqUpdateReq(name string, filter *commonpb.QueryFilter) *servicepb.Request {
 }
 
 // pqDeleteReq builds a DeletePreparedQuery request on ledger "L".
-func pqDeleteReq(name string) *servicepb.Request {
-	return &servicepb.Request{
-		Type: &servicepb.Request_DeletePreparedQuery{
-			DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{Ledger: "L", Name: name},
+func pqDeleteReq(name string) *commonpb.Request {
+	return &commonpb.Request{
+		Type: &commonpb.Request_DeletePreparedQuery{
+			DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{Ledger: "L", Name: name},
 		},
 	}
 }
@@ -979,7 +979,7 @@ func TestGlobalState_Apply_PreparedQueryValidation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		base   GlobalState
-		req    *servicepb.Request
+		req    *commonpb.Request
 		reason string
 	}{
 		{"empty name", NewGlobalState(), pqReq("", commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, pqFilter("a:")), domain.ErrReasonValidation},
@@ -1027,7 +1027,7 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 	created := NewGlobalState().Apply(bulkOf(req))
 	require.True(t, created.OK)
 
-	submitted := req.GetType().(*servicepb.Request_CreatePreparedQuery).CreatePreparedQuery.GetQuery()
+	submitted := req.GetType().(*commonpb.Request_CreatePreparedQuery).CreatePreparedQuery.GetQuery()
 	submitted.GetFilter().GetAddress().Match = &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "mutated:"}
 
 	stored, ok := created.State.Ledger("L").PreparedQuery("q")
@@ -1038,8 +1038,8 @@ func TestGlobalState_Apply_PreparedQueryNoAliasing(t *testing.T) {
 func TestGlobalState_AccountTypeTransitionPurgesMetadataOnlyEphemeralAccount(t *testing.T) {
 	t.Parallel()
 
-	addType := func(name, pattern string, persistence commonpb.AccountTypePersistence) *servicepb.Request {
-		return &servicepb.Request{Type: &servicepb.Request_AddAccountType{AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+	addType := func(name, pattern string, persistence commonpb.AccountTypePersistence) *commonpb.Request {
+		return &commonpb.Request{Type: &commonpb.Request_AddAccountType{AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 			Ledger: "L", AccountType: &commonpb.AccountType{Name: name, Pattern: pattern, Persistence: persistence},
 		}}}
 	}

@@ -13,12 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -85,15 +82,15 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 		// sourceRows carries the source node's complete registry rows (keyed
 		// by metadata field key) from Phase 1 into the Phase 3 comparison.
-		sourceRows     map[string]*commonpb.Index
+		sourceRows     map[string]*clusterpb.Index
 		sourceVersions map[string]uint32
 	)
 
-	metaIndexID := func(key string) *commonpb.IndexID {
-		return &commonpb.IndexID{
-			Kind: &commonpb.IndexID_Metadata{
-				Metadata: &commonpb.MetadataIndexID{
-					Target: commonpb.TargetType_TARGET_TYPE_ACCOUNT,
+	metaIndexID := func(key string) *clusterpb.IndexID {
+		return &clusterpb.IndexID{
+			Kind: &clusterpb.IndexID_Metadata{
+				Metadata: &clusterpb.MetadataIndexID{
+					Target: clusterpb.TargetType_TARGET_TYPE_ACCOUNT,
 					Key:    key,
 				},
 			},
@@ -102,13 +99,13 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 	// registryRow returns the (ACCOUNT, key) metadata index row from the
 	// ledger's registry, or nil when absent.
-	registryRow := func(client servicepb.BucketServiceClient, ledger, key string) *commonpb.Index {
-		st, err := client.GetIndexStatus(ctx, &servicepb.GetIndexStatusRequest{Ledger: ledger})
+	registryRow := func(client clusterpb.BucketServiceClient, ledger, key string) *clusterpb.Index {
+		st, err := client.GetIndexStatus(ctx, &clusterpb.GetIndexStatusRequest{Ledger: ledger})
 		Expect(err).To(Succeed(), "GetIndexStatus")
 
 		for _, e := range st.GetIndexes() {
 			meta := e.GetIndex().GetId().GetMetadata()
-			if e.GetLedger() == ledger && meta.GetTarget() == commonpb.TargetType_TARGET_TYPE_ACCOUNT && meta.GetKey() == key {
+			if e.GetLedger() == ledger && meta.GetTarget() == clusterpb.TargetType_TARGET_TYPE_ACCOUNT && meta.GetKey() == key {
 				return e.GetIndex()
 			}
 		}
@@ -116,18 +113,18 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		return nil
 	}
 
-	createAttributed := func(client servicepb.BucketServiceClient, key string) {
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, commonpb.MetadataType_METADATA_TYPE_STRING)))
+	createAttributed := func(client clusterpb.BucketServiceClient, key string) {
+		_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+			actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, key, clusterpb.MetadataType_METADATA_TYPE_STRING)))
 		Expect(err).To(Succeed())
 		// The attribution proof requires a singleton creation batch.
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(creationPrefix+key,
+		_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest(creationPrefix+key,
 			actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 		Expect(err).To(Succeed())
 	}
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *clusterpb.BackupStorage {
+		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -181,7 +178,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 	Describe("Phase 1: registry lifecycle across the checkpoint boundary", Ordered, func() {
 		var (
 			sourceServer  *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -220,22 +217,22 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("seeds registry rows and checkpoints them", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 				actions.CreateLedgerAction(ledgerName, nil),
 				actions.CreateLedgerAction(emptyLedger, nil),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_INT64),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey, commonpb.MetadataType_METADATA_TYPE_INT64),
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey, commonpb.MetadataType_METADATA_TYPE_STRING),
-				actions.SetMetadataFieldTypeAction(emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey, commonpb.MetadataType_METADATA_TYPE_STRING),
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, clusterpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey, clusterpb.MetadataType_METADATA_TYPE_INT64),
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey, clusterpb.MetadataType_METADATA_TYPE_STRING),
+				actions.SetMetadataFieldTypeAction(emptyLedger, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey, clusterpb.MetadataType_METADATA_TYPE_STRING),
 				actions.SaveAccountMetadataAction(ledgerName, "historical", map[string]string{historyKey: "before-checkpoint"}),
-				&servicepb.Request{
-					Type: &servicepb.Request_CreateIndex{
-						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(retypedKey)},
+				&clusterpb.Request{
+					Type: &clusterpb.Request_CreateIndex{
+						CreateIndex: &clusterpb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(retypedKey)},
 					},
 				},
-				&servicepb.Request{
-					Type: &servicepb.Request_CreateIndex{
-						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(removedKey)},
+				&clusterpb.Request{
+					Type: &clusterpb.Request_CreateIndex{
+						CreateIndex: &clusterpb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(removedKey)},
 					},
 				},
 			))
@@ -253,17 +250,17 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		It("mutates the registry in the delta", func() {
 			createAttributed(client, ownedDeltaKey)
 			// Retype: the delta must fold a version bump onto a checkpoint row.
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, commonpb.MetadataType_METADATA_TYPE_UINT64),
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey, clusterpb.MetadataType_METADATA_TYPE_UINT64),
 			))
 			Expect(err).To(Succeed())
 
 			// Delta-created row.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, deltaKey, commonpb.MetadataType_METADATA_TYPE_INT64),
-				&servicepb.Request{
-					Type: &servicepb.Request_CreateIndex{
-						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(deltaKey)},
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.SetMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, deltaKey, clusterpb.MetadataType_METADATA_TYPE_INT64),
+				&clusterpb.Request{
+					Type: &clusterpb.Request_CreateIndex{
+						CreateIndex: &clusterpb.CreateIndexRequest{Ledger: ledgerName, Id: metaIndexID(deltaKey)},
 					},
 				},
 			))
@@ -273,27 +270,27 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			// contains the pre-checkpoint metadata write, so historyKey must
 			// backfill it. emptyLedger has no HISTORY log yet, so emptyKey becomes
 			// live without a backfill and must index the following write normally.
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 				actions.CreateAccountMetadataIndexAction(ledgerName, historyKey),
 				actions.CreateAccountMetadataIndexAction(emptyLedger, emptyKey),
 			))
 			Expect(err).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
 
-			_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+			_, err = client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
 				actions.SaveAccountMetadataAction(emptyLedger, "first-live", map[string]string{emptyKey: "after-index"}),
 			))
 			Expect(err).To(Succeed())
 
 			// Cascade-delete a checkpoint row; the live side must report the
 			// drop (the model finding's premise).
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.RemoveMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey),
+			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.RemoveMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, removedKey),
 			))
 			Expect(err).To(Succeed())
 
-			var removed *commonpb.RemovedMetadataFieldTypeLog
+			var removed *clusterpb.RemovedMetadataFieldTypeLog
 			for _, lg := range resp.GetLogs() {
 				if rm := lg.GetPayload().GetApply().GetLog().GetData().GetRemovedMetadataFieldType(); rm != nil {
 					removed = rm
@@ -307,7 +304,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			for _, key := range []string{retypedKey, deltaKey} {
 				before := registryRow(client, ledgerName, key)
 				Expect(before).NotTo(BeNil())
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-duplicate-"+key,
+				_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("idxreg-duplicate-"+key,
 					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
 				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
@@ -325,16 +322,16 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			Expect(incResp.GetLogEntriesExported()).To(BeNumerically(">", 0))
 			Expect(incResp.GetAuditEntriesExported()).To(BeNumerically(">", 0), "delta must include the failed duplicate creations")
 
-			sourceRows = map[string]*commonpb.Index{
+			sourceRows = map[string]*clusterpb.Index{
 				retypedKey:         registryRow(client, ledgerName, retypedKey),
 				removedKey:         registryRow(client, ledgerName, removedKey),
 				deltaKey:           registryRow(client, ledgerName, deltaKey),
 				ownedCheckpointKey: registryRow(client, ledgerName, ownedCheckpointKey),
 				ownedDeltaKey:      registryRow(client, ledgerName, ownedDeltaKey),
 			}
-			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
+			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
 			Expect(err).To(Succeed())
-			emptyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)
+			emptyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, emptyLedger, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)
 			Expect(err).To(Succeed())
 			sourceVersions = map[string]uint32{
 				historyKey: historyVersion,
@@ -353,7 +350,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 
 	Describe("Phase 2: restore", Ordered, func() {
 		var (
-			restoreClient restorepb.RestoreServiceClient
+			restoreClient clusterpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 			server        *testservice.Service
 		)
@@ -388,25 +385,25 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("downloads and finalizes the backup", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
 
-			Eventually(func() restorepb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() clusterpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
 
 	Describe("Phase 3: verify the restored registry", Ordered, func() {
 		var (
-			client   servicepb.BucketServiceClient
+			client   clusterpb.BucketServiceClient
 			grpcConn *grpc.ClientConn
 			server   *testservice.Service
 		)
@@ -475,13 +472,13 @@ var _ = Describe("Restore index registry", Ordered, func() {
 			// prefix plus exported delta must reproduce the source's history fold:
 			// historyKey backfills a pre-checkpoint row, while emptyKey is promoted
 			// on an empty ledger and indexes the later delta write live.
-			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
-			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)).To(Succeed())
+			Expect(actions.WaitForMetadataIndexReady(ctx, client, emptyLedger, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)).To(Succeed())
 
-			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
+			historyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, historyKey)
 			Expect(err).To(Succeed())
 			Expect(historyVersion).To(Equal(sourceVersions[historyKey]))
-			emptyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, emptyLedger, commonpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)
+			emptyVersion, err := actions.MetadataIndexCurrentVersion(ctx, client, emptyLedger, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, emptyKey)
 			Expect(err).To(Succeed())
 			Expect(emptyVersion).To(Equal(sourceVersions[emptyKey]))
 
@@ -514,7 +511,7 @@ var _ = Describe("Restore index registry", Ordered, func() {
 						continue
 					}
 					found++
-					full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
+					full, err := client.GetAuditEntry(ctx, &clusterpb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
 					Expect(err).To(Succeed())
 					Expect(full.GetSuccess()).NotTo(BeNil())
 					Expect(full.GetOrderCount()).To(Equal(uint32(1)))
@@ -532,12 +529,12 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				Expect(found).To(Equal(1), "attributed creation must survive restore: %s", key)
 				// The idempotency-key secondary index must also be rebuilt after restore:
 				// the creation entry must be reachable via a prefix filter, not just a full scan.
-				indexed, idxErr := actions.ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{
-					Options: &commonpb.ListOptions{
-						Filter: &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
-							Audit: &commonpb.AuditCondition{
-								Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
-								Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: creationPrefix + key},
+				indexed, idxErr := actions.ListAuditEntriesWithRequest(ctx, client, &clusterpb.ListAuditEntriesRequest{
+					Options: &clusterpb.ListOptions{
+						Filter: &clusterpb.QueryFilter{Filter: &clusterpb.QueryFilter_Audit{
+							Audit: &clusterpb.AuditCondition{
+								Field:     clusterpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+								Condition: &clusterpb.AuditCondition_StringPrefix{StringPrefix: creationPrefix + key},
 							},
 						}},
 					},
@@ -545,8 +542,8 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				Expect(idxErr).To(Succeed())
 				Expect(indexed).To(HaveLen(1), "idempotency-key index must resolve creation after restore: %s", key)
 				Expect(indexed[0].GetIdempotency().GetKey()).To(Equal(creationPrefix + key))
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-					&servicepb.Request{Type: &servicepb.Request_DropIndex{DropIndex: &servicepb.DropIndexRequest{Ledger: ledgerName, Id: row.GetId()}}}))
+				_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+					&clusterpb.Request{Type: &clusterpb.Request_DropIndex{DropIndex: &clusterpb.DropIndexRequest{Ledger: ledgerName, Id: row.GetId()}}}))
 				Expect(err).To(Succeed())
 				Expect(registryRow(client, ledgerName, key)).To(BeNil())
 			}
@@ -563,15 +560,15 @@ var _ = Describe("Restore index registry", Ordered, func() {
 				for _, entry := range entries {
 					if entry.GetIdempotency().GetKey() == "idxreg-duplicate-"+key {
 						found++
-						Expect(entry.GetFailure().GetReason()).To(Equal(commonpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS))
-						full, err := client.GetAuditEntry(ctx, &servicepb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
+						Expect(entry.GetFailure().GetReason()).To(Equal(clusterpb.ErrorReason_ERROR_REASON_INDEX_ALREADY_EXISTS))
+						full, err := client.GetAuditEntry(ctx, &clusterpb.GetAuditEntryRequest{Sequence: entry.GetSequence()})
 						Expect(err).To(Succeed())
 						Expect(full.GetItems()).To(HaveLen(1))
 						Expect(full.GetItems()[0].GetLogSequence()).To(BeZero())
 					}
 				}
 				Expect(found).To(Equal(1), "failed duplicate audit for %s must survive the delta", key)
-				_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("idxreg-restored-duplicate-"+key,
+				_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("idxreg-restored-duplicate-"+key,
 					actions.CreateAccountMetadataIndexAction(ledgerName, key)))
 				Expect(status.Code(err)).To(Equal(codes.AlreadyExists))
 				Expect(actions.ExtractGRPCErrorInfo(err)).NotTo(BeNil())
@@ -584,12 +581,12 @@ var _ = Describe("Restore index registry", Ordered, func() {
 		})
 
 		It("drops the retyped index when its field is removed", func() {
-			resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
-				actions.RemoveMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey),
+			resp, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("",
+				actions.RemoveMetadataFieldTypeAction(ledgerName, clusterpb.TargetType_TARGET_TYPE_ACCOUNT, retypedKey),
 			))
 			Expect(err).To(Succeed())
 
-			var removed *commonpb.RemovedMetadataFieldTypeLog
+			var removed *clusterpb.RemovedMetadataFieldTypeLog
 			for _, lg := range resp.GetLogs() {
 				if rm := lg.GetPayload().GetApply().GetLog().GetData().GetRemovedMetadataFieldType(); rm != nil {
 					removed = rm

@@ -11,9 +11,8 @@ import (
 
 	"google.golang.org/grpc/status"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
@@ -38,7 +37,7 @@ func dbgf(format string, args ...any) {
 // the server's, reproducing a divergence deterministically.
 var dumpBatches = os.Getenv("MODEL_DUMP_BATCHES") != ""
 
-func dumpBatch(ticket uint64, req *servicepb.ApplyRequest, resp *servicepb.ApplyResponse, err error) {
+func dumpBatch(ticket uint64, req *commonpb.ApplyRequest, resp *commonpb.ApplyResponse, err error) {
 	if !dumpBatches {
 		return
 	}
@@ -87,42 +86,42 @@ func requestKinds(b oracle.Bulk) string {
 
 	for i, r := range b.Requests {
 		switch r.GetType().(type) {
-		case *servicepb.Request_CreateLedger:
+		case *commonpb.Request_CreateLedger:
 			parts[i] = "createLedger"
-		case *servicepb.Request_DeleteLedger:
+		case *commonpb.Request_DeleteLedger:
 			parts[i] = "deleteLedger"
-		case *servicepb.Request_PromoteLedger:
+		case *commonpb.Request_PromoteLedger:
 			parts[i] = "promoteLedger"
-		case *servicepb.Request_SetMaintenanceMode:
+		case *commonpb.Request_SetMaintenanceMode:
 			parts[i] = "maintenance"
-		case *servicepb.Request_Apply:
+		case *commonpb.Request_Apply:
 			switch r.GetApply().GetAction().GetData().(type) {
-			case *servicepb.LedgerAction_CreateTransaction:
+			case *commonpb.LedgerAction_CreateTransaction:
 				parts[i] = "tx"
-			case *servicepb.LedgerAction_AddMetadata:
+			case *commonpb.LedgerAction_AddMetadata:
 				parts[i] = "addMeta"
-			case *servicepb.LedgerAction_DeleteMetadata:
+			case *commonpb.LedgerAction_DeleteMetadata:
 				parts[i] = "delMeta"
-			case *servicepb.LedgerAction_RevertTransaction:
+			case *commonpb.LedgerAction_RevertTransaction:
 				parts[i] = "revert"
 			default:
 				parts[i] = "apply?"
 			}
-		case *servicepb.Request_AddAccountType:
+		case *commonpb.Request_AddAccountType:
 			parts[i] = "addType"
-		case *servicepb.Request_RemoveAccountType:
+		case *commonpb.Request_RemoveAccountType:
 			parts[i] = "removeType"
-		case *servicepb.Request_SaveLedgerMetadata:
+		case *commonpb.Request_SaveLedgerMetadata:
 			parts[i] = "saveLedgerMeta"
-		case *servicepb.Request_DeleteLedgerMetadata:
+		case *commonpb.Request_DeleteLedgerMetadata:
 			parts[i] = "delLedgerMeta"
-		case *servicepb.Request_SetMetadataFieldType:
+		case *commonpb.Request_SetMetadataFieldType:
 			parts[i] = "setFieldType"
-		case *servicepb.Request_RemoveMetadataFieldType:
+		case *commonpb.Request_RemoveMetadataFieldType:
 			parts[i] = "removeFieldType"
-		case *servicepb.Request_CreateIndex:
+		case *commonpb.Request_CreateIndex:
 			parts[i] = "createIndex"
-		case *servicepb.Request_DropIndex:
+		case *commonpb.Request_DropIndex:
 			parts[i] = "dropIndex"
 		default:
 			parts[i] = "other"
@@ -148,32 +147,32 @@ func bulkMeta(b oracle.Bulk) string {
 	var parts []string
 	for _, r := range b.Requests {
 		switch t := r.GetType().(type) {
-		case *servicepb.Request_Apply:
+		case *commonpb.Request_Apply:
 			switch a := t.Apply.GetAction().GetData().(type) {
-			case *servicepb.LedgerAction_CreateTransaction:
+			case *commonpb.LedgerAction_CreateTransaction:
 				ct := a.CreateTransaction
 				if ct.GetReference() != "" || len(ct.GetMetadata()) > 0 {
 					parts = append(parts, fmt.Sprintf("newtx:%s{%s}", ct.GetReference(), kvList(ct.GetMetadata())))
 				}
-			case *servicepb.LedgerAction_AddMetadata:
+			case *commonpb.LedgerAction_AddMetadata:
 				parts = append(parts, fmt.Sprintf("add %s{%s}", metaTargetLabel(a.AddMetadata.GetTarget()), kvList(a.AddMetadata.GetMetadata())))
-			case *servicepb.LedgerAction_DeleteMetadata:
+			case *commonpb.LedgerAction_DeleteMetadata:
 				parts = append(parts, fmt.Sprintf("del %s/%s", metaTargetLabel(a.DeleteMetadata.GetTarget()), a.DeleteMetadata.GetKey()))
 			}
-		case *servicepb.Request_SaveLedgerMetadata:
+		case *commonpb.Request_SaveLedgerMetadata:
 			parts = append(parts, fmt.Sprintf("saveL %s{%s}", t.SaveLedgerMetadata.GetLedger(), kvList(t.SaveLedgerMetadata.GetMetadata())))
-		case *servicepb.Request_DeleteLedgerMetadata:
+		case *commonpb.Request_DeleteLedgerMetadata:
 			parts = append(parts, fmt.Sprintf("delL %s/%s", t.DeleteLedgerMetadata.GetLedger(), t.DeleteLedgerMetadata.GetKey()))
-		case *servicepb.Request_SetMetadataFieldType:
+		case *commonpb.Request_SetMetadataFieldType:
 			ft := t.SetMetadataFieldType
 			parts = append(parts, fmt.Sprintf("setFT %s/tgt%d/%s=ty%d", ft.GetLedger(), ft.GetTargetType(), ft.GetKey(), ft.GetType()))
-		case *servicepb.Request_RemoveMetadataFieldType:
+		case *commonpb.Request_RemoveMetadataFieldType:
 			ft := t.RemoveMetadataFieldType
 			parts = append(parts, fmt.Sprintf("rmFT %s/tgt%d/%s", ft.GetLedger(), ft.GetTargetType(), ft.GetKey()))
-		case *servicepb.Request_CreateIndex:
+		case *commonpb.Request_CreateIndex:
 			ci := t.CreateIndex
 			parts = append(parts, fmt.Sprintf("crIdx %s/%s", ci.GetLedger(), indexes.Canonical(ci.GetId())))
-		case *servicepb.Request_DropIndex:
+		case *commonpb.Request_DropIndex:
 			di := t.DropIndex
 			parts = append(parts, fmt.Sprintf("drIdx %s/%s", di.GetLedger(), indexes.Canonical(di.GetId())))
 		}
@@ -188,9 +187,9 @@ func typeOps(b oracle.Bulk) string {
 	var ops []string
 	for _, r := range b.Requests {
 		switch t := r.GetType().(type) {
-		case *servicepb.Request_AddAccountType:
+		case *commonpb.Request_AddAccountType:
 			ops = append(ops, "+"+t.AddAccountType.GetAccountType().GetName())
-		case *servicepb.Request_RemoveAccountType:
+		case *commonpb.Request_RemoveAccountType:
 			ops = append(ops, "-"+t.RemoveAccountType.GetName())
 		}
 	}

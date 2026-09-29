@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package audit;
+
+option go_package = "github.com/formancehq/ledger/pkg/client/v3/grpc";
+
+import "common.proto";
+import "signature.proto";
+
+// ============================================================================
+// Audit Log
+// ============================================================================
+
+// AuditEntry represents a single audit trail entry for a proposal.
+// Each proposal (success or failure) generates exactly one audit entry.
+// Per-order details are stored as separate AuditItem entries in Pebble
+// (zone 0x04, sub 0x03) and populated on GetAuditEntry responses.
+message AuditEntry {
+  fixed64 sequence = 1;
+  common.Timestamp timestamp = 2;
+  fixed64 proposal_id = 3;
+  oneof outcome {
+    AuditSuccess success = 4;
+    AuditFailure failure = 5;
+  }
+  // Number of orders in the proposal (allows compact display without loading items).
+  uint32 order_count = 6;
+  // Per-order detail lines. Populated by GetAuditEntry, empty on ListAuditEntries.
+  repeated AuditItem items = 7;
+  // Distinct ledger names targeted by orders in this proposal.
+  // Used for efficient filtering without loading items.
+  repeated string ledgers = 8;
+  // Batch-level integrity hash chaining audit entries.
+  // Formula: H(key, header_payload || concat(per_item_payload) ||
+  //              previous_audit_hash)
+  // where:
+  //   - `key` is derived from the immutable ClusterID via domain-separated BLAKE3
+  //   - `header_payload` is the canonical binary encoding of EVERY other field
+  //     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
+  //     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
+  //     verifier at check time from the stored fields via
+  //     state.BuildHashedHeaderPayload — never persisted separately, so the
+  //     typed fields ARE the source of truth
+  //   - `per_item_payload` is the canonical binary encoding of each AuditItem
+  //     (order_index, log_sequence, serialized_order), rebuilt the same way
+  //     via state.BuildPerItemPayload
+  //   - `previous_audit_hash` is `hash` of the predecessor entry, or empty for
+  //     the first entry
+  // Same formula for success and failure entries. The hash binds every field
+  // of AuditEntry and AuditItem except `hash` itself. Tampering with any
+  // other field is detected by checker.verifyAuditHashChain.
+  bytes hash = 9;
+  // Hash algorithm version (matches common.HashAlgorithm enum).
+  uint32 hash_version = 10;
+  // Admission-time caller snapshot. Its principal union distinguishes
+  // authenticated, anonymous, system, and authentication-disabled actions.
+  common.CallerSnapshot caller_snapshot = 11;
+  // Batch identity, bound into the hash chain (header_payload) so it is
+  // tamper-evident. idempotency is the batch dedup key; signature is the
+  // client's proof over the whole ApplyBatch (nil for unsigned batches).
+  // This is the authoritative, chain-verified home for batch non-repudiation;
+  // the AppliedProposal projection carries a copy of the idempotency key for
+  // event consumers, which the checker verifies against this entry.
+  common.Idempotency idempotency = 12;
+  signature.SignedApplyBatch signature = 13;
+}
+
+// AuditItem represents one order within a proposal, stored separately from the
+// AuditEntry header. Pebble key: [ZoneHistory][SubHistoryAuditItem][audit_seq BE 8][order_idx BE 4].
+message AuditItem {
+  // Zero-based position of this order within the proposal.
+  uint32 order_index = 1;
+  // Deterministic serialized bytes of the order's BUSINESS INTENT at apply time
+  // (the order with OrderTechnical excluded — every field of that sub-message is
+  // admission-derived execution metadata, not accepted intent). Produced by
+  // processing.MarshalOrderBusinessIntent, symmetric with the idempotency hash.
+  // The audit hash chain on AuditEntry.hash is computed over the concatenation of
+  // these bytes (in order_index order) so verification never re-marshals an Order
+  // proto. This decouples the hash chain from the Order schema and the vtprotobuf
+  // marshaller version.
+  bytes serialized_order = 2;
+  // Sequence of the log produced by this order. Zero if the order was
+  // an idempotent replay or if the proposal failed.
+  fixed64 log_sequence = 3;
+}
+
+// AuditSuccess records the log sequence range created by a successful proposal.
+// Batch-level side effects (transient accounts, purged ephemeral accounts) live
+// in proposalpb.AppliedProposal and on each Log directly — the audit log keeps
+// only the integrity-relevant outcome data.
+message AuditSuccess {
+  // Contiguous log sequence range [min_log_sequence, max_log_sequence] produced
+  // by this proposal. Both are inclusive. When a proposal produces a single log,
+  // min == max. When it produces no logs (all idempotent), both are 0.
+  fixed64 min_log_sequence = 1;
+  fixed64 max_log_sequence = 2;
+}
+
+// AuditFailure records the reason and context for a failed proposal. reason is
+// the typed, hash-chain-bound identifier; the numeric error kind is re-derived
+// from it (domain.KindForReason) rather than stored, so it cannot drift from
+// the reason and the idempotency failure projection is verifiable against it.
+message AuditFailure {
+  common.ErrorReason reason = 1;
+  string message = 2;
+  map<string, string> context = 3;
+}

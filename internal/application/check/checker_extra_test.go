@@ -7,12 +7,12 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // --- applyPostings tests ---
@@ -52,13 +52,13 @@ func TestComparePurgedAccountProjections(t *testing.T) {
 
 	alice := domain.AccountKey{LedgerName: "ledger", Account: "alice"}
 	bob := domain.AccountKey{LedgerName: "ledger", Account: "bob"}
-	var events []*servicepb.CheckStoreEvent
+	var events []*commonpb.CheckStoreEvent
 	comparePurgedAccountProjections(
 		map[domain.AccountKey]uint64{alice: 42},
 		map[domain.AccountKey]struct{}{bob: {}},
 		map[string]uint64{"ledger": 42},
 		42,
-		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
+		func(event *commonpb.CheckStoreEvent) { events = append(events, event) },
 	)
 
 	require.Len(t, events, 2)
@@ -70,13 +70,13 @@ func TestComparePurgedAccountProjectionsRejectsNonTerminalAnnotation(t *testing.
 	t.Parallel()
 
 	account := domain.AccountKey{LedgerName: "ledger", Account: "alice"}
-	var events []*servicepb.CheckStoreEvent
+	var events []*commonpb.CheckStoreEvent
 	comparePurgedAccountProjections(
 		map[domain.AccountKey]uint64{account: 41},
 		map[domain.AccountKey]struct{}{account: {}},
 		map[string]uint64{"ledger": 42},
 		42,
-		func(event *servicepb.CheckStoreEvent) { events = append(events, event) },
+		func(event *commonpb.CheckStoreEvent) { events = append(events, event) },
 	)
 
 	require.Len(t, events, 1)
@@ -384,10 +384,10 @@ func TestCheckReversionInvariantsValidCreationAndRevert(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
-	var errors []*servicepb.CheckStoreError
+	var errors []*commonpb.CheckStoreError
 
-	callback := func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	callback := func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	}
@@ -426,10 +426,10 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
-	var errors []*servicepb.CheckStoreError
+	var errors []*commonpb.CheckStoreError
 
-	callback := func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	callback := func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	}
@@ -466,7 +466,7 @@ func TestCheckReversionInvariantsDoubleRevert(t *testing.T) {
 	}, knownTxIDs, revertedTxIDs, callback)
 
 	require.Len(t, errors, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, errors[0].GetErrorType())
+	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, errors[0].GetErrorType())
 	require.Contains(t, errors[0].GetMessage(), "double-reverts")
 }
 
@@ -475,10 +475,10 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
-	var errors []*servicepb.CheckStoreError
+	var errors []*commonpb.CheckStoreError
 
-	callback := func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	callback := func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	}
@@ -494,7 +494,7 @@ func TestCheckReversionInvariantsRevertNonExistent(t *testing.T) {
 	}, knownTxIDs, revertedTxIDs, callback)
 
 	require.Len(t, errors, 1)
-	require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, errors[0].GetErrorType())
+	require.Equal(t, commonpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_REVERTED_MISMATCH, errors[0].GetErrorType())
 	require.Contains(t, errors[0].GetMessage(), "non-existent")
 }
 
@@ -503,10 +503,10 @@ func TestCheckReversionInvariantsMultipleLedgersIsolated(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
-	var errors []*servicepb.CheckStoreError
+	var errors []*commonpb.CheckStoreError
 
-	callback := func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	callback := func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	}
@@ -539,10 +539,10 @@ func TestCheckReversionInvariantsNilPayload(t *testing.T) {
 
 	knownTxIDs := make(map[string]*bitset.Bitset)
 	revertedTxIDs := make(map[string]*bitset.Bitset)
-	var errors []*servicepb.CheckStoreError
+	var errors []*commonpb.CheckStoreError
 
-	callback := func(event *servicepb.CheckStoreEvent) {
-		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+	callback := func(event *commonpb.CheckStoreEvent) {
+		if e, ok := event.GetType().(*commonpb.CheckStoreEvent_Error); ok {
 			errors = append(errors, e.Error)
 		}
 	}

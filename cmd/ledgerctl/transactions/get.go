@@ -7,9 +7,9 @@ import (
 	"github.com/pterm/pterm"
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewGetCommand creates the transactions get command.
@@ -88,7 +88,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 
 	checkpointID, _ := cmd.Flags().GetUint64("checkpoint-id")
 
-	resp, err := client.GetTransaction(ctx, &servicepb.GetTransactionRequest{
+	resp, err := client.GetTransaction(ctx, &commonpb.GetTransactionRequest{
 		Ledger:        ledgerName,
 		TransactionId: txID,
 		CheckpointId:  checkpointID,

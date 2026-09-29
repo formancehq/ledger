@@ -27,6 +27,7 @@ import (
 	oidcclient "github.com/formancehq/go-libs/v5/pkg/authn/oidc/client"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	otlpmetrics "github.com/formancehq/go-libs/v5/pkg/observe/metrics"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
 	grpcadp "github.com/formancehq/ledger/v3/internal/adapter/grpc"
@@ -63,10 +64,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/pkg/worker"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterbootstrappb"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/proto/snapshotpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -437,7 +435,7 @@ func Module() fx.Option {
 			},
 			// Provide a single AuthConfig used by gRPC and HTTP handlers.
 			fx.Annotate(buildAuthConfig, fx.ParamTags(``, ``, `optional:"true"`)),
-			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
+			fx.Annotate(func(cfg Config, logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, ss *state.SharedState, respSigner *signing.ResponseSigner, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) clusterpb.BucketServiceServer {
 				return grpcadp.NewBucketServiceServer(logger, c, localCtrl, s, rs, attrs, ss, respSigner, cfg.QueryProfileThreshold, cfg.ClusterID, meterProvider, n, servicePool, info)
 			}, fx.ParamTags(``, ``, ``, ``, ``, ``, ``, ``, ``, ``, ``, `name:"service"`, ``)),
 			func(cfg Config, logger logging.Logger, s *dal.Store, fsm *state.Machine) snapshotpb.SnapshotServiceServer {
@@ -605,9 +603,9 @@ func Module() fx.Option {
 					raftNode.IsLeader,
 					machine.QueryCheckpointSchedule,
 					func() error {
-						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint), servicepb.UnsignedApplyRequest("", &servicepb.Request{
-							Type: &servicepb.Request_CreateQueryCheckpoint{
-								CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{},
+						_, err := admissionHandler.Admit(internalauth.WithSystemActor(context.Background(), commands.ComponentQueryCheckpoint), clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+							Type: &clusterpb.Request_CreateQueryCheckpoint{
+								CreateQueryCheckpoint: &clusterpb.CreateQueryCheckpointRequest{},
 							},
 						}))
 
@@ -816,7 +814,7 @@ func Module() fx.Option {
 
 				return nil
 			},
-			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer servicepb.BucketServiceServer) error {
+			func(serviceServer *grpcadp.ServiceServer, bucketServiceServer clusterpb.BucketServiceServer) error {
 				grpcadp.RegisterBucketService(serviceServer.GetServer(), bucketServiceServer)
 
 				return nil
@@ -1523,7 +1521,7 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 		return
 	}
 
-	desired := &commonpb.ClusterPolicy{
+	desired := &clusterpb.ClusterPolicy{
 		Revision:                    cfg.ClusterPolicyRevision,
 		IdempotencyTtlMicros:        uint64(cfg.IdempotencyTTL.Microseconds()),
 		QueryCheckpointLimit:        cfg.QueryCheckpointLimit,
@@ -1555,9 +1553,9 @@ func reconcileClusterPolicy(ctx context.Context, admission ctrl.Admission, store
 
 	if _, err := admission.Admit(
 		internalauth.WithSystemActor(ctx, commands.ComponentClusterPolicy),
-		servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_SetClusterPolicy{
-				SetClusterPolicy: &servicepb.SetClusterPolicyRequest{Policy: desired},
+		clusterpb.UnsignedApplyRequest("", &clusterpb.Request{
+			Type: &clusterpb.Request_SetClusterPolicy{
+				SetClusterPolicy: &clusterpb.SetClusterPolicyRequest{Policy: desired},
 			},
 		}),
 	); err != nil {

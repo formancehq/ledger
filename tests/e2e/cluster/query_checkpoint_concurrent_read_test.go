@@ -8,8 +8,7 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,7 +30,7 @@ var _ = Describe("Query Checkpoints (concurrent reads of one checkpoint)", Order
 
 	var (
 		ctx    context.Context
-		client servicepb.BucketServiceClient
+		client commonpb.BucketServiceClient
 		cpID   uint64
 	)
 
@@ -40,10 +39,10 @@ var _ = Describe("Query Checkpoints (concurrent reads of one checkpoint)", Order
 		ctx, node = testutil.SetupSingleNode()
 		client = node.Client
 
-		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+		_, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 		Expect(err).To(Succeed())
 
-		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
+		_, err = client.Apply(ctx, commonpb.UnsignedApplyRequest("", actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 			actions.NewPosting("world", "alice", big.NewInt(1000), "USD"),
 		}, nil)))
 		Expect(err).To(Succeed())
@@ -55,7 +54,7 @@ var _ = Describe("Query Checkpoints (concurrent reads of one checkpoint)", Order
 		// Both halves materialize asynchronously; polling one read to success
 		// takes materialization out of what the concurrent reads below measure.
 		awaitCheckpointRead(func() (*commonpb.Account, error) {
-			return client.GetAccount(ctx, &servicepb.GetAccountRequest{
+			return client.GetAccount(ctx, &commonpb.GetAccountRequest{
 				Ledger:       ledgerName,
 				Address:      "alice",
 				CheckpointId: cpID,
@@ -80,7 +79,7 @@ var _ = Describe("Query Checkpoints (concurrent reads of one checkpoint)", Order
 
 				<-release
 
-				_, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
+				_, err := client.GetAccount(ctx, &commonpb.GetAccountRequest{
 					Ledger:       ledgerName,
 					Address:      "alice",
 					CheckpointId: cpID,

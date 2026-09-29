@@ -7,27 +7,24 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
 	internal.RunDriver("parallel_driver_audit", runAuditCycle)
 }
 
-func runAuditCycle(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
+func runAuditCycle(ctx context.Context, client commonpb.BucketServiceClient, ledger string) {
 	// Create a transaction so the audit trail has something.
-	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
+	resp, err := client.Apply(ctx, commonpb.UnsignedApplyRequest("", &commonpb.Request{
+		Type: &commonpb.Request_Apply{
+			Apply: &commonpb.LedgerApplyRequest{
 				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
+				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
+					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
 							commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 						},
@@ -52,7 +49,7 @@ func runAuditCycle(ctx context.Context, client servicepb.BucketServiceClient, le
 	}
 
 	// List audit entries; the default read aligns any required projection.
-	stream, err := client.ListAuditEntries(ctx, &servicepb.ListAuditEntriesRequest{
+	stream, err := client.ListAuditEntries(ctx, &commonpb.ListAuditEntriesRequest{
 		Options: &commonpb.ListOptions{
 			PageSize: 10,
 		},

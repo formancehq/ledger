@@ -13,11 +13,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
+	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/restorepb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -28,27 +25,27 @@ import (
 	"google.golang.org/grpc"
 )
 
-func restoreEventSinkConfig(name string) *commonpb.SinkConfig {
-	return &commonpb.SinkConfig{
+func restoreEventSinkConfig(name string) *clusterpb.SinkConfig {
+	return &clusterpb.SinkConfig{
 		Name:         name,
 		Format:       "json",
 		BatchSize:    1,
 		BatchDelayMs: 1,
-		Type: &commonpb.SinkConfig_Http{
-			Http: &commonpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
+		Type: &clusterpb.SinkConfig_Http{
+			Http: &clusterpb.HttpSinkConfig{Endpoint: "https://example.invalid/events"},
 		},
 	}
 }
 
-func addRestoreEventSink(config *commonpb.SinkConfig) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_AddEventsSink{
-		AddEventsSink: &servicepb.AddEventsSinkRequest{Config: config},
+func addRestoreEventSink(config *clusterpb.SinkConfig) *clusterpb.Request {
+	return &clusterpb.Request{Type: &clusterpb.Request_AddEventsSink{
+		AddEventsSink: &clusterpb.AddEventsSinkRequest{Config: config},
 	}}
 }
 
-func removeRestoreEventSink(name string) *servicepb.Request {
-	return &servicepb.Request{Type: &servicepb.Request_RemoveEventsSink{
-		RemoveEventsSink: &servicepb.RemoveEventsSinkRequest{Name: name},
+func removeRestoreEventSink(name string) *clusterpb.Request {
+	return &clusterpb.Request{Type: &clusterpb.Request_RemoveEventsSink{
+		RemoveEventsSink: &clusterpb.RemoveEventsSinkRequest{Name: name},
 	}}
 }
 
@@ -72,8 +69,8 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		minioEndpoint  string
 	)
 
-	storage := func() *commonpb.BackupStorage {
-		return testutil.S3BackupStorage(&commonpb.S3StorageConfig{
+	storage := func() *clusterpb.BackupStorage {
+		return testutil.S3BackupStorage(&clusterpb.S3StorageConfig{
 			Bucket:   s3Bucket,
 			Region:   restoreS3Region,
 			Endpoint: minioEndpoint,
@@ -127,7 +124,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 	Describe("source checkpoint and delta", Ordered, func() {
 		var (
 			server        *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -160,10 +157,10 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("creates the sink before the checkpoint", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &clusterpb.GetEventsSinksRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(HaveLen(1))
 			Expect(resp.GetSinks()[0].GetName()).To(Equal(sinkName))
@@ -174,10 +171,10 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("removes the sink in a non-empty exported delta", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", removeRestoreEventSink(sinkName)))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", removeRestoreEventSink(sinkName)))
 			Expect(err).To(Succeed())
 
-			resp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &clusterpb.GetEventsSinksRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(BeEmpty(), "the uninterrupted source must persist the removal")
 
@@ -190,7 +187,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 	Describe("restore", Ordered, func() {
 		var (
 			server        *testservice.Service
-			restoreClient restorepb.RestoreServiceClient
+			restoreClient clusterpb.RestoreServiceClient
 			grpcConn      *grpc.ClientConn
 		)
 
@@ -219,17 +216,17 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("downloads and finalizes the checkpoint plus delta", func() {
-			startResp, err := restoreClient.StartDownloadBackup(ctx, &restorepb.StartDownloadBackupRequest{Storage: storage()})
+			startResp, err := restoreClient.StartDownloadBackup(ctx, &clusterpb.StartDownloadBackupRequest{Storage: storage()})
 			Expect(err).To(Succeed())
-			Eventually(func() restorepb.DownloadState {
-				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &restorepb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
+			Eventually(func() clusterpb.DownloadState {
+				resp, statusErr := restoreClient.GetDownloadStatus(ctx, &clusterpb.GetDownloadStatusRequest{JobId: startResp.GetJobId()})
 				Expect(statusErr).To(Succeed())
 				return resp.GetState()
-			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(restorepb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
+			}, 2*time.Minute, 500*time.Millisecond).Should(Equal(clusterpb.DownloadState_DOWNLOAD_STATE_SUCCEEDED))
 
 			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 
-			_, err = restoreClient.FinalizeRestore(ctx, &restorepb.FinalizeRestoreRequest{})
+			_, err = restoreClient.FinalizeRestore(ctx, &clusterpb.FinalizeRestoreRequest{})
 			Expect(err).To(Succeed())
 		})
 	})
@@ -237,7 +234,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 	Describe("restored node", Ordered, func() {
 		var (
 			server        *testservice.Service
-			client        servicepb.BucketServiceClient
+			client        clusterpb.BucketServiceClient
 			clusterClient clusterpb.ClusterServiceClient
 			grpcConn      *grpc.ClientConn
 		)
@@ -272,7 +269,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("keeps the removed sink durably absent and passes CheckStore", func() {
-			resp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
+			resp, err := client.GetEventsSinks(ctx, &clusterpb.GetEventsSinksRequest{})
 			Expect(err).To(Succeed())
 			Expect(resp.GetSinks()).To(BeEmpty(), "the checkpoint-era sink must not be resurrected")
 
@@ -282,7 +279,7 @@ var _ = Describe("Restore removed event sink", Ordered, func() {
 		})
 
 		It("admits a new sink under the removed name", func() {
-			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
+			_, err := client.Apply(ctx, clusterpb.UnsignedApplyRequest("", addRestoreEventSink(restoreEventSinkConfig(sinkName))))
 			Expect(err).To(Succeed(), "a stale restored sink would reject this name as already existing")
 		})
 	})

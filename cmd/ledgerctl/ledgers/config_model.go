@@ -10,11 +10,11 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // EditableConfig represents the editable (declarative) configuration of a ledger.
@@ -240,7 +240,7 @@ type DiffAction struct {
 	Section     string // e.g. "accountType", "metadataSchema", "index", "preparedQuery", "numscript"
 	Operation   string // "add", "update", "remove"
 	Description string // human-readable description
-	Request     *servicepb.Request
+	Request     *commonpb.Request
 }
 
 // ComputeDiff compares current (from server) vs desired (from file) and returns
@@ -291,9 +291,9 @@ func diffDefaultEnforcementMode(ledgerName string, current, desired *EditableCon
 			Section:     "defaultEnforcementMode",
 			Operation:   "update",
 			Description: fmt.Sprintf("Update default enforcement mode: %s -> %s", current.DefaultEnforcementMode, desired.DefaultEnforcementMode),
-			Request: &servicepb.Request{
-				Type: &servicepb.Request_SetDefaultEnforcementMode{
-					SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{
+			Request: &commonpb.Request{
+				Type: &commonpb.Request_SetDefaultEnforcementMode{
+					SetDefaultEnforcementMode: &commonpb.SetDefaultEnforcementModeLedgerRequest{
 						Ledger:          ledgerName,
 						EnforcementMode: mode,
 					},
@@ -327,9 +327,9 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) ([]Di
 			Section:     "accountType",
 			Operation:   "add",
 			Description: desc,
-			Request: &servicepb.Request{
-				Type: &servicepb.Request_AddAccountType{
-					AddAccountType: &servicepb.AddAccountTypeLedgerRequest{
+			Request: &commonpb.Request{
+				Type: &commonpb.Request_AddAccountType{
+					AddAccountType: &commonpb.AddAccountTypeLedgerRequest{
 						Ledger: ledgerName,
 						AccountType: &commonpb.AccountType{
 							Name:        name,
@@ -385,9 +385,9 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) ([]Di
 				Section:     "accountType",
 				Operation:   "remove",
 				Description: fmt.Sprintf("Remove account type %q (%s)", name, reason),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_RemoveAccountType{
-						RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_RemoveAccountType{
+						RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{
 							Ledger: ledgerName,
 							Name:   name,
 						},
@@ -414,9 +414,9 @@ func diffAccountTypes(ledgerName string, current, desired *EditableConfig) ([]Di
 				Section:     "accountType",
 				Operation:   "remove",
 				Description: fmt.Sprintf("Remove account type %q", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_RemoveAccountType{
-						RemoveAccountType: &servicepb.RemoveAccountTypeLedgerRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_RemoveAccountType{
+						RemoveAccountType: &commonpb.RemoveAccountTypeLedgerRequest{
 							Ledger: ledgerName,
 							Name:   name,
 						},
@@ -476,9 +476,9 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 					Section:     "metadataSchema",
 					Operation:   op,
 					Description: desc,
-					Request: &servicepb.Request{
-						Type: &servicepb.Request_SetMetadataFieldType{
-							SetMetadataFieldType: &servicepb.SetMetadataFieldTypeRequest{
+					Request: &commonpb.Request{
+						Type: &commonpb.Request_SetMetadataFieldType{
+							SetMetadataFieldType: &commonpb.SetMetadataFieldTypeRequest{
 								Ledger:     ledgerName,
 								TargetType: targetType,
 								Key:        key,
@@ -507,9 +507,9 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 					Section:     "metadataSchema",
 					Operation:   "remove",
 					Description: fmt.Sprintf("Remove metadata type %s.%s", target, key),
-					Request: &servicepb.Request{
-						Type: &servicepb.Request_RemoveMetadataFieldType{
-							RemoveMetadataFieldType: &servicepb.RemoveMetadataFieldTypeRequest{
+					Request: &commonpb.Request{
+						Type: &commonpb.Request_RemoveMetadataFieldType{
+							RemoveMetadataFieldType: &commonpb.RemoveMetadataFieldTypeRequest{
 								Ledger:     ledgerName,
 								TargetType: targetType,
 								Key:        key,
@@ -535,8 +535,8 @@ func metadataIndexAction(ledgerName, target string, targetType commonpb.TargetTy
 			Section:     "index",
 			Operation:   "add",
 			Description: fmt.Sprintf("Create metadata index %s.%s", target, key),
-			Request: &servicepb.Request{
-				Type: &servicepb.Request_CreateIndex{CreateIndex: &servicepb.CreateIndexRequest{
+			Request: &commonpb.Request{
+				Type: &commonpb.Request_CreateIndex{CreateIndex: &commonpb.CreateIndexRequest{
 					Ledger: ledgerName,
 					Id:     id,
 				}},
@@ -548,8 +548,8 @@ func metadataIndexAction(ledgerName, target string, targetType commonpb.TargetTy
 		Section:     "index",
 		Operation:   "remove",
 		Description: fmt.Sprintf("Drop metadata index %s.%s", target, key),
-		Request: &servicepb.Request{
-			Type: &servicepb.Request_DropIndex{DropIndex: &servicepb.DropIndexRequest{
+		Request: &commonpb.Request{
+			Type: &commonpb.Request_DropIndex{DropIndex: &commonpb.DropIndexRequest{
 				Ledger: ledgerName,
 				Id:     id,
 			}},
@@ -585,9 +585,9 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 				Section:     "index",
 				Operation:   "add",
 				Description: "Create index " + b.name,
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_CreateIndex{
-						CreateIndex: &servicepb.CreateIndexRequest{Ledger: ledgerName, Id: id},
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_CreateIndex{
+						CreateIndex: &commonpb.CreateIndexRequest{Ledger: ledgerName, Id: id},
 					},
 				},
 			})
@@ -597,9 +597,9 @@ func diffIndexes(ledgerName string, current, desired *EditableConfig) []DiffActi
 				Section:     "index",
 				Operation:   "remove",
 				Description: "Drop index " + b.name,
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_DropIndex{
-						DropIndex: &servicepb.DropIndexRequest{Ledger: ledgerName, Id: id},
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_DropIndex{
+						DropIndex: &commonpb.DropIndexRequest{Ledger: ledgerName, Id: id},
 					},
 				},
 			})
@@ -630,9 +630,9 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				Section:     "preparedQuery",
 				Operation:   "add",
 				Description: fmt.Sprintf("Create prepared query %q (target=%s)", name, desiredPQ.Target),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_CreatePreparedQuery{
-						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_CreatePreparedQuery{
+						CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 							Ledger: ledgerName,
 							Query: &commonpb.PreparedQuery{
 								Name:   name,
@@ -667,9 +667,9 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				Section:     "preparedQuery",
 				Operation:   "remove",
 				Description: fmt.Sprintf("Delete prepared query %q (target change)", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_DeletePreparedQuery{
-						DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_DeletePreparedQuery{
+						DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 							Ledger: ledgerName,
 							Name:   name,
 						},
@@ -681,9 +681,9 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				Section:     "preparedQuery",
 				Operation:   "add",
 				Description: fmt.Sprintf("Re-create prepared query %q (target=%s)", name, desiredPQ.Target),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_CreatePreparedQuery{
-						CreatePreparedQuery: &servicepb.CreatePreparedQueryRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_CreatePreparedQuery{
+						CreatePreparedQuery: &commonpb.CreatePreparedQueryRequest{
 							Ledger: ledgerName,
 							Query: &commonpb.PreparedQuery{
 								Name:   name,
@@ -714,9 +714,9 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				Section:     "preparedQuery",
 				Operation:   "update",
 				Description: fmt.Sprintf("Update prepared query %q", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_UpdatePreparedQuery{
-						UpdatePreparedQuery: &servicepb.UpdatePreparedQueryRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_UpdatePreparedQuery{
+						UpdatePreparedQuery: &commonpb.UpdatePreparedQueryRequest{
 							Ledger: ledgerName,
 							Name:   name,
 							Filter: filter,
@@ -734,9 +734,9 @@ func diffPreparedQueries(ledgerName string, current, desired *EditableConfig) ([
 				Section:     "preparedQuery",
 				Operation:   "remove",
 				Description: fmt.Sprintf("Delete prepared query %q", name),
-				Request: &servicepb.Request{
-					Type: &servicepb.Request_DeletePreparedQuery{
-						DeletePreparedQuery: &servicepb.DeletePreparedQueryRequest{
+				Request: &commonpb.Request{
+					Type: &commonpb.Request_DeletePreparedQuery{
+						DeletePreparedQuery: &commonpb.DeletePreparedQueryRequest{
 							Ledger: ledgerName,
 							Name:   name,
 						},
@@ -799,9 +799,9 @@ func diffNumscripts(ledgerName string, current, desired *EditableConfig) ([]Diff
 			Section:     "numscript",
 			Operation:   "add",
 			Description: desc,
-			Request: &servicepb.Request{
-				Type: &servicepb.Request_SaveNumscript{
-					SaveNumscript: &servicepb.SaveNumscriptRequest{
+			Request: &commonpb.Request{
+				Type: &commonpb.Request_SaveNumscript{
+					SaveNumscript: &commonpb.SaveNumscriptRequest{
 						Ledger:  ledgerName,
 						Name:    name,
 						Content: desiredNS.Content,

@@ -8,8 +8,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
 	. "github.com/onsi/ginkgo/v2"
@@ -57,14 +56,14 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 	It("eventually surfaces the new-encoded entity on every replica after a retype", func() {
 		// Create a ledger with a STRING-typed metadata field "score"
 		// and an account index over it.
-		_, err := servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		_, err := servers[0].Client.Apply(ctx, commonpb.UnsignedApplyRequest("",
 			actions.CreateLedgerWithSchemaAction(ledgerName, nil, []*commonpb.SetMetadataFieldTypeCommand{
 				{TargetType: commonpb.TargetType_TARGET_TYPE_ACCOUNT, Key: key, Type: commonpb.MetadataType_METADATA_TYPE_STRING},
 			}),
 		))
 		Expect(err).To(Succeed())
 
-		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		_, err = servers[0].Client.Apply(ctx, commonpb.UnsignedApplyRequest("",
 			actions.CreateAccountMetadataIndexAction(ledgerName, key),
 		))
 		Expect(err).To(Succeed())
@@ -78,7 +77,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 
 		// Write an account with a string-typed score that's also a
 		// valid uint64 after the retype.
-		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		_, err = servers[0].Client.Apply(ctx, commonpb.UnsignedApplyRequest("",
 			actions.CreateForceTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "alice", big.NewInt(100), "USD"),
 			}, nil),
@@ -100,7 +99,7 @@ var _ = Describe("MetadataIndexPerReplicaConsistency", Ordered, func() {
 
 		// Retype to UINT64. This bumps Index.forward_encoding_version
 		// cluster-wide and kicks a local rewrite on each replica.
-		_, err = servers[0].Client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+		_, err = servers[0].Client.Apply(ctx, commonpb.UnsignedApplyRequest("",
 			actions.SetMetadataFieldTypeAction(ledgerName, commonpb.TargetType_TARGET_TYPE_ACCOUNT, key, commonpb.MetadataType_METADATA_TYPE_UINT64),
 		))
 		Expect(err).To(Succeed())

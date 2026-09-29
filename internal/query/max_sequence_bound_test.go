@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	auditpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -43,7 +43,7 @@ func TestReadersIncludeMaxUint64Sequence(t *testing.T) {
 
 	s := newTestStore(t)
 
-	logValue, err := (&commonpb.Log{Sequence: math.MaxUint64}).MarshalVT()
+	logValue, err := (&auditpb.Log{Sequence: math.MaxUint64}).MarshalVT()
 	require.NoError(t, err)
 
 	auditValue, err := (&auditpb.AuditEntry{Sequence: math.MaxUint64}).MarshalVT()
@@ -77,7 +77,7 @@ func TestReadersIncludeMaxUint64Sequence(t *testing.T) {
 		c, err := query.ReadLogsSince(ctx, handle, 0)
 		require.NoError(t, err)
 
-		logs, err := cursor.Collect[*commonpb.Log](c)
+		logs, err := cursor.Collect[*auditpb.Log](c)
 		require.NoError(t, err)
 		require.Len(t, logs, 1)
 		require.EqualValues(t, uint64(math.MaxUint64), logs[0].GetSequence())

@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,7 +30,7 @@ var _ = Describe("NumscriptLanguage", Ordered, func() {
 	// read-side projection lag.
 	getVolume := func(ledgerName, address, asset string) func(g Gomega) string {
 		return func(g Gomega) string {
-			account, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
+			account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{
 				Ledger:  ledgerName,
 				Address: address,
 			})
@@ -50,13 +49,13 @@ var _ = Describe("NumscriptLanguage", Ordered, func() {
 
 	fund := func(ledgerName, address, monetary string) {
 		script := fmt.Sprintf(`send [%s] (source = @world destination = @%s)`, monetary, address)
-		_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+		_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 		Expect(err).To(Succeed())
 	}
 
-	apply := func(ledgerName, script string, vars map[string]string) (*servicepb.ApplyResponse, error) {
-		return sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("",
+	apply := func(ledgerName, script string, vars map[string]string) (*commonpb.ApplyResponse, error) {
+		return sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("",
 			actions.CreateScriptTransactionAction(ledgerName, script, vars, nil)))
 	}
 
@@ -64,7 +63,7 @@ var _ = Describe("NumscriptLanguage", Ordered, func() {
 		const ledgerName = "nsl-sendall"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -144,7 +143,7 @@ send [USD/2 *] (
 		const ledgerName = "nsl-save"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -226,7 +225,7 @@ send [USD/2 1] (
 		const ledgerName = "nsl-capped"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -259,7 +258,7 @@ send [USD/2 250] (
 		const ledgerName = "nsl-alloc-src"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -294,7 +293,7 @@ send [USD/2 400] (
 		const ledgerName = "nsl-dest-inorder"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -353,7 +352,7 @@ send [USD/2 60] (
 		const ledgerName = "nsl-vars"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -459,7 +458,7 @@ send [USD/2 1000] (
 		const ledgerName = "nsl-expr"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 
@@ -532,7 +531,7 @@ send [USD/2 1000] (
 		const ledgerName = "nsl-errors"
 
 		BeforeAll(func() {
-			_, err := sharedClient.Apply(sharedCtx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
+			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateLedgerAction(ledgerName, nil)))
 			Expect(err).To(Succeed())
 		})
 

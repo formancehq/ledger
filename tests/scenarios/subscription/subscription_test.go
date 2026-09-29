@@ -8,8 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
 	"github.com/stretchr/testify/require"
@@ -83,7 +82,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 
 		// Fund wallets at the start of each cycle
 		t.Run(fmt.Sprintf("%s/FundWallets", cycleName), func(t *testing.T) {
-			reqs := make([]*servicepb.Request, 0, numSubscribers)
+			reqs := make([]*commonpb.Request, 0, numSubscribers)
 			for _, sub := range subscribers {
 				reqs = append(reqs, actions.CreateScriptRefTransactionAction(ledger, "fund_wallet", "1.0.0", map[string]string{
 					"subscriber": fmt.Sprintf("subscriber:%d", sub.id),
@@ -378,7 +377,7 @@ func TestSubscriptionBillingCycle(t *testing.T) {
 	})
 
 	// --- Tail phases: StoreCheck, Backup, Restart+Verify, BackupRestore+Verify ---
-	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client servicepb.BucketServiceClient) {
+	scenariotest.RunPostTestPhases(t, sc, func(t *testing.T, client commonpb.BucketServiceClient) {
 		scenariotest.CheckDoubleEntryBalance(t, ctx, client, ledger)
 		scenariotest.CheckAccountBalance(t, ctx, client, ledger, "revenue:recognized", "USD/2", totalRecognized)
 

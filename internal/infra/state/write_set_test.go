@@ -8,10 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -174,7 +176,7 @@ func TestWriteSetGetPutIdempotencyKey(t *testing.T) {
 	_, err := buf.GetIdempotencyKey(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.PutIdempotencyKey(key, &commonpb.IdempotencyKeyValue{FirstLogSequence: 5, LogCount: 1})
+	buf.PutIdempotencyKey(key, &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 5, LogCount: 1})
 	val, err := buf.GetIdempotencyKey(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
@@ -191,7 +193,7 @@ func TestWriteSetGetPutTransactionReference(t *testing.T) {
 	_, err := buf.TransactionReferences().Get(key)
 	require.ErrorIs(t, err, domain.ErrNotFound)
 
-	buf.TransactionReferences().Put(key, &commonpb.TransactionReferenceValue{TransactionId: 100})
+	buf.TransactionReferences().Put(key, &internalcommonpb.TransactionReferenceValue{TransactionId: 100})
 	val, err := buf.TransactionReferences().Get(key)
 	require.NoError(t, err)
 	require.NotNil(t, val)
@@ -203,7 +205,7 @@ func TestWriteSetTransactionState(t *testing.T) {
 	buf, _, _ := newTestBuffer(t)
 
 	key := domain.TransactionKey{LedgerName: "test", ID: 1}
-	state := &commonpb.TransactionState{
+	state := &internalcommonpb.TransactionState{
 		CreatedByLog: 5,
 	}
 
@@ -465,11 +467,11 @@ func TestWriteSetResetIsolation(t *testing.T) {
 	)
 	buf.PutIdempotencyKey(
 		domain.IdempotencyKey{Key: "ik-leak"},
-		&commonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1},
+		&internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 7, LogCount: 1},
 	)
 	buf.TransactionReferences().Put(
 		domain.TransactionReferenceKey{LedgerName: "test", Reference: "ref-leak"},
-		&commonpb.TransactionReferenceValue{TransactionId: 42},
+		&internalcommonpb.TransactionReferenceValue{TransactionId: 42},
 	)
 
 	// Pending slices

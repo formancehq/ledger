@@ -16,10 +16,11 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 type stateAwareTestConn struct {
@@ -72,7 +73,7 @@ func TestConn_StateGetterControlsCloseNormalization(t *testing.T) {
 // Recv() rather than from the method call — the case per-method conversion
 // cannot reach, because the method has already returned nil by then.
 type rejectingServer struct {
-	servicepb.UnimplementedBucketServiceServer
+	commonpb.UnimplementedBucketServiceServer
 
 	err error
 
@@ -82,13 +83,13 @@ type rejectingServer struct {
 }
 
 func (s *rejectingServer) GetTransaction(
-	context.Context, *servicepb.GetTransactionRequest,
-) (*servicepb.GetTransactionResponse, error) {
+	context.Context, *commonpb.GetTransactionRequest,
+) (*commonpb.GetTransactionResponse, error) {
 	return nil, s.err
 }
 
 func (s *rejectingServer) ListLedgers(
-	_ *servicepb.ListLedgersRequest,
+	_ *commonpb.ListLedgersRequest,
 	stream ggrpc.ServerStreamingServer[commonpb.LedgerInfo],
 ) error {
 	for range s.rowsBeforeError {
@@ -103,12 +104,12 @@ func (s *rejectingServer) ListLedgers(
 // dialWrapped serves srv over bufconn and returns a client whose connection is
 // decorated, so the test exercises the real generated client against the real
 // wire — not a hand-built status value.
-func dialWrapped(t *testing.T, srv servicepb.BucketServiceServer, opts ...ggrpc.DialOption) servicepb.BucketServiceClient {
+func dialWrapped(t *testing.T, srv commonpb.BucketServiceServer, opts ...ggrpc.DialOption) commonpb.BucketServiceClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
 	server := ggrpc.NewServer()
-	servicepb.RegisterBucketServiceServer(server, srv)
+	commonpb.RegisterBucketServiceServer(server, srv)
 
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
@@ -123,7 +124,7 @@ func dialWrapped(t *testing.T, srv servicepb.BucketServiceServer, opts ...ggrpc.
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return servicepb.NewBucketServiceClient(NewConn(conn))
+	return commonpb.NewBucketServiceClient(NewConn(conn))
 }
 
 // businessStatus builds the status a leader sends for a business rejection.
@@ -149,7 +150,7 @@ func TestConn_UnaryErrorIsReconstructed(t *testing.T) {
 			domain.ErrReasonMetadataFieldNotInSchema),
 	})
 
-	_, err := client.GetTransaction(context.Background(), &servicepb.GetTransactionRequest{
+	_, err := client.GetTransaction(context.Background(), &commonpb.GetTransactionRequest{
 		Ledger:        "test",
 		TransactionId: 1,
 	})
@@ -174,7 +175,7 @@ func TestConn_StreamErrorIsReconstructed(t *testing.T) {
 		err:             businessStatus(t, codes.FailedPrecondition, "ledger deleted: foo", domain.ErrReasonLedgerDeleted),
 	})
 
-	stream, err := client.ListLedgers(context.Background(), &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
 	require.NoError(t, err, "the rejection is not reported here — that is the point")
 
 	var received int
@@ -205,7 +206,7 @@ func TestConn_StreamEndStillEOF(t *testing.T) {
 
 	client := dialWrapped(t, &rejectingServer{rowsBeforeError: 3, err: nil})
 
-	stream, err := client.ListLedgers(context.Background(), &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	var received int
@@ -233,7 +234,7 @@ func TestConn_StreamCanceledStaysCanceled(t *testing.T) {
 		err:             status.Error(codes.Canceled, "serving node torn down"),
 	})
 
-	stream, err := client.ListLedgers(context.Background(), &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	for {
@@ -245,20 +246,20 @@ func TestConn_StreamCanceledStaysCanceled(t *testing.T) {
 	require.Equal(t, codes.Canceled, status.Code(err))
 }
 
-// TestConn_BareNotFoundIsReconstructed covers the commonpb.NewNotFoundError
+// TestConn_BareNotFoundIsReconstructed covers the protoerr.NewNotFoundError
 // sites, which send no ErrorInfo.
 func TestConn_BareNotFoundIsReconstructed(t *testing.T) {
 	t.Parallel()
 
 	client := dialWrapped(t, &rejectingServer{err: status.Error(codes.NotFound, "ledger foo not found")})
 
-	_, err := client.GetTransaction(context.Background(), &servicepb.GetTransactionRequest{
+	_, err := client.GetTransaction(context.Background(), &commonpb.GetTransactionRequest{
 		Ledger:        "foo",
 		TransactionId: 1,
 	})
 	require.Error(t, err)
 
-	_, ok := errors.AsType[*commonpb.NotFoundError](err)
+	_, ok := errors.AsType[*protoerr.NotFoundError](err)
 	require.True(t, ok)
 }
 
@@ -269,7 +270,7 @@ func TestConn_SuccessPathUnaffected(t *testing.T) {
 
 	client := dialWrapped(t, &rejectingServer{rowsBeforeError: 1, err: nil})
 
-	stream, err := client.ListLedgers(context.Background(), &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	info, err := stream.Recv()
@@ -308,7 +309,7 @@ func TestConn_UnknownReasonKeepsItsExactCodeOverTheWire(t *testing.T) {
 			"SOME_REASON_FROM_A_NEWER_SERVER", map[string]string{"k": "v"}),
 	})
 
-	stream, err := client.ListLedgers(context.Background(), &servicepb.ListLedgersRequest{})
+	stream, err := client.ListLedgers(context.Background(), &commonpb.ListLedgersRequest{})
 	require.NoError(t, err)
 
 	var recvErr error
@@ -342,7 +343,7 @@ func TestConn_InvalidWirePairIsRejectedOverTheWire(t *testing.T) {
 			map[string]string{"name": "secret-ledger"}),
 	})
 
-	_, err := client.GetTransaction(context.Background(), &servicepb.GetTransactionRequest{
+	_, err := client.GetTransaction(context.Background(), &commonpb.GetTransactionRequest{
 		Ledger:        "test",
 		TransactionId: 1,
 	})

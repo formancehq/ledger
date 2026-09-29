@@ -10,7 +10,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/adapter/apierr"
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/plan"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // kindToHTTPStatus maps a semantic ErrorKind to an HTTP status code. Adding
@@ -82,10 +82,10 @@ func classifiedErrorCode(k domain.ErrorKind) string {
 // handle errors that carry neither — the leader-discovery sentinel from
 // commonpb and the generic NotFoundError used by route lookups.
 func handleError(w http.ResponseWriter, r *http.Request, err error) {
-	// commonpb.ErrNoLeader carries its own retry hint (Retry-After) — keep
+	// protoerr.ErrNoLeader carries its own retry hint (Retry-After) — keep
 	// the dedicated branch so the response shape stays stable for clients
 	// that have been told to honour it.
-	if errors.Is(err, commonpb.ErrNoLeader) {
+	if errors.Is(err, protoerr.ErrNoLeader) {
 		w.Header().Set("Retry-After", "1")
 		writeErrorResponse(w, http.StatusServiceUnavailable, "NO_LEADER", err)
 
@@ -105,7 +105,7 @@ func handleError(w http.ResponseWriter, r *http.Request, err error) {
 		return
 	}
 
-	if _, ok := errors.AsType[*commonpb.NotFoundError](err); ok {
+	if _, ok := errors.AsType[*protoerr.NotFoundError](err); ok {
 		writeErrorResponse(w, http.StatusNotFound, "NOT_FOUND", err)
 
 		return

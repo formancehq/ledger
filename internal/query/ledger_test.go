@@ -8,11 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
@@ -96,7 +97,7 @@ func TestReadLedgersSoftDelete(t *testing.T) {
 	_, err = attrs.Metadata.Set(batch, metadataCanonicalKey, commonpb.NewStringValue("value"))
 	require.NoError(t, err)
 	txKey := domain.TransactionKey{LedgerName: "test-ledger", ID: 1}
-	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &commonpb.TransactionState{
+	_, err = attrs.Transaction.Set(batch, txKey.Bytes(), &internalcommonpb.TransactionState{
 		CreatedByLog: 1,
 	})
 	require.NoError(t, err)

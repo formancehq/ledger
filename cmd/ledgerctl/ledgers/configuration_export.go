@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
@@ -68,15 +68,15 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 
 	spinner := cmdutil.StartSpinner(fmt.Sprintf("Fetching configuration for %s...", ledgerName))
 
-	ledger, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledgerName})
+	ledger, err := client.GetLedger(ctx, &commonpb.GetLedgerRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to get ledger")
 
 		return nil, cmdutil.FormatGRPCError("failed to get ledger", err)
 	}
 
-	idxStream, err := client.ListIndexes(ctx, &servicepb.ListIndexesRequest{
-		Scope:  servicepb.ListIndexesRequest_SCOPE_LEDGER,
+	idxStream, err := client.ListIndexes(ctx, &commonpb.ListIndexesRequest{
+		Scope:  commonpb.ListIndexesRequest_SCOPE_LEDGER,
 		Ledger: ledgerName,
 	})
 	if err != nil {
@@ -101,7 +101,7 @@ func fetchEditableConfig(cmd *cobra.Command, ledgerName string) (*EditableConfig
 		ledgerIndexes = append(ledgerIndexes, idx)
 	}
 
-	pqResp, err := client.ListPreparedQueries(ctx, &servicepb.ListPreparedQueriesRequest{Ledger: ledgerName})
+	pqResp, err := client.ListPreparedQueries(ctx, &commonpb.ListPreparedQueriesRequest{Ledger: ledgerName})
 	if err != nil {
 		spinner.Fail("Failed to list prepared queries")
 

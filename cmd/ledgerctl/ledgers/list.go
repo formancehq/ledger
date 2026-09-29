@@ -7,9 +7,9 @@ import (
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/metadata"
 
+	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // NewListCommand creates the ledgers list command.
@@ -57,7 +57,7 @@ func runList(cmd *cobra.Command, _ []string) error {
 		page := pgn
 		page.Cursor = cur
 
-		stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{
+		stream, err := client.ListLedgers(ctx, &commonpb.ListLedgersRequest{
 			Options: cmdutil.BuildListOptions(page, cns, nil),
 		})
 		if err != nil {

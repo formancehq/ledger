@@ -3,8 +3,9 @@ package queries
 import (
 	"github.com/spf13/cobra"
 
+	servicepb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // completeQueryNames fetches prepared query names from the server for shell
