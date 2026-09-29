@@ -1,0 +1,36 @@
+name: Storage Performance Comparison
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/storage-performance.yml
+      - scripts/compare-storage-performance.sh
+      - scripts/compare-storage-performance.py
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: namespace-profile-linux-amd64-4vcpu
+    env:
+      GOPATH: /tmp/go
+      PEBBLE_REF: c6a99fc92f43f5127c898fd9a727adee3424310d
+      ROCKSDB_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+      PERF_OUTPUT_DIR: build/storage-performance
+    steps:
+      - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
+        with:
+          fetch-depth: 0
+          dissociate: true
+      - name: Setup Env
+        uses: ./.github/actions/default
+      - name: Compare Pebble and RocksDB
+        run: nix develop --command bash scripts/compare-storage-performance.sh
+      - name: Upload benchmark samples
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: storage-performance
+          path: build/storage-performance/
