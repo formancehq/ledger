@@ -69,6 +69,20 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 	}, nil
 }
 
+// CompileForReplay compiles script with vars exactly as admission does, for a
+// caller that re-runs an audited order. The audit keeps only the business part
+// of an order, so an audited order never carries the compiled code. Every
+// compilation of a script means the same thing, so running this one gives the
+// order its original outcome.
+func CompileForReplay(cache *NumscriptCache, script string, vars map[string]string) (*CompiledScript, domain.SerializableError) {
+	entry := cache.getOrParseEntry(script)
+	if entry.script.err != nil {
+		return nil, entry.script.err
+	}
+
+	return compileScript(entry, vars)
+}
+
 // execCompiledScript runs an admission-compiled script on a fresh VM instance.
 // Admission executes concurrently, so it never touches the FSM's warm
 // instances (which must not run concurrently — see compiledLruEntry); the

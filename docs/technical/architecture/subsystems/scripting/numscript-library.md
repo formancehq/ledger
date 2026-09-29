@@ -262,6 +262,13 @@ alone, so every replica on one binary applies the entry identically
 requests cannot carry technical fields: `ApplyBatch` is made of `Request`
 messages and admission builds the `raftcmdpb.Order` itself.
 
+Because the audit never holds the artifact, the store checker, which re-runs
+audited orders to rebuild state, compiles each script itself before running it
+(`RequestProcessor.CompileMissingNumscript`, turned on only by
+`state.AuditReplayer`). Every compilation of a script means the same thing, so
+this gives the order its original outcome. The cluster's own processor never
+turns it on: there, a scripted order without an artifact still fails.
+
 ### Version Pinning Examples
 
 Given a library with versions `1.0.0`, `1.0.5`, `1.2.0`, `2.0.0`:

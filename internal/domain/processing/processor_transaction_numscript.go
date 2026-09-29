@@ -37,6 +37,10 @@ type numscriptPostingProducer struct {
 	compiledProgram    []byte
 	compiledVars       []byte
 	compiledScriptHash []byte
+	// compileMissing compiles the script when the order carries no compiled
+	// code, instead of failing it. Set only for the store checker's audit
+	// replay (see RequestProcessor.CompileMissingNumscript).
+	compileMissing bool
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError) {
@@ -135,8 +139,19 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// the VM cannot run is rejected there (ErrNumscriptCompile), and an order it
 	// forwards without one is marked preload_unavailable and rejected before
 	// reaching here. A scripted order without an artifact is therefore an
-	// admission bug, surfaced loudly (invariant #7).
-	if len(p.compiledProgram) == 0 {
+	// admission bug, surfaced loudly (invariant #7) — except when re-running
+	// an audited order, which never carries compiled code: then compile it here.
+	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
+	if len(compiledProgram) == 0 && p.compileMissing {
+		compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
+		if compileErr != nil {
+			return nil, compileErr
+		}
+
+		compiledProgram, compiledVars, compiledScriptHash = compiled.Program, compiled.Vars, compiled.ScriptHash
+	}
+
+	if len(compiledProgram) == 0 {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "scripted order carries no compiled numscript artifact",
 		}
@@ -148,7 +163,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// stale-rejected before the producer ran — so a mismatch is a "should not
 	// happen" surfaced loudly (invariant #7), never executing the wrong program.
 	scriptHash := numscript.HashScript(script.GetPlain())
-	if !bytes.Equal(scriptHash[:], p.compiledScriptHash) {
+	if !bytes.Equal(scriptHash[:], compiledScriptHash) {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "compiled numscript artifact does not match the resolved script text",
 		}
@@ -159,7 +174,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// Any failure short of execution — undecodable bytes, another artifact
 	// format version, unverifiable bytecode — is final (see SafeExecCompiled):
 	// the order fails on every node running this binary.
-	result, execErr := numscript.SafeExecCompiled(p.cache, scriptHash[:], p.compiledProgram, p.compiledVars, vmStore)
+	result, execErr := numscript.SafeExecCompiled(p.cache, scriptHash[:], compiledProgram, compiledVars, vmStore)
 	if execErr != nil {
 		return nil, execErr
 	}

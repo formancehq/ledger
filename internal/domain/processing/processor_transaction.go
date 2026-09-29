@@ -97,6 +97,7 @@ func processCreateTransaction(ledger string, order *raftcmdpb.CreateTransactionO
 			compiledProgram:      ctx.CompiledProgram,
 			compiledVars:         ctx.CompiledVars,
 			compiledScriptHash:   ctx.CompiledScriptHash,
+			compileMissing:       ctx.CompileMissingNumscript,
 		}
 	} else {
 		producer = &stdPostingProducer{assetCache: ctx.AssetCache}
