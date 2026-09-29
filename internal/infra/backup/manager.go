@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"time"
@@ -525,17 +526,21 @@ func RunIncrementalBackup(
 		segmentsUploaded += len(segs)
 
 		// Export the audit items (per-order detail) for the same range.
-		// On success proposals the audit hash covers the per-item payloads,
-		// so a restored backup missing them cannot reconstruct the chain.
-		// Failure proposals write an AuditEntry with zero items (see
-		// state.machine.go writeAuditEntry(failureEntry, nil, ...) and
-		// state.batch.go appendAuditItems), and their hash is bound to the
-		// header alone. An incremental range consisting of only failures
-		// therefore has audit count > 0 but auditItem count == 0 —
-		// exportEntries then returns no segments, so appending its result
-		// adds nothing and we never reference a key that does not exist on
-		// storage (subsequent ApplyExports would fail on GetFile). Same
-		// guard as the appliedProposal branch below.
+		// The audit hash covers the per-item payloads on EVERY outcome, so a
+		// restored backup missing them cannot reconstruct the chain. A failure
+		// proposal writes one AuditItem per order too — writeAuditEntry
+		// (state/machine.go) reaches buildAuditItems(serializedOrders, nil)
+		// (state/audit.go), which only leaves LogSequence at 0 — so a
+		// failure-only range is NOT an empty auditItem range. Nor is any other
+		// range: an order-less proposal returns before the audit-entry path, so
+		// every audit_seq in this range carries at least one item. The
+		// empty-range handling is kept as defence in depth against a corrupt or
+		// partially-restored source store: exportEntries then returns no
+		// segments, so appending its result adds nothing and we never reference
+		// a key that does not exist on storage (a subsequent ApplyExports would
+		// fail on GetFile). The guard is structural, same as the
+		// appliedProposal branch below — where an empty range is the normal
+		// failure-only case rather than a corruption signal.
 		itemSegs, _, err := exportEntries(
 			ctx, storage, readHandle,
 			dal.ZoneHistory, dal.SubHistoryAuditItem, afterAuditSeq, currentAuditSeq, "auditItem",
@@ -640,9 +645,19 @@ func exportEntries(
 
 	lowerBound := kb.Build()
 
-	kb2 := dal.NewKeyBuilder()
-	kb2.PutZonePrefix(zone, sub).PutUint64(endSeq + 1)
-	upperBound := kb2.Build()
+	// endSeq+1 wraps at MaxUint64 into a bound BELOW the lower one, which Pebble
+	// reads as an empty range: the segment would export nothing and the delta
+	// would silently lose every row it was meant to carry (invariant #11). The
+	// prefix successor is the bound that includes the last addressable entry.
+	var upperBound []byte
+
+	if endSeq == math.MaxUint64 {
+		upperBound = dal.ZonePrefixUpperBound(zone, sub)
+	} else {
+		kb2 := dal.NewKeyBuilder()
+		kb2.PutZonePrefix(zone, sub).PutUint64(endSeq + 1)
+		upperBound = kb2.Build()
+	}
 
 	iter, err := dal.NewBoundedIter(reader, lowerBound, upperBound)
 	if err != nil {

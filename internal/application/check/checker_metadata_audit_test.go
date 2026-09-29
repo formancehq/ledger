@@ -37,9 +37,12 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 
 		errors, terminalErr := runMetadataAuditCheck(engine)
 		require.NoError(t, terminalErr)
-		require.Len(t, errors, 1)
-		require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
-		require.Equal(t, log.GetSequence(), errors[0].GetLogSequence())
+		require.Len(t, errors, 2)
+		logErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
+		require.Len(t, logErrors, 1)
+		metadataErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
+		require.Len(t, metadataErrors, 1)
+		require.Equal(t, log.GetSequence(), logErrors[0].GetLogSequence())
 	})
 
 	t.Run("projection-only corruption", func(t *testing.T) {
@@ -74,9 +77,12 @@ func TestCheck_SavedMetadataUsesAuditedOrderAsAuthority(t *testing.T) {
 
 			errors, terminalErr := runMetadataAuditCheck(engine)
 			require.NoError(t, terminalErr)
-			require.Len(t, errors, 1)
-			require.Equal(t, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH, errors[0].GetErrorType())
-			require.Equal(t, log.GetSequence(), errors[0].GetLogSequence())
+			require.Len(t, errors, 2)
+			logErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_LOG_PAYLOAD_MISMATCH)
+			require.Len(t, logErrors, 1)
+			metadataErrors := errorsOfType(errors, servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_METADATA_MISMATCH)
+			require.Len(t, metadataErrors, 1)
+			require.Equal(t, log.GetSequence(), logErrors[0].GetLogSequence())
 		})
 	})
 }

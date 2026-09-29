@@ -1833,11 +1833,18 @@ func TestCreateSnapshot_SaveFailure_KeepsPreviousSnapshotRetryable(t *testing.T)
 func TestCreateSnapshot_WALDirectoryMissing_IsTerminal(t *testing.T) {
 	t.Parallel()
 
-	dir := filepath.Join(t.TempDir(), "wal")
+	root := t.TempDir()
+	dir := filepath.Join(root, "wal")
+	removedDir := filepath.Join(root, "wal-removed")
 	w := newTestWALAt(t, dir)
 	require.NoError(t, w.Append(hs(1, 1, 2), []*raftpb.Entry{ent(1, 1, nil), ent(2, 1, nil)}))
 
-	require.NoError(t, os.RemoveAll(dir))
+	// Rename the directory out of the configured path atomically. RemoveAll can
+	// race with the live WAL's maintenance goroutine on Linux and fail with
+	// ENOTEMPTY when that goroutine changes the directory during traversal. A
+	// rename exercises the same terminal condition without a recursive-removal
+	// race: the configured path is gone while the WAL still holds its handles.
+	require.NoError(t, os.Rename(dir, removedDir))
 
 	err := w.CreateSnapshot(2, &raftpb.ConfState{Voters: []uint64{1}}, nil)
 	require.ErrorIs(t, err, ErrWALDirectoryMissing)
