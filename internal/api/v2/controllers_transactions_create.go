@@ -61,7 +61,7 @@ func createTransaction(w http.ResponseWriter, r *http.Request) {
 			case errors.Is(err, ledgerstore.ErrTransactionReferenceConflict{}):
 				api.WriteErrorResponse(w, http.StatusConflict, common.ErrConflict, err)
 			case errors.Is(err, ledgercontroller.ErrParsing{}):
-				api.BadRequest(w, common.ErrInterpreterParse, err)
+				common.WriteParsingError(w, err)
 			case errors.Is(err, ledgercontroller.ErrRuntime{}):
 				api.BadRequest(w, common.ErrInterpreterRuntime, err)
 			default:
