@@ -577,9 +577,10 @@ the transport message. Caller cancellation, unrelated `Canceled`, a server
 status on a live connection, and statuses carrying details retain their
 existing handling; `Unknown` is not made retryable. Forwarding does not retry.
 
-This requires `NewConn` to wrap the raw `*grpc.ClientConn` directly, as the
-leader-forwarding call site does. Other `ClientConnInterface` implementations
-retain error reconstruction but do not receive this normalization. Shutdown
+This requires `NewConn` to wrap a connection that exposes its own `GetState()`;
+the leader-forwarding call site passes a raw `*grpc.ClientConn`. A decorator
+must forward the state of the connection used for `Invoke`. Implementations
+without `GetState()` retain error reconstruction but not this normalization. Shutdown
 is observed after the invocation returns; it is not atomic with status delivery
 and does not prove the status's origin. An identical bare peer-authored
 `Canceled` received just before local closure is also mapped to `Unavailable`.

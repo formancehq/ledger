@@ -27,6 +27,12 @@ type Conn struct {
 	inner grpc.ClientConnInterface
 }
 
+// connStateGetter exposes the state of the connection used for Invoke.
+// *grpc.ClientConn satisfies this interface; decorators may forward its state.
+type connStateGetter interface {
+	GetState() connectivity.State
+}
+
 // grpc-go's exact bare client-connection close status. Keep this sentinel
 // local because grpc.ErrClientConnClosing is deprecated.
 var errClientConnClosing = status.Error(codes.Canceled, "grpc: the client connection is closing")
@@ -36,10 +42,10 @@ var errClientConnClosing = status.Error(codes.Canceled, "grpc: the client connec
 var ErrPeerConnectionClose = status.Error(codes.Unavailable, status.Convert(errClientConnClosing).Message())
 
 // NewConn wraps cc so forwarded errors retain their typed identity. Unary
-// close-status normalization additionally requires cc to be the raw
-// *grpc.ClientConn: pass it directly, before adding any connection decorator.
-// Other ClientConnInterface implementations receive error reconstruction only;
-// their state cannot establish that the underlying local connection is closed.
+// close-status normalization additionally requires cc to expose the state of
+// the connection used for Invoke through GetState. A raw *grpc.ClientConn does
+// so; a decorator must forward that same state. Other ClientConnInterface
+// implementations receive error reconstruction only.
 func NewConn(cc grpc.ClientConnInterface) *Conn {
 	return &Conn{inner: cc}
 }
@@ -58,8 +64,8 @@ func (c *Conn) Invoke(ctx context.Context, method string, args, reply any, opts 
 	// identity.
 	// Unavailable does not prove non-commit. The caller must reuse its original
 	// idempotency key when retrying a write; forwarding itself does not retry.
-	conn, localConnection := c.inner.(*grpc.ClientConn)
-	if localConnection && conn.GetState() == connectivity.Shutdown && ctx.Err() == nil {
+	stateConn, hasState := c.inner.(connStateGetter)
+	if hasState && stateConn.GetState() == connectivity.Shutdown && ctx.Err() == nil {
 		if errors.Is(err, errClientConnClosing) {
 			return ErrPeerConnectionClose
 		}

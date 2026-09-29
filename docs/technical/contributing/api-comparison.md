@@ -1276,7 +1276,9 @@ The `UNAVAILABLE` row also covers forwarding interruptions. For streams,
 `normalizeStreamEnd` re-codes raw peer cancellation while the caller is live.
 For unary calls, `grpcerr.Conn.Invoke` only re-codes the exact bare
 `ErrClientConnClosing` when the actual local connection is shut down and the
-caller is live. This requires wrapping the raw `*grpc.ClientConn` directly.
+caller is live. The wrapped connection must expose the state of the connection
+used for `Invoke` through `GetState()`; the production call site uses a raw
+`*grpc.ClientConn`.
 Server-authored statuses on a live connection and structured failures retain
 their existing handling; an identical bare close status received just before
 local shutdown is indistinguishable at the post-invocation state check and is

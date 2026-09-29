@@ -53,8 +53,10 @@ specific: `grpcerr.Conn.Invoke` converts the exact bare grpc-go close status
 only when the local connection is shut down and the caller context is live.
 Check actual pool removal/replacement, caller cancellation, a peer-authored
 lookalike on a live connection, and structured/unknown statuses separately.
-The decorator must receive the raw `*grpc.ClientConn`; another connection
-decorator receives reconstruction only. The post-invocation shutdown check is
+The wrapped connection must expose the state of the connection used for
+`Invoke` through `GetState()`; the production call site passes a raw
+`*grpc.ClientConn`. A wrapper without that state receives reconstruction only.
+The post-invocation shutdown check is
 not atomic with status delivery: an identical bare peer-authored close status
 received just before local closure is also normalized. Preserve the deterministic
 `TestConn_ServerStatusBeforeLocalShutdown` control for this attribution limit;

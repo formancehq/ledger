@@ -11,6 +11,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	ggrpc "google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
@@ -20,6 +21,50 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
+
+type stateAwareTestConn struct {
+	ggrpc.ClientConnInterface
+
+	state connectivity.State
+	err   error
+}
+
+func (c *stateAwareTestConn) Invoke(context.Context, string, any, any, ...ggrpc.CallOption) error {
+	return c.err
+}
+
+func (c *stateAwareTestConn) GetState() connectivity.State { return c.state }
+
+type stateBlindTestConn struct {
+	ggrpc.ClientConnInterface
+
+	err error
+}
+
+func (c *stateBlindTestConn) Invoke(context.Context, string, any, any, ...ggrpc.CallOption) error {
+	return c.err
+}
+
+func TestConn_StateGetterControlsCloseNormalization(t *testing.T) {
+	t.Parallel()
+
+	closeErr := status.Error(codes.Canceled, "grpc: the client connection is closing")
+	for _, tc := range []struct {
+		name string
+		conn ggrpc.ClientConnInterface
+		want codes.Code
+	}{
+		{"shutdown state", &stateAwareTestConn{state: connectivity.Shutdown, err: closeErr}, codes.Unavailable},
+		{"live state", &stateAwareTestConn{state: connectivity.Ready, err: closeErr}, codes.Canceled},
+		{"no state", &stateBlindTestConn{err: closeErr}, codes.Canceled},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			err := NewConn(tc.conn).Invoke(t.Context(), "/test", nil, nil)
+			require.Equal(t, tc.want, status.Code(err))
+		})
+	}
+}
 
 // rejectingServer answers with a business error, the way a leader rejects a
 // forwarded request. GetTransaction covers the unary path (Invoke);

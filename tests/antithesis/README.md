@@ -250,7 +250,7 @@ The workload uses a layered predicate set (`internal/client.go`):
 - `IsCanceled(err)` — recognizes the wire code only. Check the caller's own
   `ctx.Err()` before treating cancellation as local shutdown. The unary
   forwarding boundary maps the exact bare close status to `Unavailable` when
-  the raw local connection is shut down and the caller is live. An identical
+  the local connection reports `Shutdown` and the caller is live. An identical
   peer-authored status racing local closure is indistinguishable at that check;
   unrelated server cancellation is not automatically a retryable outcome.
 - `IsTolerated(err)` — `nil | IsTransient | IsCanceled | errors.Is(context.DeadlineExceeded) | errors.Is(context.Canceled)`.
