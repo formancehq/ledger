@@ -72,14 +72,23 @@ rocksdb-hello:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${ROCKSDB_CGO_CFLAGS:?run inside nix develop}"
-    cd misc/rocksdb-poc/hello
+    cd misc/rocksdb-poc
     CGO_ENABLED=1 CGO_CFLAGS="$ROCKSDB_CGO_CFLAGS" CGO_LDFLAGS="$ROCKSDB_CGO_LDFLAGS" \
-        go build -o ../../../build/rocksdb-hello .
-    ../../../build/rocksdb-hello
+        go build -o ../../build/rocksdb-hello ./cmd/hello
+    ../../build/rocksdb-hello
 
-# RocksDB POC: same hello-world built in Docker (linux, Alpine RocksDB).
+# RocksDB POC: run the spike tests (prefix extractor, merge operator).
+rocksdb-test *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${ROCKSDB_CGO_CFLAGS:?run inside nix develop}"
+    cd misc/rocksdb-poc
+    CGO_ENABLED=1 CGO_CFLAGS="$ROCKSDB_CGO_CFLAGS" CGO_LDFLAGS="$ROCKSDB_CGO_LDFLAGS" \
+        go test -count=1 ./... {{args}}
+
+# RocksDB POC: hello-world and spike tests built in Docker (linux, Alpine RocksDB).
 rocksdb-hello-docker platform="linux/arm64":
-    docker build --platform {{platform}} -t rocksdb-hello:poc misc/rocksdb-poc/hello
+    docker build --platform {{platform}} -t rocksdb-hello:poc misc/rocksdb-poc
     docker run --rm --platform {{platform}} rocksdb-hello:poc
 
 # Run the application locally (single node)

@@ -122,3 +122,49 @@ main module stays untouched):
   runner (and vice versa) is the remaining unknown; the likely answer is
   one native runner per OS/arch or Zig as a cross C toolchain.
 
+## Step 2 findings — risky mappings (`misc/rocksdb-poc/spike`)
+
+Both mappings work; run with `just rocksdb-test`.
+
+**Comparer.Split → prefix extractor.** The read/usage store Split is a
+65-byte fixed prefix for ledger-scoped keys and "whole key" for internal
+singletons. RocksDB's native `FixedPrefixTransform(65)` reproduces the
+useful part with no cgo callback: singleton keys shorter than 65 bytes fall
+out of the prefix domain and stay covered by whole-key filtering, longer
+ones get a 65-byte prefix that is never used for scans. Verified with 16
+ledgers in 16 SST files: three scans skip exactly 46 foreign files and open
+the 2 home files (`rocksdb.non.last.level.seek.filtered` /
+`seek.filter.match`); without an extractor nothing is skipped. A Go
+`SliceTransform` porting Split byte-for-byte also works and costs +7 % on
+ingestion (2.8 µs vs 2.6 µs per single Put on an M-series laptop), so the
+native transform is the recommended mapping.
+
+**Merger → MergeOperator.** Pebble folds operands through
+MergeNewer/MergeOlder and `Finish(includesBase)`; RocksDB hands
+`FullMerge` the base (nil is definitive: key absent) plus operands
+oldest-first, and calls `PartialMerge` when a compaction cannot reach the
+base. The Pebble `includesBase=false` deferral therefore maps to
+`PartialMerge` re-emitting an ordered op batch. Verified: additive volume
+folding across flushed files, ordered tx ops resolved on Get and on
+iteration, and a compaction that really invokes `PartialMerge` (universal
+compaction with merge width 2 so the operand runs compact without the base
+run — the C API cannot pin a file to a level, and a level-style
+`CompactRange` on a fresh DB leaves the base in L1 where every later L0
+compaction sees it).
+
+**grocksdb footguns found on the way** (each cost a segfault):
+
+- `rocksdb_options_set_merge_operator`, `set_prefix_extractor` and
+  `set_universal_compaction_options` take ownership of the C object;
+  grocksdb's `Options.Destroy` / `UniversalCompactionOptions.Destroy`
+  free it again. grocksdb's own tests never destroy such options. The
+  `kv` abstraction must own this lifecycle once.
+- `grocksdb.TickerType` mirrors the C enum by iota and drifts across
+  RocksDB versions: with 11.0.4 `TickerType_BLOOM_FILTER_PREFIX_*` reads an
+  unrelated counter. Read tickers by name from `GetStatisticsString()`.
+- The legacy `bloom.filter.prefix.*` tickers stay at zero on RocksDB ≥ 7;
+  prefix-bloom skips are reported by `*.seek.filtered`.
+- A single `db.Put` costs ~2.6 µs (cgo round trip + memtable); the main
+  store already writes through batches, which amortises this, but every
+  Get/Seek/Next is a cgo call too. Step 4 must measure scan-heavy paths.
+

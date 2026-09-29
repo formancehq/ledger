@@ -8,14 +8,15 @@ RUN apk add --no-cache build-base rocksdb-dev snappy-dev zstd-dev lz4-dev zlib-d
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
-COPY main.go .
+COPY cmd cmd
+COPY spike spike
 ENV CGO_ENABLED=1
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
-    go build -o /out/rocksdb-hello .
+    go build -o /out/rocksdb-hello ./cmd/hello && \
+    go test -count=1 ./spike/
 
 FROM alpine:latest
 RUN apk add --no-cache rocksdb
 COPY --from=build /out/rocksdb-hello /rocksdb-hello
 ENTRYPOINT ["/rocksdb-hello"]
-
