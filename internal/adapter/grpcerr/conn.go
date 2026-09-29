@@ -2,8 +2,12 @@ package grpcerr
 
 import (
 	"context"
+	"errors"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
+	"google.golang.org/grpc/status"
 )
 
 // Conn decorates a grpc.ClientConnInterface so every error a generated client
@@ -23,9 +27,19 @@ type Conn struct {
 	inner grpc.ClientConnInterface
 }
 
-// NewConn wraps cc so that errors returned through it carry their typed
-// identity. The zero benefit case (an error with nothing to reconstruct) costs
-// one type assertion.
+// grpc-go's exact bare client-connection close status. Keep this sentinel
+// local because grpc.ErrClientConnClosing is deprecated.
+var errClientConnClosing = status.Error(codes.Canceled, "grpc: the client connection is closing")
+
+// ErrPeerConnectionClose is the normalized form of grpc-go's close status.
+// It identifies a potentially lost response.
+var ErrPeerConnectionClose = status.Error(codes.Unavailable, status.Convert(errClientConnClosing).Message())
+
+// NewConn wraps cc so forwarded errors retain their typed identity. Unary
+// close-status normalization additionally requires cc to be the raw
+// *grpc.ClientConn: pass it directly, before adding any connection decorator.
+// Other ClientConnInterface implementations receive error reconstruction only;
+// their state cannot establish that the underlying local connection is closed.
 func NewConn(cc grpc.ClientConnInterface) *Conn {
 	return &Conn{inner: cc}
 }
@@ -33,7 +47,25 @@ func NewConn(cc grpc.ClientConnInterface) *Conn {
 var _ grpc.ClientConnInterface = (*Conn)(nil)
 
 func (c *Conn) Invoke(ctx context.Context, method string, args, reply any, opts ...grpc.CallOption) error {
-	return FromStatusError(c.inner.Invoke(ctx, method, args, reply, opts...))
+	err := c.inner.Invoke(ctx, method, args, reply, opts...)
+	// Closing a peer connection interrupts its in-flight RPCs even when the
+	// external caller is still waiting. Only grpc-go's exact, unadorned close
+	// status on a locally closed connection is a transport interruption:
+	// matching the status alone would also match a peer-authored lookalike.
+	// Shutdown is observed after Invoke, not atomically with status delivery:
+	// an identical peer-authored status followed by local closure is also mapped.
+	// Arbitrary Canceled statuses and structured server failures retain their
+	// identity.
+	// Unavailable does not prove non-commit. The caller must reuse its original
+	// idempotency key when retrying a write; forwarding itself does not retry.
+	conn, localConnection := c.inner.(*grpc.ClientConn)
+	if localConnection && conn.GetState() == connectivity.Shutdown && ctx.Err() == nil {
+		if errors.Is(err, errClientConnClosing) {
+			return ErrPeerConnectionClose
+		}
+	}
+
+	return FromStatusError(err)
 }
 
 func (c *Conn) NewStream(

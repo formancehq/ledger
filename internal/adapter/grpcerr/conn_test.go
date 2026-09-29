@@ -58,7 +58,7 @@ func (s *rejectingServer) ListLedgers(
 // dialWrapped serves srv over bufconn and returns a client whose connection is
 // decorated, so the test exercises the real generated client against the real
 // wire — not a hand-built status value.
-func dialWrapped(t *testing.T, srv servicepb.BucketServiceServer) servicepb.BucketServiceClient {
+func dialWrapped(t *testing.T, srv servicepb.BucketServiceServer, opts ...ggrpc.DialOption) servicepb.BucketServiceClient {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
@@ -68,12 +68,13 @@ func dialWrapped(t *testing.T, srv servicepb.BucketServiceServer) servicepb.Buck
 	go func() { _ = server.Serve(lis) }()
 	t.Cleanup(server.Stop)
 
-	conn, err := ggrpc.NewClient("passthrough:///bufconn",
+	opts = append(opts,
 		ggrpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) {
 			return lis.DialContext(ctx)
 		}),
 		ggrpc.WithTransportCredentials(insecure.NewCredentials()),
 	)
+	conn, err := ggrpc.NewClient("passthrough:///bufconn", opts...)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 

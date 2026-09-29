@@ -182,9 +182,12 @@ two shapes:
   service's typed failure and is left untouched, since rewriting it as a ledger
   `NotFoundError` would answer a foreign contract as this one.
 
-Read the rest of the rule as the complement of those two rather than as a list
-of excluded codes: **everything else passes through unchanged**. That covers
-three groups.
+For error reconstruction, read the rest of the rule as the complement of those
+two rather than as a list of excluded codes: **everything else passes through
+unchanged**. Before reconstruction, unary `Conn.Invoke` also applies the narrow
+[peer-close normalization](grpc-api.md#grpc-status-codes), with its raw-connection
+requirement and post-invocation attribution limit. Reconstruction covers three
+groups.
 
 - A **bare** `codes.Canceled`, because the cursor layer keys end-of-stream
   detection off it: caller cancellation becomes `io.EOF`, while a live caller
