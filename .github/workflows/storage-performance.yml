@@ -73,8 +73,8 @@ jobs:
       PEBBLE_REF: c6a99fc92f43f5127c898fd9a727adee3424310d
       ROCKSDB_REF: ${{ github.event.pull_request.head.sha || github.sha }}
       PERF_OUTPUT_DIR: build/storage-api-pressure
-      WRITE_RATE: 100
-      READ_RATE: 50
+      WRITE_RATE: 50
+      READ_RATE: 25
     steps:
       - uses: namespacelabs/nscloud-checkout-action@445c25d7009680597d73eb03c4e1cd5be522ed73 # v9
         with:
