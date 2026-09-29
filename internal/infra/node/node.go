@@ -421,14 +421,16 @@ type Node struct {
 	// committed entries like no-ops and config changes).
 	indexTracker *IndexTracker
 
-	// leaderReady is closed (done) when the new leader's FSM has caught up
+	// leaderReady is ready when the new leader's FSM has caught up
 	// with all committed entries from the previous term. Admission blocks
-	// on this channel before pre-reads. On leadership gain it is replaced
-	// with a fresh channel; a background goroutine closes it after
+	// on its channel before pre-reads. On leadership gain it is replaced
+	// with a fresh generation; a background goroutine marks it ready after
 	// WaitForApplied reaches the index of the leader's no-op blank entry —
 	// once that is applied, every preceding log entry is committed and
 	// applied too, including anything the prior leader had applied.
-	leaderReady atomic.Pointer[chan struct{}]
+	// Leadership loss cancels and joins the generation before publishing
+	// the loss event, so an old generation cannot emit readiness afterward.
+	leaderReady atomic.Pointer[leaderReadyGeneration]
 
 	// lastCheckpointPersistedIndex tracks the persisted index at the time of the
 	// last background Pebble checkpoint. doMaintenance skips checkpoint creation
@@ -691,10 +693,8 @@ func NewNode(
 		observer:         NewNoOpObserver(),
 	}
 
-	// Start with a closed channel (leader ready — no leadership transition yet).
-	readyCh := make(chan struct{})
-	close(readyCh)
-	node.leaderReady.Store(&readyCh)
+	// Start ready: no leadership transition is in progress yet.
+	node.leaderReady.Store(newCompletedLeaderReadyGeneration())
 
 	logger.WithFields(map[string]any{
 		"initialIndex": initialIndex(wal),
@@ -1274,6 +1274,8 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 
 			// leadership loss
 			if wasLeader && !isLeader {
+				node.leaderReady.Load().cancelAndWait()
+
 				logger.Infof("Leadership lost")
 				details := map[string]any{
 					"nodeID": node.config.NodeID,
@@ -1318,22 +1320,24 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 						node.config.NodeID, term, err)
 				}
 
-				pending := make(chan struct{})
-				node.leaderReady.Store(&pending)
+				generation := newLeaderReadyGeneration(ctx)
+				node.leaderReady.Store(generation)
 
 				node.applier.Drain(stop)
 
 				go func() {
-					if err := node.fsm.WaitForApplied(ctx, target); err != nil {
+					err := generation.run(
+						func(waitCtx context.Context) error {
+							return node.fsm.WaitForApplied(waitCtx, target)
+						},
+						func() { node.observer.Emit(LeaderReadyEvent{}) },
+					)
+					if err != nil && !errors.Is(err, context.Canceled) {
 						node.logger.WithFields(map[string]any{
 							"error":  err,
 							"target": target,
 						}).Errorf("Failed to wait for FSM catch-up after leadership gain")
 					}
-
-					node.observer.Emit(LeaderReadyEvent{})
-
-					close(pending)
 				}()
 			}
 		}
@@ -2225,14 +2229,16 @@ func (node *Node) Logger() logging.Logger {
 // leadership transition. During steady-state the channel is already
 // closed, so this returns immediately.
 func (node *Node) WaitLeaderReady(ctx context.Context) error {
-	ch := node.leaderReady.Load()
-	if ch == nil {
+	generation := node.leaderReady.Load()
+	if generation == nil {
 		return nil
 	}
 
 	select {
-	case <-*ch:
+	case <-generation.ready:
 		return nil
+	case <-generation.lost:
+		return ErrNotLeader
 	case <-ctx.Done():
 		return ctx.Err()
 	}
