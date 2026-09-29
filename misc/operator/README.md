@@ -95,7 +95,10 @@ for runtime delivery, missing-key behavior and ambient authentication.
 
 ### Prerequisites
 
-- Kubernetes cluster (1.28+)
+- Kubernetes cluster with `StatefulSetAutoDeletePVC` enabled (default since
+  1.27, stable since 1.32); a tested minimum version is not established.
+  PVC/PV deletion protection needs `ValidatingAdmissionPolicy` (stable since
+  1.30); see [Volume Deletion Protection](#volume-deletion-protection).
 - Helm 3
 - [Nix](https://nixos.org/) (optional, for development)
 
