@@ -53,6 +53,27 @@ func TestHardLink_NestedDirectories(t *testing.T) {
 	require.Equal(t, "nested", string(data))
 }
 
+func TestHardLink_RocksDBFiles(t *testing.T) {
+	t.Parallel()
+
+	src := t.TempDir()
+	for _, name := range []string{"LOCK", "CURRENT", "MANIFEST-000001", "000001.log", "000002.sst", "000003.blob"} {
+		require.NoError(t, os.WriteFile(filepath.Join(src, name), []byte(name), 0o644))
+	}
+	dst := filepath.Join(t.TempDir(), "linked")
+	require.NoError(t, HardLink(src, dst))
+
+	_, err := os.Stat(filepath.Join(dst, "LOCK"))
+	require.True(t, os.IsNotExist(err), "RocksDB must create its own lock file")
+	for _, name := range []string{"CURRENT", "MANIFEST-000001", "000001.log", "000002.sst", "000003.blob"} {
+		srcInfo, err := os.Stat(filepath.Join(src, name))
+		require.NoError(t, err)
+		dstInfo, err := os.Stat(filepath.Join(dst, name))
+		require.NoError(t, err)
+		require.Equal(t, name == "000002.sst" || name == "000003.blob", os.SameFile(srcInfo, dstInfo), name)
+	}
+}
+
 func TestHardLink_DstAlreadyExists(t *testing.T) {
 	t.Parallel()
 

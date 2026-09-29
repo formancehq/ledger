@@ -1926,6 +1926,7 @@ func HardLink(srcDir, dstDir string) error {
 		return err
 	}
 
+	dirs := []string{tmpDir}
 	err = filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -1955,13 +1956,27 @@ func HardLink(srcDir, dstDir string) error {
 			}
 
 			_ = os.Chmod(dstPath, info.Mode().Perm())
+			dirs = append(dirs, dstPath)
 
-			return fsyncDir(dstPath)
+			return nil
 
 		case info.Mode().Type() == 0: // regular file
-			err := os.Link(path, dstPath)
-			if err != nil {
-				return fmt.Errorf("hardlink %s -> %s: %w", path, dstPath, err)
+			if rel == "LOCK" {
+				// RocksDB opens this file with an advisory lock. Sharing its inode
+				// makes independent database directories contend for the same lock.
+				return nil
+			}
+
+			// RocksDB SST and blob files are immutable. Metadata, WAL and log
+			// files can change after opening the destination and need their own
+			// inode even when both directories are on the same filesystem.
+			ext := filepath.Ext(path)
+			if ext == ".sst" || ext == ".ldb" || ext == ".blob" {
+				if err := os.Link(path, dstPath); err != nil {
+					return fmt.Errorf("hardlink %s -> %s: %w", path, dstPath, err)
+				}
+			} else if err := copyCheckpointFile(path, dstPath, info.Mode().Perm()); err != nil {
+				return err
 			}
 
 			_ = os.Chmod(dstPath, info.Mode().Perm())
@@ -1988,8 +2003,10 @@ func HardLink(srcDir, dstDir string) error {
 		return fmt.Errorf("walk: %w", err)
 	}
 
-	if err := fsyncDir(tmpDir); err != nil {
-		return err
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if err := fsyncDir(dirs[i]); err != nil {
+			return err
+		}
 	}
 
 	if err := fsyncDir(parent); err != nil {
@@ -2001,6 +2018,32 @@ func HardLink(srcDir, dstDir string) error {
 	}
 
 	return fsyncDir(parent)
+}
+
+func copyCheckpointFile(src, dst string, mode fs.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("opening checkpoint file %s: %w", src, err)
+	}
+	defer func() { _ = in.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return fmt.Errorf("creating checkpoint file %s: %w", dst, err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return fmt.Errorf("copying checkpoint file %s: %w", src, err)
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+		return fmt.Errorf("syncing checkpoint file %s: %w", dst, err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("closing checkpoint file %s: %w", dst, err)
+	}
+
+	return nil
 }
 
 // fsyncDir fsyncs a directory so its entries are durably recorded. On Windows, it's a no-op.
