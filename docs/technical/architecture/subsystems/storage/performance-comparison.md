@@ -6,6 +6,23 @@ The microbenchmark comparison covers warm DAL point lookups at 64, 512, and 4,09
 
 The workflow also runs a local single-node HTTP comparison on separate isolated runners at 30 writes/15 reads per second and 50 writes/25 reads per second. It builds both server binaries and alternates engine order over two runs each. Writes carry varied 4 KiB metadata. Each run has 20 seconds of warmup and 90 seconds of measurement against fresh data. The report includes p50/p95/p99 latency, successful request counts, failed and dropped iterations, and sampled process RSS. A run with errors or dropped iterations is invalid. The HTTP comparison is a limited signal: it does not measure three-node Raft capacity, the maximum sustainable rate, checkpoint pause time, or a production data distribution.
 
+## Measured results
+
+The [comparison run 36646581438](https://github.com/formancehq/ledger/actions/runs/36646581438) used Pebble baseline `c6a99fc92f43f5127c898fd9a727adee3424310d` and RocksDB commit `7c2143cb31006e8041ecb84c5b3591ba73b9e039`. The numbers below are the arithmetic mean of each engine's two measured runs; deltas are RocksDB relative to Pebble. Raw JSON, k6 output, and server logs are attached to the workflow run.
+
+| Offered load | Metric | Pebble | RocksDB | Delta |
+| --- | --- | ---: | ---: | ---: |
+| 30 writes/s + 15 reads/s | Write p99 | 12.57 ms | 12.69 ms | +1.0% |
+| 30 writes/s + 15 reads/s | Read p99 | 11.82 ms | 11.91 ms | +0.8% |
+| 30 writes/s + 15 reads/s | Mean sampled RSS | 154.6 MiB | 141.7 MiB | -8.3% |
+| 50 writes/s + 25 reads/s | Write p99 | 13.70 ms | 13.10 ms | -4.4% |
+| 50 writes/s + 25 reads/s | Read p99 | 11.94 ms | 11.99 ms | +0.4% |
+| 50 writes/s + 25 reads/s | Mean sampled RSS | 182.7 MiB | 154.3 MiB | -15.6% |
+
+All eight measured runs completed without request errors or dropped iterations. Each 30/15 run completed roughly 2,700 writes and 1,350 reads; each 50/25 run completed roughly 4,500 writes and 2,250 reads. A previous [30/15 campaign](https://github.com/formancehq/ledger/actions/runs/36644657060) also had zero errors or drops and near-equal p99 latencies. The [100/50 campaign](https://github.com/formancehq/ledger/actions/runs/36645788901) saturated Pebble during warmup, so it provides no engine comparison. Two runs per engine are too few to claim statistical equivalence, and these offered rates do not establish either engine's maximum sustainable throughput.
+
+The same run's storage microbenchmarks (five alternating samples per engine) found RocksDB 108% slower for 5-entry batches, 103% slower for 100-entry batches, and 66% slower for 1,000-entry batches. A 4 KiB point lookup was 24% slower, while 64- and 512-byte lookups were 12% and 17% faster, respectively; the populated account reverse-map lookup was 90% faster. These fixture-level results identify code paths to profile, but their ratios must not be applied to the HTTP results.
+
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
 
 ```bash
