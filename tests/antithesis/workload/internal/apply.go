@@ -7,19 +7,16 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// ExtractCreatedTransaction extracts the CreatedTransaction from an Apply
-// response, or nil when the response carried none (ambiguous error path).
+// CreatedTransactionFromLog extracts the CreatedTransaction carried by one log,
+// or nil when the log carried none (ambiguous error path).
 //
 // A wrapper without its Transaction payload is malformed rather than absent:
 // callers read Transaction.Id off the result, and a zero id there is
 // indistinguishable from a real one. It is reported and treated as nil so a
-// caller's nil guard covers it.
-func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedTransaction {
-	if resp == nil || len(resp.GetLogs()) == 0 {
-		return nil
-	}
-
-	applyLog := resp.GetLogs()[0].GetPayload().GetApply()
+// caller's nil guard covers it. Every path reaching a CreatedTransaction goes
+// through here, including the bulk drivers selecting one log out of many.
+func CreatedTransactionFromLog(log *commonpb.Log) *commonpb.CreatedTransaction {
+	applyLog := log.GetPayload().GetApply()
 	if applyLog == nil {
 		return nil
 	}
@@ -36,6 +33,16 @@ func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedT
 	}
 
 	return ct
+}
+
+// ExtractCreatedTransaction extracts the CreatedTransaction from the first log
+// of an Apply response.
+func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedTransaction {
+	if resp == nil || len(resp.GetLogs()) == 0 {
+		return nil
+	}
+
+	return CreatedTransactionFromLog(resp.GetLogs()[0])
 }
 
 // CheckCreatedTransaction extracts the CreatedTransaction from an Apply response

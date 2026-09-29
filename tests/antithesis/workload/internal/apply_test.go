@@ -20,17 +20,21 @@ const (
 	scenarioRan = "apply extraction scenario ran"
 )
 
-func applyResponse(created *commonpb.CreatedTransaction) *servicepb.ApplyResponse {
+func applyLog(created *commonpb.CreatedTransaction) *commonpb.Log {
 	ledgerLog := &commonpb.LedgerLog{Id: 1, Data: &commonpb.LedgerLogPayload{
 		Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: created},
 	}}
 
-	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{
+	return &commonpb.Log{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 			Apply: &commonpb.ApplyLedgerLog{LedgerName: "default", Log: ledgerLog},
 		}},
-	}}}
+	}
+}
+
+func applyResponse(created *commonpb.CreatedTransaction) *servicepb.ApplyResponse {
+	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{applyLog(created)}}
 }
 
 // A wrapper whose Transaction is absent must not reach a caller: callers read
@@ -81,4 +85,20 @@ func TestExtractCreatedTransactionAllowsAbsentTransaction(t *testing.T) {
 	}
 
 	sdktest.Absent(t, events, missingPayload)
+}
+
+// The bulk drivers select one log out of many and must not reach a malformed
+// payload by skipping the response-level entry point.
+func TestCreatedTransactionFromLogRejectsMissingPayload(t *testing.T) {
+	t.Parallel()
+
+	events := sdktest.Capture(t, func() {
+		require.Nil(t, internal.CreatedTransactionFromLog(applyLog(&commonpb.CreatedTransaction{})))
+	})
+	if events == nil {
+		return
+	}
+
+	event := sdktest.Find(t, events, missingPayload)
+	require.False(t, event.Condition, "a missing payload must be reported as a violation")
 }

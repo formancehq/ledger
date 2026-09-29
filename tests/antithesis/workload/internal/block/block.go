@@ -203,14 +203,7 @@ func isFailedPrecondition(err error) bool {
 
 // CheckPostCommitVolumes verifies volume consistency on a transaction response.
 func CheckPostCommitVolumes(resp *servicepb.ApplyResponse, details internal.Details) {
-	if resp == nil || len(resp.GetLogs()) == 0 {
-		return
-	}
-	applyLog := resp.GetLogs()[0].GetPayload().GetApply()
-	if applyLog == nil {
-		return
-	}
-	ct := applyLog.GetLog().GetData().GetCreatedTransaction()
+	ct := internal.ExtractCreatedTransaction(resp)
 	if ct == nil {
 		return
 	}
