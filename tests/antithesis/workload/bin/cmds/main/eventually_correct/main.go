@@ -128,19 +128,6 @@ func listAccounts(ctx context.Context, client servicepb.BucketServiceClient, led
 	}
 }
 
-// parseBalance parses a decimal string into a *big.Int, defaulting to 0.
-// Deprecated: prefer calling ToBigInt() directly and asserting the error so
-// corrupt volume data surfaces as an Antithesis failure rather than silently
-// counting as zero.
-func parseBalance(s string) *big.Int {
-	v, ok := new(big.Int).SetString(s, 10)
-	if !ok {
-		return big.NewInt(0)
-	}
-
-	return v
-}
-
 // checkBalanced verifies that all aggregated volumes sum to zero for each asset.
 func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, ledger string) {
 	accounts, err := listAccounts(ctx, client, ledger)

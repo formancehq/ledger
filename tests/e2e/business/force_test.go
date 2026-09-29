@@ -278,10 +278,11 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			sourceVol := source.FindVolume("USD", "")
 			Expect(sourceVol).NotTo(BeNil(), "expected USD entry on source account")
 			Expect(sourceVol.GetInput()).NotTo(BeNil(), "source input field must be present")
+			Expect(sourceVol.GetOutput()).NotTo(BeNil(), "source output field must be present")
 			Expect(sourceVol.GetBalance()).NotTo(BeNil(), "source balance field must be present")
-			Expect(source.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("0"))
-			Expect(source.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("500"))
-			Expect(source.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("-500"))
+			Expect(sourceVol.GetInput().DecimalString()).To(Equal("0"))
+			Expect(sourceVol.GetOutput().DecimalString()).To(Equal("500"))
+			Expect(sourceVol.GetBalance().DecimalString()).To(Equal("-500"))
 
 			// Check target account has positive balance
 			target, err := sharedClient.GetAccount(sharedCtx, &servicepb.GetAccountRequest{
@@ -292,9 +293,11 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			targetVol := target.FindVolume("USD", "")
 			Expect(targetVol).NotTo(BeNil(), "expected USD entry on target account")
 			Expect(targetVol.GetOutput()).NotTo(BeNil(), "target output field must be present")
-			Expect(target.FindVolume("USD", "").GetInput().DecimalString()).To(Equal("500"))
-			Expect(target.FindVolume("USD", "").GetOutput().DecimalString()).To(Equal("0"))
-			Expect(target.FindVolume("USD", "").GetBalance().DecimalString()).To(Equal("500"))
+			Expect(targetVol.GetInput()).NotTo(BeNil(), "target input field must be present")
+			Expect(targetVol.GetBalance()).NotTo(BeNil(), "target balance field must be present")
+			Expect(targetVol.GetInput().DecimalString()).To(Equal("500"))
+			Expect(targetVol.GetOutput().DecimalString()).To(Equal("0"))
+			Expect(targetVol.GetBalance().DecimalString()).To(Equal("500"))
 		})
 
 		It("Should allow subsequent force transactions to accumulate debt", func() {
