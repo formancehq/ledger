@@ -773,7 +773,9 @@ Service protocol revision 14 (#2126) makes admission compile each resolvable
 Numscript to VM bytecode carried in the order's technical sub-message, which
 the FSM executes instead of re-interpreting the script text; the bundled
 Numscript library also changes how an account-typed metadata value is rendered
-(`merchants:acme` instead of `@merchants:acme`).
+(`merchants:acme` instead of `@merchants:acme`). The VM is the new binary's
+only execution engine: admission rejects a script it cannot compile, and the
+FSM fails a scripted order that carries no artifact rather than interpreting it.
 
 The technical fields are additive protobuf, so a binary predating them decodes
 the same committed entry without the artifact and takes the interpreter path

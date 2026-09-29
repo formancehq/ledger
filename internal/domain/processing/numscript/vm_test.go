@@ -44,6 +44,18 @@ func mustEntry(t *testing.T, script string) *lruEntry {
 	return entry
 }
 
+// mustCompile compiles script with vars the way admission does and fails the
+// test on any compile error.
+func mustCompile(t *testing.T, entry *lruEntry, vars map[string]string) *CompiledScript {
+	t.Helper()
+
+	compiled, err := compileScript(entry, vars)
+	require.Nil(t, err)
+	require.NotNil(t, compiled)
+
+	return compiled
+}
+
 // withArtifactVersion returns a copy of an encoded program or vars blob with
 // its bytecode version header rewritten. Both blobs share the library's header
 // layout — a 4-byte magic, then major and minor as two little-endian uint16 —
@@ -70,8 +82,7 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	hash := HashScript(script)
 	require.Equal(t, hash[:], compiled.ScriptHash)
@@ -86,10 +97,10 @@ func TestCompileScript_ArtifactRoundTrips(t *testing.T) {
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
 }
 
-// TestCompileScript_UnsupportedFeatureFallsBack: a script the compiler cannot
-// lower (asset scaling) produces no artifact — the FSM then runs the
-// interpreter, which owns the authoritative outcome.
-func TestCompileScript_UnsupportedFeatureFallsBack(t *testing.T) {
+// TestCompileScript_UnsupportedFeatureRejected: a script the compiler cannot
+// lower is an admission rejection — the VM is the only engine, so there is no
+// other way to run it. ErrNumscriptCompile is a freezable validation failure.
+func TestCompileScript_UnsupportedFeatureRejected(t *testing.T) {
 	t.Parallel()
 
 	script := `#![feature("experimental-asset-scaling")]
@@ -97,12 +108,16 @@ send [COIN/2 100] (
   source = @src with scaling through @swap
   destination = @dst
 )`
-	require.Nil(t, compileScript(mustEntry(t, script), nil))
+	compiled, err := compileScript(mustEntry(t, script), nil)
+	require.Nil(t, compiled)
+	requireCompileError(t, err)
+	require.False(t, IsPanic(err))
 }
 
-// TestCompileScript_BadVarValueFallsBack: a var value the encoder rejects also
-// yields no artifact, so the interpreter produces the canonical client error.
-func TestCompileScript_BadVarValueFallsBack(t *testing.T) {
+// TestCompileScript_BadVarValueRejected: a var value that does not bind to the
+// program's variable layout is an admission rejection, with the encoder's
+// reason in the detail.
+func TestCompileScript_BadVarValueRejected(t *testing.T) {
 	t.Parallel()
 
 	script := `vars {
@@ -113,7 +128,23 @@ send $amt (
   source = @src
   destination = @dst
 )`
-	require.Nil(t, compileScript(mustEntry(t, script), map[string]string{"amt": "not-a-monetary"}))
+	compiled, err := compileScript(mustEntry(t, script), map[string]string{"amt": "not-a-monetary"})
+	require.Nil(t, compiled)
+	compileErr := requireCompileError(t, err)
+	require.Contains(t, compileErr.Detail, "amt")
+}
+
+func requireCompileError(t *testing.T, err domain.SerializableError) *domain.ErrNumscriptCompile {
+	t.Helper()
+
+	require.NotNil(t, err)
+
+	var compileErr *domain.ErrNumscriptCompile
+	require.ErrorAs(t, err, &compileErr)
+	require.Equal(t, domain.KindValidation, compileErr.Kind())
+	require.True(t, domain.IsFreezableFailure(compileErr.Kind()))
+
+	return compileErr
 }
 
 // TestCompileScript_CompilesOncePerCachedScript: the script-dependent half of
@@ -142,14 +173,16 @@ send [COIN ($a + $b) + ($c + $d) + ($e + $f)] (
 
 	entry := cache.getOrParseEntry(script)
 	require.Nil(t, entry.script.err)
-	require.Same(t, entry.compileParsed(), entry.compileParsed())
+	firstCompile, err := entry.compileParsed()
+	require.Nil(t, err)
+	secondCompile, err := entry.compileParsed()
+	require.Nil(t, err)
+	require.Same(t, firstCompile, secondCompile)
 	require.Same(t, entry, cache.getOrParseEntry(script))
 
-	first := compileScript(cache.getOrParseEntry(script), map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"})
-	require.NotNil(t, first)
+	first := mustCompile(t, cache.getOrParseEntry(script), map[string]string{"a": "1", "b": "2", "c": "3", "d": "4", "e": "5", "f": "6"})
 
-	second := compileScript(cache.getOrParseEntry(script), map[string]string{"a": "10", "b": "20", "c": "30", "d": "40", "e": "50", "f": "60"})
-	require.NotNil(t, second)
+	second := mustCompile(t, cache.getOrParseEntry(script), map[string]string{"a": "10", "b": "20", "c": "30", "d": "40", "e": "50", "f": "60"})
 
 	require.Equal(t, first.Program, second.Program)
 	require.NotSame(t, &first.Program[0], &second.Program[0], "each order carries its own copy of the shared program bytes")
@@ -162,12 +195,16 @@ send [COIN/2 100] (
   source = @src with scaling through @swap
   destination = @dst
 )`)
-	require.Nil(t, scaling.compileParsed())
-	require.Nil(t, scaling.compileParsed())
-	require.Nil(t, compileScript(scaling, nil))
+	scalingCompiled, firstErr := scaling.compileParsed()
+	require.Nil(t, scalingCompiled)
+	requireCompileError(t, firstErr)
+	_, secondErr := scaling.compileParsed()
+	require.Same(t, firstErr, secondErr, "the compile failure is cached, not recomputed")
+	_, err = compileScript(scaling, nil)
+	require.Same(t, firstErr, err)
 }
 
-// TestVMStore_ForceReturnsUnlimitedBalance mirrors the interpreter-facing
+// TestVMStore_ForceReturnsUnlimitedBalance mirrors the resolver-facing
 // Store's force semantics: balances are unlimited, metadata reads stay real.
 func TestVMStore_ForceReturnsUnlimitedBalance(t *testing.T) {
 	t.Parallel()
@@ -188,7 +225,7 @@ func TestVMStore_ForceReturnsUnlimitedBalance(t *testing.T) {
 	require.Equal(t, "v", value)
 }
 
-// TestVMStore_ScopedReadsRejected mirrors the interpreter-facing Store: a scope
+// TestVMStore_ScopedReadsRejected mirrors the resolver-facing Store: a scope
 // view would collapse onto the single volume / metadata key (EN-1406 P1-2).
 func TestVMStore_ScopedReadsRejected(t *testing.T) {
 	t.Parallel()
@@ -221,11 +258,9 @@ send $amt (
 )`
 	entry := mustEntry(t, script)
 
-	first := compileScript(entry, map[string]string{"amt": "COIN 30"})
-	require.NotNil(t, first)
+	first := mustCompile(t, entry, map[string]string{"amt": "COIN 30"})
 
-	second := compileScript(entry, map[string]string{"amt": "COIN 40"})
-	require.NotNil(t, second)
+	second := mustCompile(t, entry, map[string]string{"amt": "COIN 40"})
 
 	// Identical program bytes — the script is compiled once per cache entry —
 	// so both executions resolve to the same apply-side cache entry and the
@@ -279,8 +314,7 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	cache := NewNumscriptCache(16)
 
@@ -300,7 +334,7 @@ func TestSafeExecCompiled_PanicLeavesInstanceReusable(t *testing.T) {
 // program or vars carry a bytecode version other than the bundled library's —
 // the footprint of a Raft log replayed across a library upgrade, a rollback,
 // or a mixed-binary window — is rejected loudly (ErrNumscriptRuntime, not a
-// panic, never an interpreter fallback) and never cached, for either half.
+// panic) and never cached, for either half.
 // Another major or a newer minor the library itself refuses at decode; an
 // older minor of the same major the library would still read, and the
 // ledger's own exact-match check refuses it — that case is exercised as soon
@@ -312,8 +346,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	current := numscriptlib.CurrentBytecodeVersion
 	require.Positive(t, current.Major)
@@ -379,7 +412,7 @@ func TestSafeExecCompiled_ForeignBytecodeVersionRejected(t *testing.T) {
 
 // TestSafeExecCompiled_UndecodableArtifactIsLoud: bytes the bundled library
 // cannot read at all are an internal error (our own codec wrote them), not a
-// panic, not a client error and never an interpreter fallback — for either
+// panic, not a client error — for either
 // half of the artifact.
 func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
 	t.Parallel()
@@ -388,8 +421,7 @@ func TestSafeExecCompiled_UndecodableArtifactIsLoud(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	garble := func(encoded []byte) []byte {
 		out := bytes.Clone(encoded)
@@ -437,8 +469,7 @@ func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	program, decErr := numscriptlib.DecodeCompiledProgram(compiled.Program)
 	require.NoError(t, decErr)
@@ -459,7 +490,7 @@ func TestSafeExecCompiled_UnverifiableCurrentFormatIsLoud(t *testing.T) {
 }
 
 // TestSafeExecCompiled_MissingFundsClassification: the VM's missing-funds error
-// maps to the same domain error the interpreter path raises.
+// maps to ErrInsufficientFunds with ColorKnown unset.
 func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
 	t.Parallel()
 
@@ -467,8 +498,7 @@ func TestSafeExecCompiled_MissingFundsClassification(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(10)}}
 
@@ -495,8 +525,7 @@ func TestSafeExecCompiled_WarmHitForeignVersionRejected(t *testing.T) {
   source = @src
   destination = @dst
 )`
-	compiled := compileScript(mustEntry(t, script), nil)
-	require.NotNil(t, compiled)
+	compiled := mustCompile(t, mustEntry(t, script), nil)
 
 	source := mapValueSource{balances: map[string]*big.Int{"src\x00COIN\x00": big.NewInt(100)}}
 	cache := NewNumscriptCache(16)

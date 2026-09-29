@@ -673,7 +673,11 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 	require.Equal(t, int64(100000), posting.GetAmount().ToBigInt().Int64())
 }
 
-func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
+// TestProcessCreateTransaction_Numscript_WithoutArtifactIsLoud: admission
+// rejects a script the VM cannot run (here, one that does not even parse), so
+// a scripted order reaching the FSM without a compiled artifact is an
+// admission bug — surfaced loudly (invariant #7), never executed some other way.
+func TestProcessCreateTransaction_Numscript_WithoutArtifactIsLoud(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -712,7 +716,10 @@ func TestProcessCreateTransaction_Numscript_ParseError(t *testing.T) {
 	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
-	require.Contains(t, err.Error(), "numscript parse error")
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, err, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "no compiled numscript artifact")
 }
 
 func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
