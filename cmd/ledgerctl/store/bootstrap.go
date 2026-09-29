@@ -32,7 +32,7 @@ func NewBootstrapCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
 		Short: "Build a data directory from a backup (offline)",
-		Long: `Download backup files from S3 or Azure Blob Storage into a fresh Pebble data
+		Long: `Download backup files from S3 or Azure Blob Storage into a fresh RocksDB data
 directory, optionally validate integrity, and finalize with checkpoint + RESTORED marker.
 
 This is a purely offline operation — no server needed.`,
@@ -316,6 +316,12 @@ func runBootstrap(cmd *cobra.Command, _ []string) error {
 	checkpointPath := filepath.Join(checkpointsDir, "0")
 	if err := dal.HardLink(stagingDir, checkpointPath); err != nil {
 		return fmt.Errorf("hard linking staging to checkpoint: %w", err)
+	}
+	if err := dal.MarkCheckpointReady(checkpointPath); err != nil {
+		return fmt.Errorf("marking bootstrap checkpoint ready: %w", err)
+	}
+	if err := dal.FsyncDir(checkpointsDir); err != nil {
+		return fmt.Errorf("syncing bootstrap checkpoint directory: %w", err)
 	}
 
 	// The marker is the restore's commit point — written only after the
