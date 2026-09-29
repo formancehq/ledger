@@ -232,10 +232,10 @@ func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) 
 // from cache. Verification runs once per artifact and its guarantee (ExecVm
 // may assume well-formed bytecode) holds for every later apply.
 //
-// A program that does not decode, or that does not carry exactly the bundled
-// library's bytecode version (numscriptlib.CurrentBytecodeVersion — see
+// A program that does not decode, or whose bytecode version the bundled
+// library cannot read (numscriptlib.CurrentBytecodeVersion.CanRead — see
 // SafeExecCompiled for why), is rejected loudly before verification and never
-// inserted, so every cached entry holds a current-version program.
+// inserted, so every cached entry holds a program this binary can run.
 //
 // Entries are keyed by scriptHash — the order's HashScript(text), already
 // checked against the resolved text by the caller — and hold the exact program
@@ -296,11 +296,11 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 		}
 	}
 
-	if program.Version != numscriptlib.CurrentBytecodeVersion {
+	if !numscriptlib.CurrentBytecodeVersion.CanRead(program.Version) {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: fmt.Sprintf(
-				"compiled numscript program encoded with bytecode version %s; this binary executes %s only",
-				program.Version, numscriptlib.CurrentBytecodeVersion,
+				"compiled numscript program encoded with bytecode version %s; this binary executes %d.0 through %s",
+				program.Version, numscriptlib.CurrentBytecodeVersion.Major, numscriptlib.CurrentBytecodeVersion,
 			),
 		}
 	}

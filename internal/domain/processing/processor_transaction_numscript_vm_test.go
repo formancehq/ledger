@@ -158,9 +158,8 @@ func TestProduce_CompiledArtifactHashMismatchIsLoud(t *testing.T) {
 // version other than the bundled library's — a Raft log replayed across a
 // library upgrade, or a rollback — fails the order loudly; the text is never
 // interpreted in its place, even though it would run. Another major or a
-// newer minor the library refuses at decode; an older minor of the same major
-// the library would read and the ledger's exact-match check refuses (exercised
-// as soon as the bundled version's minor is above zero). Either half.
+// newer minor, either half; an older minor of the same major runs (see
+// numscript.TestSafeExecCompiled_OlderMinorRuns).
 func TestProduce_ForeignBytecodeVersionIsLoud(t *testing.T) {
 	t.Parallel()
 
@@ -169,10 +168,7 @@ func TestProduce_ForeignBytecodeVersionIsLoud(t *testing.T) {
 	current := numscriptlib.CurrentBytecodeVersion
 	require.Positive(t, current.Major)
 
-	const (
-		libraryRefusal = "not readable by this build"
-		ledgerRefusal  = "encoded with bytecode version"
-	)
+	const libraryRefusal = "not readable by this build"
 
 	versions := map[string]struct {
 		v      numscriptlib.BytecodeVersion
@@ -181,12 +177,6 @@ func TestProduce_ForeignBytecodeVersionIsLoud(t *testing.T) {
 		"older major": {numscriptlib.BytecodeVersion{Major: current.Major - 1, Minor: current.Minor}, libraryRefusal},
 		"newer major": {numscriptlib.BytecodeVersion{Major: current.Major + 1}, libraryRefusal},
 		"newer minor": {numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor + 1}, libraryRefusal},
-	}
-	if current.Minor > 0 {
-		versions["older minor"] = struct {
-			v      numscriptlib.BytecodeVersion
-			detail string
-		}{numscriptlib.BytecodeVersion{Major: current.Major, Minor: current.Minor - 1}, ledgerRefusal}
 	}
 
 	for name, tc := range versions {

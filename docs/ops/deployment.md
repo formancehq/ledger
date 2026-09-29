@@ -820,25 +820,27 @@ a mixed window can flip a whole order's outcome, the same class as
   the new binary. An entry the old binary committed carries no artifact, so
   the new binary fails it, although replicas that applied it before the stop
   succeeded. The same holds for a rollback, and for a later library update
-  that changes the bytecode version (see the next points). Such a replica must
+  that changes the bytecode major version (see the next point). Such a replica must
   be resynchronised from the leader.
 - **`ledgerctl check` does not detect a straddled window** for the usual
   reason: each replica's audit chain stays internally consistent. Detecting a
   divergence means comparing transaction metadata and audit entries across
   replicas; a replica that applied entries inside the window must be
   resynchronised from the leader.
-- **An artifact from another binary is rejected, never executed.** The FSM
-  runs an artifact only when both its halves carry exactly the bytecode
-  version (major.minor) the bundled Numscript library compiles to. Anything
-  else — another major or a newer minor, which the library refuses to decode;
-  an older minor of the same major, which the library would read but the
-  ledger does not execute; or bytes it cannot read — fails the order with a
-  Numscript runtime error, identically on
-  every node running that binary, and the script text is never interpreted in
-  the artifact's place. The operational consequence: the Raft entries a node
-  replays above its last snapshot after restarting on a new binary, and every
-  scripted entry it applies after a rollback, fail on replay although they
-  succeeded on the binary that admitted them. A replica that applied such
+- **An artifact this binary cannot read is rejected, never executed.** The
+  FSM runs an artifact when both its halves carry a bytecode version
+  (major.minor) the bundled Numscript library can read: the same major and a
+  minor no newer than its own. An older minor is additive by the library's
+  contract and runs, so a library update that only bumps the minor does not
+  break replay after an upgrade. Anything else — another major, a newer minor,
+  or bytes it cannot read — fails the order with a Numscript runtime error,
+  identically on every node running that binary, and the script text is never
+  interpreted in the artifact's place. The operational consequence: after a
+  library update that bumps the bytecode major, the Raft entries a node
+  replays above its last snapshot after restarting on the new binary fail on
+  replay although they succeeded on the binary that admitted them; so does
+  every scripted entry compiled with a newer minor that a node applies after a
+  rollback. A replica that applied such
   entries before the stop therefore diverges from one that replays them and
   must be resynchronised from the leader — the same repair as a straddled
   window, which `ledgerctl check` likewise does not detect.
