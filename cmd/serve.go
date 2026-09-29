@@ -208,7 +208,7 @@ func NewServeCommand() *cobra.Command {
 	cmd.Flags().String(BindFlag, "0.0.0.0:3068", "API bind address")
 	cmd.Flags().Int(BulkMaxSizeFlag, api.DefaultBulkMaxSize, "Bulk max size (default 100)")
 	cmd.Flags().Int(BulkParallelFlag, 10, "Bulk max parallelism")
-	cmd.Flags().Uint64(MaxPageSizeFlag, 100, "Max page size")
+	cmd.Flags().Uint64(MaxPageSizeFlag, 1000, "Max page size")
 	cmd.Flags().Uint64(DefaultPageSizeFlag, 15, "Default page size")
 	cmd.Flags().Bool(WorkerEnabledFlag, false, "Enable worker")
 	cmd.Flags().Bool(ExperimentalFeaturesFlag, false, "Enable features configurability")
