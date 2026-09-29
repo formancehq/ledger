@@ -130,6 +130,7 @@ func TestHandleGetLedgerStats_LedgerNotFound(t *testing.T) {
 	srv.handleGetLedgerStats(w, r)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Equal(t, domain.ErrReasonLedgerNotFound, decodeResponse[ErrorResponse](t, w).ErrorCode)
 }
 
 func TestHandleGetLedgerStats_NoLeaderError(t *testing.T) {

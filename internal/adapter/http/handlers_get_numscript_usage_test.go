@@ -15,6 +15,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
@@ -180,15 +181,15 @@ func TestHandleGetNumscriptUsage_MissingLedgerName(t *testing.T) {
 	assert.Equal(t, "INVALID_REQUEST", errResp.ErrorCode)
 }
 
-// TestHandleGetNumscriptUsage_LedgerNotFound confirms the handler routes a
-// controller not-found through handleError into a 404.
+// TestHandleGetNumscriptUsage_LedgerNotFound confirms the handler preserves
+// the controller's typed missing-ledger reason through the HTTP boundary.
 func TestHandleGetNumscriptUsage_LedgerNotFound(t *testing.T) {
 	t.Parallel()
 
 	backend := NewMockBackend(gomock.NewController(t))
 	backend.EXPECT().GetTemplateUsage(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
 		func(_ context.Context, _, _ string) (*commonpb.TemplateUsage, error) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", "missing")
+			return nil, &domain.ErrLedgerNotFound{Name: "missing"}
 		}).AnyTimes()
 	srv := newTestServer(t, backend)
 
@@ -201,6 +202,7 @@ func TestHandleGetNumscriptUsage_LedgerNotFound(t *testing.T) {
 	srv.handleGetNumscriptUsage(w, r)
 
 	require.Equal(t, http.StatusNotFound, w.Code)
+	require.Equal(t, domain.ErrReasonLedgerNotFound, decodeResponse[ErrorResponse](t, w).ErrorCode)
 }
 
 // TestHandleGetNumscriptUsage_BackendError confirms a generic backend error is

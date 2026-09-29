@@ -986,7 +986,7 @@ Read endpoints comparison with the original ledger:
 | `GET /v3/{ledgerName}/accounts/{address}/volumes` | ❌ | ✅ | Get account volumes |
 | `GET /v3/{ledgerName}/volumes` | ✅ | ✅ | Aggregate volumes (per-asset, generic account `filter`) |
 | `GET /v3/{ledgerName}/logs` | ✅ | ✅ | List per-ledger logs. Supports `?after=` for pagination. Ledger-scoped read → requires `ledger:read` (granular `ledger:LedgerRead`) on both transports |
-| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts) |
+| `GET /v3/{ledgerName}/stats` | ✅ | ✅ | Ledger usage statistics (transaction, volume, reference, posting, log, revert, Numscript-execution, ephemeral-evicted and transient-used counts). A missing or deleted ledger returns `404 LEDGER_NOT_FOUND` |
 | `GET /v3/{ledgerName}` | ✅ | ✅ | Get ledger info |
 | `POST /v3/{ledgerName}/promote` | ✅ | ❌ | Promote mirror ledger to normal mode |
 | `GET /v3/` | ✅ | ✅ | List all ledgers |
@@ -1002,7 +1002,7 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/prepared-queries/{queryName}/execute` | ✅ | ❌ | Execute a prepared query |
 | `GET /v3/{ledgerName}/numscripts` | ✅ | ❌ | List all numscripts (greatest version of each) |
 | `GET /v3/{ledgerName}/numscripts/{name}?version=` | ✅ | ❌ | Get numscript (version selector, empty/latest = greatest semver) |
-| `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp |
+| `GET /v3/{ledgerName}/numscripts/{name}/usage` | ✅ | ❌ | Get invocation count + last-used timestamp. A missing or deleted ledger returns `404 LEDGER_NOT_FOUND`; a never-invoked template returns a zero-valued `200` response |
 | `GET /v3/{ledgerName}/numscripts/{name}/versions` | ✅ | ❌ | List version history |
 | `PUT /v3/{ledgerName}/numscripts/{name}` | ✅ | ❌ | Save an immutable version (explicit full semver). Requires `ledger:LedgerWrite` on both the dedicated route and gRPC `Apply(SaveNumscript)` |
 | `GET /v3/{ledgerName}/account-types` | ✅ | ❌ | List account types |
