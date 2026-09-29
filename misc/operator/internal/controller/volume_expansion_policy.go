@@ -270,7 +270,8 @@ func decideVolumeExpansion(
 		if measurement.UsedBytes > decision.MaxUsedBytes {
 			decision.MaxUsedBytes = measurement.UsedBytes
 		}
-		if measurement.UsedBytes*100 >= measurement.TotalBytes*uint64(policy.ThresholdPercent) {
+		minimumUsed := ceilMultiplyDivideUint64(measurement.TotalBytes, uint64(policy.ThresholdPercent), 100)
+		if measurement.UsedBytes >= minimumUsed {
 			thresholdExceeded = true
 		}
 	}
