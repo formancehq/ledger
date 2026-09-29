@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/metadata"
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -618,11 +619,14 @@ func DeletePreparedQuery(ctx context.Context, client servicepb.BucketServiceClie
 }
 
 // CreateQueryCheckpoint takes a query checkpoint through BucketService.Apply,
-// the single audited write entry point. Apply does not return until the read
-// index checkpoint is materialized on the serving node, so a point-in-time read
-// at the returned ID succeeds immediately on that node.
+// the single audited write entry point. Each invocation uses a fresh idempotency
+// key, preserving the original outcome across the client's transport retries
+// within the server's key retention window. A replay is historical success: it
+// does not promise the checkpoint is still live or ready on the serving node.
+// To retry across helper invocations, retain a caller-owned key and submit
+// CreateQueryCheckpointAction with WithIdempotencyKey instead.
 func CreateQueryCheckpoint(ctx context.Context, client servicepb.BucketServiceClient) (checkpointID, maxSequence uint64, err error) {
-	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", CreateQueryCheckpointAction()))
+	resp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(uuid.NewString(), CreateQueryCheckpointAction()))
 	if err != nil {
 		return 0, 0, err
 	}
@@ -635,9 +639,14 @@ func CreateQueryCheckpoint(ctx context.Context, client servicepb.BucketServiceCl
 	return checkpointID, maxSequence, nil
 }
 
-// DeleteQueryCheckpoint removes a query checkpoint.
+// DeleteQueryCheckpoint removes a query checkpoint using a fresh idempotency key
+// per invocation, so transport retries replay a committed deletion within the
+// server's key retention window. A separate invocation is a new operation and
+// still reports a missing checkpoint. For retries across helper invocations,
+// retain a caller-owned key and use DeleteQueryCheckpointAction with
+// WithIdempotencyKey instead.
 func DeleteQueryCheckpoint(ctx context.Context, client servicepb.BucketServiceClient, checkpointID uint64) error {
-	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("",
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(uuid.NewString(),
 		DeleteQueryCheckpointAction(checkpointID)))
 
 	return err
