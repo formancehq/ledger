@@ -1826,6 +1826,13 @@ type ErrInvalidExecutionPlan struct {
 	Reason_ string
 }
 
+func (e *ErrInvalidExecutionPlan) Error() string { return "invalid execution plan: " + e.Reason_ }
+func (*ErrInvalidExecutionPlan) Kind() ErrorKind { return KindInternal }
+func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecutionPlan }
+func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
+	return map[string]string{"reason": e.Reason_}
+}
+
 // ErrInvalidCallerAttribution means a write reached admission or the FSM
 // without a complete, canonical caller principal. This is a server-side trust
 // boundary violation rather than a client-correctable payload error.
@@ -1840,13 +1847,6 @@ func (*ErrInvalidCallerAttribution) Kind() ErrorKind { return KindInternal }
 func (*ErrInvalidCallerAttribution) Reason() string  { return ErrReasonInvalidCallerAttribution }
 func (e *ErrInvalidCallerAttribution) Metadata() map[string]string {
 	return map[string]string{"detail": e.Detail}
-}
-
-func (e *ErrInvalidExecutionPlan) Error() string { return "invalid execution plan: " + e.Reason_ }
-func (*ErrInvalidExecutionPlan) Kind() ErrorKind { return KindInternal }
-func (*ErrInvalidExecutionPlan) Reason() string  { return ErrReasonInvalidExecutionPlan }
-func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
-	return map[string]string{"reason": e.Reason_}
 }
 
 // ErrExecutionPlanTooLarge is raised by plan.Builder.Build when the

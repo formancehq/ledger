@@ -2579,7 +2579,7 @@ func (c *Checker) verifyAuditHashChain(
 			))
 			folds.markLiveTruncated()
 
-			return result, nil
+			continue
 		}
 
 		// `items` on the stored AuditEntry value is reserved for

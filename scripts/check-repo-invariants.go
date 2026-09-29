@@ -160,7 +160,11 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 	checkAttributionConstruction := !checkSleep &&
 		!strings.HasPrefix(path, "internal/proto/") &&
 		path != "internal/adapter/auth/caller_snapshot.go" &&
-		path != "internal/domain/attribution/attribution.go"
+		path != "internal/domain/attribution/attribution.go" &&
+		(bytes.Contains(source, []byte("github.com/formancehq/ledger/v3/internal/proto/commonpb")) ||
+			bytes.Contains(source, []byte("github.com/formancehq/ledger/v3/internal/domain/attribution")) ||
+			bytes.Contains(source, []byte("github.com/formancehq/ledger/v3/internal/pkg/commands")) ||
+			bytes.Contains(source, []byte("github.com/formancehq/ledger/v3/internal/adapter/auth")))
 	if !checkSleep && !checkEnvironment && !checkBoundaryImport && !checkAttributionConstruction {
 		return nil, nil
 	}

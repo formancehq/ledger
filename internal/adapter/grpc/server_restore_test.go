@@ -37,6 +37,24 @@ func TestFinalizeRestoreRequiresSuccessfulValidation(t *testing.T) {
 	require.Contains(t, status.Convert(err).Message(), "has not passed validation")
 }
 
+func TestCloseStagingStorePreservesInFlightState(t *testing.T) {
+	t.Parallel()
+
+	server := NewRestoreServiceServer(t.TempDir(), "test-cluster", 1, noopLogger{})
+	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
+	require.NoError(t, err)
+	server.stagingStore = store
+	server.validating = true
+	server.validated = true
+	server.finalizing = true
+
+	server.closeStagingStore()
+
+	require.True(t, server.validating)
+	require.False(t, server.validated)
+	require.True(t, server.finalizing)
+}
+
 func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 	t.Parallel()
 

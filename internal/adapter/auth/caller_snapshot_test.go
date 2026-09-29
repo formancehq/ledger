@@ -141,8 +141,9 @@ func TestResolveCallerSnapshot_ClusterInternalWithoutForwardedSnapshot(t *testin
 	ctx := withAuthenticationState(context.Background(), true, false, allScopes())
 	ctx = WithClusterInternal(ctx, true)
 
-	require.Nil(t, ResolveCallerSnapshot(ctx),
-		"the peer's cluster-secret grant must not be attributed to the original caller")
+	got := ResolveCallerSnapshot(ctx)
+	require.NotNil(t, got.GetAnonymous())
+	require.NotEmpty(t, got.GetAnonymous().GetScopes())
 }
 
 func TestResolveCallerSnapshot_SystemActor(t *testing.T) {

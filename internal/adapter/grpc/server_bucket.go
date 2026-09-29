@@ -226,10 +226,6 @@ func (impl *BucketServiceServerImpl) queryCheckpointDeleted(id uint64) (deleted 
 func (impl *BucketServiceServerImpl) adoptForwardedSnapshotIfTrusted(ctx context.Context, req *servicepb.ApplyRequest) (context.Context, error) {
 	fc := req.GetForwardedCallerSnapshot()
 	if fc == nil {
-		if internalauth.IsClusterInternal(ctx) {
-			return ctx, status.Error(codes.Internal, "trusted follower omitted caller attribution")
-		}
-
 		return ctx, nil
 	}
 

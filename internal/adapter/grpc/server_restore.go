@@ -266,9 +266,7 @@ func (s *RestoreServiceServerImpl) closeStagingStore() {
 	}
 
 	s.stagingStore = nil
-	s.validating = false
 	s.validated = false
-	s.finalizing = false
 }
 
 // ValidateRestore runs integrity checks on the staged backup data.

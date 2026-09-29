@@ -91,15 +91,7 @@ func ResolveCallerSnapshot(ctx context.Context) *commonpb.CallerSnapshot {
 	}
 
 	if forwarded := ForwardedSnapshotFromContext(ctx); forwarded != nil {
-		return forwarded.CloneVT()
-	}
-
-	// A cluster-internal request is authenticated as the peer, not as the
-	// original caller. Without a forwarded snapshot, attributing the write from
-	// the peer's local authentication state would fabricate an anonymous caller
-	// with the cluster secret's scopes and hide the attribution gap.
-	if IsClusterInternal(ctx) {
-		return nil
+		return forwarded
 	}
 
 	return buildCallerSnapshot(ctx)

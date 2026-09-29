@@ -87,11 +87,10 @@ func TestAdoptForwardedSnapshotIfTrusted_RejectsFromRegularClient(t *testing.T) 
 		"the untrusted forwarded snapshot must not be adopted")
 }
 
-// TestAdoptForwardedSnapshotIfTrusted_RequiresSnapshotFromTrustedPeer verifies
-// that a cluster-authenticated hop cannot silently replace the original caller
-// with the leader's cluster identity. Direct requests still derive attribution
-// from their own authentication context during admission.
-func TestAdoptForwardedSnapshotIfTrusted_RequiresSnapshotFromTrustedPeer(t *testing.T) {
+// TestAdoptForwardedSnapshotIfTrusted_AllowsClusterCallerWithoutSnapshot verifies
+// that cluster-secret authentication alone does not imply a follower-forwarded
+// request: operator reconciliation also uses the secret for direct writes.
+func TestAdoptForwardedSnapshotIfTrusted_AllowsClusterCallerWithoutSnapshot(t *testing.T) {
 	t.Parallel()
 
 	req := &servicepb.ApplyRequest{}
@@ -99,7 +98,7 @@ func TestAdoptForwardedSnapshotIfTrusted_RequiresSnapshotFromTrustedPeer(t *test
 
 	ctx := internalauth.WithClusterInternal(context.Background(), true)
 	out, err := impl.adoptForwardedSnapshotIfTrusted(ctx, req)
-	require.Equal(t, codes.Internal, status.Code(err))
+	require.NoError(t, err)
 	require.Nil(t, internalauth.ForwardedSnapshotFromContext(out))
 
 	// A direct request has no follower snapshot and resolves its local caller at
