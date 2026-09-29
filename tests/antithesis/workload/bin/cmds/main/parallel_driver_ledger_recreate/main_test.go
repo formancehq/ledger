@@ -367,6 +367,7 @@ func deletionTestServer(t *testing.T, unary grpc.UnaryClientInterceptor, stream 
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-
-	return ctx, servicepb.NewBucketServiceClient(conn)
+	client := servicepb.NewBucketServiceClient(conn)
+	testserver.WaitForWriteAdmission(t, ctx, client)
+	return ctx, client
 }

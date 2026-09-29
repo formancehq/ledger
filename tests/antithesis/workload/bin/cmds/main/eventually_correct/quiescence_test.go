@@ -252,6 +252,7 @@ func quiescenceTestServer(t *testing.T) (context.Context, servicepb.BucketServic
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-
-	return ctx, servicepb.NewBucketServiceClient(conn), target
+	client := servicepb.NewBucketServiceClient(conn)
+	testserver.WaitForWriteAdmission(t, ctx, client)
+	return ctx, client, target
 }

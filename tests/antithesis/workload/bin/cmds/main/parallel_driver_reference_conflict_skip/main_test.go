@@ -343,8 +343,9 @@ func referenceTestServer(t *testing.T) (context.Context, servicepb.BucketService
 
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
-
-	return ctx, servicepb.NewBucketServiceClient(conn)
+	client := servicepb.NewBucketServiceClient(conn)
+	testserver.WaitForWriteAdmission(t, ctx, client)
+	return ctx, client
 }
 
 func applyPayload(t *testing.T, resp *servicepb.ApplyResponse) *commonpb.LedgerLogPayload {
