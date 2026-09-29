@@ -20,9 +20,8 @@ spec:
   cache:
     rotationThreshold: 50
 
-  # Pebble: reduce from production defaults to fit the small k3s disk.
-  # Default memtable=256MB, cache=1GB — way too large for Antithesis.
-  pebble:
+  # Reduce RocksDB memory and SST sizes to fit the small k3s disk.
+  rocksdb:
     memTableSize: 32Mi
     cacheSize: 64Mi
     targetFileSize: 32Mi
