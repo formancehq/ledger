@@ -60,5 +60,8 @@ jobs:
           path: |
             build/storage-api-performance/refs.json
             build/storage-api-performance/results.json
-            build/storage-api-performance/**/*.json
-            build/storage-api-performance/**/*.log
+            build/storage-api-performance/*/warmup.json
+            build/storage-api-performance/*/measured.json
+            build/storage-api-performance/*/warmup.log
+            build/storage-api-performance/*/measured.log
+            build/storage-api-performance/*/server.log

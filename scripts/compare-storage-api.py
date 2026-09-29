@@ -18,6 +18,7 @@ OUTPUT.mkdir(parents=True, exist_ok=True)
 PEBBLE_REF = os.environ["PEBBLE_REF"]
 ROCKSDB_REF = os.environ["ROCKSDB_REF"]
 LEDGER = "performance"
+HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 
 def command(args, **kwargs):
@@ -27,7 +28,7 @@ def command(args, **kwargs):
 def request(url, path, body=None):
     headers = {"Content-Type": "application/json"} if body is not None else {}
     req = urllib.request.Request(url + path, data=body, headers=headers)
-    with urllib.request.urlopen(req, timeout=5) as response:
+    with HTTP.open(req, timeout=5) as response:
         return response.status, response.read()
 
 
@@ -37,7 +38,7 @@ def wait_ready(server, url):
         if server.poll() is not None:
             raise RuntimeError(f"server exited with {server.returncode}")
         try:
-            with urllib.request.urlopen(url + "/_healthcheck", timeout=2) as response:
+            with HTTP.open(url + "/clusterz", timeout=2) as response:
                 if response.status == 200:
                     return
         except (OSError, urllib.error.URLError):
