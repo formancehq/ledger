@@ -48,7 +48,7 @@ func TestProcessCreateLedger(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -209,7 +209,7 @@ func TestProcessCreateLedger_AlreadyExists(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), "ledger already exists")
@@ -242,7 +242,7 @@ func TestProcessDeleteLedger(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -272,7 +272,7 @@ func TestProcessDeleteLedger_NotFound(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 	require.Contains(t, err.Error(), "ledger does not exist")

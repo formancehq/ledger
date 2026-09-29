@@ -15,7 +15,7 @@ import (
 // admission with the VM artifact bound to OrderTechnical — bytecode that
 // decodes and verifies, vars encoded against its layout, and the hash of the
 // exact text it was compiled from. This is the leader's half of the contract;
-// the FSM half (decode + verify + execute, hash guard, interpreter fallback)
+// the FSM half (decode + verify + execute, hash guard, missing artifact)
 // is covered by the processing package's producer tests.
 func TestResolveScripts_BindsCompiledArtifact(t *testing.T) {
 	t.Parallel()

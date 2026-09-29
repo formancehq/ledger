@@ -222,10 +222,8 @@ func (e *lruEntry) compileParsed() (*compiledProgram, domain.SerializableError) 
 // getOrDecodeCompiled returns the cache entry holding the decoded, verified VM
 // program — as one warm VM instance — for an admission-compiled artifact,
 // decoding and verifying on the first sighting and serving every later apply
-// from cache. The verifier is a whole-program static pass far more expensive
-// than execution, so running it per apply would cost more than interpreting;
-// running it once per artifact keeps its guarantee (ExecVm may assume
-// well-formed bytecode) at parse-cache prices.
+// from cache. Verification runs once per artifact and its guarantee (ExecVm
+// may assume well-formed bytecode) holds for every later apply.
 //
 // A program that does not decode, or that does not carry exactly the bundled
 // library's bytecode version (numscriptlib.CurrentBytecodeVersion — see

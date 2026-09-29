@@ -165,12 +165,10 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 //     bug, and the verifier is what entitles the VM to execute wire-supplied
 //     bytecode without per-instruction defensive checks.
 //
-// Decode and verification go through cache: the verifier is a static pass over
-// the whole program, orders of magnitude more expensive than execution itself,
-// and its outcome for a given artifact never changes (the vars pool sizes it
-// checks LoadVar indices against are fixed by the program's own variable
-// layout, not by the per-order values). Caching it is what keeps per-apply
-// cost down to execution alone. Execution reuses the entry's single warm VM instance
+// Decode and verification go through cache, once per artifact: the
+// verification outcome for a given artifact never changes (the vars pool sizes
+// it checks LoadVar indices against are fixed by the program's own variable
+// layout, not by the per-order values). Execution reuses the entry's single warm VM instance
 // (see compiledLruEntry for the reuse contract: always safe sequentially,
 // never concurrently). Cache and warm instance alike only move work, never
 // results, so apply stays deterministic. scriptHash is the cache key: the

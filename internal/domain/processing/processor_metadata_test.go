@@ -57,7 +57,7 @@ func TestProcessAddMetadata_Account(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -129,7 +129,7 @@ func TestProcessAddMetadata_StoresClientValueVerbatim(t *testing.T) {
 		},
 	}
 
-	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 }
 
@@ -182,7 +182,7 @@ func TestProcessAddMetadata_Transaction(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 }
@@ -231,7 +231,7 @@ func TestProcessDeleteMetadata_Account(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -282,7 +282,7 @@ func TestProcessDeleteMetadata_Account_NotFound(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.Error(t, err)
 	require.Nil(t, result)
 
@@ -337,7 +337,7 @@ func TestProcessDeleteMetadata_Account_NilValueDeletable(t *testing.T) {
 		},
 	}
 
-	result, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	result, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -380,6 +380,6 @@ func TestProcessAddMetadata_TransactionTargetMissing(t *testing.T) {
 		},
 	}
 
-	_, err = processor.ProcessOrder(requestToOrder(request), mockStore)
+	_, err = processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.ErrorIs(t, err, domain.ErrTransactionTargetMissing)
 }

@@ -113,7 +113,7 @@ func TestProcessCreateTransaction_DoesNotCloneLedgerInfo(t *testing.T) {
 		},
 	}
 
-	payload, err := processor.ProcessOrder(requestToOrder(request), mockStore)
+	payload, err := processor.ProcessOrder(requestToOrder(t, request), mockStore)
 	require.NoError(t, err)
 	require.NotNil(t, payload)
 	require.Zero(t, mutateCalls, "read-only apply must not deep-clone LedgerInfo")
