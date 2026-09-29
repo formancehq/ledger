@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -58,9 +58,9 @@ func TestMainHorizonKeep_Logs(t *testing.T) {
 		{
 			name:            "index entry not found",
 			entity:          logID8(logID),
-			getErr:          pebble.ErrNotFound,
+			getErr:          engine.ErrNotFound,
 			wantErrContains: "resolving log id",
-			wantErrIs:       pebble.ErrNotFound,
+			wantErrIs:       engine.ErrNotFound,
 			expectGet:       true,
 		},
 		{

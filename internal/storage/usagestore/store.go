@@ -14,6 +14,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
 
@@ -41,7 +43,7 @@ func DefaultConfig() pebblecfg.Config {
 // so a corruption of one cannot touch the other and each subsystem's
 // rebuild story is decoupled (drop the directory + restart).
 type Store struct {
-	db       *pebble.DB
+	db       *pebbleengine.DB
 	logger   logging.Logger
 	dir      string
 	readOnly bool
@@ -110,7 +112,7 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 	}).Infof("Pebble usage store opened — LSM state")
 
 	return &Store{
-		db:     db,
+		db:     pebbleengine.Wrap(db),
 		logger: logger.WithFields(map[string]any{"cmp": "usage-store"}),
 		dir:    dir,
 	}, nil
@@ -129,7 +131,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	}
 
 	return &Store{
-		db:       db,
+		db:       pebbleengine.Wrap(db),
 		logger:   logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}),
 		dir:      dirPath,
 		readOnly: true,
@@ -165,7 +167,7 @@ func (s *Store) Close() error {
 }
 
 // DB returns the underlying Pebble database for creating batches.
-func (s *Store) DB() *pebble.DB {
+func (s *Store) DB() *pebbleengine.DB {
 	return s.db
 }
 
@@ -184,7 +186,7 @@ func (s *Store) Path() string {
 func (s *Store) ReadProgress() (uint64, error) {
 	v, closer, err := s.db.Get(ProgressKey())
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return 0, nil
 		}
 
@@ -256,7 +258,7 @@ func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*commonpb.Tem
 
 	v, closer, err := s.db.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return nil, nil
 		}
 
@@ -288,7 +290,7 @@ func (s *Store) GetCounter(ledgerName string, counterID byte) (uint64, error) {
 
 	v, closer, err := s.db.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return 0, nil
 		}
 

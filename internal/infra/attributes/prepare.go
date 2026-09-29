@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // PrepareForBackup makes a checkpoint portable and restartable on a fresh
@@ -73,7 +72,7 @@ func PrepareForBackup(s *dal.Store) error {
 		if err := closer.Close(); err != nil {
 			return fmt.Errorf("closing applied index read: %w", err)
 		}
-	case errors.Is(err, pebble.ErrNotFound):
+	case errors.Is(err, engine.ErrNotFound):
 		// Genesis checkpoint: the key has never been written.
 	default:
 		return fmt.Errorf("reading checkpoint applied index: %w", err)
@@ -153,7 +152,6 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneClusterTransient},
 		[]byte{dal.ZoneClusterTransient + 1},
-		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
@@ -171,7 +169,6 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
 		[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
-		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
@@ -185,7 +182,6 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneGlobal, dal.SubGlobPeers},
 		[]byte{dal.ZoneGlobal, dal.SubGlobPeers + 1},
-		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
@@ -203,7 +199,6 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneCache},
 		[]byte{dal.ZoneCache + 1},
-		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 

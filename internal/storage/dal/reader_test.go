@@ -4,10 +4,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 func TestReadHandle_GetAndClose(t *testing.T) {
@@ -53,7 +53,7 @@ func TestReadHandle_NewIter(t *testing.T) {
 
 	defer func() { _ = rh.Close() }()
 
-	iter, err := rh.NewIter(&pebble.IterOptions{
+	iter, err := rh.NewIter(&engine.IterOptions{
 		LowerBound: []byte("rh-"),
 		UpperBound: []byte("rh-\xff"),
 	})
@@ -176,7 +176,7 @@ func TestClosingCursor_EmptyInner(t *testing.T) {
 //
 // (*Store).Get releases dbMu.RLock when it returns, so it must not hand back
 // Pebble's closer. On an SST-backed lookup that closer is a live
-// *pebble.Iterator holding a file cache reference, and closing the DB while one
+// engine.Iterator holding a file cache reference, and closing the DB while one
 // is outstanding panics inside Pebble with "element has outstanding
 // references" — observed in production shutdown via the fx stop hook.
 func TestStoreGet_ResourceDoesNotOutliveTheReadLock(t *testing.T) {
@@ -228,7 +228,7 @@ func TestReadHandle_LiveSeesLaterCommits(t *testing.T) {
 	go func() { closed <- s.Close() }()
 
 	_, _, err = rh.Get([]byte("late-key"))
-	require.ErrorIs(t, err, pebble.ErrNotFound, "the handle keeps its pinned view")
+	require.ErrorIs(t, err, engine.ErrNotFound, "the handle keeps its pinned view")
 
 	val, closer, err := rh.Live().Get([]byte("late-key"))
 	require.NoError(t, err)

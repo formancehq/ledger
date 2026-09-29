@@ -10,6 +10,7 @@ import (
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 func TestScanAccountLogsCompletionAtTrace(t *testing.T) {
@@ -25,6 +26,6 @@ func TestScanAccountLogsCompletionAtTrace(t *testing.T) {
 	}).Return(logger)
 	logger.EXPECT().Tracef("scanAccount complete")
 
-	_, err = scanAccount(db, attributes.New(), "test", "users:alice", false, logger)
+	_, err = scanAccount(pebbleengine.Wrap(db), attributes.New(), "test", "users:alice", false, logger)
 	require.NoError(t, err)
 }

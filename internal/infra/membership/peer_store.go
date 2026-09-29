@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // PeerStore persists Raft cluster membership in Pebble under two adjacent
@@ -137,7 +136,7 @@ func (p *PeerStore) LoadAll() (map[uint64]ConfChangeContext, error) {
 
 	lower, upper := peerKeyRange()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -274,7 +273,7 @@ func (p *PeerStore) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 
 	_, closer, err := handle.Get(removedMemberKey(nodeID, instanceID))
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return false, nil
 		}
 
@@ -298,7 +297,7 @@ func (p *PeerStore) LoadAllRemoved() ([]*raftcmdpb.RemovedMemberEntry, error) {
 
 	lower, upper := removedMemberKeyRange()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -344,7 +343,7 @@ func (p *PeerStore) AnyRemovedForNodeID(nodeID uint64) (bool, error) {
 
 	lower, upper := removedMemberNodeIDPrefix(nodeID)
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

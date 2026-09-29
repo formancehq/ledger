@@ -10,6 +10,8 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 func TestStore_DataDir(t *testing.T) {
@@ -445,7 +447,7 @@ func TestStore_NewIter(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: []byte("iter-"),
 		UpperBound: []byte("iter-\xff"),
 	})

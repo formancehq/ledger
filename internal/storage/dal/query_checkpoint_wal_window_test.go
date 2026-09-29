@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // TestQueryCheckpointIsOpenableBeforeItIsComplete pins the window a query
@@ -71,7 +72,7 @@ func TestQueryCheckpointIsOpenableBeforeItIsComplete(t *testing.T) {
 	defer func() { _ = partial.Close() }()
 
 	_, _, err = partial.Get([]byte("committed-key"))
-	require.ErrorIs(t, err, pebble.ErrNotFound, "the staged checkpoint serves the write as absent, not as a read failure")
+	require.ErrorIs(t, err, engine.ErrNotFound, "the staged checkpoint serves the write as absent, not as a read failure")
 }
 
 // TestCreateQueryCheckpointRedundantCallIsNoOp pins that a second checkpoint for

@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -217,7 +217,7 @@ func TestDropRecreate_DeletedValueStaysDead(t *testing.T) {
 
 	// And the purge left nothing behind at all in v1.
 	v1prefix := readstore.MetadataIndexPrefixV(kb, ledger, readstore.NamespaceAccount, metaKey, v1)
-	iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{
+	iter, err := b.readStore.DB().NewIter(&engine.IterOptions{
 		LowerBound: v1prefix,
 		UpperBound: readstore.IncrementBytes(v1prefix),
 	})

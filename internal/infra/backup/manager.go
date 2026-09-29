@@ -13,12 +13,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // Result contains statistics from a full backup run.
@@ -717,7 +716,7 @@ func uploadSegmentPart(
 	ctx context.Context,
 	storage Storage,
 	key string,
-	iter *pebble.Iterator,
+	iter engine.Iterator,
 	maxSegmentBytes int64,
 ) (endSeq, count uint64, size int64, err error) {
 	pr, pw := io.Pipe()

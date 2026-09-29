@@ -15,7 +15,12 @@ func (s *Store) GetMetrics() any {
 		return nil
 	}
 
-	m := db.Metrics()
+	// Engine-specific: the metrics message is Pebble-shaped. Other engines
+	// report nothing here until the proto gains an engine-neutral shape.
+	m := pebbleMetrics(db)
+	if m == nil {
+		return nil
+	}
 
 	result := &servicepb.PebbleMetrics{
 		BlockCache: &servicepb.BlockCacheMetrics{

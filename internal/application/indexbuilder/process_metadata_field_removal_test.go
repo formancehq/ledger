@@ -3,12 +3,12 @@ package indexbuilder
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -23,7 +23,7 @@ func countReverseMapRows(t *testing.T, b *Builder, ledger, ns, metaKey string) i
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	iter, err := snap.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+	iter, err := snap.NewIter(&engine.IterOptions{LowerBound: prefix, UpperBound: upper})
 	require.NoError(t, err)
 
 	defer func() { _ = iter.Close() }()

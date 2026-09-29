@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -29,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
@@ -1777,7 +1777,7 @@ func (ctrl *DefaultController) ListAuditEntriesFrom(ctx context.Context, store *
 		return nil, err
 	}
 
-	var auditSnap *pebble.Snapshot
+	var auditSnap engine.Snapshot
 	indexReader := query.AuditIndexReader(rs)
 	if query.AuditFilterNeedsIndex(filter) {
 		for {

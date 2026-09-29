@@ -498,7 +498,7 @@ func DeleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 		start := buildLedgerScopedPrefix(dal.ZoneAttributes, attrType, ledgerName)
 		end := buildLedgerScopedPrefixSuccessor(dal.ZoneAttributes, attrType, ledgerName)
 
-		if err := b.DeleteRange(start, end, nil); err != nil {
+		if err := b.DeleteRange(start, end); err != nil {
 			return fmt.Errorf("deleting ledger attributes (type=0x%02x) for ledger %q: %w", attrType, ledgerName, err)
 		}
 	}
@@ -508,7 +508,7 @@ func DeleteLedgerData(b *dal.WriteSession, ledgerName string) error {
 		start := buildLedgerScopedPrefix(dal.ZonePerLedger, sub, ledgerName)
 		end := buildLedgerScopedPrefixSuccessor(dal.ZonePerLedger, sub, ledgerName)
 
-		if err := b.DeleteRange(start, end, nil); err != nil {
+		if err := b.DeleteRange(start, end); err != nil {
 			return fmt.Errorf("deleting per-ledger keys sub=0x%02x for ledger %q: %w", sub, ledgerName, err)
 		}
 	}

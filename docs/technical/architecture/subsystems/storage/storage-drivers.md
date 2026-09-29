@@ -15,6 +15,33 @@ The Store is responsible for persisting:
 
 The storage backend is **Pebble**, a high-performance LSM-tree based storage engine from CockroachDB.
 
+## Engine abstraction (`internal/storage/engine`)
+
+Stores no longer call Pebble directly for reads, batches, snapshots and
+checkpoints; they go through the `engine` contract:
+
+| Type | Role |
+|------|------|
+| `engine.DB` | open instance: `Get`, `NewIter`, `NewSnapshot`, `NewBatch`, `Set`, `SyncWAL`, `Checkpoint`, `Flush`, `Compact`, `Stats`, `Close` |
+| `engine.Reader` / `engine.Getter` | read capabilities; `dal.PebbleReader` and `dal.PebbleGetter` are aliases of them |
+| `engine.Iterator` | positioned cursor with Pebble semantics (`SeekGE`, `SeekPrefixGE`, `SeekLT` strictly-less, bounds `[lower, upper)`) |
+| `engine.Batch` | atomic write set, `Commit(sync bool)` |
+| `engine.ErrNotFound` | the only not-found sentinel callers match on |
+
+Implementations: `engine/pebbleengine` (default, pure Go) and
+`engine/rocksengine` (grocksdb, compiled only with the `rocksdb` build tag;
+see `docs/drafts/rocksdb-poc.md`). Both must pass
+`engine/enginetest.Run`, the shared conformance suite, which is the
+contract stores are written against.
+
+What stays Pebble-specific: opening the main store (`dal.NewStore` builds
+`pebble.Options` — event listener, VFS metrics wrapper, WAL failover, value
+separation, per-level compression), the `servicepb.PebbleMetrics` payload
+(`GetMetrics` returns nil on another engine), and the read/usage store
+comparers. `dal.Store` keeps a `open(dir)` function so `RestoreCheckpoint`
+reopens whichever engine produced the store.
+
+
 ---
 
 ## Pebble

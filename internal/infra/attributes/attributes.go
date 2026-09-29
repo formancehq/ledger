@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // Attribute is the implementation for all attribute types.
@@ -121,7 +121,7 @@ func (a *Attribute[V]) Set(batch *dal.WriteSession, canonicalKey []byte, value V
 
 	a.protoBuffer = valueBytes
 
-	return valueBytes, batch.Set(a.keyBuf[:pLen], valueBytes, pebble.NoSync)
+	return valueBytes, batch.Set(a.keyBuf[:pLen], valueBytes)
 }
 
 // AttrTypeLen is the size of the attribute type byte in a Pebble key: 1 byte.
@@ -147,7 +147,7 @@ func (a *Attribute[V]) Get(reader dal.PebbleGetter, canonicalKey []byte) (V, err
 
 	valueBytes, closer, err := reader.Get(buf)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return zeroValue, nil
 		}
 

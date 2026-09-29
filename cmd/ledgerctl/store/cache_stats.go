@@ -9,6 +9,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 // NewCacheStatsCommand creates the store cache-stats command.
@@ -32,13 +34,15 @@ must be a checkpoint/snapshot copy.`,
 func runCacheStats(cmd *cobra.Command, args []string) error {
 	dataDir := args[0]
 
-	db, err := pebble.Open(dataDir, &pebble.Options{
+	rawDB, err := pebble.Open(dataDir, &pebble.Options{
 		Logger:   dal.DiscardPebbleLogger(),
 		ReadOnly: true,
 	})
 	if err != nil {
 		return fmt.Errorf("opening pebble at %s: %w", dataDir, err)
 	}
+
+	db := pebbleengine.Wrap(rawDB)
 
 	defer func() { _ = db.Close() }()
 
@@ -127,7 +131,7 @@ func runCacheStats(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func readGenBase(db *pebble.DB, genByte byte) uint64 {
+func readGenBase(db engine.DB, genByte byte) uint64 {
 	val, closer, err := db.Get([]byte{dal.ZoneCache, genByte, dal.SubCacheGenMeta})
 	if err != nil {
 		return 0
@@ -143,11 +147,11 @@ func readGenBase(db *pebble.DB, genByte byte) uint64 {
 	return meta.GetBaseIndex()
 }
 
-func countPebbleEntries(db *pebble.DB, zone, genByte, cacheType byte) uint64 {
+func countPebbleEntries(db engine.DB, zone, genByte, cacheType byte) uint64 {
 	lower := []byte{zone, genByte, cacheType}
 	upper := []byte{zone, genByte, cacheType + 1}
 
-	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return 0
 	}
@@ -164,11 +168,11 @@ func countPebbleEntries(db *pebble.DB, zone, genByte, cacheType byte) uint64 {
 	return count
 }
 
-func countPebbleAttrEntries(db *pebble.DB, attrType byte) uint64 {
+func countPebbleAttrEntries(db engine.DB, attrType byte) uint64 {
 	lower := []byte{dal.ZoneAttributes, attrType}
 	upper := []byte{dal.ZoneAttributes, attrType + 1}
 
-	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return 0
 	}
@@ -183,11 +187,11 @@ func countPebbleAttrEntries(db *pebble.DB, attrType byte) uint64 {
 	return count
 }
 
-func findVolumesNotInCache(db *pebble.DB, attrType, gen0Byte, gen1Byte byte, hasher *attributes.KeyHasher) [][]byte {
+func findVolumesNotInCache(db engine.DB, attrType, gen0Byte, gen1Byte byte, hasher *attributes.KeyHasher) [][]byte {
 	lower := []byte{dal.ZoneAttributes, attrType}
 	upper := []byte{dal.ZoneAttributes, attrType + 1}
 
-	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil
 	}
@@ -213,7 +217,7 @@ func findVolumesNotInCache(db *pebble.DB, attrType, gen0Byte, gen1Byte byte, has
 	return missing
 }
 
-func hasCacheEntry(db *pebble.DB, genByte, cacheType byte, u128 attributes.U128) bool {
+func hasCacheEntry(db engine.DB, genByte, cacheType byte, u128 attributes.U128) bool {
 	var key [3 + 16]byte
 	key[0] = dal.ZoneCache
 	key[1] = genByte

@@ -11,10 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // ErrBackupInProgress rejects a BackupOrderStart whose destination
@@ -391,7 +390,7 @@ func (s *BackupJobsState) Reset() {
 func (s *BackupJobsState) RestoreFromStore(reader dal.PebbleReader) error {
 	prefix := []byte{dal.ZoneClusterTransient, dal.SubTransientBackupJob}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: backupJobUpperBound(),
 	})

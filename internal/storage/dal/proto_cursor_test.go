@@ -4,11 +4,11 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 func TestProtoCursor_Basic(t *testing.T) {
@@ -45,7 +45,7 @@ func TestProtoCursor_Basic(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: []byte{0xAA},
 		UpperBound: []byte{0xAB},
 	})
@@ -83,7 +83,7 @@ func TestProtoCursor_Empty(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: []byte{0xBB},
 		UpperBound: []byte{0xBC},
 	})
@@ -125,7 +125,7 @@ func TestProtoCursor_MultipleCallsAfterEOF(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: []byte{0xCC},
 		UpperBound: []byte{0xCD},
 	})

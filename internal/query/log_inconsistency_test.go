@@ -7,17 +7,17 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
 // newGetterWithEntries returns a MockPebbleGetter that resolves every Get call
-// against the given map: hits return the bytes, misses return pebble.ErrNotFound.
+// against the given map: hits return the bytes, misses return engine.ErrNotFound.
 func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockPebbleGetter {
 	t.Helper()
 
@@ -27,7 +27,7 @@ func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockPebbleGe
 			return v, io.NopCloser(nil), nil
 		}
 
-		return nil, nil, pebble.ErrNotFound
+		return nil, nil, engine.ErrNotFound
 	}).AnyTimes()
 
 	return g
@@ -114,7 +114,7 @@ func TestReadLedgerLogsCompiled_MalformedLogIDBytes(t *testing.T) {
 }
 
 // TestReadLedgerLogsCompiled_IndexGetError asserts that any error from the
-// per-ledger log index lookup (including pebble.ErrNotFound — the filter
+// per-ledger log index lookup (including engine.ErrNotFound — the filter
 // index produced the logID, so a miss is structurally inconsistent) surfaces
 // as ErrIndexInconsistent rather than silently dropping the entry.
 func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
@@ -125,7 +125,7 @@ func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 	_, err := ReadLedgerLogsCompiled(
 		context.Background(),
 		nil,
-		newGetterAlwaysErr(t, pebble.ErrNotFound),
+		newGetterAlwaysErr(t, engine.ErrNotFound),
 		ledgerName,
 		[][]byte{logID8(99)},
 	)

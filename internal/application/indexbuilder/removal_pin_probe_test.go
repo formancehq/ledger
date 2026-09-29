@@ -3,12 +3,12 @@ package indexbuilder
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -58,7 +58,7 @@ func TestFieldRemoval_LeavesNoVersionRecordOrRows(t *testing.T) {
 
 	countRows := func(label string) int {
 		prefix := readstore.MetadataIndexFieldPrefix(kb, ledger, readstore.NamespaceAccount, metaKey)
-		iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{
+		iter, err := b.readStore.DB().NewIter(&engine.IterOptions{
 			LowerBound: prefix,
 			UpperBound: readstore.IncrementBytes(prefix),
 		})

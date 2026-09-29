@@ -19,6 +19,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 // Pebble key prefixes for the replay store.
@@ -52,7 +54,7 @@ const (
 // with large datasets and uses Pebble merge operators to avoid read-modify-write
 // during replay — all writes are append-only.
 type replayStore struct {
-	db                    *pebble.DB
+	db                    *pebbleengine.DB
 	tempDir               string
 	purgedAccounts        map[domain.AccountKey]struct{}
 	purgedVolumes         map[domain.VolumeKey]struct{}
@@ -78,7 +80,7 @@ func newReplayStore() (*replayStore, error) {
 	}
 
 	return &replayStore{
-		db:                    db,
+		db:                    pebbleengine.Wrap(db),
 		tempDir:               dir,
 		purgedAccounts:        make(map[domain.AccountKey]struct{}),
 		purgedVolumes:         make(map[domain.VolumeKey]struct{}),
@@ -193,7 +195,7 @@ func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 
 	val, closer, err := s.db.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return nil, nil
 		}
 
@@ -252,7 +254,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 
 	val, closer, err := s.db.Get(oldKey)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return nil // nothing to move
 		}
 
@@ -262,7 +264,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 	_ = closer.Close()
 
 	newKey := replayKey(replayPrefixMetadata, newCanonicalKey)
-	if err := s.db.Set(newKey, valCopy, pebble.NoSync); err != nil {
+	if err := s.db.Set(newKey, valCopy, false); err != nil {
 		return err
 	}
 
@@ -290,14 +292,14 @@ func (s *replayStore) SetMetadata(canonicalKey []byte, value *commonpb.MetadataV
 	data[0] = metaFlagSet
 	copy(data[1:], encoded)
 
-	return s.db.Set(key, data, pebble.NoSync)
+	return s.db.Set(key, data, false)
 }
 
 // deleteMetadata marks a metadata key as deleted in the replay store (pure write).
 func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
-	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
+	return s.db.Set(key, []byte{metaFlagDeleted}, false)
 }
 
 func (s *replayStore) PurgeAccount(ledger, account string, collector domainreplay.ExclusionCollector) error {
@@ -315,7 +317,7 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 		upper := append([]byte(nil), prefix...)
 		upper[len(upper)-1]++
 		if collector != nil && spec.replayPrefix == replayPrefixVolume {
-			iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+			iter, err := s.db.NewIter(&engine.IterOptions{LowerBound: prefix, UpperBound: upper})
 			if err != nil {
 				return err
 			}
@@ -367,7 +369,7 @@ func (s *replayStore) Accounts(ledger string) ([]string, error) {
 		lower := append([]byte{spec.prefix}, domain.LedgerScopedPrefix(ledger)...)
 		upper := append([]byte(nil), lower...)
 		upper[len(upper)-1]++
-		iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+		iter, err := s.db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 		if err != nil {
 			return nil, err
 		}
@@ -417,7 +419,7 @@ func (s *replayStore) AccountHasNonZeroVolume(ledger, account string) (bool, err
 	upper := append([]byte(nil), prefix...)
 	upper[len(upper)-1]++
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+	iter, err := s.db.NewIter(&engine.IterOptions{LowerBound: prefix, UpperBound: upper})
 	if err != nil {
 		return false, err
 	}
@@ -507,7 +509,7 @@ func (s *replayStore) SetTransactionReference(ledgerName, reference string, txID
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], txID)
 
-	return s.db.Set(key, buf[:], pebble.NoSync)
+	return s.db.Set(key, buf[:], false)
 }
 
 // SetDefaultEnforcementMode is a no-op here because the enforcement mode lives
@@ -610,8 +612,8 @@ func (s *replayStore) RemoveAccountType(string, string) error {
 }
 
 // newPrefixIter creates a Pebble iterator scoped to a single prefix byte.
-func (s *replayStore) newPrefixIter(prefix byte) (*pebble.Iterator, error) {
-	return s.db.NewIter(&pebble.IterOptions{
+func (s *replayStore) newPrefixIter(prefix byte) (engine.Iterator, error) {
+	return s.db.NewIter(&engine.IterOptions{
 		LowerBound: []byte{prefix},
 		UpperBound: []byte{prefix + 1},
 	})

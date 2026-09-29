@@ -4,7 +4,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -23,7 +22,7 @@ func eventFixture(t *testing.T, value string, events ...struct {
 
 	for _, e := range events {
 		key := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte(value), []byte(e.entity), e.seq, e.op)
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, false))
 	}
 
 	return s, eventValuePrefix("l", NamespaceAccount, "k", 1, []byte(value))
@@ -73,8 +72,8 @@ func TestEventResolveIterator_TransitionTimeline(t *testing.T) {
 	)
 
 	kb := dal.NewKeyBuilder()
-	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 25, MetadataEventAdd), nil, pebble.NoSync))
-	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 40, MetadataEventDel), nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 25, MetadataEventAdd), nil, false))
+	require.NoError(t, s.DB().Set(MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("blue"), []byte("E"), 40, MetadataEventDel), nil, false))
 	bluePrefix := eventValuePrefix("l", NamespaceAccount, "k", 1, []byte("blue"))
 
 	require.Empty(t, collect(t, s, redPrefix, 5), "before the first ADD")
@@ -210,7 +209,7 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	corrupt := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)...)
-	require.NoError(t, s.DB().Set(corrupt, nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(corrupt, nil, false))
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
 	require.NoError(t, err)
@@ -238,7 +237,7 @@ func TestEventResolveIterator_RejectsUnknownOp(t *testing.T) {
 		event(7, MetadataEventDel),
 	}
 	for _, key := range survivors {
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, false))
 	}
 
 	_, _, err = GCEventZone(s.DB(), PrefixMetadataIndex, nil, 1_000, 1<<20)
@@ -284,7 +283,7 @@ func TestInspectIndex_RejectsUnknownOp(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	corrupt := MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:2"), 20, 0x7f)
-	require.NoError(t, s.DB().Set(corrupt, nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(corrupt, nil, false))
 
 	for _, mode := range []InspectMode{InspectDistinctValuesMode, InspectFacetsMode, InspectSummaryMode} {
 		_, err := InspectIndex(InspectParams{
@@ -321,14 +320,14 @@ func TestInspectIndex_ResolvesMembershipAtMainHorizon(t *testing.T) {
 		require.NoError(t, s.DB().Set(
 			MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, encoded(value), []byte(entity), seq, op),
 			nil,
-			pebble.NoSync,
+			false,
 		))
 	}
 	putExists := func(isNull bool, entity string, seq uint64, op byte) {
 		require.NoError(t, s.DB().Set(
 			EntityExistsEventKeyV(kb, "l", NamespaceAccount, "k", 1, isNull, []byte(entity), seq, op),
 			nil,
-			pebble.NoSync,
+			false,
 		))
 	}
 
@@ -419,7 +418,7 @@ func TestGCEventZone_PreservesAGroupCorruptedAfterItsWatermarkEvent(t *testing.T
 		event(160, 0x7f),
 	}
 	for _, key := range keys {
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, false))
 	}
 
 	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
@@ -456,10 +455,10 @@ func TestGCEventZone_PreservesTheGroupAfterAMalformedKey(t *testing.T) {
 	// The malformed key is a:1's own key with its tail cut off, so it sorts
 	// ahead of both — and its terminator is no longer where the layout says.
 	truncated := append([]byte(nil), keys[0][:len(keys[0])-3]...)
-	require.NoError(t, s.DB().Set(truncated, nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(truncated, nil, false))
 
 	for _, key := range keys {
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, false))
 	}
 
 	pruned, _, err := GCEventZone(s.DB(), PrefixMetadataIndex, nil, watermark, 1<<20)
@@ -496,7 +495,7 @@ func TestGCEventZone_CarriesTheUnsafeMarkAcrossABudgetedResume(t *testing.T) {
 	truncated := append([]byte(nil), second[0][:len(second[0])-3]...)
 
 	for _, key := range append(append(append([][]byte{}, first...), truncated), second...) {
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, false))
 	}
 
 	// Budget 3 ends the pass exactly at the a:0 -> a:1 boundary, which is
@@ -527,7 +526,7 @@ func TestEventResolveIterator_RejectsAnUnreadableGroupHead(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	head := append([]byte(nil), MetadataIndexEventKeyV(kb, "l", NamespaceAccount, "k", 1, []byte("v"), []byte("a:1"), 10, MetadataEventAdd)...)
-	require.NoError(t, s.DB().Set(head[:len(head)-3], nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(head[:len(head)-3], nil, false))
 
 	it, err := NewEventResolveIterator(s.DB(), prefix, 25)
 	require.NoError(t, err)

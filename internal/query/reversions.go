@@ -5,10 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -28,7 +27,7 @@ func ReadReversions(reader dal.PebbleReader) (map[string]*bitset.Bitset, []Malfo
 	lowerBound := []byte{dal.ZonePerLedger, dal.SubPLReversions}
 	upperBound := []byte{dal.ZonePerLedger, dal.SubPLReversions + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -106,7 +105,7 @@ func ReadReversionBitset(reader dal.PebbleReader, ledgerName string) (*bitset.Bi
 	prefix[1] = dal.SubPLReversions
 	copy(prefix[2:], ledgerName)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})

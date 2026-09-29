@@ -17,7 +17,7 @@ func (s *Store) Compact(ctx context.Context) (sizeBefore, sizeAfter int64, err e
 	sizeBefore = dirSize(dbPath)
 
 	// Compact the full key range.
-	err = s.db.Compact(ctx, []byte{0x00}, []byte{0xFF}, true)
+	err = s.db.DB.Compact(ctx, []byte{0x00}, []byte{0xFF}, true)
 	if err != nil {
 		return sizeBefore, 0, fmt.Errorf("compacting read index: %w", err)
 	}

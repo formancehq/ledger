@@ -8,6 +8,8 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -78,7 +80,7 @@ func TestBatch_CommitFailureRetainsBatch(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
-	batch := NewWriteSessionFromDB(db)
+	batch := NewWriteSessionFromDB(pebbleengine.Wrap(db))
 	require.NoError(t, batch.SetBytes([]byte("key1"), []byte("val1")))
 	owned := batch.batch
 
@@ -105,7 +107,7 @@ func BenchmarkBatch_Commit(b *testing.B) {
 	b.ResetTimer()
 
 	for b.Loop() {
-		batch := NewWriteSessionFromDB(db)
+		batch := NewWriteSessionFromDB(pebbleengine.Wrap(db))
 		require.NoError(b, batch.SetBytes(key, value))
 		require.NoError(b, batch.Commit())
 	}
@@ -219,7 +221,7 @@ func TestBatch_DeleteRange(t *testing.T) {
 
 	// Delete range [bbb, ddd)
 	batch2 := s.OpenWriteSession()
-	require.NoError(t, batch2.DeleteRange([]byte("bbb"), []byte("ddd"), pebble.NoSync))
+	require.NoError(t, batch2.DeleteRange([]byte("bbb"), []byte("ddd")))
 	require.NoError(t, batch2.Commit())
 
 	// "aaa" should exist
@@ -341,7 +343,7 @@ func TestBatch_RawSetAfterCommit(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
-	err := batch.Set([]byte("key"), []byte("val"), pebble.NoSync)
+	err := batch.Set([]byte("key"), []byte("val"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already committed")
 }
@@ -353,7 +355,7 @@ func TestBatch_RawDeleteRangeAfterCommit(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
-	err := batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync)
+	err := batch.DeleteRange([]byte("a"), []byte("z"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already committed")
 }
@@ -394,11 +396,11 @@ func TestBatch_MutationsAfterCancel(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Cancel())
 
-	require.ErrorContains(t, batch.Set([]byte("k"), []byte("v"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.Set([]byte("k"), []byte("v")), "cancelled")
 	require.ErrorContains(t, batch.SetBytes([]byte("k"), []byte("v")), "cancelled")
 	require.ErrorContains(t, batch.DeleteKey([]byte("k")), "cancelled")
 	require.ErrorContains(t, batch.SingleDeleteKey([]byte("k")), "cancelled")
-	require.ErrorContains(t, batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.DeleteRange([]byte("a"), []byte("z")), "cancelled")
 	require.ErrorContains(t, batch.DeleteRangeNoSync([]byte("a"), []byte("z")), "cancelled")
 }
 

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // HashIdempotencyKey returns a 128-bit hash of the idempotency key string,
@@ -117,7 +117,7 @@ func (s *IdempotencyStore) Reset() {
 // job of the Raft-replicated IdempotencyEviction command, which uses a
 // deterministic cutoff embedded in the proposal.
 func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
 	})
@@ -164,7 +164,7 @@ func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
 // This is called on the leader OUTSIDE the FSM apply path. The returned
 // hashes are embedded in the Raft proposal so the FSM apply is write-only.
 func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffMicros uint64, maxKeys int) ([][]byte, []byte, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
@@ -386,7 +386,7 @@ func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*commonpb.Idempote
 
 	val, closer, err := reader.Get(pebbleKey)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return nil, nil
 		}
 

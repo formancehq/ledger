@@ -11,12 +11,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -732,7 +731,7 @@ func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledg
 		}
 		for _, account := range accounts {
 			prefix := readstore.AssetsByAccountPrefix(b.kb, ledger, account)
-			iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+			iter, err := b.readStore.DB().NewIter(&engine.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
 			if err != nil {
 				return err
 			}
@@ -1476,7 +1475,7 @@ func (b *Builder) markLedgerDeletedInBatch(name string) {
 // (true, nil) on hit. Mirrors reverseMapValue's committed-read path.
 func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
 	_, closer, err := b.readStore.DB().Get(key)
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, engine.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -1500,7 +1499,7 @@ func (b *Builder) reverseMapValue(reverseKey []byte) ([]byte, error) {
 	}
 
 	val, closer, err := b.readStore.DB().Get(reverseKey)
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, engine.ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {

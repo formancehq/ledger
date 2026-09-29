@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous is the
@@ -230,7 +230,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 	{
 		handle, err := dataStore.NewDirectReadHandle()
 		require.NoError(t, err)
-		iter, err := handle.NewIter(&pebble.IterOptions{
+		iter, err := handle.NewIter(&engine.IterOptions{
 			LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
 			UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
 		})
@@ -242,7 +242,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 	}
 	{
 		batch := dataStore.OpenWriteSession()
-		require.NoError(t, batch.Set(corruptKey, []byte{0xAA, 0xBB}, nil))
+		require.NoError(t, batch.Set(corruptKey, []byte{0xAA, 0xBB}))
 		require.NoError(t, batch.Commit())
 	}
 

@@ -3,15 +3,14 @@ package readstore
 import (
 	"errors"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // PrefixIterator scans all keys in the read index Pebble database that share a
 // given prefix, extracting the entity ID from the suffix portion of each key.
 type PrefixIterator struct {
-	iter         *pebble.Iterator
+	iter         engine.Iterator
 	prefix       []byte
 	entityOffset int // byte offset where the entity ID starts in each key
 	entityLen    int // fixed entity length (0 = variable, extends to end of key)
@@ -41,7 +40,7 @@ func NewPrefixIterator(
 ) (*PrefixIterator, error) {
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -231,7 +230,7 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 // surface in (value, entity) order — so this iterator only supports forward
 // draining; see Seek.
 type RangeIterator struct {
-	iter         *pebble.Iterator
+	iter         engine.Iterator
 	lowerBound   []byte // stored for SeekPrefixGE initial positioning
 	entityOffset int
 	entityLen    int
@@ -256,7 +255,7 @@ func NewRangeIterator(
 	entityOffset int,
 	entityLen int,
 ) (*RangeIterator, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

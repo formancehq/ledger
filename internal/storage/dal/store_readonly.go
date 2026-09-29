@@ -6,6 +6,8 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 // OpenReadOnly opens a Pebble database at dirPath in read-only mode.
@@ -39,10 +41,11 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 
 	store := &Store{
 		opts:    opts,
+		open:    pebbleOpener(opts),
 		logger:  logger.WithField("cmp", "pebble-readonly"),
 		dataDir: dirPath,
 	}
-	store.db = db
+	store.db = pebbleengine.Wrap(db)
 
 	return store, nil
 }
@@ -62,10 +65,11 @@ func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
 
 	store := &Store{
 		opts:    opts,
+		open:    pebbleOpener(opts),
 		logger:  logger.WithField("cmp", "pebble-direct"),
 		dataDir: dirPath,
 	}
-	store.db = db
+	store.db = pebbleengine.Wrap(db)
 
 	return store, nil
 }

@@ -24,6 +24,8 @@ import (
 	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
@@ -142,8 +144,9 @@ func ValidateFreshRestoreTarget(dataDir string) error {
 type Store struct {
 	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
 	snapshotMu        sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
-	db                *pebble.DB
+	db                engine.DB
 	opts              *pebble.Options
+	open              func(dir string) (engine.DB, error) // reopens the engine at dir (RestoreCheckpoint)
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
@@ -157,12 +160,39 @@ type Store struct {
 	deletedQueryCheckpoints map[uint64]struct{}
 }
 
-// getDB returns the current pebble.DB.
+// getDB returns the current engine DB.
 // Callers that create iterators (NewIter) must hold
 // dbMu.RLock to prevent RestoreCheckpoint/Close from closing the DB
 // between the read and the iterator creation.
-func (s *Store) getDB() *pebble.DB {
+func (s *Store) getDB() engine.DB {
 	return s.db
+}
+
+// pebbleOpener returns the open function for a Pebble-backed store. FileCache
+// is cleared before every open: the first Open mutates opts.FileCache
+// in-place, and reusing the stale pointer panics in shard.Close ("element
+// has outstanding references") once the previous DB closed it.
+func pebbleOpener(opts *pebble.Options) func(dir string) (engine.DB, error) {
+	return func(dir string) (engine.DB, error) {
+		opts.FileCache = nil
+
+		db, err := pebble.Open(dir, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		return pebbleengine.Wrap(db), nil
+	}
+}
+
+// pebbleMetrics returns the engine metrics when the store runs on Pebble,
+// nil otherwise. Engine-specific observability stays behind this gate.
+func pebbleMetrics(db engine.DB) *pebble.Metrics {
+	if p, ok := db.(*pebbleengine.DB); ok {
+		return p.Metrics()
+	}
+
+	return nil
 }
 
 // WriteStallWaitCh returns a channel that blocks while Pebble is in a write stall.
@@ -494,11 +524,6 @@ func NewStore(
 		}
 	}
 
-	var (
-		db  *pebble.DB
-		err error
-	)
-
 	liveDir := filepath.Join(dataDir, liveDir)
 
 	// Reconcile any leftover live.discard/ from a crashed RestoreCheckpoint.
@@ -545,27 +570,30 @@ func NewStore(
 
 	openStart := time.Now()
 
-	db, err = pebble.Open(liveDir, opts)
+	open := pebbleOpener(opts)
+
+	db, err := open(liveDir)
 	if err != nil {
 		return nil, fmt.Errorf("opening pebble database: %w", err)
 	}
 
-	m := db.Metrics()
-	logger.WithFields(map[string]any{
-		"duration":          time.Since(openStart).String(),
-		"l0FileCount":       m.Levels[0].TablesCount,
-		"l0Size":            m.Levels[0].TablesSize,
-		"l1FileCount":       m.Levels[1].TablesCount,
-		"l1Size":            m.Levels[1].TablesSize,
-		"memTableCount":     m.MemTable.Count,
-		"memTableSize":      m.MemTable.Size,
-		"compactionCount":   m.Compact.Count,
-		"compactionDebt":    m.Compact.InProgressBytes,
-		"compactionEstDebt": m.Compact.EstimatedDebt,
-		"walFilesCount":     m.WAL.Files,
-		"walSize":           m.WAL.Size,
-		"totalLevelsSize":   m.DiskSpaceUsage(),
-	}).Infof("Pebble database opened — LSM state")
+	if m := pebbleMetrics(db); m != nil {
+		logger.WithFields(map[string]any{
+			"duration":          time.Since(openStart).String(),
+			"l0FileCount":       m.Levels[0].TablesCount,
+			"l0Size":            m.Levels[0].TablesSize,
+			"l1FileCount":       m.Levels[1].TablesCount,
+			"l1Size":            m.Levels[1].TablesSize,
+			"memTableCount":     m.MemTable.Count,
+			"memTableSize":      m.MemTable.Size,
+			"compactionCount":   m.Compact.Count,
+			"compactionDebt":    m.Compact.InProgressBytes,
+			"compactionEstDebt": m.Compact.EstimatedDebt,
+			"walFilesCount":     m.WAL.Files,
+			"walSize":           m.WAL.Size,
+			"totalLevelsSize":   m.DiskSpaceUsage(),
+		}).Infof("Pebble database opened — LSM state")
+	}
 
 	// Calculate the oldest checkpoint that should exist
 	// based on latest checkpoint and max checkpoints configuration
@@ -576,6 +604,7 @@ func NewStore(
 
 	store := &Store{
 		opts:                    opts,
+		open:                    open,
 		logger:                  logger.WithField("cmp", "pebble"),
 		dataDir:                 dataDir,
 		currentCheckPoint:       latestCheckpointID,
@@ -640,7 +669,7 @@ func (s *Store) SyncWAL() error {
 		return ErrStoreClosed
 	}
 
-	return db.LogData(nil, &pebble.WriteOptions{Sync: true})
+	return db.SyncWAL()
 }
 
 // WarmSystemKeys preloads the system/config key zones into Pebble's block
@@ -704,18 +733,20 @@ func (s *Store) WarmBlockCache() {
 		return
 	}
 
-	m := db.Metrics()
-	s.logger.WithFields(map[string]any{
-		"duration":        time.Since(start).String(),
-		"keys":            keys,
-		"blockCacheSize":  m.BlockCache.Size,
-		"blockCacheCount": m.BlockCache.Count,
-	}).Infof("Block cache warmup complete (attributes zone)")
+	fields := map[string]any{
+		"duration": time.Since(start).String(),
+		"keys":     keys,
+	}
+	if m := pebbleMetrics(db); m != nil {
+		fields["blockCacheSize"] = m.BlockCache.Size
+		fields["blockCacheCount"] = m.BlockCache.Count
+	}
+	s.logger.WithFields(fields).Infof("Block cache warmup complete (attributes zone)")
 }
 
 // warmRange iterates [lower, upper) reading every value to populate the block cache.
-func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
-	iter, err := db.NewIter(&pebble.IterOptions{
+func (s *Store) warmRange(db engine.DB, lower, upper byte) (int64, error) {
+	iter, err := db.NewIter(&engine.IterOptions{
 		LowerBound: []byte{lower},
 		UpperBound: []byte{upper},
 	})
@@ -749,7 +780,7 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 // This is caused by a caller retaining a Pebble read resource past the lock
 // that protects the DB's lifetime, not by anything internal to Pebble. The
 // known instance was (*Store).Get handing back Pebble's closer — a live
-// *pebble.Iterator on an SST-backed lookup — after releasing dbMu.RLock
+// engine.Iterator on an SST-backed lookup — after releasing dbMu.RLock
 // (EN-2072); see the PebbleGetter contract in reader.go.
 //
 // An earlier version of this comment blamed a race in Pebble's
@@ -823,7 +854,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 
 	removeOldDone := time.Now()
 
-	if err := db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(checkpointDir); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
@@ -951,7 +982,7 @@ func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
 		return "", ErrStoreClosed
 	}
 
-	if err := db.Checkpoint(path, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(path); err != nil {
 		return "", fmt.Errorf("creating temporary checkpoint %q: %w", name, err)
 	}
 
@@ -1082,7 +1113,7 @@ func (s *Store) checkpointQueryTemp(tmpDir string) error {
 		return ErrStoreClosed
 	}
 
-	if err := db.Checkpoint(tmpDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(tmpDir); err != nil {
 		return fmt.Errorf("creating query checkpoint: %w", err)
 	}
 
@@ -1524,10 +1555,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		}
 
 		// Reopen the original DB so the Store stays usable.
-		// FileCache must be cleared for the same reason as below.
-		s.opts.FileCache = nil
-
-		revivedDB, openErr := pebble.Open(liveDirectory, s.opts)
+		revivedDB, openErr := s.open(liveDirectory)
 		if openErr != nil {
 			return fmt.Errorf("rollback failed (could not reopen original live): %w; original error: %w", openErr, reason)
 		}
@@ -1542,14 +1570,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return rollback(fmt.Errorf("hard linking checkpoint to live.staging directory: %w", err))
 	}
 
-	// Step 5: open the staged database. Clear FileCache so pebble.Open
-	// creates a fresh one. The first Open mutates opts.FileCache in-place;
-	// reusing the stale pointer causes a panic in shard.Close ("element
-	// has outstanding references") because the old FileCache was already
-	// closed when the old DB was closed.
-	s.opts.FileCache = nil
-
-	newDB, err := pebble.Open(stagingDirectory, s.opts)
+	// Step 5: open the staged database (see pebbleOpener for the FileCache
+	// reset the Pebble path needs).
+	newDB, err := s.open(stagingDirectory)
 	if err != nil {
 		return rollback(fmt.Errorf("opening staged database: %w", err))
 	}
@@ -1559,7 +1582,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Step 6: re-write this node's persisted config and re-checkpoint
 	// (still inside the staging directory).
 	if preservedConfig != nil {
-		if err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+		if err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, true); err != nil {
 			return rollback(fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err))
 		}
 
@@ -1604,9 +1627,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// correctness; the worst case is a stale live.discard/ that boot
 	// will sweep up.
 
-	s.opts.FileCache = nil
-
-	publishedDB, err := pebble.Open(liveDirectory, s.opts)
+	publishedDB, err := s.open(liveDirectory)
 	if err != nil {
 		// We renamed staging to live so the new state is durable, but
 		// we cannot reopen it in-process. Surface the error; the next
@@ -1665,9 +1686,9 @@ func WithResetFunc(fn func(proto.Message)) ProtoCursorOption {
 	return func(c *protoCursorConfig) { c.resetFunc = fn }
 }
 
-// ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
+// ProtoCursor implements Cursor[T] over a engine.Iterator where T is a proto.Message pointer.
 type ProtoCursor[T proto.Message] struct {
-	iter      *pebble.Iterator
+	iter      engine.Iterator
 	started   bool
 	elemTyp   reflect.Type
 	reuse     bool
@@ -1676,7 +1697,7 @@ type ProtoCursor[T proto.Message] struct {
 	item      T // reused when reuse=true
 }
 
-func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
+func NewProtoCursor[T proto.Message](iter engine.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
 	var cfg protoCursorConfig
 	for _, o := range opts {
 		o(&cfg)
@@ -1980,8 +2001,8 @@ func fsyncDir(dir string) error {
 	return nil
 }
 
-// Checkpoint creates a Pebble checkpoint at destDir with flushed WAL.
-// This is a thin wrapper around pebble.DB.Checkpoint used for testing
+// Checkpoint creates an engine checkpoint at destDir with flushed WAL.
+// This is a thin wrapper around engine.DB.Checkpoint used for testing
 // and backup operations that need a standalone copy of the database.
 func (s *Store) Checkpoint(destDir string) error {
 	s.dbMu.RLock()
@@ -1992,5 +2013,5 @@ func (s *Store) Checkpoint(destDir string) error {
 		return ErrStoreClosed
 	}
 
-	return db.Checkpoint(destDir, pebble.WithFlushedWAL())
+	return db.Checkpoint(destDir)
 }

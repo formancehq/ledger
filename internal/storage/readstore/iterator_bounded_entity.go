@@ -3,16 +3,15 @@ package readstore
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // BoundedEntityIterator streams a prefix whose keys are ordered by a unique,
 // fixed-width entity suffix. It shares bounds and absolute seek semantics across
 // log and transaction ranges. It does not deduplicate multi-key entities.
 type BoundedEntityIterator struct {
-	iter       *pebble.Iterator
+	iter       engine.Iterator
 	prefix     []byte
 	lowerBound []byte
 	idOffset   int // len(prefix)
@@ -54,7 +53,7 @@ func NewBoundedEntityIterator(reader dal.PebbleReader, prefix, lower, upper []by
 		upperBound = IncrementBytes(prefix)
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})

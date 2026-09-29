@@ -1,6 +1,6 @@
 # Storage
 
-The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool`, `internal/storage/pebblecfg`). One Pebble database backs the main store (WAL enabled); a second backs the read store (WAL disabled, fully rebuildable). The spool sits between Raft commit and FSM apply.
+The persistence layer (`internal/storage/dal`, `internal/storage/engine`, `internal/storage/wal`, `internal/storage/spool`, `internal/storage/pebblecfg`). One Pebble database backs the main store (WAL enabled); a second backs the read store (WAL disabled, fully rebuildable). Stores reach the engine through the `engine` contract (see storage-drivers.md). The spool sits between Raft commit and FSM apply.
 
 ## Documents
 

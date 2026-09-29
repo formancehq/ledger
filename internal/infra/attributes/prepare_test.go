@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -19,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.
@@ -26,7 +26,7 @@ import (
 func readLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
 	get, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex})
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return 0, nil
 		}
 
@@ -107,7 +107,7 @@ func snapshotAttributeZone(t *testing.T, s *dal.Store) map[string][]byte {
 
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneAttributes},
 		UpperBound: []byte{dal.ZoneAttributes + 1},
 	})
@@ -200,14 +200,14 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 		"the checkpoint's applied index must be preserved as the genesis boundary — the WAL-snapshot index the restored FSM genesis occupies")
 
 	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
-	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted config must be deleted")
+	require.ErrorIs(t, err, engine.ErrNotFound, "persisted config must be deleted")
 
 	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00})
-	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted bloom blocks must be dropped")
+	require.ErrorIs(t, err, engine.ErrNotFound, "persisted bloom blocks must be dropped")
 
 	_, _, err = s.Get(append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07))
-	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
+	require.ErrorIs(t, err, engine.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
 
 	checkpoint, err := dal.ReadProto[*raftcmdpb.QueryCheckpointState](s, checkpointKey)
 	require.NoError(t, err)
@@ -309,7 +309,7 @@ func TestPrepareForBackupClearsCacheZone(t *testing.T) {
 
 	for _, k := range cacheKeys {
 		_, _, err := s.Get(k)
-		require.ErrorIsf(t, err, pebble.ErrNotFound, "cache-zone key % x must be dropped", k)
+		require.ErrorIsf(t, err, engine.ErrNotFound, "cache-zone key % x must be dropped", k)
 	}
 }
 
