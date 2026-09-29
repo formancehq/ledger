@@ -168,47 +168,15 @@ func TestConvertNumscriptError_MissingFunds_WrappedPreservesErrorsAs(t *testing.
 	require.Equal(t, "500", insufficientFunds.Balance)
 }
 
-// limitedColorStore serves a single, capped colored balance so a colored
-// `send` overruns it and the interpreter raises MissingFundsErr. It is a
-// minimal numscriptlib.Store used to exercise the real interpreter path.
-type limitedColorStore struct {
-	account string
-	asset   string
-	color   string
-	amount  *big.Int
-}
-
-func (s limitedColorStore) GetBalances(_ context.Context, q numscriptlib.BalanceQuery) (numscriptlib.Balances, error) {
-	out := make(numscriptlib.Balances, 0, len(q))
-	for _, item := range q {
-		amount := new(big.Int)
-		if item.Account == s.account && item.Asset == s.asset && item.Color == s.color {
-			amount.Set(s.amount)
-		}
-		out = append(out, numscriptlib.BalanceRow{
-			Account: item.Account,
-			Asset:   item.Asset,
-			Color:   item.Color,
-			Amount:  amount,
-		})
-	}
-
-	return out, nil
-}
-
-func (limitedColorStore) GetAccountsMetadata(context.Context, numscriptlib.MetadataQuery) (numscriptlib.AccountsMetadata, error) {
-	return numscriptlib.AccountsMetadata{}, nil
-}
-
-// TestSafeRun_ColoredInsufficientFunds runs a real colored `send` that overruns
-// a capped RED bucket and asserts the surfaced ErrInsufficientFunds. It pins the
-// interpreter limitation: numscriptlib.MissingFundsErr does not carry the color
-// (nor the account), so the converted error's Color is empty even though the
-// failing bucket is COIN/RED. An empty Color here means "unknown", NOT the
-// uncolored bucket — see convertNumscriptError. If a future numscript bump
-// attaches the resolved (account, color) to MissingFundsErr, this test should be
-// tightened to assert Color == "RED".
-func TestSafeRun_ColoredInsufficientFunds(t *testing.T) {
+// TestExecCompiled_ColoredInsufficientFunds runs a real colored `send` on the
+// VM that overruns a capped RED bucket and asserts the surfaced
+// ErrInsufficientFunds. It pins the VM limitation: its missing-funds error
+// does not carry the color (nor the account), so the converted error's Color
+// is empty even though the failing bucket is COIN/RED. An empty Color here
+// means "unknown", NOT the uncolored bucket — see convertVMError. If a future
+// numscript bump attaches the resolved (account, color) to the error, this
+// test should be tightened to assert Color == "RED".
+func TestExecCompiled_ColoredInsufficientFunds(t *testing.T) {
 	t.Parallel()
 
 	script := `#![feature("experimental-asset-colors")]
@@ -217,17 +185,12 @@ send [COIN 100] (
 	destination = @bob
 )`
 
-	parsed := numscriptlib.Parse(script)
-	require.Empty(t, parsed.GetParsingErrors())
+	compiled, compileErr := compileScript(mustEntry(t, script), nil)
+	require.Nil(t, compileErr)
 
-	store := limitedColorStore{
-		account: "alice",
-		asset:   "COIN",
-		color:   "RED",
-		amount:  big.NewInt(40),
-	}
+	source := mapValueSource{balances: map[string]*big.Int{"alice\x00COIN\x00RED": big.NewInt(40)}}
 
-	_, runErr := SafeRun(parsed, context.Background(), numscriptlib.VariablesMap{}, store)
+	_, runErr := execCompiledScript(compiled, NewVMStore(source, false))
 	require.NotNil(t, runErr)
 
 	var insufficientFunds *domain.ErrInsufficientFunds
@@ -235,7 +198,7 @@ send [COIN 100] (
 	require.Equal(t, "COIN", insufficientFunds.Asset)
 	require.Equal(t, "100", insufficientFunds.Amount)
 	require.Equal(t, "40", insufficientFunds.Balance)
-	// Interpreter limitation: color is not recoverable from MissingFundsErr.
+	// VM limitation: color is not recoverable from the missing-funds error.
 	require.Empty(t, insufficientFunds.Color)
 	// ColorKnown must be false so the empty color is surfaced as "unknown", not
 	// as a definite hit on the uncolored bucket. The wire metadata therefore

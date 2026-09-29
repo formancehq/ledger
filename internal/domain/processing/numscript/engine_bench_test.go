@@ -1,16 +1,12 @@
 package numscript
 
-// Benchmarks the two FSM execution engines against each other, plus the VM
-// path's decode/verify/exec decomposition. The decomposition is what justifies
-// getOrDecodeCompiled: the verifier is a whole-program static pass costing
-// several times a full interpreter run (and ~30x an execution), so paying it
-// per apply would make the VM path slower than interpreting — cached per
-// artifact, the VM path is roughly twice as fast as the cached-parse
-// interpreter on these scripts.
+// Benchmarks the FSM's VM execution path and its decode/verify/exec
+// decomposition. The decomposition is what justifies getOrDecodeCompiled: the
+// verifier is a whole-program static pass costing ~30x an execution, so it is
+// paid once per cached artifact rather than per apply.
 
 import (
 	"context"
-	"maps"
 	"math/big"
 	"testing"
 
@@ -67,26 +63,12 @@ func benchCase(b *testing.B, script string, vars map[string]string) {
 		b.Fatal("parse errors")
 	}
 
-	parsed := entry.script.program
-
-	compiled := compileScript(entry, vars)
-	if compiled == nil {
-		b.Fatal("compile failed")
+	compiled, compileErr := compileScript(entry, vars)
+	if compileErr != nil {
+		b.Fatal(compileErr)
 	}
 
 	source := benchSource()
-
-	b.Run("interpreter_cached_parse", func(b *testing.B) {
-		store := NewStore(source, false)
-		vm := make(numscriptlib.VariablesMap, len(vars))
-		maps.Copy(vm, vars)
-		b.ReportAllocs()
-		for b.Loop() {
-			if _, err := SafeRun(parsed, context.Background(), vm, store); err != nil {
-				b.Fatal(err)
-			}
-		}
-	})
 
 	b.Run("vm_decode_verify_exec", func(b *testing.B) {
 		store := NewVMStore(source, false)

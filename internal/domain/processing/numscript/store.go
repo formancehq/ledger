@@ -38,13 +38,13 @@ type ValueSource interface {
 }
 
 // Store adapts a ValueSource to the numscript library's Store interface. The
-// upstream resolver and interpreter call GetBalances / GetAccountsMetadata with
+// upstream dependency resolver calls GetBalances / GetAccountsMetadata with
 // batched, slice-shaped queries; this translates each row through the
 // ValueSource.
 //
 // Color IS modelled by Ledger volumes: the query's Color selects a segregated
 // (account, asset, color) bucket and is threaded into the lookup, then echoed
-// back on the returned row so the interpreter's key matching lines up. Scope is
+// back on the returned row so the resolver's key matching lines up. Scope is
 // NOT modelled (a distinct Numscript concept) — a scope-qualified query is
 // rejected outright. Account metadata has no color dimension, only scope (also
 // rejected).

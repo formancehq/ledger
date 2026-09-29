@@ -4,9 +4,11 @@ import (
 	"sync"
 	"testing"
 
+	numscriptlib "github.com/formancehq/numscript"
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -486,6 +488,32 @@ func expectDeleteIndex(t *testing.T, mockStore *MockScope, key domain.IndexKey) 
 }
 
 // requestToOrder converts a servicepb.Request to a raftcmdpb.Order for test purposes.
+// stageCompiledArtifact binds the VM artifact admission would compile for
+// script to order's technical sub-message — every scripted order admission
+// proposes carries one. A script admission would reject (it does not parse or
+// compile) is left without an artifact, which the FSM treats as an admission
+// bug.
+func stageCompiledArtifact(order *raftcmdpb.Order, script string, vars map[string]string) {
+	varsEncoder, program, err := numscriptlib.Compile(script)
+	if err != nil {
+		return
+	}
+
+	encodedVars, err := varsEncoder.Encode(vars)
+	if err != nil {
+		return
+	}
+
+	hash := numscript.HashScript(script)
+
+	if order.Technical == nil {
+		order.Technical = &raftcmdpb.OrderTechnical{}
+	}
+	order.Technical.CompiledProgram = program.Encode()
+	order.Technical.CompiledVars = encodedVars.Encode()
+	order.Technical.CompiledScriptHash = hash[:]
+}
+
 func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 	order := &raftcmdpb.Order{}
 
@@ -522,6 +550,9 @@ func requestToOrder(req *servicepb.Request) *raftcmdpb.Order {
 					AccountMetadata: data.CreateTransaction.GetAccountMetadata(),
 					Force:           data.CreateTransaction.GetForce(),
 				},
+			}
+			if script := data.CreateTransaction.GetScript(); script.GetPlain() != "" {
+				stageCompiledArtifact(order, script.GetPlain(), script.GetVars())
 			}
 		case *servicepb.LedgerAction_AddMetadata:
 			applyOrder.Data = &raftcmdpb.LedgerApplyOrder_AddMetadata{

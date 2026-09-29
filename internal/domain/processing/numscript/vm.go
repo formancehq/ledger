@@ -15,39 +15,45 @@ import (
 // CompiledScript is the Numscript VM artifact admission compiles on the
 // leader's parallel path and binds to the order (OrderTechnical): the encoded
 // bytecode, the runtime vars encoded against that program's variable layout,
-// and the BLAKE3 hash of the exact script text it was compiled from. The FSM
-// decodes and executes it on every node instead of re-interpreting the text.
+// and the BLAKE3 hash of the exact script text it was compiled from. The VM is
+// the only execution engine: the FSM decodes and executes this artifact on
+// every node, and an order without one never reaches execution.
+//
+// program and vars are the decoded forms of Program and Vars, kept for
+// admission's own effects run so it need not decode what it just encoded.
 type CompiledScript struct {
 	Program    []byte
 	Vars       []byte
 	ScriptHash []byte
+
+	program numscriptlib.CompiledProgram
+	vars    numscriptlib.Vars
 }
 
 // compileScript binds an order's vars to its script's compile on the admission
 // path. The script-dependent half — compiling and encoding the bytecode — is
 // computed once per cached script (lruEntry.compileParsed) and shared by every
-// order carrying it; only the vars encoding runs per order. It returns nil on
-// ANY failure — a script the compiler does not support yet (e.g. asset
-// scaling), a var value the encoder rejects, or a recovered panic — because
-// absence of the artifact only means the FSM executes the script with the
-// tree-walking interpreter instead, which produces the authoritative outcome
-// (including the client-facing error for a bad var value). Compilation is an
-// optimization, never an admission verdict.
-func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript) {
+// order carrying it; only the vars encoding runs per order. A script the VM
+// cannot run is an admission rejection: ErrNumscriptCompile when the compiler
+// rejects the script or a var value does not bind to its layout (both
+// deterministic, freezable validation failures), a panicError (IsPanic) when
+// the library panics.
+func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript, err domain.SerializableError) {
 	defer func() {
-		if recover() != nil {
+		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
 			out = nil
+			err = panicErr
 		}
 	}()
 
-	compiled := entry.compileParsed()
-	if compiled == nil {
-		return nil
+	compiled, compileErr := entry.compileParsed()
+	if compileErr != nil {
+		return nil, compileErr
 	}
 
-	encodedVars, err := compiled.varsEncoder.Encode(vars)
-	if err != nil {
-		return nil
+	encodedVars, encErr := compiled.varsEncoder.Encode(vars)
+	if encErr != nil {
+		return nil, &domain.ErrNumscriptCompile{Detail: encErr.Error()}
 	}
 
 	hash := entry.hash
@@ -55,14 +61,39 @@ func compileScript(entry *lruEntry, vars map[string]string) (out *CompiledScript
 	return &CompiledScript{
 		// The order's artifact travels into OrderTechnical; give it its own
 		// bytes rather than aliasing the entry shared by every order of the script.
-		Program:    bytes.Clone(compiled.program),
+		Program:    bytes.Clone(compiled.encoded),
 		Vars:       encodedVars.Encode(),
 		ScriptHash: hash[:],
-	}
+		program:    compiled.program,
+		vars:       encodedVars,
+	}, nil
+}
+
+// execCompiledScript runs an admission-compiled script on a fresh VM instance.
+// Admission executes concurrently, so it never touches the FSM's warm
+// instances (which must not run concurrently — see compiledLruEntry); the
+// program itself is immutable and safe to share across instances.
+func execCompiledScript(compiled *CompiledScript, store *VMStore) (numscriptlib.ExecutionResult, domain.SerializableError) {
+	return safeExecVM(numscriptlib.NewVm(compiled.program), &compiled.vars, store)
+}
+
+// safeExecVM executes a VM instance with the panic-recovery and
+// error-conversion contract shared by every VM execution.
+func safeExecVM(vm *numscriptlib.Vm, vars *numscriptlib.Vars, store *VMStore) (result numscriptlib.ExecutionResult, err domain.SerializableError) {
+	defer func() {
+		if panicErr := numscriptPanicToDescribable(recover()); panicErr != nil {
+			result = numscriptlib.ExecutionResult{}
+			err = panicErr
+		}
+	}()
+
+	result, execErr := numscriptlib.ExecVm(context.Background(), vm, vars, store)
+
+	return result, convertVMError(execErr)
 }
 
 // NewVMStore adapts a ValueSource to the numscript VM's Store interface, the
-// per-key counterpart of the interpreter-facing Store built by NewStore: same
+// per-key counterpart of the resolver-facing Store built by NewStore: same
 // ValueSource, same force semantics (unlimited balances, real metadata), same
 // scope rejection — a scope view of (account, asset) would collapse onto the
 // single volume (EN-1406 P1-2), and account metadata has no scope dimension.
@@ -105,10 +136,10 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 }
 
 // SafeExecCompiled decodes, verifies and executes an admission-compiled
-// artifact on the FSM apply path, with the same panic-recovery contract as
-// SafeRun. Every failure before execution is a loud internal error
-// (ErrNumscriptRuntime), not a client error and never a fallback to the
-// interpreter: an artifact the FSM cannot execute as-is fails the order the
+// artifact on the FSM apply path, recovering library panics into ErrNumscriptRuntime.
+// Every failure before execution is a loud internal error
+// (ErrNumscriptRuntime), not a client error: the VM is the only engine, so an
+// artifact the FSM cannot execute as-is fails the order the
 // same way on every node running this binary, so the outcome stays a pure
 // function of the committed entry and the running binary (invariant #2) and
 // the defect surfaces instead of being papered over (invariant #7).
@@ -138,9 +169,8 @@ func (s *VMStore) GetMetadata(_ context.Context, account, scope, key string) (st
 // the whole program, orders of magnitude more expensive than execution itself,
 // and its outcome for a given artifact never changes (the vars pool sizes it
 // checks LoadVar indices against are fixed by the program's own variable
-// layout, not by the per-order values). Caching it is what makes the VM path
-// cheaper than the interpreter per apply, exactly as the parse cache does for
-// the interpreter path. Execution reuses the entry's single warm VM instance
+// layout, not by the per-order values). Caching it is what keeps per-apply
+// cost down to execution alone. Execution reuses the entry's single warm VM instance
 // (see compiledLruEntry for the reuse contract: always safe sequentially,
 // never concurrently). Cache and warm instance alike only move work, never
 // results, so apply stays deterministic. scriptHash is the cache key: the
@@ -175,9 +205,7 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 		return numscriptlib.ExecutionResult{}, err
 	}
 
-	result, execErr := numscriptlib.ExecVm(context.Background(), entry.vm, &vars, store)
-
-	return result, convertVMError(execErr)
+	return safeExecVM(entry.vm, &vars, store)
 }
 
 // convertVMError is convertNumscriptError's counterpart for the VM's error
@@ -185,8 +213,8 @@ func SafeExecCompiled(cache *NumscriptCache, scriptHash, programBytes, varsBytes
 // color either, so ColorKnown stays false), the same typed-failure pass-through
 // (the VM wraps store errors, which Unwrap to the domain sentinel a rejected
 // scoped read raises), and the same conservative ErrNumscriptRuntime residue.
-// Asset scaling never reaches here: a scaling script does not compile, so it
-// has no artifact and runs on the interpreter path.
+// Asset scaling never reaches here: dependency resolution rejects a scaling
+// script at admission (ErrNumscriptScalingUnsupported), before compilation.
 func convertVMError(err error) domain.SerializableError {
 	if err == nil {
 		return nil

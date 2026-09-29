@@ -79,7 +79,7 @@ func vmTestScope(t *testing.T) *MockScope {
 }
 
 // produceVMScript runs the producer on vmScript against a fresh test scope,
-// staging the given artifact (all nil for the plain interpreter path) the way
+// staging the given artifact (all nil for an order without one) the way
 // the dispatcher would from OrderTechnical.
 func produceVMScript(t *testing.T, vars map[string]string, programBytes, varsBytes, scriptHash []byte) (*produceResult, domain.SerializableError) {
 	t.Helper()
@@ -123,22 +123,22 @@ func TestProduce_CompiledArtifactExecutesOnTheVM(t *testing.T) {
 	vmResult, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
 	require.Nil(t, err)
 
-	interpreterResult, err := produceVMScript(t, vmScriptVars, nil, nil, nil)
-	require.Nil(t, err)
-
 	require.Len(t, vmResult.Postings, 1)
 	require.Equal(t, "wallet", vmResult.Postings[0].GetSource())
 	require.Equal(t, "out", vmResult.Postings[0].GetDestination())
 	require.Equal(t, "USD/2", vmResult.Postings[0].GetAsset())
 	require.Equal(t, uint64(100), vmResult.Postings[0].GetAmount().ToBigInt().Uint64())
 	require.Equal(t, "vm-test", commonpb.MetadataValueToString(vmResult.TransactionMetadata["kind"]))
+}
 
-	// Engine parity on the same state: the two paths must be indistinguishable.
-	require.Equal(t, len(interpreterResult.Postings), len(vmResult.Postings))
-	for i := range vmResult.Postings {
-		require.True(t, interpreterResult.Postings[i].EqualVT(vmResult.Postings[i]))
-	}
-	require.Equal(t, len(interpreterResult.TransactionMetadata), len(vmResult.TransactionMetadata))
+// TestProduce_MissingArtifactIsLoud: the VM is the only engine, so a scripted
+// order without an artifact is an admission bug surfaced loudly (invariant
+// #7) — the script text is never run some other way.
+func TestProduce_MissingArtifactIsLoud(t *testing.T) {
+	t.Parallel()
+
+	_, err := produceVMScript(t, vmScriptVars, nil, nil, nil)
+	requireNumscriptRuntimeError(t, err, "no compiled numscript artifact")
 }
 
 // TestProduce_CompiledArtifactHashMismatchIsLoud: an artifact bound to a
