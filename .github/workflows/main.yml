@@ -201,8 +201,21 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run in-memory model checker (3-node cluster, rolling restarts)
+        env:
+          KEEP_WORKDIR: "1"
         run: >
           nix develop --command just test-model-cluster 180
+      - name: Upload model failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: model-failure-diagnostics
+          path: |
+            ${{ runner.temp }}/nix-shell.*/model-test.*/driver.log
+            ${{ runner.temp }}/nix-shell.*/model-test.*/server-*.log
+            ${{ runner.temp }}/nix-shell.*/model-test.*/assertions.json
+          retention-days: 3
+          if-no-files-found: warn
 
   Coverage:
     if: always()
