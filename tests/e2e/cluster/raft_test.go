@@ -160,11 +160,13 @@ var _ = Describe("Simple cluster", func() {
 				WithPolling(500*time.Millisecond).
 				Should(BeFollower(), "Timed out waiting for node to become follower")
 			Eventually(func(g Gomega) bool {
-				ledgers, err := actions.ListLedgers(ctx, servers[followerID-1].Client)
+				requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				defer cancel()
+				ledgers, err := actions.ListLedgers(requestCtx, servers[followerID-1].Client)
 				g.Expect(err).To(Succeed())
 				_, found := ledgers[ledgerName]
 				return found
-			}).To(BeTrue())
+			}).WithTimeout(30 * time.Second).To(BeTrue())
 
 			ledger, err := servers[followerID-1].Client.GetLedger(ctx, &servicepb.GetLedgerRequest{
 				Ledger: ledgerName,
