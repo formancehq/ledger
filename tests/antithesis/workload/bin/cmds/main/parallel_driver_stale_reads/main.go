@@ -43,20 +43,6 @@ const (
 	probeAsset   = "USD/2"
 )
 
-// parseAmount parses a big.Int volume string, defaulting to 0 for empty
-// values (an absent volume entry is a valid prefix: no write applied yet).
-func parseAmount(s string) *big.Int {
-	if s == "" {
-		return big.NewInt(0)
-	}
-
-	v, ok := new(big.Int).SetString(s, 10)
-	if !ok {
-		return nil
-	}
-
-	return v
-}
 
 func main() {
 	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
@@ -148,12 +134,6 @@ func main() {
 				continue
 			}
 
-			var (
-				input   *big.Int
-				output  *big.Int
-				balance *big.Int
-			)
-
 			if vol.GetInput() == nil || vol.GetOutput() == nil || vol.GetBalance() == nil {
 				assert.Unreachable("stale read returned volume with absent required field",
 					details.With(internal.Details{
@@ -163,16 +143,15 @@ func main() {
 					}))
 				continue
 			}
-			input = parseAmount(vol.GetInput().DecimalString())
-			output = parseAmount(vol.GetOutput().DecimalString())
-			balance = parseAmount(vol.GetBalance().DecimalString())
-
-			if input == nil || output == nil || balance == nil {
-				assert.Unreachable("stale read returned unparsable volume strings",
+			input, inputErr := vol.GetInput().ToBigInt()
+			output, outputErr := vol.GetOutput().ToBigInt()
+			balance, balanceErr := vol.GetBalance().ToBigInt()
+			if inputErr != nil || outputErr != nil || balanceErr != nil {
+				assert.Unreachable("stale read returned invalid typed volume",
 					details.With(internal.Details{
-						"input":   vol.GetInput().DecimalString(),
-						"output":  vol.GetOutput().DecimalString(),
-						"balance": vol.GetBalance().DecimalString(),
+						"inputErr":   inputErr,
+						"outputErr":  outputErr,
+						"balanceErr": balanceErr,
 					}))
 				continue
 			}
