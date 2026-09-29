@@ -581,6 +581,10 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		afterSeq uint64
 	)
 
+	// ListLogs paginates forward only; ValidateListOptions refuses a reverse
+	// request rather than silently serving the forward page.
+	reverse := oneIn(8)
+
 	malformed, rolled := rollMalformedCursor()
 	switch {
 	case rolled:
@@ -607,6 +611,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 		Options: &commonpb.ListOptions{
 			PageSize: uint32(requestedPageSize),
 			Cursor:   cursor,
+			Reverse:  reverse,
 			Filter:   filter,
 		},
 	})
@@ -637,6 +642,13 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			return
 		}
 
+		if reverse && status.Code(err) == codes.InvalidArgument {
+			// Coverage: the endpoint refuses the option it does not implement.
+			assert.Reachable("singleton_driver_model: reverse log query rejected", internal.Details{"ledger": ledger})
+
+			return
+		}
+
 		if handleMalformedCursorError(rolled, "log", cursor, err) {
 			return
 		}
@@ -645,6 +657,15 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			"ledger": ledger,
 			"filter": describeFilter(filter),
 			"error":  err.Error(),
+		})
+
+		return
+	}
+
+	if reverse {
+		assert.Unreachable("singleton_driver_model: reverse log query returned results", internal.Details{
+			"ledger": ledger,
+			"rows":   len(logs),
 		})
 
 		return

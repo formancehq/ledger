@@ -7,11 +7,53 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
 // The model folds buckets the way the server's result stage does: one per
 // (asset, color) by default, colors summed into "" on request, precisions of
 // one base merged under the highest seen with rescaling.
+// A grouped aggregate carries no flat totals: every account lands in the first
+// prefix that claims it, in the order the request listed them, and an account no
+// prefix claims is left out.
+func TestModelAggregateGroups_AssignsToTheFirstMatchingPrefix(t *testing.T) {
+	t.Parallel()
+
+	ls := buildLedger(t,
+		oracletest.TxReq("world", "t-1:1", "USD", 5),
+		oracletest.TxReq("world", "t-2:1", "USD", 7),
+		oracletest.TxReq("world", "other:1", "USD", 9),
+	)
+
+	opts := aggOptions{groupByPrefixes: []string{"t-1:", "t-2:", "no-such-prefix:"}}
+	groups := modelAggregateGroups(ls, nil, opts)
+
+	require.Len(t, groups, 3)
+	require.Equal(t, []string{"t-1:", "t-2:", "no-such-prefix:"}, []string{groups[0].prefix, groups[1].prefix, groups[2].prefix},
+		"groups follow the request's order")
+	require.Equal(t, "USD|=in:5,out:0", renderAgg(groups[0].sums))
+	require.Equal(t, "USD|=in:7,out:0", renderAgg(groups[1].sums))
+	require.Empty(t, groups[2].sums, "a prefix nothing matches still gets its entry")
+
+	// world and other:1 match no prefix, so their cells are excluded — the
+	// grouped totals are strictly less than the flat fold.
+	require.Equal(t, "USD|=in:21,out:21", renderAgg(modelAggregate(ls, nil, aggOptions{})))
+
+	// A repeated prefix is served twice, both times by the same assignment.
+	repeated := modelAggregateGroups(ls, nil, aggOptions{groupByPrefixes: []string{"t-1:", "t-1:"}})
+	require.Len(t, repeated, 2)
+	require.Equal(t, renderAgg(repeated[0].sums), renderAgg(repeated[1].sums))
+}
+
+func TestAggGroupsEqual_ComparesPrefixOrder(t *testing.T) {
+	t.Parallel()
+
+	a := []aggGroup{{prefix: "x:"}, {prefix: "y:"}}
+	require.True(t, aggGroupsEqual(a, []aggGroup{{prefix: "x:"}, {prefix: "y:"}}))
+	require.False(t, aggGroupsEqual(a, []aggGroup{{prefix: "y:"}, {prefix: "x:"}}), "order is the request's")
+	require.False(t, aggGroupsEqual(a, []aggGroup{{prefix: "x:"}}))
+}
+
 func TestModelAggregateOptionsMirrorTheResultStage(t *testing.T) {
 	t.Parallel()
 
