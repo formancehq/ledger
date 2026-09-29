@@ -7,7 +7,7 @@ import statistics
 import sys
 
 
-BENCHMARK = re.compile(r"^(Benchmark\S+)\s+\d+\s+([\d.]+) ns/op(?:\s+\d+ B/op\s+\d+ allocs/op)?$")
+BENCHMARK = re.compile(r"^(Benchmark\S+)\s+\d+\s+([\d.]+) ns/op\b")
 
 
 def samples(path: pathlib.Path) -> dict[str, list[float]]:

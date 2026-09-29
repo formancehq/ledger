@@ -30,7 +30,7 @@ git worktree add --detach "$work_dir/rocksdb" "$rocksdb_ref"
   printf 'Host: '; hostname
   printf 'Kernel: '; uname -a
   printf 'Go: '; go version
-  printf 'CPU: '; lscpu | rg 'Model name|CPU\(s\):|Architecture' || true
+  lscpu || true
 } > "$output_dir/environment.txt"
 
 for engine in pebble rocksdb; do
