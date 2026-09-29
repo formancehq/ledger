@@ -1,220 +1,253 @@
-// Driver for the "deleted-ledger-data-isolation-and-eventual-purge" property
-// (workload half): after DeleteLedger commits, a same-name recreated ledger
-// behaves as a brand-new ledger — none of the predecessor's transactions or
-// account activity is visible through it, and the predecessor's references
-// are reusable (reference uniqueness is keyed by the monotonic LedgerID, not
-// the name). The deferred-Pebble-cleanup half is anchored SUT-side by the
-// Reachable at executePurge (internal/infra/state/write_set.go); the
-// in-flight-delete outcome disjunction is exercised by
-// parallel_driver_concurrent_ledger_delete and the final-state oracle.
+// Verify the permanent deletion contract and isolation between ledger names.
+// A deleted name cannot be recreated. A different driver-owned ledger must not
+// expose its transactions/accounts and may reuse its references: reference
+// uniqueness is scoped by ledger name. API absence does not prove disk cleanup.
 //
-// Soundness against benign interleavings:
-//   - The ledger is driver-owned ("lrecreate-" restricted prefix): no foreign
-//     driver writes to it, deletes it, or takes its references.
-//   - Pre-delete writes carry unique run-scoped references, recorded only on
-//     explicit ack; the isolation check runs BEFORE the reference-reuse
-//     write, so an old reference found through the new incarnation can only
-//     be predecessor data.
-//   - All isolation reads happen after a marker write in the NEW incarnation.
-//     The default linearizable read and projection alignment guarantee the
-//     serving store has applied past the delete+recreate, so
-//     name→ID resolution yields the new LedgerID — without it, a legitimately
-//     stale (prefix-consistent) read could resolve the name to the OLD ID and
-//     "see" old data, a false positive. GetAccount has no freshness floor and
-//     is deliberately not used.
-//   - An ambiguous delete followed by a successful recreate is safe: the
-//     recreate only succeeds if the delete committed (AlreadyExists
-//     otherwise, which bails out as inconclusive).
+// Only acknowledged predecessors enter the oracle. Every write has a distinct
+// operation key, stable across client retries; tombstone probes must not replay
+// the original creation's success. An unacknowledged delete is inconclusive.
+// Unfiltered, fully paginated reads avoid undeclared reference/address indexes.
+// The default linearizable read barrier orders them after acknowledged writes.
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
+	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
-
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
-// createTx attempts a CreateTransaction and returns the Apply response.
-func createTx(
-	ctx context.Context,
-	client servicepb.BucketServiceClient,
-	ledger, ref, destination string,
-) (*servicepb.ApplyResponse, error) {
-	return client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: ledger,
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings: []*commonpb.Posting{{
-							Source:      "world",
-							Destination: destination,
-							Amount:      commonpb.NewUint256FromUint64(100),
-							Asset:       "USD/2",
-						}},
-						Reference: ref,
-						Force:     true,
-					},
-				}},
-			},
-		},
+func createTx(ctx context.Context, client servicepb.BucketServiceClient, key, ledger, ref, destination string) (*servicepb.ApplyResponse, error) {
+	return client.Apply(ctx, servicepb.UnsignedApplyRequest(key, &servicepb.Request{
+		Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+			Ledger: ledger,
+			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
+				CreateTransaction: &servicepb.CreateTransactionPayload{
+					Postings:  []*commonpb.Posting{{Source: "world", Destination: destination, Amount: commonpb.NewUint256FromUint64(100), Asset: "USD/2"}},
+					Reference: ref, Force: true,
+				},
+			}},
+		}},
 	}))
 }
 
-// listMatches lists transactions matching the filter after an acknowledged
-// marker and returns (foundIDs, conclusive). The default linearizable read is
-// aligned to the marker's Raft horizon; read errors are inconclusive.
-func listMatches(
-	ctx context.Context,
-	client servicepb.BucketServiceClient,
-	ledger string,
-	filter *commonpb.QueryFilter,
-) ([]uint64, bool) {
-	stream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{
-		Ledger: ledger,
-		Options: &commonpb.ListOptions{
-			PageSize: 10,
-			Filter:   filter,
-		},
-	})
-	if err != nil {
-		return nil, false
+// One classification site for unexpected operation failures, with the stage in
+// details. Expected tombstone/NotFound outcomes are checked separately below.
+func operationFailed(err error, stage string, details internal.Details) bool {
+	assert.Always(internal.IsTolerated(err), "ledger deletion scenario has no unexpected operation errors",
+		details.With(internal.Details{"stage": stage, "error": err}))
+	return err != nil
+}
+
+func confirmedTransaction(resp *servicepb.ApplyResponse, details internal.Details) *commonpb.CreatedTransaction {
+	created := internal.CheckCreatedTransaction(resp, details)
+	assert.Always(created != nil, "ledger deletion acknowledged transaction includes its created log", details)
+	return created
+}
+
+func confirmTombstone(ctx context.Context, client servicepb.BucketServiceClient, ledger, key string, details internal.Details) bool {
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(key, actions.CreateLedgerAction(ledger, nil)))
+	if err != nil && internal.IsTolerated(err) {
+		return false
 	}
-
-	var ids []uint64
-
-	for {
-		tx, err := stream.Recv()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-
-		if err != nil {
-			return nil, false
-		}
-
-		ids = append(ids, tx.GetId())
-	}
-
-	return ids, true
+	rejected := status.Code(err) == codes.FailedPrecondition && internal.IsLedgerDeleted(err)
+	assert.Always(rejected, "deleted ledger name remains permanently reserved", details.With(internal.Details{"probeKey": key, "error": err}))
+	return rejected
 }
 
 func main() {
 	internal.RunDriver("parallel_driver_ledger_recreate", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
-		r := internal.Rand()
-
-		run := r.Uint64()
-		ledger := internal.PrefixLedgerRecreate.WithSeed(run)
-		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
-			return
-		}
-
-		details := internal.Details{"ledger": ledger}
-
-		// 1. Populate the first incarnation. Menu axis: predecessor data size.
-		txCount := antirandom.RandomChoice([]int{3, 5})
-
-		var (
-			ackedRefs     []string
-			ackedAccounts []string
-		)
-
-		for i := range txCount {
-			ref := fmt.Sprintf("lrec-%d-%d", run, i)
-			account := fmt.Sprintf("lrec-old:%d:%d", run%1_000_000, i)
-
-			if _, err := createTx(ctx, client, ledger, ref, account); err != nil {
-				// Ambiguous outcomes still belong to the OLD incarnation, but
-				// only acked writes participate in the oracles.
-				continue
-			}
-
-			ackedRefs = append(ackedRefs, ref)
-			ackedAccounts = append(ackedAccounts, account)
-		}
-
-		assert.Sometimes(len(ackedRefs) > 0,
-			"ledger recreate predecessor write set recorded", details)
-
-		if len(ackedRefs) == 0 {
-			return
-		}
-
-		// 2. Delete the first incarnation.
-		if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
-			Type: &servicepb.Request_DeleteLedger{
-				DeleteLedger: &servicepb.DeleteLedgerRequest{Name: ledger},
-			},
-		})); err != nil && !(internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
-			// Ambiguous deletes are resolved by step 3 (recreate succeeds only
-			// if the delete committed); definitive failures are inconclusive
-			// for this property.
-			return
-		}
-
-		// 3. Recreate the SAME name. AlreadyExists ⇒ the delete did not
-		// commit ⇒ inconclusive.
-		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
-			return
-		}
-
-		// 4. Acknowledged marker write in the NEW incarnation. Every default
-		// isolation read below is aligned to at least this Raft horizon.
-		markerResp, err := createTx(ctx, client, ledger, "", "lrec-marker")
-		if err != nil || len(markerResp.GetLogs()) == 0 {
-			return
-		}
-
-		markerSeq := markerResp.GetLogs()[len(markerResp.GetLogs())-1].GetSequence()
-		details["markerSeq"] = markerSeq
-
-		// 5. Isolation: no predecessor reference or account activity may be
-		// visible through the recreated ledger. Runs BEFORE the reuse write.
-		for i, ref := range ackedRefs {
-			ids, conclusive := listMatches(ctx, client, ledger, actions.ReferenceFilter(ref))
-			if conclusive {
-				assert.Always(len(ids) == 0,
-					"recreated ledger never exposes predecessor transactions",
-					details.With(internal.Details{"reference": ref, "txIds": fmt.Sprintf("%v", ids)}))
-			}
-
-			ids, conclusive = listMatches(ctx, client, ledger, actions.AddressExactFilter(ackedAccounts[i]))
-			if conclusive {
-				assert.Always(len(ids) == 0,
-					"recreated ledger never exposes predecessor account activity",
-					details.With(internal.Details{"account": ackedAccounts[i], "txIds": fmt.Sprintf("%v", ids)}))
-			}
-		}
-
-		// 6. Reference reuse: the new incarnation has a fresh LedgerID, so a
-		// predecessor reference must be accepted. A definitive
-		// TRANSACTION_REFERENCE_CONFLICT means the old incarnation's
-		// reference attribute leaked into the new namespace.
-		reuseRef := ackedRefs[0]
-		_, err = createTx(ctx, client, ledger, reuseRef, "lrec-new:0")
-
-		reuseDetails := details.With(internal.Details{"reference": reuseRef, "error": fmt.Sprintf("%v", err)})
-
-		if err != nil && (internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
-			return
-		}
-
-		assert.Always(!internal.HasErrorReason(err, domain.ErrReasonTransactionReferenceConflict),
-			"predecessor references are reusable after ledger recreate",
-			reuseDetails)
-
-		assert.Sometimes(err == nil,
-			"predecessor reference accepted by recreated ledger",
-			reuseDetails)
+		// Small acknowledged predecessor sets exercise multiple references/accounts.
+		runScenario(ctx, client, internal.Rand().Uint64(), antirandom.RandomChoice([]int{3, 5}))
 	})
+}
+
+func runScenario(ctx context.Context, client servicepb.BucketServiceClient, run uint64, txCount int) {
+	ledger := internal.PrefixLedgerRecreate.WithSeed(run)
+	other := internal.PrefixLedgerRecreate.WithSuffix(fmt.Sprintf("other-%016x", run))
+	details := internal.Details{"ledger": ledger, "otherLedger": other}
+	key := func(stage string) string { return fmt.Sprintf("lrec-%016x-%s", run, stage) }
+
+	_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(key("create"), actions.CreateLedgerAction(ledger, nil)))
+	// The bounded original-name namespace can collide with a prior invocation.
+	if internal.IsAlreadyExists(err) || internal.IsLedgerDeleted(err) {
+		return
+	}
+	if operationFailed(err, "create predecessor ledger", details) {
+		return
+	}
+
+	var refs, accounts []string
+	var transactionIDs []uint64
+	for i := range txCount {
+		ref := fmt.Sprintf("lrec-%d-%d", run, i)
+		account := fmt.Sprintf("lrec-old:%d:%d", run%1_000_000, i)
+		resp, err := createTx(ctx, client, key(fmt.Sprintf("seed-%d", i)), ledger, ref, account)
+		if operationFailed(err, "seed predecessor", details) {
+			continue
+		}
+		created := confirmedTransaction(resp, details)
+		if created == nil {
+			return
+		}
+		transactionIDs = append(transactionIDs, created.GetTransaction().GetId())
+		refs = append(refs, ref)
+		accounts = append(accounts, account)
+	}
+	assert.Sometimes(len(refs) > 0, "ledger deletion predecessor write set recorded", details)
+	if len(refs) == 0 {
+		return
+	}
+
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(key("delete"), actions.DeleteLedgerAction(ledger)))
+	if operationFailed(err, "delete predecessor ledger", details) {
+		return
+	}
+	if !confirmTombstone(ctx, client, ledger, key("recreate-before"), details) {
+		return
+	}
+
+	// Deleted reads expose NotFound without ErrorInfo, unlike FSM write refusal.
+	_, err = client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
+	if err != nil && internal.IsTolerated(err) {
+		return
+	}
+	assert.Always(status.Code(err) == codes.NotFound, "deleted ledger is hidden from ledger reads", details.With(internal.Details{"error": err}))
+	if status.Code(err) != codes.NotFound {
+		return
+	}
+	for i, transactionID := range transactionIDs {
+		_, err = client.GetTransaction(ctx, &servicepb.GetTransactionRequest{Ledger: ledger, TransactionId: transactionID})
+		if err != nil && internal.IsTolerated(err) {
+			return
+		}
+		assert.Always(status.Code(err) == codes.NotFound, "deleted ledger hides predecessor transaction point reads",
+			details.With(internal.Details{"transactionID": transactionID, "error": err}))
+		if status.Code(err) != codes.NotFound {
+			return
+		}
+		_, err = client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: ledger, Address: accounts[i]})
+		if err != nil && internal.IsTolerated(err) {
+			return
+		}
+		assert.Always(status.Code(err) == codes.NotFound, "deleted ledger hides predecessor account point reads",
+			details.With(internal.Details{"account": accounts[i], "error": err}))
+		if status.Code(err) != codes.NotFound {
+			return
+		}
+	}
+
+	txStream, err := client.ListTransactions(ctx, &servicepb.ListTransactionsRequest{Ledger: ledger})
+	if err == nil {
+		_, err = txStream.Recv()
+	}
+	if err != nil && internal.IsTolerated(err) {
+		return
+	}
+	assert.Always(status.Code(err) == codes.NotFound, "deleted ledger exposes no predecessor transactions", details.With(internal.Details{"error": err}))
+	if status.Code(err) != codes.NotFound {
+		return
+	}
+
+	accountStream, err := client.ListAccounts(ctx, &servicepb.ListAccountsRequest{Ledger: ledger})
+	if err == nil {
+		_, err = accountStream.Recv()
+	}
+	if err != nil && internal.IsTolerated(err) {
+		return
+	}
+	assert.Always(status.Code(err) == codes.NotFound, "deleted ledger exposes no predecessor accounts", details.With(internal.Details{"error": err}))
+	if status.Code(err) != codes.NotFound {
+		return
+	}
+
+	_, err = createTx(ctx, client, key("deleted-write"), ledger, "", "lrec-after-delete")
+	if err != nil && internal.IsTolerated(err) {
+		return
+	}
+	rejected := status.Code(err) == codes.FailedPrecondition && internal.HasErrorReason(err, domain.ErrReasonLedgerDeleted)
+	assert.Always(rejected, "deleted ledger rejects new transaction writes", details.With(internal.Details{"error": err}))
+	if !rejected {
+		return
+	}
+
+	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest(key("create-other"), actions.CreateLedgerAction(other, nil)))
+	if operationFailed(err, "create other ledger", details) {
+		return
+	}
+	// Best effort on every exit after confirmed creation. This removes live
+	// projections when reachable; the permanent tombstone/audit still remain.
+	defer func() {
+		_, cleanupErr := client.Apply(ctx, servicepb.UnsignedApplyRequest(key("cleanup-other"), actions.DeleteLedgerAction(other)))
+		internal.LogCleanupError("delete isolation ledger", cleanupErr)
+	}()
+	resp, err := createTx(ctx, client, key("marker"), other, "", "lrec-marker")
+	if operationFailed(err, "write other ledger marker", details) {
+		return
+	}
+	if confirmedTransaction(resp, details) == nil {
+		return
+	}
+
+	// Run before reference reuse. Complete listings also inspect rows beyond the
+	// first page and surface errors from stream creation and Recv.
+	transactions, err := actions.ListAllTransactions(ctx, client, other)
+	if operationFailed(err, "list other ledger transactions", details) {
+		return
+	}
+	isolatedTransactions, isolatedAccounts := true, true
+	for _, tx := range transactions {
+		if slices.Contains(refs, tx.GetReference()) {
+			isolatedTransactions = false
+		}
+		for _, posting := range tx.GetPostings() {
+			if slices.Contains(accounts, posting.GetSource()) || slices.Contains(accounts, posting.GetDestination()) {
+				isolatedAccounts = false
+			}
+		}
+	}
+	assert.Always(isolatedTransactions, "other ledger never exposes predecessor transactions", details)
+	if !isolatedTransactions {
+		return
+	}
+
+	otherAccounts, err := actions.ListAllAccounts(ctx, client, other)
+	if operationFailed(err, "list other ledger accounts", details) {
+		return
+	}
+	for _, account := range otherAccounts {
+		if slices.Contains(accounts, account.GetAddress()) {
+			isolatedAccounts = false
+		}
+	}
+	assert.Always(isolatedAccounts, "other ledger never exposes predecessor account activity", details)
+	if !isolatedAccounts {
+		return
+	}
+
+	resp, err = createTx(ctx, client, key("reuse"), other, refs[0], "lrec-new:0")
+	reuseDetails := details.With(internal.Details{"reference": refs[0], "error": err})
+	if err != nil && internal.IsTolerated(err) {
+		return
+	}
+	// This is a reach claim for actual acceptance, not error classification.
+	// Inconclusive transport/lifecycle outcomes cannot satisfy or refute it.
+	assert.Sometimes(err == nil, "predecessor reference accepted by another ledger", reuseDetails)
+	assert.Always(err == nil, "predecessor references are reusable in another ledger", reuseDetails)
+	if err != nil || confirmedTransaction(resp, reuseDetails) == nil {
+		return
+	}
+
+	// The old name remains unavailable after successful activity in the new one.
+	confirmTombstone(ctx, client, ledger, key("recreate-after"), details)
 }
