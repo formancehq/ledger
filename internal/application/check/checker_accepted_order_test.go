@@ -75,7 +75,9 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 	}
 
 	// Admission binds the compiled VM artifact to every scripted order it
-	// proposes; technical fields are outside the idempotency hash below.
+	// proposes; technical fields are outside the idempotency hash below and
+	// are left out of the audit, so the checker's replay compiles the script
+	// itself.
 	script := order.GetLedgerScoped().GetApply().GetCreateTransaction().GetScript().GetPlain()
 	varsEncoder, program, err := numscriptlib.Compile(script)
 	require.NoError(t, err)
@@ -103,9 +105,10 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 	require.Equal(t, "purchase", txMeta["category"], "script metadata must be merged into the transaction")
 	require.Equal(t, "kept", txMeta["caller-only"], "caller-only metadata must be preserved")
 
-	// The audited order bytes are captured after processing. They must equal the
-	// accepted order: only the caller's metadata, never the script's.
-	serialized := order.MarshalDeterministicVT(nil)
+	// The audited order bytes are captured after processing, exactly as the FSM
+	// does: the business part only, without the compiled code. They must equal
+	// the accepted order: only the caller's metadata, never the script's.
+	serialized := processing.MarshalOrderBusinessIntent(order, nil)
 
 	var audited raftcmdpb.Order
 	require.NoError(t, audited.UnmarshalVT(serialized))
