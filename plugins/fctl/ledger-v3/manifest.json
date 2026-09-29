@@ -1,0 +1,75 @@
+{
+  "baseline": {
+    "classification": {
+      "host_local": 13,
+      "operator": 34,
+      "product": 54,
+      "signing_event_sink": 7
+    },
+    "commit": "bb0297cce39ccd1eb45eba695e9aa10374d5865d",
+    "executable_commands": 108,
+    "path": "cmd/ledgerctl",
+    "repo": "ledger"
+  },
+  "capabilities_declared": [
+    "sign.ledger.apply-batch"
+  ],
+  "capabilities_required": [
+    "auth.stack"
+  ],
+  "client": {
+    "kind": "generated-protobuf-grpc-go",
+    "package": "github.com/formancehq/ledger/v3/internal/proto/servicepb",
+    "package_visibility": "internal",
+    "pagination": "x-next-cursor gRPC trailer after clean EOF; next_cursor field on some unary responses",
+    "proto_path": "misc/proto/bucket.proto",
+    "repo_commit": "bb0297cce39ccd1eb45eba695e9aa10374d5865d",
+    "repo_ref": "release/v3.0",
+    "rpc_client_streaming": 0,
+    "rpc_server_streaming": 12,
+    "rpc_total": 39,
+    "rpc_unary": 27,
+    "service": "ledger.BucketService"
+  },
+  "coverage_denominator": 54,
+  "facets": [
+    "command_provider"
+  ],
+  "invariants": [
+    "declares product major 3 and no other major",
+    "declares sign.ledger.apply-batch at product major 3 only",
+    "signing is optional; absence of activation uses the unsigned envelope",
+    "never sets ApplyRequest.forwarded_caller_snapshot",
+    "never sets ApplyRequest.skip_response",
+    "does not reuse cmdutil.DrainAllPages or any unbounded page drain",
+    "shares no catalogue entry or manifest field with ledger-v2",
+    "does not resolve endpoint, auth, or target",
+    "is not bound to openapi/v3.yaml, which is an unrelated work-in-progress HTTP spec on origin/main"
+  ],
+  "kind": "logical-plugin-manifest",
+  "module": "ledger",
+  "name": "ledger-v3",
+  "plugin_module_path": "github.com/formancehq/ledger/v3/plugins/fctl/ledger-v3",
+  "plugin_module_path_constraint": "MUST be under github.com/formancehq/ledger/v3/ or the internal generated stubs are unreachable; verified empirically at the pin",
+  "product_majors": [
+    3
+  ],
+  "runtime_artifact": null,
+  "runtime_artifact_note": "No component is declared. Runtime gates 4B/4C/4D are not released.",
+  "schema_version": 1,
+  "signing_capability": {
+    "after_activation_failure": "fail closed; never retry unsigned",
+    "algorithm": "ed25519",
+    "default_without_activation": "unsigned ApplyRequest.variant.unsigned",
+    "envelope_protobuf_full_name": "signature.SignedApplyBatch",
+    "logical_payload_type": "formance.ledger.v3.ApplyBatch",
+    "method": "/ledger.BucketService/Apply",
+    "name": "sign.ledger.apply-batch",
+    "optional": true,
+    "product_major": 3,
+    "protobuf_full_name": "ledger.ApplyBatch",
+    "signed_bytes": "exact serialized ledger.ApplyBatch, including its idempotency_key field"
+  },
+  "status": "preparation",
+  "transport": "grpc"
+}

@@ -1,0 +1,79 @@
+// Portable plugin lifecycle interface — public ABI 0.1.0.
+//
+// RFC 0012's frozen control surface. Protobuf payload evolution remains
+// separately governed under the componentbridge.v1alpha1 package; it cannot
+// add another product world or alter these lifecycle exports.
+//
+// Contract summary (RFC 0012 plus its 2026-09-01 amendments and the accepted
+// stateless-lifecycle review):
+//   - synchronous functions only; no async functions, streams, or futures;
+//   - every envelope value is one encoded
+//     formance.fctl.componentbridge.v1alpha1.PluginEnvelope; WIT is only the
+//     opaque byte carrier for versioned protobuf payloads;
+//   - every successful start or resume returns either one terminal frame or
+//     at least one actionable host-request or host-wait frame, except that an
+//     empty or event/log-only non-terminal resume is accepted while at least
+//     one correlated request stream remains open after applying the delivered
+//     response; otherwise it is a protocol violation, and each execution
+//     produces exactly one terminal outcome;
+//   - hosts enforce the selected frame, frame-list, aggregate-output, and
+//     pending-request budgets before protobuf decode or any public copy. The
+//     Rust adapter may first perform a bounded private typed Rust lift; the
+//     browser framework validates already-returned Uint8Array frames, so this
+//     freeze does not claim admission before browser-engine allocation. The
+//     complete lifecycle envelope ceiling is 6,966,419 bytes.
+//     The returned-list ceiling is four frames and 18 MiB in aggregate,
+//     and the pending product-request ceiling is four. The historical
+//     4,257,326-byte value remains only an outer-envelope sizing probe around
+//     one synthetic opaque payload; it is not an admission ceiling and does
+//     not encode interior facet messages. describe() has a distinct atomic
+//     1 MiB ceiling on the complete encoded envelope, enforced before
+//     host-side copy or decode;
+//   - cancel is callable only while no guest export is active; forced
+//     termination during an active call is host-preemptive and destroys the
+//     instance without requiring guest frames or close;
+//   - plugins are stateless between executions: only bounded transient state
+//     may exist inside one start/resume execution, and no instance, store,
+//     or session survives completion, cancellation, or trap; and
+//   - one canonical product world exports only this lifecycle interface.
+//     Toolchain-added imports on the final component are a separate admission
+//     profile: the Go artifact may expose exactly the accepted five-interface
+//     controlled WASI substrate, while the TypeScript artifact is zero-WASI.
+//     Those profiles neither create guest-specific product worlds nor import
+//     Host.Request into the guest. Host requests still leave the guest as
+//     returned frames.
+package formance:fctl-plugin@0.1.0;
+
+interface lifecycle {
+  /// One encoded formance.fctl.componentbridge.v1alpha1.PluginEnvelope.
+  type envelope = list<u8>;
+
+  /// Returns one MESSAGE_KIND_DESCRIPTOR_SET envelope. Runs with no
+  /// execution and no product capability.
+  describe: func() -> envelope;
+
+  /// Accepted exactly once per execution with one
+  /// MESSAGE_KIND_START_EXECUTION envelope. The argument must equal the
+  /// input envelope execution_id and every returned envelope execution_id.
+  start: func(execution-id: string, input: envelope) -> list<envelope>;
+
+  /// Delivers one correlated MESSAGE_KIND_HOST_RESPONSE or
+  /// MESSAGE_KIND_WAIT_COMPLETION envelope for an outstanding host operation
+  /// of the same execution. A streaming Host.Request may receive several
+  /// HOST_RESPONSE envelopes with the same correlation before its explicit
+  /// terminal response closes that logical request. The argument must equal
+  /// the input envelope execution_id and every returned envelope execution_id.
+  resume: func(execution-id: string, input: envelope) -> list<envelope>;
+
+  /// Callable only while no guest export is active for the execution;
+  /// returns zero or more frames when quiescent. Every returned envelope
+  /// execution_id must equal the argument.
+  cancel: func(execution-id: string) -> list<envelope>;
+
+  /// Releases all transient guest state for the execution.
+  close: func(execution-id: string);
+}
+
+world plugin {
+  export lifecycle;
+}

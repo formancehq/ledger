@@ -1,0 +1,19 @@
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+validate-sdk:
+    GOWORK=off go test ./scripts
+    ./scripts/test-fctl-sdk-contract.sh
+    ./scripts/test-tidy-with-fctl-sdk.sh
+    ./scripts/with-fctl-sdk.sh true
+
+tidy:
+    ./scripts/with-fctl-sdk.sh ./scripts/tidy-with-fctl-sdk.sh
+
+tidy-check:
+    ./scripts/with-fctl-sdk.sh ./scripts/tidy-with-fctl-sdk.sh --check
+
+test: validate-sdk tidy-check
+    ./scripts/with-fctl-sdk.sh bash -euo pipefail -c 'go test -race -cover ./... && go test -race -tags=fctl_component_guest ./entrypoints/... -count=1'
+
+build-component: test
+    ./scripts/with-fctl-sdk.sh ./scripts/build-component.sh
