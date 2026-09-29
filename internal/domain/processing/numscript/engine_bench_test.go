@@ -112,7 +112,7 @@ func benchCase(b *testing.B, script string, vars map[string]string) {
 		encodedVars, _ := numscriptlib.DecodeVars(compiled.Vars)
 		b.ReportAllocs()
 		for b.Loop() {
-			if err := numscriptlib.VerifyCompiledProgramWithVars(program, &encodedVars); err != nil {
+			if _, err := numscriptlib.VerifyCompiledProgramWithVars(program, &encodedVars); err != nil {
 				b.Fatal(err)
 			}
 		}

@@ -72,14 +72,15 @@ type parsedScript struct {
 // must never execute concurrently; the FSM apply path is single-threaded (see
 // RequestProcessor), which guarantees it.
 //
-// nStr/nInt are the vars pool sizes the verification ran against; they are a
-// property of the program's own variable layout (the encoder appends one slot
-// per declaration), so every order carrying this artifact presents the same
-// sizes and the verification outcome is reusable.
+// verified is the library's record of what the verification checked against
+// the vars it ran with. The vars shape is a property of the program's own
+// variable layout (the encoder appends one slot per declaration), so every
+// order carrying this artifact presents a shape it reports sufficient, and the
+// verification outcome is reusable without re-running the static pass.
 type compiledLruEntry struct {
-	hash       [32]byte
-	vm         *numscriptlib.Vm
-	nStr, nInt int
+	hash     [32]byte
+	vm       *numscriptlib.Vm
+	verified numscriptlib.VerifiedVarsInfo
 }
 
 // NewNumscriptCache creates a new NumscriptCache with the given maximum size.
@@ -229,24 +230,23 @@ func (e *lruEntry) compileParsed() *compiledProgram {
 // inserted, so every cached entry holds a current-version program.
 //
 // Entries are keyed by scriptHash — the order's HashScript(text), already
-// checked against the resolved text by the caller — not by the program bytes:
-// the library's register allocator is not deterministic across separate
-// compiles, so one script can arrive as different but equivalent bytecode
-// (e.g. after a leader change), and any current-version compile of the text
-// runs the same program. The one thing a hit must still rule out is a
-// program of another bytecode version (a rolling upgrade: this node on the
-// old binary, the artifact compiled by an upgraded leader), which a cold node
-// would reject — so a hit peeks the version from the program header (O(1),
-// no decode) and, on mismatch, takes the cold path, which rejects it with the
-// same error a node without the entry would raise. The cache itself is
-// in-memory, so a binary upgrade restarts with it empty.
+// checked against the resolved text by the caller — not by the program bytes,
+// which would only be hashed again on every apply: compilation is
+// deterministic, so a given library version compiles one text to one byte
+// sequence. The one thing a hit must still rule out is a program of another
+// bytecode version (a rolling upgrade: this node on the old binary, the
+// artifact compiled by an upgraded leader), which a cold node would reject —
+// so a hit peeks the version from the program header (O(1), no decode) and,
+// on mismatch, takes the cold path, which rejects it with the same error a
+// node without the entry would raise. The cache itself is in-memory, so a
+// binary upgrade restarts with it empty.
 //
-// vars is only consulted for its pool sizes, which VerifyWithVars checks
-// LoadVar indices against. The sizes are fixed by the program's own variable
-// layout, so a cached artifact is valid for every order that carries it; a
-// size mismatch means the artifact and vars were produced by different
+// vars is only consulted through the entry's VerifiedVarsInfo: the vars shape
+// is fixed by the program's own variable layout, so a cached artifact is valid
+// for every order that carries it. A shape the library does not report
+// sufficient means the artifact and vars were produced by different
 // compilations (a "should not happen") and is re-verified against the actual
-// pools so it fails with the verifier's own error, loudly.
+// vars so it fails with the verifier's own error, loudly.
 func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, vars *numscriptlib.Vars) (*compiledLruEntry, domain.SerializableError) {
 	if len(scriptHash) != len([32]byte{}) {
 		return nil, &domain.ErrNumscriptRuntime{
@@ -269,11 +269,11 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	if ok {
 		entry, _ := elem.Value.(*compiledLruEntry)
 
-		if entry.nStr == len(vars.StringsPool) && entry.nInt == len(vars.IntsPool) {
+		if entry.verified.CheckVars(vars) {
 			return entry, nil
 		}
 
-		if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.vm.Program, vars); verifyErr != nil {
+		if _, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(entry.vm.Program, vars); verifyErr != nil {
 			return nil, &domain.ErrNumscriptRuntime{
 				Detail: "verifying compiled numscript program: " + verifyErr.Error(),
 			}
@@ -299,7 +299,8 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 		}
 	}
 
-	if verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program, vars); verifyErr != nil {
+	verified, verifyErr := numscriptlib.VerifyCompiledProgramWithVars(program, vars)
+	if verifyErr != nil {
 		return nil, &domain.ErrNumscriptRuntime{
 			Detail: "verifying compiled numscript program: " + verifyErr.Error(),
 		}
@@ -324,10 +325,9 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	}
 
 	entry := &compiledLruEntry{
-		hash: hash,
-		vm:   numscriptlib.NewVm(program),
-		nStr: len(vars.StringsPool),
-		nInt: len(vars.IntsPool),
+		hash:     hash,
+		vm:       numscriptlib.NewVm(program),
+		verified: verified,
 	}
 	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
 

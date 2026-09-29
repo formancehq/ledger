@@ -205,10 +205,10 @@ can execute it, with identical results by construction:
   layout) and `compiled_script_hash` (BLAKE3 of the exact text compiled). The
   FSM decodes and verifies the program once per artifact — `NumscriptCache`
   keeps one warm VM instance per script, keyed by `compiled_script_hash`
-  (already checked against the resolved text). The library's register
-  allocator is not deterministic across separate compiles, so one text can
-  arrive as different but equivalent bytecode; any current-version compile
-  runs the same program, so the entry serves them all. A hit still peeks the
+  (already checked against the resolved text) rather than by the program
+  bytes: compilation is deterministic, so one library version compiles one
+  text to one byte sequence, and the key avoids hashing the program again on
+  every apply. A hit still peeks the
   program's bytecode version from its header (no decode) and rejects a
   foreign one exactly as a cold node would — the rolling-upgrade case — and
   the cache is in-memory, so an upgrade restarts it empty — and executes it

@@ -118,15 +118,13 @@ send $amt (
 
 // TestCompileScript_CompilesOncePerCachedScript: the script-dependent half of
 // an admission compile is computed once per cached script and shared by every
-// order carrying it — so every order of a script gets the same bytecode even
-// though the library's register allocator is not deterministic across
-// separate compiles — while the vars are bound per order and each order gets
+// order carrying it, while the vars are bound per order and each order gets
 // its own copy of the program bytes.
 func TestCompileScript_CompilesOncePerCachedScript(t *testing.T) {
 	t.Parallel()
 
-	// Several registers die on the same instruction here, which is exactly
-	// where separate compiles of this script diverge byte-for-byte.
+	// Several registers die on the same instruction here, the case where
+	// register allocation used to depend on map iteration order.
 	script := `vars {
   number $a
   number $b
