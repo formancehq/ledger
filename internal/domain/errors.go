@@ -968,7 +968,8 @@ type ErrSinkControllerMismatch struct {
 func (e *ErrSinkControllerMismatch) Error() string {
 	return fmt.Sprintf("event sink %q is not owned by controller %q", e.Name, e.ControllerID)
 }
-func (*ErrSinkControllerMismatch) Reason() string { return ErrReasonSinkControllerMismatch }
+func (*ErrSinkControllerMismatch) Kind() ErrorKind { return KindConflict }
+func (*ErrSinkControllerMismatch) Reason() string  { return ErrReasonSinkControllerMismatch }
 func (e *ErrSinkControllerMismatch) Metadata() map[string]string {
 	return map[string]string{"name": e.Name, "controllerId": e.ControllerID}
 }
