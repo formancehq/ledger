@@ -90,6 +90,7 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 		}
 		if !CheckpointDirReady(filepath.Join(dir, entry.Name())) {
 			incomplete = true
+
 			continue
 		}
 
@@ -142,6 +143,7 @@ func reconcileCheckpointReplacements(dataDir string) error {
 			return fmt.Errorf("syncing recovered checkpoint directory: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -523,7 +525,7 @@ func NewStore(
 	}
 
 	// With incremental 0xFF cache persistence, the live/ directory is always
-	// up-to-date after each Pebble batch commit. On restart we open it directly
+	// up-to-date after each RocksDB batch commit. On restart we open it directly
 	// — no checkpoint hard-linking needed. Checkpoints are only used for
 	// follower sync (SynchronizeWithLeader) and as a safety fallback.
 	//
@@ -534,7 +536,7 @@ func NewStore(
 	// Scan the checkpoints directory to find the latest checkpoint ID.
 	// The ID is derived from the highest-numbered directory in checkpoints/.
 	latestCheckpointID, hasCheckpoint, err := ScanLatestCheckpointID(dataDir)
-	if err != nil && !(liveDirErr == nil && errors.Is(err, ErrNoCompleteCheckpoint)) {
+	if err != nil && (liveDirErr != nil || !errors.Is(err, ErrNoCompleteCheckpoint)) {
 		return nil, fmt.Errorf("scanning checkpoints: %w", err)
 	}
 
