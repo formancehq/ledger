@@ -229,6 +229,10 @@ func removedMemberNodeIDPrefix(nodeID uint64) (lower, upper []byte) {
 	lo[1] = dal.SubGlobRemovedMembers
 	binary.BigEndian.PutUint64(lo[2:], nodeID)
 
+	if nodeID == ^uint64(0) {
+		return lo, []byte{dal.ZoneClusterPersistent, dal.SubGlobRemovedMembers + 1}
+	}
+
 	up := make([]byte, 10)
 	up[0] = dal.ZoneClusterPersistent
 	up[1] = dal.SubGlobRemovedMembers
