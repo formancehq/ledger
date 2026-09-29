@@ -13,11 +13,11 @@ const duration = __ENV.MEASURE_SECONDS + 's';
 export const options = {
   scenarios: {
     writes: {
-      executor: 'constant-arrival-rate', rate: 30, timeUnit: '1s', duration,
+      executor: 'constant-arrival-rate', rate: Number(__ENV.WRITE_RATE || 30), timeUnit: '1s', duration,
       preAllocatedVUs: 16, maxVUs: 64, exec: 'write',
     },
     reads: {
-      executor: 'constant-arrival-rate', rate: 15, timeUnit: '1s', duration,
+      executor: 'constant-arrival-rate', rate: Number(__ENV.READ_RATE || 15), timeUnit: '1s', duration,
       preAllocatedVUs: 8, maxVUs: 32, exec: 'read',
     },
   },

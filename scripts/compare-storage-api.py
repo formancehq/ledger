@@ -13,7 +13,7 @@ import urllib.request
 
 
 ROOT = Path.cwd()
-OUTPUT = ROOT / "build/storage-api-performance"
+OUTPUT = ROOT / os.environ.get("PERF_OUTPUT_DIR", "build/storage-api-performance")
 OUTPUT.mkdir(parents=True, exist_ok=True)
 PEBBLE_REF = os.environ["PEBBLE_REF"]
 ROCKSDB_REF = os.environ["ROCKSDB_REF"]
@@ -57,8 +57,9 @@ def sample_rss(pid):
 def run_phase(engine, sequence, phase, seconds, directory, server, url):
     env = os.environ.copy()
     env.update({
-        "HTTP_ADDR": url, "LEDGER_NAME": LEDGER, "RUN_ID": f"{engine}-{sequence}-{phase}",
+        "HTTP_ADDR": url, "LEDGER_NAME": LEDGER, "RUN_ID": f"run-{sequence}-{phase}",
         "MEASURE_SECONDS": str(seconds), "SUMMARY_PATH": str(directory / f"{phase}.json"),
+        "WRITE_RATE": os.environ.get("WRITE_RATE", "30"), "READ_RATE": os.environ.get("READ_RATE", "15"),
         "K6_NO_USAGE_REPORT": "true", "NO_PROXY": "127.0.0.1,localhost",
     })
     with (directory / f"{phase}.log").open("w") as log:
@@ -144,7 +145,8 @@ def run_engine(engine, binary, sequence):
 
 def main():
     refs = {"pebble": PEBBLE_REF, "rocksdb": ROCKSDB_REF}
-    (OUTPUT / "refs.json").write_text(json.dumps(refs, indent=2) + "\n")
+    config = {**refs, "write_rate": int(os.environ.get("WRITE_RATE", "30")), "read_rate": int(os.environ.get("READ_RATE", "15"))}
+    (OUTPUT / "refs.json").write_text(json.dumps(config, indent=2) + "\n")
     with tempfile.TemporaryDirectory() as temp:
         work = Path(temp)
         trees = {}
