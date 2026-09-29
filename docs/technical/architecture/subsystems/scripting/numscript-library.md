@@ -228,8 +228,7 @@ bytecode version from its header (no decode) and rejects a foreign one exactly
 as a cold node would — the rolling-upgrade case — and the cache is in-memory,
 so an upgrade restarts it empty. It then executes the artifact per apply
 (`numscript.SafeExecCompiled`). The verifier is what entitles the VM to run
-wire-supplied bytecode without per-instruction checks, and its cost (~30x an
-execution) is why it is cached.
+wire-supplied bytecode without per-instruction checks.
 
 Every scripted order admission proposes carries an artifact; an order it
 forwards without one is marked `preload_unavailable` and rejected before any

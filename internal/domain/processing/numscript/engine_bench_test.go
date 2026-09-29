@@ -1,9 +1,7 @@
 package numscript
 
 // Benchmarks the FSM's VM execution path and its decode/verify/exec
-// decomposition. The decomposition is what justifies getOrDecodeCompiled: the
-// verifier is a whole-program static pass costing ~30x an execution, so it is
-// paid once per cached artifact rather than per apply.
+// decomposition.
 
 import (
 	"context"
