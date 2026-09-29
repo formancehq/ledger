@@ -25,6 +25,7 @@ const backupRetryTimeout = 2 * time.Minute
 // for job-ID collisions and missing checkpoints, which must remain distinct.
 func IsBackupInProgress(err error) bool {
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.FailedPrecondition &&
 		strings.HasSuffix(st.Message(), "backup: destination already has a running job")
 }
@@ -39,6 +40,7 @@ func IsBackupCallerCancellation(ctx context.Context, err error) bool {
 	if st, ok := status.FromError(err); ok {
 		return st.Code() == codes.Canceled
 	}
+
 	return errors.Is(err, ctx.Err())
 }
 
@@ -46,6 +48,12 @@ func IsBackupCallerCancellation(ctx context.Context, err error) bool {
 // retries remain owned by NewGRPCConn; IsTransient is deliberately unchanged.
 // A lost Start acknowledgment or terminal proposal can leave a durable RUNNING
 // slot after the executor exits. Only committed completion/cleanup may free it.
+//
+// The retry deadline runs from the first busy response, so the timeout context is
+// built inside the loop and assigned to the outer retryCtx/cancelRetry pair. The
+// deferred closure reads cancelRetry at return time, so every exit path cancels it.
+//
+//nolint:fatcontext,govet // both fire on that in-loop assignment
 func RetryBackup[T any](ctx context.Context, operation string, call func(context.Context) (T, error)) (T, error) {
 	retryCtx := ctx
 	cancelRetry := func() {}
@@ -56,8 +64,9 @@ func RetryBackup[T any](ctx context.Context, operation string, call func(context
 	for attempt := 0; ; attempt++ {
 		if retryCtx.Err() != nil {
 			if lastBusy != nil {
-				return zero, fmt.Errorf("%s retry stopped (%v): %w", operation, retryCtx.Err(), lastBusy)
+				return zero, fmt.Errorf("%s retry stopped (%w): %w", operation, retryCtx.Err(), lastBusy)
 			}
+
 			return zero, retryCtx.Err()
 		}
 		response, err := call(ctx)
@@ -82,7 +91,8 @@ func RetryBackup[T any](ctx context.Context, operation string, call func(context
 		select {
 		case <-retryCtx.Done():
 			timer.Stop()
-			return zero, fmt.Errorf("%s retry stopped (%v): %w", operation, retryCtx.Err(), lastBusy)
+
+			return zero, fmt.Errorf("%s retry stopped (%w): %w", operation, retryCtx.Err(), lastBusy)
 		case <-timer.C:
 		}
 	}

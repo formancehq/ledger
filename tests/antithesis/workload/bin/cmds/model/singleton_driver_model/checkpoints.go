@@ -49,6 +49,7 @@ func generateCheckpointBulk(state oracle.GlobalState) oracle.Bulk {
 	if req == nil {
 		req = &servicepb.Request{Type: &servicepb.Request_CreateQueryCheckpoint{CreateQueryCheckpoint: &servicepb.CreateQueryCheckpointRequest{}}}
 	}
+
 	return oracle.Bulk{Requests: []*servicepb.Request{req}}
 }
 
@@ -85,6 +86,7 @@ func checkpointOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs [
 			}
 		}
 	}
+
 	return true
 }
 
@@ -109,6 +111,7 @@ func (c *Checker) recordCheckpoints(logs []*commonpb.Log) {
 			// invent one for validating successful reads after deletion.
 			if !known {
 				noteCheckpointCoverage(checkpointDeleteCoverage)
+
 				continue
 			}
 			c.deletedCheckpointSnapshots[id] = snapshot

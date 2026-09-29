@@ -8,15 +8,16 @@ import (
 	"testing/synctest"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	"github.com/formancehq/ledger/v3/internal/infra/state"
-	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
 // The four driver stages share this execution path. The proposal seam commits
@@ -68,6 +69,7 @@ func TestRetryBackup_CommittedStartLostResponse(t *testing.T) {
 						require.NoError(t, batch.Cancel())
 						require.ErrorIs(t, err, state.ErrBackupInProgress)
 						t.Logf("attempt %d at %s: %v", attempts, time.Since(started), err)
+
 						return status.Error(codes.FailedPrecondition, fmt.Sprintf("propose backup start: %v", err))
 					}
 					require.NoError(t, batch.Commit())
@@ -81,6 +83,7 @@ func TestRetryBackup_CommittedStartLostResponse(t *testing.T) {
 						require.NoError(t, reader.Close())
 						require.Equal(t, uint64(1), jobs.ActiveByDestination(dst).GetJobId())
 						t.Log("Start committed and reloaded; apply acknowledgment lost")
+
 						return status.Error(codes.Unavailable, "waiting for FSM apply: context canceled")
 					}
 					batch = store.OpenWriteSession()
@@ -88,12 +91,14 @@ func TestRetryBackup_CommittedStartLostResponse(t *testing.T) {
 					require.NoError(t, err)
 					require.NoError(t, batch.Commit())
 					result = job.GetJobId()
+
 					return nil
 				}
 				// This is the same automatic transient retry used by NewGRPCConn.
 				automaticRetry := retryUnaryInterceptor(retryMaxAttempts)
 				got, err := RetryBackup(t.Context(), tc.operation, func(ctx context.Context) (uint64, error) {
 					err := automaticRetry(ctx, tc.operation, nil, nil, nil, invoke)
+
 					return result, err
 				})
 				require.NoError(t, err, "%s must recover from the committed ambiguous attempt, not report unexpected busy", tc.operation)
@@ -128,6 +133,7 @@ func TestRetryBackup_OnlyDestinationBusyIsRetried(t *testing.T) {
 			attempts := 0
 			_, err := RetryBackup(t.Context(), "Backup", func(context.Context) (int, error) {
 				attempts++
+
 				return 0, tc.err
 			})
 			require.Same(t, tc.err, err, "unrelated errors retain their identity")
@@ -145,6 +151,7 @@ func TestRetryBackup_BusyBudget(t *testing.T) {
 		busy := status.Error(codes.FailedPrecondition, state.ErrBackupInProgress.Error())
 		got, err := RetryBackup(t.Context(), "Backup", func(context.Context) (int, error) {
 			attempts++
+
 			return 0, busy
 		})
 		require.Zero(t, got)
@@ -166,6 +173,7 @@ func TestRetryBackup_UnexpectedErrorAfterBusy(t *testing.T) {
 			if attempts == 1 {
 				return 0, status.Error(codes.FailedPrecondition, state.ErrBackupInProgress.Error())
 			}
+
 			return 0, serverError
 		})
 		require.Same(t, serverError, err)
@@ -188,6 +196,7 @@ func TestRetryBackup_Cancellation(t *testing.T) {
 			_, err := RetryBackup(ctx, "Backup", func(context.Context) (int, error) {
 				attempts++
 				cancel()
+
 				return 0, busy
 			})
 			if alreadyCanceled {

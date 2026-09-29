@@ -11,12 +11,15 @@ import (
 func requestedEnforcementMode(req *servicepb.Request) *commonpb.ChartEnforcementMode {
 	if setter := req.GetSetDefaultEnforcementMode(); setter != nil {
 		mode := setter.GetEnforcementMode()
+
 		return &mode
 	}
 	if setter := req.GetApply().GetAction().GetSetDefaultEnforcementMode(); setter != nil {
 		mode := setter.GetEnforcementMode()
+
 		return &mode
 	}
+
 	return nil
 }
 
@@ -63,6 +66,7 @@ func maybeAddSkippableReason(ls oracle.LedgerState, req *servicepb.Request) *ser
 	}
 
 	req.GetApply().SkippableReasons = []commonpb.ErrorReason{reason}
+
 	return req
 }
 
@@ -75,6 +79,7 @@ func generatedSkippableReason(req *servicepb.Request) (commonpb.ErrorReason, boo
 	if req.GetApply().GetAction().GetSetDefaultEnforcementMode() != nil {
 		return commonpb.ErrorReason_ERROR_REASON_ACCOUNT_TYPE_NOT_FOUND, true
 	}
+
 	return commonpb.ErrorReason_ERROR_REASON_UNSPECIFIED, false
 }
 
@@ -111,6 +116,7 @@ func bulkHasInvalidSkippableReason(bulk oracle.Bulk) bool {
 			}
 		}
 	}
+
 	return false
 }
 
@@ -131,6 +137,7 @@ func modeCoverageMessage(mode commonpb.ChartEnforcementMode, nested bool) string
 	if nested {
 		form = "ledger-action"
 	}
+
 	return coveragePrefix + "Apply " + form + " set " + mode.String()
 }
 
@@ -146,6 +153,7 @@ func applyCoverageMessages() []string {
 			messages = append(messages, modeCoverageMessage(mode, nested))
 		}
 	}
+
 	return messages
 }
 
@@ -172,5 +180,6 @@ func applyCoverageHits(bulk oracle.Bulk, result oracle.ApplyResult) map[string]b
 			hits[modeCoverageMessage(*mode, bulk.Requests[i].GetApply() != nil)] = true
 		}
 	}
+
 	return hits
 }

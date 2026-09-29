@@ -37,6 +37,7 @@ func readPages[T any](ctx context.Context, open func(context.Context, string) (g
 		stream, err := open(pageCtx, cursor)
 		if err != nil {
 			cancel()
+
 			return err
 		}
 		for {
@@ -46,10 +47,12 @@ func readPages[T any](ctx context.Context, open func(context.Context, string) (g
 			}
 			if err != nil {
 				cancel()
+
 				return err
 			}
 			if err := consume(item); err != nil {
 				cancel()
+
 				return err
 			}
 		}
@@ -74,6 +77,7 @@ func barrier(ctx context.Context, client servicepb.BucketServiceClient) (uint64,
 	if response.GetCommitIndex() == 0 {
 		return 0, errors.New("barrier returned zero index")
 	}
+
 	return response.GetCommitIndex(), nil
 }
 
@@ -85,6 +89,7 @@ func confirmSource(ctx context.Context, client servicepb.BucketServiceClient, ex
 	if after != expected {
 		return fmt.Errorf("%w: expected index %d, got %d", errSourceChanged, expected, after)
 	}
+
 	return nil
 }
 
@@ -107,6 +112,7 @@ func captureSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 	if readErr != nil {
 		return nil, 0, readErr
 	}
+
 	return ledgers, after, nil
 }
 
@@ -122,6 +128,7 @@ func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 			return fmt.Errorf("duplicate ledger %q", info.GetName())
 		}
 		ledgers[info.GetName()] = expectedLedger{ID: info.GetId()}
+
 		return nil
 	})
 	if err != nil {
@@ -143,6 +150,7 @@ func collectSource(ctx context.Context, client servicepb.BucketServiceClient) (m
 		}
 		ledgers[name] = ledger
 	}
+
 	return ledgers, nil
 }
 
@@ -175,8 +183,10 @@ func foldLogs(ctx context.Context, client servicepb.BucketServiceClient, ledger 
 			result.Reverts++
 			result.Postings += uint64(len(payload.RevertedTransaction.GetRevertTransaction().GetPostings()))
 		}
+
 		return nil
 	})
+
 	return result, err
 }
 
@@ -191,6 +201,7 @@ func createWitness(ctx context.Context, client servicepb.BucketServiceClient, na
 	if info.GetId() == 0 {
 		return nil, errors.New("usage witness has no ledger ID")
 	}
+
 	return info, nil
 }
 
@@ -215,5 +226,6 @@ func writeWitness(ctx context.Context, client servicepb.BucketServiceClient, led
 	if after != horizon+2 {
 		return 0, fmt.Errorf("%w during witness: %d -> %d", errSourceChanged, horizon, after)
 	}
+
 	return after, nil
 }

@@ -6,9 +6,11 @@ import (
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -63,7 +65,7 @@ func main() {
 					},
 				}))
 				if err != nil {
-					if internal.IsLedgerDeleted(err) || internal.IsLedgerNotFound(err) {
+					if internal.IsLedgerDeleted(err) || internal.IsNotFound(err) {
 						deletedSeen = true
 
 						return
@@ -97,7 +99,7 @@ func main() {
 				return
 			}
 
-			if !(internal.IsTransient(err) || internal.IsLedgerDeleted(err)) {
+			if !internal.IsTransient(err) && !internal.IsLedgerDeleted(err) {
 				assert.Unreachable("delete ledger should not fail unexpectedly",
 					details.With(internal.Details{"error": err}))
 			}
@@ -151,7 +153,7 @@ func main() {
 
 		isDeletedOrNotFound := internal.HasErrorReason(err, domain.ErrReasonLedgerDeleted) ||
 			internal.HasErrorReason(err, domain.ErrReasonLedgerNotFound) ||
-			internal.IsLedgerNotFound(err)
+			internal.IsNotFound(err)
 		assert.AlwaysOrUnreachable(isDeletedOrNotFound,
 			"write to deleted ledger should return LEDGER_DELETED or LEDGER_NOT_FOUND",
 			details.With(internal.Details{

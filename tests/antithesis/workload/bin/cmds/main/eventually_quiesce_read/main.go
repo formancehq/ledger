@@ -42,7 +42,7 @@ func main() {
 
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Stabilize: containers may still be recovering right after faults stop.
 	ledger := waitForLedger(ctx, client)

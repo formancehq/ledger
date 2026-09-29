@@ -47,6 +47,7 @@ func runOracle(ctx context.Context, conns internal.PerNodeConns, config oracleCo
 			break
 		}
 	}
+
 	return reports
 }
 
@@ -94,5 +95,6 @@ func runAttempt(ctx context.Context, conns internal.PerNodeConns, config oracleC
 		return report, fmt.Errorf("final source fence: %w", err)
 	}
 	report.Qualified = true
+
 	return report, nil
 }

@@ -85,6 +85,7 @@ func queryCoverageMessages() []string {
 	}
 
 	out = append(out, applyCoverageMessages()...)
+
 	return append(out,
 		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS),
 		coverageMetadataMessage(commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS),
@@ -100,6 +101,7 @@ func checkpointCoverageMessages() []string {
 
 func coverageMessages() []string {
 	out := append(queryCoverageMessages(), checkpointCoverageMessages()...)
+
 	return append(out, coverageDeletionMessage, coveragePromotionMessage, coverageMaintenanceMessage)
 }
 

@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -16,6 +15,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -23,9 +23,10 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
-	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Exercise the same wire requests through the real admission/FSM path and the
@@ -45,6 +46,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		require.Len(t, resp.GetLogs(), len(reqs))
 		checker.crossCheckCommit(bulk, resp)
 		require.Len(t, checker.modelState.Ledger("L").LogRows(), before+len(reqs), "response validator must advance the model")
+
 		return resp
 	}
 	rejectCorruption := func(t *testing.T, mutate func(*servicepb.ApplyResponse), reqs ...*servicepb.Request) *servicepb.ApplyResponse {
@@ -59,6 +61,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 		require.Equal(t, before, checker.modelState.Fingerprint(), "a rejected response must not advance the model")
 		checker.crossCheckCommit(bulk, resp)
 		require.NotEqual(t, before, checker.modelState.Fingerprint(), "the matching response must advance the model")
+
 		return resp
 	}
 
@@ -173,11 +176,11 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 			found = true
 			skipped.Context["unexpected"] = "corrupted"
 			require.False(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs)))
+
 			break
 		}
 		require.True(t, found, "the listed page must contain a skipped log")
 	})
-
 }
 
 func skippableTestServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) {
@@ -200,7 +203,9 @@ func skippableTestServer(t *testing.T) (context.Context, servicepb.BucketService
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+
 	return ctx, servicepb.NewBucketServiceClient(conn)
 }

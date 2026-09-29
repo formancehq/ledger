@@ -19,18 +19,19 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"math/rand"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/kubernetes"
 )
 
 var ccSentinelLedger = internal.PrefixSentinel.WithSuffix("config-change")
@@ -66,20 +67,23 @@ func main() {
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)
+
 		return
 	}
 	clientset, err := internal.NewKubeClientset()
 	if err != nil {
 		log.Printf("cannot build k8s clientset: %s", err)
+
 		return
 	}
 
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("cannot create ledger gRPC client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
@@ -107,6 +111,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		if !internal.IsTransient(err) {
 			log.Printf("config-change: precommit failed: %s", err)
 		}
+
 		return
 	}
 
@@ -134,6 +139,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	currentReplicas, err := internal.GetCurrentReplicas(ctx, lsClient, internal.ClusterName)
 	if err != nil {
 		log.Printf("config-change: cannot read current replicas: %s", err)
+
 		return
 	}
 	ready := internal.WaitForStatefulSetReady(ctx, clientset, internal.LedgerStatefulSetName(), int32(currentReplicas), ccStsReadyWait)
@@ -163,13 +169,14 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		}
 	}
 
-	sentinel.Verify(ctx, client, fmt.Sprintf("after_%s", change.kind))
+	sentinel.Verify(ctx, client, "after_"+change.kind)
 }
 
 func pickChange(r *rand.Rand) configChange {
 	switch r.Intn(3) {
 	case 0:
 		v := rotationOptions[r.Intn(len(rotationOptions))]
+
 		return configChange{
 			kind:     "rotationThreshold",
 			category: "cache",
@@ -184,6 +191,7 @@ func pickChange(r *rand.Rand) configChange {
 	case 1:
 		cat := bloomCategories[r.Intn(len(bloomCategories))]
 		v := keysOptions[r.Intn(len(keysOptions))]
+
 		return configChange{
 			kind:     "bloomExpectedKeys",
 			category: cat,
@@ -196,6 +204,7 @@ func pickChange(r *rand.Rand) configChange {
 	default:
 		cat := bloomCategories[r.Intn(len(bloomCategories))]
 		v := fpRateOptions[r.Intn(len(fpRateOptions))]
+
 		return configChange{
 			kind:     "bloomFPRate",
 			category: cat,
@@ -211,6 +220,7 @@ func pickChange(r *rand.Rand) configChange {
 func bloomKeysPredicate(category string, want uint64) func(cfg *commonpb.ClusterConfig) bool {
 	return func(cfg *commonpb.ClusterConfig) bool {
 		bt := bloomForCategory(cfg, category)
+
 		return bt != nil && bt.GetExpectedKeys() == want
 	}
 }
@@ -219,8 +229,10 @@ func bloomFPRatePredicate(category, want string) func(cfg *commonpb.ClusterConfi
 	// We only assert the persisted FP rate exists and parses to a non-zero
 	// value: comparing the raw float bit-for-bit would be brittle.
 	_ = want
+
 	return func(cfg *commonpb.ClusterConfig) bool {
 		bt := bloomForCategory(cfg, category)
+
 		return bt != nil && bt.GetFpRate() > 0
 	}
 }
@@ -248,5 +260,6 @@ func bloomForCategory(cfg *commonpb.ClusterConfig, category string) *commonpb.Bl
 	case "ledgerMetadata":
 		return cfg.GetBloomLedgerMetadata()
 	}
+
 	return nil
 }

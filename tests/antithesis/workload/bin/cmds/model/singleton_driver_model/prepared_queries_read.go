@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"strings"
@@ -255,7 +256,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		// Coverage trace for the deliberately spoiled binding: the rejection is
 		// what the negative path exists to observe, so record that it happened
 		// rather than inferring it from the absence of a finding.
-		dbg("PQPARAM spoiled errKind=%d", int(call.errKind))
+		dbgf("PQPARAM spoiled errKind=%d", int(call.errKind))
 	}
 
 	if mode == commonpb.QueryMode_QUERY_MODE_AGGREGATE_VOLUMES {
@@ -416,12 +417,11 @@ func runAggregateTargetMisuse(
 		return
 	}
 	if err != nil {
-		dbg("PQAGGMISUSE rejected")
+		dbgf("PQAGGMISUSE rejected")
 		assert.Reachable("singleton_driver_model: aggregate on a non-accounts prepared query rejected", internal.Details{
 			"ledger": ledger,
 			"query":  name,
 		})
-
 	}
 
 	call := preparedCall{
@@ -479,7 +479,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		"query":        call.name,
 		"params":       describeParams(call.params),
 		"paramsFull":   call.complete,
-		"after":        fmt.Sprintf("%x", after),
+		"after":        hex.EncodeToString(after),
 		"pageSize":     call.pageSize,
 		"errKind":      int(call.errKind),
 		"error":        errorDetail(call.err),
@@ -731,11 +731,13 @@ func preparedTransactionPageMatches(ls oracle.LedgerState, call preparedCall, bo
 
 func preparedTransactionWindowRows(ls oracle.LedgerState, bound *commonpb.QueryFilter, after []byte) []txWindowRow {
 	rows := transactionWindowRows(ls, bound, 0, txAscending)
+
 	return filterPreparedRows(rows, after, func(row txWindowRow) []byte { return uint64EntityKey(row.id) })
 }
 
 func preparedLogWindowRows(ls oracle.LedgerState, ledger string, bound *commonpb.QueryFilter, after []byte) []logWindowRow {
 	rows := logWindowRows(ls, ledger, bound, 0)
+
 	return filterPreparedRows(rows, after, func(row logWindowRow) []byte { return uint64EntityKey(row.id) })
 }
 
@@ -955,6 +957,7 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 				ids = append(ids, row.id)
 			}
 		}
+
 		return preparedServerRows(cur), joinUint64(ids)
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		rows := preparedLogWindowRows(ls, call.ledger, bound, after)
@@ -964,6 +967,7 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 				ids = append(ids, row.id)
 			}
 		}
+
 		return preparedServerRows(cur), joinUint64(ids)
 	default:
 		return preparedServerRows(cur), "<non-executable target>"

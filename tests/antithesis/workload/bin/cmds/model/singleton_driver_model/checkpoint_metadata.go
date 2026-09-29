@@ -12,6 +12,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -27,6 +28,7 @@ func (failures checkpointSetupProbeFailures) Error() string {
 	for _, failure := range failures {
 		parts = append(parts, fmt.Sprintf("%s: %s", failure.addr, failure.err))
 	}
+
 	return strings.Join(parts, "; ")
 }
 
@@ -39,6 +41,7 @@ func (failures checkpointSetupProbeFailures) allTransient() bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -49,6 +52,7 @@ func readCheckpointRegistry(ctx context.Context, node *internal.PerNodeConn) (*c
 	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err
 	}
+
 	return node.Cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 }
 
@@ -56,6 +60,7 @@ func readCheckpointSchedule(ctx context.Context, node *internal.PerNodeConn) (*c
 	if err := fenceCheckpointMetadata(ctx, node); err != nil {
 		return nil, err
 	}
+
 	return node.Cluster.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
 }
 
@@ -70,7 +75,7 @@ func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) er
 	}
 	target := barrier.GetCommitIndex()
 	if target == 0 {
-		return fmt.Errorf("checkpoint metadata barrier returned zero index")
+		return errors.New("checkpoint metadata barrier returned zero index")
 	}
 	// Capture one watermark. Concurrent writes may advance beyond it; chasing
 	// the moving leader head would unnecessarily starve this bounded read.
@@ -103,7 +108,7 @@ func fenceCheckpointMetadata(ctx context.Context, node *internal.PerNodeConn) er
 // without mutating the PerNodeConn shared by concurrent model workers.
 func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (uint32, error) {
 	if node.Addr == "" {
-		return 0, fmt.Errorf("checkpoint metadata node has no pinned address")
+		return 0, errors.New("checkpoint metadata node has no pinned address")
 	}
 	topology, err := node.Cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 	if err != nil {
@@ -125,8 +130,10 @@ func checkpointMetadataNodeID(ctx context.Context, node *internal.PerNodeConn) (
 		if node.NodeID != 0 && node.NodeID != peer.GetId() {
 			return 0, fmt.Errorf("checkpoint metadata node %q is not advertised as node %d (got %d)", node.Addr, node.NodeID, peer.GetId())
 		}
+
 		return peer.GetId(), nil
 	}
+
 	return 0, fmt.Errorf("checkpoint metadata node %q has unresolved identity in leader topology", node.Addr)
 }
 
@@ -147,8 +154,9 @@ func selectCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns)
 		failures = append(failures, checkpointSetupProbeFailure{addr: node.Addr, err: err})
 	}
 	if len(failures) == 0 {
-		return nil, fmt.Errorf("no checkpoint setup nodes configured")
+		return nil, errors.New("no checkpoint setup nodes configured")
 	}
+
 	return nil, failures
 }
 
@@ -161,7 +169,8 @@ func waitForCheckpointSetupNode(ctx context.Context, nodes internal.PerNodeConns
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		failures, ok := err.(checkpointSetupProbeFailures)
+		var failures checkpointSetupProbeFailures
+		ok := errors.As(err, &failures)
 		if !ok || !failures.allTransient() {
 			return nil, err
 		}

@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
@@ -24,7 +26,7 @@ func main() {
 		}
 
 		typeName := fmt.Sprintf("type-%d", r.Uint64())
-		pattern := fmt.Sprintf("%s:{id}", typeName)
+		pattern := typeName + ":{id}"
 
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
@@ -58,6 +60,7 @@ func main() {
 		info, err := client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: ledger})
 		if err != nil {
 			internal.LogCleanupError("get ledger after account type add", err)
+
 			return
 		}
 

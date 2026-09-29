@@ -10,5 +10,6 @@ func (d Details) With(extra Details) Details {
 	out := make(Details)
 	maps.Copy(out, d)
 	maps.Copy(out, extra)
+
 	return out
 }

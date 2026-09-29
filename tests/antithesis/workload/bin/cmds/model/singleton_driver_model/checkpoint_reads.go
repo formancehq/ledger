@@ -13,8 +13,9 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // Checkpoint data is compared only with the drained state captured at creation.
@@ -24,6 +25,7 @@ func checkpointAccountReadMatches(state oracle.GlobalState, ledger, address stri
 	if !found {
 		return !modelKnowsAccount(ls, address)
 	}
+
 	return account != nil && account.GetAddress() == address && accountMatches(ls, address, account)
 }
 
@@ -32,6 +34,7 @@ func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, i
 	if id == 0 || id > uint64(txs.Len()) {
 		return !found
 	}
+
 	return found && transaction != nil && txRecordMatches(txs.Get(int(id-1)), transaction)
 }
 
@@ -39,6 +42,7 @@ func checkpointTransactionReadMatches(state oracle.GlobalState, ledger string, i
 // ErrorInfo details (server.go). Text containing "not found" is never evidence.
 func checkpointNotFound(err error) bool {
 	statusValue, ok := status.FromError(err)
+
 	return ok && statusValue.Code() == codes.NotFound
 }
 
@@ -51,6 +55,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	c.mu.Lock()
 	if c.paused {
 		c.mu.Unlock()
+
 		return
 	}
 	readID := c.registerRead()
@@ -62,10 +67,12 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	choice := internal.Rand().Uint64() % 6
 	if choice == 0 || id == 0 {
 		runCheckpointListRead(readCtx, node, c)
+
 		return
 	}
 	if choice == 1 {
 		runCheckpointScheduleRead(readCtx, node, c)
+
 		return
 	}
 	var err error
@@ -74,7 +81,8 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	var maxTicket uint64
 	var ledger string
 	details := internal.Details{"checkpoint": id, "readKind": choice}
-	if choice == 2 {
+	switch choice {
+	case 2:
 		var address string
 		var ok bool
 		ledger, address, _, _, _, ok = pickReadTarget(frozen, ledgerNames)
@@ -87,7 +95,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		details["ledger"], details["address"], details["returned"] = ledger, address, account
 		matches = checkpointAccountReadMatches(frozen, ledger, address, account, err == nil)
 		concrete = err == nil && account != nil && modelKnowsAccount(frozen.Ledger(ledger), address)
-	} else if choice == 3 {
+	case 3:
 		var txID uint64
 		var ok bool
 		ledger, txID, _, ok = pickTransactionID(frozen, ledgerNames)
@@ -100,7 +108,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 		details["ledger"], details["transactionId"], details["returned"] = ledger, txID, response.GetTransaction()
 		matches = checkpointTransactionReadMatches(frozen, ledger, txID, response.GetTransaction(), err == nil)
 		concrete = err == nil && response.GetTransaction() != nil
-	} else {
+	default:
 		if len(ledgerNames) == 0 {
 			return
 		}
@@ -127,6 +135,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 				for i, address := range want {
 					if !checkpointAccountReadMatches(frozen, ledger, address, rows[i], true) {
 						matches = false
+
 						break
 					}
 				}
@@ -152,6 +161,7 @@ func runCheckpointRead(ctx context.Context, node *internal.PerNodeConn, c *Check
 	if !matches {
 		details["error"] = fmt.Sprint(err)
 		assert.Unreachable("singleton_driver_model: checkpoint read outside frozen model", details)
+
 		return
 	}
 	// An absent entity can return NotFound even from a live checkpoint.
@@ -262,6 +272,7 @@ func runCheckpointListRead(ctx context.Context, node *internal.PerNodeConn, c *C
 			return
 		}
 		assert.Unreachable("singleton_driver_model: checkpoint list returned unexpected error", internal.Details{"error": err.Error()})
+
 		return
 	}
 	ids := make([]uint64, 0, len(response.GetCheckpoints()))
@@ -269,12 +280,14 @@ func runCheckpointListRead(ctx context.Context, node *internal.PerNodeConn, c *C
 		ids = append(ids, checkpoint.GetCheckpointId())
 		if sequence, known := sequences[checkpoint.GetCheckpointId()]; known && checkpoint.GetMaxSequence() != sequence {
 			assert.Unreachable("singleton_driver_model: checkpoint list sequence outside captured model", internal.Details{"checkpoint": checkpoint.GetCheckpointId(), "expected": sequence, "actual": checkpoint.GetMaxSequence()})
+
 			return
 		}
 	}
 	slices.Sort(ids)
 	if !c.matchesModel(maxTicket, "CHECKPOINTLIST", func(base oracle.GlobalState) bool { return slices.Equal(ids, base.QueryCheckpointIDs()) }) {
 		assert.Unreachable("singleton_driver_model: checkpoint list outside model", internal.Details{"ids": ids, "nodeID": node.NodeID, "address": node.Addr})
+
 		return
 	}
 	noteCheckpointCoverage(checkpointListCoverage)
@@ -289,10 +302,12 @@ func runCheckpointScheduleRead(ctx context.Context, node *internal.PerNodeConn, 
 			return
 		}
 		assert.Unreachable("singleton_driver_model: checkpoint schedule returned unexpected error", internal.Details{"error": err.Error()})
+
 		return
 	}
 	if !c.matchesModel(maxTicket, "CHECKPOINTSCHEDULE", func(base oracle.GlobalState) bool { return response.GetCron() == base.QueryCheckpointSchedule() }) {
 		assert.Unreachable("singleton_driver_model: checkpoint schedule outside model", internal.Details{"cron": response.GetCron(), "nodeID": node.NodeID, "address": node.Addr})
+
 		return
 	}
 	noteCheckpointCoverage(checkpointScheduleReadCoverage)
@@ -316,7 +331,9 @@ func (c *Checker) checkpointReadOutcomeMatches(id, maxTicket uint64, frozenMatch
 	matches := false
 	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
 		matches = !base.QueryCheckpointExists(id)
+
 		return matches
 	})
+
 	return matches
 }

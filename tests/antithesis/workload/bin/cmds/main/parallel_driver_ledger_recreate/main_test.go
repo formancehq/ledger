@@ -15,13 +15,13 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -29,6 +29,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+
 	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -57,6 +58,7 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 		require.Equal(t, codes.FailedPrecondition, status.Code(err))
 		require.True(t, workloadinternal.IsLedgerDeleted(err), "%v", err)
 		t.Logf("real-server same-name create: %v; reason=%s", err, workloadinternal.ErrorReason(err))
+
 		return
 	}
 	t.Parallel()
@@ -101,18 +103,21 @@ func TestLedgerDeletionScenarioContract(t *testing.T) {
 					require.Equal(t, []bool{false}, observations["predecessor reference accepted by another ledger"])
 					require.Equal(t, []bool{false}, observations[tc.failure])
 				}
+
 				return
 			}
 			if tc.mode == "reuse-unavailable" || tc.mode == "reuse-deadline" || tc.mode == "reuse-canceled" || tc.mode == "reuse-context-deadline" {
 				require.Contains(t, observations["other ledger never exposes predecessor account activity"], true)
 				require.NotContains(t, observations, "predecessor reference accepted by another ledger", "inconclusive reuse must not be observed as accepted or rejected")
 				require.NotContains(t, observations, "predecessor references are reusable in another ledger")
+
 				return
 			}
 			if tc.mode == "ambiguous-delete" {
 				require.NotContains(t, observations, "deleted ledger name remains permanently reserved")
 				require.NotContains(t, observations, "other ledger never exposes predecessor transactions")
 				require.NotContains(t, observations, "predecessor reference accepted by another ledger")
+
 				return
 			}
 			for _, message := range []string{
@@ -170,6 +175,7 @@ func runScenarioProcess(t *testing.T, mode string) map[string][]bool {
 		}
 	}
 	require.NoError(t, scanner.Err())
+
 	return observed
 }
 
@@ -177,9 +183,11 @@ func runScenarioProcess(t *testing.T, mode string) map[string][]bool {
 // stage. All setup, deletion, reads and reference conflicts use the real service.
 func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.UnaryClientInterceptor {
 	var predecessor *commonpb.Transaction
+
 	return func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		if mode == "deleted-read" && strings.HasSuffix(method, "/GetLedger") {
 			injected.Store(true)
+
 			return nil
 		}
 		if mode == "deleted-transaction-point" && strings.HasSuffix(method, "/GetTransaction") {
@@ -189,6 +197,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			require.Equal(t, predecessor.GetId(), read.GetTransactionId())
 			reply.(*servicepb.GetTransactionResponse).Transaction = predecessor
 			injected.Store(true)
+
 			return nil
 		}
 		if mode == "deleted-account-point" && strings.HasSuffix(method, "/GetAccount") {
@@ -197,6 +206,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			require.Equal(t, "lrec-old:174236:0", read.GetAddress())
 			reply.(*commonpb.Account).Address = read.GetAddress()
 			injected.Store(true)
+
 			return nil
 		}
 		apply, ok := req.(*servicepb.ApplyRequest)
@@ -206,10 +216,12 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 		key := apply.GetUnsigned().GetIdempotencyKey()
 		if mode == "cleanup-failure" && strings.HasSuffix(key, "-cleanup-other") {
 			injected.Store(true)
+
 			return status.Error(codes.Unavailable, "injected cleanup failure")
 		}
 		if (mode == "recreate-before" || mode == "recreate-after" || mode == "deleted-write") && strings.HasSuffix(key, "-"+mode) {
 			injected.Store(true)
+
 			return nil
 		}
 		if strings.HasSuffix(key, "-reuse") {
@@ -229,6 +241,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			}
 			if mode == "reuse-permanent" {
 				injected.Store(true)
+
 				return status.Error(codes.InvalidArgument, "injected permanent reuse failure")
 			}
 			if mode == "reuse-conflict" {
@@ -250,6 +263,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 		}
 		if mode == "ambiguous-delete" && strings.HasSuffix(key, "-delete") {
 			injected.Store(true)
+
 			return status.Error(codes.DeadlineExceeded, "delete committed but response lost")
 		}
 		if strings.HasSuffix(key, "-marker") && (mode == "reference-leak" || mode == "account-leak") {
@@ -261,6 +275,7 @@ func scenarioInterceptor(t *testing.T, mode string, injected *atomic.Bool) grpc.
 			require.NoError(t, err)
 			injected.Store(true)
 		}
+
 		return nil
 	}
 }
@@ -271,12 +286,14 @@ func scenarioStreams(mode string, injected *atomic.Bool) grpc.StreamClientInterc
 		if err != nil {
 			return nil, err
 		}
+
 		return &scenarioStream{ClientStream: stream, mode: mode, injected: injected}, nil
 	}
 }
 
 type scenarioStream struct {
 	grpc.ClientStream
+
 	mode                            string
 	injected                        *atomic.Bool
 	target, deletedTarget, received bool
@@ -292,8 +309,10 @@ func (s *scenarioStream) SendMsg(message any) error {
 	}
 	if s.target && s.mode == "stream-initial" {
 		s.injected.Store(true)
+
 		return status.Error(codes.FailedPrecondition, "injected initial stream failure")
 	}
+
 	return s.ClientStream.SendMsg(message)
 }
 
@@ -309,16 +328,19 @@ func (s *scenarioStream) RecvMsg(message any) error {
 		case *commonpb.Account:
 			row.Address = "lrec-old:174236:0"
 		}
+
 		return nil
 	}
 	if s.target && s.received && s.mode == "stream-recv" {
 		s.injected.Store(true)
+
 		return status.Error(codes.Internal, "injected failure after valid row")
 	}
 	err := s.ClientStream.RecvMsg(message)
 	if err == nil {
 		s.received = true
 	}
+
 	return err
 }
 
@@ -342,7 +364,9 @@ func deletionTestServer(t *testing.T, unary grpc.UnaryClientInterceptor, stream 
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+
 	return ctx, servicepb.NewBucketServiceClient(conn)
 }

@@ -186,7 +186,7 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 		}
 
 		// Fold in any one of the remaining in-flight bulks (unknown position).
-		for idx := 0; idx < len(inflight); idx++ {
+		for idx := range inflight {
 			byteIdx, mask := idx/8, byte(1<<(idx%8))
 			if rem[byteIdx]&mask == 0 {
 				continue
@@ -202,6 +202,7 @@ func (c *Checker) walkCandidateStates(maxTicket uint64, visit func(oracle.Global
 				}
 				rem[byteIdx] |= mask
 				setRemaining(rem, retained, true)
+
 				continue
 			}
 

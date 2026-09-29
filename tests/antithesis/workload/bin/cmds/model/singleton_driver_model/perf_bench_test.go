@@ -87,7 +87,7 @@ func buildLoadedChecker(tb testing.TB, nLedgers, txPerLedger int) *Checker {
 
 	for _, ledger := range ledgers {
 		chart := make([]*servicepb.Request, 0, benchPrefixes)
-		for p := 0; p < benchPrefixes; p++ {
+		for p := range benchPrefixes {
 			chart = append(chart, addTypeReqL(ledger, p))
 		}
 		apply(chart)
@@ -131,13 +131,13 @@ func benchBulk(ledger, addr, asset string) oracle.Bulk {
 func loadOutstanding(c *Checker, nPending, nInflight int) (maxTicket uint64) {
 	ticket := uint64(0)
 
-	for i := 0; i < nPending; i++ {
+	for i := range nPending {
 		ticket++
 		b := benchBulk(c.ledgerNames[i%len(c.ledgerNames)], fmt.Sprintf("t-0:%d", i), "USD/2")
 		c.pending = append(c.pending, &pendingObservation{minSeq: ticket, obs: observation{ticket: ticket, bulk: b}})
 	}
 
-	for i := 0; i < nInflight; i++ {
+	for i := range nInflight {
 		ticket++
 		c.inflight[ticket] = benchBulk(c.ledgerNames[i%len(c.ledgerNames)], fmt.Sprintf("t-1:%d", i), "EUR/2")
 	}
@@ -156,10 +156,11 @@ func BenchmarkCandidateBasesFull(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		bases = 0
 		c.candidateBases(maxTicket, func(oracle.GlobalState) bool {
 			bases++
+
 			return false
 		})
 	}
@@ -174,7 +175,7 @@ func BenchmarkApplySmallBulk(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		res := c.modelState.Apply(bulk)
 		if !res.OK {
 			b.Fatal(res.Reason)
@@ -189,7 +190,7 @@ func BenchmarkStateFingerprint(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		c.modelState.Fingerprint()
 	}
 }

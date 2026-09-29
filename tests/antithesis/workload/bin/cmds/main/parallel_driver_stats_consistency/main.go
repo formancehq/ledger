@@ -18,8 +18,10 @@ import (
 	"math/big"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -46,7 +48,6 @@ func main() {
 			"logCount":         stats.GetLogCount(),
 		})
 
-		assert.Always(stats.GetTransactionCount() >= 0, "transaction count must be non-negative", statsDetails)
 		assert.Always(mainStoreStatsConsistent(stats),
 			"log count must be >= transaction count (logs include metadata, reverts, etc.)", statsDetails)
 

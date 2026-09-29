@@ -28,6 +28,7 @@ import (
 // contract instead of being supplied by a hand-written client mock.
 type oracleTestServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	barrierFn     func(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error)
 	listLedgersFn func(*servicepb.ListLedgersRequest, servicepb.BucketService_ListLedgersServer) error
 	listLogsFn    func(*servicepb.ListLogsRequest, servicepb.BucketService_ListLogsServer) error
@@ -40,6 +41,7 @@ func (s *oracleTestServer) Barrier(ctx context.Context, req *servicepb.BarrierRe
 	if s.barrierFn == nil {
 		return s.UnimplementedBucketServiceServer.Barrier(ctx, req)
 	}
+
 	return s.barrierFn(ctx, req)
 }
 
@@ -47,6 +49,7 @@ func (s *oracleTestServer) ListLedgers(req *servicepb.ListLedgersRequest, stream
 	if s.listLedgersFn == nil {
 		return s.UnimplementedBucketServiceServer.ListLedgers(req, stream)
 	}
+
 	return s.listLedgersFn(req, stream)
 }
 
@@ -54,6 +57,7 @@ func (s *oracleTestServer) ListLogs(req *servicepb.ListLogsRequest, stream servi
 	if s.listLogsFn == nil {
 		return s.UnimplementedBucketServiceServer.ListLogs(req, stream)
 	}
+
 	return s.listLogsFn(req, stream)
 }
 
@@ -61,6 +65,7 @@ func (s *oracleTestServer) GetLedger(ctx context.Context, req *servicepb.GetLedg
 	if s.getLedgerFn == nil {
 		return s.UnimplementedBucketServiceServer.GetLedger(ctx, req)
 	}
+
 	return s.getLedgerFn(ctx, req)
 }
 
@@ -68,6 +73,7 @@ func (s *oracleTestServer) GetLedgerStats(ctx context.Context, req *servicepb.Ge
 	if s.statsFn == nil {
 		return s.UnimplementedBucketServiceServer.GetLedgerStats(ctx, req)
 	}
+
 	return s.statsFn(ctx, req)
 }
 
@@ -75,6 +81,7 @@ func (s *oracleTestServer) Apply(ctx context.Context, req *servicepb.ApplyReques
 	if s.applyFn == nil {
 		return s.UnimplementedBucketServiceServer.Apply(ctx, req)
 	}
+
 	return s.applyFn(ctx, req)
 }
 
@@ -103,11 +110,13 @@ func newOracleTestConn(t *testing.T, bucket servicepb.BucketServiceServer, clust
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return conn
 }
 
 func newSourceTestClient(t *testing.T, server *oracleTestServer) servicepb.BucketServiceClient {
 	t.Helper()
+
 	return servicepb.NewBucketServiceClient(newOracleTestConn(t, server))
 }
 
@@ -115,6 +124,7 @@ func sourceTestContext(t *testing.T) context.Context {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	t.Cleanup(cancel)
+
 	return ctx
 }
 
@@ -134,6 +144,7 @@ func sourceTestTransaction(id uint64, postingCount int) *commonpb.Transaction {
 	for i := range postings {
 		postings[i] = &commonpb.Posting{Source: "world", Destination: fmt.Sprintf("account:%d", i), Asset: "USD", Amount: commonpb.NewUint256FromUint64(1)}
 	}
+
 	return &commonpb.Transaction{Id: id, Postings: postings}
 }
 
@@ -174,6 +185,7 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 			if end < ledgerCount {
 				stream.SetTrailer(metadata.Pairs("x-next-cursor", "ledger-099"))
 			}
+
 			return nil
 		},
 		listLogsFn: func(req *servicepb.ListLogsRequest, stream servicepb.BucketService_ListLogsServer) error {
@@ -198,6 +210,7 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 			if end < logCount {
 				stream.SetTrailer(metadata.Pairs("x-next-cursor", strconv.FormatUint(end, 10)))
 			}
+
 			return nil
 		},
 		statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
@@ -206,6 +219,7 @@ func TestCaptureSourceDrainsPaginatedLedgersAndLogs(t *testing.T) {
 				// influence the expected posting/revert fold.
 				return &commonpb.LedgerStats{LogCount: logCount, TransactionCount: 50_000, PostingCount: 999, RevertCount: 999}, nil
 			}
+
 			return &commonpb.LedgerStats{}, nil
 		},
 	}
@@ -246,6 +260,7 @@ func TestCaptureSourceFoldsExactLogPayloads(t *testing.T) {
 
 func sourceTestSingleLedger(name string, logs []*commonpb.Log, mainLogCount uint64) *oracleTestServer {
 	var barriers atomic.Uint64
+
 	return &oracleTestServer{
 		barrierFn: func(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 			return &servicepb.BarrierResponse{CommitIndex: 10 + barriers.Add(1)}, nil
@@ -259,6 +274,7 @@ func sourceTestSingleLedger(name string, logs []*commonpb.Log, mainLogCount uint
 					return err
 				}
 			}
+
 			return nil
 		},
 		statsFn: func(context.Context, *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
@@ -306,6 +322,7 @@ func TestCaptureSourceRejectsRepeatedCursors(t *testing.T) {
 						return err
 					}
 					stream.SetTrailer(metadata.Pairs("x-next-cursor", "ledger-1"))
+
 					return nil
 				}
 			} else {
@@ -315,6 +332,7 @@ func TestCaptureSourceRejectsRepeatedCursors(t *testing.T) {
 						return err
 					}
 					stream.SetTrailer(metadata.Pairs("x-next-cursor", "1"))
+
 					return nil
 				}
 			}
@@ -340,6 +358,7 @@ func TestCaptureSourceDiscardsLaterPageStreamError(t *testing.T) {
 				}
 			}
 			stream.SetTrailer(metadata.Pairs("x-next-cursor", "100"))
+
 			return nil
 		}
 		if req.GetOptions().GetCursor() != "100" {
@@ -348,10 +367,12 @@ func TestCaptureSourceDiscardsLaterPageStreamError(t *testing.T) {
 		if err := stream.Send(sourceTestCreatedLog("ledger", 101, 101, 1)); err != nil {
 			return err
 		}
+
 		return status.Error(codes.Internal, "injected later-page storage failure")
 	}
 	server.statsFn = func(context.Context, *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 		statsCalls.Add(1)
+
 		return &commonpb.LedgerStats{LogCount: 101}, nil
 	}
 	got, horizon, err := captureSource(sourceTestContext(t), newSourceTestClient(t, server))
@@ -400,6 +421,7 @@ func TestFoldLogsCancelsStreamAfterInvalidRow(t *testing.T) {
 			// A streaming server may retain its snapshot until the client
 			// cancels. The invalid row must not leave that stream open.
 			<-stream.Context().Done()
+
 			return stream.Context().Err()
 		},
 	}
@@ -423,6 +445,7 @@ func TestWriteWitnessAccountsForExactlyOneProposalAndBarrier(t *testing.T) {
 			server := &oracleTestServer{
 				applyFn: func(_ context.Context, req *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 					applied <- req
+
 					return &servicepb.ApplyResponse{}, nil
 				},
 				barrierFn: func(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {

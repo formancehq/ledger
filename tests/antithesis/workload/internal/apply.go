@@ -7,16 +7,16 @@ import (
 
 // ExtractCreatedTransaction extracts the CreatedTransaction from an Apply response.
 func ExtractCreatedTransaction(resp *servicepb.ApplyResponse) *commonpb.CreatedTransaction {
-	if resp == nil || len(resp.Logs) == 0 {
+	if resp == nil || len(resp.GetLogs()) == 0 {
 		return nil
 	}
 
-	applyLog := resp.Logs[0].Payload.GetApply()
+	applyLog := resp.GetLogs()[0].GetPayload().GetApply()
 	if applyLog == nil {
 		return nil
 	}
 
-	return applyLog.Log.Data.GetCreatedTransaction()
+	return applyLog.GetLog().GetData().GetCreatedTransaction()
 }
 
 // CheckCreatedTransaction extracts the CreatedTransaction from an Apply response

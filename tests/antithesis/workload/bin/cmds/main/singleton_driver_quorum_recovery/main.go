@@ -23,11 +23,13 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 var qrSentinelLedger = internal.PrefixSentinel.WithSuffix("quorum-recovery")
@@ -55,20 +57,23 @@ func main() {
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)
+
 		return
 	}
 	clientset, err := internal.NewKubeClientset()
 	if err != nil {
 		log.Printf("cannot build k8s clientset: %s", err)
+
 		return
 	}
 
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("cannot create ledger gRPC client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
@@ -92,10 +97,12 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	current, err := internal.GetCurrentReplicas(ctx, lsClient, internal.ClusterName)
 	if err != nil {
 		log.Printf("quorum-recovery: cannot read current replicas: %s", err)
+
 		return
 	}
 	if current != 3 {
 		log.Printf("quorum-recovery: cluster not at N=3 (got %d), skipping", current)
+
 		return
 	}
 
@@ -104,18 +111,21 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		if !internal.IsTransient(err) {
 			log.Printf("quorum-recovery: precommit failed: %s", err)
 		}
+
 		return
 	}
 
 	leaderPod, leaderID, err := internal.GetLeaderPodName(ctx, clusterClient)
 	if err != nil || leaderID == 0 {
 		log.Printf("quorum-recovery: no leader, skipping")
+
 		return
 	}
 
 	pods, err := internal.ListLedgerPods(ctx, clientset)
 	if err != nil || len(pods) < 3 {
 		log.Printf("quorum-recovery: cannot list pods: %s", err)
+
 		return
 	}
 
@@ -130,6 +140,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 	}
 	if len(victims) != 2 {
 		log.Printf("quorum-recovery: expected 2 non-leader pods, got %d", len(victims))
+
 		return
 	}
 
@@ -183,6 +194,7 @@ func runRound(ctx context.Context, lsClient dynamic.ResourceInterface, clientset
 		// the operator's scaledown gives up; sentinel data is still committed
 		// on the live voter so a read-after-write should hold once we're back.
 		sentinel.Verify(ctx, client, "after_quorum_recovery_timeout")
+
 		return
 	}
 	assert.Reachable("force-remove path executed (voters=1)", details)

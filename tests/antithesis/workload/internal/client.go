@@ -9,9 +9,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -19,6 +16,10 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/resolver/manual"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 )
 
 // NewGRPCConn creates a gRPC connection to the ledger service with retry on
@@ -123,6 +124,7 @@ func NewGRPCConn() (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return conn, nil
 }
 
@@ -135,11 +137,12 @@ const (
 func retryDelay(attempt int) time.Duration {
 	d := retryBaseDelay
 	for range attempt {
-		d = d * 2
+		d *= 2
 		if d > retryMaxDelay {
 			return retryMaxDelay
 		}
 	}
+
 	return d
 }
 
@@ -172,6 +175,7 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 				if hadAmbiguousAttempt {
 					return maintenanceAfterAmbiguousCommitError{err: err}
 				}
+
 				return err
 			}
 			if !retryableRPCError(err) {
@@ -184,6 +188,7 @@ func retryUnaryInterceptor(maxAttempts int) grpc.UnaryClientInterceptor {
 			case <-time.After(retryDelay(attempt)):
 			}
 		}
+
 		return err
 	}
 }
@@ -217,6 +222,7 @@ func (e maintenanceAfterAmbiguousCommitError) GRPCStatus() *status.Status {
 // maintenance mode.
 func IsMaintenanceAfterAmbiguousCommit(err error) bool {
 	var target maintenanceAfterAmbiguousCommitError
+
 	return errors.As(err, &target)
 }
 
@@ -246,6 +252,7 @@ func classifyUnaryInterceptor() grpc.UnaryClientInterceptor {
 				"code":   status.Code(err).String(),
 				"err":    fmt.Sprintf("%v", err),
 			})
+
 		return err
 	}
 }
@@ -271,6 +278,7 @@ func classifyStreamInterceptor() grpc.StreamClientInterceptor {
 				"code":   status.Code(err).String(),
 				"err":    fmt.Sprintf("%v", err),
 			})
+
 		return stream, err
 	}
 }
@@ -301,6 +309,7 @@ func retryStreamInterceptor(maxAttempts int) grpc.StreamClientInterceptor {
 			case <-time.After(retryDelay(attempt)):
 			}
 		}
+
 		return stream, err
 	}
 }
@@ -315,6 +324,7 @@ func IsUnavailable(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.Unavailable
 }
 
@@ -328,6 +338,7 @@ func IsDeadlineExceeded(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.DeadlineExceeded
 }
 
@@ -345,6 +356,7 @@ func IsAborted(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.Aborted
 }
 
@@ -358,6 +370,7 @@ func IsCanceled(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.Canceled
 }
 
@@ -453,6 +466,7 @@ func IsAlreadyExists(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.AlreadyExists
 }
 
@@ -467,15 +481,9 @@ func IsNotFound(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.NotFound
 }
-
-// IsLedgerNotFound is a backward-compatible alias for IsNotFound.
-//
-// Deprecated: the implementation has always matched any NotFound, not
-// just ledger-not-found. New code should call IsNotFound directly. Kept
-// only so existing callers keep compiling.
-func IsLedgerNotFound(err error) bool { return IsNotFound(err) }
 
 // IsNoFullCheckpoint returns true if the error is the EN-888 precondition an
 // incremental backup returns when its destination has no full checkpoint yet
@@ -490,6 +498,7 @@ func IsNoFullCheckpoint(err error) bool {
 		return false
 	}
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.FailedPrecondition &&
 		strings.Contains(st.Message(), "full checkpoint")
 }
@@ -558,6 +567,7 @@ func isBusinessError(err error) bool {
 		codes.FailedPrecondition:
 		return true
 	}
+
 	return false
 }
 
@@ -587,5 +597,6 @@ func NewClient() (servicepb.BucketServiceClient, *grpc.ClientConn, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return servicepb.NewBucketServiceClient(conn), conn, nil
 }

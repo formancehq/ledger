@@ -76,6 +76,7 @@ func listIsEmpty(
 	filter *commonpb.QueryFilter,
 ) (bool, []uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, filter)
+
 	return len(ids) == 0, ids, err == nil
 }
 

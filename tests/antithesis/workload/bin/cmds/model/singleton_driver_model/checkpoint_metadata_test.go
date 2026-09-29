@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -26,7 +28,7 @@ func TestCheckpointMetadataReadsFenceSameNode(t *testing.T) {
 	registry, err := readCheckpointRegistry(ctx, checkpointTestNode(bucket, cluster))
 	require.NoError(t, err)
 	require.Len(t, registry.GetCheckpoints(), 1)
-	require.Equal(t, uint64(7), registry.Checkpoints[0].GetCheckpointId())
+	require.Equal(t, uint64(7), registry.GetCheckpoints()[0].GetCheckpointId())
 	server.fenced.Store(false)
 	staleSchedule, err := cluster.GetQueryCheckpointSchedule(ctx, &clusterpb.GetQueryCheckpointScheduleRequest{})
 	require.NoError(t, err)
@@ -53,12 +55,14 @@ func checkpointMetadataClients(t *testing.T) (*checkpointMetadataServer, service
 	t.Helper()
 	handler := &checkpointMetadataServer{addr: "node"}
 	bucket, cluster := serveCheckpointMetadata(t, handler, handler)
+
 	return handler, bucket, cluster
 }
 
 type checkpointMetadataServer struct {
 	servicepb.UnimplementedBucketServiceServer
 	clusterpb.UnimplementedClusterServiceServer
+
 	addr                   string
 	denied                 bool
 	failDiscovery          bool
@@ -81,6 +85,7 @@ func (s *checkpointMetadataServer) Barrier(context.Context, *servicepb.BarrierRe
 	if s.denied {
 		return nil, status.Error(codes.PermissionDenied, "fence denied")
 	}
+
 	return &servicepb.BarrierResponse{CommitIndex: 42}, nil
 }
 
@@ -92,12 +97,14 @@ func (s *checkpointMetadataServer) GetClusterState(_ context.Context, req *clust
 		if s.failDiscovery {
 			return nil, status.Error(codes.Unavailable, "node unavailable during identity discovery")
 		}
+
 		return &clusterpb.ClusterState{State: "Leader", LocalNode: 1, Nodes: []*clusterpb.NodeInfo{{Id: 2, ServiceAddress: s.addr}}}, nil
 	}
 	if req.GetNodeId() != 2 {
 		return nil, status.Error(codes.InvalidArgument, "expected pinned node ID")
 	}
 	s.fenced.Store(true)
+
 	return &clusterpb.ClusterState{LocalNode: 2, RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: 42}}, nil
 }
 
@@ -111,6 +118,7 @@ func (s *checkpointMetadataServer) ListQueryCheckpoints(context.Context, *cluste
 	if s.fenced.Load() {
 		response.Checkpoints = []*clusterpb.QueryCheckpointInfo{{CheckpointId: 7}}
 	}
+
 	return response, nil
 }
 
@@ -120,6 +128,7 @@ func (s *checkpointMetadataServer) GetQueryCheckpointSchedule(context.Context, *
 	if s.fenced.Load() {
 		response.Cron = modelCheckpointCrons[0]
 	}
+
 	return response, nil
 }
 
@@ -139,7 +148,8 @@ func TestCheckpointSetupSelectsReachablePinnedNode(t *testing.T) {
 	_, err = selectCheckpointSetupNode(ctx, internal.PerNodeConns{first})
 	require.ErrorContains(t, err, "first")
 	require.ErrorContains(t, err, "fence unavailable")
-	failures, ok := err.(checkpointSetupProbeFailures)
+	var failures checkpointSetupProbeFailures
+	ok := errors.As(err, &failures)
 	require.True(t, ok)
 	require.True(t, failures.allTransient())
 	require.Zero(t, firstServer.metadataReads.Load(), "selection must not issue metadata calls or setup mutations")
@@ -184,7 +194,8 @@ func TestCheckpointSetupReturnsDefinitiveProbeFailure(t *testing.T) {
 	node := &internal.PerNodeConn{Addr: "node", NodeID: 2, Bucket: bucket, Cluster: cluster}
 
 	_, err := waitForCheckpointSetupNode(ctx, internal.PerNodeConns{node})
-	failures, ok := err.(checkpointSetupProbeFailures)
+	var failures checkpointSetupProbeFailures
+	ok := errors.As(err, &failures)
 	require.True(t, ok)
 	require.Len(t, failures, 1)
 	require.Equal(t, codes.PermissionDenied, status.Code(failures[0].err))

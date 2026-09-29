@@ -1,11 +1,14 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -17,14 +20,16 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	stream, err := client.CheckStore(ctx, &servicepb.CheckStoreRequest{})
 	if err != nil {
 		if internal.IsTransient(err) {
 			log.Printf("CheckStore transient: %s", err)
+
 			return
 		}
 
@@ -37,7 +42,7 @@ func main() {
 
 	for {
 		event, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {

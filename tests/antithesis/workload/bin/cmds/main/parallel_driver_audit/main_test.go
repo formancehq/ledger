@@ -14,15 +14,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestAuditDriverStream(t *testing.T) {
@@ -129,6 +130,7 @@ func TestAuditDriverChild(t *testing.T) {
 	}
 	if mode := os.Getenv("LEDGER_TEST_AUDIT_CANCEL"); mode != "" {
 		runAuditCancellation(t, mode)
+
 		return
 	}
 	main()
@@ -149,6 +151,7 @@ func runAuditCancellation(t *testing.T, mode string) {
 				return stream, err
 			}
 			receiver = &cancelingAuditStream{ClientStream: stream, cancel: cancel, mode: mode, prefix: entries}
+
 			return receiver, nil
 		}),
 	)
@@ -169,6 +172,7 @@ func runAuditCancellation(t *testing.T, mode string) {
 // it always delegates RecvMsg and never substitutes a synthetic receive error.
 type cancelingAuditStream struct {
 	grpc.ClientStream
+
 	cancel   context.CancelFunc
 	mode     string
 	prefix   int
@@ -180,7 +184,7 @@ func (s *cancelingAuditStream) RecvMsg(message any) error {
 	if s.mode == "before_receive" && s.received == s.prefix {
 		// Waiting for real headers ensures even the zero-entry case reaches
 		// the server before cancellation; stream creation alone is lazy.
-		if _, err := s.ClientStream.Header(); err != nil {
+		if _, err := s.Header(); err != nil {
 			return err
 		}
 		s.cancel()
@@ -195,6 +199,7 @@ func (s *cancelingAuditStream) RecvMsg(message any) error {
 			s.cancel()
 		}
 	}
+
 	return err
 }
 
@@ -222,11 +227,13 @@ func readAuditAssertions(t *testing.T, path string) map[string][]auditAssertion 
 		}
 	}
 	require.NoError(t, scanner.Err())
+
 	return events
 }
 
 type auditStreamServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	entries       int
 	terminal      error
 	waitForCancel bool
@@ -245,6 +252,7 @@ func (s *auditStreamServer) Apply(_ context.Context, request *servicepb.ApplyReq
 		return nil, status.Error(codes.InvalidArgument, "fixture expected one audit setup transaction")
 	}
 	s.applyCalls.Add(1)
+
 	return &servicepb.ApplyResponse{Logs: []*commonpb.Log{{Sequence: 1}}}, nil
 }
 
@@ -258,7 +266,7 @@ func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntries
 	if err := stream.SendHeader(metadata.Pairs("audit-fixture", "ready")); err != nil {
 		return err
 	}
-	for i := 0; i < s.entries; i++ {
+	for i := range s.entries {
 		if err := stream.Send(&auditpb.AuditEntry{Sequence: uint64(i + 1)}); err != nil {
 			return err
 		}
@@ -266,7 +274,9 @@ func (s *auditStreamServer) ListAuditEntries(request *servicepb.ListAuditEntries
 	}
 	if s.waitForCancel {
 		<-stream.Context().Done()
+
 		return stream.Context().Err()
 	}
+
 	return s.terminal
 }

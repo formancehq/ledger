@@ -8,18 +8,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/pkg/antithesistest"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -115,7 +116,7 @@ func TestQuiescenceAgainstServer(t *testing.T) {
 
 func quiescenceAssertionObserved(t *testing.T, data []byte, message string, condition bool) bool {
 	t.Helper()
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line == "" {
 			continue
 		}
@@ -131,6 +132,7 @@ func quiescenceAssertionObserved(t *testing.T, data []byte, message string, cond
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -159,6 +161,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 			if strings.HasSuffix(method, "/ListAccounts") && lists.Add(1) > 25 {
 				cancel() // Safety stop makes an unbounded-recursion mutation fail quickly.
 			}
+
 			return streamer(ctx, desc, cc, method, opts...)
 		}),
 		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
@@ -173,6 +176,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 					defer stop()
 					err := invoker(expired, method, req, reply, cc, opts...)
 					cancel()
+
 					return err
 				}
 				if err := invoker(ctx, method, req, reply, cc, opts...); err != nil {
@@ -181,6 +185,7 @@ func TestQuiescenceServerProcess(t *testing.T) {
 				if scenario == "ambiguous_barrier" && attempt == 1 {
 					return status.Error(codes.Unavailable, "lost response after real barrier commit")
 				}
+
 				return nil
 			}
 			if strings.HasSuffix(method, "/GetAccount") {
@@ -199,18 +204,19 @@ func TestQuiescenceServerProcess(t *testing.T) {
 			}
 			if strings.HasSuffix(method, "/GetAccount") && (scenario == "divergence" || scenario == "unavailable" || scenario == "expired" || (scenario == "ambiguous_barrier" && lists.Load() == 1)) {
 				account := reply.(*commonpb.Account)
-				require.NotEmpty(t, account.Volumes)
+				require.NotEmpty(t, account.GetVolumes())
 				account.Volumes[0].Volumes.Balance = "999"
 			}
+
 			return nil
 		}))
 	require.NoError(t, err)
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	checkVolumesConsistent(checkCtx, servicepb.NewBucketServiceClient(conn), "L", q)
 	// Server state remains correct even when its observed response was changed.
 	account, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "L", Address: "users:0"})
 	require.NoError(t, err)
-	require.Equal(t, fmt.Sprint(10+writes.Load()), account.FindVolume("USD", "").GetBalance())
+	require.Equal(t, strconv.FormatInt(10+writes.Load(), 10), account.FindVolume("USD", "").GetBalance())
 	result, err := json.Marshal(struct {
 		Lists    int64
 		Barriers int64
@@ -243,7 +249,9 @@ func quiescenceTestServer(t *testing.T) (context.Context, servicepb.BucketServic
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+
 	return ctx, servicepb.NewBucketServiceClient(conn), target
 }
