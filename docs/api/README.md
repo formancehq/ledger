@@ -5692,14 +5692,14 @@ Volumes aggregated per account and per asset
 
 ```
 
-Zero-based source coordinates reported by the Numscript parser.
+A zero-based source position reported by the Numscript parser.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|line|integer|true|none|none|
-|character|integer|true|none|none|
+|line|integer|true|none|Zero-based line index.|
+|character|integer|true|none|Zero-based parser column within the line.|
 
 <h2 id="tocS_V2ParserDiagnostic">V2ParserDiagnostic</h2>
 <!-- backwards compatibility -->
@@ -5723,15 +5723,15 @@ Zero-based source coordinates reported by the Numscript parser.
 
 ```
 
-A Numscript parsing error with its original source range.
+A Numscript parsing error and its parser-native source range. start.character is a zero-based Unicode code-point offset. The end position is inclusive and is derived from the UTF-8 byte length of the offending token. Consequently, non-ASCII and virtual tokens such as EOF can place either boundary at or beyond the physical source line. Clients should clamp both positions before slicing or highlighting source text.
 
 ### Properties
 
 |Name|Type|Required|Restrictions|Description|
 |---|---|---|---|---|
-|message|string|true|none|none|
-|start|[V2DiagnosticPosition](#schemav2diagnosticposition)|true|none|Zero-based source coordinates reported by the Numscript parser.|
-|end|[V2DiagnosticPosition](#schemav2diagnosticposition)|true|none|Zero-based source coordinates reported by the Numscript parser.|
+|message|string|true|none|Human-readable parser error message.|
+|start|[V2DiagnosticPosition](#schemav2diagnosticposition)|true|none|A zero-based source position reported by the Numscript parser.|
+|end|[V2DiagnosticPosition](#schemav2diagnosticposition)|true|none|A zero-based source position reported by the Numscript parser.|
 
 <h2 id="tocS_V2ErrorResponse">V2ErrorResponse</h2>
 <!-- backwards compatibility -->

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/formancehq/numscript"
 	"github.com/stretchr/testify/require"
@@ -63,4 +64,31 @@ func TestParserDiagnostics(t *testing.T) {
 	t.Run("unrelated error", func(t *testing.T) {
 		require.Nil(t, ParserDiagnostics(errors.New("unrelated failure")))
 	})
+}
+
+func TestParserDiagnosticsPreservesNonASCIIParserRange(t *testing.T) {
+	source := `"café"`
+	parserErrors := numscript.Parse(source).GetParsingErrors()
+	require.NotEmpty(t, parserErrors)
+
+	parseErr := ledgercontroller.ErrParsing{
+		Source: source,
+		Errors: parserErrors,
+	}
+	diagnostics := ParserDiagnostics(parseErr)
+
+	require.Len(t, diagnostics, len(parserErrors))
+	require.Equal(t, parserErrors[0].Start.Character, diagnostics[0].Start.Character)
+	require.Equal(t, parserErrors[0].End.Character, diagnostics[0].End.Character)
+
+	// Numscript reports the inclusive end using the token's UTF-8 byte length.
+	// The non-ASCII é occupies two bytes, so the parser-native end extends one
+	// position beyond the final Unicode code point in the physical source.
+	require.Equal(t, 0, diagnostics[0].Start.Character)
+	require.Equal(t, len(source)-1, diagnostics[0].End.Character)
+	require.Greater(
+		t,
+		diagnostics[0].End.Character,
+		utf8.RuneCountInString(source)-1,
+	)
 }

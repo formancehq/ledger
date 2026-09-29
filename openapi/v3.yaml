@@ -2241,7 +2241,7 @@ components:
             balance: 90
     V2DiagnosticPosition:
       type: object
-      description: Zero-based source coordinates reported by the Numscript parser.
+      description: A zero-based source position reported by the Numscript parser.
       required:
         - line
         - character
@@ -2249,12 +2249,21 @@ components:
         line:
           type: integer
           minimum: 0
+          description: Zero-based line index.
         character:
           type: integer
           minimum: 0
+          description: Zero-based parser column within the line.
     V2ParserDiagnostic:
       type: object
-      description: A Numscript parsing error with its original source range.
+      description: >-
+        A Numscript parsing error and its parser-native source range.
+        start.character is a zero-based Unicode code-point offset. The end
+        position is inclusive and is derived from the UTF-8 byte length of
+        the offending token. Consequently, non-ASCII and virtual tokens such
+        as EOF can place either boundary at or beyond the physical source line.
+        Clients should clamp both positions before slicing or highlighting
+        source text.
       required:
         - message
         - start
@@ -2262,6 +2271,7 @@ components:
       properties:
         message:
           type: string
+          description: Human-readable parser error message.
         start:
           $ref: "#/components/schemas/V2DiagnosticPosition"
         end:
