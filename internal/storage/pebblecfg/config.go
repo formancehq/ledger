@@ -4,10 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/bloom"
-	"github.com/cockroachdb/pebble/v2/sstable"
-	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/linxGnu/grocksdb"
 )
 
 // NumLevels is the number of Pebble LSM levels.
@@ -55,25 +52,16 @@ func (c Compression) String() string {
 	return fmt.Sprintf("unknown(%d)", int(c))
 }
 
-// ToPebble converts to a *block.CompressionProfile.
-func (c Compression) ToPebble() *block.CompressionProfile {
+// ToRocksDB maps the existing configuration names to RocksDB codecs.
+// Pebble's adaptive Fast profiles have no exact RocksDB counterpart.
+func (c Compression) ToRocksDB() grocksdb.CompressionType {
 	switch c {
 	case NoCompression:
-		return block.NoCompression
-	case SnappyCompression:
-		return block.SnappyCompression
-	case ZstdCompression:
-		return block.ZstdCompression
-	case FastestCompression:
-		return block.FastestCompression
-	case FastCompression:
-		return block.FastCompression
-	case BalancedCompression:
-		return block.BalancedCompression
-	case GoodCompression:
-		return block.GoodCompression
+		return grocksdb.NoCompression
+	case ZstdCompression, BalancedCompression, GoodCompression:
+		return grocksdb.ZSTDCompression
 	default:
-		return block.DefaultCompression
+		return grocksdb.SnappyCompression
 	}
 }
 
@@ -171,19 +159,12 @@ type Config struct {
 	Compression LevelCompression `yaml:"compression"`
 }
 
-// BuildLevels constructs the [NumLevels]pebble.LevelOptions from this configuration.
-func (cfg Config) BuildLevels() [NumLevels]pebble.LevelOptions {
-	var levels [NumLevels]pebble.LevelOptions
+// RocksDBCompression provides the per-level codecs for RocksDB.
+func (cfg Config) RocksDBCompression() []grocksdb.CompressionType {
+	levels := make([]grocksdb.CompressionType, NumLevels)
 	for i := range levels {
-		profile := cfg.Compression[i].ToPebble()
-		levels[i] = pebble.LevelOptions{
-			FilterPolicy: bloom.FilterPolicy(10),
-			Compression: func() *sstable.CompressionProfile {
-				return profile
-			},
-		}
+		levels[i] = cfg.Compression[i].ToRocksDB()
 	}
-
 	return levels
 }
 

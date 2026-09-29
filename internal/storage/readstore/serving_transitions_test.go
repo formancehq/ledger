@@ -18,13 +18,8 @@ const (
 	servingCanonical = "metadata:account:grade"
 )
 
-// reopenOnDiskImage opens what the store holds on disk right now. A Pebble
-// checkpoint copies the current version's SSTables and manifest under the DB
-// lock, and with the WAL disabled it carries no memtable — so it is exactly
-// what a hard kill at this instant would leave behind, with none of the
-// inconsistency a plain directory copy risks against a background compaction.
-// It calls pebble.DB.Checkpoint directly: Store.CreateCheckpoint flushes
-// first and would hide an unflushed promotion from these tests.
+// reopenOnDiskImage opens a direct RocksDB checkpoint of flushed SSTs.
+// The derived read index has WAL disabled, so unflushed writes are omitted.
 func reopenOnDiskImage(t *testing.T, s *Store) *Store {
 	t.Helper()
 
@@ -46,10 +41,8 @@ func commitVersionState(t *testing.T, s *Store, state IndexVersionState) {
 	require.NoError(t, batch.Commit())
 }
 
-// A committed promotion is not durable on its own: the store has no WAL, so a
-// kill before the next flush reopens at the previous state. This is the
-// failure the promotion flush exists to close.
-func TestServingTransition_UnflushedPromotionDoesNotSurviveAKill(t *testing.T) {
+// A direct checkpoint before the promotion flush still shows the old version.
+func TestServingTransition_UnflushedPromotionAbsentFromDirectCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
@@ -64,7 +57,7 @@ func TestServingTransition_UnflushedPromotionDoesNotSurviveAKill(t *testing.T) {
 	state, present, err := reopened.ReadIndexVersionState(servingLedger, servingCanonical)
 	require.NoError(t, err)
 	require.True(t, present)
-	assert.Equal(t, uint32(1), state.CurrentVersion, "the unflushed promotion must be gone after a kill — this is the premise the flush protects against")
+	assert.Equal(t, uint32(1), state.CurrentVersion, "the direct checkpoint excludes the unflushed promotion")
 }
 
 // CreateCheckpoint flushes the memtable, which makes an in-flight promotion
@@ -371,13 +364,18 @@ func TestServingTransitions_FlushesOnlyWhenMarked(t *testing.T) {
 
 	commitVersionState(t, s, IndexVersionState{CurrentVersion: 1, HighWater: 1})
 
-	before := s.db.Metrics().Flush.Count
+	flushes := 0
+	flush := s.serving.flush
+	s.serving.flush = func() error {
+		flushes++
+		return flush()
+	}
 	require.NoError(t, s.serving.Flush())
-	assert.Equal(t, before, s.db.Metrics().Flush.Count, "nothing marked, nothing flushed")
+	assert.Zero(t, flushes, "nothing marked, nothing flushed")
 
 	s.serving.Mark(servingLedger, servingCanonical, 1)
 	require.NoError(t, s.serving.Flush())
-	assert.Equal(t, before+1, s.db.Metrics().Flush.Count)
+	assert.Equal(t, 1, flushes)
 }
 
 // The retained fields round-trip through the encoding.

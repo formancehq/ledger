@@ -175,7 +175,7 @@ func TestStore_GuardedMethods_RaceWithRestoreCheckpoint(t *testing.T) {
 
 	raceGuardedReaders(&wg, start, guardedRaceCalls(s))
 
-	// RestoreCheckpoint is heavy (rename + hard-link + pebble.Open), so it
+	// RestoreCheckpoint is heavy (rename + hard-link + kv.Open), so it
 	// loops far fewer times than the readers. It is the dbMu writer the
 	// readers must stay synchronized against.
 	wg.Go(func() {

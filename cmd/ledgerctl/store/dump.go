@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -43,12 +43,11 @@ func runDump(cmd *cobra.Command, args []string) error {
 	limit, _ := cmd.Flags().GetInt("limit")
 	raw, _ := cmd.Flags().GetBool("raw")
 
-	db, err := pebble.Open(dataDir, &pebble.Options{
-		Logger:   dal.DiscardPebbleLogger(),
+	db, err := pebble.Open(dataDir, pebble.Options{
 		ReadOnly: true,
 	})
 	if err != nil {
-		return fmt.Errorf("opening pebble at %s: %w", dataDir, err)
+		return fmt.Errorf("opening RocksDB at %s: %w", dataDir, err)
 	}
 
 	defer func() { _ = db.Close() }()

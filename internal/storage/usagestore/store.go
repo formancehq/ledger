@@ -2,13 +2,12 @@ package usagestore
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/linxGnu/grocksdb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -17,7 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
 
-// DefaultConfig returns the default Pebble configuration for the usage store.
+// DefaultConfig returns the default RocksDB configuration for the usage store.
 // Reuses the same tunables type as the primary store (pebblecfg.Config).
 // Sized smaller than the read index: the usage store holds O(ledgers × templates)
 // entries plus a handful of per-ledger counters, so it never grows large.
@@ -36,18 +35,22 @@ func DefaultConfig() pebblecfg.Config {
 	}
 }
 
-// Store wraps a Pebble database for the usagebuilder's projections.
+// Store wraps a RocksDB database for the usagebuilder's projections.
 // It is a peer to readstore.Store — a distinct physical secondary store,
 // so a corruption of one cannot touch the other and each subsystem's
 // rebuild story is decoupled (drop the directory + restart).
 type Store struct {
-	db       *pebble.DB
-	logger   logging.Logger
-	dir      string
-	readOnly bool
+	db           *grocksdb.DB
+	options      *grocksdb.Options
+	cache        *grocksdb.Cache
+	tableOptions *grocksdb.BlockBasedTableOptions
+	writeOptions *grocksdb.WriteOptions
+	logger       logging.Logger
+	dir          string
+	readOnly     bool
 }
 
-// New opens or creates a Pebble database at the given directory.
+// New opens or creates a RocksDB database at the given directory.
 func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating usage store directory: %w", err)
@@ -63,135 +66,151 @@ func New(dir string, logger logging.Logger, cfg pebblecfg.Config) (*Store, error
 	logger.WithFields(map[string]any{
 		"path":     dbPath,
 		"fileSize": fileSize,
-	}).Infof("Opening Pebble usage store")
+	}).Infof("Opening RocksDB usage store")
 
 	openStart := time.Now()
 
-	cache := pebble.NewCache(cfg.CacheSize)
-	defer cache.Unref()
-
-	opts := &pebble.Options{
-		Logger:             dal.NewPebbleLogger(logger),
-		FormatMajorVersion: pebble.FormatNewest,
-		Comparer:           UsageStoreComparer,
-		// The usage store is a derived projection rebuilt from the audit log.
-		// WAL disabled — on crash the usagebuilder replays from its last
-		// explicitly flushed progress cursor.
-		DisableWAL:                  true,
-		MemTableSize:                cfg.MemTableSize,
-		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
-		L0CompactionThreshold:       cfg.L0CompactionThreshold,
-		L0StopWritesThreshold:       cfg.L0StopWritesThreshold,
-		LBaseMaxBytes:               cfg.LBaseMaxBytes,
-		BytesPerSync:                cfg.BytesPerSync,
-		CompactionConcurrencyRange: func() (int, int) {
-			n := cfg.MaxConcurrentCompactions
-
-			return n, n
-		},
-		Cache:           cache,
-		TargetFileSizes: cfg.BuildTargetFileSizes(),
-		Levels:          cfg.BuildLevels(),
-	}
-
-	db, err := pebble.Open(dbPath, opts)
+	opts, cache, table, err := usageOptions(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("opening Pebble usage store: %w", err)
+		return nil, fmt.Errorf("configuring RocksDB usage store: %w", err)
 	}
-
-	m := db.Metrics()
-	logger.WithFields(map[string]any{
-		"duration":        time.Since(openStart).String(),
-		"l0FileCount":     m.Levels[0].TablesCount,
-		"l0Size":          m.Levels[0].TablesSize,
-		"memTableCount":   m.MemTable.Count,
-		"memTableSize":    m.MemTable.Size,
-		"totalLevelsSize": m.DiskSpaceUsage(),
-	}).Infof("Pebble usage store opened — LSM state")
+	db, err := grocksdb.OpenDb(opts, dbPath)
+	if err != nil {
+		table.Destroy()
+		cache.Destroy()
+		opts.Destroy()
+		return nil, fmt.Errorf("opening RocksDB usage store: %w", err)
+	}
+	writeOptions := grocksdb.NewDefaultWriteOptions()
+	writeOptions.DisableWAL(true)
+	logger.WithFields(map[string]any{"duration": time.Since(openStart).String()}).Infof("RocksDB usage store opened")
 
 	return &Store{
-		db:     db,
+		db:      db,
+		options: opts, cache: cache, tableOptions: table, writeOptions: writeOptions,
 		logger: logger.WithFields(map[string]any{"cmp": "usage-store"}),
 		dir:    dir,
 	}, nil
 }
 
-// OpenReadOnly opens a Pebble usage store at dirPath in read-only mode.
+// OpenReadOnly opens a RocksDB usage store at dirPath in read-only mode.
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
-	db, err := pebble.Open(dirPath, &pebble.Options{
-		Logger:   dal.NewPebbleLogger(logger),
-		Comparer: UsageStoreComparer,
-		ReadOnly: true,
-	})
+	opts, cache, table, err := usageOptions(DefaultConfig())
 	if err != nil {
-		return nil, fmt.Errorf("opening read-only Pebble usage store at %s: %w", dirPath, err)
+		return nil, fmt.Errorf("configuring read-only RocksDB usage store: %w", err)
 	}
-
-	return &Store{
-		db:       db,
-		logger:   logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}),
-		dir:      dirPath,
-		readOnly: true,
-	}, nil
+	db, err := grocksdb.OpenDbForReadOnly(opts, dirPath, false)
+	if err != nil {
+		table.Destroy()
+		cache.Destroy()
+		opts.Destroy()
+		return nil, fmt.Errorf("opening read-only RocksDB usage store at %s: %w", dirPath, err)
+	}
+	return &Store{db: db, options: opts, cache: cache, tableOptions: table, logger: logger.WithFields(map[string]any{"cmp": "usage-store-readonly"}), dir: dirPath, readOnly: true}, nil
 }
 
-// CreateCheckpoint creates a Pebble checkpoint of the usage store at destDir.
+func usageOptions(cfg pebblecfg.Config) (*grocksdb.Options, *grocksdb.Cache, *grocksdb.BlockBasedTableOptions, error) {
+	// grocksdb.Options.Destroy double-frees a SliceTransform passed through
+	// SetPrefixExtractor with RocksDB 11.8. Parsing the native capped transform
+	// leaves grocksdb's duplicate cst ownership slot nil while retaining the
+	// extractor in RocksDB's options and SST metadata.
+	opts, err := grocksdb.GetOptionsFromString(nil, fmt.Sprintf("prefix_extractor=capped:%d", ledgerScopedPrefixLen))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	opts.SetCreateIfMissing(true)
+	cmp := newUsageStoreComparator()
+	opts.SetComparator(cmp)
+	opts.SetWriteBufferSize(uint64(cfg.MemTableSize))
+	opts.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
+	opts.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
+	opts.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
+	opts.SetMaxBytesForLevelBase(uint64(cfg.LBaseMaxBytes))
+	opts.SetTargetFileSizeBase(uint64(cfg.TargetFileSize))
+	opts.SetCompressionPerLevel(cfg.RocksDBCompression())
+	opts.SetBytesPerSync(uint64(cfg.BytesPerSync))
+	opts.SetMaxBackgroundJobs(cfg.MaxConcurrentCompactions + 1)
+	cache := grocksdb.NewLRUCache(uint64(cfg.CacheSize))
+	table := grocksdb.NewDefaultBlockBasedTableOptions()
+	table.SetBlockCache(cache)
+	table.SetFilterPolicy(grocksdb.NewBloomFilterFull(10))
+	table.SetWholeKeyFiltering(false)
+	opts.SetBlockBasedTableFactory(table)
+	return opts, cache, table, nil
+}
+
+// CreateCheckpoint includes WAL-less committed rows by flushing first.
 func (s *Store) CreateCheckpoint(destDir string) error {
-	return s.db.Checkpoint(destDir)
+	if _, err := os.Stat(destDir); err == nil {
+		return fmt.Errorf("checkpoint destination already exists: %s", destDir)
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := s.Flush(); err != nil {
+		return err
+	}
+	cp, err := s.db.NewCheckpoint()
+	if err != nil {
+		return err
+	}
+	defer cp.Destroy()
+	return cp.CreateCheckpoint(destDir, 0)
 }
 
-// Flush makes every committed WAL-less batch durable by forcing the mutable
-// memtable to stable storage. Cursor and projection mutations share a batch,
-// so a successful flush establishes a coherent replay watermark.
 func (s *Store) Flush() error {
-	return s.db.Flush()
+	opts := grocksdb.NewDefaultFlushOptions()
+	defer opts.Destroy()
+	opts.SetWait(true)
+	return s.db.Flush(opts)
 }
 
-// Close flushes the mutable usage projection before closing Pebble. Pebble's
-// Close does not flush memtables: with the WAL disabled, omitting this flush
-// would lose otherwise successful batches on a controlled shutdown. Close is
-// attempted even when Flush fails so filesystem/database resources are always
-// released. Read-only handles have no mutable state and cannot be flushed.
+// Close flushes the WAL-less projection before releasing native resources.
 func (s *Store) Close() error {
 	var flushErr error
 	if !s.readOnly {
 		flushErr = s.Flush()
 	}
-
-	closeErr := s.db.Close()
-
-	return errors.Join(flushErr, closeErr)
+	s.db.Close()
+	if s.writeOptions != nil {
+		s.writeOptions.Destroy()
+	}
+	s.tableOptions.Destroy()
+	s.cache.Destroy()
+	s.options.Destroy()
+	return flushErr
 }
 
-// DB returns the underlying Pebble database for creating batches.
-func (s *Store) DB() *pebble.DB {
-	return s.db
+func (s *Store) DB() *grocksdb.DB { return s.db }
+func (s *Store) NewBatch() *WriteSession {
+	return &WriteSession{db: s.db, options: s.writeOptions, batch: grocksdb.NewWriteBatch(), KeyBuilder: dal.NewKeyBuilder()}
 }
+func (s *Store) Path() string { return s.dir }
 
-// NewBatch creates a dal.WriteSession backed by the usage store's Pebble DB.
-func (s *Store) NewBatch() *dal.WriteSession {
-	return dal.NewWriteSessionFromDB(s.db)
-}
-
-// Path returns the directory of the usage store.
-func (s *Store) Path() string {
-	return s.dir
+func (s *Store) get(key []byte) ([]byte, error) {
+	opts := grocksdb.NewDefaultReadOptions()
+	defer opts.Destroy()
+	slice, err := s.db.Get(opts, key)
+	if err != nil {
+		return nil, err
+	}
+	defer slice.Free()
+	if !slice.Exists() {
+		return nil, nil
+	}
+	return append([]byte{}, slice.Data()...), nil
 }
 
 // ReadProgress returns the last audit sequence consumed by the usagebuilder.
 // Returns 0 if no progress has been recorded.
 func (s *Store) ReadProgress() (uint64, error) {
-	v, closer, err := s.db.Get(ProgressKey())
+	v, err := s.get(ProgressKey())
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
 		return 0, fmt.Errorf("reading usage progress: %w", err)
 	}
-
-	defer func() { _ = closer.Close() }()
+	if v == nil {
+		return 0, nil
+	}
 
 	if len(v) != 8 {
 		return 0, fmt.Errorf("corrupt usage progress value: expected 8 bytes, got %d", len(v))
@@ -201,7 +220,7 @@ func (s *Store) ReadProgress() (uint64, error) {
 }
 
 // WriteProgress stores the last log sequence consumed by the usagebuilder.
-func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
+func (s *Store) WriteProgress(batch *WriteSession, sequence uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], sequence)
 
@@ -217,7 +236,7 @@ func (s *Store) WriteProgress(batch *dal.WriteSession, sequence uint64) error {
 // The two ledger-scoped prefixes (PrefixTemplate 0x01, PrefixCounter 0x02) are
 // contiguous, so one DeleteRange over [0x01, 0x03) covers both; the internal
 // progress key ([0xFE][0x01]) is deleted point-wise. Rows and cursor are wiped
-// in a single Pebble batch and flushed before return. The batch commit makes
+// in a single RocksDB batch and flushed before return. The batch commit makes
 // the reset atomically visible; the flush makes that atomic state durable
 // before the builder publishes cursor zero or begins replaying.
 func (s *Store) Reset() error {
@@ -254,16 +273,13 @@ func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*commonpb.Tem
 	kb := dal.NewKeyBuilder()
 	key := TemplateUsageKey(kb, ledgerName, templateName)
 
-	v, closer, err := s.db.Get(key)
+	v, err := s.get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return nil, nil
-		}
-
 		return nil, fmt.Errorf("reading template usage: %w", err)
 	}
-
-	defer func() { _ = closer.Close() }()
+	if v == nil {
+		return nil, nil
+	}
 
 	usage := &commonpb.TemplateUsage{}
 	if err := usage.UnmarshalVT(v); err != nil {
@@ -274,7 +290,7 @@ func (s *Store) GetTemplateUsage(ledgerName, templateName string) (*commonpb.Tem
 }
 
 // PutTemplateUsage persists a template usage record into the pending batch.
-func (s *Store) PutTemplateUsage(batch *dal.WriteSession, ledgerName, templateName string, usage *commonpb.TemplateUsage) error {
+func (s *Store) PutTemplateUsage(batch *WriteSession, ledgerName, templateName string, usage *commonpb.TemplateUsage) error {
 	key := TemplateUsageKey(batch.KeyBuilder, ledgerName, templateName)
 
 	return batch.SetProto(key, usage)
@@ -286,16 +302,13 @@ func (s *Store) GetCounter(ledgerName string, counterID byte) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	key := CounterKey(kb, ledgerName, counterID)
 
-	v, closer, err := s.db.Get(key)
+	v, err := s.get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
-			return 0, nil
-		}
-
 		return 0, fmt.Errorf("reading counter %#x for ledger %q: %w", counterID, ledgerName, err)
 	}
-
-	defer func() { _ = closer.Close() }()
+	if v == nil {
+		return 0, nil
+	}
 
 	if len(v) != 8 {
 		return 0, fmt.Errorf("corrupt counter value: expected 8 bytes, got %d", len(v))
@@ -305,7 +318,7 @@ func (s *Store) GetCounter(ledgerName string, counterID byte) (uint64, error) {
 }
 
 // PutCounter persists a per-ledger event counter value into the pending batch.
-func (s *Store) PutCounter(batch *dal.WriteSession, ledgerName string, counterID byte, value uint64) error {
+func (s *Store) PutCounter(batch *WriteSession, ledgerName string, counterID byte, value uint64) error {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], value)
 

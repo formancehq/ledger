@@ -3,7 +3,7 @@ package pebblecfg
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2/sstable/block"
+	"github.com/linxGnu/grocksdb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -58,29 +58,29 @@ func TestLevelCompressionString(t *testing.T) {
 	require.Equal(t, "fastest,fastest,fastest,fastest,fast,fast,balanced", lc.String())
 }
 
-func TestCompressionToPebble(t *testing.T) {
+func TestCompressionToRocksDB(t *testing.T) {
 	t.Parallel()
 
-	require.Equal(t, block.NoCompression, NoCompression.ToPebble())
-	require.Equal(t, block.SnappyCompression, SnappyCompression.ToPebble())
-	require.Equal(t, block.ZstdCompression, ZstdCompression.ToPebble())
-	require.Equal(t, block.DefaultCompression, DefaultCompression.ToPebble())
-	require.Equal(t, block.FastestCompression, FastestCompression.ToPebble())
-	require.Equal(t, block.FastCompression, FastCompression.ToPebble())
-	require.Equal(t, block.BalancedCompression, BalancedCompression.ToPebble())
-	require.Equal(t, block.GoodCompression, GoodCompression.ToPebble())
+	require.Equal(t, grocksdb.NoCompression, NoCompression.ToRocksDB())
+	require.Equal(t, grocksdb.SnappyCompression, SnappyCompression.ToRocksDB())
+	require.Equal(t, grocksdb.ZSTDCompression, ZstdCompression.ToRocksDB())
+	require.Equal(t, grocksdb.SnappyCompression, DefaultCompression.ToRocksDB())
+	require.Equal(t, grocksdb.SnappyCompression, FastestCompression.ToRocksDB())
+	require.Equal(t, grocksdb.SnappyCompression, FastCompression.ToRocksDB())
+	require.Equal(t, grocksdb.ZSTDCompression, BalancedCompression.ToRocksDB())
+	require.Equal(t, grocksdb.ZSTDCompression, GoodCompression.ToRocksDB())
 }
 
-func TestBuildLevels(t *testing.T) {
+func TestRocksDBCompression(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{
 		TargetFileSize: 64 << 20,
 		Compression:    DefaultLevelCompression(),
 	}
-	levels := cfg.BuildLevels()
-	require.Equal(t, block.FastestCompression, levels[0].Compression())
-	require.Equal(t, block.FastestCompression, levels[3].Compression())
-	require.Equal(t, block.FastCompression, levels[4].Compression())
-	require.Equal(t, block.BalancedCompression, levels[6].Compression())
+	levels := cfg.RocksDBCompression()
+	require.Equal(t, grocksdb.SnappyCompression, levels[0])
+	require.Equal(t, grocksdb.SnappyCompression, levels[3])
+	require.Equal(t, grocksdb.SnappyCompression, levels[4])
+	require.Equal(t, grocksdb.ZSTDCompression, levels[6])
 }

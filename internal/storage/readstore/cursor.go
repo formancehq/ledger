@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -22,7 +22,7 @@ type Uint64Cursor struct{ key []byte }
 func (c Uint64Cursor) Read(r dal.PebbleGetter) (uint64, error) {
 	v, closer, err := r.Get(c.key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return 0, nil
 		}
 

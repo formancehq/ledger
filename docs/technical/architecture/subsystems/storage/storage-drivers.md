@@ -13,52 +13,31 @@ The Store is responsible for persisting:
 - **Audit entries** - Audit trail for every proposal outcome
 - **Last applied index/timestamp** - Raft index and HLC timestamp for crash recovery
 
-The storage backend is **Pebble**, a high-performance LSM-tree based storage engine from CockroachDB.
+The primary store uses **RocksDB** through `internal/storage/kv` and
+`github.com/linxGnu/grocksdb`. The read index and usage projection are separate
+RocksDB databases. The server requires CGO and a compatible RocksDB 11 library.
+Old Pebble files require the [offline cutover](../../../../ops/rocksdb-cutover.md).
 
----
+## RocksDB settings
 
-## Pebble
+The main store maps the existing configuration fields to RocksDB write buffers,
+L0 thresholds, base and target file sizes, per-level compression, block cache,
+background compaction, and WAL sync pacing. Defaults remain 256 MiB per write
+buffer, six write buffers, L0 trigger four, L0 stop threshold sixteen, 2 GiB
+base level, 1 GiB block cache, 256 MiB target SST, and two background
+compactions. A durable WAL fence precedes Raft WAL snapshot maintenance.
+Published primary checkpoints flush before copying SST files; the read index
+has WAL disabled and flushes before publishing its own checkpoints. A direct
+read-index checkpoint without that flush deliberately omits memtable writes.
 
-### Description
-
-Uses CockroachDB's Pebble key-value store, a high-performance LSM-tree based storage engine. Designed for high-throughput workloads with excellent write performance.
-
-### Library
-
-```
-github.com/cockroachdb/pebble
-```
-
-### Characteristics
-
-| Property | Value |
-|----------|-------|
-| **CGO Required** | No |
-| **Pure Go** | Yes |
-| **Performance** | Excellent for writes |
-| **Cross-compilation** | Easy |
-| **Docker compatibility** | Works with scratch images |
-
-### Pebble Settings
-
-Optimized for ledger workloads with high write throughput:
-
-```go
-MemTableSize:                256 << 20  // 256MB memtable (absorb more writes before flush)
-MemTableStopWritesThreshold: 6          // Reduce write stalls
-L0CompactionThreshold:       4          // Low threshold: Pebble auto-compacts aggressively
-L0StopWritesThreshold:       16         // ~4x ratio above compaction threshold
-LBaseMaxBytes:               2 << 30    // 2GB base level
-CacheSize:                   1024 << 20 // 1GB block cache
-TargetFileSize:              256 << 20  // 256MB per SST file
-BytesPerSync:                1 << 20    // 1MB sync interval
-WALBytesPerSync:             1 << 20    // 1MB WAL sync interval
-MaxConcurrentCompactions:    2          // Parallel compactions (balance CPU/IO)
-```
+RocksDB has no qualified equivalents for the configured Pebble automatic WAL
+failover, WAL minimum sync interval, or value separation policy. Startup
+rejects those nondefault settings. The read index currently uses bounded
+lexicographic scans without the old ledger-prefix bloom optimization.
 
 ### Key Schema
 
-Every Pebble key starts with a **zone byte** that groups data by access pattern, followed by a **sub-prefix** and type-specific fields. Zone bytes are defined in `internal/storage/dal/store.go`.
+Every primary-store key starts with a **zone byte** that groups data by access pattern, followed by a **sub-prefix** and type-specific fields. Zone bytes are defined in `internal/storage/dal/store.go`.
 
 #### Zone layout
 
@@ -195,43 +174,42 @@ data/runtime/
 
 ### Startup and Checkpoint System
 
-With incremental cache persistence (cache zone written in each Pebble batch), the `live/` directory is always up-to-date after each commit. On startup:
+With incremental cache persistence (cache zone written in each RocksDB batch), the `live/` directory is always up-to-date after each commit. On startup:
 
-1. **Normal restart**: If `live/` exists, open it directly — no checkpoint restoration needed. Pebble's own WAL ensures crash safety.
-2. **Fresh start**: If `live/` does not exist, create a new Pebble database.
+1. **Normal restart**: If `live/` exists, open it directly — no checkpoint restoration needed. RocksDB's own WAL ensures crash safety.
+2. **Fresh start**: If `live/` does not exist, create a new RocksDB database.
 3. **Follower sync**: Checkpoints are created on Raft snapshot and used by followers joining the cluster via `SynchronizeWithLeader`.
 4. **Efficiency**: Checkpoints use hard links, so they don't duplicate data.
 
 ### L0 Compaction Management
 
-The `L0CompactionThreshold` is set low (default 4) so that Pebble auto-compacts aggressively and L0 never accumulates excessively. This eliminates the need for manual startup or periodic compaction.
+The `L0CompactionThreshold` is set low (default 4) so that RocksDB auto-compacts aggressively and L0 never accumulates excessively. This eliminates the need for manual startup or periodic compaction.
 
 The key space is divided into zones with different compaction characteristics:
 
-- **History zone** (`0x04`) — logs, audit. Immutable, sequential, write-once data; Pebble's automatic compaction is all it needs.
-- **Attributes zone** (`0x01`) — volumes, metadata, etc. Last-write-wins entries are naturally compacted by Pebble.
-- **Cache zone** (`0x02`) — `DeleteRange` tombstones from generation-rotation pruning are pushed down the LSM by Pebble's automatic compaction.
-- **Global zone** (`0x06`) — tiny singleton keys, Pebble handles natively.
+- **History zone** (`0x04`) — logs, audit. Immutable, sequential, write-once data; RocksDB's automatic compaction is all it needs.
+- **Attributes zone** (`0x01`) — volumes, metadata, etc. Last-write-wins entries are naturally compacted by RocksDB.
+- **Cache zone** (`0x02`) — `DeleteRange` tombstones from generation-rotation pruning are pushed down the LSM by RocksDB's automatic compaction.
+- **Global zone** (`0x06`) — tiny singleton keys, RocksDB handles natively.
 
-**Pebble automatic compaction** runs when L0 reaches the threshold (default 4). This handles steady-state write workloads and keeps L0 clean at all times. A synchronous full-keyspace compaction can be triggered on demand (`Store.CompactAll`, exposed via the `Compact` RPC).
+**RocksDB automatic compaction** runs when L0 reaches the threshold (default 4). This handles steady-state write workloads and keeps L0 clean at all times. A synchronous full-keyspace compaction can be triggered on demand (`Store.CompactAll`, exposed via the `Compact` RPC).
 
 Source files: `internal/storage/dal/compact.go`.
 
 ### Metrics
 
-Pebble exposes detailed metrics accessible via the API through OpenTelemetry:
-
-- Compaction metrics (count, duration, bytes)
-- Flush metrics
-- Write stall metrics
-- Level statistics
-- Cache hit rates
+The DAL exports available RocksDB properties through OpenTelemetry, including
+memtable size, pending flush and compaction, live SST size, block-cache use,
+snapshot count, stopped writes, and background errors. Pebble-specific event
+and VFS counters are unavailable. The service API retains the old metrics
+protobuf envelope for compatibility, but only fields with a direct RocksDB
+meaning are populated.
 
 ---
 
 ## Configuration
 
-Pebble can be configured using command-line flags:
+The existing `--pebble-*` command-line flags remain accepted for the mapped RocksDB tunables:
 
 ```bash
 ./ledger serve \
@@ -259,7 +237,7 @@ PEBBLE_MEMTABLE_SIZE=268435456 ./ledger serve
 
 ## Creating a Ledger
 
-Ledgers are created without specifying storage - Pebble is the only storage backend:
+Ledgers are created without specifying storage; RocksDB is the storage backend:
 
 ### HTTP API
 
@@ -279,7 +257,7 @@ curl -X POST http://localhost:9000/my-ledger \
 
 ### Store and Batch
 
-The `Store` (`internal/storage/dal/store.go`) manages the Pebble database lifecycle, checkpoints, and read operations. It provides:
+The `Store` (`internal/storage/dal/store.go`) manages the RocksDB database lifecycle, checkpoints, and read operations. It provides:
 
 - **Log operations**: `GetLogBySequence`, `ListTransactionIDs`
 - **Idempotency**: `GetSequenceForIdempotencyKey`
@@ -299,25 +277,12 @@ The `Batch` (`internal/storage/dal/batch.go`) provides atomic write operations:
 
 ### Write session ownership
 
-`WriteSession` owns its Pebble batch until `Commit` or `Cancel` finalizes it.
-`Commit` first applies the batch with `NoSync` (without waiting for an fsync),
-then marks the session committed, calls `Close` exactly once, and clears the
-batch reference. Pebble may defer pool reuse while its WAL pipeline retains a
-reference. Code must never inspect the batch after `Close` returns. If `Close`
-reports an error, the batch reference is still cleared before reporting an
-invariant violation and panicking. The data is already applied, so this cannot
-be reported as an ordinary commit failure.
-
-If the underlying commit fails, the session retains the batch so the caller can
-`Cancel` it; this does not imply rollback.
-
-`Cancel` closes an unfinished batch and clears the reference even on a close
-error. Further cancellations are no-ops after either terminal state. Mutators
-and repeated commits return a terminal-state error without touching the released
-batch. Tests assert the cleared session reference and committed data without
-reading Pebble's pooled object. Removing only `Close` still leaves those tests
-green; the allocation benchmark is comparative evidence, not an automated
-regression guard for pool release.
+`WriteSession` owns its RocksDB write batch until `Commit` or `Cancel`.
+`Commit` applies the batch atomically with WAL enabled and no per-batch fsync,
+then destroys the native batch and clears the reference. The DAL explicitly
+syncs or flushes before a durable Raft WAL boundary or published checkpoint.
+A failed commit leaves the session owned by its caller so it can be cancelled;
+it does not imply rollback. A terminal session cannot be reused.
 
 ### Source Files
 

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -29,7 +29,7 @@ func accountTxAddressesByPrefix(
 		Snapshot()
 	upper := IncrementBytes(lower)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := reader.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (u *addressTxUnion) materialize() error {
 		prefix := AccountTxPrefix(u.kb, u.prefix, u.ledgerName, account)
 		upper := IncrementBytes(prefix)
 
-		iter, err := u.reader.NewIter(&pebble.IterOptions{
+		iter, err := u.reader.NewIter(&kv.IterOptions{
 			LowerBound: prefix,
 			UpperBound: upper,
 		})

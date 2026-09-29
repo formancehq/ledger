@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -72,7 +72,7 @@ type InspectFacetEntry struct {
 // the events around it would be plausible and wrong, hiding the corruption
 // they were computed over.
 func forEachLiveGroup(reader dal.PebbleReader, lower, upper []byte, prefixLen int, horizon uint64, fn func(group []byte) bool) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

@@ -6,7 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -62,7 +62,7 @@ func TestPrefixIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	for _, id := range []uint64{1, 2, 3} {
-		require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, kv.NoSync))
 	}
 
 	prefix := AccountTxPrefix(dal.NewKeyBuilder(), PrefixAccountTx, "l", "acc:1")
@@ -96,7 +96,7 @@ func TestReversePrefixIterator_SeekCeilKeepsRepositioning(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	for _, id := range []uint64{2, 3, 4} {
-		require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, kv.NoSync))
 	}
 
 	prefix := AccountTxPrefix(dal.NewKeyBuilder(), PrefixAccountTx, "l", "acc:1")
@@ -129,7 +129,7 @@ func TestPebbleReverseTxIterator_SeekRepositioning(t *testing.T) {
 	s := newTestStore(t)
 
 	for _, id := range []uint64{5, 7} {
-		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
 	it, err := NewPebbleReverseTxIterator(s.DB(), "l")
@@ -171,7 +171,7 @@ func TestPebbleTxIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	s := newTestStore(t)
 
 	for _, id := range []uint64{1, 2, 3} {
-		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
 	it, err := NewPebbleTxIterator(s.DB(), "l")
@@ -199,7 +199,7 @@ func TestPebbleTxRangeIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 	s := newTestStore(t)
 
 	for _, id := range []uint64{1, 2, 3} {
-		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
 	it, err := NewPebbleTxRangeIterator(s.DB(), "l", txIDBytes(1), txIDBytes(4))
@@ -233,7 +233,7 @@ func TestPebbleAccountIterator_SeekFloorKeepsRepositioning(t *testing.T) {
 
 	for _, addr := range []string{"a:1", "a:2", "a:3"} {
 		key := append(append(append([]byte{}, prefix...), addr...), dal.CanonicalKeySepVolume)
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 	}
 
 	it, err := newSingleTypeAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
@@ -270,7 +270,7 @@ func TestPebbleReverseAccountIterator_SeekRepositioning(t *testing.T) {
 
 	for _, addr := range []string{"a:2", "a:3"} {
 		key := append(append(append([]byte{}, prefix...), addr...), dal.CanonicalKeySepVolume)
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 	}
 
 	it, err := newSingleTypeReverseAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
@@ -310,7 +310,7 @@ func TestPebbleReverseTxIterator_SeekMaxUint64(t *testing.T) {
 	s := newTestStore(t)
 
 	for _, id := range []uint64{5, 7} {
-		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 	}
 
 	it, err := NewPebbleReverseTxIterator(s.DB(), "l")

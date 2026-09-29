@@ -4,7 +4,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
@@ -53,7 +53,7 @@ func TestReadHandle_NewIter(t *testing.T) {
 
 	defer func() { _ = rh.Close() }()
 
-	iter, err := rh.NewIter(&pebble.IterOptions{
+	iter, err := rh.NewIter(&kv.IterOptions{
 		LowerBound: []byte("rh-"),
 		UpperBound: []byte("rh-\xff"),
 	})
@@ -108,7 +108,7 @@ func TestStore_Get(t *testing.T) {
 	require.NoError(t, batch.SetBytes([]byte("store-get"), []byte("value")))
 	require.NoError(t, batch.Commit())
 
-	// Get via Store directly (PebbleReader interface)
+	// Get via Store directly (store getter)
 	val, closer, err := s.Get([]byte("store-get"))
 	require.NoError(t, err)
 	require.Equal(t, []byte("value"), val)
@@ -175,10 +175,8 @@ func TestClosingCursor_EmptyInner(t *testing.T) {
 // TestStoreGet_ResourceDoesNotOutliveTheReadLock pins EN-2072 bug 2.
 //
 // (*Store).Get releases dbMu.RLock when it returns, so it must not hand back
-// Pebble's closer. On an SST-backed lookup that closer is a live
-// *pebble.Iterator holding a file cache reference, and closing the DB while one
-// is outstanding panics inside Pebble with "element has outstanding
-// references" — observed in production shutdown via the fx stop hook.
+// a borrowed storage value or closer. The store must return a Go-owned copy
+// so the value stays valid after closing the RocksDB handle.
 func TestStoreGet_ResourceDoesNotOutliveTheReadLock(t *testing.T) {
 	t.Parallel()
 
@@ -188,8 +186,7 @@ func TestStoreGet_ResourceDoesNotOutliveTheReadLock(t *testing.T) {
 	require.NoError(t, batch.SetBytes([]byte("get-key"), []byte("get-val")))
 	require.NoError(t, batch.Commit())
 
-	// Force an SST. A memtable-backed lookup takes no file cache reference and
-	// would not exercise the defect.
+	// Flush to exercise a lookup backed by an SST.
 	require.NoError(t, s.Flush())
 
 	val, closer, err := s.Get([]byte("get-key"))
@@ -228,7 +225,7 @@ func TestReadHandle_LiveSeesLaterCommits(t *testing.T) {
 	go func() { closed <- s.Close() }()
 
 	_, _, err = rh.Get([]byte("late-key"))
-	require.ErrorIs(t, err, pebble.ErrNotFound, "the handle keeps its pinned view")
+	require.ErrorIs(t, err, kv.ErrNotFound, "the handle keeps its pinned view")
 
 	val, closer, err := rh.Live().Get([]byte("late-key"))
 	require.NoError(t, err)

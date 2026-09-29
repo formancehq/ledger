@@ -3,7 +3,8 @@ package dal
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/linxGnu/grocksdb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 )
@@ -26,20 +27,19 @@ import (
 // by several GiB and tipped the pod over its memory limit during full
 // backups. The default 8 MiB block cache is left in place.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
-	opts := &pebble.Options{
-		Logger:       NewPebbleLogger(logger),
-		ReadOnly:     true,
-		MaxOpenFiles: 32,
+	opts := pebble.Options{
+		ReadOnly:  true,
+		Configure: func(o *grocksdb.Options) { o.SetMaxOpenFiles(32) },
 	}
 
 	db, err := pebble.Open(dirPath, opts)
 	if err != nil {
-		return nil, fmt.Errorf("opening read-only pebble database at %s: %w", dirPath, err)
+		return nil, fmt.Errorf("opening read-only rocksdb database at %s: %w", dirPath, err)
 	}
 
 	store := &Store{
 		opts:    opts,
-		logger:  logger.WithField("cmp", "pebble-readonly"),
+		logger:  logger.WithField("cmp", "rocksdb-readonly"),
 		dataDir: dirPath,
 	}
 	store.db = db
@@ -51,18 +51,16 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 // without checkpoint management. Used for backup compaction operations.
 // The caller must call Close() when done.
 func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
-	opts := &pebble.Options{
-		Logger: NewPebbleLogger(logger),
-	}
+	opts := pebble.Options{}
 
 	db, err := pebble.Open(dirPath, opts)
 	if err != nil {
-		return nil, fmt.Errorf("opening pebble database at %s: %w", dirPath, err)
+		return nil, fmt.Errorf("opening rocksdb database at %s: %w", dirPath, err)
 	}
 
 	store := &Store{
 		opts:    opts,
-		logger:  logger.WithField("cmp", "pebble-direct"),
+		logger:  logger.WithField("cmp", "rocksdb-direct"),
 		dataDir: dirPath,
 	}
 	store.db = db

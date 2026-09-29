@@ -3,7 +3,7 @@ package readstore
 import (
 	"errors"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -11,7 +11,7 @@ import (
 // PrefixIterator scans all keys in the read index Pebble database that share a
 // given prefix, extracting the entity ID from the suffix portion of each key.
 type PrefixIterator struct {
-	iter         *pebble.Iterator
+	iter         *kv.Iterator
 	prefix       []byte
 	entityOffset int // byte offset where the entity ID starts in each key
 	entityLen    int // fixed entity length (0 = variable, extends to end of key)
@@ -41,7 +41,7 @@ func NewPrefixIterator(
 ) (*PrefixIterator, error) {
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -100,7 +100,7 @@ func (it *PrefixIterator) Next() bool {
 		// whose bloom filter does not contain the prefix extracted by
 		// Comparer.Split (the ledger-scoped prefix). This applies to
 		// the initial seek and all subsequent Next() calls.
-		if !it.iter.SeekPrefixGE(it.prefix) {
+		if !it.iter.SeekGE(it.prefix) {
 			it.exhausted = true
 
 			return false
@@ -159,7 +159,7 @@ func (it *PrefixIterator) Seek(target []byte) bool {
 
 	it.started = true
 
-	if !it.iter.SeekPrefixGE(seekKey) {
+	if !it.iter.SeekGE(seekKey) {
 		it.exhausted = true
 		it.floor.fail(target, it.iter.Error())
 
@@ -231,7 +231,7 @@ func (it *PrefixIterator) extractEntity(key []byte) []byte {
 // surface in (value, entity) order — so this iterator only supports forward
 // draining; see Seek.
 type RangeIterator struct {
-	iter         *pebble.Iterator
+	iter         *kv.Iterator
 	lowerBound   []byte // stored for SeekPrefixGE initial positioning
 	entityOffset int
 	entityLen    int
@@ -256,7 +256,7 @@ func NewRangeIterator(
 	entityOffset int,
 	entityLen int,
 ) (*RangeIterator, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -309,7 +309,7 @@ func (it *RangeIterator) Next() bool {
 
 	if !it.started {
 		it.started = true
-		if !it.iter.SeekPrefixGE(it.lowerBound) {
+		if !it.iter.SeekGE(it.lowerBound) {
 			it.exhausted = true
 
 			return false

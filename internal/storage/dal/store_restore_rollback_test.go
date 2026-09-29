@@ -39,35 +39,18 @@ func TestRestoreCheckpoint_RollsBackWhenReopenFails(t *testing.T) {
 	require.NoError(t, postBatch.SetBytes([]byte("post-checkpoint"), []byte("would-be-lost")))
 	require.NoError(t, postBatch.Commit())
 
-	// Force the restore reopen to fail. The simplest way to make
-	// pebble.Open(live/) blow up is to delete the checkpoint dir's
-	// MANIFEST after capturing its inode list — but the hard-link is
-	// the path, so the cleanest injection is to corrupt one of the
-	// hard-linked Pebble files. Replace the OPTIONS-* file in the
-	// checkpoint with garbage; Pebble refuses to open with an
-	// unparseable OPTIONS file.
+	// Corrupt only the checkpoint's CURRENT pointer. Replacing the path
+	// avoids modifying a hard-linked live file, while guaranteeing that
+	// RocksDB cannot resolve the checkpoint manifest on reopen.
 	checkpointDir := filepath.Join(s.DataDir(), checkpointsDir, strconv.FormatUint(checkpointID, 10))
-
-	entries, err := os.ReadDir(checkpointDir)
-	require.NoError(t, err)
-
-	var corrupted bool
-
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) == "" && len(e.Name()) > 8 && e.Name()[:8] == "OPTIONS-" {
-			require.NoError(t, os.WriteFile(filepath.Join(checkpointDir, e.Name()), []byte("garbage\n"), 0o644))
-
-			corrupted = true
-
-			break
-		}
-	}
-
-	require.True(t, corrupted, "test setup: did not find an OPTIONS-* file to corrupt")
+	current := filepath.Join(checkpointDir, "CURRENT")
+	require.FileExists(t, current)
+	require.NoError(t, os.Remove(current))
+	require.NoError(t, os.WriteFile(current, []byte("MANIFEST-does-not-exist\n"), 0o644))
 
 	// Attempt the restore — it must fail.
 	restoreErr := s.RestoreCheckpoint(checkpointID)
-	require.Error(t, restoreErr, "restore must fail after we corrupted the checkpoint OPTIONS file")
+	require.Error(t, restoreErr, "restore must fail after the checkpoint CURRENT pointer is corrupted")
 
 	// Now the regression check: the store must still be usable, and the
 	// pre-restore data must still be there. The previous implementation
@@ -129,10 +112,10 @@ func TestReconcileLiveAfterRestore_CrashedBeforePublish(t *testing.T) {
 	// Move the real live aside as the discard target.
 	require.NoError(t, os.Rename(liveDirectory, discardDirectory))
 
-	// Drop a staging tree alongside it — pebble doesn't need to be able
+	// Drop a staging tree alongside it — RocksDB doesn't need to be able
 	// to open it; the reconciler removes it sight unseen.
 	require.NoError(t, os.MkdirAll(stagingDirectory, 0o755))
-	require.NoError(t, os.WriteFile(filepath.Join(stagingDirectory, "OPTIONS-000003"), []byte("garbage that would never open"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(stagingDirectory, "CURRENT"), []byte("garbage that would never open"), 0o644))
 
 	// Boot. Reconciliation must drop staging AND revert discard -> live.
 	s2, err := NewStore(dataDir, logger, meter, DefaultConfig())

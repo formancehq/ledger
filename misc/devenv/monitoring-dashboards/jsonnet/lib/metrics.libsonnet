@@ -101,22 +101,18 @@
     batch_total: 'mirror.batch.total',
   },
 
-  // pebble — internal/storage/dal/metrics.go (our wrapper around
-  // Pebble's EventListener; Pebble itself does not expose OTel).
-  pebble:: {
-    flush_total: 'pebble.flush.total',
-    flush_duration_milliseconds: 'pebble.flush.duration.milliseconds',
-    flush_input_bytes: 'pebble.flush.input.bytes',
-    compaction_total: 'pebble.compaction.total',
-    compaction_duration_milliseconds: 'pebble.compaction.duration.milliseconds',
-    write_stall_total: 'pebble.write_stall.total',
-    write_stall_duration_milliseconds: 'pebble.write_stall.duration.milliseconds',
-    write_stall_active: 'pebble.write_stall.active',
-    disk_slow_total: 'pebble.disk_slow.total',
-    disk_slow_duration_milliseconds: 'pebble.disk_slow.duration.milliseconds',
-    vfs_read_ops: 'pebble.vfs.read.ops',
-    vfs_write_ops: 'pebble.vfs.write.ops',
-    vfs_sync_ops: 'pebble.vfs.sync.ops',
+  // rocksdb — native DB properties sampled by internal/storage/dal/metrics.go.
+  rocksdb:: {
+    memtable_bytes: 'rocksdb.memtable.bytes',
+    memtable_immutable_count: 'rocksdb.memtable.immutable.count',
+    flush_pending: 'rocksdb.flush.pending',
+    compaction_pending: 'rocksdb.compaction.pending',
+    compaction_debt_bytes: 'rocksdb.compaction.debt.bytes',
+    sst_live_bytes: 'rocksdb.sst.live.bytes',
+    cache_used_bytes: 'rocksdb.cache.used.bytes',
+    snapshots_count: 'rocksdb.snapshots.count',
+    write_stopped: 'rocksdb.write.stopped',
+    background_errors: 'rocksdb.background.errors',
   },
 
   // preload — internal/infra/state/machine.go
@@ -163,10 +159,9 @@
 
   // readindex — internal/storage/readstore/metrics.go
   readindex:: {
-    level_bytes: 'readindex.level.bytes',
     memtable_bytes: 'readindex.memtable.bytes',
-    cache_hits: 'readindex.cache.hits',
-    cache_misses: 'readindex.cache.misses',
+    cache_bytes: 'readindex.cache.bytes',
+    compaction_pending_bytes: 'readindex.compaction.pending.bytes',
   },
 
   // usagestore — internal/storage/usagestore/metrics.go

@@ -1,11 +1,17 @@
 package dal
 
 import (
+	"math"
+	"maps"
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/linxGnu/grocksdb"
 )
 
-// GetMetrics returns the current metrics from the Pebble database as proto message.
-// Implements store.MetricsProvider interface.
+// GetMetrics keeps the existing proto envelope for the primary store. Only
+// fields with a direct RocksDB equivalent are populated; absent fields are
+// unavailable Pebble metrics and must not be interpreted as RocksDB zeroes.
 func (s *Store) GetMetrics() any {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
@@ -14,92 +20,40 @@ func (s *Store) GetMetrics() any {
 	if db == nil {
 		return nil
 	}
+	return rocksDBProtoMetrics(db.Raw())
+}
 
-	m := db.Metrics()
-
-	result := &servicepb.PebbleMetrics{
-		BlockCache: &servicepb.BlockCacheMetrics{
-			Size:   m.BlockCache.Size,
-			Count:  m.BlockCache.Count,
-			Hits:   m.BlockCache.Hits,
-			Misses: m.BlockCache.Misses,
-		},
-		Compact: &servicepb.CompactMetrics{
-			Count:            m.Compact.Count,
-			DefaultCount:     m.Compact.DefaultCount,
-			DeleteOnlyCount:  m.Compact.DeleteOnlyCount,
-			ElisionOnlyCount: m.Compact.ElisionOnlyCount,
-			MoveCount:        m.Compact.MoveCount,
-			ReadCount:        m.Compact.ReadCount,
-			RewriteCount:     m.Compact.RewriteCount,
-			MultiLevelCount:  m.Compact.MultiLevelCount,
-			EstimatedDebt:    m.Compact.EstimatedDebt,
-			InProgressBytes:  m.Compact.InProgressBytes,
-			NumInProgress:    m.Compact.NumInProgress,
-			MarkedFiles:      int32(m.Compact.MarkedFiles),
-		},
-		Flush: &servicepb.FlushMetrics{
-			Count:              m.Flush.Count,
-			NumInProgress:      m.Flush.NumInProgress,
-			AsIngestCount:      m.Flush.AsIngestCount,
-			AsIngestTableCount: m.Flush.AsIngestTableCount,
-			AsIngestBytes:      m.Flush.AsIngestBytes,
-		},
-		MemTable: &servicepb.MemTableMetrics{
-			Size:        m.MemTable.Size,
-			Count:       m.MemTable.Count,
-			ZombieSize:  m.MemTable.ZombieSize,
-			ZombieCount: m.MemTable.ZombieCount,
-		},
-		Snapshots: &servicepb.SnapshotsMetrics{
-			Count:          int32(m.Snapshots.Count),
-			EarliestSeqNum: uint64(m.Snapshots.EarliestSeqNum),
-			PinnedKeys:     m.Snapshots.PinnedKeys,
-			PinnedSize:     m.Snapshots.PinnedSize,
-		},
-		Table: &servicepb.TableMetrics{
-			ZombieSize:  m.Table.ZombieSize,
-			ZombieCount: m.Table.ZombieCount,
-		},
-		TableCache: &servicepb.TableCacheMetrics{
-			Size:   m.FileCache.Size,
-			Count:  m.FileCache.TableCount,
-			Hits:   m.FileCache.Hits,
-			Misses: m.FileCache.Misses,
-		},
-		Wal: &servicepb.WALMetrics{
-			Files:         m.WAL.Files,
-			ObsoleteFiles: m.WAL.ObsoleteFiles,
-			Size:          m.WAL.Size,
-			BytesIn:       m.WAL.BytesIn,
-			BytesWritten:  m.WAL.BytesWritten,
-		},
-		Keys: &servicepb.KeysMetrics{
-			RangeKeySetsCount: m.Keys.RangeKeySetsCount,
-			TombstoneCount:    m.Keys.TombstoneCount,
-		},
-		DiskSpaceUsage: m.DiskSpaceUsage(),
+func rocksDBProtoMetrics(db *grocksdb.DB) *servicepb.PebbleMetrics {
+	result := &servicepb.PebbleMetrics{}
+	if size, ok := db.GetIntProperty("rocksdb.block-cache-usage"); ok && size <= math.MaxInt64 {
+		result.BlockCache = &servicepb.BlockCacheMetrics{Size: int64(size)}
 	}
-
-	// Convert level metrics
-	for i, level := range m.Levels {
-		result.Levels = append(result.Levels, &servicepb.LevelMetrics{
-			Level:           int32(i),
-			NumFiles:        level.TablesCount,
-			Size:            level.TablesSize,
-			Score:           level.Score,
-			BytesIn:         level.TableBytesIn,
-			BytesIngested:   level.TableBytesIngested,
-			BytesMoved:      level.TableBytesMoved,
-			BytesRead:       level.TableBytesRead,
-			BytesCompacted:  level.TableBytesCompacted,
-			BytesFlushed:    level.TableBytesFlushed,
-			TablesCompacted: level.TablesCompacted,
-			TablesFlushed:   level.TablesFlushed,
-			TablesIngested:  level.TablesIngested,
-			TablesMoved:     level.TablesMoved,
-		})
+	if debt, ok := db.GetIntProperty("rocksdb.estimate-pending-compaction-bytes"); ok {
+		result.Compact = &servicepb.CompactMetrics{EstimatedDebt: debt}
 	}
-
+	if size, ok := db.GetIntProperty("rocksdb.cur-size-all-mem-tables"); ok {
+		result.MemTable = &servicepb.MemTableMetrics{Size: size}
+	}
+	if count, ok := db.GetIntProperty("rocksdb.num-snapshots"); ok && count <= math.MaxInt32 {
+		result.Snapshots = &servicepb.SnapshotsMetrics{Count: int32(count)}
+	}
+	// Live SST files do not include WALs or obsolete SSTs, so they cannot
+	// truthfully populate Pebble's DiskSpaceUsage field.
+	levels := map[int]*servicepb.LevelMetrics{}
+	for _, file := range db.GetLiveFilesMetaData() {
+		if file.Level < 0 || file.Level > math.MaxInt32 {
+			continue
+		}
+		level := levels[file.Level]
+		if level == nil {
+			level = &servicepb.LevelMetrics{Level: int32(file.Level)}
+			levels[file.Level] = level
+		}
+		level.NumFiles++
+		level.Size += file.Size
+	}
+	for _, level := range slices.Sorted(maps.Keys(levels)) {
+		result.Levels = append(result.Levels, levels[level])
+	}
 	return result
 }

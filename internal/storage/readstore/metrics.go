@@ -3,62 +3,37 @@ package readstore
 import (
 	"context"
 	"fmt"
+	"math"
 
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
-// RegisterMetrics registers Pebble internal metrics with the given meter.
+// RegisterMetrics samples the available RocksDB read-index properties.
 func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
-	levelBytes, err := m.Int64ObservableGauge(
-		"readindex.level.bytes",
-		metric.WithDescription("Total bytes in each Pebble level"),
-		metric.WithUnit("By"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating readindex.level.bytes gauge: %w", err)
+	type property struct {
+		name, description, key string
+		gauge                  metric.Int64ObservableGauge
 	}
-
-	memtableBytes, err := m.Int64ObservableGauge(
-		"readindex.memtable.bytes",
-		metric.WithDescription("Current memtable size in bytes"),
-		metric.WithUnit("By"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating readindex.memtable.bytes gauge: %w", err)
+	specs := []property{
+		{name: "readindex.memtable.bytes", description: "Current memtable size in bytes", key: "rocksdb.cur-size-all-mem-tables"},
+		{name: "readindex.cache.bytes", description: "Block cache usage in bytes", key: "rocksdb.block-cache-usage"},
+		{name: "readindex.compaction.pending.bytes", description: "Estimated pending compaction bytes", key: "rocksdb.estimate-pending-compaction-bytes"},
 	}
-
-	cacheHits, err := m.Int64ObservableGauge(
-		"readindex.cache.hits",
-		metric.WithDescription("Block cache hits"),
-		metric.WithUnit("{hits}"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating readindex.cache.hits gauge: %w", err)
-	}
-
-	cacheMisses, err := m.Int64ObservableGauge(
-		"readindex.cache.misses",
-		metric.WithDescription("Block cache misses"),
-		metric.WithUnit("{misses}"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating readindex.cache.misses gauge: %w", err)
-	}
-
-	return m.RegisterCallback(func(_ context.Context, o metric.Observer) error {
-		metrics := s.db.Metrics()
-
-		// Per-level sizes.
-		for i, level := range metrics.Levels {
-			o.ObserveInt64(levelBytes, level.TablesSize,
-				metric.WithAttributes(attribute.Int("level", i)))
+	instruments := make([]metric.Observable, 0, len(specs))
+	for i := range specs {
+		gauge, err := m.Int64ObservableGauge(specs[i].name, metric.WithDescription(specs[i].description), metric.WithUnit("By"))
+		if err != nil {
+			return nil, fmt.Errorf("creating %s gauge: %w", specs[i].name, err)
 		}
-
-		o.ObserveInt64(memtableBytes, int64(metrics.MemTable.Size))
-		o.ObserveInt64(cacheHits, metrics.BlockCache.Hits)
-		o.ObserveInt64(cacheMisses, metrics.BlockCache.Misses)
-
+		specs[i].gauge = gauge
+		instruments = append(instruments, gauge)
+	}
+	return m.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		for _, spec := range specs {
+			if value, ok := s.db.Raw().GetIntProperty(spec.key); ok && value <= math.MaxInt64 {
+				observer.ObserveInt64(spec.gauge, int64(value))
+			}
+		}
 		return nil
-	}, levelBytes, memtableBytes, cacheHits, cacheMisses)
+	}, instruments...)
 }

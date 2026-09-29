@@ -11,6 +11,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
+// ledgerScopedPrefixLen is the byte prefix plus the fixed-width ledger name.
+const ledgerScopedPrefixLen = 1 + dal.LedgerNameFixedSize
+
 // Pebble key prefix bytes for the separate read index database.
 // Each prefix replaces a former Pebble bucket.
 const (

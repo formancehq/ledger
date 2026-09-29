@@ -54,17 +54,23 @@ image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/l
 # `formancehq/ledger-operator` published image.
 operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
 
+# Native builds require a C/C++ toolchain and RocksDB 11.1+ (provided by nix develop).
+# GOOS/GOARCH cross-builds need matching target headers, libraries, and C/C++ compilers.
+# Compile every package, including non-entrypoint packages checked by CI.
+build-packages:
+    CGO_ENABLED=1 go build ./...
+
 # Build the server application (light: no optional deps)
 build:
-    go build -o ./build/ledger-server .
+    CGO_ENABLED=1 go build -o ./build/ledger-server .
 
 # Build the server with all optional features (Kafka, NATS, ClickHouse, S3, Pyroscope)
 build-full:
-    go build -tags "{{all_tags}}" -o ./build/ledger-server-full .
+    CGO_ENABLED=1 go build -tags "{{all_tags}}" -o ./build/ledger-server-full .
 
 # Build the client application
 build-client:
-    go build -o ./build/ledgerctl ./cmd/ledgerctl
+    CGO_ENABLED=1 go build -o ./build/ledgerctl ./cmd/ledgerctl
 
 # Run the application locally (single node)
 run:
@@ -286,12 +292,20 @@ test-schemathesis:
     bash tests/schemathesis/run.sh
 
 # Release (official, triggered by tag)
-release:
+release: _release-cgo-gate
     goreleaser release --clean
 
 # Release CI (nightly, triggered by main push)
-release-ci:
+release-ci: _release-cgo-gate
     goreleaser release --nightly --clean
+
+# Fail closed until GoReleaser builds are linked against the Alpine/musl
+# RocksDB 11.1.2 runtime and the resulting archives and image pass a smoke test.
+# The current Nix Linux runner links CGO binaries against glibc/Nix store libs;
+# the tarball also lacks the RocksDB and compression libraries its binary needs.
+_release-cgo-gate:
+    @echo 'Release blocked: GoReleaser CGO binaries use Nix/glibc, but the image uses Alpine/musl RocksDB 11.1.2; the tarball lacks its native runtime libraries. Build and smoke-test matching linux/amd64 image and archive before removing this gate.' >&2
+    @exit 1
 
 # Clean build artifacts
 clean:

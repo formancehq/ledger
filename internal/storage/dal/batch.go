@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"google.golang.org/protobuf/proto"
 )
 

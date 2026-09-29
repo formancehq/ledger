@@ -5,7 +5,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -28,7 +28,7 @@ func seedLogRange(t *testing.T, s *Store, ledger string, ids ...uint64) {
 
 	kb := dal.NewKeyBuilder()
 	for _, id := range ids {
-		require.NoError(t, s.DB().Set(LedgerLogKey(kb, ledger, id), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(LedgerLogKey(kb, ledger, id), nil, kv.NoSync))
 	}
 }
 

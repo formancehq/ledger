@@ -5,7 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/linxGnu/grocksdb"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -248,10 +249,7 @@ func TestStore_Checkpoint(t *testing.T) {
 	require.NoError(t, s.Checkpoint(destDir))
 
 	// Verify we can open it
-	db, err := pebble.Open(destDir, &pebble.Options{
-		Logger:   DiscardPebbleLogger(),
-		ReadOnly: true,
-	})
+	db, err := kv.Open(destDir, kv.Options{ReadOnly: true})
 	require.NoError(t, err)
 
 	val, closer, err := db.Get([]byte("cp-key"))
@@ -445,7 +443,7 @@ func TestStore_NewIter(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&kv.IterOptions{
 		LowerBound: []byte("iter-"),
 		UpperBound: []byte("iter-\xff"),
 	})
@@ -491,10 +489,14 @@ func TestStore_OpenReadOnly(t *testing.T) {
 
 	// Regression: OpenReadOnly is used as a secondary store during full
 	// backups while the primary still holds its working set. MaxOpenFiles
-	// must stay capped so Pebble does not warm up table metadata for every
+	// must stay capped so RocksDB does not warm up table metadata for every
 	// SST in large stores (observed pushing pods past their memory limit
 	// on a 290 GB checkpoint).
-	require.Equal(t, 32, roStore.opts.MaxOpenFiles,
+	require.NotNil(t, roStore.opts.Configure)
+	opts := grocksdb.NewDefaultOptions()
+	defer opts.Destroy()
+	roStore.opts.Configure(opts)
+	require.Equal(t, 32, opts.GetMaxOpenFiles(),
 		"OpenReadOnly must bound MaxOpenFiles to keep the secondary store's table-metadata footprint small")
 }
 
@@ -561,7 +563,7 @@ func TestStore_NewStoreReopensExisting(t *testing.T) {
 }
 
 // TestDeleteQueryCheckpointFilesDefersRemovalForAcquiredReader reproduces
-// EN-2047: Pebble can open an SST lazily after a checkpoint reader is acquired,
+// EN-2047: RocksDB can open an SST lazily after a checkpoint reader is acquired,
 // so neither component may be unlinked until that reader releases its lease.
 func TestDeleteQueryCheckpointFilesDefersRemovalForAcquiredReader(t *testing.T) {
 	t.Parallel()

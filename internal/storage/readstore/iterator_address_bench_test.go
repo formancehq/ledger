@@ -3,7 +3,7 @@ package readstore
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -60,7 +60,7 @@ func benchmarkAddressTxUnion(b *testing.B, cfg addressTxUnionBench) {
 		}
 	}
 
-	require.NoError(b, batch.Commit(pebble.NoSync))
+	require.NoError(b, batch.Commit(kv.NoSync))
 	require.NoError(b, batch.Close())
 
 	b.ReportAllocs()

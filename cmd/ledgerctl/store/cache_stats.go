@@ -3,7 +3,7 @@ package store
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/spf13/cobra"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -32,12 +32,11 @@ must be a checkpoint/snapshot copy.`,
 func runCacheStats(cmd *cobra.Command, args []string) error {
 	dataDir := args[0]
 
-	db, err := pebble.Open(dataDir, &pebble.Options{
-		Logger:   dal.DiscardPebbleLogger(),
+	db, err := pebble.Open(dataDir, pebble.Options{
 		ReadOnly: true,
 	})
 	if err != nil {
-		return fmt.Errorf("opening pebble at %s: %w", dataDir, err)
+		return fmt.Errorf("opening RocksDB at %s: %w", dataDir, err)
 	}
 
 	defer func() { _ = db.Close() }()

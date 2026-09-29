@@ -23,15 +23,12 @@ builds:
   - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
   - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
   - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  - -extldflags=-static
   env:
-  - CGO_ENABLED=0
+  - CGO_ENABLED=1
   goos:
   - linux
-  - darwin
   goarch:
   - amd64
-  - arm64
 
 - binary: ledgerctl
   id: ledgerctl
@@ -40,31 +37,12 @@ builds:
   - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
   - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
   - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  - -extldflags=-static
   env:
-  - CGO_ENABLED=0
+  - CGO_ENABLED=1
   goos:
   - linux
-  - darwin
   goarch:
   - amd64
-  - arm64
-
-- binary: ledgerctl
-  id: ledgerctl-windows
-  main: ./cmd/ledgerctl
-  ldflags:
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  - -extldflags=-static
-  env:
-  - CGO_ENABLED=0
-  goos:
-  - windows
-  goarch:
-  - amd64
-  - arm64
 
 nightly:
   tag_name: nightly
@@ -77,19 +55,12 @@ release:
   - glob: openapi.yml
 
 archives:
-- id: ledger-unix
+- id: ledger-linux
   ids:
   - ledger-server
   - ledgerctl
   formats:
   - tar.gz
-  name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
-  wrap_in_directory: true
-- id: ledger-windows
-  ids:
-  - ledgerctl-windows
-  formats:
-  - zip
   name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
 
@@ -127,7 +98,6 @@ dockers_v2:
   - "{{ if not .IsNightly }}{{ if not .Prerelease }}latest{{ end }}{{ end }}"
   platforms:
   - linux/amd64
-  - linux/arm64
   sbom: false
   flags:
   - --provenance=false

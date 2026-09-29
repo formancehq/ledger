@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"

@@ -14,9 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/vfs"
-	"github.com/cockroachdb/pebble/v2/wal"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/linxGnu/grocksdb"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -143,14 +142,13 @@ type Store struct {
 	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
 	snapshotMu        sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
 	db                *pebble.DB
-	opts              *pebble.Options
+	opts              pebble.Options
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
 	oldestCheckpoint  uint64
 	maxCheckpoints    int
 	stallState        *WriteStallState
-	iopsCounters      *IOPSCounters
 
 	queryCheckpointMu       sync.Mutex
 	queryCheckpointReaders  map[uint64]uint64
@@ -415,84 +413,35 @@ func NewStore(
 	meter metric.Meter,
 	cfg Config,
 ) (*Store, error) {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+		return nil, fmt.Errorf("creating storage directory: %w", err)
+	}
 	stallState := NewWriteStallState()
 
-	opts := &pebble.Options{
-		Logger:             NewPebbleLogger(logger),
-		FormatMajorVersion: pebble.FormatNewest,
-		EventListener:      NewMetricsListener(meter, stallState),
-		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
-		MemTableSize:                cfg.MemTableSize,
-		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
-
-		// 2) Control L0 pressure (main source of compactions/churn in write-heavy workloads).
-		L0CompactionThreshold: cfg.L0CompactionThreshold,
-		L0StopWritesThreshold: cfg.L0StopWritesThreshold,
-		LBaseMaxBytes:         cfg.LBaseMaxBytes,
-		Cache:                 pebble.NewCache(cfg.CacheSize),
-
-		// 3) Table sizes and compression (per-level, configurable).
-		TargetFileSizes: cfg.BuildTargetFileSizes(),
-		Levels:          cfg.BuildLevels(),
-
-		// 4) Smooth IO during flush/compactions.
-		BytesPerSync:    cfg.BytesPerSync,
-		WALBytesPerSync: cfg.WALBytesPerSync,
-
-		// 5) Compaction concurrency: OK but not too high (otherwise you saturate IO).
-		CompactionConcurrencyRange: func() (int, int) {
-			n := cfg.MaxConcurrentCompactions
-
-			return n, n
-		},
-
-		// 6) WAL configuration
-		WALMinSyncInterval: func() time.Duration { return cfg.WALMinSyncInterval },
-		DisableWAL:         cfg.DisableWAL,
-	}
-
-	// 7) WAL failover: automatically switch WAL writes to a secondary directory
-	// when the primary disk has high latency. Pebble monitors latency and
-	// switches back when the primary is healthy again.
 	if cfg.WALFailoverDir != "" {
-		if err := os.MkdirAll(cfg.WALFailoverDir, 0o750); err != nil {
-			return nil, fmt.Errorf("creating WAL failover directory: %w", err)
-		}
-
-		opts.WALFailover = &pebble.WALFailoverOptions{
-			Secondary: wal.Dir{
-				FS:      vfs.Default,
-				Dirname: cfg.WALFailoverDir,
-			},
-			// Use Pebble defaults for all thresholds:
-			// - UnhealthyOperationLatencyThreshold: 100ms
-			// - PrimaryDirProbeInterval: 1s
-			// - HealthyProbeLatencyThreshold: 25ms
-			// - HealthyInterval: 15s
-			// - ElevatedWriteStallThresholdLag: 60s
-		}
+		return nil, fmt.Errorf("RocksDB does not support automatic WAL failover (walFailoverDir)")
 	}
-
-	// 8) VFS wrapper for IOPS counting.
-	iopsCounters := &IOPSCounters{}
-	opts.FS = NewMetricsFS(vfs.Default, iopsCounters)
-
-	// 9) Enable columnar blocks (required for value separation, also improves scans).
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
-
-	// 10) Value separation: store large values in blob files to reduce compaction IO.
+	if cfg.WALMinSyncInterval != 0 {
+		return nil, fmt.Errorf("RocksDB does not support walMinSyncInterval")
+	}
 	if cfg.ValueSeparation.Enabled {
-		vs := cfg.ValueSeparation
-		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
-			return pebble.ValueSeparationPolicy{
-				Enabled:               true,
-				MinimumSize:           vs.MinimumSize,
-				MaxBlobReferenceDepth: vs.MaxBlobReferenceDepth,
-				RewriteMinimumAge:     vs.RewriteMinimumAge,
-				TargetGarbageRatio:    vs.TargetGarbageRatio,
-			}
-		}
+		return nil, fmt.Errorf("RocksDB value separation requires separate blob-file qualification")
 	}
+	if cfg.DisableWAL {
+		return nil, fmt.Errorf("disabling the WAL is not supported for Ledger's durable store")
+	}
+	opts := pebble.Options{CacheSize: uint64(cfg.CacheSize), Configure: func(o *grocksdb.Options) {
+		o.SetWriteBufferSize(uint64(cfg.MemTableSize))
+		o.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
+		o.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
+		o.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
+		o.SetMaxBytesForLevelBase(uint64(cfg.LBaseMaxBytes))
+		o.SetTargetFileSizeBase(uint64(cfg.TargetFileSize))
+		o.SetCompressionPerLevel(cfg.RocksDBCompression())
+		o.SetBytesPerSync(uint64(cfg.BytesPerSync))
+		o.SetWALBytesPerSync(uint64(cfg.WALBytesPerSync))
+		o.SetMaxBackgroundCompactions(cfg.MaxConcurrentCompactions)
+	}}
 
 	var (
 		db  *pebble.DB
@@ -547,25 +496,13 @@ func NewStore(
 
 	db, err = pebble.Open(liveDir, opts)
 	if err != nil {
-		return nil, fmt.Errorf("opening pebble database: %w", err)
+		return nil, fmt.Errorf("opening RocksDB database: %w", err)
 	}
 
-	m := db.Metrics()
 	logger.WithFields(map[string]any{
-		"duration":          time.Since(openStart).String(),
-		"l0FileCount":       m.Levels[0].TablesCount,
-		"l0Size":            m.Levels[0].TablesSize,
-		"l1FileCount":       m.Levels[1].TablesCount,
-		"l1Size":            m.Levels[1].TablesSize,
-		"memTableCount":     m.MemTable.Count,
-		"memTableSize":      m.MemTable.Size,
-		"compactionCount":   m.Compact.Count,
-		"compactionDebt":    m.Compact.InProgressBytes,
-		"compactionEstDebt": m.Compact.EstimatedDebt,
-		"walFilesCount":     m.WAL.Files,
-		"walSize":           m.WAL.Size,
-		"totalLevelsSize":   m.DiskSpaceUsage(),
-	}).Infof("Pebble database opened — LSM state")
+		"duration": time.Since(openStart).String(),
+		"stats":    db.Property("rocksdb.stats"),
+	}).Infof("RocksDB database opened")
 
 	// Calculate the oldest checkpoint that should exist
 	// based on latest checkpoint and max checkpoints configuration
@@ -576,23 +513,21 @@ func NewStore(
 
 	store := &Store{
 		opts:                    opts,
-		logger:                  logger.WithField("cmp", "pebble"),
+		logger:                  logger.WithField("cmp", "rocksdb"),
 		dataDir:                 dataDir,
 		currentCheckPoint:       latestCheckpointID,
 		oldestCheckpoint:        oldestCheckpoint,
 		maxCheckpoints:          cfg.MaxCheckpoints,
 		stallState:              stallState,
-		iopsCounters:            iopsCounters,
 		queryCheckpointReaders:  make(map[uint64]uint64),
 		deletedQueryCheckpoints: make(map[uint64]struct{}),
 	}
 
-	if _, err = iopsCounters.RegisterMetrics(meter); err != nil {
-		_ = db.Close()
-
-		return nil, fmt.Errorf("registering IOPS metrics: %w", err)
-	}
 	store.db = db
+	if _, err = store.RegisterMetrics(meter); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("registering RocksDB metrics: %w", err)
+	}
 
 	// Clean up any orphaned backup checkpoints from a previous crash
 	store.cleanupTemporaryCheckpoints()
@@ -640,7 +575,7 @@ func (s *Store) SyncWAL() error {
 		return ErrStoreClosed
 	}
 
-	return db.LogData(nil, &pebble.WriteOptions{Sync: true})
+	return db.SyncWAL()
 }
 
 // WarmSystemKeys preloads the system/config key zones into Pebble's block
@@ -704,12 +639,10 @@ func (s *Store) WarmBlockCache() {
 		return
 	}
 
-	m := db.Metrics()
 	s.logger.WithFields(map[string]any{
 		"duration":        time.Since(start).String(),
 		"keys":            keys,
-		"blockCacheSize":  m.BlockCache.Size,
-		"blockCacheCount": m.BlockCache.Count,
+		"blockCacheUsage": db.Property("rocksdb.block-cache-usage"),
 	}).Infof("Block cache warmup complete (attributes zone)")
 }
 
@@ -728,7 +661,13 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	var keys int64
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		if _, err := iter.ValueAndErr(); err != nil {
+		if err := iter.Error(); err != nil {
+			return keys, err
+		}
+		if iter.Value() == nil {
+			continue
+		}
+		if err := iter.Error(); err != nil {
 			return keys, fmt.Errorf("warmup value read error at key %d: %w", keys, err)
 		}
 
@@ -742,31 +681,9 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	return keys, nil
 }
 
-// CloseSafe runs a Pebble close, turning a panic out of it into an error.
-// In Pebble v2.1.x, DB.Close panics with "element has outstanding references"
-// in genericcache/shard.Close when a file cache reference is still held.
-//
-// This is caused by a caller retaining a Pebble read resource past the lock
-// that protects the DB's lifetime, not by anything internal to Pebble. The
-// known instance was (*Store).Get handing back Pebble's closer — a live
-// *pebble.Iterator on an SST-backed lookup — after releasing dbMu.RLock
-// (EN-2072); see the PebbleGetter contract in reader.go.
-//
-// An earlier version of this comment blamed a race in Pebble's
-// collectTableStats goroutine. That explanation is wrong: DB.Close waits on
-// d.mu.tableStats.loading (db.go:1716) and workers gate on d.closed
-// (table_stats.go:78), so a stats worker can neither start after close nor
-// still be running when the file cache is closed. The upstream PRs it cited
-// (5813, 5854) fix unrelated problems — a shutdown hang and a leaked
-// range-deletion iterator holding block memory, not a file cache reference.
-//
-// This remains a containment net, not a fix: a recovered panic leaves the rest
-// of DB.Close unrun (objProvider.Close and the checks after it), and DB.Close
-// accumulates errors as it goes, so reaching the panic does not prove the
-// earlier steps succeeded. The directory lock is not among the steps left
-// unrun: DB.Close releases it (db.go:1737) before it closes the file cache
-// (db.go:1807), where this panic originates, so a recovered close panic never
-// leaves the directory locked. Fix the offending caller; do not rely on this.
+// CloseSafe turns a Go panic during DB close into an error for restore rollback.
+// Native RocksDB faults are not recoverable through this wrapper; callers must
+// release iterators and snapshots before closing the underlying database.
 func CloseSafe(closeFn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -777,7 +694,7 @@ func CloseSafe(closeFn func() error) (err error) {
 	return closeFn()
 }
 
-// Close closes the Pebble database.
+// Close closes the RocksDB database.
 func (s *Store) Close() error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
@@ -817,13 +734,16 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	newCheckpointID := s.currentCheckPoint + 1
 
 	checkpointDir := filepath.Join(s.dataDir, "checkpoints", strconv.FormatUint(newCheckpointID, 10))
+	if err := os.MkdirAll(filepath.Dir(checkpointDir), 0o755); err != nil {
+		return 0, fmt.Errorf("creating checkpoints directory: %w", err)
+	}
 	if err := os.RemoveAll(checkpointDir); err != nil {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
 	removeOldDone := time.Now()
 
-	if err := db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(checkpointDir); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
 
@@ -951,7 +871,7 @@ func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
 		return "", ErrStoreClosed
 	}
 
-	if err := db.Checkpoint(path, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(path); err != nil {
 		return "", fmt.Errorf("creating temporary checkpoint %q: %w", name, err)
 	}
 
@@ -1082,7 +1002,7 @@ func (s *Store) checkpointQueryTemp(tmpDir string) error {
 		return ErrStoreClosed
 	}
 
-	if err := db.Checkpoint(tmpDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(tmpDir); err != nil {
 		return fmt.Errorf("creating query checkpoint: %w", err)
 	}
 
@@ -1469,10 +1389,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		}
 
 		if closeErr := CloseSafe(oldDB.Close); closeErr != nil {
-			// Pebble v2.1.x panics here if a caller still holds a read
-			// resource on this DB (see CloseSafe). Log and continue — the
-			// old data is stale and being replaced. The rename in step 3
-			// still works regardless of close cleanliness.
+			// The old database is being replaced; surface the close failure
+			// while retaining the restore rollback path.
+
 			s.logger.WithFields(map[string]any{
 				"error": closeErr,
 			}).Errorf("Error closing old database during checkpoint restore (continuing)")
@@ -1525,7 +1444,6 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 		// Reopen the original DB so the Store stays usable.
 		// FileCache must be cleared for the same reason as below.
-		s.opts.FileCache = nil
 
 		revivedDB, openErr := pebble.Open(liveDirectory, s.opts)
 		if openErr != nil {
@@ -1542,12 +1460,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		return rollback(fmt.Errorf("hard linking checkpoint to live.staging directory: %w", err))
 	}
 
-	// Step 5: open the staged database. Clear FileCache so pebble.Open
-	// creates a fresh one. The first Open mutates opts.FileCache in-place;
-	// reusing the stale pointer causes a panic in shard.Close ("element
-	// has outstanding references") because the old FileCache was already
-	// closed when the old DB was closed.
-	s.opts.FileCache = nil
+	// Step 5: open the staged RocksDB database with fresh native options.
 
 	newDB, err := pebble.Open(stagingDirectory, s.opts)
 	if err != nil {
@@ -1587,8 +1500,8 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// point — it is cheap (warm OS cache, no compactions) and only
 	// happens once per restore.
 	if closeErr := CloseSafe(newDB.Close); closeErr != nil {
-		// Same Pebble v2.1.x caveat as above: log and continue. The on-
-		// disk state is durable (Flush + Checkpoint above already synced).
+		// The checkpoint is durable; report a close failure while proceeding
+		// to the atomic publish step.
 		s.logger.WithFields(map[string]any{
 			"error": closeErr,
 		}).Errorf("Error closing staging DB before publish rename (continuing)")
@@ -1603,8 +1516,6 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Restore committed — past this point any failure is non-fatal for
 	// correctness; the worst case is a stale live.discard/ that boot
 	// will sweep up.
-
-	s.opts.FileCache = nil
 
 	publishedDB, err := pebble.Open(liveDirectory, s.opts)
 	if err != nil {
@@ -1665,7 +1576,7 @@ func WithResetFunc(fn func(proto.Message)) ProtoCursorOption {
 	return func(c *protoCursorConfig) { c.resetFunc = fn }
 }
 
-// ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
+// ProtoCursor implements Cursor[T] for RocksDB where T is a proto.Message pointer.
 type ProtoCursor[T proto.Message] struct {
 	iter      *pebble.Iterator
 	started   bool
@@ -1980,7 +1891,7 @@ func fsyncDir(dir string) error {
 	return nil
 }
 
-// Checkpoint creates a Pebble checkpoint at destDir with flushed WAL.
+// Checkpoint creates a RocksDB checkpoint at destDir after a durable flush.
 // This is a thin wrapper around pebble.DB.Checkpoint used for testing
 // and backup operations that need a standalone copy of the database.
 func (s *Store) Checkpoint(destDir string) error {
@@ -1992,5 +1903,5 @@ func (s *Store) Checkpoint(destDir string) error {
 		return ErrStoreClosed
 	}
 
-	return db.Checkpoint(destDir, pebble.WithFlushedWAL())
+	return db.Checkpoint(destDir)
 }

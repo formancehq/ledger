@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -93,7 +93,7 @@ func TestReverseEventResolveIterator_MalformedKeys(t *testing.T) {
 				case "missing terminator":
 					key[len(key)-metadataEventSuffixLen-1] = 2
 				}
-				require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+				require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 				it, err := NewReverseEventResolveIterator(s.DB(), prefix, 25)
 				require.NoError(t, err)
 				defer it.Close()
@@ -114,7 +114,7 @@ func TestReverseEventResolveIterator_MalformedEarlierEvent(t *testing.T) {
 	t.Parallel()
 	s, prefix := eventFixture(t, "v", ev{"a", 10, MetadataEventAdd}, ev{"z", 30, MetadataEventAdd})
 	key := append([]byte(nil), MetadataIndexEventKeyV(dal.NewKeyBuilder(), "l", NamespaceAccount, "k", 1, []byte("v"), []byte("z"), 20, 0x7f)...)
-	require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 	it, err := NewReverseEventResolveIterator(s.DB(), prefix, 30)
 	require.NoError(t, err)
 	defer it.Close()

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
@@ -85,7 +85,7 @@ func seedPrefixRows(t *testing.T, entities ...string) (*Store, []byte, int) {
 
 	for _, e := range entities {
 		key := append(append([]byte(nil), prefix...), []byte(e)...)
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 	}
 
 	return s, prefix, len(prefix)
@@ -145,7 +145,7 @@ func conformancePairs() []iterPair {
 				kb := dal.NewKeyBuilder()
 
 				for _, id := range []uint64{2, 4, 6} {
-					require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, pebble.NoSync))
+					require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, kv.NoSync))
 				}
 
 				fwd := NewAddressTxIterator(s.DB(), dal.NewKeyBuilder(), "l",
@@ -170,7 +170,7 @@ func conformancePairs() []iterPair {
 				s := newTestStore(t)
 
 				for _, id := range []uint64{3, 5, 7} {
-					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 				}
 
 				fwd, err := NewPebbleTxIterator(s.DB(), "l")
@@ -204,7 +204,7 @@ func conformancePairs() []iterPair {
 
 				for _, addr := range []string{"a:1", "a:2", "a:3"} {
 					key := append(append(append([]byte{}, prefix...), addr...), dal.CanonicalKeySepVolume)
-					require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+					require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 				}
 
 				fwd, err := newSingleTypeAccountIterator(s.DB(), dal.SubAttrVolume, "l", "")
@@ -232,7 +232,7 @@ func conformancePairs() []iterPair {
 				s := newTestStore(t)
 
 				for _, id := range []uint64{1, 2, 4, 6, 8, 9} {
-					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, pebble.NoSync))
+					require.NoError(t, s.DB().Set(append(txAttributeCode("l"), txIDBytes(id)...), nil, kv.NoSync))
 				}
 
 				fwd, err := NewPebbleTxRangeIterator(s.DB(), "l", txIDBytes(2), txIDBytes(9))
@@ -446,7 +446,7 @@ func gatedPairs() []gatedPair {
 					stamp  uint64
 				}{{"a", 5}, {"b", 10}, {"z", 999}} {
 					key := append(append([]byte(nil), prefix...), []byte(row.entity)...)
-					require.NoError(t, s.DB().Set(key, EncodeTxID(nil, row.stamp), pebble.NoSync))
+					require.NoError(t, s.DB().Set(key, EncodeTxID(nil, row.stamp), kv.NoSync))
 				}
 
 				fwd, err := NewStampGatedPrefixIterator(s.DB(), prefix, len(prefix), 0, pin)

@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -42,7 +42,7 @@ func TestAccountTxAddressPrefixIteratorsUseRetainedMappings(t *testing.T) {
 				{account: "hold:2", txID: 3},
 				{account: "other:1", txID: 4},
 			} {
-				require.NoError(t, s.DB().Set(AccountTxKey(kb, tc.prefix, "l", row.account, row.txID), nil, pebble.NoSync))
+				require.NoError(t, s.DB().Set(AccountTxKey(kb, tc.prefix, "l", row.account, row.txID), nil, kv.NoSync))
 			}
 
 			forward, err := NewAccountTxAddressPrefixIterator(s.DB(), dal.NewKeyBuilder(), "l", "hold:", tc.prefix)
@@ -94,7 +94,7 @@ func newAddressTxFixtureForPrefix(
 
 	for account, txs := range txsByAccount {
 		for _, id := range txs {
-			require.NoError(tb, s.DB().Set(AccountTxKey(kb, prefix, "l", account, id), nil, pebble.NoSync))
+			require.NoError(tb, s.DB().Set(AccountTxKey(kb, prefix, "l", account, id), nil, kv.NoSync))
 		}
 	}
 
@@ -393,7 +393,7 @@ func TestAddressTxIterator_AddressRoleBucketsAreIsolated(t *testing.T) {
 
 	s := newTestStore(t)
 	kb := dal.NewKeyBuilder()
-	require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixSourceAccountTx, "l", "acc:1", 1), nil, pebble.NoSync))
+	require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixSourceAccountTx, "l", "acc:1", 1), nil, kv.NoSync))
 
 	it := NewAddressTxIterator(
 		s.DB(), dal.NewKeyBuilder(), "l", newAliasingIter("acc:1"), PrefixDestinationAccountTx,

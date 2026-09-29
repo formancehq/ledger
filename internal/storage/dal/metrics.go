@@ -2,192 +2,44 @@ package dal
 
 import (
 	"context"
-	"sync"
-	"time"
+	"fmt"
+	"math"
 
-	"github.com/cockroachdb/pebble/v2"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 )
 
-func NewMetricsListener(m metric.Meter, stallState *WriteStallState) *pebble.EventListener {
-	diskSlowTotal, err := m.Int64Counter(
-		"pebble.disk_slow.total",
-		metric.WithDescription("Number of Pebble disk slow events"),
-	)
-	if err != nil {
-		panic(err)
+// RegisterMetrics samples RocksDB properties while holding the Store lifecycle
+// lock. An unavailable property is omitted rather than reported as zero.
+func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
+	type observation struct {
+		property string
+		gauge    metric.Int64ObservableGauge
+	}
+	observations := make([]observation, 0, len(rocksDBProperties))
+	instruments := make([]metric.Observable, 0, len(rocksDBProperties))
+	for _, property := range rocksDBProperties {
+		gauge, err := m.Int64ObservableGauge(property.name,
+			metric.WithDescription(property.description), metric.WithUnit(property.unit))
+		if err != nil {
+			return nil, fmt.Errorf("creating %s gauge: %w", property.name, err)
+		}
+		observations = append(observations, observation{property: property.property, gauge: gauge})
+		instruments = append(instruments, gauge)
 	}
 
-	diskSlowDurationMilliseconds, err := m.Int64Histogram(
-		"pebble.disk_slow.duration.milliseconds",
-		metric.WithUnit("ms"),
-		metric.WithDescription("Duration of slow disk operations detected by Pebble"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	flushTotal, err := m.Int64Counter(
-		"pebble.flush.total",
-		metric.WithDescription("Number of Pebble flush operations"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	flushDurMilliseconds, err := m.Int64Histogram(
-		"pebble.flush.duration.milliseconds",
-		metric.WithUnit("ms"),
-		metric.WithDescription("Duration of Pebble flush operations"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	flushInputBytes, err := m.Int64Histogram(
-		"pebble.flush.input.bytes",
-		metric.WithUnit("By"),
-		metric.WithDescription("Input bytes flushed from memtables"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	compactionTotal, err := m.Int64Counter(
-		"pebble.compaction.total",
-		metric.WithDescription("Number of Pebble compaction operations"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	compactionMilliseconds, err := m.Int64Histogram(
-		"pebble.compaction.duration.milliseconds",
-		metric.WithUnit("ms"),
-		metric.WithDescription("Duration of Pebble compactions"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	stallTotal, err := m.Int64Counter(
-		"pebble.write_stall.total",
-		metric.WithDescription("Number of Pebble write stalls"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	stallMilliseconds, err := m.Int64Histogram(
-		"pebble.write_stall.duration.milliseconds",
-		metric.WithUnit("ms"),
-		metric.WithDescription("Duration of Pebble write stalls"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	stallActiveGauge, err := m.Int64Gauge(
-		"pebble.write_stall.active",
-		metric.WithDescription("Whether Pebble is currently stalling writes (1/0)"),
-	)
-	if err != nil {
-		panic(err)
-	}
-
-	var (
-		stallStart time.Time
-		stallOn    bool
-		stallAttrs []attribute.KeyValue
-		mu         sync.Mutex
-		ctx        = context.Background()
-	)
-
-	return &pebble.EventListener{
-		DiskSlow: func(info pebble.DiskSlowInfo) {
-			attrs := []attribute.KeyValue{
-				attribute.String("op", info.OpType.String()),
+	return m.RegisterCallback(func(_ context.Context, observer metric.Observer) error {
+		s.dbMu.RLock()
+		defer s.dbMu.RUnlock()
+		db := s.getDB()
+		if db == nil {
+			return nil
+		}
+		raw := db.Raw()
+		for _, item := range observations {
+			if value, ok := raw.GetIntProperty(item.property); ok && value <= math.MaxInt64 {
+				observer.ObserveInt64(item.gauge, int64(value))
 			}
-
-			diskSlowTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-			diskSlowDurationMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
-		},
-
-		FlushEnd: func(info pebble.FlushInfo) {
-			attrs := []attribute.KeyValue{
-				attribute.String("reason", info.Reason),
-				attribute.String("status", statusFromErr(info.Err)),
-			}
-
-			flushTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-
-			// Prefer info.Duration (CPU+IO), not TotalDuration, for "work time".
-			flushDurMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
-			flushInputBytes.Record(ctx, int64(info.InputBytes), metric.WithAttributes(attrs...))
-		},
-
-		CompactionEnd: func(info pebble.CompactionInfo) {
-			attrs := []attribute.KeyValue{
-				attribute.String("reason", info.Reason),
-				attribute.String("status", statusFromErr(info.Err)),
-			}
-
-			compactionTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-			compactionMilliseconds.Record(ctx, info.Duration.Milliseconds(), metric.WithAttributes(attrs...))
-		},
-
-		WriteStallBegin: func(info pebble.WriteStallBeginInfo) {
-			stallState.OnStallBegin()
-
-			attrs := []attribute.KeyValue{
-				attribute.String("reason", info.Reason),
-			}
-
-			stallTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-			stallActiveGauge.Record(ctx, 1, metric.WithAttributes(attrs...))
-
-			// measure duration until WriteStallEnd
-			mu.Lock()
-			// if Pebble ever triggers nested stalls, keep first start
-			if !stallOn {
-				stallOn = true
-				stallStart = time.Now()
-				stallAttrs = attrs
-			}
-			mu.Unlock()
-		},
-
-		WriteStallEnd: func() {
-			stallState.OnStallEnd()
-
-			mu.Lock()
-			if !stallOn {
-				mu.Unlock()
-				// best effort: still record gauge down with base attrs
-				stallActiveGauge.Record(ctx, 0)
-
-				return
-			}
-
-			start := stallStart
-			attrs := stallAttrs
-			stallOn = false
-			stallAttrs = nil
-			mu.Unlock()
-
-			d := time.Since(start)
-			stallMilliseconds.Record(ctx, d.Milliseconds(), metric.WithAttributes(attrs...))
-			// gauge down (same attrs as begin if possible)
-			stallActiveGauge.Record(ctx, 0, metric.WithAttributes(attrs...))
-		},
-	}
-}
-
-func statusFromErr(err error) string {
-	if err == nil {
-		return "ok"
-	}
-
-	return "error"
+		}
+		return nil
+	}, instruments...)
 }

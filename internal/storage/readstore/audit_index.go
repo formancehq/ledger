@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -214,7 +214,7 @@ func prefixUpperBound(prefix []byte) []byte {
 // shares the prefix). Fixed-width fields (uint64, byte) pass exactLen=0 since
 // their value segment cannot be a prefix of a longer value.
 func auditSeqsForPrefix(reader dal.PebbleReader, lower, upper []byte, exactLen int) ([]uint64, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := reader.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, fmt.Errorf("creating audit index iterator: %w", err)
 	}

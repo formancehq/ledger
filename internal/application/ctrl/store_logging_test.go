@@ -3,7 +3,7 @@ package ctrl
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
+	pebble "github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -13,7 +13,7 @@ import (
 )
 
 func TestScanAccountLogsCompletionAtTrace(t *testing.T) {
-	db, err := pebble.Open(t.TempDir(), &pebble.Options{})
+	db, err := pebble.Open(t.TempDir(), pebble.Options{})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 

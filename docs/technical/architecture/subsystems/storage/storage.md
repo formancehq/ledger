@@ -10,7 +10,7 @@ The Ledger v3 POC system uses multiple storage layers to ensure data durability 
 
 All ledgers share a **single storage layer**, with data organized by ledger name prefixes.
 
-For detailed information on the Pebble storage backend, see [Storage Drivers](storage-drivers.md).
+For detailed information on the RocksDB storage backend, see [Storage Drivers](storage-drivers.md).
 
 ## Storage Architecture
 
@@ -65,7 +65,7 @@ data/
 │   │   └── ...
 │   ├── raft-state.pb                                 # Snapshot state (protobuf)
 │   └── WAL_CREATION_COMPLETED                        # WAL creation marker
-└── runtime/ (Pebble)
+└── runtime/ (RocksDB)
 ```
 
 **Note**: The HardState is persisted inside the etcd WAL itself, not in a separate file.

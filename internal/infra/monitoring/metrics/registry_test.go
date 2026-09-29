@@ -133,8 +133,22 @@ func collectInstrumentNamesFromCode(t *testing.T, root string) []string {
 	// {ns}.last_indexed_sequence, {ns}.{source}_last_sequence, {ns}.lag.
 	tailGaugePattern := regexp.MustCompile(`RegisterTailGauges\([^,]+,\s*"([^"]+)"\s*,\s*"([^"]+)"`)
 	seen := make(map[string]struct{})
+	// DAL registers RocksDB property gauges from a data table, rather than
+	// separate literal constructor calls. Include those literal names here.
+	propertySource, err := os.ReadFile(filepath.Join(root, "storage", "dal", "vfs_metrics.go"))
+	require.NoError(t, err)
+	propertyNames := regexp.MustCompile(`\{"(rocksdb\.[a-z0-9_.]+)"`)
+	for _, m := range propertyNames.FindAllSubmatch(propertySource, -1) {
+		seen[string(m[1])] = struct{}{}
+	}
+	readSource, err := os.ReadFile(filepath.Join(root, "storage", "readstore", "metrics.go"))
+	require.NoError(t, err)
+	readNames := regexp.MustCompile(`name: "(readindex\.[a-z0-9_.]+)"`)
+	for _, m := range readNames.FindAllSubmatch(readSource, -1) {
+		seen[string(m[1])] = struct{}{}
+	}
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+	err = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}

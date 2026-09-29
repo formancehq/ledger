@@ -16,7 +16,7 @@ in [read-consistency-projections.md](../../../audits/read-consistency-projection
 
 Account-to-transaction, source, and destination mappings are immutable history
 and are deliberately retained. Physical deletion across the main and read-store
-Pebble databases is asynchronous; atomicity is expressed by the committed purge
+RocksDB databases is asynchronous; atomicity is expressed by the committed purge
 signal and by withholding aligned progress until its local cascade commits.
 
 Transaction queries by exact address read those retained mappings and therefore
@@ -45,5 +45,5 @@ version at that pin, and ignores membership events committed after it.
 ## Related
 
 - [Read path](../read-path/) — query consumer of the inverted index.
-- [Storage](../storage/) — the read store is a separate Pebble DB with WAL disabled.
+- [Storage](../storage/) — the read store is a separate RocksDB DB with WAL disabled.
 - [Attributes](../attributes/) — the same source attributes the indexer projects from.
