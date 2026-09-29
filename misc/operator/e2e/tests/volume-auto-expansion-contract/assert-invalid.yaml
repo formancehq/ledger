@@ -7,4 +7,4 @@ status:
   (conditions[?type == 'ConfigValid']):
     - status: "False"
       reason: ValidationFailed
-      (contains(message, 'supported only for wal and data')): true
+      (contains(message, 'autoExpansion and hostPath are mutually exclusive')): true

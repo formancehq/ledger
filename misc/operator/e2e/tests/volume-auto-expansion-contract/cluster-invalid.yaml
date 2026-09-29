@@ -8,7 +8,9 @@ spec:
     repository: alpine
     tag: "3"
   persistence:
-    coldCache:
+    wal:
+      hostPath:
+        path: /tmp/ledger-auto-invalid/wal
       autoExpansion:
         enabled: true
         maximumSize: 20Gi
