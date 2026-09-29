@@ -170,7 +170,7 @@ type Machine struct {
 // confChangeHandler is invoked from PrepareEntries for every
 // EntryConfChange* in the in-flight batch (see the field comment on
 // Machine). Must be non-nil.
-func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, clusterID string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
+func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter *CacheSnapshotter, fileArtifacts dal.QueryCheckpoints, sentinel dal.SentinelFactory, meterProvider metric.MeterProvider, ks *keystore.KeyStore, sharedState *SharedState, notifier Notifier, bloomFilters *bloom.FilterSet, auditKey string, numscriptCacheSize int, confChangeHandler func(entry *raftpb.Entry, session *dal.WriteSession) error) (*Machine, error) {
 	sentinelMode := sentinel.IsEnabled()
 	// raft.* metrics describe the consensus engine and follow the
 	// upstream etcd-raft naming convention; numscript.* metrics are
@@ -240,7 +240,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 		keyStore:                       ks,
 		sharedState:                    sharedState,
 		Registry:                       registry,
-		State:                          NewFSMState(clusterID),
+		State:                          NewFSMState(auditKey),
 		queryCheckpointScheduleChanged: signal.New(),
 		bloomRebuildCh:                 make(chan string, 1),
 		auditHashBuf:                   make([]byte, 0, 4096),
@@ -1191,6 +1191,9 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// not allocatable because persisting it would make the next sequence wrap to
 	// zero (EN-1860).
 	if len(proposal.GetOrders()) > 0 {
+		if fsm.State.AuditKey == "" {
+			return nil, errors.New("invariant: audit key is not committed before orders")
+		}
 		if _, exhausted := domain.CheckedNextSequence(fsm.State.NextAuditSequenceID, domain.SequenceCounterAudit); exhausted != nil {
 			return nil, exhausted
 		}

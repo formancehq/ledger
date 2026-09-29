@@ -1,5 +1,10 @@
 # Attributes
 
+Restore preparation removes the source node and cluster IDs but preserves
+`ZoneGlobal/SubGlobAuditKey`. The key is required to verify and continue the
+restored audit history; it is not an attribute projection to rebuild from the
+incremental delta.
+
 System attributes (`internal/infra/attributes`, `internal/infra/cache`, `internal/infra/bloom`) cover the in-memory caches the FSM apply path reads from — volumes, metadata, transactions, references, boundary state, etc. — plus the bloom filters in front of Pebble and the U128 key-hashing scheme used to address them.
 
 ## Documents

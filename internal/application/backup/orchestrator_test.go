@@ -362,6 +362,11 @@ func newTempStore(t *testing.T) *dal.Store {
 	store, err := dal.NewStore(t.TempDir(), logging.FromContext(ctx), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+	// The backup runner starts only after the cluster has committed its
+	// audit key; this fixture represents an initialized empty cluster.
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
+	require.NoError(t, batch.Commit())
 
 	return store
 }

@@ -71,11 +71,11 @@ func TestHashGenerator_Deterministic(t *testing.T) {
 	require.Equal(t, hash1, hash2, "same inputs must produce same hash")
 }
 
-// TestHashGenerator_PerClusterKey pins the security property: two
-// clusters with different ClusterIDs produce different audit hashes
+// TestHashGenerator_PerAuditKey pins the security property: two
+// histories with different audit keys produce different audit hashes
 // for the same orders. An attacker with knowledge of the inputs but
-// not the ClusterID cannot forge a chain entry.
-func TestHashGenerator_PerClusterKey(t *testing.T) {
+// not the audit key cannot forge a chain entry.
+func TestHashGenerator_PerAuditKey(t *testing.T) {
 	t.Parallel()
 
 	for _, algo := range []commonpb.HashAlgorithm{
@@ -88,12 +88,12 @@ func TestHashGenerator_PerClusterKey(t *testing.T) {
 		_, hashA := gA.Compute(nil, nil, testOrderBytes())
 		_, hashB := gB.Compute(nil, nil, testOrderBytes())
 		require.NotEqual(t, hashA, hashB,
-			"algo %s: same inputs under different ClusterIDs must produce different hashes", algo)
+			"algo %s: same inputs under different audit keys must produce different hashes", algo)
 	}
 }
 
 // TestHashGenerator_DomainSeparation pins that the XXH3 and BLAKE3
-// derivations don't share a key value for the same ClusterID — the
+// derivations don't share a key value for the same audit key — the
 // per-algorithm context strings keep them independent.
 func TestHashGenerator_DomainSeparation(t *testing.T) {
 	t.Parallel()
@@ -112,7 +112,7 @@ func TestHashGenerator_DomainSeparation(t *testing.T) {
 		xxh3Seed[i] = byte(xxh3Gen.seed >> (8 * (7 - i)))
 	}
 	require.NotEqual(t, blakePrefix, xxh3Seed,
-		"XXH3 seed and BLAKE3 key must be domain-separated for the same ClusterID")
+		"XXH3 seed and BLAKE3 key must be domain-separated for the same audit key")
 }
 
 // TestHashGenerator_UnknownAlgorithmFallsBackToBLAKE3 pins that any
@@ -132,13 +132,13 @@ func TestHashGenerator_UnknownAlgorithmFallsBackToBLAKE3(t *testing.T) {
 // TestHashGenerator_MixedAlgorithmChain pins that the chain remains
 // verifiable across an algorithm change mid-cluster-lifetime: each
 // entry verifies under a generator constructed from its own
-// HashVersion + the shared ClusterID.
+// HashVersion + the shared audit key.
 func TestHashGenerator_MixedAlgorithmChain(t *testing.T) {
 	t.Parallel()
 
-	const clusterID = "cluster-A"
-	xxh3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, clusterID)
-	blake3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	const auditKey = "0123456789abcdef0123456789abcdef"
+	xxh3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, auditKey)
+	blake3Gen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
 
 	// Entry 1 under XXH3.
 	_, hash1 := xxh3Gen.Compute(nil, nil, testOrderBytes())
@@ -150,7 +150,7 @@ func TestHashGenerator_MixedAlgorithmChain(t *testing.T) {
 
 	// Re-verifying entry 2 with the same generator + the same lastHash
 	// must reproduce hash2 exactly. This is the path the checker walks.
-	verifyGen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	verifyGen := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
 	_, recomputed := verifyGen.Compute(nil, hash1, testOrderBytes()[:1])
 	require.Equal(t, hash2, recomputed)
 }

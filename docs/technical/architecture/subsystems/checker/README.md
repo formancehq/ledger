@@ -1,5 +1,11 @@
 # Checker
 
+The audit-chain checker reads the once-committed random audit key and history
+from the same primary-store snapshot. It fails on a missing or malformed key
+with history and reports a hash mismatch for a different valid key. The key
+travels with restored history independently of the destination cluster ID;
+see [audit-chain.md](audit-chain.md) for the trust boundary.
+
 The checker (`internal/application/check`) is the integrity verification subsystem. It does **not** sit on the request path — it is invoked on demand via gRPC (`BucketService.CheckStore`) and produces a stream of `CheckStoreEvent`s describing any divergence between the persisted projections and what the audit chain says they should hold.
 
 Two pages cover what the checker depends on and what it does.

@@ -426,13 +426,13 @@ func runBootstrapValidation(ctx context.Context, stagingDir string, logger loggi
 	}
 
 	if persisted == nil {
-		return errors.New("staging store has no persisted config; cannot validate audit chain (incomplete or malformed backup?)")
+		return errors.New("staging store has no persisted config (incomplete or malformed backup?)")
 	}
 
 	attrs := attributes.New()
 	// nil readStore: this path validates a local staging store from a backup,
 	// with no peer read-index store, so the reverse-map orphan pass is skipped.
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, logger)
+	checker := check.NewChecker(store, attrs, nil, logger)
 
 	pterm.Info.Println("Validating backup integrity...")
 

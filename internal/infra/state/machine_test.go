@@ -38,6 +38,7 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
+	installTestAuditKey(t, dataStore)
 
 	attrs := attributes.New()
 
@@ -55,6 +56,13 @@ func newTestMachineWithThreshold(t *testing.T, generationThreshold uint64) (*Mac
 	require.NoError(t, NewRecovery(machine, dataStore).RecoverState())
 
 	return machine, dataStore, attrs
+}
+
+func installTestAuditKey(t *testing.T, store *dal.Store) {
+	t.Helper()
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
+	require.NoError(t, batch.Commit())
 }
 
 // installTestClusterPolicy gives a machine the committed policy that apply of a
@@ -801,6 +809,7 @@ func TestNextLedgerIDRecovery(t *testing.T) {
 	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
+	installTestAuditKey(t, dataStore)
 
 	attrs := attributes.New()
 

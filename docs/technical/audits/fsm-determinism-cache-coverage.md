@@ -290,3 +290,14 @@ Use the same clean exact `HEAD` for both passes. Raw and qualified artifacts
 remain under ignored `build/ai-audit/`. Inspect the qualified report before
 reporting confirmed findings. Jira publication is a separate explicitly
 authorized action and is not part of this manifest PR.
+
+## EN-2479 audit-key transition
+
+Treat the 32-byte audit key as ordered Raft input. The leader's `crypto/rand`
+call is outside apply; `TechnicalUpdate_AuditKey` carries bytes that each FSM
+installs once. Prove two replicas receive identical bytes and hashes at the
+same indexes, a second initialization cannot rotate the key, and orders cannot
+commit before the key is durable. Cluster ID is node-local operational identity
+and must not enter audit hashing. A retrying leader may generate a different
+candidate; only the first committed value is authoritative. The adjacent
+persistence audit owns checkpoint and cross-cluster restore parity.

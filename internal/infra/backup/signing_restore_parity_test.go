@@ -25,7 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-const signingParityClusterID = "signing-parity-cluster"
+const signingParityAuditKey = "0123456789abcdef0123456789abcdef"
 
 // signingParityNotifier satisfies state.Notifier for a machine driven straight
 // through ApplyEntries, where nothing consumes the notifications.
@@ -47,6 +47,7 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 	store, err := dal.NewStore(t.TempDir(), logger, meterProvider.Meter("test"), dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+	seedBackupTestAuditKey(t, store)
 
 	attrs := attributes.New()
 
@@ -66,7 +67,7 @@ func newSigningParityMachine(t *testing.T) (*state.Machine, *dal.Store, *attribu
 		state.NewSharedState(),
 		signingParityNotifier{},
 		nil,
-		signingParityClusterID,
+		signingParityAuditKey,
 		0,
 		func(*raftpb.Entry, *dal.WriteSession) error { return nil },
 	)
@@ -289,7 +290,7 @@ func TestBackup_EphemeralPurgeRestoreParity(t *testing.T) {
 	require.NoError(t, handle.Close())
 
 	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(dstStore, dstAttrs, signingParityClusterID, nil, testLogger())
+	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
 	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)
@@ -399,7 +400,7 @@ func TestBackup_SigningCascadeRestoreParity(t *testing.T) {
 	// the restored rows, so agreement here is the audit side of the same claim.
 	var findings []*servicepb.CheckStoreError
 
-	checker := check.NewChecker(dstStore, dstAttrs, signingParityClusterID, nil, testLogger())
+	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
 	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

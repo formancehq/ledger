@@ -15,9 +15,9 @@ type blake3HashGenerator struct {
 	key [32]byte
 }
 
-func newBLAKE3HashGenerator(clusterID string) *blake3HashGenerator {
+func newBLAKE3HashGenerator(auditKey string) *blake3HashGenerator {
 	return &blake3HashGenerator{
-		key: blake3.Sum256([]byte(blake3AuditKeyContext + clusterID)),
+		key: blake3.Sum256([]byte(blake3AuditKeyContext + auditKey)),
 	}
 }
 

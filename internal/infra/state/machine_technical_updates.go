@@ -39,6 +39,22 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 		}
 
 		switch kind := tu.GetKind().(type) {
+		case *raftcmdpb.TechnicalUpdate_AuditKey:
+			if len(kind.AuditKey) != 32 {
+				return fmt.Errorf("technical_updates[%d]: invalid audit key length %d", i, len(kind.AuditKey))
+			}
+			// Two leaders may both propose initialization before observing the
+			// first commit. Raft's first value wins; a later proposal cannot
+			// rotate it or make replicas diverge.
+			if fsm.State.AuditKey == "" {
+				if fsm.State.NextAuditSequenceID != 1 {
+					return fmt.Errorf("technical_updates[%d]: audit key initialized after audit history", i)
+				}
+				if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, kind.AuditKey); err != nil {
+					return fmt.Errorf("persisting audit key: %w", err)
+				}
+				fsm.State.InstallAuditKey(kind.AuditKey)
+			}
 		case *raftcmdpb.TechnicalUpdate_ClusterConfig:
 			if err := fsm.applyClusterConfig(batch, raftIndex, kind.ClusterConfig); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] cluster config: %w", i, err)

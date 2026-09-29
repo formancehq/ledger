@@ -1,6 +1,9 @@
 package state
 
 import (
+	"bytes"
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -72,24 +75,38 @@ type FSMState struct {
 	// path and the readiness gate can read it before any policy is committed.
 	ClusterPolicy *commonpb.ClusterPolicy
 
-	// ClusterID is the immutable identifier injected at boot. Kept here so
-	// rebuilds of HashGenerator (after a ClusterConfig change) have it at
-	// hand without having to plumb it from elsewhere.
-	ClusterID string
+	// AuditKey is the once-committed secret shared by Raft replicas and
+	// restored with the audit history. Empty only before initialization.
+	AuditKey string
 }
 
 // NewFSMState builds a fresh FSMState. Counters start at their canonical
 // initial values; the map is allocated empty.
-func NewFSMState(clusterID string) *FSMState {
-	return &FSMState{
+func NewFSMState(auditKey string) *FSMState {
+	s := &FSMState{
 		NextSequenceID:         1,
 		NextAuditSequenceID:    1,
 		NextLedgerID:           1,
-		HashGenerator:          processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID),
-		ClusterID:              clusterID,
+		AuditKey:               auditKey,
 		ClusterPolicy:          &commonpb.ClusterPolicy{},
 		LiveQueryCheckpointIDs: map[uint64]struct{}{},
 	}
+	if auditKey != "" {
+		s.HashGenerator = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey)
+	}
+
+	return s
+}
+
+// InstallAuditKey is called only after the replicated initialization has been
+// staged in the same durable batch. A later proposal cannot rotate the key.
+func (s *FSMState) InstallAuditKey(key []byte) {
+	s.AuditKey = string(key)
+	algorithm := commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3
+	if s.LastClusterConfig != nil {
+		algorithm = s.LastClusterConfig.GetHashAlgorithm()
+	}
+	s.HashGenerator = processing.NewHashGenerator(algorithm, s.AuditKey)
 }
 
 // UpdateClusterPolicy installs policy as the applied cluster policy. Revision
@@ -117,8 +134,8 @@ func (s *FSMState) AdvanceHLC(proposalDate uint64) uint64 {
 // use the new algorithm. Centralising the rule here guarantees that no call
 // site can swap LastClusterConfig without re-deriving HashGenerator.
 func (s *FSMState) UpdateClusterConfig(cfg *commonpb.ClusterConfig) {
-	if cfg.GetHashAlgorithm() != s.HashGenerator.Algorithm() {
-		s.HashGenerator = processing.NewHashGenerator(cfg.GetHashAlgorithm(), s.ClusterID)
+	if s.HashGenerator != nil && cfg.GetHashAlgorithm() != s.HashGenerator.Algorithm() {
+		s.HashGenerator = processing.NewHashGenerator(cfg.GetHashAlgorithm(), s.AuditKey)
 	}
 
 	s.LastClusterConfig = cfg
@@ -151,13 +168,14 @@ func (s *FSMState) AppendAuditEntry(hash []byte) (uint64, *domain.ErrSequenceExh
 //
 // SnapshotIndex is in-memory only and NOT loaded here: the caller (Recovery
 // at boot, Synchronizer at install-snapshot) carries the right value across
-// the swap. ClusterID is immutable and carried as a parameter.
+// the swap. The audit key is read from the committed store, never from local
+// cluster configuration.
 //
 // Used by Recovery.RecoverState (boot and post-follower-sync) so the load
 // is atomic: any error returns before the Machine is touched, leaving the
 // current state intact instead of half-written.
-func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, clusterID string) (*FSMState, error) {
-	s := NewFSMState(clusterID)
+func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle) (*FSMState, error) {
+	s := NewFSMState("")
 
 	lastAppliedIndex, err := query.ReadLastAppliedIndex(reader)
 	if err != nil {
@@ -193,6 +211,22 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 
 		s.LastAuditHash = lastAuditEntry.GetHash()
 		s.NextAuditSequenceID = next
+	}
+
+	key, err := query.ReadAuditKey(reader)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit key: %w", err)
+	}
+	if key == nil && lastAuditEntry != nil {
+		return nil, errors.New("audit key missing while history exists")
+	}
+	if key != nil {
+		s.InstallAuditKey(key)
+	}
+	if lastAuditEntry != nil {
+		if err := verifyAuditKeyAgainstGenesis(handle, s.AuditKey); err != nil {
+			return nil, fmt.Errorf("audit key does not verify genesis: %w", err)
+		}
 	}
 
 	nextQCPID, err := query.ReadNextQueryCheckpointID(reader)
@@ -244,7 +278,9 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 
 	if clusterState != nil {
 		s.LastClusterConfig = clusterState.GetConfig()
-		s.HashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), clusterID)
+		if s.HashGenerator != nil {
+			s.HashGenerator = processing.NewHashGenerator(clusterState.GetConfig().GetHashAlgorithm(), s.AuditKey)
+		}
 		s.CacheEpoch = clusterState.GetCacheEpoch()
 	}
 
@@ -258,4 +294,41 @@ func LoadFSMStateFromStore(reader dal.RecoveryReader, handle *dal.ReadHandle, cl
 	}
 
 	return s, nil
+}
+
+// verifyAuditKeyAgainstGenesis checks the committed root of the chain at
+// recovery without replaying the whole history. It rejects a replaced key
+// before the node can append under a different secret. Full-history integrity
+// remains the checker's job.
+func verifyAuditKeyAgainstGenesis(handle *dal.ReadHandle, auditKey string) error {
+	entry, err := query.ReadAuditEntry(context.Background(), handle, 1)
+	if err != nil {
+		return fmt.Errorf("reading first audit entry: %w", err)
+	}
+	if entry == nil {
+		return errors.New("first audit entry is missing")
+	}
+	items, err := query.ReadAuditItems(context.Background(), handle, 1)
+	if err != nil {
+		return fmt.Errorf("reading first audit items: %w", err)
+	}
+	if len(items) != int(entry.GetOrderCount()) {
+		return fmt.Errorf("first audit entry has %d items, expected %d", len(items), entry.GetOrderCount())
+	}
+	header, err := BuildHashedHeaderPayload(entry)
+	if err != nil {
+		return fmt.Errorf("building first audit header: %w", err)
+	}
+	parts := make([][]byte, 0, 1+len(items))
+	parts = append(parts, header)
+	for _, item := range items {
+		parts = append(parts, BuildPerItemPayload(item))
+	}
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm(entry.GetHashVersion()), auditKey)
+	_, computed := gen.Compute(nil, nil, parts)
+	if !bytes.Equal(computed, entry.GetHash()) {
+		return errors.New("first audit hash mismatch")
+	}
+
+	return nil
 }

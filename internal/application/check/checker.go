@@ -41,10 +41,9 @@ const progressInterval = 100
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
 type Checker struct {
-	store     *dal.Store
-	attrs     *attributes.Attributes
-	logger    logging.Logger
-	clusterID string
+	store  *dal.Store
+	attrs  *attributes.Attributes
+	logger logging.Logger
 	// readStore gives the reverse-map orphan pass read access to the peer
 	// read-index store. nil at the restore / CLI call sites, where no peer
 	// readstore exists for the staged store being validated — the pass then
@@ -54,18 +53,15 @@ type Checker struct {
 	readStore *readstore.Store
 }
 
-// NewChecker creates a new Checker. clusterID is used to derive the
-// per-cluster key for verifying audit-hash chain entries — it must match
-// the value the FSM used when writing those entries (enforced via
-// PersistedConfig immutability). readStore may be nil when no peer
+// NewChecker creates a new Checker. Audit verification reads the committed
+// secret from the same pinned store snapshot as the history. readStore may be nil when no peer
 // read-index store is available (restore / CLI backup validation); the
 // reverse-map orphan pass is then skipped.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, readStore *readstore.Store, logger logging.Logger) *Checker {
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, readStore *readstore.Store, logger logging.Logger) *Checker {
 	return &Checker{
 		store:     store,
 		attrs:     attrs,
 		logger:    logger,
-		clusterID: clusterID,
 		readStore: readStore,
 	}
 }
@@ -263,7 +259,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// audit entry and recomputes each hash from the stored orders. Populates
 	// expectedSkippable + layers the audit-chain mutations onto chainBound
 	// and the signing orders onto `signing`.
-	auditExpected, err := c.verifyAuditHashChain(ctx, snap, chainBound, folds, callback)
+	auditKey, err := query.ReadAuditKey(snap)
+	if err != nil {
+		return fmt.Errorf("reading audit key for checker: %w", err)
+	}
+	auditHead, err := query.ReadLastAuditEntry(snap)
+	if err != nil {
+		return fmt.Errorf("reading audit head for checker: %w", err)
+	}
+	if auditHead != nil && auditKey == nil {
+		return errors.New("audit key missing while history exists")
+	}
+	auditExpected, err := c.verifyAuditHashChain(ctx, snap, string(auditKey), chainBound, folds, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
@@ -2508,6 +2515,7 @@ type auditVerification struct {
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.PebbleReader,
+	auditKey string,
 	chainBound *chainBoundState,
 	folds chainVerifierFolds,
 	callback func(*servicepb.CheckStoreEvent),
@@ -2519,7 +2527,7 @@ func (c *Checker) verifyAuditHashChain(
 
 	defer func() { _ = auditCursor.Close() }()
 
-	replayer, err := state.NewAuditReplayer(c.logger, c.clusterID)
+	replayer, err := state.NewAuditReplayer(c.logger, auditKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating audit-derived replay: %w", err)
 	}
@@ -2647,7 +2655,7 @@ func (c *Checker) verifyAuditHashChain(
 
 		gen, ok := generators[version]
 		if !ok {
-			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), c.clusterID)
+			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), auditKey)
 			generators[version] = gen
 		}
 

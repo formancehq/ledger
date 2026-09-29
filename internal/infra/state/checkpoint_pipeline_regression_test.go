@@ -45,6 +45,7 @@ func TestPipelinedApplyWithCheckpointDoesNotDiverge(t *testing.T) {
 	dataStore, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = dataStore.Close() })
+	installTestAuditKey(t, dataStore)
 
 	c, err := cache.New(1000, meter)
 	require.NoError(t, err)
