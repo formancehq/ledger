@@ -165,4 +165,21 @@ func TestFormatAccountBalances(t *testing.T) {
 			t.Errorf("expected the error to name the offending asset, got %v", err)
 		}
 	})
+
+	t.Run("without --rescale, absent Volumes container fails", func(t *testing.T) {
+		t.Parallel()
+
+		volumes := []*commonpb.AccountVolume{
+			entry("EUR/2", "", "0", "0", "0"),
+			{Asset: "USD/2"}, // no Volumes container
+		}
+
+		lines, err := formatAccountBalances(volumes, nil)
+		if err == nil {
+			t.Fatalf("expected an invariant error for absent Volumes, got lines %v", lines)
+		}
+		if !strings.Contains(err.Error(), `"USD/2"`) {
+			t.Errorf("expected the error to name the offending asset, got %v", err)
+		}
+	})
 }

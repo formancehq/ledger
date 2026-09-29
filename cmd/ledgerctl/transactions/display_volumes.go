@@ -47,11 +47,29 @@ func renderPostCommitVolumes(pcv *commonpb.PostCommitVolumes, rescale *uint8) er
 			raw := make([]cmdutil.RawVolume, 0, len(vba.GetVolumes()))
 			for _, entry := range vba.GetVolumes() {
 				v := entry.GetVolumes()
+				if v == nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q has no Volumes container",
+						account, entry.GetAsset(), entry.GetColor())
+				}
+				if err := v.Validate(); err != nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q is malformed: %w",
+						account, entry.GetAsset(), entry.GetColor(), err)
+				}
+				inputStr, err := v.GetInput().Dec()
+				if err != nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q input is malformed: %w",
+						account, entry.GetAsset(), entry.GetColor(), err)
+				}
+				outputStr, err := v.GetOutput().Dec()
+				if err != nil {
+					return fmt.Errorf("post-commit volumes: account %s asset %s color %q output is malformed: %w",
+						account, entry.GetAsset(), entry.GetColor(), err)
+				}
 				raw = append(raw, cmdutil.RawVolume{
 					Asset:  entry.GetAsset(),
 					Color:  entry.GetColor(),
-					Input:  v.GetInput().DecimalString(),
-					Output: v.GetOutput().DecimalString(),
+					Input:  inputStr,
+					Output: outputStr,
 				})
 			}
 
