@@ -64,7 +64,11 @@ error after those writes are durable; it does not roll back the committed batch.
 
 ## Antithesis Integration
 
-Some invariant branches also call the Antithesis SDK's `assert.Unreachable()`. All check failures propagate as errors; the missing-volume post-commit branch, for example, returns an error without a dedicated assertion.
+The post-commit checks report missing or changed volumes, aggregate imbalances,
+and residual volumes after ledger deletion through the Antithesis SDK's
+`assert.Unreachable()`. They also return errors, so these failures remain fatal
+to apply or replay. Pebble read errors return errors without asserting that
+data is missing or corrupt.
 
 ## Performance Impact
 

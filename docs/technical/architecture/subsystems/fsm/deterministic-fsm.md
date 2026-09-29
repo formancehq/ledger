@@ -649,7 +649,8 @@ deleted ledger names because the next proposal reuses the `WriteSet` backing
 array. Rejected proposals supply no successful deletion cascade.
 The post-commit aggregate scan also requires a successfully deleted ledger to
 have no volume rows. This catches a partial cascade whose remaining volumes
-are balanced, including when deletion is the only order in a batch.
+are balanced, including when deletion is the only order in a batch. A residual
+row also emits a dedicated Antithesis safety property before the fatal error.
 
 `PrepareEntries` mutates the in-memory FSM, stages writes and captures these
 expectations. `CommitPreparedBatch` commits first, then verifies the pinned

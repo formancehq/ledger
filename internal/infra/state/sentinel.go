@@ -561,6 +561,12 @@ func verifyAggregatedVolumesBalanced(
 			return fmt.Errorf("aggregating volumes for ledger %q at raft index %d: %w", ledgerName, raftIndex, err)
 		}
 		if _, deleted := deletedLedgerNames[ledgerName]; deleted && len(result.GetVolumes()) > 0 {
+			assert.Unreachable("deleted ledger has no volumes after commit", map[string]any{
+				"ledger":              ledgerName,
+				"raftIndex":           raftIndex,
+				"remainingAssetCount": len(result.GetVolumes()),
+			})
+
 			return fmt.Errorf("deleted ledger %q still has volumes after commit at raft index %d", ledgerName, raftIndex)
 		}
 

@@ -115,6 +115,7 @@ failures. No assertion adds a storage read to the FSM apply path.
 | `linearizable query snapshot covers its read barrier` | A main-store snapshot is below the query's established read barrier. |
 | `linearizable audit snapshot covers its read barrier` | The separate audit-read snapshot guard detects the same violation. |
 | `committed volume is present in pebble` | A successful sentinel read finds a required post-commit volume absent. An I/O error does not establish absence. |
+| `deleted ledger has no volumes after commit` | The post-commit aggregate scan finds volume rows for a successfully deleted ledger. |
 | `posting has a volume update` | An expected posting key is missing from logical updates. |
 | `volume delta matches posting quantities` | Gross input/output changes differ from the postings. |
 | `nonzero volume delta is explained by postings` | An additional nonzero update has no posting, including an unrelated balanced pair. |
