@@ -683,13 +683,13 @@ config:
     compactionMargin: 1000      # Minimum WAL entries retained after compaction (default: 1000)
 ```
 
-> **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a Pebble checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
+> **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a RocksDB checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
 >
 > **Tuning compaction margin**: The `compactionMargin` controls how many WAL entries are retained after compaction, allowing followers that are slightly behind to catch up without needing a full snapshot transfer. Increase this value if followers frequently fall behind.
 
 ### Configuration Safety Checks at Startup
 
-The server persists critical configuration parameters in Pebble under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
+The server persists critical configuration parameters in RocksDB under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
 
 #### Persisted Parameters
 
@@ -715,6 +715,10 @@ The idempotency TTL is **not** a persisted-config parameter: it lives in the Raf
 Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id` and `cluster-id` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches and a cluster policy missing its metadata size limits are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
 ### Upgrading from pre-#400 clusters
+
+This historical pre-release procedure does not migrate storage to RocksDB.
+Ledger v3 now requires a fresh RocksDB data directory; no Pebble data or backup
+conversion is provided before the first stable v3 release.
 
 This refactor changes two things that are not backward-compatible with persisted state from older binaries:
 
@@ -780,7 +784,7 @@ What the keying protects against:
 
 What the keying does **not** protect against:
 
-- An attacker who has obtained the persisted Pebble store (a leaked backup, a compromised node, a malicious operator) can read the `cluster-id` directly from `PersistedConfig` and recompute the entire chain after modifying orders. The keying buys nothing in that scenario.
+- An attacker who has obtained the persisted RocksDB store (a leaked backup, a compromised node, a malicious operator) can read the `cluster-id` directly from `PersistedConfig` and recompute the entire chain after modifying orders. The keying buys nothing in that scenario.
 
 If true tamper-evidence is required (e.g., regulated audit log integrity, third-party verification of leaked backups), configure the cluster's `HashAlgorithm` to `BLAKE3` instead of `XXH3`. BLAKE3 is collision-resistant by construction, so an attacker cannot replace orders with crafted inputs that hash to the same value — but the chain itself can still be replayed from any tampered point onward unless the key is moved to an out-of-store trust anchor (HSM, environment variable, external secret). That move is out of scope for this PoC.
 

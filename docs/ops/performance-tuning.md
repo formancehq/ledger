@@ -76,7 +76,7 @@ send [USD/2 500] (
 
 ## 2. Account Address Design
 
-Account addresses directly impact cache efficiency, storage size, and key hashing performance. The address is encoded into every Pebble key and every cache lookup.
+Account addresses directly impact cache efficiency, storage size, and key hashing performance. The address is encoded into every RocksDB key and every cache lookup.
 
 ### 2.1. Use Monotonic Segments
 
@@ -95,14 +95,14 @@ a3f8e2b1-9c4d-4e7a-b5f6-1234567890ab
 7b2c9d4e-5f6a-8b3c-d4e5-abcdef012345
 ```
 
-**Why:** Pebble is an LSM-tree. Keys with shared prefixes compact better and range scans (used for balance reconstruction and account listing) are more efficient. Sequential or monotonic suffixes keep related data physically close on disk.
+**Why:** RocksDB is an LSM-tree. Keys with shared prefixes compact better and range scans (used for balance reconstruction and account listing) are more efficient. Sequential or monotonic suffixes keep related data physically close on disk.
 
 If you use UUID-based addresses, prefer **UUIDv7** (time-ordered) over UUIDv4 (random) to preserve temporal locality.
 
 ### 2.2. Keep Segments Short
 
 Every byte of the account address is stored in:
-- Every Pebble key (volume entries, metadata entries)
+- Every RocksDB key (volume entries, metadata entries)
 - Every cache key (hashed, but the input size affects hash time)
 - Every protobuf message (Raft entries, snapshots, gRPC responses)
 - Every Numscript execution context
@@ -126,7 +126,7 @@ At 100K tx/s with 2 postings per transaction, that's 200K key lookups/writes per
 ### 2.3. Minimize Account Cardinality per Numscript
 
 Each distinct account in a Numscript execution requires:
-1. Cache lookup (or Pebble preload if not cached)
+1. Cache lookup (or RocksDB preload if not cached)
 2. Lock acquisition during admission (canonical ordering)
 3. Volume tracking in the FSM
 
@@ -216,40 +216,40 @@ send $amount (
 
 ### 5.1. Storage: Fast Disk for WAL
 
-The Raft WAL writes are **synchronous and on the critical path** of every write operation. Place the WAL directory on a fast NVMe/SSD. If possible, use **separate disks** for WAL and Pebble data to avoid I/O contention.
+The Raft WAL writes are **synchronous and on the critical path** of every write operation. Place the WAL directory on a fast NVMe/SSD. If possible, use **separate disks** for WAL and RocksDB data to avoid I/O contention.
 
-### 5.2. Pebble Configuration
+### 5.2. RocksDB Configuration
 
 The default configuration is tuned for write-heavy workloads:
 
 | Parameter | Default | Purpose |
 |-----------|---------|---------|
 | MemTableSize | 256 MB | Larger memtables → fewer flushes |
-| L0CompactionThreshold | 4 | Low threshold: Pebble auto-compacts aggressively, keeping L0 clean |
+| L0CompactionThreshold | 4 | Low threshold: RocksDB auto-compacts aggressively, keeping L0 clean |
 | L0StopWritesThreshold | 16 | ~4x ratio above compaction threshold |
 | LBaseMaxBytes | 2 GB | Large L1 reduces write amplification |
 | CacheSize | 1 GB | Block cache for read performance |
 | MaxConcurrentCompactions | 2 | Parallel compaction threads |
 
-**L0 compaction and cold starts:** The low `L0CompactionThreshold` (4) ensures Pebble keeps L0 clean natively, so L0 files never accumulate excessively. Combined with the extended block cache warmup covering `[0xF1, 0xFF)` on startup, cold start read latency is minimal without needing manual startup or periodic compaction.
+**L0 compaction and cold starts:** The low `L0CompactionThreshold` (4) ensures RocksDB keeps L0 clean natively, so L0 files never accumulate excessively. Combined with the extended block cache warmup covering `[0xF1, 0xFF)` on startup, cold start read latency is minimal without needing manual startup or periodic compaction.
 
 Monitor these metrics for write stalls:
 ```promql
-increase(pebble_write_stall_total[5m]) > 0
+max_over_time(rocksdb_write_stopped[5m]) > 0
 ```
 
 ### 5.3. Generation Rotation Threshold
 
 The `GenerationRotationThreshold` (`K`) controls how many Raft entries fit in one cache generation. Any account touched in the last `~2K` entries is guaranteed in RAM.
 
-- **Larger K**: More accounts in RAM, fewer Pebble preloads. More memory usage.
+- **Larger K**: More accounts in RAM, fewer RocksDB preloads. More memory usage.
 - **Smaller K**: Less memory, but more preloads for moderately active accounts.
 
 Default is appropriate for most workloads. Increase if admission preload metrics (`admission.preload.duration`) show high latency.
 
 ### 5.4. Bloom Filters
 
-Application-level bloom filters sit in front of Pebble and short-circuit point lookups for keys that definitely don't exist. This is especially valuable when Pebble is on network-attached storage (e.g., Ceph RBD) where each miss costs ~1ms.
+Application-level bloom filters sit in front of RocksDB and short-circuit point lookups for keys that definitely don't exist. This is especially valuable when RocksDB is on network-attached storage (e.g., Ceph RBD) where each miss costs ~1ms.
 
 Each attribute type has its own filter with independent `expected-keys` and `fp-rate` settings. Types with `expected-keys=0` are disabled (no memory allocated).
 
@@ -270,14 +270,14 @@ Each attribute type has its own filter with independent `expected-keys` and `fp-
 | Prepared queries | 0 | — | No |
 | Index registry | 0 | — | No |
 
-Bloom filters are disabled by default. Enable only the attribute types that are expected to avoid enough missing-key Pebble reads to justify the memory cost.
+Bloom filters are disabled by default. Enable only the attribute types that are expected to avoid enough missing-key RocksDB reads to justify the memory cost.
 
 **Tuning guidelines:**
 
 - Set `expected-keys` from the live keys loaded during a rebuild plus distinct keys expected before the next rebuild, or define a monitored resize/rebuild policy. Deleted keys leave their bits set until a rebuild, so churn also consumes the filter's effective capacity. Over-estimating wastes memory; under-estimating increases false positives.
 - A lower `fp-rate` reduces false positives but increases memory usage. The default 1% is a good starting point.
-- Monitor `bloom.negatives` (Pebble Gets avoided) and `bloom.lookups` (total checks). A high negatives/lookups ratio means the filter is effective.
-- Changing Bloom configuration purges the old blocks and triggers a full asynchronous repopulation from Pebble. While `bloom.ready` is `0`, preloads safely bypass the optimization. Persisted blocks make an unchanged restart cheaper than a full scan.
+- Monitor `bloom.negatives` (RocksDB Gets avoided) and `bloom.lookups` (total checks). A high negatives/lookups ratio means the filter is effective.
+- Changing Bloom configuration purges the old blocks and triggers a full asynchronous repopulation from RocksDB. While `bloom.ready` is `0`, preloads safely bypass the optimization. Persisted blocks make an unchanged restart cheaper than a full scan.
 
 See [Deployment Profiles and Sizing](./deployment-profiles.md#enable-application-bloom-filters-only-with-a-cardinality-plan) for the per-workload decision matrix and memory examples, and [CLI Reference](./cli.md#server-bloom-filter-flags) for all flags.
 
@@ -317,7 +317,7 @@ Admission (leader, parallel)
     ├─ Numscript parse (cached via blake3 hash)
     ├─ Account lock (canonical order, fine-grained)
     ├─ Cache check: gen0 ∪ gen1 (RAM)
-    ├─ Preload from Pebble (only for uncached accounts)
+    ├─ Preload from RocksDB (only for uncached accounts)
     ├─ Proposal marshal (vtprotobuf + sync.Pool buffer)
     │
     ▼
@@ -328,24 +328,24 @@ FSM Apply (all nodes, sequential, RAM-only)
     ├─ Proposal unmarshal (vtprotobuf)
     ├─ Balance check: base@boundary + overlay delta
     ├─ Amounts: uint256 stack variables (zero allocation)
-    ├─ Volume diffs: append to Pebble batch (no sync)
+    ├─ Volume diffs: append to RocksDB batch (no sync)
     ├─ Order hash: reusable buffer (zero allocation)
     │
     ▼
-Pebble Batch Commit (single commit per batch of entries)
+RocksDB Batch Commit (single commit per batch of entries)
 ```
 
 ### Key Design Decisions
 
 | Decision | Impact |
 |----------|--------|
-| **RAM-only FSM Apply** | No Pebble reads during apply. All data comes from cache or preload. |
+| **RAM-only FSM Apply** | No RocksDB reads during apply. All data comes from cache or preload. |
 | **Uint256 wire format** | 4 x `uint64` assignments instead of `big.Int` heap allocations. Zero-alloc on hot path. |
 | **vtprotobuf** | ~2-3x faster serialization than standard protobuf. Registered transparently server-side. |
 | **64-shard concurrent map** | Cache-line padded shards with per-shard RWMutex. ~1.6% reader-writer collision probability. |
 | **XXH3 for cache keys** | 13ns vs 205ns (BLAKE3). 16x faster for non-cryptographic hashing. |
 | **Append-only volume entries** | No row-level locks. Hot accounts don't create contention. Last-write-wins semantics. |
-| **Old entry cleanup at merge** | Runs in same Pebble batch as generation rotation. No background goroutine. |
+| **Old entry cleanup at merge** | Runs in same RocksDB batch as generation rotation. No background goroutine. |
 
 ---
 
@@ -357,7 +357,7 @@ Read operations (`GetLedger`, `ListAccounts`, `GetTransaction`, `GetBalances`) a
 
 ### Balance Reconstruction
 
-Current balance = `base + latest cumulative diff`. Pebble range scans are efficient for this pattern. Volume diffs are compacted at generation boundaries to keep the number of entries bounded (~2K per account/asset).
+Current balance = `base + latest cumulative diff`. RocksDB range scans are efficient for this pattern. Volume diffs are compacted at generation boundaries to keep the number of entries bounded (~2K per account/asset).
 
 ---
 
@@ -369,10 +369,10 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 | `admission.preload.duration` | High latency | Increase generation threshold K |
 | `admission.preload.cache_hits` | Low hit rate | Review account access patterns |
 | `raft.apply_entries.duration` p99 | > 50ms | Check disk I/O, compaction backlog |
-| `pebble_write_stall_total` | Any increase | Add disk IOPS, tune compaction |
+| `rocksdb.write.stopped` | Nonzero | Add disk IOPS, tune compaction |
 | `cache.rotations` | Frequency | Informational: correlates with K |
 | `bloom.negatives` / `bloom.lookups` | Low ratio per type | Filter not effective for that type — consider disabling it |
-| `bloom.ready` | 0 after startup | Filter still populating — preloads fall back to Pebble |
+| `bloom.ready` | 0 after startup | Filter still populating — preloads fall back to RocksDB |
 | Memory usage | Sustained growth | Check generation size, snapshot frequency |
 
 ---
@@ -399,7 +399,7 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 - [Deterministic FSM Cache](../technical/architecture/subsystems/fsm/deterministic-fsm.md) - Cache and preload architecture
 - [Uint256 Wire Format](../technical/architecture/primitives/uint256-wire-format.md) - Zero-allocation monetary amounts
 - [Attribute Key Hashing](../technical/architecture/subsystems/attributes/key-hashing.md) - XXH3 vs BLAKE3 performance
-- [Storage Drivers](../technical/architecture/subsystems/storage/storage-drivers.md) - Pebble configuration details
+- [Storage Drivers](../technical/architecture/subsystems/storage/storage-drivers.md) - RocksDB configuration details
 - [Metrics Reference](./monitoring.md) - Complete metrics catalog and alerting rules
 - [Deployment Guide](./deployment.md) - Production deployment recommendations
 - [V2 Problems Solved](../sales/v2-vs-v3.md) - Hot account contention eliminated

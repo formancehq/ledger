@@ -16,10 +16,10 @@ panels.row('Applier', 164, [
       
       This is where transactions are actually processed and balances updated. High values indicate:
       - Complex transactions taking longer
-      - Storage (Pebble) write bottlenecks
+      - Storage write bottlenecks
       - High transaction volume
       
-      Correlate with 'Applying entries rate' and Pebble metrics.
+      Correlate with 'Applying entries rate' and RocksDB metrics.
       
       See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics
    |||,

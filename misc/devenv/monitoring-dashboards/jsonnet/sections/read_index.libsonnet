@@ -1,16 +1,16 @@
-// Read Index (Pebble) section — auto-scaffolded from the Grafana export.
+// Read Index (RocksDB) section — auto-scaffolded from the Grafana export.
 // Edit freely: panel constructors live in ../lib/panels.libsonnet.
 
 local panels = import '../lib/panels.libsonnet';
 
-panels.row('Read Index (Pebble)', 166, [
+panels.row('Read Index (RocksDB)', 166, [
   panels.timeseries(
     'Level Sizes (stacked)',
     { h: 8, w: 12, x: 0, y: 1 },
     [
       { expr: 'readindex.level.bytes{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Node {{service.node_id}} — L{{level}}' },
     ], unit='bytes',
-    description='Total bytes stored in each Pebble LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.', opts={ stackMode: 'normal', fillOpacity: 20 },
+    description='Total bytes stored in each read-index LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.', opts={ stackMode: 'normal', fillOpacity: 20 },
   ),
 
   panels.timeseries(

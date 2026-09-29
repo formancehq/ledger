@@ -13,10 +13,9 @@
 Releases publish platform archives on
 [GitHub](https://github.com/formancehq/ledger/releases):
 
-- Linux/macOS: `ledger_linux-amd64.tar.gz`, `ledger_darwin-arm64.tar.gz`, and the corresponding architectures. These archives contain `ledger-server` and `ledgerctl`.
-- Windows: `ledger_windows-amd64.zip` and `ledger_windows-arm64.zip`. These archives contain `ledgerctl.exe` only.
+- Linux: `ledger_linux-amd64.tar.gz` and `ledger_linux-arm64.tar.gz`. These archives contain `ledger-server` and `ledgerctl`.
 
-Extract the archive and put `ledgerctl` or `ledgerctl.exe` on your `PATH`. Prefer
+Extract the archive and put `ledgerctl` on your `PATH`. Prefer
 the CLI distributed with the deployed server build. `ledgerctl upgrade` selects
 the latest release in a channel, which may use a different protocol from that
 server.
@@ -1938,7 +1937,7 @@ This is useful for monitoring deployed nodes and spotting version skew across a 
 
 ### store dump
 
-Offline dump of the Pebble store contents. This is a diagnostic tool that reads the store directly without starting a server.
+Offline dump of the RocksDB store contents. This is a diagnostic tool that reads the store directly without starting a server.
 
 ```bash
 ledgerctl store dump <data-dir> [flags]
@@ -1980,7 +1979,9 @@ Storage operations.
 
 #### store primary metrics
 
-Get metrics from the primary Pebble storage engine.
+Get metrics from the primary RocksDB storage engine.
+The response keeps the existing metrics envelope; only fields with direct
+RocksDB equivalents are populated.
 
 **Aliases:** `store p m`
 
@@ -2011,7 +2012,7 @@ ledgerctl store primary metrics --node-id 2
 
 #### store secondary metrics
 
-Get metrics from the secondary (read index) Pebble store.
+Get metrics from the secondary (read index) RocksDB store.
 
 ```bash
 ledgerctl store secondary metrics [flags]
@@ -2080,7 +2081,7 @@ ledgerctl store check --json
 
 #### store primary compact
 
-Trigger a synchronous compaction of the primary Pebble store. Useful after bulk deletes or before taking a backup.
+Trigger a synchronous compaction of the primary RocksDB store. Useful after bulk deletes or before taking a backup.
 
 **Aliases:** `store p gc`
 
@@ -2115,7 +2116,7 @@ ledgerctl s p gc
 
 #### store secondary compact
 
-Trigger an online compaction of the secondary (read index) Pebble store.
+Trigger an online compaction of the secondary (read index) RocksDB store.
 
 ```bash
 ledgerctl store secondary compact [flags]
@@ -2129,7 +2130,7 @@ ledgerctl store secondary compact [flags]
 | `--timeout` | `50s` | Request timeout |
 
 **Behavior:**
-- Compacts the read index Pebble store on the connected node
+- Compacts the read index RocksDB store on the connected node
 - Returns the wall-clock duration and size before/after
 
 **Example:**
@@ -2144,7 +2145,7 @@ ledgerctl store secondary compact --json
 
 #### store checkpoint
 
-Create a Pebble checkpoint of the current live database state. Checkpoints are used for follower sync and as a safety fallback.
+Create a RocksDB checkpoint of the current live database state. Checkpoints are used for follower sync and as a safety fallback.
 
 **Aliases:** `cp`
 
@@ -2160,7 +2161,7 @@ ledgerctl store checkpoint [flags]
 | `--timeout` | `10s` | Request timeout |
 
 **Behavior:**
-- Creates a new Pebble checkpoint from the current `live/` directory (node-local, not forwarded to leader)
+- Creates a new RocksDB checkpoint from the current `live/` directory (node-local, not forwarded to leader)
 - Returns the new checkpoint ID
 
 **Example:**
@@ -2178,7 +2179,7 @@ ledgerctl s cp
 
 #### store backup
 
-Perform a full checkpoint backup of the Pebble store to S3 or Azure Blob Storage. The request is forwarded to the cluster leader because SST file numbering is node-local.
+Perform a full checkpoint backup of the RocksDB store to S3 or Azure Blob Storage. The request is forwarded to the cluster leader because SST file numbering is node-local.
 
 Both `store backup` and `store incremental-backup` accept static S3 credentials
 through `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY`, the existing environment
@@ -2211,7 +2212,7 @@ ledgerctl store backup [flags]
 | `--timeout` | `1000s` | Request timeout |
 
 **Behavior:**
-- Creates a fresh Pebble checkpoint on the leader node
+- Creates a fresh RocksDB checkpoint on the leader node
 - Diffs SST files against the previous checkpoint in the manifest
 - Uploads new/changed files, deletes stale files
 - Cleans up old incremental export segments (they become obsolete)
@@ -2263,7 +2264,7 @@ ledgerctl store incremental-backup [flags]
 
 **Behavior:**
 - Requires a prior full backup (fails if no checkpoint exists in manifest)
-- Takes a point-in-time Pebble snapshot for consistent reads
+- Takes a point-in-time RocksDB snapshot for consistent reads
 - Streams new log entries (`{0x04, 0x01}`) and audit entries (`{0x04, 0x02}`) as KV stream segments
 - Appends new export segments to the manifest
 - No-op if no new entries since last export
@@ -2329,7 +2330,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket <bucket> --data-dir /path/to/d
 1. Verifies the target data directory is fresh (no existing checkpoints via `ScanLatestCheckpointID`)
 2. Downloads backup files from the configured backend into a staging directory
 3. Applies export segments and rebuilds derived state from logs (if any)
-4. Opens the staging as a read-only Pebble database and displays a preview (ledger count, timestamps)
+4. Opens the staging as a read-only RocksDB database and displays a preview (ledger count, timestamps)
 5. If `--validate` is set, runs the full integrity checker (same as `store check`); aborts before finalizing if any integrity error is found
 6. Prompts for confirmation (unless `--yes`)
 7. Prepares attributes for backup (Global-zone resets): preserves the applied index as the genesis boundary (the WAL-snapshot index the restored genesis occupies, so joiners must sync a checkpoint; fallback 1 for a genesis checkpoint), strips persisted config, drops persisted bloom blocks; the attribute zone is left intact
@@ -2358,7 +2359,7 @@ ledgerctl store bootstrap --driver azure --azure-account-name myaccount --azure-
 
 ### store rebuild-audit-index
 
-Rebuild the Pebble audit secondary index from the Audit zone. This is a purely offline operation — no server needed. Use this after corruption or a restore when the audit index is missing or out of date.
+Rebuild the RocksDB audit secondary index from the Audit zone. This is a purely offline operation — no server needed. Use this after corruption or a restore when the audit index is missing or out of date.
 
 ```bash
 ledgerctl store rebuild-audit-index --data-dir /path/to/data [flags]
@@ -2368,14 +2369,14 @@ ledgerctl store rebuild-audit-index --data-dir /path/to/data [flags]
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--data-dir` | | Pebble data directory (required) |
+| `--data-dir` | | RocksDB data directory (required) |
 | `--read-index-dir` | | Read index output directory (default: `<data-dir>/read-indexes/`) |
-| `--audit-index-batch-size` | `1000` | Audit entries per Pebble batch commit (0 = default 1000) |
+| `--audit-index-batch-size` | `1000` | Audit entries per RocksDB batch commit (0 = default 1000) |
 
 **Behavior:**
 
-1. Opens the Pebble data directory in read-only mode
-2. Opens or creates the Pebble read index database
+1. Opens the RocksDB data directory in read-only mode
+2. Opens or creates the RocksDB read index database
 3. Drops the existing audit secondary index, then replays all entries from the Audit zone, rebuilding the index from scratch
 
 **Example:**
@@ -3871,7 +3872,7 @@ Skips the startup configuration safety checks that prevent accidental changes to
 |------|---------|-------------|
 | `--unsafe-skip-config-validation` | `false` | Skip startup configuration safety checks (DANGEROUS) |
 
-On first boot, the server persists `node-id` and `cluster-id` into Pebble. On subsequent boots, the server compares these values against the current flags and refuses to start if they differ. This prevents silent data corruption from accidentally pointing a node at the wrong data directory or changing identity.
+On first boot, the server persists `node-id` and `cluster-id` into RocksDB. On subsequent boots, the server compares these values against the current flags and refuses to start if they differ. This prevents silent data corruption from accidentally pointing a node at the wrong data directory or changing identity.
 
 **When to use this flag:**
 - After intentionally changing `node-id` or `cluster-id` (e.g., migrating data between clusters)
@@ -3893,9 +3894,9 @@ Enables sentinel mode: runtime volume consistency assertions that verify correct
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--sentinel-mode` | `false` | Enable runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification) |
+| `--sentinel-mode` | `false` | Enable runtime volume consistency assertions (monotonicity, delta/posting cross-check, post-commit cache/RocksDB verification) |
 
-When enabled, four checks run in the write path: volume monotonicity, delta/posting cross-check, aggregated volume balance, and post-commit cache/Pebble verification. Intended for testing and staging environments.
+When enabled, four checks run in the write path: volume monotonicity, delta/posting cross-check, aggregated volume balance, and post-commit cache/RocksDB verification. Intended for testing and staging environments.
 
 ```bash
 # Enable sentinel mode
@@ -3966,7 +3967,7 @@ contract](../technical/architecture/subsystems/admission/metadata-limits.md).
 
 ### Server Bloom Filter Flags
 
-Application-level bloom filters that avoid Pebble reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
+Application-level bloom filters that avoid RocksDB reads for keys known not to exist. Each attribute type has its own filter with independent sizing. Set `expected-keys` to `0` to disable a type.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -3995,7 +3996,7 @@ Application-level bloom filters that avoid Pebble reads for keys known not to ex
 | `--bloom-indexes-expected-keys` | uint | `0` | Expected unique index registry keys (0 = disabled by default) |
 | `--bloom-indexes-fp-rate` | float64 | `0` | False positive rate for index registry entries (0 = use 0.01 when enabled) |
 
-Bloom filters are disabled by default. Enable only the attribute types that avoid enough missing-key Pebble reads to justify the memory cost.
+Bloom filters are disabled by default. Enable only the attribute types that avoid enough missing-key RocksDB reads to justify the memory cost.
 
 ```bash
 # Default config (all bloom filters disabled)
@@ -4015,7 +4016,7 @@ ledger run --bloom-volumes-expected-keys 32000000 \
 
 Changing Bloom configuration purges the old blocks and triggers a full
 asynchronous repopulation scan. While the filter is not ready, preloads safely
-fall back to Pebble. See
+fall back to RocksDB. See
 [Deployment Profiles and Sizing](./deployment-profiles.md#enable-application-bloom-filters-only-with-a-cardinality-plan)
 before choosing a capacity: a fixed-size filter needs either a reliable bound
 between rebuilds or an explicit resize policy.
@@ -4077,11 +4078,11 @@ Clients can also discover the server's public key via the `Discovery` RPC.
 
 ### Server Read Index Flags
 
-The Pebble-based read index store is always active. An index builder tails the system logs and populates inverted indexes in a separate Pebble database. The read index is used for prepared queries and listing operations (accounts, transactions). WAL is disabled because the index is a derived view that can be rebuilt from Raft logs.
+The RocksDB-based read index store is always active. An index builder tails the system logs and populates inverted indexes in a separate RocksDB database. The read index is used for prepared queries and listing operations (accounts, transactions). WAL is disabled because the index is a derived view that can be rebuilt from Raft logs.
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--read-index-dir` | string | `""` | Directory for the Pebble read index database (default: `<data-dir>/read-indexes/`) |
+| `--read-index-dir` | string | `""` | Directory for the RocksDB read index database (default: `<data-dir>/read-indexes/`) |
 | `--read-index-batch-size` | int | `1000` | Log entries per write batch. Larger batches reduce flush frequency but use more memory per batch. |
 | `--read-index-memtable-size` | ByteSize | `64Mi` | Read index memtable size |
 | `--read-index-memtable-stop-writes-threshold` | int | `4` | Read index memtable count before stopping writes |
@@ -4093,7 +4094,7 @@ The Pebble-based read index store is always active. An index builder tails the s
 | `--read-index-bytes-per-sync` | ByteSize | `512Ki` | Read index bytes written before sync |
 | `--read-index-max-concurrent-compactions` | int | `1` | Read index max concurrent compactions |
 | `--read-index-compression` | string | `fastest,...,fast,fast,balanced` | Read index per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
-| `--audit-index-batch-size` | int | `1000` | Audit entries per Pebble batch commit when building the audit secondary index (0 = default 1000). |
+| `--audit-index-batch-size` | int | `1000` | Audit entries per RocksDB batch commit when building the audit secondary index (0 = default 1000). |
 | `--disable-audit-index` | bool | `false` | Disable the audit secondary index worker. When set, no audit index is built or maintained. |
 
 ```bash
@@ -4123,9 +4124,11 @@ Offline read-index rebuild is not available in Ledger v3.0. A generic projection
 
 ---
 
-### Server Pebble Storage Flags
+### Server RocksDB Storage Flags
 
-Tune the Pebble (LSM-tree) storage engine. Size flags accept Kubernetes-style quantities (e.g., `256Mi`, `1Gi`, `512Ki`).
+Tune the RocksDB (LSM-tree) storage engine. The existing CLI flag names retain
+the `pebble` prefix. Size flags accept Kubernetes-style quantities (e.g.,
+`256Mi`, `1Gi`, `512Ki`).
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
@@ -4139,27 +4142,21 @@ Tune the Pebble (LSM-tree) storage engine. Size flags accept Kubernetes-style qu
 | `--pebble-bytes-per-sync` | ByteSize | `1Mi` | Bytes written before sync during flush/compaction |
 | `--pebble-wal-bytes-per-sync` | ByteSize | `1Mi` | WAL bytes written before sync |
 | `--pebble-max-concurrent-compactions` | int | `2` | Maximum concurrent compactions |
-| `--pebble-wal-min-sync-interval` | duration | `0` | Minimum interval between WAL syncs (0 = immediate) |
-| `--pebble-disable-wal` | bool | `false` | Disable WAL entirely (WARNING: risks data loss) |
-| `--pebble-max-checkpoints` | int | `10` | Maximum number of Pebble checkpoints to keep |
-| `--pebble-wal-failover-dir` | string | _(empty)_ | Secondary WAL directory for automatic failover on primary disk latency spikes. Set to a path on a different volume for best results. |
+| `--pebble-wal-min-sync-interval` | duration | `0` | Nonzero values are rejected by the RocksDB store. |
+| `--pebble-disable-wal` | bool | `false` | Enabling this is rejected for the durable primary store. |
+| `--pebble-max-checkpoints` | int | `10` | Maximum number of RocksDB checkpoints to keep |
+| `--pebble-wal-failover-dir` | string | _(empty)_ | Nonempty values are rejected by the RocksDB store. |
 | `--pebble-compression` | string | `fastest,...,fast,fast,balanced` | Per-level compression L0-L6, comma-separated (`none\|snappy\|zstd\|fastest\|fast\|balanced\|good\|default`) |
-| `--pebble-value-separation` | bool | `false` | Enable value separation (large values stored in blob files) |
-| `--pebble-value-separation-min-size` | ByteSize | `256` | Minimum value size (bytes) for separation into blob files |
-| `--pebble-value-separation-max-depth` | int | `4` | Max blob reference depth per SSTable |
-| `--pebble-value-separation-rewrite-age` | duration | `1h` | Minimum blob file age before rewrite |
-| `--pebble-value-separation-garbage-ratio` | float64 | `0.20` | Blob garbage ratio before rewrite (0.20 = 20%) |
+| `--pebble-value-separation` | bool | `false` | Enabling this is rejected by the RocksDB store. |
+| `--pebble-value-separation-min-size` | ByteSize | `256` | Inactive while value separation is disabled. |
+| `--pebble-value-separation-max-depth` | int | `4` | Inactive while value separation is disabled. |
+| `--pebble-value-separation-rewrite-age` | duration | `1h` | Inactive while value separation is disabled. |
+| `--pebble-value-separation-garbage-ratio` | float64 | `0.20` | Inactive while value separation is disabled. |
 
-Value separation moves large values into external blob files instead of storing them inline in SSTables. This reduces compaction I/O for write-heavy workloads at the cost of slightly higher read amplification.
+The RocksDB adapter does not currently enable value separation or automatic
+WAL failover. Do not set these options in a Ledger v3 deployment.
 
 ```bash
-# Enable value separation with defaults
-ledger run --pebble-value-separation [other flags...]
-
-# Tune value separation for larger values
-ledger run --pebble-value-separation --pebble-value-separation-min-size 1Ki \
-  --pebble-value-separation-garbage-ratio 0.10
-
 # Use zstd compression on all levels
 ledger run --pebble-compression "zstd,zstd,zstd,zstd,zstd,zstd,zstd" [other flags...]
 
@@ -4183,7 +4180,7 @@ Tune the Raft consensus layer. These flags control election timing, message size
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `--raft-compaction-margin` | uint64 | `1000` | Minimum log entries between snapshots (0 = use default 1000) |
-| `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + Pebble checkpoint (0 = use default 30s) |
+| `--maintenance-interval` | duration | `30s` | Interval for background WAL snapshot + RocksDB checkpoint (0 = use default 30s) |
 | `--raft-propose-queue-capacity` | int | `100` | Capacity of the propose queue (0 = use default 100) |
 | `--raft-processing-tick-interval` | duration | `tick-interval/10` | Interval for processing committed entries (0 = tick-interval/10) |
 | `--raft-replay-batch-size` | int | `1000` | Number of entries per batch during spool replay (0 = use default 1000) |
@@ -4200,7 +4197,7 @@ ledger run --spool-segment-max-bytes 256Ki [other flags...]
 # Smaller incremental-backup export segments
 ledger run --backup-max-segment-bytes 1Gi [other flags...]
 
-# More frequent maintenance (WAL snapshot + Pebble checkpoint)
+# More frequent maintenance (WAL snapshot + RocksDB checkpoint)
 ledger run --maintenance-interval 15s [other flags...]
 
 # Increase propose queue for high-throughput clusters
@@ -5054,7 +5051,7 @@ Manage query checkpoints — coordinated snapshots of both the main store and th
 
 #### query-checkpoint create
 
-Create a query checkpoint via Raft consensus. The checkpoint captures a physical Pebble snapshot of both the main store and the read index, enabling point-in-time queries.
+Create a query checkpoint via Raft consensus. The checkpoint captures a physical RocksDB snapshot of both the main store and the read index, enabling point-in-time queries.
 
 ```bash
 ledgerctl query-checkpoint create [flags]
@@ -5071,7 +5068,7 @@ ledgerctl query-checkpoint create [flags]
 **Behavior:**
 - Submits a `create_query_checkpoint` action through `BucketService.Apply`, so the batch honours `--signing-key` like any other write
 - Routes through Raft so the checkpoint is replicated to all nodes
-- The FSM commits pending state and creates a main store Pebble checkpoint; the read index checkpoint is materialized by the index builder on each replica
+- The FSM commits pending state and creates a main store RocksDB checkpoint; the read index checkpoint is materialized by the index builder on each replica
 - A newly executed creation waits for the serving node's read-index marker, unless concurrent deletion supersedes it. If the checkpoint remains live, a point-in-time read there succeeds immediately
 - A retry with the same `--idempotency-key` returns the historical result without waiting or recreating the checkpoint, even if the original call is still materializing or the checkpoint has been deleted
 - Reports the checkpoint id and max sequence; `--json` emits `{"checkpointId":…,"maxSequence":…}` unchanged

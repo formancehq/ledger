@@ -26,12 +26,12 @@ panels.row('Bloom Filter', 168, [
     description=|||
       Percentage of bloom filter lookups that returned definitely-not-present, by type.
       
-      Higher values mean the bloom filter is effectively avoiding Pebble Gets. A value of 80% means 80% of lookups were short-circuited without hitting storage.
+      Higher values mean the bloom filter is effectively avoiding storage reads. A value of 80% means 80% of lookups were short-circuited without hitting storage.
    |||,
   ),
 
   panels.timeseries(
-    'Bloom Negatives Rate (Pebble Gets Avoided)',
+    'Bloom Negatives Rate (Storage Reads Avoided)',
     { h: 8, w: 12, x: 0, y: 9 },
     [
       { expr: 'sum(rate(bloom.negatives{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (type, service.node_id)', legendFormat: '{{type}} (Node {{service.node_id}})' },
@@ -39,7 +39,7 @@ panels.row('Bloom Filter', 168, [
     description=|||
       Rate of bloom filter checks that returned definitely-not-present, by type.
       
-      Each negative result represents a Pebble Get that was avoided, directly saving I/O.
+      Each negative result represents a storage read that was avoided, directly saving I/O.
    |||,
   ),
 
@@ -65,7 +65,7 @@ panels.row('Bloom Filter', 168, [
     description=|||
       Bloom filter readiness state (1 = ready, 0 = populating).
       
-      During startup, bloom filters must be populated from the WAL before they can serve lookups. Until ready, all lookups fall through to Pebble.
+      During startup, bloom filters must be populated from the WAL before they can serve lookups. Until ready, all lookups fall through to storage.
    |||,
   ),
 
@@ -78,7 +78,7 @@ panels.row('Bloom Filter', 168, [
     description=|||
       Rate of bloom filter false positives per second, by type.
       
-      A false positive occurs when MayContain returns 'maybe present' but the subsequent Pebble Get finds nothing. These represent wasted I/O. The ratio false_positives / (lookups - negatives) gives the empirical false positive rate.
+      A false positive occurs when MayContain returns 'maybe present' but the subsequent storage read finds nothing. These represent wasted I/O. The ratio false_positives / (lookups - negatives) gives the empirical false positive rate.
    |||,
   ),
 ])

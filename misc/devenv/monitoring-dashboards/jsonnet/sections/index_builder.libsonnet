@@ -8,7 +8,7 @@ panels.row('Index Builder', 173, [
     'Index Builder Lag',
     { h: 8, w: 8, x: 0, y: 109 },
     'index.builder.lag{service.cluster=~"$cluster", service.node_id=~"$node"}', unit='none',
-    description='Number of logs the index builder is behind Pebble. A high lag means queries may return stale results. The builder batches 1000 logs per Pebble batch to amortize write overhead.',
+    description='Number of logs the index builder is behind the storage engine. A high lag means queries may return stale results. The builder batches logs to amortize write overhead.',
   ),
 
   panels.timeseries(
@@ -21,12 +21,12 @@ panels.row('Index Builder', 173, [
   ),
 
   panels.timeseries(
-    'Last Indexed vs Pebble',
+    'Last Indexed vs Storage',
     { h: 8, w: 8, x: 16, y: 109 },
     [
       { expr: 'index.builder.last_indexed_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Last Indexed ({{service.node_id}})' },
-      { expr: 'index.builder.pebble_last_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Pebble Last ({{service.node_id}})' },
+      { expr: 'index.builder.pebble_last_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Storage Last ({{service.node_id}})' },
     ], unit='none',
-    description='Last indexed sequence vs Pebble last sequence. The gap between the two lines is the lag.', opts={ showPoints: 'auto' },
+    description='Last indexed sequence vs storage last sequence. The gap between the two lines is the lag.', opts={ showPoints: 'auto' },
   ),
 ])

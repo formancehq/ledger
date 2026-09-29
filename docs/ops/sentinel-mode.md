@@ -21,7 +21,7 @@ Sentinel mode runs two checks during proposal preparation and two after the batc
 
 Verifies that volumes **never decrease** (input and output can only grow). A shrinking volume indicates a stale base value was used during processing.
 
-- **Where**: `WriteSet.Merge()`, before Pebble commit
+- **Where**: `WriteSet.Merge()`, before RocksDB commit
 - **Catches**: Stale preloads, cache eviction bugs, concurrent processing errors
 
 ### 2. Delta / Posting Cross-Check
@@ -35,7 +35,7 @@ When a check fails it names one offender — the lowest-sorting `(ledger, accoun
 
 ### 3. Post-Commit Volume Verification
 
-After the Pebble batch commits, `CommitPreparedBatch()` reads a snapshot pinned
+After the RocksDB batch commits, `CommitPreparedBatch()` reads a snapshot pinned
 to that commit and compares the surviving volume rows with values captured by
 `Merge()`. Repeated updates use the last value for each canonical key. Ephemeral
 purges invalidate that key's earlier updates; a successful ledger deletion
@@ -59,7 +59,7 @@ incomplete cascade that leaves balanced rows behind.
 
 Both post-commit checks run for live apply, follower catch-up, and WAL replay.
 Preparation has already mutated the in-memory FSM and staged its writes; the
-Pebble commit happens before verification. A failed check therefore returns an
+RocksDB commit happens before verification. A failed check therefore returns an
 error after those writes are durable; it does not roll back the committed batch.
 
 ## Antithesis Integration
@@ -67,7 +67,7 @@ error after those writes are durable; it does not roll back the committed batch.
 The post-commit checks report missing or changed volumes, aggregate imbalances,
 and residual volumes after ledger deletion through the Antithesis SDK's
 `assert.Unreachable()`. They also return errors, so these failures remain fatal
-to apply or replay. Pebble read errors return errors without asserting that
+to apply or replay. RocksDB read errors return errors without asserting that
 data is missing or corrupt.
 
 ## Performance Impact
@@ -76,8 +76,8 @@ Sentinel mode adds measurable overhead:
 
 - **Monotonicity check**: O(n) over volume updates — negligible
 - **Delta/posting cross-check**: O(n) over volume updates + log postings — negligible
-- **Post-commit verification**: One Pebble read per volume update — moderate
-- **Aggregated volume balance/deletion check**: Full Pebble scan per touched or deleted ledger — **significant for large ledgers**
+- **Post-commit verification**: One RocksDB read per volume update — moderate
+- **Aggregated volume balance/deletion check**: Full RocksDB scan per touched or deleted ledger — **significant for large ledgers**
 
 **Recommendation**: Enable in testing/staging. Disable in production unless actively investigating a suspected volume corruption issue.
 

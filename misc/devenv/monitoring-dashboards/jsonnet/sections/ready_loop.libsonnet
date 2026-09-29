@@ -288,7 +288,7 @@ panels.row('Ready Loop', 2, [
     description=|||
       Time spent in generation rotation (boundary flush) during ApplyEntries.
       
-      Rotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to PebbleDB inline in the critical path.
+      Rotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to RocksDB inline in the critical path.
    |||, opts={ drawStyle: 'bars', fillOpacity: 80 },
   ),
 
@@ -300,11 +300,11 @@ panels.row('Ready Loop', 2, [
       { expr: 'histogram_quantile(0.50, sum(rate(raft.fsm.batch_commit.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le, service.node_id))', legendFormat: 'Node {{service.node_id}}: p50' },
     ], unit='µs',
     description=|||
-      Time spent in PebbleDB batch.Commit() during ApplyEntries (p50 and p99).
+      Time spent in RocksDB batch commit during ApplyEntries (p50 and p99).
       
-      Measures the final I/O cost of committing all accumulated writes to PebbleDB.
+      Measures the final I/O cost of committing all accumulated writes to RocksDB.
       
-      Spikes correlate with large batches, PebbleDB compaction pressure, or disk I/O latency.
+      Spikes correlate with large batches, RocksDB compaction pressure, or disk I/O latency.
    |||, opts={ fillOpacity: 0, showPoints: 'auto' },
   ),
 ])

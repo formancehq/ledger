@@ -35,7 +35,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.\n\nHigher values indicate better performance. A sudden drop may indicate:\n- Leader election in progress\n- Storage backpressure (check Pebble write stalls)\n- Network issues between nodes\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#fsm-metrics\n",
+               "description": "Number of logs appended to the store per second per node. This metric represents the actual throughput of the system - how many logs (transactions, metadata changes, etc.) are being committed.\n\nHigher values indicate better performance. A sudden drop may indicate:\n- Leader election in progress\n- Storage backpressure (check RocksDB pending flushes, compaction debt and stopped writes)\n- Network issues between nodes\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#fsm-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -4928,7 +4928,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent in generation rotation (boundary flush) during ApplyEntries.\n\nRotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to PebbleDB inline in the critical path.\n",
+               "description": "Time spent in generation rotation (boundary flush) during ApplyEntries.\n\nRotation happens when the raft index crosses a generation threshold. During rotation, dirty boundaries are flushed to RocksDB inline in the critical path.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -5027,7 +5027,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Time spent in PebbleDB batch.Commit() during ApplyEntries (p50 and p99).\n\nMeasures the final I/O cost of committing all accumulated writes to PebbleDB.\n\nSpikes correlate with large batches, PebbleDB compaction pressure, or disk I/O latency.\n",
+               "description": "Time spent in RocksDB batch commit during ApplyEntries (p50 and p99).\n\nMeasures the final I/O cost of committing all accumulated writes to RocksDB.\n\nSpikes correlate with large batches, RocksDB compaction pressure, or disk I/O latency.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -5151,7 +5151,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage (Pebble) write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and Pebble metrics.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
+               "description": "Total time spent applying committed entries to the FSM (in microseconds per second).\n\nThis is where transactions are actually processed and balances updated. High values indicate:\n- Complex transactions taking longer\n- Storage write bottlenecks\n- High transaction volume\n\nCorrelate with 'Applying entries rate' and RocksDB metrics.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#node-metrics\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -5987,7 +5987,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Number of Pebble flush operations per second. Flushes write data from memory (memtable) to disk (SSTable).\n\nFlushes are triggered when:\n- Memtable reaches capacity\n- Manual flush requested\n- Write stall prevention\n\nHigh flush rates indicate heavy write activity. Monitor flush duration for performance.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics\n",
+               "description": "Approximate bytes in active memtables.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6002,7 +6002,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6016,7 +6016,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6040,7 +6040,8 @@
                               "value": 80
                            }
                         ]
-                     }
+                     },
+                     "unit": "bytes"
                   },
                   "overrides": [ ]
                },
@@ -6071,13 +6072,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, status, reason) (rate({__name__=\"pebble_flush_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "Node {{service_node_id}} {{status}} {{reason}}",
+                     "expr": "{__name__=\"rocksdb_memtable_bytes\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "Flush / second",
+               "title": "Memtable bytes",
                "type": "timeseries"
             },
             {
@@ -6085,7 +6086,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Pebble flush duration percentiles (P50, P95, P99) in milliseconds.\n\nFlush duration measures how long it takes to write memtable contents to disk. High values indicate:\n- Slow disk I/O\n- Large memtables\n- Disk contention\n\nP99 spikes may correlate with write stalls. Consider NVMe storage for better performance.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics\n",
+               "description": "Immutable memtables awaiting flush.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6100,7 +6101,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6114,7 +6115,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6139,7 +6140,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "short"
                   },
                   "overrides": [ ]
                },
@@ -6170,46 +6171,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id) (rate({__name__=\"pebble_flush_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p50",
+                     "expr": "{__name__=\"rocksdb_memtable_immutable_count\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id) (rate({__name__=\"pebble_flush_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p95",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id) (rate({__name__=\"pebble_flush_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p99",
-                     "range": true,
-                     "refId": "C"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "sum(rate(pebble_flush_duration_milliseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(pebble_flush_duration_milliseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
-                     "legendFormat": "Node {{service_node_id}} mean",
-                     "range": true,
-                     "refId": "D"
                   }
                ],
-               "title": "Flush duration (ms)",
+               "title": "Immutable memtables",
                "type": "timeseries"
             },
             {
@@ -6217,7 +6185,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of bytes flushed from memtables to SSTables per second.\n\nThis indicates write amplification and disk write throughput. High values mean:\n- Heavy write workload\n- Good throughput\n- High disk I/O utilization\n\nCompare with flush duration to understand I/O efficiency.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#flush-metrics\n",
+               "description": "1 when a memtable flush is pending; 0 otherwise.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6232,7 +6200,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6246,7 +6214,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6271,7 +6239,7 @@
                            }
                         ]
                      },
-                     "unit": "Bps"
+                     "unit": "none"
                   },
                   "overrides": [ ]
                },
@@ -6302,13 +6270,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum(rate(pebble_flush_input_bytes_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
+                     "expr": "{__name__=\"rocksdb_flush_pending_ratio\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
                      "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "Flush input bytes / second",
+               "title": "Flush pending",
                "type": "timeseries"
             },
             {
@@ -6316,7 +6284,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Number of Pebble compaction operations per second. Compactions merge and reorganize SSTables.\n\nCompaction purposes:\n- Merge overlapping keys\n- Reclaim deleted space\n- Optimize read performance\n- Level promotion\n\nHigh compaction rates indicate active data reorganization. Watch compaction duration for bottlenecks.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics\n",
+               "description": "1 when a compaction is pending; 0 otherwise.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6331,7 +6299,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6345,7 +6313,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6369,7 +6337,8 @@
                               "value": 80
                            }
                         ]
-                     }
+                     },
+                     "unit": "none"
                   },
                   "overrides": [ ]
                },
@@ -6400,13 +6369,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, status, reason) (rate({__name__=\"pebble_compaction_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "Node {{service_node_id}}: {{status}} {{reason}}",
+                     "expr": "{__name__=\"rocksdb_compaction_pending_ratio\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "Compactions / second",
+               "title": "Compaction pending",
                "type": "timeseries"
             },
             {
@@ -6414,7 +6383,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Pebble compaction duration percentiles (P50, P95, P99) in milliseconds.\n\nCompaction duration depends on:\n- Amount of data being compacted\n- Disk I/O speed\n- CPU for decompression/compression\n\nLong compactions may temporarily impact read performance. Very high P99 values warrant investigation.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics\n",
+               "description": "Estimated bytes pending compaction.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6429,7 +6398,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6443,7 +6412,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6468,7 +6437,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "bytes"
                   },
                   "overrides": [ ]
                },
@@ -6499,46 +6468,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (service_node_id, le) (rate({__name__=\"pebble_compaction_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}}: p50",
+                     "expr": "{__name__=\"rocksdb_compaction_debt_bytes\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (service_node_id, le) (rate({__name__=\"pebble_compaction_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}}: p95 ",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (service_node_id, le) (rate({__name__=\"pebble_compaction_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}}: p99",
-                     "range": true,
-                     "refId": "C"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "sum(rate(pebble_compaction_duration_milliseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(pebble_compaction_duration_milliseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
-                     "legendFormat": "Node {{service_node_id}}: mean",
-                     "range": true,
-                     "refId": "D"
                   }
                ],
-               "title": "Compaction duration (ms)",
+               "title": "Compaction debt",
                "type": "timeseries"
             },
             {
@@ -6546,7 +6482,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of compaction errors per second.\n\nALERT: Any non-zero value requires immediate investigation!\n\nCompaction errors may indicate:\n- Disk corruption\n- Out of disk space\n- Hardware failure\n- File system issues\n\nCheck system logs and disk health immediately.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#compaction-metrics\n",
+               "description": "Bytes in live SST files.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6561,7 +6497,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6575,7 +6511,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6599,7 +6535,8 @@
                               "value": 80
                            }
                         ]
-                     }
+                     },
+                     "unit": "bytes"
                   },
                   "overrides": [ ]
                },
@@ -6630,13 +6567,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, reason) (rate({__name__=\"pebble_compaction_total\", status=\"error\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "Node {{service_node_id}}: {{reason}}",
+                     "expr": "{__name__=\"rocksdb_sst_live_bytes\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "Compaction errors / second",
+               "title": "Live SST bytes",
                "type": "timeseries"
             },
             {
@@ -6644,7 +6581,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Shows if Pebble is currently stalling writes (1 = stalling, 0 = normal).\n\nCRITICAL ALERT: Value of 1 means transactions are being delayed!\n\nWrite stalls occur when:\n- L0 has too many files\n- Memtable count too high\n- Compaction backlog too large\n\nImmediate actions:\n- Check disk I/O utilization\n- Consider faster storage (NVMe)\n- Review compaction settings\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics\n",
+               "description": "Bytes used by the block cache.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6659,7 +6596,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6673,7 +6610,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6697,7 +6634,8 @@
                               "value": 80
                            }
                         ]
-                     }
+                     },
+                     "unit": "bytes"
                   },
                   "overrides": [ ]
                },
@@ -6728,13 +6666,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "max by (service_node_id, reason) ({__name__=\"pebble_write_stall_active\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"})",
-                     "legendFormat": "{{service_node_id}} / {{reason}}",
+                     "expr": "{__name__=\"rocksdb_cache_used_bytes\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "Write stall active (max)",
+               "title": "Block cache usage",
                "type": "timeseries"
             },
             {
@@ -6742,7 +6680,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Number of write stall events per second. Each stall temporarily blocks write operations.\n\nWrite stalls happen when Pebble's internal queues fill up:\n- memtable: Too many memtables waiting to flush\n- l0: Too many L0 SSTables\n- flush_slowdown: Flush falling behind\n\nFrequent stalls indicate storage cannot keep up with write rate. Consider:\n- Faster storage (NVMe SSD)\n- Reduced write rate\n- Tuning Pebble settings\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics\n",
+               "description": "Unreleased RocksDB snapshots.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6757,7 +6695,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6771,7 +6709,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6795,7 +6733,8 @@
                               "value": 80
                            }
                         ]
-                     }
+                     },
+                     "unit": "short"
                   },
                   "overrides": [ ]
                },
@@ -6826,13 +6765,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "sum by (service_node_id, reason) (rate({__name__=\"pebble_write_stall_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "Node {{service_node_id}} / {{reason}}",
+                     "expr": "{__name__=\"rocksdb_snapshots_count\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "Write stalls / second",
+               "title": "Open snapshots",
                "type": "timeseries"
             },
             {
@@ -6840,7 +6779,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Duration of write stalls (P50, P95, P99) in seconds. Shows how long writes are blocked.\n\nStall duration directly impacts:\n- Transaction latency (blocked during stall)\n- Throughput (no progress during stall)\n- Client timeouts (if stall exceeds timeout)\n\nLong stalls (>1s) are critical. High P99 values indicate occasional severe blocking.\n\nSee: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#write-stall-metrics\n",
+               "description": "1 when RocksDB has stopped writes; 0 otherwise.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -6855,7 +6794,7 @@
                         "barAlignment": 0,
                         "barWidthFactor": 0.59999999999999998,
                         "drawStyle": "line",
-                        "fillOpacity": 0,
+                        "fillOpacity": 10,
                         "gradientMode": "none",
                         "hideFrom": {
                            "legend": false,
@@ -6869,7 +6808,7 @@
                         "scaleDistribution": {
                            "type": "linear"
                         },
-                        "showPoints": "auto",
+                        "showPoints": "never",
                         "showValues": false,
                         "spanNulls": false,
                         "stacking": {
@@ -6894,7 +6833,7 @@
                            }
                         ]
                      },
-                     "unit": "ms"
+                     "unit": "none"
                   },
                   "overrides": [ ]
                },
@@ -6925,46 +6864,13 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id) (rate({__name__=\"pebble_write_stall_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p50",
+                     "expr": "{__name__=\"rocksdb_write_stopped_ratio\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id) (rate({__name__=\"pebble_write_stall_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p95",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id) (rate({__name__=\"pebble_write_stall_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p99",
-                     "range": true,
-                     "refId": "C"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "sum(rate(pebble_write_stall_duration_milliseconds_sum{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id) / sum(rate(pebble_write_stall_duration_milliseconds_count{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}[$__rate_interval])) by (service_node_id)",
-                     "legendFormat": "Node {{service_node_id}} mean",
-                     "range": true,
-                     "refId": "D"
                   }
                ],
-               "title": "Write stall duration",
+               "title": "Writes stopped",
                "type": "timeseries"
             },
             {
@@ -6972,7 +6878,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "VFS-level read and write operations per second. Counted at the Pebble VFS layer — each Read()/ReadAt() or Write()/WriteAt() syscall increments the counter.\n\nThis is the closest application-level approximation to disk IOPS.\n",
+               "description": "Accumulated RocksDB background errors. This is a sampled property, not an error rate.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -7026,13 +6932,13 @@
                            }
                         ]
                      },
-                     "unit": "ops"
+                     "unit": "short"
                   },
                   "overrides": [ ]
                },
                "gridPos": {
                   "h": 8,
-                  "w": 8,
+                  "w": 24,
                   "x": 0,
                   "y": 24
                },
@@ -7057,466 +6963,17 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "rate({__name__=\"pebble_vfs_read_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "Node {{service_node_id}} — reads/s",
-                     "range": true,
-                     "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "rate({__name__=\"pebble_vfs_write_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "Node {{service_node_id}} — writes/s",
-                     "range": true,
-                     "refId": "B"
-                  }
-               ],
-               "title": "VFS IOPS (read / write)",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "description": "VFS-level sync (fsync) operations per second. Each Sync(), SyncTo(), or SyncData() call is counted.\n\nSync operations are the most expensive I/O — they force data to stable storage. High sync rates indicate WAL syncs or flush finalization.\n",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 10,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     },
-                     "unit": "ops"
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 8,
-                  "x": 8,
-                  "y": 24
-               },
-               "id": 74,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "rate({__name__=\"pebble_vfs_sync_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])",
-                     "legendFormat": "Node {{service_node_id}} — syncs/s",
+                     "expr": "{__name__=\"rocksdb_background_errors\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
+                     "legendFormat": "Node {{service_node_id}}",
                      "range": true,
                      "refId": "A"
                   }
                ],
-               "title": "VFS Sync ops/s",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "description": "Cumulative VFS read, write, and sync operations. Useful for comparing total I/O volume across nodes.",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 10,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "never",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     }
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 8,
-                  "x": 16,
-                  "y": 24
-               },
-               "id": 75,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "{__name__=\"pebble_vfs_read_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
-                     "legendFormat": "Node {{service_node_id}} — reads",
-                     "range": true,
-                     "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "{__name__=\"pebble_vfs_write_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
-                     "legendFormat": "Node {{service_node_id}} — writes",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "{__name__=\"pebble_vfs_sync_ops_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}",
-                     "legendFormat": "Node {{service_node_id}} — syncs",
-                     "range": true,
-                     "refId": "C"
-                  }
-               ],
-               "title": "VFS Total ops (cumulative)",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "description": "Number of slow disk operations detected by Pebble per second. A slow disk event fires when a write operation exceeds Pebble's disk slowness threshold.\n\nThis is a leading indicator: disk_slow events typically precede write stalls. If this metric spikes, investigate disk I/O before it escalates.\n\nConsider enabling --pebble-wal-failover-dir to mitigate transient disk slowness.\n",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 10,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "auto",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     }
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 12,
-                  "x": 0,
-                  "y": 32
-               },
-               "id": 76,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "sum by (service_node_id, op) (rate({__name__=\"pebble_disk_slow_total\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval]))",
-                     "legendFormat": "Node {{service_node_id}} / {{op}}",
-                     "range": true,
-                     "refId": "A"
-                  }
-               ],
-               "title": "Disk slow events / second",
-               "type": "timeseries"
-            },
-            {
-               "datasource": {
-                  "type": "prometheus",
-                  "uid": "${datasource}"
-               },
-               "description": "Duration of slow disk operations (P50, P95, P99). Shows how long disk operations have been stalled when Pebble detects slowness.\n\nHigh values (>1s) indicate severe disk issues. Correlate with write stall metrics to understand impact on transaction latency.\n",
-               "fieldConfig": {
-                  "defaults": {
-                     "color": {
-                        "mode": "palette-classic"
-                     },
-                     "custom": {
-                        "axisBorderShow": false,
-                        "axisCenteredZero": false,
-                        "axisColorMode": "text",
-                        "axisLabel": "",
-                        "axisPlacement": "auto",
-                        "barAlignment": 0,
-                        "barWidthFactor": 0.59999999999999998,
-                        "drawStyle": "line",
-                        "fillOpacity": 0,
-                        "gradientMode": "none",
-                        "hideFrom": {
-                           "legend": false,
-                           "tooltip": false,
-                           "viz": false
-                        },
-                        "insertNulls": false,
-                        "lineInterpolation": "linear",
-                        "lineWidth": 1,
-                        "pointSize": 5,
-                        "scaleDistribution": {
-                           "type": "linear"
-                        },
-                        "showPoints": "auto",
-                        "showValues": false,
-                        "spanNulls": false,
-                        "stacking": {
-                           "group": "A",
-                           "mode": "none"
-                        },
-                        "thresholdsStyle": {
-                           "mode": "off"
-                        }
-                     },
-                     "mappings": [ ],
-                     "thresholds": {
-                        "mode": "absolute",
-                        "steps": [
-                           {
-                              "color": "green",
-                              "value": 0
-                           },
-                           {
-                              "color": "red",
-                              "value": 80
-                           }
-                        ]
-                     },
-                     "unit": "ms"
-                  },
-                  "overrides": [ ]
-               },
-               "gridPos": {
-                  "h": 8,
-                  "w": 12,
-                  "x": 12,
-                  "y": 32
-               },
-               "id": 77,
-               "options": {
-                  "legend": {
-                     "calcs": [ ],
-                     "displayMode": "list",
-                     "placement": "bottom",
-                     "showLegend": true
-                  },
-                  "tooltip": {
-                     "hideZeros": false,
-                     "mode": "single",
-                     "sort": "none"
-                  }
-               },
-               "targets": [
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.50, sum by (le, service_node_id, op) (rate({__name__=\"pebble_disk_slow_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p50 {{op}}",
-                     "range": true,
-                     "refId": "A"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.95, sum by (le, service_node_id, op) (rate({__name__=\"pebble_disk_slow_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p95 {{op}}",
-                     "range": true,
-                     "refId": "B"
-                  },
-                  {
-                     "datasource": {
-                        "type": "prometheus",
-                        "uid": "${datasource}"
-                     },
-                     "editorMode": "code",
-                     "expr": "histogram_quantile(0.99, sum by (le, service_node_id, op) (rate({__name__=\"pebble_disk_slow_duration_milliseconds_bucket\", \"service_cluster\"=~\"$cluster\", \"service_node_id\"=~\"$node\"}[$__rate_interval])))",
-                     "legendFormat": "Node {{service_node_id}} p99 {{op}}",
-                     "range": true,
-                     "refId": "C"
-                  }
-               ],
-               "title": "Disk slow duration",
+               "title": "Background errors",
                "type": "timeseries"
             }
          ],
-         "title": "Pebble",
+         "title": "RocksDB",
          "type": "row"
       },
       {
@@ -7527,14 +6984,14 @@
             "x": 0,
             "y": 166
          },
-         "id": 78,
+         "id": 74,
          "panels": [
             {
                "datasource": {
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Total bytes stored in each Pebble LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.",
+               "description": "Total bytes stored in each read-index LSM level. Level 0 holds recently flushed memtable data; higher levels hold progressively older, compacted data.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -7598,7 +7055,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 79,
+               "id": 75,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7697,7 +7154,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 80,
+               "id": 76,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7796,7 +7253,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 81,
+               "id": 77,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -7872,7 +7329,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 82,
+               "id": 78,
                "options": {
                   "colorMode": "value",
                   "graphMode": "area",
@@ -7908,7 +7365,7 @@
                "type": "stat"
             }
          ],
-         "title": "Read Index (Pebble)",
+         "title": "Read Index (RocksDB)",
          "type": "row"
       },
       {
@@ -7919,7 +7376,7 @@
             "x": 0,
             "y": 167
          },
-         "id": 83,
+         "id": 79,
          "panels": [
             {
                "datasource": {
@@ -7990,7 +7447,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 84,
+               "id": 80,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8089,7 +7546,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 85,
+               "id": 81,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8188,7 +7645,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 86,
+               "id": 82,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8241,7 +7698,7 @@
             "x": 0,
             "y": 168
          },
-         "id": 87,
+         "id": 83,
          "panels": [
             {
                "datasource": {
@@ -8312,7 +7769,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 88,
+               "id": 84,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8347,7 +7804,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Percentage of bloom filter lookups that returned definitely-not-present, by type.\n\nHigher values mean the bloom filter is effectively avoiding Pebble Gets. A value of 80% means 80% of lookups were short-circuited without hitting storage.\n",
+               "description": "Percentage of bloom filter lookups that returned definitely-not-present, by type.\n\nHigher values mean the bloom filter is effectively avoiding storage reads. A value of 80% means 80% of lookups were short-circuited without hitting storage.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -8411,7 +7868,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 89,
+               "id": 85,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8446,7 +7903,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of bloom filter checks that returned definitely-not-present, by type.\n\nEach negative result represents a Pebble Get that was avoided, directly saving I/O.\n",
+               "description": "Rate of bloom filter checks that returned definitely-not-present, by type.\n\nEach negative result represents a storage read that was avoided, directly saving I/O.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -8510,7 +7967,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 90,
+               "id": 86,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8537,7 +7994,7 @@
                      "refId": "A"
                   }
                ],
-               "title": "Bloom Negatives Rate (Pebble Gets Avoided)",
+               "title": "Bloom Negatives Rate (Storage Reads Avoided)",
                "type": "timeseries"
             },
             {
@@ -8609,7 +8066,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 91,
+               "id": 87,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8644,7 +8101,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Bloom filter readiness state (1 = ready, 0 = populating).\n\nDuring startup, bloom filters must be populated from the WAL before they can serve lookups. Until ready, all lookups fall through to Pebble.\n",
+               "description": "Bloom filter readiness state (1 = ready, 0 = populating).\n\nDuring startup, bloom filters must be populated from the WAL before they can serve lookups. Until ready, all lookups fall through to storage.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -8708,7 +8165,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 92,
+               "id": 88,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8743,7 +8200,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Rate of bloom filter false positives per second, by type.\n\nA false positive occurs when MayContain returns 'maybe present' but the subsequent Pebble Get finds nothing. These represent wasted I/O. The ratio false_positives / (lookups - negatives) gives the empirical false positive rate.\n",
+               "description": "Rate of bloom filter false positives per second, by type.\n\nA false positive occurs when MayContain returns 'maybe present' but the subsequent storage read finds nothing. These represent wasted I/O. The ratio false_positives / (lookups - negatives) gives the empirical false positive rate.\n",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -8807,7 +8264,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 93,
+               "id": 89,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -8849,7 +8306,7 @@
             "x": 0,
             "y": 169
          },
-         "id": 94,
+         "id": 90,
          "panels": [
             {
                "datasource": {
@@ -8920,7 +8377,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 95,
+               "id": 91,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9041,7 +8498,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 96,
+               "id": 92,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9140,7 +8597,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 97,
+               "id": 93,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9239,7 +8696,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 98,
+               "id": 94,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9338,7 +8795,7 @@
                   "x": 0,
                   "y": 16
                },
-               "id": 99,
+               "id": 95,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9448,7 +8905,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 100,
+               "id": 96,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9569,7 +9026,7 @@
                   "x": 0,
                   "y": 24
                },
-               "id": 101,
+               "id": 97,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9690,7 +9147,7 @@
                   "x": 12,
                   "y": 24
                },
-               "id": 102,
+               "id": 98,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9811,7 +9268,7 @@
                   "x": 0,
                   "y": 32
                },
-               "id": 103,
+               "id": 99,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -9908,7 +9365,7 @@
                   "x": 12,
                   "y": 32
                },
-               "id": 104,
+               "id": 100,
                "options": {
                   "bucketOffset": 0,
                   "combine": false,
@@ -10007,7 +9464,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 105,
+               "id": 101,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10117,7 +9574,7 @@
                   "x": 12,
                   "y": 40
                },
-               "id": 106,
+               "id": 102,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10238,7 +9695,7 @@
                   "x": 0,
                   "y": 48
                },
-               "id": 107,
+               "id": 103,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10359,7 +9816,7 @@
                   "x": 12,
                   "y": 48
                },
-               "id": 108,
+               "id": 104,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10458,7 +9915,7 @@
                   "x": 0,
                   "y": 56
                },
-               "id": 109,
+               "id": 105,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10579,7 +10036,7 @@
                   "x": 12,
                   "y": 56
                },
-               "id": 110,
+               "id": 106,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10700,7 +10157,7 @@
                   "x": 0,
                   "y": 64
                },
-               "id": 111,
+               "id": 107,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10821,7 +10278,7 @@
                   "x": 0,
                   "y": 72
                },
-               "id": 112,
+               "id": 108,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -10885,7 +10342,7 @@
             "x": 0,
             "y": 170
          },
-         "id": 113,
+         "id": 109,
          "panels": [
             {
                "datasource": {
@@ -10956,7 +10413,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 114,
+               "id": 110,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11077,7 +10534,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 115,
+               "id": 111,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11141,7 +10598,7 @@
             "x": 0,
             "y": 171
          },
-         "id": 116,
+         "id": 112,
          "panels": [
             {
                "datasource": {
@@ -11212,7 +10669,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 117,
+               "id": 113,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11311,7 +10768,7 @@
                   "x": 12,
                   "y": 0
                },
-               "id": 118,
+               "id": 114,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11410,7 +10867,7 @@
                   "x": 0,
                   "y": 8
                },
-               "id": 119,
+               "id": 115,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11467,7 +10924,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2→v3), preload (Pebble reads), propose (Raft), and fsm_wait (FSM apply).",
+               "description": "p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2→v3), preload (storage reads), propose (Raft), and fsm_wait (FSM apply).",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -11531,7 +10988,7 @@
                   "x": 12,
                   "y": 8
                },
-               "id": 120,
+               "id": 116,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11674,7 +11131,7 @@
                   "x": 12,
                   "y": 16
                },
-               "id": 121,
+               "id": 117,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11727,7 +11184,7 @@
             "x": 0,
             "y": 172
          },
-         "id": 122,
+         "id": 118,
          "panels": [
             {
                "datasource": {
@@ -11798,7 +11255,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 123,
+               "id": 119,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -11851,14 +11308,14 @@
             "x": 0,
             "y": 173
          },
-         "id": 124,
+         "id": 120,
          "panels": [
             {
                "datasource": {
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Number of logs the index builder is behind Pebble. A high lag means queries may return stale results. The builder batches 1000 logs per Pebble batch to amortize write overhead.",
+               "description": "Number of logs the index builder is behind the storage engine. A high lag means queries may return stale results. The builder batches logs to amortize write overhead.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -11888,7 +11345,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 125,
+               "id": 121,
                "options": {
                   "minVizHeight": 75,
                   "minVizWidth": 75,
@@ -11989,7 +11446,7 @@
                   "x": 8,
                   "y": 0
                },
-               "id": 126,
+               "id": 122,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12024,7 +11481,7 @@
                   "type": "prometheus",
                   "uid": "${datasource}"
                },
-               "description": "Last indexed sequence vs Pebble last sequence. The gap between the two lines is the lag.",
+               "description": "Last indexed sequence vs storage last sequence. The gap between the two lines is the lag.",
                "fieldConfig": {
                   "defaults": {
                      "color": {
@@ -12088,7 +11545,7 @@
                   "x": 16,
                   "y": 0
                },
-               "id": 127,
+               "id": 123,
                "options": {
                   "legend": {
                      "calcs": [ ],
@@ -12121,12 +11578,12 @@
                      },
                      "editorMode": "code",
                      "expr": "index_builder_pebble_last_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
-                     "legendFormat": "Pebble Last ({{service_node_id}})",
+                     "legendFormat": "Storage Last ({{service_node_id}})",
                      "range": true,
                      "refId": "B"
                   }
                ],
-               "title": "Last Indexed vs Pebble",
+               "title": "Last Indexed vs Storage",
                "type": "timeseries"
             }
          ],
@@ -12141,7 +11598,7 @@
             "x": 0,
             "y": 174
          },
-         "id": 128,
+         "id": 124,
          "panels": [
             {
                "datasource": {
@@ -12155,7 +11612,7 @@
                   "x": 0,
                   "y": 0
                },
-               "id": 129,
+               "id": 125,
                "options": { },
                "targets": [
                   {
@@ -12185,7 +11642,7 @@
                   "x": 0,
                   "y": 20
                },
-               "id": 130,
+               "id": 126,
                "options": { },
                "targets": [
                   {
@@ -12215,7 +11672,7 @@
                   "x": 0,
                   "y": 40
                },
-               "id": 131,
+               "id": 127,
                "options": { },
                "targets": [
                   {
@@ -12245,7 +11702,7 @@
                   "x": 0,
                   "y": 60
                },
-               "id": 132,
+               "id": 128,
                "options": { },
                "targets": [
                   {

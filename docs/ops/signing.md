@@ -93,7 +93,7 @@ Keys form a **parent-child hierarchy**. When a new key is registered by signing 
 The parent relationship is:
 - **Automatic**: deduced from the signature used to register the key (no explicit parameter needed)
 - **Replaced on re-registration**: registering an existing key ID again is an upsert — it replaces both the public key and the parent link. Re-registering with no parent makes the key a root
-- **Persisted**: stored in Pebble alongside the public key and restored on startup
+- **Persisted**: stored in RocksDB alongside the public key and restored on startup
 
 ### Cascade Revocation
 
@@ -174,10 +174,10 @@ ledgerctl signing require true --signing-key /path/to/admin-seed
 
 ## Persistence
 
-Signing keys and configuration are persisted in **Pebble** under the Global zone (`0x06`), using compound keys `{0x06, 0x04}` for keys and `{0x06, 0x05}` for config. They are applied atomically in the same batch as other state changes via `WriteSet.Merge()`.
+Signing keys and configuration are persisted in **RocksDB** under the Global zone (`0x06`), using compound keys `{0x06, 0x04}` for keys and `{0x06, 0x05}` for config. They are applied atomically in the same batch as other state changes via `WriteSet.Merge()`.
 
-- **On startup**: keys are loaded from Pebble into the in-memory KeyStore
-- **On follower snapshot restore**: keys are reloaded from the restored Pebble checkpoint (`SynchronizeWithLeader`)
+- **On startup**: keys are loaded from RocksDB into the in-memory KeyStore
+- **On follower snapshot restore**: keys are reloaded from the restored RocksDB checkpoint (`SynchronizeWithLeader`)
 - **On apply**: signing key changes flow through the `processing.Store` interface → `WriteSet` → `Merge()`, consistent with how all other state (volumes, metadata, ledgers) is managed
 
 ## Signature Propagation
@@ -224,7 +224,7 @@ This is inherent to the Raft consensus model where all state changes are eventua
 | `internal/domain/crypto/keystore/` | Thread-safe in-memory key cache (`sync.RWMutex`) |
 | `internal/application/admission/` | Signature verification, bootstrap logic, Request → Order conversion |
 | `internal/infra/state/write_set.go` | Signing key changes accumulated during processing, applied in `Merge()` |
-| `internal/storage/dal/` | Pebble persistence for signing keys (compound keys `{0x06, 0x04}`/`{0x06, 0x05}` within the Global zone) |
+| `internal/storage/dal/` | RocksDB persistence for signing keys (compound keys `{0x06, 0x04}`/`{0x06, 0x05}` within the Global zone) |
 | `misc/proto/signature.proto` | `SignedApplyBatch` and `SignedLog` protobuf messages |
 
 ## CLI Reference
@@ -388,4 +388,4 @@ The `payload` contains the serialized `Log` message with the `response_signature
 
 - **Signing happens in the gRPC handler, not the FSM**: response signing is a presentation-layer concern. The FSM produces deterministic state; signing adds a transport-level proof on top.
 - **Single server keypair**: no per-client keys needed. All clients verify using the same public key, obtained via `Discovery` or out-of-band.
-- **No changes to Raft/FSM/Pebble**: the response signature is computed after Raft consensus and is not persisted. It only appears in the gRPC response.
+- **No changes to Raft/FSM/RocksDB**: the response signature is computed after Raft consensus and is not persisted. It only appears in the gRPC response.
