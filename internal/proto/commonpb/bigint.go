@@ -115,6 +115,11 @@ func (u *BigUint) UnmarshalJSON(data []byte) error {
 
 func NewSignedBigInt(value *big.Int) *SignedBigInt {
 	if value == nil || value.Sign() == 0 {
+		// Zero is represented as SignedBigInt{} — Magnitude absent, Negative false.
+		// This differs from BigUint, where zero is BigUint{Magnitude: nil} (present but
+		// empty). Validate() enforces this asymmetry: a present-but-empty Magnitude in
+		// SignedBigInt is rejected as non-canonical. Use NewSignedBigInt to produce the
+		// accepted form; constructing &SignedBigInt{Magnitude: &BigUint{}} is invalid.
 		return &SignedBigInt{}
 	}
 	// Abs() always returns a non-negative value, so NewBigUint cannot return an
