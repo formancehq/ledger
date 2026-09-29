@@ -19,22 +19,24 @@ func TestVolumeUsage_PublishesCoherentSample(t *testing.T) {
 	t.Parallel()
 
 	var usage VolumeUsage
-	usage.store(70, 100)
+	observedAt := time.Now()
+	usage.storeSuccess(70, 100, observedAt)
 
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for range 200000 {
-			usage.store(154, 200)
-			usage.store(70, 100)
+			usage.storeSuccess(154, 200, observedAt)
+			usage.storeSuccess(70, 100, observedAt)
 		}
 	}()
 
 	for {
-		used, total := usage.Load()
+		sample := usage.Load()
 		require.True(t,
-			used == 70 && total == 100 || used == 154 && total == 200,
-			"observed fabricated disk sample %d/%d", used, total,
+			sample.Valid && sample.ObservedAt.Equal(observedAt) &&
+				(sample.UsedBytes == 70 && sample.TotalBytes == 100 || sample.UsedBytes == 154 && sample.TotalBytes == 200),
+			"observed fabricated disk sample %+v", sample,
 		)
 
 		select {

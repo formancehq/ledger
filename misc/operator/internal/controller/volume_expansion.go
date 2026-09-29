@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -558,19 +556,6 @@ func parseExpansionTime(value string) (time.Time, error) {
 
 func formatBytesAsQuantity(value int64) string {
 	return resource.NewQuantity(value, resource.BinarySI).String()
-}
-
-type protoJSONUint64 uint64
-
-func (value *protoJSONUint64) UnmarshalJSON(data []byte) error {
-	raw := strings.Trim(string(data), `"`)
-	parsed, err := strconv.ParseUint(raw, 10, 64)
-	if err != nil {
-		return fmt.Errorf("parsing uint64 %q: %w", raw, err)
-	}
-	*value = protoJSONUint64(parsed)
-
-	return nil
 }
 
 type podDiskUsageVolumeJSON struct {

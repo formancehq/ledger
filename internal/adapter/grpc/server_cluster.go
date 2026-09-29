@@ -258,9 +258,6 @@ func (impl *ClusterServiceServerImpl) TransferLeadership(ctx context.Context, re
 }
 
 func (impl *ClusterServiceServerImpl) GetDiskUsage(ctx context.Context, _ *clusterpb.GetDiskUsageRequest) (*clusterpb.DiskUsage, error) {
-	walUsed, walTotal := impl.collector.WALVolume.Load()
-	dataUsed, dataTotal := impl.collector.DataVolume.Load()
-
 	now := time.Now()
 
 	return &clusterpb.DiskUsage{
