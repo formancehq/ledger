@@ -1,10 +1,12 @@
 package bulking
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"math/big"
 	"testing"
+	stdtime "time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
@@ -432,5 +434,114 @@ func TestBulk(t *testing.T) {
 
 			require.NoError(t, bulker.Run(ctx, bulk, results, testCase.options))
 		})
+	}
+}
+
+func TestBulkAtomicPanicRollsBack(t *testing.T) {
+	t.Parallel()
+
+	ctx := logging.TestingContext()
+	ctrl := gomock.NewController(t)
+	ledgerController := NewLedgerController(ctrl)
+
+	ledgerController.EXPECT().
+		BeginTX(gomock.Any(), nil).
+		Return(ledgerController, &bun.Tx{}, nil)
+	ledgerController.EXPECT().
+		CreateTransaction(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(context.Context, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
+			panic("simulated worker panic")
+		})
+	ledgerController.EXPECT().
+		Rollback(gomock.Any()).
+		Return(nil)
+
+	bulker := NewBulker(ledgerController)
+	bulk := make(Bulk, 2)
+	results := make(chan BulkElementResult, 2)
+	now := time.Now()
+	bulk <- BulkElement{
+		Action: ActionCreateTransaction,
+		Data: TransactionRequest{
+			Postings: []ledger.Posting{{
+				Source:      "world",
+				Destination: "bank",
+				Amount:      big.NewInt(100),
+				Asset:       "USD/2",
+			}},
+			Timestamp: now,
+		},
+	}
+	bulk <- BulkElement{
+		Action: ActionAddMetadata,
+		Data: AddMetadataRequest{
+			TargetID:   json.RawMessage(`"world"`),
+			TargetType: "ACCOUNT",
+			Metadata: metadata.Metadata{
+				"foo": "bar",
+			},
+		},
+	}
+	close(bulk)
+
+	require.NoError(t, bulker.Run(ctx, bulk, results, BulkingOptions{Atomic: true}))
+
+	var got []BulkElementResult
+	for result := range results {
+		got = append(got, result)
+	}
+	require.GreaterOrEqual(t, len(got), 1)
+	require.ErrorIs(t, got[0].Error, errBulkElementInternal)
+	require.NotContains(t, got[0].Error.Error(), "simulated worker panic")
+}
+
+func TestBulkAtomicPanicDoesNotBlockOnCanceledContext(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(logging.TestingContext())
+	ctrl := gomock.NewController(t)
+	ledgerController := NewLedgerController(ctrl)
+
+	ledgerController.EXPECT().
+		BeginTX(gomock.Any(), nil).
+		Return(ledgerController, &bun.Tx{}, nil)
+	ledgerController.EXPECT().
+		CreateTransaction(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(context.Context, ledgercontroller.Parameters[ledgercontroller.CreateTransaction]) (*ledger.Log, *ledger.CreatedTransaction, bool, error) {
+			cancel()
+			panic("private-marker")
+		})
+	ledgerController.EXPECT().
+		Rollback(gomock.Any()).
+		Return(nil)
+
+	bulker := NewBulker(ledgerController)
+	bulk := make(Bulk, 1)
+	results := make(chan BulkElementResult)
+	now := time.Now()
+	bulk <- BulkElement{
+		Action: ActionCreateTransaction,
+		Data: TransactionRequest{
+			Postings: []ledger.Posting{{
+				Source:      "world",
+				Destination: "bank",
+				Amount:      big.NewInt(100),
+				Asset:       "USD/2",
+			}},
+			Timestamp: now,
+		},
+	}
+	close(bulk)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- bulker.Run(ctx, bulk, results, BulkingOptions{Atomic: true})
+	}()
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-stdtime.After(2 * stdtime.Second):
+		t.Fatal("Run did not terminate after cancel then panic")
 	}
 }
