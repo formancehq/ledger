@@ -201,7 +201,8 @@ func makeDeleteSentinelEntry(t *testing.T, index uint64, ledger string, deleting
 			id, tag := attributes.MakeKey(key.Bytes())
 			plans = append(plans, &raftcmdpb.AttributeCoverage{
 				Id: &raftcmdpb.AttributeID{Id: id[:], Tag: tag}, AttrCode: uint32(dal.SubAttrVolume),
-				Value: &raftcmdpb.AttributeValue{RawValue: zero},
+				CanonicalKey: key.Bytes(),
+				Value:        &raftcmdpb.AttributeValue{RawValue: zero},
 			})
 		}
 	}
