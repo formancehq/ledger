@@ -8,6 +8,11 @@ This document compares the POC's API with the original Formance ledger API and d
 > intentionally unversioned. The original ledger's `/v2` is **not** preserved
 > by this POC — there is no compatibility shim.
 
+For the per-operation Ledger v2 → v3 path mapping, see
+[`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
+change when a route it names is renamed or removed; `TestV2EndpointMap_TargetsExist`
+fails otherwise.
+
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
 reversal (unitary and bulk). Integral decimal/exponent spellings are accepted;
@@ -49,7 +54,7 @@ for client setup, restore behavior, failure limitations, and revision changes.
 | Create transaction with `force` | ✅ | ✅ | Bypasses balance checks |
 | **Transactions (Read)** |
 | Get transaction by ID | ✅ | ✅ | |
-| List transactions | ⚠️ | ✅ | gRPC stream only (no HTTP handler); supports `source`/`destination` address filtering, `reference`, `startTime`/`endTime`, and `id` via prepared queries |
+| List transactions | ✅ | ✅ | HTTP `GET /v3/{ledgerName}/transactions` and gRPC stream: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (`source`/`destination`/`address`, `reference`, `id`, metadata) |
 | **Metadata** |
 | Save account metadata | ✅ | ✅ | |
 | Delete account metadata | ✅ | ✅ | |
@@ -979,7 +984,7 @@ Read endpoints comparison with the original ledger:
 | Endpoint | POC | Original | Notes |
 |----------|-----|----------|-------|
 | `GET /v3/{ledgerName}/transactions/{id}` | ✅ | ✅ | Get a transaction by ID |
-| `GET /v3/{ledgerName}/transactions` | ⚠️ | ✅ | List transactions (gRPC stream only, no HTTP handler) |
+| `GET /v3/{ledgerName}/transactions` | ✅ | ✅ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/{ledgerName}/accounts` | ✅ | ✅ | List accounts (rich boolean filter, cursor pagination). No `first_usage` / `insertion_date` / `updated_at` filter or ordering ([details](#6--account-date-fields-first_usage-insertion_date-updated_at)) |
 | `GET /v3/{ledgerName}/accounts/{address}` | ✅ | ✅ | Get an account |
 | `GET /v3/{ledgerName}/accounts/{address}/balances` | ❌ | ✅ | Get account balances |
@@ -1010,7 +1015,6 @@ Read endpoints comparison with the original ledger:
 | `POST /v3/{ledgerName}/account-types` | ✅ | ❌ | Add account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `DELETE /v3/{ledgerName}/account-types/{typeName}` | ✅ | ❌ | Remove account type. Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
 | `PUT /v3/{ledgerName}/account-types/default-enforcement-mode` | ✅ | ❌ | Set default enforcement mode (STRICT/AUDIT). Requires `ledger:MetadataWrite` on both the dedicated route and gRPC `Apply` |
-| `GET /v3/{ledgerName}/transactions` | ✅ | ❌ | List transactions: cursor pagination, `startDate`/`endDate` range, and the generic `filter` (reference selection via `filter={"$match":{"reference":"..."}}`) |
 | `GET /v3/_/logs/{sequence}` | ✅ | ❌ | Fetch a single system log by bucket-wide sequence. No ledger identity → requires `ledger` ops-read (granular `ledger:OpsRead`) |
 | `GET /v3/_/events-sinks` | ✅ | ❌ | List configured event sinks with per-sink status (`{sinks, sinkStatuses}`, parity with gRPC `GetEventsSinks`) |
 | `GET /v3/_/signing-keys` | ✅ | ❌ | List registered Ed25519 signing keys |
