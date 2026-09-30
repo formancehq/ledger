@@ -62,6 +62,19 @@ The [comparison run 36669545346](https://github.com/formancehq/ledger/actions/ru
 
 All eight HTTP runs had zero request failures and dropped iterations. On the same commit, five-sample storage microbenchmarks found RocksDB batch writes 122% slower for 5 entries, 64% slower for 100 entries, and 32% slower for 1,000 entries. These results support a modest latency penalty at the offered HTTP rates in this repeat, but the earlier campaign variation and limited repetitions prevent a claim of statistical equivalence or a production capacity estimate.
 
+The [comparison run 36676394062](https://github.com/formancehq/ledger/actions/runs/36676394062) measured RocksDB commit `23cceb48c8215dcface4e50ef0231ceb39427345` against the same baseline. The 50/25 job's first attempt was invalid: Pebble dropped three iterations during warmup, before any RocksDB measurement. The targeted rerun passed. The table uses the two-run arithmetic mean from each successful job; the 30/15 and 50/25 jobs ran on separate runners.
+
+| Offered load | Metric | Pebble | RocksDB | Delta |
+| --- | --- | ---: | ---: | ---: |
+| 30 writes/s + 15 reads/s | Write p99 | 12.10 ms | 12.52 ms | +3.4% |
+| 30 writes/s + 15 reads/s | Read p99 | 11.71 ms | 11.98 ms | +2.2% |
+| 30 writes/s + 15 reads/s | Mean sampled RSS | 154.4 MiB | 140.0 MiB | -9.3% |
+| 50 writes/s + 25 reads/s | Write p99 | 11.83 ms | 13.01 ms | +10.0% |
+| 50 writes/s + 25 reads/s | Read p99 | 11.40 ms | 11.82 ms | +3.7% |
+| 50 writes/s + 25 reads/s | Mean sampled RSS | 186.3 MiB | 153.7 MiB | -17.5% |
+
+All eight measured runs in the successful jobs had zero request failures and dropped iterations. The first invalid warmup and the variation across campaigns reinforce that these figures do not establish performance equivalence. They are a directional single-node comparison at the stated offered rates.
+
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
 
 ```bash
