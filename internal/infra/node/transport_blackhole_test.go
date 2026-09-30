@@ -197,6 +197,21 @@ func TestConnectionLivenessRejectsStaleAndDuplicatePongs(t *testing.T) {
 	require.True(t, liveness.expired(time.Now().Add(transportLivenessTimeout+time.Second)))
 }
 
+func TestConnectionLivenessAllowsNextProbeAfterDelayedPong(t *testing.T) {
+	t.Parallel()
+	liveness := newConnectionLiveness()
+	probeID, ok := liveness.beginProbe()
+	require.True(t, ok)
+	liveness.mu.Lock()
+	liveness.probeAt = time.Now().Add(-transportLivenessTimeout + time.Second)
+	liveness.lastProbe = liveness.probeAt
+	liveness.mu.Unlock()
+	_, ok = liveness.acceptPong(probeID)
+	require.True(t, ok)
+	require.False(t, liveness.expired(time.Now().Add(transportProbeInterval)),
+		"a valid delayed pong must leave time to schedule the next probe")
+}
+
 func TestConnectionLivenessDetectsBlockedSendAndProbeStarvation(t *testing.T) {
 	t.Parallel()
 	liveness := newConnectionLiveness()

@@ -1012,6 +1012,9 @@ func (l *connectionLiveness) acceptPong(id uint64) (time.Duration, bool) {
 	}
 	latency := time.Since(l.probeAt)
 	l.probeAt = time.Time{}
+	// The next probe cannot be due before the current one completes. Give
+	// the sender a full scheduling interval after a valid delayed pong.
+	l.lastProbe = time.Now()
 
 	return latency, true
 }

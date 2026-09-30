@@ -225,8 +225,10 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
   a missing pong, a blocked send, or five seconds without a sent probe cancels
   the attempt independently of the send loop. Due probes are scheduled before
   queued Raft traffic so a healthy but busy peer is not disconnected merely
-  because its send queues stay nonempty. The loop then reports the peer
-  unreachable, drains pending sends, and restarts its pooled connection after
+  because its send queues stay nonempty. A matching pong resets the no-probe
+  deadline so a slow but valid response leaves time for the next probe. The
+  loop then reports the peer unreachable, drains pending sends, and restarts
+  its pooled connection after
   at most the existing one-second retry delay. Restart constructs a new
   `dns:///` client, allowing the current peer address to resolve again.
   Detection is approximately five seconds; full recovery additionally needs
