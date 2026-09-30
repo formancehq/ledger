@@ -262,7 +262,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *
 		}
 		waited = true
 		if waitErr := rs.WaitForRaftProgress(ctx, mainAppliedIndex); waitErr != nil {
-			// The caller's context ending is the caller's answer; a Pebble
+			// The caller's context ending is the caller's answer; a storage
 			// fault reading progress is a real I/O error and must not be
 			// laundered into a freshness condition.
 			return nil, 0, nil, fmt.Errorf("waiting for read projection alignment at Raft index %d: %w", mainAppliedIndex, waitErr)

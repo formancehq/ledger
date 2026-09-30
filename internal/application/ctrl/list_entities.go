@@ -61,7 +61,7 @@ type entityListResult struct {
 // It returns the raw entity ID bytes along with the last indexed raft index for
 // cross-store consistency.
 //
-// The function takes a Pebble snapshot for the iteration and builds
+// The function takes a read-index snapshot for the iteration and builds
 // `params.indexVersionFor` from THAT snapshot. Callers must not set
 // the field themselves — a resolver constructed against the live store
 // would race with a concurrent atomic version switch and hand the
@@ -180,7 +180,7 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.KVReader, p
 	return nil
 }
 
-// listDescUnfiltered uses reverse iteration on the Pebble source of truth
+// listDescUnfiltered uses reverse iteration on the main-store source of truth
 // (accounts, transactions, logs).
 func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.KVReader, params entityListParams[T], out *[][]byte) error {
 	var before []byte
