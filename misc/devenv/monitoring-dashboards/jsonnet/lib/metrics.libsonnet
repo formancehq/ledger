@@ -83,9 +83,11 @@
     lag: 'usage.builder.lag',
   },
 
-  // numscript — internal/domain/processing/numscript/cache.go
+  // numscript — internal/domain/processing/numscript/cache.go,
+  // internal/domain/processing/processor_transaction_numscript.go
   numscript:: {
     cache_size: 'numscript.cache.size',
+    artifact_missing: 'numscript.artifact.missing',
   },
 
   // mirror — internal/application/mirror/worker.go
