@@ -11,7 +11,6 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
-	"go.opentelemetry.io/otel/metric"
 
 	numscriptlib "github.com/formancehq/numscript"
 
@@ -35,15 +34,16 @@ type numscriptPostingProducer struct {
 	// the bytecode on the VM, the only engine. A missing artifact is recompiled
 	// from the script text; one not encoded in the bundled library's artifact
 	// format (another binary's, e.g. a Raft log replayed across a library
-	// upgrade) fails the order loudly. The outcome is a function of the
-	// committed entry and the running binary alone, so every node on that
-	// binary applies it identically (invariant #2).
+	// upgrade) fails the order loudly. The
+	// outcome is a function of the committed entry and the running binary
+	// alone, so every node on that binary applies it identically (invariant #2).
 	compiledProgram    []byte
 	compiledVars       []byte
 	compiledScriptHash []byte
-	// missingArtifactAlarm is raised when the order carries no artifact; nil
-	// where that is expected (see RequestProcessor.ExpectMissingNumscriptArtifacts).
-	missingArtifactAlarm *missingArtifactAlarm
+	// compileMissing marks the store checker's audit replay, whose orders
+	// never carry compiled code, so a missing artifact there is expected (see
+	// RequestProcessor.CompileMissingNumscript).
+	compileMissing bool
 }
 
 func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *raftcmdpb.CreateTransactionOrder, script *commonpb.Script) (*produceResult, domain.SerializableError) {
@@ -138,21 +138,19 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// Execute the script on the VM, the only execution engine. When Force is
 	// true, the store returns unlimited balances to bypass balance checks.
 	//
-	// The artifact is an optimization derivable from the script text, not part
-	// of the order's meaning: a missing one is recompiled here, exactly as
-	// admission compiles it, so it costs a compile and never changes the
-	// outcome. Only one path legitimately gets here without one: re-running an
-	// audited order, which never carries compiled code. Admission binds an
-	// artifact to every scripted order it proposes (a
-	// script the VM cannot run is rejected there with ErrNumscriptCompile, and
-	// an order it forwards without one is marked preload_unavailable and
-	// rejected before reaching here). Anywhere else a missing artifact is an
-	// admission bug, so the alarm keeps it visible (invariant #7) while the
-	// order still gets its correct outcome.
+	// The artifact is derivable from the script text, so a missing one is
+	// recompiled here exactly as admission compiles it: it costs a compile and
+	// never changes the outcome. Re-running an audited order, which never
+	// carries compiled code, always gets here. Anywhere else it is an admission
+	// bug — admission binds an artifact to every scripted order it proposes,
+	// and one it forwards without is marked preload_unavailable and rejected
+	// before reaching here — so it is flagged under Antithesis (invariant #7).
 	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
 	if len(compiledProgram) == 0 {
-		if p.missingArtifactAlarm != nil {
-			p.missingArtifactAlarm.raise(ledgerName)
+		if !p.compileMissing {
+			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
+				"ledger": ledgerName,
+			})
 		}
 
 		compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
@@ -433,34 +431,4 @@ func (s *scopeValueSource) Metadata(account, key string) (string, bool, error) {
 	// absent, diverging from the admission-side admissionValueSource and
 	// poisoning the resolution hash with the absent sentinel.
 	return commonpb.MetadataValueToString(valueReader.Mutate()), true, nil
-}
-
-// missingArtifactAlarm reports a scripted order that reached apply without
-// its compiled Numscript artifact on a path where admission should have bound
-// one. The order is still recompiled and applied correctly, so the alarm is
-// observability only and never feeds the outcome (invariant #2): a counter
-// that should stay at zero in production, and an Antithesis Unreachable that
-// fails any campaign reaching it.
-type missingArtifactAlarm struct {
-	counter metric.Int64Counter
-}
-
-func newMissingArtifactAlarm(m metric.Meter) (*missingArtifactAlarm, error) {
-	counter, err := m.Int64Counter(
-		"numscript.artifact.missing",
-		metric.WithDescription("Scripted orders that reached FSM apply without their compiled Numscript artifact and were recompiled from the script text. Admission binds an artifact to every scripted order, so any non-zero value is an admission bug."),
-		metric.WithUnit("1"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("creating numscript artifact missing counter: %w", err)
-	}
-
-	return &missingArtifactAlarm{counter: counter}, nil
-}
-
-func (a *missingArtifactAlarm) raise(ledgerName string) {
-	a.counter.Add(context.Background(), 1)
-	assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
-		"ledger": ledgerName,
-	})
 }

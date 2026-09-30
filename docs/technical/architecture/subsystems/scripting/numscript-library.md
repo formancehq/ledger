@@ -242,10 +242,8 @@ part of the order's meaning, so a scripted order reaching execution without
 one is recompiled from its text (`numscript.CompileForReplay`, the same
 compile admission runs) and executed on the VM: it costs a compile and never
 changes the outcome. Outside audit replay (below) a missing artifact is still
-an admission bug, so it raises an alarm that never feeds the outcome
-(invariant #2) but keeps the bug visible (invariant #7): the
-`numscript.artifact.missing` counter, which stays at zero in a healthy
-cluster, and an Antithesis `assert.Unreachable`.
+an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
+(invariant #7), which never feeds the outcome (invariant #2).
 
 The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
 (invariant #7), identically on every node running the binary — when: either
@@ -275,9 +273,9 @@ Because the audit never holds the artifact, the store checker, which re-runs
 audited orders to rebuild state, takes the same recompile path for every
 scripted order. Every compilation of a script means the same thing, so this
 gives the order its original outcome. Missing artifacts are expected there, so
-`state.AuditReplayer` silences the alarm
-(`RequestProcessor.ExpectMissingNumscriptArtifacts`); it changes no outcome,
-and the cluster's own processor never calls it.
+`state.AuditReplayer` turns on `RequestProcessor.CompileMissingNumscript`,
+which only skips the `assert.Unreachable`; the cluster's own processor never
+calls it.
 
 ### Version Pinning Examples
 

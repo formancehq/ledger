@@ -99,9 +99,8 @@ func NewAuditReplayer(logger logging.Logger, auditKey string) (*AuditReplayer, e
 		return nil, fmt.Errorf("creating audit replay machine: %w", err)
 	}
 	// Audited orders keep only their business part, never the compiled
-	// numscript code: every scripted order the replay re-runs is recompiled
-	// from its text, which is expected here and must not raise the alarm.
-	machine.processor.ExpectMissingNumscriptArtifacts()
+	// numscript code, so the replay compiles each script itself.
+	machine.processor.CompileMissingNumscript()
 	if err := NewRecovery(machine, store).RecoverState(); err != nil {
 		_ = store.Close()
 		_ = os.RemoveAll(dir)

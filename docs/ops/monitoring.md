@@ -411,7 +411,6 @@ The Numscript cache stores parsed Numscript programs to avoid re-parsing identic
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `numscript.cache.size` | Gauge | 1 | Number of entries currently in the cache, per `cache` attribute: `parsed` (parsed scripts) and `compiled` (verified VM artifacts, each holding a warm VM) |
-| `numscript.artifact.missing` | Counter | 1 | Scripted orders that reached FSM apply without their compiled VM artifact and were recompiled from the script text. The outcome is unaffected, but admission binds an artifact to every scripted order, so any non-zero value is an admission bug worth alerting on |
 
 ### Attribute Cache Metrics
 
