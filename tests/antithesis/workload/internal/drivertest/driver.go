@@ -143,5 +143,6 @@ func StartServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) 
 	}, 5*time.Second, 10*time.Millisecond)
 	client := servicepb.NewBucketServiceClient(conn)
 	testserver.WaitForWriteAdmission(t, ctx, client)
+
 	return ctx, client
 }
