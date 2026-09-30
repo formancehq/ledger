@@ -61,7 +61,7 @@ func TestReconcileIndexes_CreateConflictDoesNotAdopt(t *testing.T) {
 				commands = append(commands, args)
 				require.Equal(t, []string{"indexes", "list", "--ledger", "L", "--json"}, args[:5])
 				if slices.Contains(args, "--creation-key-prefix") {
-					require.Equal(t, "ledger-operator/index/resource-uid/", args[6])
+					require.Equal(t, "ledger-next-operator/index/resource-uid/", args[6])
 					if firstCreated {
 						return `[{"id":{"txBuiltin":"TX_BUILTIN_INDEX_REFERENCE"}}]`, nil
 					}
@@ -135,8 +135,8 @@ func TestReconcileIndexesCreationAttemptsHaveDistinctKeys(t *testing.T) {
 			require.Equal(t, "create", args[1])
 			require.Equal(t, "--idempotency-key", args[len(args)-2])
 			key := args[len(args)-1]
-			require.True(t, strings.HasPrefix(key, "ledger-operator/index/resource-uid/"))
-			_, err := uuid.Parse(strings.TrimPrefix(key, "ledger-operator/index/resource-uid/"))
+			require.True(t, strings.HasPrefix(key, "ledger-next-operator/index/resource-uid/"))
+			_, err := uuid.Parse(strings.TrimPrefix(key, "ledger-next-operator/index/resource-uid/"))
 			require.NoError(t, err)
 			require.NotContains(t, keys, key)
 			keys = append(keys, key)

@@ -1,7 +1,7 @@
 apiVersion: chainsaw.kyverno.io/v1alpha1
 kind: Test
 metadata:
-  name: ledger-crd
+  name: ledger-next-crd
 spec:
   timeouts:
     assert: 5m
@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-crd-cluster
+                name: ledger-next-crd-cluster
               status:
                 readyReplicas: 1
 
@@ -25,7 +25,7 @@ spec:
             file: ledger.yaml
         - assert:
             resource:
-              apiVersion: ledger.formance.com/v1alpha1
+              apiVersion: ledger-next.formance.com/v1alpha1
               kind: Ledger
               metadata:
                 name: test-ledger
@@ -36,7 +36,7 @@ spec:
       try:
         - script:
             content: |
-              kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
+              kubectl exec ledger-next-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"' \
                 | grep my-ledger
             timeout: 30s
@@ -45,7 +45,7 @@ spec:
       try:
         - assert:
             resource:
-              apiVersion: ledger.formance.com/v1alpha1
+              apiVersion: ledger-next.formance.com/v1alpha1
               kind: Ledger
               metadata:
                 name: test-ledger
@@ -53,7 +53,7 @@ spec:
                 (conditions[?type == 'IndexesSynced'])[0].status: "True"
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-next-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               echo "$OUTPUT"
               # Builtins + account asset + metadata field must all be present.
@@ -67,10 +67,10 @@ spec:
     - name: Reconcile index changes (drop address, add timestamp)
       try:
         - apply:
-            file: ledger-reindexed.yaml
+            file: ledger-next-reindexed.yaml
         - assert:
             resource:
-              apiVersion: ledger.formance.com/v1alpha1
+              apiVersion: ledger-next.formance.com/v1alpha1
               kind: Ledger
               metadata:
                 name: test-ledger
@@ -78,7 +78,7 @@ spec:
                 (conditions[?type == 'IndexesSynced'])[0].status: "True"
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-next-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl indexes list --ledger my-ledger --json --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               echo "$OUTPUT"
               echo "$OUTPUT" | grep -q TX_BUILTIN_INDEX_TIMESTAMP  || { echo "FAIL: timestamp index not created"; exit 1; }
@@ -94,14 +94,14 @@ spec:
       try:
         - script:
             content: |
-              kubectl delete ledger test-ledger -n $NAMESPACE --wait=true --timeout=30s
+              kubectl delete ledgers.ledger-next.formance.com test-ledger -n $NAMESPACE --wait=true --timeout=30s
             timeout: 60s
 
     - name: Verify ledger is removed
       try:
         - script:
             content: |
-              OUTPUT=$(kubectl exec ledger-crd-cluster-0 -n $NAMESPACE -c ledger -- \
+              OUTPUT=$(kubectl exec ledger-next-crd-cluster-0 -n $NAMESPACE -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers list --server 127.0.0.1:8888 --insecure --auth-token "$CLUSTER_SECRET"')
               if echo "$OUTPUT" | grep -q my-ledger; then
                 echo "FAIL: ledger my-ledger still exists after deletion"

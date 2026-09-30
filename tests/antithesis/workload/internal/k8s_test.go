@@ -21,9 +21,9 @@ func TestLedgerStatefulSetName_IsPrefixed(t *testing.T) {
 	t.Parallel()
 
 	got := LedgerStatefulSetName()
-	if got != "ledger-ledger" {
+	if got != "ledger-next-ledger" {
 		t.Fatalf("LedgerStatefulSetName() = %q, want %q (operator prefixes resources with %q)",
-			got, "ledger-ledger", resourcePrefix)
+			got, "ledger-next-ledger", resourcePrefix)
 	}
 }
 
@@ -34,9 +34,9 @@ func TestLedgerPodName_MatchesOperatorLayout(t *testing.T) {
 		ordinal int
 		want    string
 	}{
-		{0, "ledger-ledger-0"},
-		{1, "ledger-ledger-1"},
-		{2, "ledger-ledger-2"},
+		{0, "ledger-next-ledger-0"},
+		{1, "ledger-next-ledger-1"},
+		{2, "ledger-next-ledger-2"},
 	}
 	for _, c := range cases {
 		if got := LedgerPodName(c.ordinal); got != c.want {
@@ -53,8 +53,8 @@ func TestPodOrdinal_AcceptsOperatorNames(t *testing.T) {
 		want int
 	}{
 		// Operator-emitted names — the only shape this helper should accept.
-		{"ledger-ledger-0", 0},
-		{"ledger-ledger-2", 2},
+		{"ledger-next-ledger-0", 0},
+		{"ledger-next-ledger-2", 2},
 
 		// Pre-EN-1319 unprefixed shape — must be rejected so the helper
 		// surfaces the misnaming instead of silently picking up stray pods.
@@ -62,8 +62,8 @@ func TestPodOrdinal_AcceptsOperatorNames(t *testing.T) {
 
 		// Garbage.
 		{"", -1},
-		{"ledger-ledger-", -1},
-		{"ledger-ledger-abc", -1},
+		{"ledger-next-ledger-", -1},
+		{"ledger-next-ledger-abc", -1},
 		{"unrelated-pod", -1},
 	}
 	for _, c := range cases {

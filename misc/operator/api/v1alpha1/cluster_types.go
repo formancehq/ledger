@@ -1100,7 +1100,7 @@ type PersistenceSpec struct {
 	// DeletionProtection opts this ledger's PVCs and bound PVs into the
 	// cluster-scoped volume deletion-protection admission policy. It defaults to
 	// true (protected): the operator stamps the
-	// `ledger.formance.com/deletion-protection: enabled` label on the volumes so
+	// `ledger-next.formance.com/deletion-protection: enabled` label on the volumes so
 	// the policy selects them and rejects accidental DELETEs unless the object
 	// carries the allow-deletion annotation. Set it explicitly to false to opt
 	// out — the label is then removed and protection is lifted. The policy itself

@@ -1,4 +1,4 @@
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: al-cluster
@@ -9,4 +9,4 @@ spec:
     tag: e2e
     pullPolicy: Never
   additionalLabels:
-    app.formance.com/service: ledger-v3-renamed
+    app.formance.com/service: ledger-next-v3-renamed

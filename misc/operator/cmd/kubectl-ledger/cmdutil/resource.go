@@ -17,14 +17,14 @@ import (
 const (
 	LabelName     = "app.kubernetes.io/name"
 	LabelInstance = "app.kubernetes.io/instance"
-	LabelValue    = "ledger"
+	LabelValue    = "ledger-next"
 
 	// resourcePrefix mirrors internal/controller.resourcePrefix (names.go), the
 	// source of truth. The operator prefixes every object it creates with it, so
-	// a Cluster's StatefulSet is named "ledger-<cr>", not "<cr>" (EN-1319).
+	// a Cluster's StatefulSet is named "ledger-next-<cr>", not "<cr>" (EN-1319).
 	// Duplicated here because that const is unexported and importing the
 	// controller package would pull controller-runtime into this CLI.
-	resourcePrefix = "ledger-"
+	resourcePrefix = "ledger-next-"
 )
 
 // LabelSelector returns a comma-separated label selector for the given Cluster name.
@@ -71,13 +71,13 @@ func ClusterPVCs(ctx context.Context, cs kubernetes.Interface, namespace, name s
 }
 
 // ClusterStatefulSet fetches the StatefulSet for a Cluster. The
-// operator names it "ledger-<cr>" (resourcePrefix), not the bare CR name.
+// operator names it "ledger-next-<cr>" (resourcePrefix), not the bare CR name.
 func ClusterStatefulSet(ctx context.Context, cs kubernetes.Interface, namespace, name string) (*appsv1.StatefulSet, error) {
 	return cs.AppsV1().StatefulSets(namespace).Get(ctx, resourcePrefix+name, metav1.GetOptions{})
 }
 
 // ClusterPodName returns the name of the ordinal-th StatefulSet pod for a
-// Cluster. The operator names pods "ledger-<cr>-<ordinal>" (resourcePrefix),
+// Cluster. The operator names pods "ledger-next-<cr>-<ordinal>" (resourcePrefix),
 // not "<cr>-<ordinal>".
 func ClusterPodName(name string, ordinal int) string {
 	return fmt.Sprintf("%s%s-%d", resourcePrefix, name, ordinal)

@@ -278,7 +278,7 @@ A ledger created with `mirror_source` set has `LedgerInfo.mode = MIRROR`, which 
 A mirror ledger is read-only to clients, but index create/drop is explicitly allowed on it (`isMirrorSafeApply` whitelists `CreateIndex`/`DropIndex`), so a mirror can carry the same query indexes as its source. Because mirror ledgers are typically provisioned entirely through the Kubernetes operator's `Ledger` CRD, the CRD exposes a declarative `spec.indexes` block so the index set is part of the same GitOps manifest:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Ledger
 spec:
   name: my-ledger

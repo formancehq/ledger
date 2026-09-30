@@ -16,8 +16,8 @@ import (
 // (resourceName(ledger.Name)); the PVC names derive from it as
 // <volume>-<stsName>-<ordinal>.
 const (
-	testStsName = "ledger-my-ledger"
-	testPVCName = "data-ledger-my-ledger-0"
+	testStsName = "ledger-next-my-ledger"
+	testPVCName = "data-ledger-next-my-ledger-0"
 )
 
 func boundPVCAndPV(pvcName, pvName, namespace string) (*corev1.PersistentVolumeClaim, *corev1.PersistentVolume) {

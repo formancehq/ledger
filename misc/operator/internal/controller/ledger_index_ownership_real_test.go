@@ -250,7 +250,7 @@ func (h *realIndexHarness) client(funcs interceptor.Funcs) client.Client {
 
 func (h *realIndexHarness) controller(c client.Client) *LedgerReconciler {
 	cluster := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "ledger.formance.com/v1alpha1", "kind": "Cluster",
+		"apiVersion": "ledger-next.formance.com/v1alpha1", "kind": "Cluster",
 		"metadata": map[string]any{"name": "test-cluster", "namespace": "test"},
 		"status":   map[string]any{"phase": "Running"},
 	}}

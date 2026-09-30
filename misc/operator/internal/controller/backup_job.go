@@ -22,7 +22,7 @@ const (
 
 	// backupJobLabelRun carries the owning BackupRun name so we can find
 	// the Job and its pod from the reconciler.
-	backupJobLabelRun = "ledger.formance.com/backup-run"
+	backupJobLabelRun = "ledger-next.formance.com/backup-run"
 )
 
 // fullBackupResult holds the parsed JSON output from `ledgerctl store backup`.

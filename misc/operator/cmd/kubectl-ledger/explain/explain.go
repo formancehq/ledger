@@ -127,7 +127,7 @@ func runExplain(cmd *cobra.Command, restConfigFn RESTConfigFunc, args []string) 
 	}
 
 	pterm.Println()
-	pterm.DefaultSection.Println("Cluster CRD — ledger.formance.com/v1alpha1")
+	pterm.DefaultSection.Println("Cluster CRD — ledger-next.formance.com/v1alpha1")
 	printFields(root, 0)
 
 	return nil

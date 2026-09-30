@@ -22,7 +22,7 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-const eventSinkFinalizer = "ledger.formance.com/event-sink-cleanup"
+const eventSinkFinalizer = "ledger-next.formance.com/event-sink-cleanup"
 
 // EventSinkReconciler owns only runtime sinks stamped with the EventSink UID.
 type EventSinkReconciler struct {
@@ -33,10 +33,10 @@ type EventSinkReconciler struct {
 	Clientset kubernetes.Interface
 }
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=eventsinks,verbs=get;list;watch;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=eventsinks/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=eventsinks/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=eventsinks,verbs=get;list;watch;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=eventsinks/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=eventsinks/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create

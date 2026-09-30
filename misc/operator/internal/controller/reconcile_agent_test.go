@@ -28,7 +28,7 @@ func TestReconcile_CredentialsDistributesToAdditionalNamespace(t *testing.T) {
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
 		Namespace: ns,
-		Name:      "ledger-creates-secret-credentials-keys",
+		Name:      "ledger-next-creates-secret-credentials-keys",
 	}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, secretKey, secret) == nil
@@ -63,8 +63,8 @@ func TestReconcile_CredentialsDistributesToMatchedClusterNamespaces(t *testing.T
 
 	secretA := &corev1.Secret{}
 	secretB := &corev1.Secret{}
-	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-multi-distrib-credentials-keys"}
-	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-multi-distrib-credentials-keys"}
+	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-next-multi-distrib-credentials-keys"}
+	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-next-multi-distrib-credentials-keys"}
 
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, keyA, secretA) == nil && k8sClient.Get(ctx, keyB, secretB) == nil
@@ -87,7 +87,7 @@ func TestReconcile_CredentialsSecretIdempotent(t *testing.T) {
 	secret := &corev1.Secret{}
 	secretKey := types.NamespacedName{
 		Namespace: ns,
-		Name:      "ledger-idempotent-credentials-keys",
+		Name:      "ledger-next-idempotent-credentials-keys",
 	}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, secretKey, secret) == nil
@@ -135,7 +135,7 @@ func TestReconcile_CredentialsStatus(t *testing.T) {
 	assert.NotEmpty(t, credentials.Status.KeyID, "keyID must be set")
 	require.Len(t, credentials.Status.DistributedSecretRefs, 1)
 	assert.Equal(t, ns, credentials.Status.DistributedSecretRefs[0].Namespace)
-	assert.Equal(t, "ledger-status-check-credentials-keys", credentials.Status.DistributedSecretRefs[0].Name)
+	assert.Equal(t, "ledger-next-status-check-credentials-keys", credentials.Status.DistributedSecretRefs[0].Name)
 }
 
 func TestReconcile_CredentialsNoTargets(t *testing.T) {
@@ -204,8 +204,8 @@ func TestReconcile_CredentialsOrphanCleanup(t *testing.T) {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
 
-	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-orphan-cleanup-credentials-keys"}
-	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-orphan-cleanup-credentials-keys"}
+	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-next-orphan-cleanup-credentials-keys"}
+	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-next-orphan-cleanup-credentials-keys"}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, keyA, &corev1.Secret{}) == nil && k8sClient.Get(ctx, keyB, &corev1.Secret{}) == nil
 	}, "both replicas should be created initially")
@@ -239,8 +239,8 @@ func TestReconcile_CredentialsSeedSurvivesClusterRecreation(t *testing.T) {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
 
-	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-survive-credentials-credentials-keys"}
-	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-survive-credentials-credentials-canonical"}
+	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-next-survive-credentials-credentials-keys"}
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-next-survive-credentials-credentials-canonical"}
 	replica := &corev1.Secret{}
 	canonical := &corev1.Secret{}
 
@@ -306,7 +306,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 	// the reconciler will look up.
 	legacyReplica := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ledger-legacy-credentials-credentials-keys",
+			Name:      "ledger-next-legacy-credentials-credentials-keys",
 			Namespace: ns,
 			Labels: map[string]string{
 				credentialsNameLabel: "legacy-credentials",
@@ -330,7 +330,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacyReplicaSeed(t *testing.T) {
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
 
-	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-legacy-credentials-credentials-canonical"}
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-next-legacy-credentials-credentials-canonical"}
 	canonical := &corev1.Secret{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, canonicalKey, canonical); err != nil {
@@ -358,7 +358,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T
 	// no longer referenced by any Cluster.
 	legacyReplica := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "ledger-orphan-credentials-credentials-keys",
+			Name:      "ledger-next-orphan-credentials-credentials-keys",
 			Namespace: ns,
 			Labels: map[string]string{
 				credentialsNameLabel: "orphan-credentials",
@@ -378,7 +378,7 @@ func TestReconcile_CredentialsUpgradeAdoptsLegacySeedWithoutTargets(t *testing.T
 		_ = k8sClient.Delete(ctx, credentials) //nolint:errcheck // best-effort cleanup
 	})
 
-	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-orphan-credentials-credentials-canonical"}
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-next-orphan-credentials-credentials-canonical"}
 	canonical := &corev1.Secret{}
 	requireEventually(t, func() bool {
 		if err := k8sClient.Get(ctx, canonicalKey, canonical); err != nil {
@@ -406,8 +406,8 @@ func TestReconcile_CredentialsCanonicalDeletedOnAgentRemoval(t *testing.T) {
 	credentials := newCredentialsWithAdditional("canonical-cleanup", []string{"read"}, map[string]string{"app": "ledger"}, ns)
 	require.NoError(t, k8sClient.Create(ctx, credentials))
 
-	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-canonical-cleanup-credentials-keys"}
-	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-canonical-cleanup-credentials-canonical"}
+	replicaKey := types.NamespacedName{Namespace: ns, Name: "ledger-next-canonical-cleanup-credentials-keys"}
+	canonicalKey := types.NamespacedName{Namespace: testOperatorNamespace, Name: "ledger-next-canonical-cleanup-credentials-canonical"}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, replicaKey, &corev1.Secret{}) == nil && k8sClient.Get(ctx, canonicalKey, &corev1.Secret{}) == nil
 	}, "canonical and replica should be created")
@@ -429,8 +429,8 @@ func TestReconcile_CredentialsDeletion(t *testing.T) {
 	credentials := newCredentialsWithAdditional("to-delete", []string{"read"}, map[string]string{"app": "ledger"}, nsA, nsB)
 	require.NoError(t, k8sClient.Create(ctx, credentials))
 
-	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-to-delete-credentials-keys"}
-	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-to-delete-credentials-keys"}
+	keyA := types.NamespacedName{Namespace: nsA, Name: "ledger-next-to-delete-credentials-keys"}
+	keyB := types.NamespacedName{Namespace: nsB, Name: "ledger-next-to-delete-credentials-keys"}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, keyA, &corev1.Secret{}) == nil && k8sClient.Get(ctx, keyB, &corev1.Secret{}) == nil
 	}, "replicas should be created in both additional namespaces")

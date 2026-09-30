@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: eventsinks.ledger.formance.com
+  name: eventsinks.ledger-next.formance.com
 spec:
-  group: ledger.formance.com
+  group: ledger-next.formance.com
   names:
     kind: EventSink
     listKind: EventSinkList

@@ -365,10 +365,10 @@ fi
 
 ### Scaling
 
-To add nodes, update the `replicas` field in the Ledger CR:
+To add nodes, update the `replicas` field in the Cluster CR:
 
 ```bash
-kubectl patch ledgers.ledger.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
+kubectl patch clusters.ledger-next.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
 ```
 
 New pods will join the existing cluster as learners and be auto-promoted once caught up.

@@ -9,7 +9,7 @@
        --api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy
        to force-render there. */}}
 {{- if and .Values.pvcProtection.enabled (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}
-{{- $sa := printf "system:serviceaccount:%s:%s" .Release.Namespace (include "ledger-operator.serviceAccountName" .) }}
+{{- $sa := printf "system:serviceaccount:%s:%s" .Release.Namespace (include "ledger-next-operator.serviceAccountName" .) }}
 {{- $annotation := .Values.pvcProtection.allowDeletionAnnotation }}
 {{- /* Validate as a Kubernetes annotation key: an optional lowercase DNS-1123
        subdomain prefix (<=253 chars) before '/', then a name segment of
@@ -57,17 +57,17 @@
 {{- end }}
 {{- end }}
 {{- /* These cluster-scoped objects use fixed, release-independent names on purpose:
-       volume deletion protection is a cluster-wide admin singleton. A second operator
+       volume deletion protection is an admin singleton for the next API group. A second operator
        release that also sets pvcProtection.enabled=true would render the same names and
        fail its helm install/upgrade with an ownership conflict, rather than silently
        installing a second policy that cross-applies to (and blocks legitimate deletes
-       on) the first release's volumes. Enable it on at most one release per cluster. */}}
+       on) the first release's volumes. Enable it on at most one next release per cluster. */}}
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: ledger-volume-protection-pvc
+  name: ledger-next-volume-protection-pvc
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -95,23 +95,23 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: ledger-volume-protection-pvc
+  name: ledger-next-volume-protection-pvc
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
 spec:
-  policyName: ledger-volume-protection-pvc
+  policyName: ledger-next-volume-protection-pvc
   validationActions: ["Deny"]
   matchResources:
     objectSelector:
       matchLabels:
-        ledger.formance.com/deletion-protection: enabled
+        ledger-next.formance.com/deletion-protection: enabled
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
-  name: ledger-volume-protection-pv
+  name: ledger-next-volume-protection-pv
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
 spec:
   failurePolicy: Fail
   matchConstraints:
@@ -146,14 +146,14 @@ spec:
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
 metadata:
-  name: ledger-volume-protection-pv
+  name: ledger-next-volume-protection-pv
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
 spec:
-  policyName: ledger-volume-protection-pv
+  policyName: ledger-next-volume-protection-pv
   validationActions: ["Deny"]
   matchResources:
     objectSelector:
       matchLabels:
-        ledger.formance.com/deletion-protection: enabled
+        ledger-next.formance.com/deletion-protection: enabled
 {{- end }}

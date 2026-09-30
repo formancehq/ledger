@@ -1,4 +1,4 @@
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: ing-cluster
@@ -15,4 +15,4 @@ spec:
   ingressGrpc:
     enabled: true
     hosts:
-      - host: ledger-grpc.e2e.local
+      - host: ledger-next-grpc.e2e.local

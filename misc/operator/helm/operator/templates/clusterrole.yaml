@@ -1,9 +1,9 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "ledger-operator.fullname" . }}
+  name: {{ include "ledger-next-operator.fullname" . }}
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:
   - ""
@@ -109,7 +109,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - backupruns
   - backups
@@ -125,7 +125,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - backupruns/finalizers
   - backups/finalizers
@@ -136,7 +136,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - backupruns/status
   - backups/status
@@ -149,7 +149,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - eventsinks
   verbs:

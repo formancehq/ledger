@@ -146,7 +146,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_PreservesConfigMap(t *testin
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	selector := map[string]string{"tier": "gold"}
 
@@ -193,7 +193,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_CompleteCarriedSet_RollsWith
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		credName    = "thierry-cred"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -262,7 +262,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_IncompleteCarriedSet_StaysPe
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	selector := map[string]string{"tier": "gold"}
 	scheme := authKeysScheme(t)
@@ -321,7 +321,7 @@ func TestReconcileAuthKeys_TransientNonDistribution_AuthDisabled_NotPending(t *t
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	selector := map[string]string{"tier": "gold"}
 
@@ -371,7 +371,7 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_NotPending(t *testing.T) {
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	selector := map[string]string{"tier": "gold"}
 
@@ -412,7 +412,7 @@ func TestReconcileAuthKeys_IssuerBacked_AllUnresolved_PreservesPriorKeyNotPendin
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		credName    = "thierry-cred"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -459,7 +459,7 @@ func TestReconcileAuthKeys_EffectiveAuthDisabled_AllUnresolved_NotPending(t *tes
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	selector := map[string]string{"tier": "gold"}
 
@@ -513,7 +513,7 @@ func TestReconcileAuthKeys_NoMatch_DeletesConfigMap(t *testing.T) {
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 
 	scheme := authKeysScheme(t)
@@ -549,7 +549,7 @@ func TestReconcileAuthKeys_Distributed_CreatesConfigMap(t *testing.T) {
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -598,7 +598,7 @@ func TestReconcileAuthKeys_FullyResolved_MalformedConfigMap_SelfHeals(t *testing
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -659,7 +659,7 @@ func TestReconcileAuthKeys_Partial_MalformedConfigMap_SelfHeals(t *testing.T) {
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-a-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -720,7 +720,7 @@ func TestReconcileAuthKeys_Partial_TransientReadError_DoesNotDropKey(t *testing.
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-a-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -819,7 +819,7 @@ func TestReconcileAuthKeys_PartialNonDistribution_PreservesConfigMap(t *testing.
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-a-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -884,7 +884,7 @@ func TestReconcileAuthKeys_PartialResolution_BrokenCredentialDoesNotBlockRotatio
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-a-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -954,7 +954,7 @@ func TestReconcileAuthKeys_PartialResolution_NoPriorKey_Skips(t *testing.T) {
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 		secretName  = "thierry-cred-a-secret"
 	)
 	selector := map[string]string{"tier": "gold"}
@@ -1006,7 +1006,7 @@ func TestCredentialsToClusters_EnqueuesMatchingCluster(t *testing.T) {
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	selector := map[string]string{"tier": "gold"}
 
@@ -1040,11 +1040,11 @@ func TestReconcileVolumeProtectionPass_RunsIndependentlyOfAuthKeys(t *testing.T)
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 
-	// resourceName(clusterName) == "ledger-thierry"; the data PVC for ordinal 0 is
-	// "data-ledger-thierry-0".
+	// resourceName(clusterName) == "ledger-next-thierry"; the data PVC for ordinal 0 is
+	// "data-ledger-next-thierry-0".
 	stsName := resourceName(clusterName)
 	boundPVC, boundPV := boundPVCAndPV("data-"+stsName+"-0", "pv-thierry-0", namespace)
 	cs := k8sfake.NewClientset(boundPVC, boundPV)
@@ -1093,7 +1093,7 @@ func TestReconcileVolumeProtectionPass_RequeuesWhilePreservingStatefulSet(t *tes
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 	stsName := resourceName(clusterName)
 
@@ -1165,7 +1165,7 @@ func TestReconcileClusterSecretForTLSState_RunsIndependentlyOfAuthKeys(t *testin
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 
 	scheme := authKeysScheme(t)
@@ -1207,7 +1207,7 @@ func TestReconcileClusterSecretForTLSState_DeletesWhenTLSDisabledAndMayDelete(t 
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 
 	scheme := authKeysScheme(t)
@@ -1248,7 +1248,7 @@ func TestReconcileClusterSecretForTLSState_KeepsSecretWhileStillReferenced(t *te
 
 	const (
 		clusterName = "thierry"
-		namespace   = "ledger-v3"
+		namespace   = "ledger-next-v3"
 	)
 
 	scheme := authKeysScheme(t)

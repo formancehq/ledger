@@ -70,5 +70,5 @@ func TestAuthKeysConfigMapName(t *testing.T) {
 	ledger := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: "my-ledger"},
 	}
-	assert.Equal(t, "ledger-my-ledger-auth-keys", authKeysConfigMapName(ledger.Name))
+	assert.Equal(t, "ledger-next-my-ledger-auth-keys", authKeysConfigMapName(ledger.Name))
 }

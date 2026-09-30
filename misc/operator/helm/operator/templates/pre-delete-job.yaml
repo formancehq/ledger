@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "ledger-operator.fullname" . }}-pre-delete
+  name: {{ include "ledger-next-operator.fullname" . }}-pre-delete
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-5"
@@ -12,43 +12,43 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "ledger-operator.fullname" . }}-pre-delete
+  name: {{ include "ledger-next-operator.fullname" . }}-pre-delete
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: hook-succeeded,hook-failed
 rules:
-- apiGroups: ["ledger.formance.com"]
+- apiGroups: ["ledger-next.formance.com"]
   resources: ["credentials"]
   verbs: ["get", "list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "ledger-operator.fullname" . }}-pre-delete
+  name: {{ include "ledger-next-operator.fullname" . }}-pre-delete
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "-5"
     helm.sh/hook-delete-policy: hook-succeeded,hook-failed
 subjects:
 - kind: ServiceAccount
-  name: {{ include "ledger-operator.fullname" . }}-pre-delete
+  name: {{ include "ledger-next-operator.fullname" . }}-pre-delete
   namespace: {{ .Release.Namespace }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "ledger-operator.fullname" . }}-pre-delete
+  name: {{ include "ledger-next-operator.fullname" . }}-pre-delete
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "ledger-operator.fullname" . }}-pre-delete
+  name: {{ include "ledger-next-operator.fullname" . }}-pre-delete
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
   annotations:
     helm.sh/hook: pre-delete
     helm.sh/hook-weight: "0"
@@ -58,14 +58,14 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "ledger-operator.selectorLabels" . | nindent 8 }}
+        {{- include "ledger-next-operator.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "ledger-operator.fullname" . }}-pre-delete
+      serviceAccountName: {{ include "ledger-next-operator.fullname" . }}-pre-delete
       restartPolicy: OnFailure
       securityContext:
         runAsNonRoot: true
       containers:
-      - name: strip-finalizers
+      - name: delete-credentials
         image: docker.io/bitnami/kubectl:latest
         imagePullPolicy: IfNotPresent
         securityContext:
@@ -76,9 +76,9 @@ spec:
         - /bin/sh
         - -ec
         - |
-          # Delete all Credentials while the operator is still
-          # running so it can process finalizers (clean up cross-namespace
-          # Secrets) before Helm tears down the Deployment.
-          kubectl delete credentials.ledger.formance.com --all \
-            --wait --timeout=60s 2>/dev/null || true
+          # Credentials are cluster-scoped: watchNamespace cannot scope this
+          # cleanup. Delete only the next API group's Credentials while the
+          # operator can still finalize their cross-namespace Secrets.
+          kubectl delete credentials.ledger-next.formance.com --all \
+            --ignore-not-found --wait --timeout=60s
           echo "done"

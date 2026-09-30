@@ -37,7 +37,7 @@ func TestPyroscopeSecretReferences(t *testing.T) {
 			}
 			ls := newMinimalCluster()
 			pyro := &ledgerv1alpha1.PyroscopeConfig{Enabled: tc.enabled}
-			ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{ServiceName: "ledger-profile", Pyroscope: pyro}
+			ls.Spec.Monitoring = &ledgerv1alpha1.MonitoringConfig{ServiceName: "ledger-next-profile", Pyroscope: pyro}
 			if tc.token {
 				pyro.AuthTokenFrom = &ledgerv1alpha1.SecretKeyRef{Name: secret.Name, Key: "token"}
 			}
@@ -50,7 +50,7 @@ func TestPyroscopeSecretReferences(t *testing.T) {
 			envs := sts.Spec.Template.Spec.Containers[0].Env
 			if tc.enabled {
 				assertEnv(t, envs, "PYROSCOPE_ENABLED", "true")
-				assertEnv(t, envs, "PYROSCOPE_APPLICATION_NAME", "ledger-profile")
+				assertEnv(t, envs, "PYROSCOPE_APPLICATION_NAME", "ledger-next-profile")
 			} else {
 				for _, env := range envs {
 					require.NotContains(t, env.Name, "PYROSCOPE_")

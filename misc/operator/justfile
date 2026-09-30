@@ -3,7 +3,7 @@ controller-gen := "go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.21.
 generate:
     {{controller-gen}} object:headerFile="" paths=./api/... \
         crd output:crd:dir=config/crd/bases \
-        rbac:roleName=ledger-operator output:rbac:dir=config/rbac paths=./...
+        rbac:roleName=ledger-next-operator output:rbac:dir=config/rbac paths=./...
     @just _sync-chart
 
 # Sync generated RBAC rules into the Helm chart ClusterRole template.
@@ -47,12 +47,12 @@ ledger-v3-path := env("LEDGER_V3_PATH", "../..")
 
 e2e-cluster-up: _e2e-build-ledger
     kind create cluster --name ledger-e2e --config e2e/manifests/kind-config.yaml 2>/dev/null || true
-    docker build -t ledger-operator:e2e .
+    docker build -t ledger-next-operator:e2e .
     docker pull minio/minio:latest
     docker pull minio/mc:latest
     docker pull nats:2.12.14-alpine
     docker pull natsio/nats-box:0.19.2
-    kind load docker-image ledger-operator:e2e --name ledger-e2e
+    kind load docker-image ledger-next-operator:e2e --name ledger-e2e
     kind load docker-image ledger:e2e --name ledger-e2e
     kind load docker-image minio/minio:latest --name ledger-e2e
     kind load docker-image minio/mc:latest --name ledger-e2e
@@ -60,9 +60,9 @@ e2e-cluster-up: _e2e-build-ledger
     kind load docker-image natsio/nats-box:0.19.2 --name ledger-e2e
     kubectl apply -f e2e/manifests/minio.yaml --context kind-ledger-e2e
     kubectl wait --for=condition=available deployment/minio -n minio --context kind-ledger-e2e --timeout=300s
-    helm dependency update ./helm/operator
-    helm upgrade --install ledger-operator ./helm/operator \
-        --set image.repository=ledger-operator \
+    helm dependency build ./helm/operator --skip-refresh
+    helm upgrade --install ledger-next-operator ./helm/operator \
+        --set image.repository=ledger-next-operator \
         --set image.tag=e2e \
         --set image.pullPolicy=Never \
         --set leaderElection=false \
@@ -93,7 +93,8 @@ test-e2e-only: _ensure-chainsaw
 test-helm-render:
     #!/bin/bash
     set -euo pipefail
-    helm dependency build helm/operator >/dev/null
+    trap 'rm -rf helm/operator/charts' EXIT
+    helm dependency build helm/operator --skip-refresh >/dev/null
     vap="admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy"
     # Old cluster (capability absent): the policy must be skipped so the install succeeds.
     old=$(helm template t helm/operator --set pvcProtection.enabled=true \
@@ -101,10 +102,13 @@ test-helm-render:
     # New cluster (capability present): 2 policies + 2 bindings.
     new=$(helm template t helm/operator --set pvcProtection.enabled=true --api-versions "$vap" \
         | grep -c "^kind: ValidatingAdmissionPolicy" || true)
-    rm -rf helm/operator/charts
     if [ "$old" -ne 0 ]; then echo "FAIL: expected 0 VAP objects on a pre-1.30 cluster, got $old"; exit 1; fi
     if [ "$new" -ne 4 ]; then echo "FAIL: expected 4 VAP objects on a >=1.30 cluster, got $new"; exit 1; fi
     echo "OK: VAP gated by ValidatingAdmissionPolicy capability (old=$old, new=$new)"
+
+# Verify chart coexistence boundaries (including the six generated next CRDs).
+test-helm-coexistence:
+    bash helm/operator/tests/coexistence.sh
 
 helm-package version='' suffix='':
     #!/bin/bash

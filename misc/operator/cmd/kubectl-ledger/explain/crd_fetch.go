@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-const clusterCRDName = "clusters.ledger.formance.com"
+const clusterCRDName = "clusters.ledger-next.formance.com"
 
 // FetchSpecFields fetches the Cluster CRD from the cluster and builds
 // the field tree from its OpenAPI v3 schema. Returns descriptions, defaults,

@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	credentialsFinalizer = "ledger.formance.com/credentials-keys"
-	credentialsNameLabel = "ledger.formance.com/credentials-name"
+	credentialsFinalizer = "ledger-next.formance.com/credentials-keys"
+	credentialsNameLabel = "ledger-next.formance.com/credentials-name"
 )
 
 // CredentialsReconciler reconciles a Credentials object.
@@ -51,9 +51,9 @@ type CredentialsReconciler struct {
 	APIReader client.Reader
 }
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=credentials,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=credentials/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=credentials/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile handles the reconciliation loop for Credentials resources.

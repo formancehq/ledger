@@ -65,7 +65,7 @@ func main() {
 		},
 		HealthProbeBindAddress: f.probeAddr,
 		LeaderElection:         f.leaderElect,
-		LeaderElectionID:       "ledger-operator.formance.com",
+		LeaderElectionID:       "ledger-next-operator.formance.com",
 	}
 	if f.watchNamespace != "" {
 		mgrOpts.Cache.DefaultNamespaces = map[string]cache.Config{

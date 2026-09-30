@@ -24,9 +24,9 @@ func TestBackupServerAddr(t *testing.T) {
 		{
 			name: "default port",
 			ls: &ledgerv1alpha1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
+				ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-next-v3"},
 			},
-			want: "ledger-ledger.ledger-v3.svc.cluster.local:8888",
+			want: "ledger-next-ledger.ledger-next-v3.svc.cluster.local:8888",
 		},
 		{
 			name: "custom port",
@@ -34,7 +34,7 @@ func TestBackupServerAddr(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "lgr", Namespace: "ns"},
 				Spec:       ledgerv1alpha1.ClusterSpec{GrpcPort: 9999},
 			},
-			want: "ledger-lgr.ns.svc.cluster.local:9999",
+			want: "ledger-next-lgr.ns.svc.cluster.local:9999",
 		},
 	}
 	for _, tt := range tests {
@@ -49,14 +49,14 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	t.Parallel()
 
 	ls := &ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-v3"},
+		ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "ledger-next-v3"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
-			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
+			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-next-tls", CASecretKey: "ca.crt"},
 		},
 	}
 	backup := &ledgerv1alpha1.Backup{
-		ObjectMeta: metav1.ObjectMeta{Name: "blockchains", Namespace: "ledger-v3"},
+		ObjectMeta: metav1.ObjectMeta{Name: "blockchains", Namespace: "ledger-next-v3"},
 		Spec: ledgerv1alpha1.BackupSpec{
 			ClusterRef: "ledger",
 			Destination: ledgerv1alpha1.BackupDestination{
@@ -66,15 +66,15 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 		},
 	}
 	run := &ledgerv1alpha1.BackupRun{
-		ObjectMeta: metav1.ObjectMeta{Name: "blockchains-manual-abc", Namespace: "ledger-v3"},
+		ObjectMeta: metav1.ObjectMeta{Name: "blockchains-manual-abc", Namespace: "ledger-next-v3"},
 		Spec:       ledgerv1alpha1.BackupRunSpec{BackupRef: "blockchains", Type: ledgerv1alpha1.BackupRunTypeFull},
 	}
 
 	job, err := buildBackupJob(run, backup, ls, tlsModeRequired)
 	require.NoError(t, err)
 
-	require.Equal(t, "ledger-blockchains-manual-abc", job.Name)
-	require.Equal(t, "ledger-v3", job.Namespace)
+	require.Equal(t, "ledger-next-blockchains-manual-abc", job.Name)
+	require.Equal(t, "ledger-next-v3", job.Namespace)
 	require.Equal(t, "blockchains", job.Labels[ledgerv1alpha1.LabelBackup])
 	require.Equal(t, "blockchains-manual-abc", job.Labels[backupJobLabelRun])
 
@@ -93,7 +93,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	// Caller-supplied args are single-quoted by ledgerctlCommand to neutralize
 	// shell metacharacters from CRD fields or Secret values.
 	require.Contains(t, shell, "./ledgerctl 'store' 'backup'")
-	require.Contains(t, shell, `--server "ledger-ledger.ledger-v3.svc.cluster.local:8888"`)
+	require.Contains(t, shell, `--server "ledger-next-ledger.ledger-next-v3.svc.cluster.local:8888"`)
 	require.Contains(t, shell, `--tls-ca-cert "$TLS_CA_CERT_FILE"`)
 	require.Contains(t, shell, `--auth-token "$CLUSTER_SECRET"`)
 	require.Contains(t, shell, "'--driver' 's3'")
@@ -105,7 +105,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.Len(t, job.Spec.Template.Spec.Volumes, 1)
 	require.Equal(t, "tls-certs", job.Spec.Template.Spec.Volumes[0].Name)
 	require.NotNil(t, job.Spec.Template.Spec.Volumes[0].Secret)
-	require.Equal(t, "ledger-tls", job.Spec.Template.Spec.Volumes[0].Secret.SecretName)
+	require.Equal(t, "ledger-next-tls", job.Spec.Template.Spec.Volumes[0].Secret.SecretName)
 	require.Len(t, c.VolumeMounts, 1)
 	require.Equal(t, "/tls", c.VolumeMounts[0].MountPath)
 
@@ -135,7 +135,7 @@ func TestBuildBackupJob_FullWithTLS(t *testing.T) {
 	require.True(t, ok, "CLUSTER_SECRET must be injected when TLS is active")
 	require.NotNil(t, clusterSecret.ValueFrom)
 	require.NotNil(t, clusterSecret.ValueFrom.SecretKeyRef)
-	require.Equal(t, "ledger-ledger-cluster-secret", clusterSecret.ValueFrom.SecretKeyRef.Name)
+	require.Equal(t, "ledger-next-ledger-cluster-secret", clusterSecret.ValueFrom.SecretKeyRef.Name)
 }
 
 func TestBuildBackupJob_DisabledTLS_NoClusterSecret(t *testing.T) {

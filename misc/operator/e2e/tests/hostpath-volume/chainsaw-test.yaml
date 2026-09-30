@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-hp-test
+                name: ledger-next-hp-test
 
     - name: Verify StatefulSet has only 1 VolumeClaimTemplate (wal)
       try:
@@ -24,7 +24,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-hp-test
+                name: ledger-next-hp-test
               spec:
                 volumeClaimTemplates:
                   - metadata:
@@ -34,7 +34,7 @@ spec:
       try:
         - assert:
             resource:
-              apiVersion: ledger.formance.com/v1alpha1
+              apiVersion: ledger-next.formance.com/v1alpha1
               kind: Cluster
               metadata:
                 name: hp-test

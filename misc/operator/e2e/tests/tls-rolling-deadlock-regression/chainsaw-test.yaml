@@ -20,7 +20,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-tls-deadlock
+                name: ledger-next-tls-deadlock
               status:
                 readyReplicas: 3
 
@@ -37,7 +37,7 @@ spec:
               [req]
               distinguished_name=req
               [SAN]
-              subjectAltName=DNS:localhost,DNS:ledger-tls-deadlock-headless,DNS:*.ledger-tls-deadlock-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
+              subjectAltName=DNS:localhost,DNS:ledger-next-tls-deadlock-headless,DNS:*.ledger-next-tls-deadlock-headless.${NAMESPACE}.svc.cluster.local,IP:127.0.0.1
               EOF
               openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
                 -nodes -keyout tls.key -out tls.csr -subj "/CN=tls-deadlock"
@@ -64,7 +64,7 @@ spec:
         - assert:
             timeout: 8m
             resource:
-              apiVersion: ledger.formance.com/v1alpha1
+              apiVersion: ledger-next.formance.com/v1alpha1
               kind: Cluster
               metadata:
                 name: tls-deadlock

@@ -40,7 +40,7 @@ func TestLedgerctlTLSFlag(t *testing.T) {
 func TestLedgerctlCommand_TLSModes(t *testing.T) {
 	t.Parallel()
 
-	const serverAddr = "ledger.ledger-v3.svc.cluster.local:8888"
+	const serverAddr = "ledger.ledger-next-v3.svc.cluster.local:8888"
 
 	tests := []struct {
 		name           string
@@ -185,8 +185,8 @@ func TestOtelExecPrologue(t *testing.T) {
 func TestPodSelfServerAddr(t *testing.T) {
 	t.Parallel()
 
-	got := podSelfServerAddr("ledger-headless", 8888)
-	require.Equal(t, "$POD_NAME.ledger-headless.$POD_NAMESPACE.svc.cluster.local:8888", got)
+	got := podSelfServerAddr("ledger-next-headless", 8888)
+	require.Equal(t, "$POD_NAME.ledger-next-headless.$POD_NAMESPACE.svc.cluster.local:8888", got)
 }
 
 func TestFetchTLSMode(t *testing.T) {

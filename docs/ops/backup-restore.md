@@ -27,7 +27,7 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 The operator's `Backup` resource can schedule full and incremental S3 backups:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Backup
 metadata:
   name: production

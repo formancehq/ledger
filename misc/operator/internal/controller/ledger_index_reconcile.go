@@ -103,7 +103,7 @@ func reconcileIndexesWithExec(ctx context.Context, ledger *ledgerv1alpha1.Ledger
 	if ledger.UID == "" {
 		return false, errors.New("index reconciliation requires a persisted Ledger UID")
 	}
-	creationPrefix := "ledger-operator/index/" + string(ledger.UID) + "/"
+	creationPrefix := "ledger-next-operator/index/" + string(ledger.UID) + "/"
 	var createdOK, droppedOK []managedIndex
 	// Status is an observation reconstructed from the audit, never authority.
 	var applied []string

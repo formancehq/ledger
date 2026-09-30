@@ -67,15 +67,15 @@ Install the operator and its CRD dependency, then start from the maintained
 
 ```bash
 helm dependency build misc/operator/helm/operator
-helm install ledger-operator misc/operator/helm/operator \
-  --namespace ledger-system \
+helm install ledger-next-operator misc/operator/helm/operator \
+  --namespace ledger-next-system \
   --create-namespace
 ```
 
 For a three-node deployment, make scheduling and resources explicit:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: customer-ledger
@@ -114,7 +114,7 @@ spec:
   minAvailable: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: ledger
+      app.kubernetes.io/name: ledger-next
       app.kubernetes.io/instance: customer-ledger
 ```
 

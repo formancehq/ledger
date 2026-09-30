@@ -1,4 +1,4 @@
-# Ledger Operator
+# Ledger Next Operator
 
 Kubernetes operator for deploying and managing high-availability [Formance Ledger](https://github.com/formancehq/ledger) instances using Raft consensus.
 
@@ -90,6 +90,12 @@ for runtime delivery, missing-key behavior and ambient authentication.
 | `Cluster` | Namespaced | Main resource - deploys a ledger cluster |
 | `EventSink` | Namespaced | Configures a runtime event sink for a Cluster |
 | `Credentials` | Cluster | Cluster-level API credentials |
+| `Ledger` | Namespaced | Declarative logical ledger and indexes |
+| `Backup` | Namespaced | Scheduled backup configuration |
+| `BackupRun` | Namespaced | Individual backup execution |
+
+All six kinds retain their names and use `ledger-next.formance.com/v1alpha1`.
+The Pebble operator continues to own `ledger.formance.com/v1alpha1`.
 
 ## Quick Start
 
@@ -105,24 +111,55 @@ for runtime delivery, missing-key behavior and ambient authentication.
 ### Install the Operator
 
 ```bash
-helm dependency build misc/operator/helm/operator
-helm install ledger-operator misc/operator/helm/operator \
-  --namespace ledger-system \
-  --create-namespace
+# Set immutable candidate tags from the RocksDB build/release you have verified.
+# Both images must contain this revision's RocksDB code and next API identity.
+: "${ROCKSDB_OPERATOR_TAG:?Set the pinned RocksDB operator candidate tag}"
+: "${ROCKSDB_LEDGER_TAG:?Set the pinned RocksDB Ledger candidate tag}"
+helm dependency build misc/operator/helm/operator --skip-refresh
+helm install ledger-next-operator misc/operator/helm/operator \
+  --namespace ledger-next-system \
+  --create-namespace \
+  --set watchNamespace=ledger-next \
+  --set image.repository=ghcr.io/formancehq/ledger-operator \
+  --set-string image.tag="$ROCKSDB_OPERATOR_TAG" \
+  --set-string ledgerImage.tag="$ROCKSDB_LEDGER_TAG"
 ```
+
+Install this as a **new release alongside** the existing Pebble operator; do not
+upgrade the old release or replace its CRDs. The operator runs in
+`ledger-next-system`; create the separate `ledger-next` benchmark namespace
+before applying workloads there. `watchNamespace=ledger-next` limits namespaced
+reconciliation, while `Credentials` remain cluster-scoped. The CRD dependency is
+`ledger-next-operator-crds` (disable with `ledger-next-operator-crds.create=false`
+only when those next CRDs are already installed).
+
+The image repository stays `ghcr.io/formancehq/ledger-operator`. No
+`ledger-next-operator` image repository is assumed to exist. Candidate tags must
+be supplied explicitly: no published RocksDB candidate is asserted here. Pin
+both operator and Ledger tags to immutable build versions and record the resolved
+digests for the benchmark; `latest` chart defaults are not benchmark pins.
+For a local E2E build, the explicit operator candidate is
+`ledger-next-operator:e2e` with `image.pullPolicy=Never`, not a published image.
+
+Uninstall runs a pre-delete hook that deletes **all**
+`credentials.ledger-next.formance.com` across the cluster while the next operator
+can process finalizers. This group-wide cleanup is independent of
+`watchNamespace` and does not delete Pebble Credentials. Coordinate uninstall
+with other next releases sharing these cluster-scoped credentials.
 
 ### Deploy a Ledger Cluster
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: my-ledger
+  namespace: ledger-next
 spec:
   replicas: 3
   image:
     repository: ghcr.io/formancehq/ledger
-    tag: latest
+    tag: "<pinned-rocksdb-ledger-tag>"
   clusterID: default
   podAntiAffinity:
     enabled: true
@@ -173,7 +210,7 @@ its subjects must include the topics derived from the configured prefix
 capture `ledger.events.>`:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: EventSink
 metadata:
   name: primary
@@ -217,7 +254,7 @@ storage.
 | `leaderElection` | `true` | Enable HA leader election |
 | `watchNamespace` | `""` | Namespace to watch (empty = all) |
 | `pvcProtection.enabled` | `true` | Install the cluster-scoped ValidatingAdmissionPolicy that blocks accidental deletion of ledger PVCs/PVs (requires Kubernetes >= 1.30). On by default; set `false` to opt the cluster out. Arming only — a ledger is selected via `spec.persistence.deletionProtection` (also on by default) |
-| `pvcProtection.allowDeletionAnnotation` | `formance.com/allow-deletion` | Annotation key whose value `true` opts a volume out of deletion protection |
+| `pvcProtection.allowDeletionAnnotation` | `ledger-next.formance.com/allow-deletion` | Annotation key whose value `true` opts a volume out of deletion protection |
 | `pvcProtection.additionalExemptServiceAccounts` | `[]` | Extra ServiceAccount usernames (`system:serviceaccount:<ns>:<name>`) exempt from the policies — sibling operator releases managing protected ledgers, or managed workload/GitOps controllers |
 
 ## Volume Deletion Protection
@@ -240,10 +277,14 @@ opt out. Deletion protection has three independent layers, so the choice of
    pass `--api-versions admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy`
    to force-render the policy there. Installing the policy does **not** protect
    anything on its own — the policy bindings only select volumes carrying the
-   `ledger.formance.com/deletion-protection: enabled` label.
+   `ledger-next.formance.com/deletion-protection: enabled` label.
 
-   The policy is a **cluster-wide singleton** — enable `pvcProtection.enabled` on
-   **at most one** operator release per cluster. The cluster-scoped policy objects
+   The next policies use `ledger-next-volume-protection-pvc` and
+   `ledger-next-volume-protection-pv`, with next label and annotation keys. They
+   coexist with Pebble's policies without selecting its volumes.
+
+   The policy is a **cluster-wide singleton per API group** — enable `pvcProtection.enabled` on
+   **at most one** next operator release per cluster. The cluster-scoped policy objects
    have fixed, release-independent names, so a second release with
    `pvcProtection.enabled=true` fails its `helm install`/`upgrade` with an ownership
    conflict by design, rather than installing a second policy that would cross-apply
@@ -260,13 +301,13 @@ opt out. Deletion protection has three independent layers, so the choice of
    their bound PVs, so the cluster policy selects them. Set it explicitly to `false`
    to opt out — the label is removed and protection is lifted. This is versioned
    alongside the ledger and toggleable without a `helm upgrade`.
-3. **`formance.com/allow-deletion=true` annotation (per-volume override).** A
+3. **`ledger-next.formance.com/allow-deletion=true` annotation (per-volume override).** A
    protected volume can still be deleted on purpose by annotating it first.
 
 To delete a protected volume on purpose:
 
 ```bash
-kubectl annotate pvc <name> formance.com/allow-deletion=true --overwrite
+kubectl annotate pvc <name> ledger-next.formance.com/allow-deletion=true --overwrite
 kubectl delete pvc <name>
 ```
 
@@ -307,7 +348,9 @@ guards Bound PVs only.)
 
 ## kubectl Plugin
 
-The `kubectl-ledger` plugin provides a CLI for managing Cluster resources.
+The `kubectl-ledger` binary name remains unchanged. Built from this checkout,
+it targets the next API group, including `Cluster` and `Credentials` resources.
+Keep the existing Pebble CLI separately if you need to manage both groups.
 
 ### Installation
 
@@ -365,7 +408,7 @@ kubectl ledger explain spec.raft
 kubectl ledger create my-ledger \
   --set replicas=5 \
   --set image.repository=ghcr.io/formancehq/ledger \
-  --set image.tag=latest \
+  --set image.tag="$ROCKSDB_LEDGER_TAG" \
   --set podAntiAffinity.enabled=true \
   --set podAntiAffinity.type=hard \
   --set resources.requests.cpu=2000m \
@@ -414,6 +457,8 @@ nix develop --impure
 just build          # Build operator binary
 just test           # Run tests
 just generate       # Regenerate CRDs, RBAC, and Helm chart
+just test-helm-render # Check policy API capability gating
+just test-helm-coexistence # Lint and check next installation isolation
 just pre-commit     # Run all checks (generate + tidy + build)
 just build-plugin   # Build kubectl plugin
 just install-plugin # Install kubectl plugin to $GOPATH/bin
@@ -427,7 +472,8 @@ cmd/
   kubectl-ledger/    # kubectl plugin
 api/v1alpha1/        # CRD type definitions
 internal/controller/ # Reconciliation logic
-chart/               # Helm chart
+helm/operator/       # ledger-next-operator Helm chart
+helm/crds/           # ledger-next-operator-crds Helm chart
 config/
   crd/bases/         # Generated CRD manifests
   rbac/              # Generated RBAC rules

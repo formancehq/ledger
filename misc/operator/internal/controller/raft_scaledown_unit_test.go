@@ -30,7 +30,7 @@ func TestRemoveNodeSkipsRemoveWhenMembershipPostconditionAlreadyHolds(t *testing
 
 	err := removeNodeWithExec(
 		context.Background(), nil, nil,
-		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false,
+		"ns", "ledger-next-0", "ledger", "ledger-next-0:3068", "disabled", 3, false,
 		exec,
 	)
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestForceRemoveNodeUsesLeaderLocalMembershipCheck(t *testing.T) {
 
 	err := removeNodeWithExec(
 		context.Background(), nil, nil,
-		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, true,
+		"ns", "ledger-next-0", "ledger", "ledger-next-0:3068", "disabled", 3, true,
 		exec,
 	)
 	require.NoError(t, err)
@@ -116,7 +116,7 @@ func TestRemoveNodeAcceptsAbsentPostconditionAfterOpaqueError(t *testing.T) {
 
 	err := removeNodeWithExec(
 		context.Background(), nil, nil,
-		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false,
+		"ns", "ledger-next-0", "ledger", "ledger-next-0:3068", "disabled", 3, false,
 		exec,
 	)
 	require.NoError(t, err)
@@ -145,7 +145,7 @@ func TestRemoveNodeReturnsOpaqueErrorWhenNodeIsStillPresent(t *testing.T) {
 
 	err := removeNodeWithExec(
 		context.Background(), nil, nil,
-		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false,
+		"ns", "ledger-next-0", "ledger", "ledger-next-0:3068", "disabled", 3, false,
 		exec,
 	)
 	require.ErrorContains(t, err, "opaque removal failure")
@@ -167,7 +167,7 @@ func TestRaftNodePresentRejectsNonLeaderStatus(t *testing.T) {
 
 	present, err := raftNodePresent(
 		context.Background(), nil, nil,
-		"ns", "ledger-0", "ledger", "ledger-0:3068", "disabled", 3, false,
+		"ns", "ledger-next-0", "ledger", "ledger-next-0:3068", "disabled", 3, false,
 		exec,
 	)
 	require.False(t, present)

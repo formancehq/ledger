@@ -32,56 +32,38 @@ func TestReconcile_EvenReplicas(t *testing.T) {
 		return cond != nil && cond.Status == metav1.ConditionFalse
 	}, "ConfigValid should be False for even replicas")
 
-	assert.Equal(t, "Degraded", updated.Status.Phase)
+	assert.Equal(t, "Error", updated.Status.Phase)
 
 	// StatefulSet should NOT be created
 	sts := &appsv1.StatefulSet{}
-	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-even", Namespace: ns}, sts)
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-next-even", Namespace: ns}, sts)
 	assert.Error(t, err, "StatefulSet should not be created with even replicas")
 }
 
-func TestReconcile_IngressEnabledNoHosts(t *testing.T) {
+func TestAdmission_IngressEnabledNoHosts(t *testing.T) {
 	ns := createTestNamespace(t)
 	ls := newCluster("ing-nohosts", ns)
 	ls.Spec.Ingress = &ledgerv1alpha1.IngressSpec{
 		Enabled: true,
 		// No hosts → validation error
 	}
-	require.NoError(t, k8sClient.Create(ctx, ls))
-
-	updated := &ledgerv1alpha1.Cluster{}
-	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ing-nohosts", Namespace: ns}, updated); err != nil {
-			return false
-		}
-		cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-		return cond != nil && cond.Status == metav1.ConditionFalse
-	}, "ConfigValid should be False when ingress is enabled with no hosts")
-
-	cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-	assert.Contains(t, cond.Message, "ingress")
+	err := k8sClient.Create(ctx, ls)
+	require.Error(t, err, "the CRD must reject enabled ingress without hosts before reconciliation")
+	assert.Contains(t, err.Error(), "hosts")
+	assert.Contains(t, err.Error(), "ingress")
 }
 
-func TestReconcile_IngressGrpcEnabledNoHosts(t *testing.T) {
+func TestAdmission_IngressGrpcEnabledNoHosts(t *testing.T) {
 	ns := createTestNamespace(t)
 	ls := newCluster("grpc-nohosts", ns)
 	ls.Spec.IngressGrpc = &ledgerv1alpha1.IngressGrpcSpec{
 		Enabled: true,
 		// No hosts → validation error
 	}
-	require.NoError(t, k8sClient.Create(ctx, ls))
-
-	updated := &ledgerv1alpha1.Cluster{}
-	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "grpc-nohosts", Namespace: ns}, updated); err != nil {
-			return false
-		}
-		cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-		return cond != nil && cond.Status == metav1.ConditionFalse
-	}, "ConfigValid should be False when ingressGrpc is enabled with no hosts")
-
-	cond := meta.FindStatusCondition(updated.Status.Conditions, "ConfigValid")
-	assert.Contains(t, cond.Message, "ingressGrpc")
+	err := k8sClient.Create(ctx, ls)
+	require.Error(t, err, "the CRD must reject enabled ingressGrpc without hosts before reconciliation")
+	assert.Contains(t, err.Error(), "hosts")
+	assert.Contains(t, err.Error(), "ingressGrpc")
 }
 
 func TestReconcile_ValidationFixed(t *testing.T) {
@@ -118,6 +100,6 @@ func TestReconcile_ValidationFixed(t *testing.T) {
 
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-fix-val", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-next-fix-val", Namespace: ns}, sts) == nil
 	}, "StatefulSet should appear after validation fix")
 }

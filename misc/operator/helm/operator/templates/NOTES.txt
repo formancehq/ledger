@@ -1,4 +1,4 @@
-Ledger operator installed.
+Ledger next operator installed (ledger-next.formance.com/v1alpha1).
 
 {{- if .Values.pvcProtection.enabled }}
 {{- if not (.Capabilities.APIVersions.Has "admissionregistration.k8s.io/v1/ValidatingAdmissionPolicy") }}

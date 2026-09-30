@@ -30,8 +30,8 @@ done
 #    kapp (used by Antithesis) does not understand helm.sh/hook annotations,
 #    so pre-delete jobs and their RBAC would be applied at startup and fail.
 helm dependency update "$REPO_ROOT/misc/operator/helm/operator" --skip-refresh 2>/dev/null || true
-helm template ledger-operator "$REPO_ROOT/misc/operator/helm/operator" \
-  --set ledger-operator-crds.create=false \
+helm template ledger-next-operator "$REPO_ROOT/misc/operator/helm/operator" \
+  --set ledger-next-operator-crds.create=false \
   --set image.repository="$ANTITHESIS_REGISTRY/ledger-operator" \
   --set image.tag="$TAG" \
   --set image.pullPolicy=IfNotPresent \

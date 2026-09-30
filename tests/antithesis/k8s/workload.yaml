@@ -13,7 +13,7 @@ metadata:
 rules:
 # The restore-orchestrator sidecar deletes and re-creates the Cluster (restore
 # mode round-trip), on top of the drivers' rolling updates.
-- apiGroups: ["ledger.formance.com"]
+- apiGroups: ["ledger-next.formance.com"]
   resources: ["clusters"]
   verbs: ["get", "list", "watch", "update", "patch", "create", "delete"]
 # Operational drivers (rolling_restart, quorum_recovery) delete pods and
@@ -72,9 +72,9 @@ spec:
         command: ["/init"]
         env:
         - name: LEDGER_GRPC_ADDR
-          value: "ledger-ledger:8888"
+          value: "ledger-next-ledger:8888"
         - name: LEDGER_PER_NODE_GRPC_ADDR
-          value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
+          value: "ledger-next-ledger-0.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-1.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-2.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-3.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-4.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-5.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-6.ledger-next-ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
         - name: EXIT_AFTER_SETUP
@@ -94,9 +94,9 @@ spec:
         args: ["infinity"]
         env:
         - name: LEDGER_GRPC_ADDR
-          value: "ledger-ledger:8888"
+          value: "ledger-next-ledger:8888"
         - name: LEDGER_PER_NODE_GRPC_ADDR
-          value: "ledger-ledger-0.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-1.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-2.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-3.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-4.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-5.ledger-ledger-headless.default.svc.cluster.local:8888,ledger-ledger-6.ledger-ledger-headless.default.svc.cluster.local:8888"
+          value: "ledger-next-ledger-0.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-1.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-2.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-3.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-4.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-5.ledger-next-ledger-headless.default.svc.cluster.local:8888,ledger-next-ledger-6.ledger-next-ledger-headless.default.svc.cluster.local:8888"
         - name: EXPECTED_VOTERS
           value: "3"
         # Per-bulk driver decisions (dispatch, outcome, model verdict) in the
@@ -129,7 +129,7 @@ spec:
         # to be reachable before starting the Test Composer.
         readinessProbe:
           exec:
-            command: ["grpc_health_probe", "-addr=ledger-ledger:8888"]
+            command: ["grpc_health_probe", "-addr=ledger-next-ledger:8888"]
           initialDelaySeconds: 5
           periodSeconds: 5
         resources:

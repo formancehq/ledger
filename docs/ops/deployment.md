@@ -118,49 +118,81 @@ go run . run
 
 ### Operator Installation
 
-The Ledger operator manages the full lifecycle of Ledger clusters via a `Ledger` custom resource.
+The RocksDB operator manages node deployments through `Cluster` resources and logical ledgers through `Ledger` resources in `ledger-next.formance.com/v1alpha1`.
 
 ```bash
-# The chart installs the CRDs through its ledger-operator-crds dependency
+# The chart installs the CRDs through its ledger-next-operator-crds dependency
 helm dependency build misc/operator/helm/operator
-helm install ledger-operator misc/operator/helm/operator \
-  --namespace ledger \
+helm install ledger-next-operator misc/operator/helm/operator \
+  --namespace ledger-next-system \
   --create-namespace \
-  --set watchNamespace=ledger
+  --set watchNamespace=ledger-next
 ```
+
+### Coexistence with the Pebble operator
+
+Install the RocksDB chart as a **new release**, `ledger-next-operator`, in
+`ledger-next-system`. Create a dedicated workload namespace, `ledger-next`,
+when using `watchNamespace=ledger-next`. Keep the published Pebble operator and
+its `ledger.formance.com` CRDs installed. All six RocksDB resource kinds
+(`Cluster`, `Ledger`, `EventSink`, `Credentials`, `Backup`, `BackupRun`) belong to
+`ledger-next.formance.com`; references such as `clusterRef` resolve only inside
+that API group. `Credentials` remains cluster-scoped.
+
+Use fully qualified resource names with kubectl, for example
+`kubectl get clusters.ledger-next.formance.com -n ledger-next`. Do not change an
+existing Pebble CR's API group or reuse its data volumes. Pin both the operator
+image and the Ledger image to RocksDB builds; old beta Ledger images still use
+Pebble. The source-tree kubectl plugin targets the new group.
+
+The new operator uses a separate leader-election lease, `ledger-next-` workload
+names, `app.kubernetes.io/name=ledger-next` pod selectors, and
+`ledger-next.formance.com` labels, annotations and finalizers. Its credentials
+Secrets and volume-protection policies are also separate from the Pebble
+operator. Explicit user overrides of service-account names or pod labels can
+still create shared resources or overlapping selectors; prefer the defaults
+and dedicated namespaces during A/B testing.
 
 ### Creating a Ledger Cluster
 
-Create a `Ledger` custom resource:
+Create a `Cluster` custom resource and a `Ledger` that references it:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+  namespace: ledger-next
+spec:
+  replicas: 3
+  image:
+    repository: ghcr.io/formancehq/ledger
+    tag: <rocksdb-build-tag>
+  clusterID: rocksdb-test
+  bindAddr: "0.0.0.0:7777"
+  grpcPort: 8888
+  httpPort: 9000
+  dataDir: "/data/app"
+  walDir: "/data/raft"
+  rocksdb:
+    cacheSize: 1Gi
+  raft:
+    maintenanceInterval: "30s"
+    compactionMargin: 1000
+---
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Ledger
 metadata:
   name: my-ledger
-  namespace: ledger
+  namespace: ledger-next
 spec:
-  replicas: 3  # Must be odd for Raft
-  image:
-    repository: ghcr.io/formancehq/ledger
-    tag: latest
-  config:
-    bindAddr: "0.0.0.0:7777"
-    grpcPort: 8888
-    httpPort: 9000
-    dataDir: "/data/app"
-    walDir: "/data/raft"
-    raft:
-      maintenanceInterval: "30s"
-      compactionMargin: 1000
-      electionTick: 10
-      heartbeatTick: 1
-      maxSizePerMsg: 1048576
-      maxInflightMsgs: 256
-      tickInterval: "100ms"
+  name: my-ledger
+  clusterRef: my-ledger
 ```
 
-The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
+The operator creates the StatefulSet, Services, Ingresses, ServiceAccount,
+NetworkPolicy and associated volumes with names such as
+`ledger-next-my-ledger`.
 
 ### Main Configuration
 
@@ -215,7 +247,7 @@ spec:
 #### Custom Labels
 
 `spec.additionalLabels` is merged on top of the default selector labels
-(`app.kubernetes.io/name=ledger`, `app.kubernetes.io/instance=<cr>`) on every
+(`app.kubernetes.io/name=ledger-next`, `app.kubernetes.io/instance=<cr>`) on every
 owned resource AND on the pod template / Service selectors. Use it to escape
 an unrelated Service whose broad selector accidentally targets the ledger
 pods — override `app.kubernetes.io/name` for a discriminating value, or add
@@ -230,7 +262,7 @@ spec:
 Notes:
 
 - Colliding keys override the defaults (typical fix: rewrite
-  `app.kubernetes.io/name=ledger` to `app.kubernetes.io/name=ledger-v3`).
+  `app.kubernetes.io/name=ledger-next` to `app.kubernetes.io/name=ledger-v3`).
 - `app.kubernetes.io/managed-by` is operator-owned and dropped from the merge
   on both top-level object labels and pod-template labels.
 - Selector fields on `Service` and `StatefulSet` are immutable. Changing
@@ -518,7 +550,7 @@ a Kubernetes Secret named `pyroscope-auth` in the Cluster namespace with a
 `token` key, then reference it:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: my-ledger
@@ -792,10 +824,10 @@ If true tamper-evidence is required (e.g., regulated audit log integrity, third-
 
 ### Horizontal Scaling
 
-To add nodes to the cluster, update the `replicas` field in the Ledger CR:
+To add nodes to the cluster, update the `replicas` field in the Cluster CR:
 
 ```bash
-kubectl patch ledgers.ledger.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
+kubectl patch clusters.ledger-next.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
 ```
 
 **Important** : The number of nodes must remain odd to avoid ties during votes.

@@ -102,7 +102,7 @@ func (r *ClusterReconciler) pruneDNSEndpoints(ctx context.Context, ledger *ledge
 
 	if err := r.List(ctx, list,
 		client.InNamespace(ledger.Namespace),
-		client.MatchingLabels{labelManagedBy: "ledger-operator"},
+		client.MatchingLabels{labelManagedBy: "ledger-next-operator"},
 	); err != nil {
 		// The DNSEndpoint CRD may not be installed (NoKindMatch); nothing to prune.
 		return ignoreNotFound(err)

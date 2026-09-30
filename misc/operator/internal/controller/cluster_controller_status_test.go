@@ -27,7 +27,7 @@ func TestUpdateStatus_PreservesErrorPhaseAcrossStatefulSetState(t *testing.T) {
 
 	const (
 		crName    = "my-ledger"
-		namespace = "ledger-v3"
+		namespace = "ledger-next-v3"
 	)
 
 	scheme := runtime.NewScheme()
@@ -99,7 +99,7 @@ func TestUpdateStatus_RecomputesPhaseAfterRecovery(t *testing.T) {
 
 	const (
 		crName    = "my-ledger"
-		namespace = "ledger-v3"
+		namespace = "ledger-next-v3"
 	)
 
 	scheme := runtime.NewScheme()
