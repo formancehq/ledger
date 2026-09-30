@@ -7,10 +7,12 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"go.etcd.io/raft/v3/raftpb"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 
@@ -138,7 +140,9 @@ func (g *Gateway) Start(ctx context.Context) error {
 		g.conns[i] = conn
 
 		// Create gRPC server
-		server := grpc.NewServer()
+		server := grpc.NewServer(grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
+			MinTime: 5 * time.Second, PermitWithoutStream: true,
+		}))
 
 		// Register Raft-related services only (RaftTransportService and SnapshotService)
 		// These are the internal inter-node communication services that the gateway proxies

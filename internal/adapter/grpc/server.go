@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/encoding"
 	_ "google.golang.org/grpc/encoding/proto"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
@@ -858,6 +859,7 @@ func buildBaseServer(name, host string, port int, logger logging.Logger, tlsCfg 
 // or the RPC is rejected with codes.Unauthenticated (#310).
 func NewRaftServer(port int, logger logging.Logger, tlsCfg *tls.Config, acceptPlaintext bool, clusterSecret string, opts ...Option) (*RaftServer, error) {
 	serverOpts := []ggrpc.ServerOption{
+		ggrpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
 		ggrpc.InitialWindowSize(transport.GRPCInitialWindowSize),
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),
 		ggrpc.ReadBufferSize(transport.GRPCReadBufferSize),
@@ -953,6 +955,7 @@ func NewServiceServer(authPolicy ServiceAuthPolicy, authCfg internalauth.AuthCon
 	}
 
 	serverOpts := []ggrpc.ServerOption{
+		ggrpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{MinTime: 5 * time.Second, PermitWithoutStream: true}),
 		ggrpc.StatsHandler(otelgrpc.NewServerHandler()),
 		ggrpc.InitialWindowSize(transport.GRPCInitialWindowSize),
 		ggrpc.InitialConnWindowSize(transport.GRPCInitialConnWindowSize),

@@ -437,12 +437,24 @@ stateDiagram-v2
 
 When a pod is terminated during a Kubernetes rollout:
 
-1. **Connection Breaks**: The existing stream fails with EOF
-2. **Immediate Retry**: The connection loop starts reconnecting without delay
-3. **Unreachable Notification**: The Raft node is notified the peer is unreachable
+1. **Connection Breaks or Stalls**: The existing stream fails, or its application probe/send watchdog cancels a silently stalled attempt after approximately five seconds
+2. **Unreachable Notification**: The Raft node is notified the peer is unreachable
+3. **Retry Wait**: The connection loop drains queued messages and waits up to one second; an inbound reconnection hint may shorten that wait
 4. **DNS Update**: gRPC re-resolves DNS to get the new pod IP
 5. **Reconnection**: New stream established to the replacement pod
-6. **Peer Signals Reconnection**: Server notifies the client via `reconnected` channel
+6. **Peer Signals Reconnection**: Server emits a best-effort `reconnected` hint; the outbound peer loop consumes it while waiting to retry after a failure
+
+The watchdog is independent of the sending loop. It permits one outstanding
+high-priority ping and accepts only its matching pong. It also detects a send
+that has not returned and sustained traffic that prevents any probe from being
+sent. Due probes run before queued traffic, so a healthy busy connection can
+continue renewing its liveness. A matching pong renews the deadline for
+scheduling the next probe. A successful `Send` only establishes local
+gRPC buffering, not peer delivery. The high-priority probe cannot verify the
+medium or low streams.
+The shared client pool additionally uses gRPC keepalive to detect idle TCP
+blackholes; recovery time includes the watchdog or keepalive detection,
+reconnect delay, DNS resolution, optional TLS probing, and election.
 
 ```mermaid
 sequenceDiagram
@@ -466,19 +478,20 @@ sequenceDiagram
 
 ### Reconnection Signaling
 
-When a peer reconnects, the server-side transport signals this event:
+When a peer opens an inbound stream, the server-side transport emits a
+best-effort, non-blocking hint:
 
 ```go
-// Server-side: signal reconnection
-t.logger.Infof("Peer %x connected!", peerID)
+// Server-side: hint that the peer connected
 select {
-case <-t.peers[peerID].reconnected:
-    // Let a small delay to the send loop to detect the reconnection
-case <-time.After(5 * time.Millisecond):
+case peer.reconnected <- struct{}{}:
+default:
 }
 ```
 
-This allows the sending goroutine to quickly resume message delivery instead of waiting for the full retry delay.
+The outbound loop reads the hint only during its post-failure retry wait. It
+does not interrupt an apparently active stream; the watchdog detects that
+case. An inbound stream alone does not prove its reverse stream is stale.
 
 ### Message Draining During Disconnection
 

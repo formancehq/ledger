@@ -220,9 +220,31 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - Send Raft messages
 - Receive Raft messages
 - Detect unreachable nodes
+- Detect silently stalled outbound streams: one high-priority ping may be
+  outstanding per connection attempt. A matching pong acknowledges that probe;
+  a missing pong, a blocked send, or five seconds without a sent probe cancels
+  the attempt independently of the send loop. Due probes are scheduled before
+  queued Raft traffic so a healthy but busy peer is not disconnected merely
+  because its send queues stay nonempty. A matching pong resets the no-probe
+  deadline so a slow but valid response leaves time for the next probe. The
+  loop then reports the peer unreachable, drains pending sends, and restarts
+  its pooled connection after
+  at most the existing one-second retry delay. Restart constructs a new
+  `dns:///` client, allowing the current peer address to resolve again.
+  Detection is approximately five seconds; full recovery additionally needs
+  retry, DNS, any optional-TLS probe, and a Raft election. A high-priority
+  pong cannot establish delivery on the medium and low priority streams.
 - Refresh an existing peer's pooled connection after a committed address update
   while preserving that peer's send loop and queues; a transient optional-TLS
   probe failure retains the committed target for the loop's next retry
+
+The shared Raft and service connection pools also send gRPC keepalives every
+ten seconds with a five-second response timeout. Raft, service, restore, and
+test gateway servers accept that cadence in TLS and plaintext modes. This
+detects a silent socket failure when the HTTP/2 connection is idle; other
+HTTP/2 activity can defer that detection, so the application probe remains
+the primary Raft stream check. These local liveness rules do not change the
+service RPC contract or `pkg/grpcprotocol.Version`.
 
 ```mermaid
 graph TB
