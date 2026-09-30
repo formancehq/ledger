@@ -788,13 +788,13 @@ func (e *ErrRevertTargetCreatedInBatch) Metadata() map[string]string {
 // ColorKnown disambiguates the two meanings of an empty Color on the wire. The
 // direct-posting path resolves the exact source bucket, so an empty Color there
 // is the genuine uncolored bucket (ColorKnown=true). The Numscript path cannot:
-// numscriptlib.MissingFundsErr carries only {Asset, Needed, Available, Range}
+// the VM's numscriptlib.VmMissingFundsError carries only {Asset, Needed, Got}
 // and never the resolved (account, color), so a colored spend surfaces here
 // with an empty Color that means "unknown", not "uncolored" (ColorKnown=false).
 // Metadata() therefore omits the color key entirely when the color is unknown,
 // so a client never mistakes an unresolved Numscript failure for a definite
 // hit on the uncolored bucket. When a future numscript bump attaches the
-// resolved bucket to MissingFundsErr, the conversion path can set the real
+// resolved bucket to VmMissingFundsError, the conversion path can set the real
 // Color with ColorKnown=true and this ambiguity disappears.
 type ErrInsufficientFunds struct {
 	Account    string

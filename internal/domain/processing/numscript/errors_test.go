@@ -133,41 +133,6 @@ func TestErrNumscriptParse_Error(t *testing.T) {
 	require.Contains(t, err.Error(), "unexpected token")
 }
 
-func TestConvertNumscriptError_MissingFunds(t *testing.T) {
-	t.Parallel()
-
-	numscriptErr := numscriptlib.MissingFundsErr{
-		Asset:     "USD/2",
-		Needed:    *big.NewInt(283334),
-		Available: *big.NewInt(0),
-	}
-	converted := convertNumscriptError(numscriptErr)
-
-	var insufficientFunds *domain.ErrInsufficientFunds
-	require.ErrorAs(t, converted, &insufficientFunds)
-	require.Equal(t, "USD/2", insufficientFunds.Asset)
-	require.Equal(t, "283334", insufficientFunds.Amount)
-	require.Equal(t, "0", insufficientFunds.Balance)
-}
-
-func TestConvertNumscriptError_MissingFunds_WrappedPreservesErrorsAs(t *testing.T) {
-	t.Parallel()
-
-	numscriptErr := numscriptlib.MissingFundsErr{
-		Asset:     "EUR",
-		Needed:    *big.NewInt(1000),
-		Available: *big.NewInt(500),
-	}
-	converted := convertNumscriptError(numscriptErr)
-	wrapped := fmt.Errorf("numscript execution error: %w", converted)
-
-	var insufficientFunds *domain.ErrInsufficientFunds
-	require.True(t, errors.As(wrapped, &insufficientFunds))
-	require.Equal(t, "EUR", insufficientFunds.Asset)
-	require.Equal(t, "1000", insufficientFunds.Amount)
-	require.Equal(t, "500", insufficientFunds.Balance)
-}
-
 // TestExecCompiled_ColoredInsufficientFunds runs a real colored `send` on the
 // VM that overruns a capped RED bucket and asserts the surfaced
 // ErrInsufficientFunds. It pins the VM limitation: its missing-funds error
