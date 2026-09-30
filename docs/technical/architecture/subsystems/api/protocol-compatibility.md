@@ -224,6 +224,23 @@ Numscript runtime error, so a log entry replayed across a later major bump, or
 after a rollback past a minor bump, is rejected rather than run as foreign
 bytecode — the text is never interpreted in the artifact's place.
 
+Revision 15 also moves where and how a statically invalid script fails.
+`Parse` checks syntax only; the Numscript typechecker runs inside the
+compiler. Every static-semantics failure the compiler catches — a type
+mismatch, an undeclared variable, an unknown function or var type, `oneof` or
+a mid-script `balance()` without its feature flag, a send-all from an
+unbounded-overdraft source — used to pass admission, reach apply, and fail
+there as `ERROR_REASON_NUMSCRIPT_RUNTIME` (`KindInternal`). It now fails
+at admission as `ErrNumscriptCompile`, `ERROR_REASON_VALIDATION`
+(`KindValidation`), and such an order no longer produces a proposal, a failure
+log, or an audit entry. The one exception is a `latest` script reference under
+an idempotency key: admission forwards it as preload-unavailable (see
+[admission idempotency](../admission/idempotency.md)), so the FSM replays the
+key's frozen outcome or rejects with `ERROR_REASON_PRELOAD_UNAVAILABLE`.
+Neither revision freezes the compile failure itself under an idempotency key:
+revision 14's apply failure was `KindInternal`, which is not freezable, and
+revision 15's rejection happens before apply.
+
 ## Maintaining the revision
 
 The author of a service contract change must determine whether an existing
