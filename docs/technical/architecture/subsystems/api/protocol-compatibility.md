@@ -20,7 +20,7 @@ compatibility of development revisions.
 ## Wire contract and failure behavior
 
 `pkg/grpcprotocol.Version` is the compiled service protocol revision, currently
-`"14"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
+`"15"`. `pkg/grpcprotocol.MetadataKey` is `ledger-protocol-version`. Clients send
 exactly one value for this metadata key on every RPC. The Go
 `grpcprotocol.ClientOption()` dial option supplies the local revision for unary
 and streaming calls. Local `dev` builds carry the same constant without release
@@ -77,10 +77,10 @@ servers or support for mixed wire-format upgrades.
 
 Every consumer of the service gRPC endpoint must declare its protocol,
 including SDKs, automation, `grpcurl`, and internal requests forwarded to a
- leader. For example, with a schema implementing revision 14:
+leader. For example, with a schema implementing revision 15:
 
 ```bash
-grpcurl -plaintext -H 'ledger-protocol-version: 14' \
+grpcurl -plaintext -H 'ledger-protocol-version: 15' \
   localhost:8888 cluster.ClusterService.GetClusterState
 ```
 
@@ -201,6 +201,20 @@ malformed attribution before preload or proposal, and every FSM replica repeats
 the same validation for replicated writes before mutation. Direct clients cannot provide
 the peer-only forwarding field. This semantic tightening requires revision 14
 clients and servers to communicate together.
+
+## Missing-ledger errors (revision 15)
+
+Revision 15 (EN-1568) changes missing-ledger responses from `GetLedgerStats`
+and `GetTemplateUsage` to the structured `LEDGER_NOT_FOUND` error. Both still
+return gRPC `NotFound`, but now include `ErrorInfo.Reason=LEDGER_NOT_FOUND`
+and the ledger `name` metadata; revision 14 returned `NotFound` without
+`ErrorInfo` for these RPCs.
+
+This is an incompatible response-semantic change even though the service
+protobuf schema is unchanged: revision-14 clients may interpret the structured
+reason and metadata differently. The revision increments from the target
+branch's 14 to 15, and all communicating service clients and servers must be
+rebuilt with the matching revision. HTTP missing-ledger responses remain 404.
 
 ## Maintaining the revision
 
