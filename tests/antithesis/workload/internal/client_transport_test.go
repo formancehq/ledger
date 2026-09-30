@@ -249,5 +249,5 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	account, err := leader.GetAccount(ctx, &servicepb.GetAccountRequest{Ledger: "L", Address: "user"})
 	require.NoError(t, err)
 	require.Len(t, account.GetVolumes(), 1)
-	require.Equal(t, "10", account.GetVolumes()[0].GetVolumes().GetBalance())
+	require.Equal(t, "10", account.GetVolumes()[0].GetVolumes().GetBalance().DecimalString())
 }

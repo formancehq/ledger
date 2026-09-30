@@ -27,21 +27,25 @@ func CheckAccountVolumes(volumes []*commonpb.AccountVolume, details Details) {
 		d := details.With(Details{"asset": entry.GetAsset(), "color": entry.GetColor()})
 		if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil || vol.GetBalance() == nil {
 			assert.Always(false, "account volume entry has missing required fields", d)
+
 			continue
 		}
 		input, err := vol.GetInput().ToBigInt()
 		if err != nil {
 			assert.Always(false, "account volume input is invalid", d.With(Details{"error": err.Error()}))
+
 			continue
 		}
 		output, err := vol.GetOutput().ToBigInt()
 		if err != nil {
 			assert.Always(false, "account volume output is invalid", d.With(Details{"error": err.Error()}))
+
 			continue
 		}
 		balance, err := vol.GetBalance().ToBigInt()
 		if err != nil {
 			assert.Always(false, "account volume balance is invalid", d.With(Details{"error": err.Error()}))
+
 			continue
 		}
 		CheckVolume(input, output, balance, d)
@@ -60,16 +64,19 @@ func CheckPostCommitVolumes(pcv *commonpb.PostCommitVolumes, details Details) {
 			d := details.With(Details{"account": account, "asset": entry.GetAsset(), "color": entry.GetColor()})
 			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil {
 				assert.Always(false, "post-commit volume entry has missing required fields", d)
+
 				continue
 			}
 			input, err := vol.GetInput().ToBigInt()
 			if err != nil {
 				assert.Always(false, "post-commit volume input is invalid", d.With(Details{"error": err.Error()}))
+
 				continue
 			}
 			output, err := vol.GetOutput().ToBigInt()
 			if err != nil {
 				assert.Always(false, "post-commit volume output is invalid", d.With(Details{"error": err.Error()}))
+
 				continue
 			}
 			balance := new(big.Int).Sub(input, output)

@@ -152,11 +152,13 @@ func checkBalanced(ctx context.Context, client servicepb.BucketServiceClient, le
 			vwb := entry.GetVolumes()
 			if vwb == nil || vwb.GetBalance() == nil {
 				assert.Always(false, "double-entry: account volume balance field is absent", d)
+
 				continue
 			}
 			bal, err := vwb.GetBalance().ToBigInt()
 			if err != nil {
 				assert.Always(false, "double-entry: account volume balance is invalid", d.With(internal.Details{"error": err.Error()}))
+
 				continue
 			}
 			aggregated[k].Add(aggregated[k], bal)
@@ -251,9 +253,10 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			asset := entry.GetAsset()
 			color := entry.GetColor()
 			vol := entry.GetVolumes()
-			d := details.With(internal.Details{"account": account.Address, "asset": asset, "color": color})
+			d := details.With(internal.Details{"account": account.GetAddress(), "asset": asset, "color": color})
 			if vol == nil || vol.GetInput() == nil || vol.GetOutput() == nil || vol.GetBalance() == nil {
 				assert.Always(false, "cross-check: account volume has missing required fields", d)
+
 				continue
 			}
 			inputVal, inputErr := vol.GetInput().ToBigInt()
@@ -263,6 +266,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				assert.Always(false, "cross-check: account volume has invalid typed amount", d.With(internal.Details{
 					"inputErr": inputErr, "outputErr": outputErr, "balErr": balErr,
 				}))
+
 				continue
 			}
 			internal.CheckVolume(inputVal, outputVal, balanceVal, d)
@@ -296,11 +300,13 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 
 			if actualVol.GetBalance() == nil {
 				assert.Always(false, "cross-check: GetAccount volume balance is absent", d)
+
 				continue
 			}
 			actualBalance, actualErr := actualVol.GetBalance().ToBigInt()
 			if actualErr != nil {
 				assert.Always(false, "cross-check: GetAccount volume balance is invalid", d.With(internal.Details{"error": actualErr.Error()}))
+
 				continue
 			}
 			if balanceVal.Cmp(actualBalance) != 0 {
@@ -315,7 +321,8 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				}
 				if newCommitIndex != quiescentCommitIndex+1 {
 					log.Printf("composer: balance mismatch on %s/%s (list=%s, get=%s), additional proposals at %d→%d — re-reading",
-						account.Address, asset, balanceVal.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+						account.GetAddress(), asset, balanceVal.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+
 					return newCommitIndex
 				}
 				quiescentCommitIndex = newCommitIndex

@@ -43,7 +43,6 @@ const (
 	probeAsset   = "USD/2"
 )
 
-
 func main() {
 	internal.RunDriver("parallel_driver_stale_reads", func(ctx context.Context, client servicepb.BucketServiceClient, _ string) {
 		r := internal.Rand()
@@ -141,6 +140,7 @@ func main() {
 						"hasOutput":  vol.GetOutput() != nil,
 						"hasBalance": vol.GetBalance() != nil,
 					}))
+
 				continue
 			}
 			input, inputErr := vol.GetInput().ToBigInt()
@@ -153,6 +153,7 @@ func main() {
 						"outputErr":  outputErr,
 						"balanceErr": balanceErr,
 					}))
+
 				continue
 			}
 
