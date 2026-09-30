@@ -128,6 +128,7 @@ func TestWaitForRemovalAppliedWithoutInstanceIDStillWaitsForFSM(t *testing.T) {
 	barrierCount := 0
 	n.pendingRemovals.Range(func(_ pendingRemovalKey, _ *pendingRemoval) bool {
 		barrierCount++
+
 		return true
 	})
 	require.Zero(t, barrierCount, "a member without an instance ID needs no admission barrier")

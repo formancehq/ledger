@@ -3066,6 +3066,7 @@ func (node *Node) verifyAndClearPendingRemoval(nodeID uint64, pending *pendingRe
 	}
 
 	key := pendingRemovalKey{nodeID: nodeID, committedIndex: pending.committedIndex}
+
 	return node.pendingRemovals.CompareAndDelete(key, pending), nil
 }
 
@@ -3131,10 +3132,13 @@ func (node *Node) isRemovalPending(nodeID uint64, instanceID []byte) bool {
 	node.pendingRemovals.Range(func(key pendingRemovalKey, removal *pendingRemoval) bool {
 		if key.nodeID == nodeID && bytes.Equal(removal.instanceID, instanceID) {
 			pending = true
+
 			return false
 		}
+
 		return true
 	})
+
 	return pending
 }
 
