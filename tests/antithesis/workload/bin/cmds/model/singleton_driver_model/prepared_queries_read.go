@@ -985,6 +985,7 @@ func preparedLogPageDiag(ledger string, rows []logWindowRow, cur *commonpb.Prepa
 		for i, row := range rows {
 			if row.id == got.id {
 				index = i
+
 				break
 			}
 		}
@@ -1008,6 +1009,7 @@ func preparedLogPageDiag(ledger string, rows []logWindowRow, cur *commonpb.Prepa
 			}
 		}
 	}
+
 	return fmt.Sprintf("rows match committed model by ID/content; hasMore=%t nextPresent=%t remainingPossible=%d remainingRequired=%d",
 		cur.GetHasMore(), cur.GetNext() != "", remaining, required)
 }
@@ -1039,6 +1041,7 @@ func preparedLogRowDifferences(ledger string, want logWindowRow, got serverLogRo
 	if want.date != nil && (!got.hasDate || got.date != want.date.GetData()) {
 		fields = append(fields, "date")
 	}
+
 	return strings.Join(fields, ",")
 }
 
