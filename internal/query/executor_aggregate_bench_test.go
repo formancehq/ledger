@@ -6,7 +6,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -21,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -41,7 +41,7 @@ func (c *countingReader) Get(key []byte) ([]byte, io.Closer, error) {
 	return c.inner.Get(key)
 }
 
-func (c *countingReader) NewIter(o *pebble.IterOptions) (*pebble.Iterator, error) {
+func (c *countingReader) NewIter(o *engine.IterOptions) (engine.Iterator, error) {
 	c.iters++
 
 	return c.inner.NewIter(o)

@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -34,6 +33,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -99,7 +99,7 @@ func logPrefixUpperBound() []byte {
 // when it holds no Log row. Read off the key, never off the value's `sequence`
 // field — see the head comment in Check.
 func readHighestLogKey(reader dal.PebbleReader) (uint64, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
 		UpperBound: logPrefixUpperBound(),
 	})
@@ -194,7 +194,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// stores, but atomicity is not what this needs: an ordering that can only
 	// ever leave the peer BEHIND is enough, because behind is a state the pass
 	// already handles by skipping. See ALIGNMENT in reverse_map_orphans.go.
-	var peerSnap *pebble.Snapshot
+	var peerSnap engine.Snapshot
 
 	if c.readStore != nil {
 		peerSnap = c.readStore.NewSnapshot()
@@ -388,7 +388,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	}
 
 	// Pass 1: Single forward iterator over all logs.
-	logIter, err := snap.NewIter(&pebble.IterOptions{
+	logIter, err := snap.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryLog},
 		UpperBound: logPrefixUpperBound(),
 	})
@@ -4506,7 +4506,7 @@ func (c *Checker) compareIdempotencyOutcomes(
 	hasVerifiedRange bool,
 	callback func(*servicepb.CheckStoreEvent),
 ) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
 	})
@@ -5185,7 +5185,7 @@ func advanceExpectedBoundaries(expected map[string]*raftcmdpb.LedgerBoundaries, 
 // replays) contribute nothing; effects for ledgers without an expectation
 // (deleted, or flagged UNKNOWN_LEDGER during replay) are skipped.
 func (c *Checker) collectAuditOrderBoundaryEffects(reader dal.PebbleReader, expected map[string]*raftcmdpb.LedgerBoundaries) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: []byte{dal.ZoneHistory, dal.SubHistoryAuditItem},
 		UpperBound: []byte{dal.ZoneHistory, dal.SubHistoryAuditItem + 1},
 	})

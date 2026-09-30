@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
@@ -132,7 +130,7 @@ func ApplyExports(
 			}
 			lastSeq = seq
 
-			if err := batch.Set(key, value, pebble.NoSync); err != nil {
+			if err := batch.Set(key, value); err != nil {
 				_ = reader.Close()
 				_ = batch.Cancel()
 

@@ -22,6 +22,7 @@ import (
 // have wiped live/ before discovering the reopen failure, leaving the
 // node with no live store.
 func TestRestoreCheckpoint_RollsBackWhenReopenFails(t *testing.T) {
+	skipUnlessPebble(t) // fault injection corrupts a Pebble OPTIONS file
 	t.Parallel()
 
 	s := newTestStore(t)

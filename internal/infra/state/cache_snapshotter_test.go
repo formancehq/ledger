@@ -955,7 +955,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsWrongLengthCacheKey(t *testing.T)
 	value[8] = cacheValueFlagLive
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Set(key, value))
 	require.NoError(t, batch.Commit())
 
 	err := snapshotter.RestoreFromStore(dataStore)
@@ -976,7 +976,7 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsShortValue(t *testing.T) {
 
 	// Write a value that is shorter than the lean header (8-byte tag + 1-byte flag).
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, batch.Set(key, []byte{0x00, 0x00, 0x00}, nil))
+	require.NoError(t, batch.Set(key, []byte{0x00, 0x00, 0x00}))
 	require.NoError(t, batch.Commit())
 
 	// EN-1527: restore now fails closed with a contextual error rather than
@@ -1006,7 +1006,7 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsTombstoneWithPayload(t *testing.T
 	value := make([]byte, cacheValueHeaderLen+4)
 	value[8] = cacheValueFlagTombstone
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Set(key, value))
 	require.NoError(t, batch.Commit())
 
 	// EN-1527: fails closed with an error instead of panicking.
@@ -1035,7 +1035,7 @@ func TestCacheSnapshotter_EN1377_RestoreRejectsUnknownFlagByte(t *testing.T) {
 	value := make([]byte, cacheValueHeaderLen)
 	value[8] = 0x42
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Set(key, value))
 	require.NoError(t, batch.Commit())
 
 	// EN-1527: fails closed with an error instead of panicking.
@@ -1067,7 +1067,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsUnknownAttributeType(t *testing.T
 	value[8] = cacheValueFlagLive
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Set(key, value))
 	require.NoError(t, batch.Commit())
 
 	err := snapshotter.RestoreFromStore(dataStore)
@@ -1097,7 +1097,7 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsUnknownGenerationByte(t *testing.
 	value[8] = cacheValueFlagLive
 
 	batch := dataStore.OpenWriteSession()
-	require.NoError(t, batch.Set(key, value, nil))
+	require.NoError(t, batch.Set(key, value))
 	require.NoError(t, batch.Commit())
 
 	err := snapshotter.RestoreFromStore(dataStore)

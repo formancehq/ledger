@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // Snapshot is a point-in-time view of the usage store. Multiple Gets against
@@ -18,7 +17,7 @@ import (
 //
 // Callers MUST call Close() to release the underlying Pebble snapshot.
 type Snapshot struct {
-	snap *pebble.Snapshot
+	snap engine.Snapshot
 }
 
 // NewSnapshot returns a fresh point-in-time snapshot. The caller owns the
@@ -40,7 +39,7 @@ func (s *Snapshot) GetCounter(ledgerName string, counterID byte) (uint64, error)
 
 	v, closer, err := s.snap.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return 0, nil
 		}
 
@@ -64,7 +63,7 @@ func (s *Snapshot) GetTemplateUsage(ledgerName, templateName string) (*commonpb.
 
 	v, closer, err := s.snap.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return nil, nil
 		}
 

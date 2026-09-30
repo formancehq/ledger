@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
@@ -74,7 +73,7 @@ func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attribut
 
 	key := fillCacheKey(genByte, cacheType, id)
 
-	return batch.Set(key[:], batch.CacheBuffer, pebble.NoSync)
+	return batch.Set(key[:], batch.CacheBuffer)
 }
 
 // writeCacheTombstone writes a tombstone row to the current gen0 byte in 0xFF,

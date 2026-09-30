@@ -1,15 +1,13 @@
 package readstore
 
-import (
-	"github.com/cockroachdb/pebble/v2"
-)
+import "github.com/formancehq/ledger/v3/internal/storage/engine"
 
 // DumpAuditIndexKeysForTest returns a copy of every audit-index key currently
 // stored, in key order. Intended for tests and debugging (rebuild parity).
 func (s *Store) DumpAuditIndexKeysForTest() [][]byte {
 	lower := AuditIndexPrefix()
 	upper := prefixUpperBound(lower)
-	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := s.db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil
 	}

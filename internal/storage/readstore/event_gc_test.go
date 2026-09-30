@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 type failingEventGCIterator struct {
@@ -51,7 +51,7 @@ func TestGCEventZone_IteratorFailureDiscardsPendingDeletes(t *testing.T) {
 		ev{"b", 10, MetadataEventAdd},
 	)
 
-	iter, err := s.DB().NewIter(&pebble.IterOptions{
+	iter, err := s.DB().NewIter(&engine.IterOptions{
 		LowerBound: []byte{PrefixMetadataIndex},
 		UpperBound: IncrementBytes([]byte{PrefixMetadataIndex}),
 	})

@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -46,7 +45,7 @@ func TestListDescFilteredStopsAtLookahead(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	for id := uint64(2); id <= 100; id += 2 {
-		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, pebble.NoSync))
+		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, false))
 	}
 
 	encode := func(id uint64) []byte { return binary.BigEndian.AppendUint64(nil, id) }

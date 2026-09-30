@@ -9,13 +9,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -712,7 +711,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		lowerBound = rmapPrefix
 	}
 
-	iter, err := snap.NewIter(&pebble.IterOptions{
+	iter, err := snap.NewIter(&engine.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upper,
 	})

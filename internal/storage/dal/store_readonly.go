@@ -6,6 +6,9 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 // OpenReadOnly opens a Pebble database at dirPath in read-only mode.
@@ -26,6 +29,10 @@ import (
 // by several GiB and tipped the pod over its memory limit during full
 // backups. The default 8 MiB block cache is left in place.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
+	if s, ok, err := openAlternative(dirPath, logger, true); ok || err != nil {
+		return s, err
+	}
+
 	opts := &pebble.Options{
 		Logger:       NewPebbleLogger(logger),
 		ReadOnly:     true,
@@ -39,10 +46,11 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 
 	store := &Store{
 		opts:    opts,
+		open:    pebbleOpener(opts),
 		logger:  logger.WithField("cmp", "pebble-readonly"),
 		dataDir: dirPath,
 	}
-	store.db = db
+	store.db = pebbleengine.Wrap(db)
 
 	return store, nil
 }
@@ -51,6 +59,10 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 // without checkpoint management. Used for backup compaction operations.
 // The caller must call Close() when done.
 func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
+	if s, ok, err := openAlternative(dirPath, logger, false); ok || err != nil {
+		return s, err
+	}
+
 	opts := &pebble.Options{
 		Logger: NewPebbleLogger(logger),
 	}
@@ -62,10 +74,36 @@ func OpenDirect(dirPath string, logger logging.Logger) (*Store, error) {
 
 	store := &Store{
 		opts:    opts,
+		open:    pebbleOpener(opts),
 		logger:  logger.WithField("cmp", "pebble-direct"),
 		dataDir: dirPath,
 	}
-	store.db = db
+	store.db = pebbleengine.Wrap(db)
 
 	return store, nil
+}
+
+// openAlternative opens dirPath with the engine selected through
+// LEDGER_TEST_ENGINE when it is not Pebble. Secondary opens (backup
+// checkpoints, ledgerctl) have no configuration of their own, so the POC
+// keys them off the same switch as DefaultConfig.
+func openAlternative(dirPath string, logger logging.Logger, readOnly bool) (*Store, bool, error) {
+	cfg := DefaultConfig()
+	cfg.readOnly = readOnly
+	alt, ok, err := engineOpener(cfg)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+
+	db, err := alt(dirPath, cfg)
+	if err != nil {
+		return nil, true, fmt.Errorf("opening %s database at %s: %w", cfg.Engine, dirPath, err)
+	}
+
+	return &Store{
+		open:    func(dir string) (engine.DB, error) { return alt(dir, cfg) },
+		logger:  logger.WithField("cmp", cfg.Engine+"-secondary"),
+		dataDir: dirPath,
+		db:      db,
+	}, true, nil
 }

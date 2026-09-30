@@ -5,9 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // Uint64Cursor is a fixed-key big-endian uint64 progress cursor persisted in
@@ -22,7 +21,7 @@ type Uint64Cursor struct{ key []byte }
 func (c Uint64Cursor) Read(r dal.PebbleGetter) (uint64, error) {
 	v, closer, err := r.Get(c.key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return 0, nil
 		}
 

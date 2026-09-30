@@ -13,6 +13,22 @@
 
   outputs = { self, nixpkgs, nixpkgs-unstable, nur }:
     let
+      # RocksDB POC (docs/drafts/rocksdb-poc.md): pin the exact RocksDB
+      # version targeted by grocksdb v1.11.0 and shipped by Alpine, so the
+      # Nix shell and the Docker build link the same engine. nixpkgs is
+      # still at 10.10.1, hence the override.
+      rocksdbOverlay = final: prev: {
+        rocksdb = prev.rocksdb.overrideAttrs (finalAttrs: _: {
+          version = "11.0.4";
+          src = final.fetchFromGitHub {
+            owner = "facebook";
+            repo = "rocksdb";
+            tag = "v${finalAttrs.version}";
+            hash = "sha256-j7+IXVyQGDNE2xHGn4iaZv5v2ez/jnOBU0qwhr08ATU=";
+          };
+        });
+      };
+
       supportedSystems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -25,7 +41,7 @@
           let
             pkgs = import nixpkgs {
               inherit system;
-              overlays = [ nur.overlays.default ];
+              overlays = [ nur.overlays.default rocksdbOverlay ];
               config.allowUnfreePredicate = pkg: builtins.elem (nixpkgs.lib.getName pkg) [
                 "acli"
                 "acli-unwrapped"
@@ -79,12 +95,21 @@
           otherPackages = [
             pkgs.nur.repos.goreleaser.goreleaser-pro
           ];
+          # cgo inputs for the RocksDB POC (misc/rocksdb-poc). Exposed as
+          # dedicated variables so regular builds keep CGO_ENABLED=0.
+          rocksdbPackages = with pkgs; [ rocksdb pkg-config ];
+          rocksdbLibDirs = with pkgs; [ rocksdb zstd lz4 snappy zlib bzip2 ];
+          rocksdbLdflags = pkgs.lib.concatMapStringsSep " " (p: "-L${pkgs.lib.getLib p}/lib") rocksdbLibDirs;
         in
         {
           default = pkgs.mkShell {
-            packages = stablePackages ++ unstablePackages ++ otherPackages;
+            packages = stablePackages ++ unstablePackages ++ otherPackages ++ rocksdbPackages;
 
             shellHook = ''
+              # RocksDB POC: consumed by `just rocksdb-hello`.
+              export ROCKSDB_CGO_CFLAGS="-I${pkgs.lib.getDev pkgs.rocksdb}/include"
+              export ROCKSDB_CGO_LDFLAGS="${rocksdbLdflags} -lrocksdb"
+
               # Auto-configure envtest assets for operator integration tests.
               # setup-envtest downloads etcd + kube-apiserver on first run and caches them.
               if [ -z "$KUBEBUILDER_ASSETS" ]; then

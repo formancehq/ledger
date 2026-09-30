@@ -38,7 +38,7 @@ func writeBloomRow(t *testing.T, store *dal.Store, attrCode byte, blockIdx uint6
 	key = binary.BigEndian.AppendUint64(key, blockIdx)
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.Set(key, make([]byte, blockBytes), nil))
+	require.NoError(t, batch.Set(key, make([]byte, blockBytes)))
 	require.NoError(t, batch.Commit())
 }
 
@@ -106,7 +106,7 @@ func TestFilterSet_EN1527_ClassifyRejectsShortBloomRow(t *testing.T) {
 
 	// [ZoneGlobal][SubGlobBloom] with no attrCode byte.
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.Set([]byte{dal.ZoneGlobal, dal.SubGlobBloom}, make([]byte, blockBytes), nil))
+	require.NoError(t, batch.Set([]byte{dal.ZoneGlobal, dal.SubGlobBloom}, make([]byte, blockBytes)))
 	require.NoError(t, batch.Commit())
 
 	handle, err := store.NewDirectReadHandle()

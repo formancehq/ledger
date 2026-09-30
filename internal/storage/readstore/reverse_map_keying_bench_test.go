@@ -9,6 +9,8 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 )
 
 const (
@@ -136,12 +138,12 @@ func BenchmarkReverseMapKeyingMultiFieldInsert(b *testing.B) {
 
 						for _, field := range fields {
 							key := reverseMapBenchmarkKey(kb, layout, target, entity, field, reverseMapBenchmarkVersion)
-							if err := batch.Set(key, reverseMapBenchmarkValue, nil); err != nil {
+							if err := batch.Set(key, reverseMapBenchmarkValue); err != nil {
 								b.Fatal(err)
 							}
 						}
 
-						if err := batch.Commit(pebble.NoSync); err != nil {
+						if err := batch.Commit(false); err != nil {
 							b.Fatal(err)
 						}
 						if err := batch.Close(); err != nil {
@@ -156,7 +158,7 @@ func BenchmarkReverseMapKeyingMultiFieldInsert(b *testing.B) {
 	}
 }
 
-func benchmarkReverseMapPointLookups(b *testing.B, db *pebble.DB, keys [][]byte, fieldsPerEntity int) {
+func benchmarkReverseMapPointLookups(b *testing.B, db engine.DB, keys [][]byte, fieldsPerEntity int) {
 	b.Helper()
 
 	iteration := 0
@@ -189,7 +191,7 @@ func benchmarkReverseMapPointLookups(b *testing.B, db *pebble.DB, keys [][]byte,
 
 func benchmarkReverseMapRewriteScan(
 	b *testing.B,
-	db *pebble.DB,
+	db engine.DB,
 	layout reverseMapBenchmarkLayout,
 	target reverseMapBenchmarkTarget,
 	field string,
@@ -209,7 +211,7 @@ func benchmarkReverseMapRewriteScan(
 	b.ResetTimer()
 
 	for b.Loop() {
-		iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+		iter, err := db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -249,7 +251,7 @@ func benchmarkReverseMapRewriteScan(
 
 func benchmarkReverseMapPurgeFieldPlan(
 	b *testing.B,
-	db *pebble.DB,
+	db engine.DB,
 	layout reverseMapBenchmarkLayout,
 	target reverseMapBenchmarkTarget,
 	field string,
@@ -272,12 +274,12 @@ func benchmarkReverseMapPurgeFieldPlan(
 		batch := db.NewBatch()
 
 		if layout.fieldFirst {
-			if err := batch.DeleteRange(lower, upper, nil); err != nil {
+			if err := batch.DeleteRange(lower, upper); err != nil {
 				b.Fatal(err)
 			}
 			totalTombstones++
 		} else {
-			iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+			iter, err := db.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -291,7 +293,7 @@ func benchmarkReverseMapPurgeFieldPlan(
 				if parsed.MetadataKey != field {
 					continue
 				}
-				if err := batch.Delete(iter.Key(), nil); err != nil {
+				if err := batch.Delete(iter.Key()); err != nil {
 					b.Fatal(err)
 				}
 				totalTombstones++
@@ -321,7 +323,7 @@ func openReverseMapBenchmarkDB(
 	target reverseMapBenchmarkTarget,
 	fields []string,
 	versions []uint32,
-) *pebble.DB {
+) engine.DB {
 	b.Helper()
 
 	db := openEmptyReverseMapBenchmarkDB(b)
@@ -333,7 +335,7 @@ func openReverseMapBenchmarkDB(
 		for _, version := range versions {
 			for _, field := range fields {
 				key := reverseMapBenchmarkKey(kb, layout, target, entity, field, version)
-				if err := batch.Set(key, reverseMapBenchmarkValue, nil); err != nil {
+				if err := batch.Set(key, reverseMapBenchmarkValue); err != nil {
 					b.Fatal(err)
 				}
 
@@ -353,7 +355,7 @@ func openReverseMapBenchmarkDB(
 	return db
 }
 
-func openEmptyReverseMapBenchmarkDB(b *testing.B) *pebble.DB {
+func openEmptyReverseMapBenchmarkDB(b *testing.B) engine.DB {
 	b.Helper()
 
 	db, err := pebble.Open(b.TempDir(), &pebble.Options{
@@ -371,14 +373,14 @@ func openEmptyReverseMapBenchmarkDB(b *testing.B) *pebble.DB {
 		}
 	})
 
-	return db
+	return pebbleengine.Wrap(db)
 }
 
-func commitReverseMapBenchmarkBatch(b *testing.B, batch *pebble.Batch) {
+func commitReverseMapBenchmarkBatch(b *testing.B, batch engine.Batch) {
 	b.Helper()
 
 	if batch.Len() > 0 {
-		if err := batch.Commit(pebble.NoSync); err != nil {
+		if err := batch.Commit(false); err != nil {
 			b.Fatal(err)
 		}
 	}

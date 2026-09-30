@@ -52,7 +52,7 @@ func TestPurgeCurrentAccountIndexesRecreatesCommittedMembershipAfterSameBatchRef
 	key := readstore.AccountByAssetKey(dal.NewKeyBuilder(), ledger, "USD", 2, account)
 
 	seed := b.readStore.NewBatch()
-	require.NoError(t, seed.Set(key, []byte{1}, nil))
+	require.NoError(t, seed.Set(key, []byte{1}))
 	require.NoError(t, seed.Commit())
 
 	batch := b.readStore.NewBatch()

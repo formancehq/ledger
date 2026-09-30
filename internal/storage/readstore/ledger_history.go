@@ -4,9 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // LedgerHistoryStateEntry is the storage codec result for one indexbuilder
@@ -25,7 +24,7 @@ var ErrLedgerHistoryCorrupt = errors.New("ledger history state corrupt")
 // keys and values are corruption, never silently treated as an absent ledger.
 func ReadAllLedgerHistoryStatesFrom(reader dal.PebbleReader) ([]LedgerHistoryStateEntry, error) {
 	prefix := LedgerHistoryStatePrefix()
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: IncrementBytes(prefix),
 	})

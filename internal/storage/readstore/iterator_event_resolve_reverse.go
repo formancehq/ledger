@@ -4,9 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // ReverseEventResolveIterator is the descending twin of
@@ -26,7 +25,7 @@ import (
 // materializes it and serves both directions from the sorted slice — see
 // ReverseSliceIterator and query.materializeIterator.
 type ReverseEventResolveIterator struct {
-	iter       *pebble.Iterator
+	iter       engine.Iterator
 	seekPrefix []byte // the scan prefix, prepended to seek targets
 	prefixLen  int    // key bytes before the group identity
 	pin        uint64
@@ -42,7 +41,7 @@ type ReverseEventResolveIterator struct {
 // MetadataIndexEventValuePrefixV or an EntityExists*PrefixV) as of pin,
 // descending.
 func NewReverseEventResolveIterator(reader dal.PebbleReader, prefix []byte, pin uint64) (*ReverseEventResolveIterator, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: IncrementBytes(prefix),
 	})

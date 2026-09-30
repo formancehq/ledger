@@ -10,13 +10,13 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -91,7 +91,7 @@ type reverseMapOrphanScope struct {
 	// peer is the peer read-index snapshot, pinned by Check() BEFORE the primary
 	// one so the peer cursor can never appear ahead. nil when no readstore is
 	// attached.
-	peer *pebble.Snapshot
+	peer engine.Snapshot
 	// lastSequence is the last log sequence the replay verified.
 	lastSequence uint64
 	// Every oracle term below is frozen at lastSequence, which is why the pass
@@ -263,7 +263,7 @@ func (c *Checker) compareReverseMapOrphans(
 
 	lower := []byte{readstore.PrefixReverseMap}
 
-	iter, err := scope.peer.NewIter(&pebble.IterOptions{
+	iter, err := scope.peer.NewIter(&engine.IterOptions{
 		LowerBound: lower,
 		UpperBound: readstore.IncrementBytes(lower),
 	})

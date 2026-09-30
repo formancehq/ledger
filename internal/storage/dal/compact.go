@@ -1,7 +1,6 @@
 package dal
 
 import (
-	"context"
 	"fmt"
 )
 
@@ -35,7 +34,7 @@ func (s *Store) compactRange(start, end byte) error {
 		return ErrStoreClosed
 	}
 
-	return db.Compact(context.Background(), []byte{start}, []byte{end}, false)
+	return db.Compact([]byte{start}, []byte{end})
 }
 
 // CompactAll runs a synchronous prefix-by-prefix compaction of the entire

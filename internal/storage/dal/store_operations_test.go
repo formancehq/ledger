@@ -5,11 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 func TestStore_DataDir(t *testing.T) {
@@ -247,11 +248,8 @@ func TestStore_Checkpoint(t *testing.T) {
 	destDir := filepath.Join(t.TempDir(), "standalone-cp")
 	require.NoError(t, s.Checkpoint(destDir))
 
-	// Verify we can open it
-	db, err := pebble.Open(destDir, &pebble.Options{
-		Logger:   DiscardPebbleLogger(),
-		ReadOnly: true,
-	})
+	// Verify we can open it (engine-aware secondary open)
+	db, err := OpenReadOnly(destDir, logging.FromContext(logging.TestingContext()))
 	require.NoError(t, err)
 
 	val, closer, err := db.Get([]byte("cp-key"))
@@ -445,7 +443,7 @@ func TestStore_NewIter(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&engine.IterOptions{
 		LowerBound: []byte("iter-"),
 		UpperBound: []byte("iter-\xff"),
 	})
@@ -494,8 +492,10 @@ func TestStore_OpenReadOnly(t *testing.T) {
 	// must stay capped so Pebble does not warm up table metadata for every
 	// SST in large stores (observed pushing pods past their memory limit
 	// on a 290 GB checkpoint).
-	require.Equal(t, 32, roStore.opts.MaxOpenFiles,
-		"OpenReadOnly must bound MaxOpenFiles to keep the secondary store's table-metadata footprint small")
+	if roStore.opts != nil { // Pebble-specific knob; nil on an alternative engine
+		require.Equal(t, 32, roStore.opts.MaxOpenFiles,
+			"OpenReadOnly must bound MaxOpenFiles to keep the secondary store's table-metadata footprint small")
+	}
 }
 
 func TestStore_OpenDirect(t *testing.T) {

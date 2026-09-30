@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -29,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // RebuildDelta reconstructs derived state (attributes, system state) from logs
@@ -1229,7 +1229,7 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 		Build()
 	upper := []byte{dal.ZoneHistory, dal.SubHistoryAuditItem + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := reader.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return fmt.Errorf("creating audit item iter: %w", err)
 	}

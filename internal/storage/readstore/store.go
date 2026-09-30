@@ -17,6 +17,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
+	"github.com/formancehq/ledger/v3/internal/storage/engine/pebbleengine"
 	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
 )
 
@@ -50,7 +52,7 @@ func DefaultConfig() Config {
 // It is safe for concurrent use: Pebble supports concurrent readers
 // and writers without a global write lock.
 type Store struct {
-	db     *pebble.DB
+	db     *pebbleengine.DB
 	logger logging.Logger
 	dir    string
 
@@ -204,7 +206,7 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 	}).Infof("Pebble read index opened — LSM state")
 
 	s := &Store{
-		db:      db,
+		db:      pebbleengine.Wrap(db),
 		logger:  logger.WithFields(map[string]any{"cmp": "read-store"}),
 		dir:     dir,
 		leases:  NewLeaseRegistry(),
@@ -232,7 +234,7 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	}
 
 	s := &Store{
-		db:       db,
+		db:       pebbleengine.Wrap(db),
 		logger:   logger.WithFields(map[string]any{"cmp": "read-store-readonly"}),
 		dir:      dirPath,
 		readOnly: true,
@@ -272,7 +274,7 @@ func (s *Store) Close() error {
 }
 
 // DB returns the underlying Pebble database for creating batches.
-func (s *Store) DB() *pebble.DB {
+func (s *Store) DB() *pebbleengine.DB {
 	return s.db
 }
 
@@ -283,7 +285,7 @@ func (s *Store) NewBatch() *dal.WriteSession {
 
 // NewSnapshot returns a consistent snapshot for reads.
 // The caller must call snap.Close() when done.
-func (s *Store) NewSnapshot() *pebble.Snapshot {
+func (s *Store) NewSnapshot() engine.Snapshot {
 	return s.db.NewSnapshot()
 }
 
@@ -299,7 +301,7 @@ func (s *Store) ReadProgress() (uint64, error) {
 }
 
 // ReadProgressFrom is the snapshot-aware variant of ReadProgress: it reads
-// from an arbitrary PebbleGetter (typically a *pebble.Snapshot taken via
+// from an arbitrary PebbleGetter (typically a engine.Snapshot taken via
 // NewSnapshot()) instead of the live DB, so multi-step readers can pin a
 // consistent view.
 func (s *Store) ReadProgressFrom(reader dal.PebbleGetter) (uint64, error) {
@@ -731,7 +733,7 @@ func ReadIndexVersionStateFrom(reader dal.PebbleGetter, ledgerName, canonicalID 
 
 	v, closer, err := reader.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, engine.ErrNotFound) {
 			return IndexVersionState{}, false, nil
 		}
 
@@ -892,7 +894,7 @@ func (s *Store) ReadAllIndexVersionStatesFrom(reader dal.PebbleReader) ([]IndexV
 	prefix := IndexVersionStatePrefix()
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -947,7 +949,7 @@ func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 }
 
 // ReadAllBackfillProgressFrom is the snapshot-aware variant of
-// ReadAllBackfillProgress. Multi-step callers hold a *pebble.Snapshot
+// ReadAllBackfillProgress. Multi-step callers hold a engine.Snapshot
 // (via NewSnapshot()) and pass it in so every cursor in the returned
 // map is coherent with the caller's other snapshot-based reads.
 func (s *Store) ReadAllBackfillProgressFrom(reader dal.PebbleReader) (map[string]uint64, error) {
@@ -958,7 +960,7 @@ func readAllBackfillProgress(reader dal.PebbleReader) (map[string]uint64, error)
 	prefix := BackfillKeyPrefix()
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -1005,7 +1007,7 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 
 // ListBackfillProgressFrom is the snapshot-aware variant of
 // ListBackfillProgress. Multi-step callers reading from a
-// *pebble.Snapshot pass it here so the per-cursor values in the
+// engine.Snapshot pass it here so the per-cursor values in the
 // returned slice come from the same point-in-time view.
 func (s *Store) ListBackfillProgressFrom(reader dal.PebbleReader) ([]BackfillEntry, error) {
 	return decodeBackfillProgress(s.ReadAllBackfillProgressFrom(reader))

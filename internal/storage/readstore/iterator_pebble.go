@@ -5,9 +5,8 @@ import (
 	"encoding/binary"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // compareEntities compares two entity IDs in byte order.
@@ -24,7 +23,7 @@ func compareEntities(a, b []byte) int {
 // The iterator deduplicates by address, emitting each account at most once.
 // Use NewPebbleAccountIterator to merge V and M types for full enumeration.
 type PebbleAccountIterator struct {
-	iter   *pebble.Iterator
+	iter   engine.Iterator
 	prefix []byte // [0xF1][ledger\x00]
 
 	current   []byte
@@ -50,7 +49,7 @@ func newSingleTypeAccountIterator(reader dal.PebbleReader, attrType byte, ledger
 
 	upperBound := IncrementBytes(lowerBound)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -226,7 +225,7 @@ func (it *PebbleAccountIterator) extractAddress(key []byte) []byte {
 // PebbleReversAccountIterator iterates over unique account addresses in
 // descending order from the Pebble attributes zone.
 type PebbleReverseAccountIterator struct {
-	iter   *pebble.Iterator
+	iter   engine.Iterator
 	prefix []byte // [0xF1][ledger\x00]
 
 	current   []byte
@@ -250,7 +249,7 @@ func newSingleTypeReverseAccountIterator(reader dal.PebbleReader, attrType byte,
 
 	upperBound := IncrementBytes(lowerBound)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})
@@ -442,7 +441,7 @@ func (it *PebbleReverseAccountIterator) extractAddress(key []byte) []byte {
 //
 // The iterator deduplicates by txID, emitting each transaction at most once.
 type PebbleTxIterator struct {
-	iter     *pebble.Iterator
+	iter     engine.Iterator
 	prefix   []byte // [0xF1][ledger\x00\x02]
 	idOffset int    // offset where txID starts (= len(prefix))
 
@@ -457,7 +456,7 @@ func NewPebbleTxIterator(reader dal.PebbleReader, ledgerName string) (*PebbleTxI
 	prefix := txAttributeCode(ledgerName)
 	upperBound := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upperBound,
 	})
@@ -588,7 +587,7 @@ func (it *PebbleTxIterator) extractTxID(key []byte) []byte {
 
 // PebbleReverseTxIterator iterates over unique transaction IDs in descending order.
 type PebbleReverseTxIterator struct {
-	iter     *pebble.Iterator
+	iter     engine.Iterator
 	prefix   []byte
 	idOffset int
 
@@ -603,7 +602,7 @@ func NewPebbleReverseTxIterator(reader dal.PebbleReader, ledgerName string) (*Pe
 	prefix := txAttributeCode(ledgerName)
 	upperBound := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upperBound,
 	})
@@ -639,7 +638,7 @@ func NewPebbleReverseTxRangeIterator(reader dal.PebbleReader, ledgerName string,
 		upperBound = IncrementBytes(prefix)
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&engine.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})

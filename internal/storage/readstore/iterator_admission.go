@@ -4,12 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // admitFoldStamp applies the same visibility predicate in both scan directions.
 // Callers latch malformed-value errors and exhaust their iterator.
-func admitFoldStamp(iter *pebble.Iterator, pin uint64) (bool, error) {
+func admitFoldStamp(iter engine.Iterator, pin uint64) (bool, error) {
 	if pin == 0 {
 		return true, nil
 	}

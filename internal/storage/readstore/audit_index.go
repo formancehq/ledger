@@ -8,9 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/engine"
 )
 
 // ErrAuditProjectionUnavailable reports that an audit progress wait cannot
@@ -164,7 +163,7 @@ func (s *Store) WaitForAuditRaftProgress(ctx context.Context, horizon uint64) er
 // the commit, allowing the drop to be made atomic with a cursor reset.
 func (s *Store) DropAuditIndexInBatch(batch *dal.WriteSession) error {
 	start := AuditIndexPrefix()
-	if err := batch.DeleteRange(start, prefixUpperBound(start), nil); err != nil {
+	if err := batch.DeleteRange(start, prefixUpperBound(start)); err != nil {
 		return fmt.Errorf("dropping audit index: %w", err)
 	}
 
@@ -214,7 +213,7 @@ func prefixUpperBound(prefix []byte) []byte {
 // shares the prefix). Fixed-width fields (uint64, byte) pass exactLen=0 since
 // their value segment cannot be a prefix of a longer value.
 func auditSeqsForPrefix(reader dal.PebbleReader, lower, upper []byte, exactLen int) ([]uint64, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := reader.NewIter(&engine.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil, fmt.Errorf("creating audit index iterator: %w", err)
 	}

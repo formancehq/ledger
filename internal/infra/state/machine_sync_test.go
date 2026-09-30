@@ -128,7 +128,7 @@ func TestSynchronizeWithLeaderResumesBloomAfterCacheRestoreError(t *testing.T) {
 	t.Cleanup(func() { _ = leaderStore.Close() })
 
 	batch := leaderStore.OpenWriteSession()
-	require.NoError(t, batch.Set([]byte{dal.ZoneCache, 0x7F}, []byte("invalid cache row"), nil))
+	require.NoError(t, batch.Set([]byte{dal.ZoneCache, 0x7F}, []byte("invalid cache row")))
 	require.NoError(t, batch.Commit())
 
 	_, err = leaderStore.CreateSnapshot()

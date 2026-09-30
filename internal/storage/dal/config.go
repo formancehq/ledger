@@ -43,6 +43,15 @@ type ValueSeparationConfig struct {
 type Config struct {
 	pebblecfg.Config `yaml:",inline"`
 
+	// Engine selects the storage engine: "pebble" (default) or an engine
+	// registered through RegisterEngine (e.g. "rocksdb" with the rocksdb
+	// build tag). The Pebble-specific fields below do not apply to other
+	// engines beyond MemTableSize, CacheSize and MaxConcurrentCompactions.
+	Engine string `yaml:"engine"`
+
+	// readOnly is set by OpenReadOnly for alternative engines.
+	readOnly bool
+
 	// WALBytesPerSync is the number of bytes written to the WAL before syncing.
 	// Default: 1MB (1 << 20)
 	WALBytesPerSync int `yaml:"walBytesPerSync"`
@@ -88,6 +97,7 @@ type Config struct {
 // These defaults are tuned for write-heavy workloads.
 func DefaultConfig() Config {
 	return Config{
+		Engine: engineFromEnv(),
 		Config: pebblecfg.Config{
 			MemTableSize:                256 << 20, // 256MB
 			MemTableStopWritesThreshold: 6,

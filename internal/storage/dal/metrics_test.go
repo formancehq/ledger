@@ -86,6 +86,7 @@ func TestMetricsListener_Callbacks(t *testing.T) {
 }
 
 func TestStore_GetMetrics(t *testing.T) {
+	skipUnlessPebble(t) // GetMetrics is Pebble-shaped; nil on other engines
 	t.Parallel()
 
 	s := newTestStore(t)
