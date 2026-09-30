@@ -273,7 +273,7 @@ func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
 	raw, err := proto.Marshal(&commonpb.PersistedConfig{
 		NodeId:               1,
 		ClusterId:            "test",
-		StorageSchemaVersion: 3,
+		StorageSchemaVersion: 1,
 	})
 	require.NoError(t, err)
 
@@ -290,7 +290,7 @@ func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
 
 	var schemaErr *SchemaVersionError
 	require.ErrorAs(t, err, &schemaErr)
-	require.Equal(t, uint32(3), schemaErr.Persisted)
+	require.Equal(t, uint32(1), schemaErr.Persisted)
 	require.Equal(t, CurrentStorageSchemaVersion, schemaErr.Current)
 	err = ValidateOrPersistConfig(store, cfg, logger, true)
 	require.ErrorAs(t, err, &schemaErr)

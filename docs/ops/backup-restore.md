@@ -282,9 +282,9 @@ The backup is a complete Pebble database that contains:
 | Cluster transient | `0x07` | Backup jobs, removed on cross-cluster restore |
 | Cluster persistent | `0x08` | Source applied index, node/cluster identity, Raft members and removal tombstones, Bloom blocks; removed on cross-cluster restore except for the rewritten genesis boundary |
 
-Storage schema v5 changes the physical Pebble layout. An older pre-release
-store is rejected at startup; take a new backup with the matching binary before
-recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
+This changes the physical Pebble layout. An older pre-release store is rejected
+at startup through its old boot anchor; take a new backup with the matching
+binary before recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
 
 
 ### Sequence Diagram

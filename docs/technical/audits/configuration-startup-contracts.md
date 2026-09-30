@@ -40,7 +40,7 @@ write order and residual persisted bytes on each error; validation rejection doe
 not imply no prior writes. Existing historical backfill branches are evidence to
 inspect, not authorization to add v3 compatibility shims or migrations.
 
-Storage schema v5 relocates the persisted-config anchor to
+The current layout relocates the persisted-config anchor to
 `ZoneClusterPersistent`. The loader checks the old physical `ZoneGlobal` anchor
 before reading the new one and rejects that prior layout before first-boot
 identity persistence. Test both physical keys and the unsafe-override path;

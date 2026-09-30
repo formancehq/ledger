@@ -140,7 +140,7 @@ Pebble batch. The boundary point write follows the zone tombstone. A failure
 before commit leaves the store unchanged; a commit error has indeterminate
 durability, and a flush error may leave the committed preparation in the store.
 The restore caller must discard failed staging rather than activate it. This
-changes the Pebble key layout: storage schema v5 rejects an earlier store
+changes the Pebble key layout: boot validation rejects an earlier store
 through the old boot-anchor probe. There is no in-place migration of
 pre-release stores. In-cluster snapshot installation retains the local zone.
 

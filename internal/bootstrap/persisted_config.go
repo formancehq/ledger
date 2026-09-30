@@ -29,9 +29,9 @@ func (e *ConfigMismatchError) Error() string {
 // LoadPersistedConfig reads the persisted configuration from Pebble.
 // Returns nil if no configuration has been persisted yet (first boot).
 func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
-	// Schema v4 stored this anchor in ZoneGlobal. Reject it even if a v5
-	// anchor also exists: a mixed physical layout is not a first boot and must
-	// never be interpreted as a valid current store.
+	// Earlier development layouts stored this anchor in ZoneGlobal. Reject it
+	// even if a current anchor also exists: a mixed layout is not a first
+	// boot and must never be interpreted as a valid current store.
 	legacy, legacyCloser, legacyErr := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
 	if legacyErr == nil {
 		defer func() { _ = legacyCloser.Close() }()

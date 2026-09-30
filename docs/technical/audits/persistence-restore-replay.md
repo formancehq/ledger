@@ -52,7 +52,7 @@ inventing a stronger guarantee.
 
 ## State classification and source map
 
-For schema v5, test the physical lifetime boundary: a future unknown
+Test the physical lifetime boundary: a future unknown
 `ZoneClusterPersistent` row must disappear with source identity, peers, removed
 members and Bloom blocks, while a retained `ZoneGlobal` row remains. The applied
 index is the narrow exception: capture it before deletion and write the restored
