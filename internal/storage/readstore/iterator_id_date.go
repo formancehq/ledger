@@ -27,9 +27,16 @@ type IDDateRangeIterator[D Direction] struct {
 	stamped              bool
 	reverse              bool
 	current              []byte
+	firstID, lastID      []byte
+	extremaKnown         bool
+	unmatched            int
 	started, exhausted   bool
 	err                  error
 }
+
+// A cursor page normally walks directly to its next match. After this many
+// unrelated IDs, consult the date index to bound a sparse or exhausted page.
+const idDateUnmatchedLimit = 64
 
 func NewIDDateRangeIterator[D Direction](
 	reader dal.PebbleReader,
@@ -59,12 +66,13 @@ func (it *IDDateRangeIterator[D]) Next() bool {
 	switch {
 	case !it.started:
 		it.started = true
-		id, ok := it.extremum()
+		first, last, id, ok := it.dateIDs(nil)
 		if !ok {
 			it.exhausted = true
 
 			return false
 		}
+		it.firstID, it.lastID, it.extremaKnown = first, last, true
 		it.seekID(id)
 		if !it.iter.Valid() || !bytes.Equal(it.iter.Key()[len(it.idPrefix):], id) {
 			if err := it.iter.Error(); err != nil {
@@ -107,7 +115,7 @@ func (it *IDDateRangeIterator[D]) Seek(target []byte) bool {
 
 		return false
 	}
-	it.started, it.exhausted = true, false
+	it.started, it.exhausted, it.unmatched = true, false, 0
 	it.seekID(target)
 
 	return it.findMatch()
@@ -134,6 +142,12 @@ func (it *IDDateRangeIterator[D]) findMatch() bool {
 
 			return false
 		}
+		id := key[len(it.idPrefix):]
+		if it.extremaKnown && ((it.reverse && bytes.Compare(id, it.firstID) < 0) || (!it.reverse && bytes.Compare(id, it.lastID) > 0)) {
+			it.exhausted = true
+
+			return false
+		}
 		wantValueLen := 8
 		if it.stamped {
 			wantValueLen = 16
@@ -146,8 +160,36 @@ func (it *IDDateRangeIterator[D]) findMatch() bool {
 		date := binary.BigEndian.Uint64(value[:8])
 		if (!it.hasMin || date >= it.lowerDate) && (!it.hasMax || date < it.upperDate) && (!it.stamped || it.stampPin == 0 || binary.BigEndian.Uint64(value[8:]) <= it.stampPin) {
 			it.current = copyBytes(key[len(it.idPrefix):])
+			it.unmatched = 0
 
 			return true
+		}
+		it.unmatched++
+		if it.unmatched >= idDateUnmatchedLimit {
+			first, last, next, ok := it.dateIDs(id)
+			if !ok {
+				it.exhausted = true
+
+				return false
+			}
+			it.firstID, it.lastID, it.extremaKnown = first, last, true
+			if next == nil {
+				it.exhausted = true
+
+				return false
+			}
+			it.seekID(next)
+			if !it.iter.Valid() || !bytes.Equal(it.iter.Key()[len(it.idPrefix):], next) {
+				if err := it.iter.Error(); err != nil {
+					it.err = err
+				} else {
+					it.err = fmt.Errorf("invariant: date-first row %x has no ID-first companion", next)
+				}
+
+				return false
+			}
+
+			continue
 		}
 		if it.reverse {
 			it.iter.Prev()
@@ -160,28 +202,44 @@ func (it *IDDateRangeIterator[D]) findMatch() bool {
 	return false
 }
 
-func (it *IDDateRangeIterator[D]) extremum() ([]byte, bool) {
+// dateIDs reports the matching extrema and the next match beyond after in the
+// iterator's direction. The latter lets sparse cursor pages skip an unrelated
+// ID gap without materializing the date-range matches.
+func (it *IDDateRangeIterator[D]) dateIDs(after []byte) ([]byte, []byte, []byte, bool) {
 	rangeIter, err := NewStampGatedRangeIterator(it.reader, it.dateLower, it.dateUpper, it.dateEntityOffset, 8, it.stampPin)
 	if err != nil {
 		it.err = err
 
-		return nil, false
+		return nil, nil, nil, false
 	}
 	defer rangeIter.Close()
-	var id []byte
+	var first, last, next []byte
 	for rangeIter.Next() {
 		candidate := rangeIter.Current()
-		if id == nil || (it.reverse && bytes.Compare(candidate, id) > 0) || (!it.reverse && bytes.Compare(candidate, id) < 0) {
-			id = append(id[:0], candidate...)
+		if first == nil || bytes.Compare(candidate, first) < 0 {
+			first = append(first[:0], candidate...)
+		}
+		if last == nil || bytes.Compare(candidate, last) > 0 {
+			last = append(last[:0], candidate...)
+		}
+		if after != nil && ((it.reverse && bytes.Compare(candidate, after) < 0) || (!it.reverse && bytes.Compare(candidate, after) > 0)) &&
+			(next == nil || (it.reverse && bytes.Compare(candidate, next) > 0) || (!it.reverse && bytes.Compare(candidate, next) < 0)) {
+			next = append(next[:0], candidate...)
 		}
 	}
 	if err := rangeIter.Err(); err != nil {
 		it.err = err
 
-		return nil, false
+		return nil, nil, nil, false
+	}
+	if after == nil {
+		next = first
+		if it.reverse {
+			next = last
+		}
 	}
 
-	return id, id != nil
+	return first, last, next, first != nil
 }
 
 func (it *IDDateRangeIterator[D]) Err() error {

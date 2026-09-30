@@ -213,10 +213,14 @@ have a second projection keyed by `(ledger, entity ID)`, with the date in the
 value. The indexer writes both views in one batch. A page with an ID cursor
 seeks the ID-first view and filters dates as it walks; it does not repeat the
 date-range drain. For an uncursored first page, the iterator scans the
-date-first view once to find the exact minimum or maximum matching ID, then
-starts the ID-first walk there. This initial scan is linear in the date-window
-matches but keeps only one ID; later pages cost the IDs visited from their
-cursor, with no server-side cursor state. This is exact even when mirror dates
+date-first view once to find both matching ID extrema, then starts the
+ID-first walk at the appropriate end. The extrema stop the page-size lookahead
+at the last matching ID, so a narrow window does not walk unrelated history.
+This initial scan is linear in the date-window matches and keeps two IDs. A
+cursor page seeks directly into the ID-first view; after 64 unrelated IDs it
+consults the bounded date view once to find the next matching ID (or prove
+exhaustion), avoiding both sparse gaps and an unbounded empty tail. There is
+no server-side cursor state. This is exact even when mirror dates
 invert relative to IDs. Both views come from one index snapshot; the
 reverted-at companion value carries the same fold stamp and pin gate as the
 date-first row. The public ID ordering and exclusive ID cursor are unchanged.
