@@ -1302,7 +1302,37 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		return nil
 	}
 
+	sendProbe := func() error {
+		probeID, ok := liveness.beginProbe()
+		if !ok {
+			return nil
+		}
+		// The peer loop remains the only sender on the high-priority stream.
+		liveness.beginSend()
+		err := highStream.Send(&rafttransportpb.SendMessageRequest{
+			Message: &rafttransportpb.SendMessageRequest_Ping{
+				Ping: &rafttransportpb.PingMessage{SeqId: probeID},
+			},
+		})
+		liveness.endSend()
+
+		return err
+	}
+
 	for {
+		// Give a due probe one opportunity before the priority fast paths.
+		// Otherwise a continuously nonempty queue can starve the ticker and
+		// make the watchdog disconnect a healthy peer.
+		select {
+		case <-pingInterval.C:
+			if err := sendProbe(); err != nil {
+				drainPendingUnreachable()
+
+				return false, fmt.Errorf("sending probe to peer: %w", err)
+			}
+		default:
+		}
+
 		// First, try non-blocking receives in priority order (high -> medium -> low)
 		select {
 		case msgs := <-conn.highPriorityCh:
@@ -1363,26 +1393,10 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			return false, err
 		case <-pingInterval.C:
-			probeID, ok := liveness.beginProbe()
-			if !ok {
-				continue
-			}
-			// Send ping on high priority stream
-			liveness.beginSend()
-			err := highStream.Send(&rafttransportpb.SendMessageRequest{
-				Message: &rafttransportpb.SendMessageRequest_Ping{
-					Ping: &rafttransportpb.PingMessage{
-						SeqId: probeID,
-					},
-				},
-			})
-			liveness.endSend()
-			if err != nil {
+			if err := sendProbe(); err != nil {
 				drainPendingUnreachable()
 
-				conn.logger.Errorf("Failed to send ping to peer: %v", err)
-
-				return false, err
+				return false, fmt.Errorf("sending probe to peer: %w", err)
 			}
 		case msgs := <-conn.highPriorityCh:
 			conn.sendQueueInflight[0].Add(-1)

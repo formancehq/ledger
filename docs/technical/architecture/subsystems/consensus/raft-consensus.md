@@ -223,7 +223,9 @@ Drain points ensure the pending commit completes before barriers, checkpoints, s
 - Detect silently stalled outbound streams: one high-priority ping may be
   outstanding per connection attempt. A matching pong acknowledges that probe;
   a missing pong, a blocked send, or five seconds without a sent probe cancels
-  the attempt independently of the send loop. The loop then reports the peer
+  the attempt independently of the send loop. Due probes are scheduled before
+  queued Raft traffic so a healthy but busy peer is not disconnected merely
+  because its send queues stay nonempty. The loop then reports the peer
   unreachable, drains pending sends, and restarts its pooled connection after
   at most the existing one-second retry delay. Restart constructs a new
   `dns:///` client, allowing the current peer address to resolve again.

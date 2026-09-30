@@ -447,8 +447,10 @@ When a pod is terminated during a Kubernetes rollout:
 The watchdog is independent of the sending loop. It permits one outstanding
 high-priority ping and accepts only its matching pong. It also detects a send
 that has not returned and sustained traffic that prevents any probe from being
-sent. A successful `Send` only establishes local gRPC buffering, not peer
-delivery. The high-priority probe cannot verify the medium or low streams.
+sent. Due probes run before queued traffic, so a healthy busy connection can
+continue renewing its liveness. A successful `Send` only establishes local
+gRPC buffering, not peer delivery. The high-priority probe cannot verify the
+medium or low streams.
 The shared client pool additionally uses gRPC keepalive to detect idle TCP
 blackholes; recovery time includes the watchdog or keepalive detection,
 reconnect delay, DNS resolution, optional TLS probing, and election.

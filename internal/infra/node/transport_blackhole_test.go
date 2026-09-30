@@ -206,3 +206,53 @@ func TestConnectionLivenessDetectsBlockedSendAndProbeStarvation(t *testing.T) {
 	require.True(t, liveness.expired(time.Now().Add(transportLivenessTimeout+time.Second)),
 		"continuous successful sends cannot suppress the probe deadline")
 }
+
+// A full send queue must not prevent probes to a responsive peer. Otherwise
+// the no-probe watchdog would tear down healthy replication under load.
+func TestPeerConnectionProbesDuringSustainedTraffic(t *testing.T) {
+	backend, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	pinged := make(chan struct{}, 16)
+	rafttransportpb.RegisterRaftTransportServiceServer(server, &pingServer{pings: pinged})
+	go func() { _ = server.Serve(backend) }()
+	t.Cleanup(server.Stop)
+
+	pool := transportpkg.NewConnectionPool(transportpkg.TLSPolicy{}, transportpkg.PoolConfig{})
+	t.Cleanup(func() { require.NoError(t, pool.Close()) })
+	require.NoError(t, pool.AddPeer(2, backend.Addr().String()))
+	original := pool.GetConnection(2)
+	tr := NewTransport(logging.Testing(), pool, noop.NewMeterProvider(), 1,
+		TransportConfig{Reception: []int{4, 4, 4}, Send: []int{64, 4, 4}}, "test", 1, "", "")
+	conn := newTestPeerConn(t, 2, func(uint64) bool { return true })
+	const backlogSize = 5_000_000
+	conn.highPriorityCh = make(chan []*raftpb.Message, backlogSize)
+	conn.connectionPool = pool
+	conn.stopCtx, conn.stopCancel = context.WithCancel(context.Background())
+	conn.loopDone = make(chan struct{})
+	conn.nodeID = 1
+	conn.clusterID = "test"
+	conn.bufferSize = 1024
+	conn.logger = tr.logger
+	conn.pingLatency, err = tr.meterProvider.Meter("test").Int64Histogram("ping")
+	require.NoError(t, err)
+	conn.pendingResponseCounter, err = tr.meterProvider.Meter("test").Float64UpDownCounter("pending")
+	require.NoError(t, err)
+	t.Cleanup(func() { conn.stopCancel(); <-conn.loopDone })
+	go conn.loop()
+	select {
+	case <-pinged:
+	case <-time.After(6 * time.Second):
+		t.Fatal("initial ping not delivered")
+	}
+
+	message := []*raftpb.Message{{Type: new(raftpb.MsgHeartbeat), To: new(uint64(2))}}
+	for range cap(conn.highPriorityCh) {
+		conn.highPriorityCh <- message
+	}
+	conn.sendQueueInflight[0].Store(backlogSize)
+	require.Eventually(t, func() bool { return len(pinged) >= 6 }, 11*time.Second, 10*time.Millisecond,
+		"sustained traffic must not starve application probes")
+	require.NotEmpty(t, conn.highPriorityCh, "the send queue must remain backlogged throughout the probe window")
+	require.Same(t, original, pool.GetConnection(2), "healthy traffic must not restart the connection")
+}
