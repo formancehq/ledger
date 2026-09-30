@@ -120,7 +120,7 @@ func newReverseMapFixture(t *testing.T, in reverseMapFixtureInput) reverseMapFix
 	t.Cleanup(func() { _ = reader.Close() })
 
 	return reverseMapFixture{
-		checker: NewChecker(store, attrs, "test-cluster", peer, logger),
+		checker: NewChecker(store, attrs, peer, logger),
 		reader:  reader,
 		schemas: in.schemas,
 	}
@@ -871,7 +871,7 @@ func TestCheck_ReverseMapOrphans_EmptyAuditWiring(t *testing.T) {
 			require.NoError(t, batch.Commit())
 		}
 
-		checker := NewChecker(createTestStore(t), attributes.New(), "test-cluster", peer, logger)
+		checker := NewChecker(createTestStore(t), attributes.New(), peer, logger)
 
 		var events []*servicepb.CheckStoreEvent
 		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {
@@ -1048,7 +1048,7 @@ func TestCheck_ReverseMapOrphans_EndToEnd(t *testing.T) {
 		require.NoError(t, peer.WriteProgress(batch, lastSequence+aheadBy))
 		require.NoError(t, batch.Commit())
 
-		checker := NewChecker(engine.store, engine.attrs, engine.clusterID, peer, logger)
+		checker := NewChecker(engine.store, engine.attrs, peer, logger)
 
 		var events []*servicepb.CheckStoreEvent
 		require.NoError(t, checker.Check(context.Background(), func(e *servicepb.CheckStoreEvent) {

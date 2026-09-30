@@ -281,10 +281,9 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 		return status.Error(codes.FailedPrecondition, "no backup downloaded; download a backup first")
 	}
 
-	// Use the BACKUP's ClusterID (recorded in its PersistedConfig) to recompute
-	// audit hashes, not the local server's clusterID — those may differ when a
-	// backup is staged on a fresh node, and the audit chain was hashed under
-	// the source cluster's key.
+	// A complete staged checkpoint includes its source persisted config; the
+	// checker independently reads the audit key from the staged store. The
+	// destination may have a different operational cluster ID.
 	persisted, err := query.ReadPersistedConfig(store)
 	if err != nil {
 		return internalGRPCError(stream.Context(), s.logger, fmt.Errorf("reading staged backup config: %w", err))
@@ -297,9 +296,7 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 	attrs := attributes.New()
 	// No cold reader on this path: it validates a staged backup store, so the
 	// idempotency pass verifies against the full audit history.
-	// nil TTL: there is no trusted runtime config for a foreign backup, so the
-	// pass falls back to the backup's persisted TTL.
-	checker := check.NewChecker(store, attrs, persisted.GetClusterId(), nil, s.logger)
+	checker := check.NewChecker(store, attrs, nil, s.logger)
 
 	return checker.Check(stream.Context(), func(event *servicepb.CheckStoreEvent) {
 		var restoreEvent restorepb.ValidateRestoreEvent

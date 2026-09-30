@@ -91,10 +91,10 @@ func runDump(cmd *cobra.Command, args []string) error {
 		}
 
 		if raw {
-			fmt.Printf("[%04d] key=%s  val=%s\n", count, hex.EncodeToString(key), hex.EncodeToString(val))
+			fmt.Printf("[%04d] key=%s  val=%s\n", count, hex.EncodeToString(key), dumpValue(key, val, true))
 		} else {
 			prefix := describeKey(key)
-			decoded := decodeValue(key, val)
+			decoded := dumpValue(key, val, false)
 			fmt.Printf("[%04d] %s\n       key=%s\n       %s\n\n", count, prefix, hex.EncodeToString(key), decoded)
 		}
 
@@ -104,6 +104,19 @@ func runDump(cmd *cobra.Command, args []string) error {
 	fmt.Printf("--- %d entries ---\n", count)
 
 	return nil
+}
+
+// dumpValue redacts the audit key even in raw mode. The checkpoint is the
+// supported way to export the secret for restore; diagnostics must not expose it.
+func dumpValue(key, val []byte, raw bool) string {
+	if len(key) == 2 && key[0] == dal.ZoneGlobal && key[1] == dal.SubGlobAuditKey {
+		return "[REDACTED]"
+	}
+	if raw {
+		return hex.EncodeToString(val)
+	}
+
+	return decodeValue(key, val)
 }
 
 // describeKey returns a human-readable label for a key based on its prefix byte.
@@ -367,6 +380,8 @@ func describeGlobalKey(key []byte) string {
 		return "QUERY_CHECKPOINT_SCHEDULE"
 	case dal.SubGlobClusterConfig:
 		return "CLUSTER_CONFIG"
+	case dal.SubGlobAuditKey:
+		return "AUDIT_KEY"
 	case dal.SubGlobBloom:
 		return "BLOOM rest=" + hex.EncodeToString(key[2:])
 	default:

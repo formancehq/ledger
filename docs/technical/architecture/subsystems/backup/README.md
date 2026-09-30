@@ -106,6 +106,14 @@ This FSM-managed per-destination slot is what closes the manifest-atomicity race
 
 A full backup diffs the current checkpoint's SST file set against the previous manifest and uploads only the new/changed files, but always writes a fresh checkpoint manifest with an empty export set. An **incremental** backup (`IncrementalBackupOrder`) does not take a new checkpoint at all: it streams the log/audit/audit-item/applied-proposal entries written since the last recorded sequence into size-bounded export *segments* and appends them to the manifest's export list. Log and audit history is permanent in the primary store, so every export window is served from the hot store directly. Files that are no longer referenced by the newly written manifest are pruned from the destination *after* the manifest is committed (see "Crash-safe write ordering" above).
 
+Both backup paths require the committed 32-byte audit key. A full checkpoint
+includes it under `ZoneGlobal/SubGlobAuditKey`; incremental exports never
+rotate or replace it. Restore preparation keeps that key and removes the
+source operational cluster ID. The destination verifies and extends the
+source chain with the restored key while writing later backups under its own
+cluster ID namespace. Plaintext backup access reveals the key and therefore
+requires the same access controls as the history it authenticates.
+
 The manifest itself (`internal/infra/backup/manifest.go`) records:
 
 - The RocksDB checkpoint timestamp and applied Raft index.

@@ -33,7 +33,7 @@ func writeBoundaries(t *testing.T, store *dal.Store, attrs *attributes.Attribute
 func collectMirrorV2LogIDEvents(t *testing.T, store *dal.Store, attrs *attributes.Attributes, maxV2 map[string]uint64, deletedLedgers ...string) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "mirror-v2logid-cluster", nil, logging.Testing())
+	checker := NewChecker(store, attrs, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

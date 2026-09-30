@@ -2,6 +2,13 @@
 
 The deterministic state machine (`internal/infra/state`, `internal/infra/plan`, `internal/infra/preload`) that every node runs in lock-step with Raft commit. The apply path is CPU-bound and read-only against Pebble — its only inputs are the in-memory attribute cache, the preloaded `plan.Coverage` state, and the command itself.
 
+The audit hash key is generated outside apply and committed once as a
+technical update before any audited order. Apply installs those committed
+bytes and never reads node-local cluster identity to derive the hash. Recovery
+loads the key from the primary store and checks it against the genesis hash
+before swapping FSM state; an audit history without a matching key is an
+invariant failure.
+
 ## Documents
 
 | Document | Description |

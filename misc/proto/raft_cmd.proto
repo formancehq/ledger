@@ -450,6 +450,7 @@ message TechnicalUpdate {
     common.ClusterConfig cluster_config = 5;
     BackupOrder backup_order = 6;                          // Full-backup lifecycle
     IncrementalBackupOrder incremental_backup_order = 7;  // Incremental-backup lifecycle
+    bytes audit_key = 8;  // One-time replicated audit key initialization.
   }
 }
 

@@ -125,7 +125,7 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -945,7 +945,7 @@ func TestCheck_LogBounds_LargeTruncationStaysBounded(t *testing.T) {
 func persistItemlessSuccessAuditEntry(t *testing.T, store *dal.Store, minSeq, maxSeq uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	entry := &auditpb.AuditEntry{
 		Sequence:    1,
@@ -1162,7 +1162,7 @@ func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
 			store := createTestStore(t)
 			writeRawLogRows(t, store, 1, 4)
 
-			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 			entry := &auditpb.AuditEntry{
 				Sequence:    1,

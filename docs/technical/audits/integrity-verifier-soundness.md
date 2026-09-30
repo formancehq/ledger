@@ -163,3 +163,14 @@ invoking its provider. Run `bash scripts/agent-check` and
 the artifact and candidate; they do not establish checker soundness. Report the
 actual commands/results in the PR separately from these proposed probes. No
 product audit or Jira publication is authorized by adding these files.
+
+## EN-2479 audit-key oracle
+
+The key is the chain's root of trust, not a projection derivable from that same
+chain. `Check` must read key and entries from one pinned snapshot. With history,
+missing or malformed bytes are terminal errors; a different valid 32-byte key
+must produce a hash-mismatch finding. Recovery additionally recomputes genesis
+before allowing new writes. A coordinated rewrite of key and full history is
+outside the checker threat model without an independent anchor. Staged restore
+and CLI consumers must preserve the terminal/error distinction and cannot use
+the source or destination cluster ID as a fallback key.

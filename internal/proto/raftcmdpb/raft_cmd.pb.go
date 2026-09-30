@@ -3425,6 +3425,7 @@ type TechnicalUpdate struct {
 	//	*TechnicalUpdate_ClusterConfig
 	//	*TechnicalUpdate_BackupOrder
 	//	*TechnicalUpdate_IncrementalBackupOrder
+	//	*TechnicalUpdate_AuditKey
 	Kind          isTechnicalUpdate_Kind `protobuf_oneof:"kind"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -3528,6 +3529,15 @@ func (x *TechnicalUpdate) GetIncrementalBackupOrder() *IncrementalBackupOrder {
 	return nil
 }
 
+func (x *TechnicalUpdate) GetAuditKey() []byte {
+	if x != nil {
+		if x, ok := x.Kind.(*TechnicalUpdate_AuditKey); ok {
+			return x.AuditKey
+		}
+	}
+	return nil
+}
+
 type isTechnicalUpdate_Kind interface {
 	isTechnicalUpdate_Kind()
 }
@@ -3556,6 +3566,10 @@ type TechnicalUpdate_IncrementalBackupOrder struct {
 	IncrementalBackupOrder *IncrementalBackupOrder `protobuf:"bytes,7,opt,name=incremental_backup_order,json=incrementalBackupOrder,proto3,oneof"` // Incremental-backup lifecycle
 }
 
+type TechnicalUpdate_AuditKey struct {
+	AuditKey []byte `protobuf:"bytes,8,opt,name=audit_key,json=auditKey,proto3,oneof"` // One-time replicated audit key initialization.
+}
+
 func (*TechnicalUpdate_MirrorSync) isTechnicalUpdate_Kind() {}
 
 func (*TechnicalUpdate_EventsSink) isTechnicalUpdate_Kind() {}
@@ -3567,6 +3581,8 @@ func (*TechnicalUpdate_ClusterConfig) isTechnicalUpdate_Kind() {}
 func (*TechnicalUpdate_BackupOrder) isTechnicalUpdate_Kind() {}
 
 func (*TechnicalUpdate_IncrementalBackupOrder) isTechnicalUpdate_Kind() {}
+
+func (*TechnicalUpdate_AuditKey) isTechnicalUpdate_Kind() {}
 
 // BackupDestination is the deterministic identification of where a backup
 // is shipped. Two requests with byte-equal destinations contend on the
@@ -5617,7 +5633,7 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x0fcaller_snapshot\x18\x06 \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\a \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
 	"\tsignature\x18\b \x01(\v2\x1b.signature.SignedApplyBatchR\tsignature\x12B\n" +
-	"\x11technical_updates\x18\t \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\"\xd6\x03\n" +
+	"\x11technical_updates\x18\t \x03(\v2\x15.raft.TechnicalUpdateR\x10technicalUpdates\"\xf5\x03\n" +
 	"\x0fTechnicalUpdate\x12#\n" +
 	"\rcoverage_bits\x18\x01 \x01(\fR\fcoverageBits\x129\n" +
 	"\vmirror_sync\x18\x02 \x01(\v2\x16.raft.MirrorSyncUpdateH\x00R\n" +
@@ -5627,7 +5643,8 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x14idempotency_eviction\x18\x04 \x01(\v2\x19.raft.IdempotencyEvictionH\x00R\x13idempotencyEviction\x12>\n" +
 	"\x0ecluster_config\x18\x05 \x01(\v2\x15.common.ClusterConfigH\x00R\rclusterConfig\x126\n" +
 	"\fbackup_order\x18\x06 \x01(\v2\x11.raft.BackupOrderH\x00R\vbackupOrder\x12X\n" +
-	"\x18incremental_backup_order\x18\a \x01(\v2\x1c.raft.IncrementalBackupOrderH\x00R\x16incrementalBackupOrderB\x06\n" +
+	"\x18incremental_backup_order\x18\a \x01(\v2\x1c.raft.IncrementalBackupOrderH\x00R\x16incrementalBackupOrder\x12\x1d\n" +
+	"\taudit_key\x18\b \x01(\fH\x00R\bauditKeyB\x06\n" +
 	"\x04kind\"\xb0\x01\n" +
 	"\x11BackupDestination\x12\x1b\n" +
 	"\tbase_path\x18\x01 \x01(\tR\bbasePath\x12\x1b\n" +
@@ -6092,6 +6109,7 @@ func file_raft_cmd_proto_init() {
 		(*TechnicalUpdate_ClusterConfig)(nil),
 		(*TechnicalUpdate_BackupOrder)(nil),
 		(*TechnicalUpdate_IncrementalBackupOrder)(nil),
+		(*TechnicalUpdate_AuditKey)(nil),
 	}
 	file_raft_cmd_proto_msgTypes[47].OneofWrappers = []any{
 		(*BackupDestination_S3)(nil),

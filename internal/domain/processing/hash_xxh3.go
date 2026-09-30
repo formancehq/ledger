@@ -10,7 +10,7 @@ import (
 )
 
 // xxh3AuditKeyContext domain-separates the XXH3 audit-hash seed from
-// any other use of BLAKE3-Sum256 keyed by clusterID elsewhere in the
+// any other use of BLAKE3-Sum256 keyed by the audit secret elsewhere in the
 // codebase. The "v1" suffix reserves room for a key-rotation bump
 // should the derivation ever change.
 const xxh3AuditKeyContext = "audit-hash:xxh3:v1:"
@@ -19,8 +19,8 @@ type xxh3HashGenerator struct {
 	seed uint64
 }
 
-func newXXH3HashGenerator(clusterID string) *xxh3HashGenerator {
-	derived := blake3.Sum256([]byte(xxh3AuditKeyContext + clusterID))
+func newXXH3HashGenerator(auditKey string) *xxh3HashGenerator {
+	derived := blake3.Sum256([]byte(xxh3AuditKeyContext + auditKey))
 
 	return &xxh3HashGenerator{
 		seed: binary.BigEndian.Uint64(derived[:8]),

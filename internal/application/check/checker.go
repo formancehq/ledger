@@ -41,10 +41,9 @@ const progressInterval = 100
 
 // Checker verifies store integrity by replaying logs and comparing derived state.
 type Checker struct {
-	store     *dal.Store
-	attrs     *attributes.Attributes
-	logger    logging.Logger
-	clusterID string
+	store  *dal.Store
+	attrs  *attributes.Attributes
+	logger logging.Logger
 	// readStore gives the reverse-map orphan pass read access to the peer
 	// read-index store. nil at the restore / CLI call sites, where no peer
 	// readstore exists for the staged store being validated — the pass then
@@ -54,18 +53,15 @@ type Checker struct {
 	readStore *readstore.Store
 }
 
-// NewChecker creates a new Checker. clusterID is used to derive the
-// per-cluster key for verifying audit-hash chain entries — it must match
-// the value the FSM used when writing those entries (enforced via
-// PersistedConfig immutability). readStore may be nil when no peer
+// NewChecker creates a new Checker. Audit verification reads the committed
+// secret from the same pinned store snapshot as the history. readStore may be nil when no peer
 // read-index store is available (restore / CLI backup validation); the
 // reverse-map orphan pass is then skipped.
-func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string, readStore *readstore.Store, logger logging.Logger) *Checker {
+func NewChecker(store *dal.Store, attrs *attributes.Attributes, readStore *readstore.Store, logger logging.Logger) *Checker {
 	return &Checker{
 		store:     store,
 		attrs:     attrs,
 		logger:    logger,
-		clusterID: clusterID,
 		readStore: readStore,
 	}
 }
@@ -86,7 +82,7 @@ func NewChecker(store *dal.Store, attrs *attributes.Attributes, clusterID string
 //
 // Named here because the log loop and its fixtures both need it, but the rule
 // is the DAL's: never bound a sequence-keyed prefix scan with a run of 0xFF
-// bytes. Pebble's IterOptions.UpperBound is exclusive, so such a bound is
+// bytes. RocksDB's IterOptions.UpperBound is exclusive, so such a bound is
 // byte-identical to the key at math.MaxUint64 and excludes exactly that row —
 // which for this pass meant a row planted at the top of the key space was
 // invisible to the one pass built to see planted rows, the twin of the reserved
@@ -190,7 +186,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// judges rows for ledgers and fields created after the primary pin against
 	// oracles that predate them — reporting a healthy cluster as corrupt.
 	//
-	// The two snapshots still cannot be taken atomically across two Pebble
+	// The two snapshots still cannot be taken atomically across two RocksDB
 	// stores, but atomicity is not what this needs: an ordering that can only
 	// ever leave the peer BEHIND is enough, because behind is a state the pass
 	// already handles by skipping. See ALIGNMENT in reverse_map_orphans.go.
@@ -213,7 +209,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 
 	defer func() { _ = snap.Close() }()
 
-	// The store head, read off the Pebble KEY of the last Log row rather than
+	// The store head, read off the RocksDB KEY of the last Log row rather than
 	// off the value's `sequence` field (query.ReadLastSequence). ONE head, used
 	// for everything: progress sizing, the reverse-map alignment oracle and the
 	// audit-derived bound comparison below.
@@ -263,7 +259,18 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	// audit entry and recomputes each hash from the stored orders. Populates
 	// expectedSkippable + layers the audit-chain mutations onto chainBound
 	// and the signing orders onto `signing`.
-	auditExpected, err := c.verifyAuditHashChain(ctx, snap, chainBound, folds, callback)
+	auditKey, err := query.ReadAuditKey(snap)
+	if err != nil {
+		return fmt.Errorf("reading audit key for checker: %w", err)
+	}
+	auditHead, err := query.ReadLastAuditEntry(snap)
+	if err != nil {
+		return fmt.Errorf("reading audit head for checker: %w", err)
+	}
+	if auditHead != nil && auditKey == nil {
+		return errors.New("audit key missing while history exists")
+	}
+	auditExpected, err := c.verifyAuditHashChain(ctx, snap, string(auditKey), chainBound, folds, callback)
 	if err != nil {
 		return fmt.Errorf("verifying audit hash chain: %w", err)
 	}
@@ -344,7 +351,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		set[domain.AccountAssetKey{Account: account, Asset: asset, Color: color}] = struct{}{}
 	}
 
-	// stored mirrors `excluded` but is built from the Pebble projections
+	// stored mirrors `excluded` but is built from the RocksDB projections
 	// (LedgerLog.PurgedVolumes per log + AppliedProposal.TransientVolumes
 	// per proposal). It is compared to `excluded` at the end of replay so
 	// any corruption of those records — which the index builder consumes
@@ -401,7 +408,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 	expectedSeq := uint64(1)
 
 	// What the loop measures about the stored rows, for logBoundsVerifier.compare
-	// below. Every field is read off the Pebble key and recorded BEFORE the
+	// below. Every field is read off the RocksDB key and recorded BEFORE the
 	// row's value is examined, so a row skipped as LOG_SEQUENCE_MISMATCH still
 	// counts as a position the store occupies.
 	//
@@ -532,7 +539,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 		}
 		storedLog := log
 
-		// A Log row states its own sequence twice: in the Pebble key and in the
+		// A Log row states its own sequence twice: in the RocksDB key and in the
 		// value's `sequence` field. Nothing binds the two — Log rows are not
 		// part of the audit hash chain — and query.ReadLastSequence reads the
 		// field off the last row, so editing that one field moves the head the
@@ -625,7 +632,7 @@ func (c *Checker) Check(ctx context.Context, callback func(*servicepb.CheckStore
 					deletedInReplay[name] = struct{}{}
 
 					// DeleteLedger purges every SubAttrIndex entry scoped to
-					// this ledger via the same-apply Pebble range delete
+					// this ledger via the same-apply RocksDB range delete
 					// (batch.deleteLedgerData). Mirror the cascade on the
 					// expected projection so a stored entry that survives a
 					// ledger deletion still surfaces as a mismatch.
@@ -1469,7 +1476,7 @@ func (c *Checker) compareMirrorV2LogID(reader dal.KVReader, chainBound *chainBou
 // The audit-rebuild path recreates the rows (including max_sequence,
 // created_at, and applied_index)
 // from the logs, so a missing row is corruption, never a legitimate restore
-// artifact. Stored rows are keyed by the Pebble key id, not the payload.
+// artifact. Stored rows are keyed by the RocksDB key id, not the payload.
 func (c *Checker) compareQueryCheckpoints(reader dal.KVReader, derived map[uint64]*commonpb.CreatedQueryCheckpointLog, callback func(*servicepb.CheckStoreEvent)) error {
 	stored, err := query.ReadQueryCheckpointRows(reader)
 	if err != nil {
@@ -1678,7 +1685,7 @@ func (c *Checker) compareNumscripts(
 }
 
 // excludedVolumesSet maps ledger name to a set of (account, asset) tuples
-// that legitimately diverge between the replay store and the live Pebble
+// that legitimately diverge between the replay store and the live RocksDB
 // store. The set is populated incrementally by the replay-time
 // exclusionCollector in Check() — i.e. derived from the audit log (the
 // only hash-chain-bound source). AppliedProposal.TransientVolumes and
@@ -2508,6 +2515,7 @@ type auditVerification struct {
 func (c *Checker) verifyAuditHashChain(
 	ctx context.Context,
 	reader dal.KVReader,
+	auditKey string,
 	chainBound *chainBoundState,
 	folds chainVerifierFolds,
 	callback func(*servicepb.CheckStoreEvent),
@@ -2519,7 +2527,7 @@ func (c *Checker) verifyAuditHashChain(
 
 	defer func() { _ = auditCursor.Close() }()
 
-	replayer, err := state.NewAuditReplayer(c.logger, c.clusterID)
+	replayer, err := state.NewAuditReplayer(c.logger, auditKey)
 	if err != nil {
 		return nil, fmt.Errorf("creating audit-derived replay: %w", err)
 	}
@@ -2647,7 +2655,7 @@ func (c *Checker) verifyAuditHashChain(
 
 		gen, ok := generators[version]
 		if !ok {
-			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), c.clusterID)
+			gen = processing.NewHashGenerator(commonpb.HashAlgorithm(version), auditKey)
 			generators[version] = gen
 		}
 
@@ -4497,7 +4505,7 @@ func expectedIdempotencyOutcome(entry *auditpb.AuditEntry, items []*auditpb.Audi
 // deleted entry (which would let a retry re-execute instead of replay) is a
 // separate concern out of scope here.
 //
-// Threat model: the check targets an actor with direct disk/Pebble write access
+// Threat model: the check targets an actor with direct disk/RocksDB write access
 // to a follower's store, which is where SubIdempKeys lives. The audit entries
 // that anchor the expectation are hash-chain-verified above.
 func (c *Checker) compareIdempotencyOutcomes(
@@ -4796,7 +4804,7 @@ func (c *Checker) compareDefaultEnforcementModes(ctx context.Context, reader dal
 
 // compareLedgerPresence verifies that the live ledger set in the store matches
 // the audit-derived one in both directions. compareSchema / compareAccountTypes
-// iterate the ledgers Pebble returns and skip tombstones, so neither a LedgerInfo
+// iterate the ledgers RocksDB returns and skip tombstones, so neither a LedgerInfo
 // deleted outright / tampered to a tombstone (a ledger with only schema /
 // account-type declarations and no volumes leaves nothing else to compare) nor an
 // unaudited row injected into the store would surface — the projection passes see

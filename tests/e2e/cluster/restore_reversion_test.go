@@ -179,8 +179,12 @@ var _ = Describe("Restore reversion bitset", Ordered, func() {
 			// the incremental delta, so the restore reconstructs the reversion
 			// state purely by replaying the exported log instead of copying
 			// checkpoint files.
-			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
-			Expect(err).To(Succeed())
+			var backupResp *clusterpb.BackupResponse
+			Eventually(func() error {
+				var err error
+				backupResp, err = clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+				return err
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 

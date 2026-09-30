@@ -18,8 +18,7 @@ in-cluster snapshot installation retain it. See the [restore classification](../
 | [storage-drivers.md](storage-drivers.md) | RocksDB storage driver characteristics, configuration, and write session ownership. |
 | [spool.md](spool.md) | Committed entry buffer between Raft and FSM synchronization. |
 | [range-bounds.md](range-bounds.md) | Exclusive upper bounds on sequence-keyed prefix scans, and the `+1` overflow guards that go with them. |
-
-| [acme-pebble-beta5-pilot.md](acme-pebble-beta5-pilot.md) | ACME-dev three-replica RocksDB beta pilot: write/read results, profile, and limitations. |
+| [acme-pebble-beta5-pilot.md](acme-pebble-beta5-pilot.md) | ACME-dev three-replica Pebble beta pilot: write/read results, profile, and limitations. |
 
 ## Related
 

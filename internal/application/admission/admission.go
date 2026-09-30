@@ -72,6 +72,7 @@ type Admission struct {
 	// the store read; the poll in waitClusterPolicyReady runs only during the
 	// startup window before a fresh leader's reconciler commits the policy.
 	clusterPolicyCommitted atomic.Bool
+	auditKeyCommitted      atomic.Bool
 
 	// Metrics (noop when metricsEnabled is false)
 	metricsEnabled                 bool
@@ -540,6 +541,13 @@ func (a *Admission) Admit(ctx context.Context, req *servicepb.ApplyRequest) (res
 	}
 
 	if err := a.checkQueryCheckpointProjectionReady(batch.requests); err != nil {
+		return nil, err
+	}
+
+	// Every audited request, including SetClusterPolicy, requires the one-time
+	// replicated key. Waiting here prevents an early client request from
+	// committing an unhashable order while the leader initializes the key.
+	if err := a.waitAuditKeyReady(ctx); err != nil {
 		return nil, err
 	}
 
@@ -1405,6 +1413,30 @@ func allRequestsAreClusterPolicy(reqs []*servicepb.Request) bool {
 // clusterPolicyReadyPollInterval bounds how long a business write lags the
 // commit of the replicated cluster policy during the startup window.
 const clusterPolicyReadyPollInterval = 25 * time.Millisecond
+
+func (a *Admission) waitAuditKeyReady(ctx context.Context) error {
+	if a.auditKeyCommitted.Load() {
+		return nil
+	}
+	ticker := time.NewTicker(clusterPolicyReadyPollInterval)
+	defer ticker.Stop()
+	for {
+		key, err := query.ReadAuditKey(a.store)
+		if err != nil {
+			return fmt.Errorf("reading audit key for write readiness: %w", err)
+		}
+		if key != nil {
+			a.auditKeyCommitted.Store(true)
+
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("waiting for audit key readiness: %w", ctx.Err())
+		case <-ticker.C:
+		}
+	}
+}
 
 // waitClusterPolicyReady blocks until the replicated cluster policy is committed
 // (revision > 0), the cluster-wide precondition for business writes. It latches

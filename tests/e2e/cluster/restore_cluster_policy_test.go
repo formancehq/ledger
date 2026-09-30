@@ -153,8 +153,12 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 			// Full checkpoint before the post-checkpoint revision exists: the
 			// restore reconstructs that revision by replaying the exported log
 			// rather than copying checkpoint files.
-			backupResp, err := clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
-			Expect(err).To(Succeed())
+			var backupResp *clusterpb.BackupResponse
+			Eventually(func() error {
+				var err error
+				backupResp, err = clusterClient.Backup(ctx, &clusterpb.BackupRequest{Storage: storage()})
+				return err
+			}).Within(10 * time.Second).ProbeEvery(100 * time.Millisecond).Should(Succeed())
 			Expect(backupResp.GetTotalFiles()).To(BeNumerically(">", 0))
 		})
 
@@ -166,8 +170,8 @@ var _ = Describe("Restore replicated cluster policy", Ordered, func() {
 		})
 
 		It("bumps the policy and writes business data after the checkpoint", func() {
-			// SetClusterPolicy is exempt from the write-readiness gate, so this
-			// establishes the post-checkpoint revision unconditionally.
+			// SetClusterPolicy waits for the audit key and establishes the
+			// post-checkpoint revision.
 			_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 				Type: &servicepb.Request_SetClusterPolicy{
 					SetClusterPolicy: &servicepb.SetClusterPolicyRequest{

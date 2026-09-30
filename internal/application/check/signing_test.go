@@ -725,7 +725,7 @@ func TestCheck_SigningProjections_EmptyAuditWiring(t *testing.T) {
 
 		// No readstore handle: the reverse-map pass on this same path skips itself
 		// loudly, keeping the events attributable to the signing comparison alone.
-		checker := NewChecker(store, attributes.New(), "test-cluster", nil, logging.Testing())
+		checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
 		var got []*servicepb.CheckStoreError
 

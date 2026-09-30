@@ -95,3 +95,13 @@ After manifest review/merge, the trusted outer workflow can separately run
 Provider workers remain leaves. First-pass findings remain hypotheses until
 challenged; Jira preview/publication and product fixes require separate tasks
 and explicit authorization. Creating this manifest runs neither audit campaign.
+
+## EN-2479 recovery and identity
+
+Audit-key validation is independent of persisted node/cluster ID validation.
+Recovery reads the 32-byte key, rejects malformed or missing key state with
+history, and checks genesis before swapping FSM state. Restore preparation
+removes the source operational identity while preserving the key. A destination
+may then persist its own cluster ID and extend the source chain. Inspect the
+startup and follower-recovery paths separately; the checker owns full-history
+verification, and the persistence domain owns checkpoint/delta preservation.

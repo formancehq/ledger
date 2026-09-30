@@ -267,6 +267,16 @@ Backup preparation is performed on the **restore side** (during `FinalizeRestore
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 
+The audit key is a 32-byte random secret committed by Raft before the first
+audit entry. Full backup is refused until it exists. A full checkpoint contains
+the key; later incremental segments contain audit entries and orders but do
+not change the key. Restoring A into B therefore keeps A's audit key while B
+uses its own cluster ID for membership and its default backup namespace. A
+later backup from B carries the same audit key under B's backup namespace.
+Anyone who can read a plaintext backup can read the key and, with write access
+to history, forge a new chain. Protect backup artifacts accordingly; checker
+validation does not authenticate a coordinated rewrite of key and history.
+
 ### What the Backup Contains
 
 The backup is a complete RocksDB database that contains:

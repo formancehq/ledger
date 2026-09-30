@@ -48,6 +48,20 @@ func ReadClusterState(reader dal.KVGetter) (*commonpb.PersistedClusterState, err
 	return state, nil
 }
 
+// ReadAuditKey returns the replicated audit secret. Absence is valid only
+// before the first audit entry; malformed rows always fail closed.
+func ReadAuditKey(reader dal.KVGetter) ([]byte, error) {
+	key, err := dal.GetValue(reader, []byte{dal.ZoneGlobal, dal.SubGlobAuditKey})
+	if err != nil {
+		return nil, fmt.Errorf("loading audit key: %w", err)
+	}
+	if key != nil && len(key) != 32 {
+		return nil, fmt.Errorf("invalid audit key length %d", len(key))
+	}
+
+	return key, nil
+}
+
 // ReadClusterPolicy loads the replicated cluster policy from the given reader.
 // Returns nil if the key does not exist (no policy committed yet).
 func ReadClusterPolicy(reader dal.KVGetter) (*commonpb.ClusterPolicy, error) {

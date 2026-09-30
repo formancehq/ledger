@@ -169,3 +169,15 @@ For this manifest-only PR, validate the JSON with the predicate in
 `bash scripts/agent-check`, and run `agent-check-pr` with the exact base SHA.
 These checks validate the contract artifact; they do not execute or establish
 the product audit.
+
+## EN-2479 preserved audit root
+
+`SubGlobAuditKey` is checkpoint-preserved state. It is not rebuilt from the
+exported delta, because no post-initialization operation may rotate it. A full
+checkpoint is refused before the key is committed; otherwise a later audit
+delta could have no key in its base. A valid parity probe uses real checkpoint
+files, a nonempty post-checkpoint audit/item export, `PrepareForBackup`, a
+different destination cluster ID, new destination writes, checker validation,
+and a subsequent destination backup and restore. Compare historical audit and
+item bytes as well as logical projections. The integrity audit owns checker
+verdict quality; this domain owns lifecycle preservation and next-write parity.
