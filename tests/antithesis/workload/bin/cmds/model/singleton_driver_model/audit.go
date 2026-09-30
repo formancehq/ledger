@@ -94,11 +94,20 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		}
 
 		if probe != auditProbeNone && status.Code(err) == codes.InvalidArgument {
-			// Coverage: the audit grammar refuses what its seq-set representation
-			// cannot express, one literal per refusal.
+			// Coverage: the audit grammar refuses what it cannot express, one
+			// literal per refusal — Antithesis catalogues assertions by literal,
+			// and each of these is a distinct guard in compileAuditLeaf.
 			switch probe {
 			case auditProbeSeqInOr:
 				assert.Reachable("singleton_driver_model: audit sequence bound inside or rejected", internal.Details{})
+			case auditProbeUnspecifiedField:
+				assert.Reachable("singleton_driver_model: unspecified audit field rejected", internal.Details{})
+			case auditProbeTypeMismatch:
+				assert.Reachable("singleton_driver_model: audit condition of the wrong type rejected", internal.Details{"filter": describeFilter(filter)})
+			case auditProbeIdempotencyParam:
+				assert.Reachable("singleton_driver_model: parameterised idempotency-key condition rejected", internal.Details{})
+			case auditProbeNulPrefix:
+				assert.Reachable("singleton_driver_model: idempotency-key prefix containing NUL rejected", internal.Details{})
 			default:
 				assert.Reachable("singleton_driver_model: audit not filter rejected", internal.Details{})
 			}
@@ -164,6 +173,17 @@ func runAuditQuery(ctx context.Context, client servicepb.BucketServiceClient, c 
 		return
 	}
 
+	if entry, why, checked := c.auditIdempotencyViolation(entries); why != "" {
+		details["entry"], details["why"] = entry, why
+		assert.Unreachable("singleton_driver_model: audit entry names the wrong batch key", details)
+
+		return
+	} else if checked > 0 {
+		// Coverage: a served entry's batch key was the one the driver sent for
+		// the bulk that committed at its log range.
+		assert.Reachable("singleton_driver_model: audit entry batch key matched the model", internal.Details{"checked": checked})
+	}
+
 	c.noteKnownAuditEntries(entries)
 
 	// Coverage: every entry of the page was the model's own record of a bulk.
@@ -191,6 +211,7 @@ type auditEntry struct {
 	proposalID uint64
 	timestamp  uint64   // unix microseconds
 	subject    string   // caller subject; empty when unauthenticated or system-initiated
+	idemKey    string   // batch dedup key, as the entry carries it
 	ledgers    []string // as served, ascending
 	orderCount uint32
 	failed     bool
@@ -206,6 +227,7 @@ func auditEntryOf(e *auditpb.AuditEntry) auditEntry {
 		proposalID: e.GetProposalId(),
 		timestamp:  e.GetTimestamp().GetData(),
 		subject:    e.GetCallerSnapshot().GetAuthenticated().GetIdentity().GetSubject(),
+		idemKey:    e.GetIdempotency().GetKey(),
 		ledgers:    slices.Sorted(slices.Values(e.GetLedgers())),
 		orderCount: e.GetOrderCount(),
 	}
@@ -463,7 +485,7 @@ type committedLog struct {
 // for — the oracle's rows and the ledger-level logs it keeps no row for — with
 // the lowest and highest such sequence. Caller holds c.mu.
 func (c *Checker) committedLogsBySequence() (logs map[uint64]committedLog, minSeq, maxSeq uint64) {
-	logs = map[uint64]committedLog{}
+	logs = make(map[uint64]committedLog, len(c.committedLogs))
 	note := func(seq uint64, l committedLog) {
 		logs[seq] = l
 		if minSeq == 0 || seq < minSeq {
@@ -472,14 +494,12 @@ func (c *Checker) committedLogsBySequence() (logs map[uint64]committedLog, minSe
 		maxSeq = max(maxSeq, seq)
 	}
 
-	for _, ledger := range c.ledgerNames {
-		for _, row := range c.modelState.Ledger(ledger).LogRows() {
-			if row.Sequence != 0 {
-				note(row.Sequence, committedLog{ledger: ledger, id: row.ID, kind: row.Kind})
-			}
-		}
+	for seq, l := range c.committedLogs {
+		note(seq, l)
 	}
 
+	// The ledger-level record carries the order that produced the log, which the
+	// served payload does not name.
 	for seq, rec := range c.ledgerLogSeqs {
 		note(seq, committedLog{ledger: rec.ledger, kind: rec.kind})
 	}
@@ -683,6 +703,18 @@ func auditEntrySatisfies(filter *commonpb.QueryFilter, e auditEntry) bool {
 			case commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT:
 				// An empty subject is never indexed.
 				return e.subject != "" && e.subject == value
+			case commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY:
+				// The only audit field with a prefix form. An entry carrying no
+				// key is absent from the index, so neither form selects it.
+				if e.idemKey == "" {
+					return false
+				}
+
+				if p, isPrefix := a.GetCondition().(*commonpb.AuditCondition_StringPrefix); isPrefix {
+					return strings.HasPrefix(e.idemKey, p.StringPrefix)
+				}
+
+				return e.idemKey == value
 			default:
 				return true
 			}
@@ -886,13 +918,70 @@ const (
 	auditProbeSeqInOr
 	// Not is not valid on the audit target.
 	auditProbeNot
+	// The unspecified field names no index.
+	auditProbeUnspecifiedField
+	// A string condition on a uint field, or the reverse.
+	auditProbeTypeMismatch
+	// The idempotency-key index is resolved without a parameter context.
+	auditProbeIdempotencyParam
+	// A NUL in a prefix operand cannot be encoded as an index bound.
+	auditProbeNulPrefix
 )
+
+// auditIdempotencyViolation names the first served entry whose batch key is not
+// the one the driver sent for the bulk that committed at that log range, with
+// why. Only keyed bulks can be placed: the replay registry is the model's record
+// of which key went with which committed sequences, and an ephemeral key is
+// minted inside applyRequest and never retained. Acquires c.mu.
+func (c *Checker) auditIdempotencyViolation(entries []auditEntry) (entry, why string, checked int) {
+	c.mu.Lock()
+	keyByFirstSeq := make(map[uint64]string, len(c.replayable))
+	for _, r := range c.replayable {
+		if first := firstNonZero(r.logSeqs); first != 0 {
+			keyByFirstSeq[first] = r.key
+		}
+	}
+	c.mu.Unlock()
+
+	for _, e := range entries {
+		if e.failed || e.minLog == 0 {
+			continue
+		}
+
+		key, known := keyByFirstSeq[e.minLog]
+		if !known {
+			continue
+		}
+
+		checked++
+
+		if e.idemKey != key {
+			return describeAuditEntry(e), "entry carries key " + e.idemKey + " but that log range was committed under " + key, checked
+		}
+	}
+
+	return "", "", checked
+}
+
+// firstNonZero is the smallest non-zero sequence a committed bulk was assigned,
+// which is where its audit entry's log range starts.
+func firstNonZero(seqs []uint64) uint64 {
+	var first uint64
+	for _, seq := range seqs {
+		if seq != 0 && (first == 0 || seq < first) {
+			first = seq
+		}
+	}
+
+	return first
+}
 
 // auditSample is one served entry's indexed fields, kept so later filters can
 // be aimed at values the trail holds.
 type auditSample struct {
 	seq, proposalID, timestamp uint64
 	subject                    string
+	idemKey                    string
 }
 
 const auditSampleCap = 64
@@ -903,7 +992,7 @@ func (c *Checker) noteAuditSamples(entries []auditEntry) {
 	defer c.mu.Unlock()
 
 	for _, e := range entries {
-		sample := auditSample{seq: e.seq, proposalID: e.proposalID, timestamp: e.timestamp, subject: e.subject}
+		sample := auditSample{seq: e.seq, proposalID: e.proposalID, timestamp: e.timestamp, subject: e.subject, idemKey: e.idemKey}
 		if len(c.auditSamples) < auditSampleCap {
 			c.auditSamples = append(c.auditSamples, sample)
 
@@ -936,6 +1025,9 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 		}
 	}
 
+	// Each arm is its own roll against the rolls that fell through above it, so
+	// two arms guarding on the same odds are two independent draws, not the
+	// repeated constant dupCase reads them as.
 	switch {
 	case oneIn(6):
 		return nil, auditProbeNone
@@ -944,10 +1036,16 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 			return filterNot(leaf()), auditProbeNot
 		}
 
-		return filterOr(filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, uintRangeAround(sample.seq, 16)), indexed()), auditProbeSeqInOr
+		return filterOr(filterAuditUint(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, satisfiableSeqRange(sample.seq)), indexed()), auditProbeSeqInOr
 	case oneIn(4):
+		// One slot of the read mix reaches this read at all, so a refusal rolled
+		// much rarer than this is never drawn in a whole local run — the four
+		// arms below split whatever share this branch gets. Ordered after the
+		// grammar refusals so it does not take theirs.
+		return genRefusedAuditLeaf(sample)
+	case oneIn(4): //nolint:gocritic // dupCase: a fresh roll, not the arm above
 		return filterAnd(genChildren(maxQueryGenDepth, func(int) *commonpb.QueryFilter { return leaf() })...), auditProbeNone
-	case oneIn(6):
+	case oneIn(6): //nolint:gocritic // dupCase: a fresh roll, not the first arm
 		return filterOr(indexed(), indexed()), auditProbeNone
 	default:
 		return leaf(), auditProbeNone
@@ -958,7 +1056,7 @@ func (c *Checker) genAuditFilter() (*commonpb.QueryFilter, auditProbe) {
 // straddle live entries: the model's committed log sequences for
 // log_sequence, the fleet for ledger, the indexer's tokens for order_type.
 func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb.QueryFilter {
-	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7}) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8}) {
 	case 0:
 		ledger := random.RandomChoice(ledgers)
 		if oneIn(8) {
@@ -984,6 +1082,8 @@ func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb
 		}
 
 		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_CALLER_SUBJECT, subject)
+	case 7:
+		return genIdempotencyKeyLeaf(sample)
 	default:
 		token := random.RandomChoice(auditOrderTypes)
 		if oneIn(8) {
@@ -992,6 +1092,72 @@ func genAuditLeaf(ledgers []string, sample auditSample, logSeq uint64) *commonpb
 
 		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_ORDER_TYPE, token)
 	}
+}
+
+// genIdempotencyKeyLeaf rolls the one audit field with both an exact and a
+// prefix form. The prefix arm alternates between the driver's own key namespace
+// — which every entry this run produced shares, so the page is unfiltered in
+// practice — and a proper prefix of a key the trail served, which selects one.
+func genIdempotencyKeyLeaf(sample auditSample) *commonpb.QueryFilter {
+	key := sample.idemKey
+	if key == "" || oneIn(8) {
+		key = "model-no-such-key"
+	}
+
+	if !oneIn(2) {
+		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY, key)
+	}
+
+	prefix := idempotencyKeyNamespace
+	if oneIn(2) && len(key) > len(idempotencyKeyNamespace) {
+		prefix = key[:len(idempotencyKeyNamespace)+internal.Rand().Intn(len(key)-len(idempotencyKeyNamespace))]
+	}
+
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+		Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+		Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: prefix},
+	}}}
+}
+
+// genRefusedAuditLeaf rolls a leaf the audit compiler must refuse, with the
+// refusal it is built to draw. Each is a distinct guard in compileAuditLeaf.
+func genRefusedAuditLeaf(sample auditSample) (*commonpb.QueryFilter, auditProbe) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
+	case 0:
+		return filterAuditString(commonpb.AuditField_AUDIT_FIELD_UNSPECIFIED, "anything"), auditProbeUnspecifiedField
+	case 1:
+		// A string operand on a uint field, or a numeric one on a string field.
+		if oneIn(2) {
+			return filterAuditString(commonpb.AuditField_AUDIT_FIELD_SEQUENCE, "not-a-number"), auditProbeTypeMismatch
+		}
+
+		return filterAuditUint(commonpb.AuditField_AUDIT_FIELD_LEDGER, uintRangeAround(sample.seq, 16)), auditProbeTypeMismatch
+	case 2:
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+			Field: commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+			Condition: &commonpb.AuditCondition_StringCond{StringCond: &commonpb.StringCondition{
+				Value: &commonpb.StringCondition_Param{Param: "p0"},
+			}},
+		}}}, auditProbeIdempotencyParam
+	default:
+		return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{Audit: &commonpb.AuditCondition{
+			Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+			Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: "model-\x00bad"},
+		}}}, auditProbeNulPrefix
+	}
+}
+
+// satisfiableSeqRange is a two-sided sequence range that certainly holds some
+// value: closed on both sides, neither side an extremum, lo <= hi. The
+// seq-inside-Or refusal only fires for a bound that compiles to a zone bound —
+// an IMPOSSIBLE range instead compiles to an empty narrowed set, which the union
+// represents happily (compileAuditSeqBound), so the Or would then serve a page.
+// A probe built on an arbitrary range is therefore not a probe.
+func satisfiableSeqRange(center uint64) *commonpb.UintCondition {
+	lo := center - min(center, internal.Rand().Uint64()%16)
+	hi := lo + internal.Rand().Uint64()%16
+
+	return &commonpb.UintCondition{Min: &lo, Max: &hi}
 }
 
 // uintRangeAround rolls a two-sided range within spread of center, then opens

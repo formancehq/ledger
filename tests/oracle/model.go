@@ -2471,6 +2471,21 @@ func (g *GlobalState) applyCheckpoint(req *servicepb.Request) (OrderResult, bool
 }
 
 // Lifecycle returns an owned snapshot of an explicitly modeled ledger's identity.
+// LiveLedgers names every ledger the state still holds, ascending. A deleted
+// ledger is gone from it, so it is the membership a listing must serve.
+func (g GlobalState) LiveLedgers() []string {
+	var out []string
+	for name, lc := range g.lifecycle.All() {
+		if !lc.Deleted {
+			out = append(out, name)
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
 func (g GlobalState) Lifecycle(name string) (LedgerLifecycle, bool) {
 	lc, ok := g.lifecycle.Get(name)
 	lc.MirrorSource = lc.MirrorSource.CloneVT()

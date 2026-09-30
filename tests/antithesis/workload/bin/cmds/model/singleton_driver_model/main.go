@@ -32,6 +32,25 @@
 //
 // Invariant: every observed response is consistent with some serialization of
 // the in-flight bulks (see candidateBases).
+//
+// Consistency: every read this driver issues carries
+// `x-consistency: linearizable`, and that is the point of the test, not an
+// omission. candidateBases enumerates states FORWARD from the drained committed
+// prefix, so it can only explain a response that reflects that prefix or a
+// serialization of the bulks still in flight over it. A `stale` read
+// (adapter/grpc/consistency.go) skips the ReadIndex barrier and answers from the
+// local store, which may sit BEHIND that prefix — a state the model has already
+// drained past and no longer holds. Such a response is unfalsifiable here, so
+// stale reads are deliberately out of scope: adding them would not widen
+// coverage, it would remove the oracle's ability to reject anything. Verifying
+// staleness bounds is a different test with a different oracle.
+//
+// Leader routing is still exercised under linearizable: the client load-balances
+// round-robin across every node, so reads land on followers, and a follower whose
+// ReadIndex barrier fails (ErrNodeSyncing / ErrNotLeader, see
+// bootstrap/controller_routed.go) transparently forwards to the leader — which is
+// what drives the cursor-forwarding path (adapter/grpc/cursor.go,
+// upstreamPeekCursor).
 package main
 
 import (

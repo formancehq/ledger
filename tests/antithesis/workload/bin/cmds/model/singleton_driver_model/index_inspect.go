@@ -47,29 +47,57 @@ func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, 
 	requestedPageSize, pageSize := queryPageSize()
 	noteClampedPageSize(requestedPageSize, pageSize)
 
+	// A frozen checkpoint answers from its own index snapshot; a checkpoint the
+	// fleet has since dropped answers NotFound.
+	var checkpointID uint64
+	if oneIn(4) {
+		c.mu.Lock()
+		checkpointID, _, _ = c.pickCheckpointReadTarget()
+		c.mu.Unlock()
+	}
+
 	c.mu.Lock()
 	readID := c.registerRead()
 	c.mu.Unlock()
 	defer c.finishRead(readID)
 
+	responseFrontier := c.beginResponseFrontier()
+
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
-	res, err := client.InspectIndex(readCtx, &servicepb.InspectIndexRequest{
-		Ledger:      ledger,
-		TargetType:  target,
-		MetadataKey: key,
-		Mode:        mode,
-		PageSize:    uint32(requestedPageSize),
-	})
+	request := &servicepb.InspectIndexRequest{
+		Ledger:       ledger,
+		TargetType:   target,
+		MetadataKey:  key,
+		Mode:         mode,
+		PageSize:     uint32(requestedPageSize),
+		CheckpointId: checkpointID,
+	}
+
+	res, err := client.InspectIndex(readCtx, request)
+
+	maxTicket := responseFrontier()
 
 	if err != nil {
 		if internal.IsTransient(err) && !isIndexNotReady(err) || isShutdownError(err) {
 			return
 		}
 
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: inspecting a ledger outside the fleet must say NotFound.
-			assert.Reachable("singleton_driver_model: index inspection on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if checkpointID != 0 && checkpointNotFound(err) {
+			// A checkpoint the fleet dropped cannot answer; the live path's own
+			// checks cover everything this read would have proved.
+			return
+		}
+
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				// Coverage: inspecting a ledger outside the fleet must say NotFound.
+				assert.Reachable("singleton_driver_model: index inspection on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+
+				return
+			}
+
+			c.validateLedgerNotFound(maxTicket, ledger, "InspectIndex")
 
 			return
 		}
@@ -116,6 +144,13 @@ func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	// Coverage: an inspection answered and held its page contract.
 	assert.Reachable("singleton_driver_model: index inspection validated", internal.Details{"mode": mode.String()})
+
+	if checkpointID != 0 {
+		// Coverage: the inspection answered from a frozen checkpoint's index.
+		assert.Reachable("singleton_driver_model: index inspection served from a checkpoint", internal.Details{"checkpoint": checkpointID})
+	}
+
+	c.resumeInspectIndex(readCtx, client, request, res, mode, pageSize, details)
 }
 
 // pickInspectKey chooses a declared metadata key of the target, or — one read
@@ -226,4 +261,51 @@ func distinctValues(values []*commonpb.MetadataValue, seen map[string]bool) bool
 	}
 
 	return true
+}
+
+// resumeInspectIndex follows a published resume cursor once, holding the second
+// page to the same contract. The cursor is opaque, so it is round-tripped rather
+// than synthesized.
+func (c *Checker) resumeInspectIndex(
+	ctx context.Context,
+	client servicepb.BucketServiceClient,
+	request *servicepb.InspectIndexRequest,
+	first *servicepb.InspectIndexResponse,
+	mode servicepb.InspectIndexMode,
+	pageSize int,
+	details internal.Details,
+) {
+	next := first.GetDistinctValues().GetNextCursor()
+	if next == "" {
+		next = first.GetFacets().GetNextCursor()
+	}
+
+	if next == "" {
+		return
+	}
+
+	request.Cursor = next
+
+	res, err := client.InspectIndex(ctx, request)
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) || isIndexNotReady(err) ||
+			isIndexNotFound(err) || status.Code(err) == codes.NotFound {
+			return
+		}
+
+		details["cursor"], details["error"] = next, err.Error()
+		assert.Unreachable("singleton_driver_model: resumed index inspection returned unexpected error", details)
+
+		return
+	}
+
+	if why := inspectPageViolation(res, mode, pageSize); why != "" {
+		details["cursor"], details["why"] = next, why
+		assert.Unreachable("singleton_driver_model: resumed index inspection violates its own contract", details)
+
+		return
+	}
+
+	// Coverage: a second page was fetched with the cursor the first published.
+	assert.Reachable("singleton_driver_model: index inspection resumed from its cursor", internal.Details{"mode": mode.String()})
 }

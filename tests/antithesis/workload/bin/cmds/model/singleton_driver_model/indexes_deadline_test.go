@@ -16,9 +16,10 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func TestReconcileIndexes_BlockedNodeHasIndependentDeadline(t *testing.T) {
@@ -85,6 +86,7 @@ type indexPollDeadlineObservation struct {
 // and consistency metadata. Only the first request to the blocked node stalls.
 type indexPollDeadlineServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	response   *servicepb.GetIndexStatusResponse
 	blockFirst bool
 	mu         sync.Mutex
@@ -94,6 +96,7 @@ type indexPollDeadlineServer struct {
 func (s *indexPollDeadlineServer) observations() []indexPollDeadlineObservation {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	return append([]indexPollDeadlineObservation(nil), s.seen...)
 }
 
@@ -110,8 +113,10 @@ func (s *indexPollDeadlineServer) GetIndexStatus(ctx context.Context, _ *service
 	s.mu.Unlock()
 	if block {
 		<-ctx.Done()
+
 		return nil, status.FromContextError(ctx.Err()).Err()
 	}
+
 	return s.response, nil
 }
 
@@ -132,5 +137,6 @@ func newIndexPollDeadlineNode(t *testing.T, response *servicepb.GetIndexStatusRe
 			t.Errorf("close gRPC client: %v", err)
 		}
 	})
+
 	return handler, &internal.PerNodeConn{Bucket: servicepb.NewBucketServiceClient(conn)}
 }

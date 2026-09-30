@@ -176,6 +176,7 @@ func TestSkippableOrdersAgainstServer(t *testing.T) {
 			found = true
 			skipped.Context["unexpected"] = "corrupted"
 			require.False(t, logWindowMatches(checker.modelState.Ledger("L"), "L", nil, 0, 100, serverLogRows(logs), ""))
+
 			break
 		}
 		require.True(t, found, "the listed page must contain a skipped log")

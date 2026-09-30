@@ -74,10 +74,16 @@ func runAggregateQuery(ctx context.Context, client servicepb.BucketServiceClient
 			return
 		}
 
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: an aggregate over a ledger outside the fleet must resolve
-			// NotFound rather than sum an empty ledger.
-			assert.Reachable("singleton_driver_model: aggregate on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				// Coverage: an aggregate over a ledger outside the fleet must
+				// resolve NotFound rather than sum an empty ledger.
+				assert.Reachable("singleton_driver_model: aggregate on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+
+				return
+			}
+
+			c.validateLedgerNotFound(maxTicket, ledger, "AggregateVolumes")
 
 			return
 		}
