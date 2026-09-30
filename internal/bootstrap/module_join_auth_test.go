@@ -36,6 +36,7 @@ func (s *transientCanceledBootstrapServer) JoinAsLearner(context.Context, *clust
 	if s.calls.Add(1) == 1 {
 		return nil, status.Error(codes.Canceled, "grpc: the client connection is closing")
 	}
+
 	return &clusterbootstrappb.JoinAsLearnerResponse{}, nil
 }
 
