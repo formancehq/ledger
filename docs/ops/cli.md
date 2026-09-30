@@ -1981,7 +1981,9 @@ Storage operations.
 
 Get metrics from the primary RocksDB storage engine.
 The response keeps the existing metrics envelope; only fields with direct
-RocksDB equivalents are populated.
+RocksDB equivalents are populated. The formatted output shows only supported
+fields. In JSON output, zero values in legacy fields can mean unavailable
+rather than a measured zero.
 
 **Aliases:** `store p m`
 

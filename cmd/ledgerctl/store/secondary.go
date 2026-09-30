@@ -10,7 +10,7 @@ func NewSecondaryCommand() *cobra.Command {
 		Use:     "secondary",
 		Aliases: []string{"sec"},
 		Short:   "Secondary store operations",
-		Long:    "Commands for the secondary Pebble store (read index)",
+		Long:    "Commands for the secondary RocksDB store (read index)",
 	}
 
 	cmd.AddCommand(NewSecondaryMetricsCommand())

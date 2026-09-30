@@ -10,7 +10,7 @@ func NewPrimaryCommand() *cobra.Command {
 		Use:     "primary",
 		Aliases: []string{"p"},
 		Short:   "Primary store operations",
-		Long:    "Commands for the primary Pebble store (Raft log / data)",
+		Long:    "Commands for the primary RocksDB store (Raft log / data)",
 	}
 
 	cmd.AddCommand(NewPrimaryMetricsCommand())

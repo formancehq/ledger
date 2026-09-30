@@ -316,10 +316,9 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// exist).
 	//
 	// Openability is not a completeness gate, so the markers are checked before
-	// the open rather than inferred from it: pebble writes the MANIFEST that
-	// makes a directory openable BEFORE it copies the WAL files, so an unmarked
-	// directory can open cleanly while missing every write still resident in the
-	// source memtable.
+	// the open rather than inferred from it: the storage engine may make a
+	// directory openable before all files needed for a complete checkpoint are
+	// published, so an unmarked directory is not a valid read snapshot.
 	if !dal.CheckpointDirReady(readIndexPath) || !dal.CheckpointDirReady(mainPath) {
 		return nil, nil, nil, impl.resolveMissingMarker(ctx, checkpointID)
 	}
@@ -639,7 +638,8 @@ func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req 
 		return servicepb.NewBucketServiceClient(conn).GetPrimaryMetrics(ctx, req)
 	}
 
-	// Get metrics from the Pebble store directly
+	// Get metrics from the primary store directly. The protobuf envelope retains
+	// its original name for wire compatibility.
 	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)
 	if !ok {
 		return &servicepb.GetPrimaryMetricsResponse{

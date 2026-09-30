@@ -22,8 +22,8 @@ import (
 func NewDumpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dump <data-dir>",
-		Short: "Dump the entire contents of a Pebble store (offline)",
-		Long: `Open a Pebble data directory in read-only mode and print every key-value pair.
+		Short: "Dump the entire contents of a RocksDB store (offline)",
+		Long: `Open a RocksDB data directory in read-only mode and print every key-value pair.
 Values are decoded based on key prefix where possible (logs, attributes, config, etc.).
 This is an offline operation — the server must not be running.`,
 		Args: cobra.ExactArgs(1),

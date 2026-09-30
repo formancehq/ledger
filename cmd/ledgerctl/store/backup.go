@@ -15,7 +15,7 @@ func NewBackupCommand() *cobra.Command {
 		Use:               "backup",
 		Aliases:           []string{"bk"},
 		Short:             "Perform a backup",
-		Long:              "Perform a backup of the Pebble store to a filesystem path, S3 bucket, or Azure Blob Storage container",
+		Long:              "Perform a backup of the RocksDB store to a filesystem path, S3 bucket, or Azure Blob Storage container",
 		RunE:              runBackup,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,

@@ -15,8 +15,8 @@ import (
 func NewCacheStatsCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "cache-stats <data-dir>",
-		Short: "Show cache zone (0xFF) statistics from a Pebble store (offline)",
-		Long: `Open a Pebble data directory in read-only mode and report:
+		Short: "Show cache zone (0xFF) statistics from a RocksDB store (offline)",
+		Long: `Open a RocksDB data directory in read-only mode and report:
 - Cache generation metadata (current generation, gen0/gen1 base indices)
 - Number of entries per generation byte and cache type
 - Number of attribute entries per type for comparison
@@ -84,8 +84,8 @@ func runCacheStats(cmd *cobra.Command, args []string) error {
 	totalGen1 := uint64(0)
 
 	for _, ct := range cacheTypes {
-		g0 := countPebbleEntries(db, dal.ZoneCache, gen0Byte, ct.code)
-		g1 := countPebbleEntries(db, dal.ZoneCache, gen1Byte, ct.code)
+		g0 := countStoreEntries(db, dal.ZoneCache, gen0Byte, ct.code)
+		g1 := countStoreEntries(db, dal.ZoneCache, gen1Byte, ct.code)
 		totalGen0 += g0
 		totalGen1 += g1
 		fmt.Printf("  %-15s %8d %8d\n", ct.name, g0, g1)
@@ -99,7 +99,7 @@ func runCacheStats(cmd *cobra.Command, args []string) error {
 	totalAttr := uint64(0)
 
 	for _, ct := range cacheTypes {
-		n := countPebbleAttrEntries(db, ct.code)
+		n := countStoreAttrEntries(db, ct.code)
 		totalAttr += n
 		fmt.Printf("  %-15s %8d\n", ct.name, n)
 	}
@@ -142,7 +142,7 @@ func readGenBase(db *kv.DB, genByte byte) uint64 {
 	return meta.GetBaseIndex()
 }
 
-func countPebbleEntries(db *kv.DB, zone, genByte, cacheType byte) uint64 {
+func countStoreEntries(db *kv.DB, zone, genByte, cacheType byte) uint64 {
 	lower := []byte{zone, genByte, cacheType}
 	upper := []byte{zone, genByte, cacheType + 1}
 
@@ -163,7 +163,7 @@ func countPebbleEntries(db *kv.DB, zone, genByte, cacheType byte) uint64 {
 	return count
 }
 
-func countPebbleAttrEntries(db *kv.DB, attrType byte) uint64 {
+func countStoreAttrEntries(db *kv.DB, attrType byte) uint64 {
 	lower := []byte{dal.ZoneAttributes, attrType}
 	upper := []byte{dal.ZoneAttributes, attrType + 1}
 
