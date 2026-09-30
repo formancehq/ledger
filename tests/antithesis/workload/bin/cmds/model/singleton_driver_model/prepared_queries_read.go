@@ -988,7 +988,10 @@ func preparedLogPageDiag(ledger string, rows []logWindowRow, cur *commonpb.Prepa
 			return fmt.Sprintf("id=%d absent from committed model window", got.id)
 		}
 		if fields := preparedLogRowDifferences(ledger, rows[index], got); fields != "" {
-			return fmt.Sprintf("id=%d differs in %s", got.id, fields)
+			return fmt.Sprintf("id=%d differs in %s (model volumes: purged=%q newKept=%q ephemeral=%q; served volumes: purged=%q newKept=%q ephemeral=%q)",
+				got.id, fields,
+				rows[index].purged, rows[index].newKept, rows[index].ephemeral,
+				got.purged, got.newKept, got.ephemeral)
 		}
 	}
 
