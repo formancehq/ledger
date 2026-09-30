@@ -183,6 +183,9 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 		authNames        = map[string]struct{}{}
 		timeDot          bool
 		osDot            bool
+		attributionDot   bool
+		commandsDot      bool
+		authDot          bool
 	)
 
 	for _, spec := range file.Imports {
@@ -208,14 +211,17 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 				osNames[name] = struct{}{}
 			}
 		case "github.com/formancehq/ledger/v3/internal/domain/attribution":
+			attributionDot = name == "."
 			if name != "." && name != "_" {
 				attributionNames[name] = struct{}{}
 			}
 		case "github.com/formancehq/ledger/v3/internal/pkg/commands":
+			commandsDot = name == "."
 			if name != "." && name != "_" {
 				commandsNames[name] = struct{}{}
 			}
 		case "github.com/formancehq/ledger/v3/internal/adapter/auth":
+			authDot = name == "."
 			if name != "." && name != "_" {
 				authNames[name] = struct{}{}
 			}
@@ -311,35 +317,35 @@ func checkGoSource(path string, source []byte) ([]finding, error) {
 			))
 		}
 
-		if !checkSleep && callsAnyImportedFunction(call.Fun, attributionNames, false, "New", "NewSystem") && !attributionConstructorAllowed(path) {
+		if !checkSleep && callsAnyImportedFunction(call.Fun, attributionNames, attributionDot, "New", "NewSystem") && !attributionConstructorAllowed(path) {
 			findings = append(findings, goFinding(
 				fileSet, path, call.Fun.Pos(),
 				"attribution capabilities may only be minted at authenticated or trusted forwarding boundaries",
 			))
 		}
 
-		if !checkSleep && callsImportedFunction(call.Fun, commandsNames, false, "SystemCallerSnapshot") && !systemProducerAllowed(path) {
+		if !checkSleep && callsImportedFunction(call.Fun, commandsNames, commandsDot, "SystemCallerSnapshot") && !systemProducerAllowed(path) {
 			findings = append(findings, goFinding(
 				fileSet, path, call.Fun.Pos(),
 				"system caller attribution is restricted to the named producer allowlist",
 			))
 		}
 
-		if !checkSleep && callsImportedFunction(call.Fun, commandsNames, false, "NewCommand") && !proposalBuilderAllowed(path) {
+		if !checkSleep && callsImportedFunction(call.Fun, commandsNames, commandsDot, "NewCommand") && !proposalBuilderAllowed(path) {
 			findings = append(findings, goFinding(
 				fileSet, path, call.Fun.Pos(),
 				"write proposals may only be built by admission or an allowlisted system producer",
 			))
 		}
 
-		if !checkSleep && callsImportedFunction(call.Fun, authNames, false, "WithSystemActor") && path != "internal/bootstrap/module.go" {
+		if !checkSleep && callsImportedFunction(call.Fun, authNames, authDot, "WithSystemActor") && path != "internal/bootstrap/module.go" {
 			findings = append(findings, goFinding(
 				fileSet, path, call.Fun.Pos(),
 				"system actor contexts may only be established by the bootstrap wiring for named producers",
 			))
 		}
 
-		if !checkSleep && callsImportedFunction(call.Fun, authNames, false, "WithForwardedAttribution") && path != "internal/adapter/grpc/server_bucket.go" {
+		if !checkSleep && callsImportedFunction(call.Fun, authNames, authDot, "WithForwardedAttribution") && path != "internal/adapter/grpc/server_bucket.go" {
 			findings = append(findings, goFinding(
 				fileSet, path, call.Fun.Pos(),
 				"forwarded attribution may only be attached after cluster-peer authentication",

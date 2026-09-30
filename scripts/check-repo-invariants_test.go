@@ -237,3 +237,28 @@ func attach(ctx any, capability any) { _ = auth.WithForwardedAttribution(ctx, ca
 	require.Len(t, findings, 1)
 	require.Contains(t, findings[0].message, "cluster-peer authentication")
 }
+
+func TestCheckGoSourceRestrictsDotImportedAttributionSites(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		pkg     string
+		call    string
+		message string
+	}{
+		{"capability", "internal/domain/attribution", "New(nil)", "capabilities may only be minted"},
+		{"system capability", "internal/domain/attribution", "NewSystem(ComponentBackup)", "capabilities may only be minted"},
+		{"system snapshot", "internal/pkg/commands", "SystemCallerSnapshot(ComponentBackup)", "named producer allowlist"},
+		{"proposal", "internal/pkg/commands", "NewCommand()", "write proposals may only be built"},
+		{"system context", "internal/adapter/auth", "WithSystemActor(nil, nil)", "system actor contexts"},
+		{"forwarded context", "internal/adapter/auth", "WithForwardedAttribution(nil, nil)", "cluster-peer authentication"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			source := []byte("package sample\nimport . \"github.com/formancehq/ledger/v3/" + tc.pkg + "\"\nfunc build() { " + tc.call + " }")
+			findings, err := checkGoSource("internal/application/newproducer/worker.go", source)
+			require.NoError(t, err)
+			require.Len(t, findings, 1)
+			require.Contains(t, findings[0].message, tc.message)
+		})
+	}
+}

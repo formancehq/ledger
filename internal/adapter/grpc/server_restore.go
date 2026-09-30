@@ -309,7 +309,6 @@ func (s *RestoreServiceServerImpl) ValidateRestore(_ *restorepb.ValidateRestoreR
 		s.mu.Unlock()
 	}()
 
-
 	// A complete staged checkpoint includes its source persisted config; the
 	// checker independently reads the audit key from the staged store. The
 	// destination may have a different operational cluster ID.

@@ -59,6 +59,7 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 	t.Parallel()
 
 	const clusterID = "source-cluster"
+	const auditKey = "01234567890123456789012345678901"
 	server := NewRestoreServiceServer(t.TempDir(), "target-cluster", 1, noopLogger{})
 	store, err := dal.OpenDirect(server.stagingDir(), noopLogger{})
 	require.NoError(t, err)
@@ -83,11 +84,12 @@ func TestInvalidCallerAttributionPreventsRestoreFinalization(t *testing.T) {
 	}
 	header, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
-	_, entry.Hash = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID).
+	_, entry.Hash = processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditKey).
 		Compute(nil, nil, [][]byte{header})
 
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, configBytes))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, configBytes))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte(auditKey)))
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{Sequence: 1}}))
 	batch.KeyBuilder.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAudit).PutUint64(entry.GetSequence())
 	require.NoError(t, batch.SetProto(batch.KeyBuilder.Consume(), entry))
@@ -121,7 +123,7 @@ func TestCanceledValidationPreventsRestoreFinalization(t *testing.T) {
 	configBytes, err := proto.Marshal(&commonpb.PersistedConfig{ClusterId: "source-cluster"})
 	require.NoError(t, err)
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, configBytes))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, configBytes))
 	require.NoError(t, batch.Commit())
 
 	ctx, cancel := context.WithCancel(context.Background())
