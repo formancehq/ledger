@@ -442,6 +442,9 @@ func (s *RestoreServiceServerImpl) finishJob(job *downloadJob, runErr error, sta
 		s.stagingStore = stagingStore
 		s.downloading = false
 		s.downloaded = true
+		s.validating = false
+		s.validated = false
+		s.finalizing = false
 		s.mu.Unlock()
 
 		s.logger.WithFields(map[string]any{

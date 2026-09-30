@@ -3771,7 +3771,12 @@ ledgerctl restore preview
 
 Commit the staged backup as live data and shut down the server.
 
+The staged backup must first pass `ledgerctl restore validate`; otherwise the
+server returns a failed-precondition error.
+
 ```bash
+ledgerctl restore validate
+
 # With confirmation prompt
 ledgerctl restore finalize
 

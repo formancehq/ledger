@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/cache"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -90,10 +91,11 @@ func applySigningEntry(t *testing.T, machine *state.Machine, store *dal.Store, i
 	t.Helper()
 
 	proposal := &raftcmdpb.Proposal{
-		Id:            index,
-		Orders:        orders,
-		Date:          &commonpb.Timestamp{Data: 1700000000 + index},
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
+		Id:             index,
+		Orders:         orders,
+		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 	}
 
 	data, err := proto.Marshal(proposal)
@@ -187,7 +189,13 @@ func applyPurgeParityEntry(t *testing.T, machine *state.Machine, store *dal.Stor
 		bits[i/8] |= 1 << (i % 8)
 	}
 	order.Technical = &raftcmdpb.OrderTechnical{CoverageBits: bits}
-	proposal := &raftcmdpb.Proposal{Id: index, Orders: []*raftcmdpb.Order{order}, Date: &commonpb.Timestamp{Data: 1700000000 + index}, ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans}}
+	proposal := &raftcmdpb.Proposal{
+		Id:             index,
+		Orders:         []*raftcmdpb.Order{order},
+		Date:           &commonpb.Timestamp{Data: 1700000000 + index},
+		ExecutionPlan:  &raftcmdpb.ExecutionPlan{Attributes: plans},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
+	}
 	data, err := proto.Marshal(proposal)
 	require.NoError(t, err)
 	result, err := machine.ApplyEntries(context.Background(), store, &raftpb.Entry{Index: new(index), Term: proto.Uint64(1), Type: new(raftpb.EntryNormal), Data: data})

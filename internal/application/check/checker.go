@@ -20,6 +20,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
+	"github.com/formancehq/ledger/v3/internal/domain/attribution"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
@@ -2689,6 +2690,17 @@ func (c *Checker) verifyAuditHashChain(
 
 		lastHash = entry.GetHash()
 		checked++
+
+		if attributionErr := attribution.Validate(entry.GetCallerSnapshot()); attributionErr != nil {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				fmt.Sprintf("audit entry %d has invalid caller attribution: %v", entry.GetSequence(), attributionErr),
+				logSequenceFromAuditEntry(entry), "", "", "",
+			))
+			folds.markLiveTruncated()
+
+			continue
+		}
 
 		// Now that the entry is chain-verified, re-derive the idempotency
 		// outcome a keyed proposal would have frozen under it. items carries
