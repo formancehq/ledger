@@ -47,7 +47,7 @@ func TestAdoptForwardedSnapshotIfTrusted_TrustsClusterInternal(t *testing.T) {
 func TestAdoptForwardedSnapshotIfTrusted_RejectsMalformedTrustedSnapshot(t *testing.T) {
 	t.Parallel()
 
-	req := &servicepb.ApplyRequest{ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
+	req := &commonpb.ApplyRequest{ForwardedCallerSnapshot: &commonpb.CallerSnapshot{
 		Principal: &commonpb.CallerSnapshot_Authenticated{
 			Authenticated: &commonpb.AuthenticatedCaller{Identity: &commonpb.CallerIdentity{Subject: "alice"}},
 		},

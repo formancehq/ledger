@@ -173,7 +173,7 @@ func TestVerifyAuditHashChain_RejectsValidHashWithInvalidAttribution(t *testing.
 	const clusterID = "invalid-attribution-cluster"
 
 	entry, items := newRichAuditEntry("success")
-	entry.CallerSnapshot = &commonpb.CallerSnapshot{}
+	entry.CallerSnapshot = &auditpb.CallerSnapshot{}
 	// Compute a legitimate hash over the malformed replicated value. This pins
 	// the semantic validation used by restore/check independently of tamper
 	// detection: possession of a matching hash cannot legitimize attribution.
@@ -191,7 +191,7 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 	const clusterID = "invalid-attribution-chain-cluster"
 
 	first, firstItems := newRichAuditEntry("success")
-	first.CallerSnapshot = &commonpb.CallerSnapshot{}
+	first.CallerSnapshot = &auditpb.CallerSnapshot{}
 	persistAuditEntry(t, store, first, firstItems, clusterID)
 
 	second, secondItems := newRichAuditEntry("success")
@@ -334,7 +334,7 @@ func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.Audit
 	rewriteAuditEntry(t, store, entry, items)
 }
 
-func testCallerSnapshot() *commonpb.CallerSnapshot {
+func testCallerSnapshot() *auditpb.CallerSnapshot {
 	return commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
 }
 

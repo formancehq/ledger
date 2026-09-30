@@ -27,6 +27,7 @@ type BucketGrpcClient struct {
 // NewLedgerGrpcClient creates a new gRPC-based ledger implementation.
 func NewLedgerGrpcClient(client auditpb.BucketServiceClient, trustedPeerForwarding ...bool) *BucketGrpcClient {
 	trusted := len(trustedPeerForwarding) > 0 && trustedPeerForwarding[0]
+
 	return &BucketGrpcClient{
 		client:                client,
 		trustedPeerForwarding: trusted,

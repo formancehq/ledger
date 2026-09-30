@@ -2693,7 +2693,7 @@ func (c *Checker) verifyAuditHashChain(
 
 		if attributionErr := attribution.Validate(entry.GetCallerSnapshot()); attributionErr != nil {
 			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				auditpb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
 				fmt.Sprintf("audit entry %d has invalid caller attribution: %v", entry.GetSequence(), attributionErr),
 				logSequenceFromAuditEntry(entry), "", "", "",
 			))
