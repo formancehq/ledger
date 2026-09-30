@@ -164,3 +164,26 @@ func TestOpenCheckpointStoresDeletionClosesIdlePair(t *testing.T) {
 	require.NotContains(t, impl.checkpointStores.entries, gateCheckpointID)
 	require.NoDirExists(t, filepath.Dir(mainPath))
 }
+
+func TestCheckpointDeletionBeforeCacheInstallationClosesLeasedPair(t *testing.T) {
+	t.Parallel()
+	impl := newCheckpointGateFixture(t)
+	id := gateCheckpointID
+	mainPath := impl.store.QueryCheckpointMainDir(id)
+	indexPath := impl.store.QueryCheckpointReadIndexDir(id)
+	impl.store.RegisterQueryCheckpointDeleteHook(impl.checkpointStores.evict)
+
+	// The reader has its filesystem lease, but is still between readiness
+	// checks and cache installation when deletion commits.
+	releaseLease, ok := impl.store.AcquireQueryCheckpoint(id)
+	require.True(t, ok)
+	require.NoError(t, impl.store.DeleteQueryCheckpointFiles(id))
+	require.DirExists(t, filepath.Dir(mainPath), "the lease pins files")
+
+	_, _, releasePair, err := impl.acquireCheckpointPair(t.Context(), id, mainPath, indexPath)
+	require.NoError(t, err)
+	releasePair()
+	require.NotContains(t, impl.checkpointStores.entries, id, "the deleted pair must not become idle")
+	releaseLease()
+	require.NoDirExists(t, filepath.Dir(mainPath))
+}

@@ -88,7 +88,10 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
      eviction hook under the same mutex. Active readers retain their leases;
      their last release closes the pair before the files are removed. Idle
      expiry and count eviction also close the pair. Every close runs in the
-     same critical section that removes the entry.
+     same critical section that removes the entry. A reader that acquired its
+     filesystem lease before deletion but has not entered the cache yet checks
+     deletion state after opening; if the hook saw no entry, this check marks
+     the new pair for closure at its final release.
      Removing it first would let a reader arriving mid-close install a fresh
      entry and open the directory while Pebble still held its lock. The cost is
      that a slow close briefly delays acquisitions of other checkpoints.

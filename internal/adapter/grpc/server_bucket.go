@@ -330,9 +330,7 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	// One open of the checkpoint's two directories is shared by its concurrent
 	// readers; see checkpointStoreCache. The lease above stays per-reader so that
 	// a reader arriving after a committed deletion is refused at acquisition.
-	mainStore, readIdx, releaseStores, err := impl.checkpointStores.acquire(ctx, checkpointID, impl.logger, func() (*dal.Store, *readstore.Store, error) {
-		return openCheckpointDirs(mainPath, readIndexPath, impl.logger)
-	})
+	mainStore, readIdx, releaseStores, err := impl.acquireCheckpointPair(ctx, checkpointID, mainPath, readIndexPath)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -344,6 +342,24 @@ func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, c
 	}
 
 	return mainStore, readIdx, cleanup, nil
+}
+
+// acquireCheckpointPair is called with a filesystem lease already held. The
+// deletion check closes the lease-to-cache race: deletion can mark the ID
+// while this reader checks readiness, before the cache entry exists.
+func (impl *BucketServiceServerImpl) acquireCheckpointPair(ctx context.Context, id uint64, mainPath, indexPath string) (*dal.Store, *readstore.Store, func(), error) {
+	main, index, release, err := impl.checkpointStores.acquire(ctx, id, impl.logger, func() (*dal.Store, *readstore.Store, error) {
+		return openCheckpointDirs(mainPath, indexPath, impl.logger)
+	})
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	// If deletion starts after this check, its hook sees the installed entry.
+	if impl.store.QueryCheckpointDeleting(id) {
+		impl.checkpointStores.evict(id)
+	}
+
+	return main, index, release, nil
 }
 
 // resolveMissingMarker classifies a checkpoint read whose local .ready marker is

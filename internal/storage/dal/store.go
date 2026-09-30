@@ -1188,6 +1188,17 @@ func (s *Store) RegisterQueryCheckpointDeleteHook(hook func(uint64)) {
 	s.queryCheckpointDeleteHooks = append(s.queryCheckpointDeleteHooks, hook)
 }
 
+// QueryCheckpointDeleting reports whether physical deletion has been admitted.
+// A reader that leased before deletion uses this after opening its shared pair:
+// deletion's hook may have run before the pair entered the cache.
+func (s *Store) QueryCheckpointDeleting(id uint64) bool {
+	s.queryCheckpointMu.Lock()
+	defer s.queryCheckpointMu.Unlock()
+	_, deleting := s.deletedQueryCheckpoints[id]
+
+	return deleting
+}
+
 // QueryCheckpointReadIndexDir returns the path for the read index within a query checkpoint.
 func (s *Store) QueryCheckpointReadIndexDir(id uint64) string {
 	return filepath.Join(s.queryCheckpointDir(id), "readindex")
