@@ -1,6 +1,8 @@
 package plan
 
 import (
+	"fmt"
+
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
@@ -52,6 +54,30 @@ func bitsForNeedsWithIndex(needs *Coverage, planCount int, index map[planLookupK
 	return bits
 }
 
+func checkedBitsForNeeds(needs *Coverage, plans []*raftcmdpb.AttributeCoverage, index map[planLookupKey]uint32) ([]byte, error) {
+	if needs == nil {
+		return nil, nil
+	}
+	if len(plans) == 0 && needs.AttributeKeysCount() == 0 {
+		return nil, nil
+	}
+	bits := make([]byte, (len(plans)+7)/8)
+	for attrCode, byID := range needs.Attributes {
+		for id, entry := range byID {
+			position, ok := index[planLookupKey{id: id, attrCode: attrCode}]
+			if !ok || int(position) >= len(plans) {
+				return nil, fmt.Errorf("execution plan omits required attribute code 0x%x id %x", attrCode, id)
+			}
+			if plans[position].GetId().GetTag() != entry.Tag {
+				return nil, fmt.Errorf("execution plan tag mismatch for attribute code 0x%x id %x", attrCode, id)
+			}
+			bits[position/8] |= 1 << (position % 8)
+		}
+	}
+
+	return bits, nil
+}
+
 // buildPlanIndex maps each AttributeCoverage (keyed by canonical U128 + its
 // attr_code) to its position in the proposal's plans slice. Idempotency-
 // key plans (AttributeID == nil) are skipped: they're not coverage-checked.
@@ -83,7 +109,8 @@ func planAttrCode(plan *raftcmdpb.AttributeCoverage) byte {
 // time), no re-hashing or bytes/string conversion happens here — this
 // is the hot path that runs once per WriteOperation on every marshal
 // (twice on the rare rebuild). Keys outside the map (idempotency
-// tracker, references whose preload was skipped) are silently dropped.
+// tracker) are not in Coverage.Attributes. Run uses checkedBitsForNeeds
+// so missing attribute entries fail proposal submission.
 func setIDInBitset(bits []byte, indexByPlan map[planLookupKey]uint32, needs *Coverage) {
 	for attrCode, byID := range needs.Attributes {
 		for id := range byID {

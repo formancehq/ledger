@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,6 +75,94 @@ func TestPreload_RejectsUnknownAttrCode(t *testing.T) {
 	require.ErrorAs(t, err, &invalid)
 	require.Contains(t, invalid.Reason_, "0xff")
 	require.Contains(t, invalid.Reason_, "FSM does not handle")
+}
+
+func TestPreload_RejectsAliasedAttrCodeBeforeIdempotencyRestore(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	u128, tag := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
+	plan := &raftcmdpb.ExecutionPlan{
+		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+		IdempotencyKeys:    []*raftcmdpb.ReloadIdempotencyKey{{Key: "must-remain-absent", Value: &commonpb.IdempotencyKeyValue{FirstLogSequence: 1}}},
+		Attributes: []*raftcmdpb.AttributeCoverage{{
+			Id:       &raftcmdpb.AttributeID{Id: u128[:], Tag: tag},
+			AttrCode: uint32(dal.SubAttrLedger) + 256,
+		}},
+	}
+	batch := dataStore.OpenWriteSession()
+	defer func() { _ = batch.Cancel() }()
+
+	err := machine.Preload(plan, batch, 0)
+	var invalid *domain.ErrInvalidExecutionPlan
+	require.ErrorAs(t, err, &invalid)
+	require.Contains(t, invalid.Reason_, "attr_code")
+	_, present := machine.Registry.Cache.Ledgers.Gen0().Get(u128)
+	require.False(t, present)
+	_, present = machine.Registry.Cache.Ledgers.Gen1().Get(u128)
+	require.False(t, present)
+	_, present = machine.Registry.Idempotency.Get("must-remain-absent")
+	require.False(t, present)
+}
+
+func TestPreload_InvalidLateSeedLeavesEarlierSeedUnapplied(t *testing.T) {
+	t.Parallel()
+	id, tag := attributes.MakeKey(domain.LedgerKey{Name: "first"}.Bytes())
+	secondID, secondTag := attributes.MakeKey(domain.LedgerKey{Name: "second"}.Bytes())
+	// Feed the same malformed committed plan to independent replica states.
+	for replica := range 3 {
+		t.Run(fmt.Sprintf("replica-%d", replica), func(t *testing.T) {
+			t.Parallel()
+			machine, dataStore, _ := newTestMachine(t)
+			plan := &raftcmdpb.ExecutionPlan{
+				LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+				Attributes: []*raftcmdpb.AttributeCoverage{
+					{Id: &raftcmdpb.AttributeID{Id: id[:], Tag: tag}, AttrCode: uint32(dal.SubAttrLedger), Value: &raftcmdpb.AttributeValue{}},
+					{Id: &raftcmdpb.AttributeID{Id: secondID[:], Tag: secondTag}, AttrCode: uint32(dal.SubAttrLedger) + 256, Value: &raftcmdpb.AttributeValue{}},
+				},
+			}
+			batch := dataStore.OpenWriteSession()
+			defer func() { _ = batch.Cancel() }()
+			baseBefore := machine.Registry.Cache.BaseIndex
+			appliedBefore := machine.State.LastAppliedIndex
+			var invalid *domain.ErrInvalidExecutionPlan
+			require.ErrorAs(t, machine.Preload(plan, batch, 0), &invalid)
+			require.Equal(t, baseBefore, machine.Registry.Cache.BaseIndex)
+			require.Equal(t, appliedBefore, machine.State.LastAppliedIndex)
+			_, ok := machine.Registry.Cache.Ledgers.Gen0().Get(id)
+			require.False(t, ok)
+			_, ok = machine.Registry.Cache.Ledgers.Gen1().Get(id)
+			require.False(t, ok)
+		})
+	}
+}
+
+func TestPreload_RejectsExistingU128WithDifferentTag(t *testing.T) {
+	t.Parallel()
+	for _, deleted := range []bool{false, true} {
+		for _, gen1 := range []bool{false, true} {
+			t.Run(fmt.Sprintf("deleted=%t/gen1=%t", deleted, gen1), func(t *testing.T) {
+				t.Parallel()
+				machine, dataStore, _ := newTestMachine(t)
+				id, tag := attributes.MakeKey(domain.LedgerKey{Name: "collision"}.Bytes())
+				entry := attributes.Entry[*commonpb.LedgerInfo]{Tag: tag + 1, Deleted: deleted, Data: &commonpb.LedgerInfo{}}
+				if gen1 {
+					machine.Registry.Cache.Ledgers.Gen1().Put(id, entry)
+				} else {
+					machine.Registry.Cache.Ledgers.Gen0().Put(id, entry)
+				}
+				plan := &raftcmdpb.ExecutionPlan{
+					LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
+					Attributes:         []*raftcmdpb.AttributeCoverage{{Id: &raftcmdpb.AttributeID{Id: id[:], Tag: tag}, AttrCode: uint32(dal.SubAttrLedger), Value: &raftcmdpb.AttributeValue{}}},
+				}
+				batch := dataStore.OpenWriteSession()
+				defer func() { _ = batch.Cancel() }()
+				var invalid *domain.ErrInvalidExecutionPlan
+				require.ErrorAs(t, machine.Preload(plan, batch, 0), &invalid)
+				require.Contains(t, invalid.Reason_, "U128 collision")
+			})
+		}
+	}
 }
 
 // TestPreload_IdempotencyOnlyProposalAppliesKeys pins the behaviour for a

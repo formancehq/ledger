@@ -920,60 +920,45 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		return nil
 	}
 
-	// Idempotency keys live outside the AttributeCoverage stream — they are not
-	// a cache attribute (the FSM applies them to the dedicated Idempotency-
-	// Store, not the per-kind cache). Apply them first and unconditionally:
-	// a proposal carrying only idempotency keys (idempotent maintenance /
-	// signature orders with no attribute needs) must still restore the
-	// IdempotencyStore, otherwise at-most-once breaks on replay.
-	for _, ik := range executionPlan.GetIdempotencyKeys() {
-		// Install any value carrying an outcome — a committed log sequence or a
-		// frozen business failure. Both must restore so a duplicate replays its
-		// stored outcome instead of re-executing. Two guards protect the map:
-		//
-		// (1) Eviction. Skip a value a committed IdempotencyEviction already
-		// removed between the leader's plan-build and this apply: re-injecting it
-		// leaves the map ahead of RocksDB, so a restart (which rebuilds the map from
-		// RocksDB) diverges from a live node at the same applied index. Eviction
-		// status is read from the replicated eviction cutoff, NOT the HLC: an
-		// eviction is a technical-only proposal that never advances
-		// LastAppliedTimestamp, so on an idle cluster the HLC lags the eviction's
-		// wall-clock cutoff and would wrongly consider the removed value live.
-		//
-		// (2) Freshness. Never re-inject a value older than the one already in the
-		// map. Two proposals can carry the same expired-but-not-yet-evicted value
-		// in their plans; if the first supersedes it with a fresh outcome, the
-		// second's stale plan value must not clobber that live outcome — doing so
-		// lets the duplicate re-execute, breaking at-most-once. created_at is the
-		// apply HLC, strictly monotonic, so a newer outcome always has a strictly
-		// higher created_at.
-		v := ik.GetValue()
-		if v == nil || (v.GetFirstLogSequence() == 0 && v.GetFailure() == nil) ||
-			IdempotencyEvicted(v.GetExpiresAt(), fsm.State.LastIdempotencyEvictionCutoff) {
-			continue
-		}
-
-		if existing, ok := fsm.Registry.Idempotency.Get(ik.GetKey()); !ok || v.GetCreatedAt() >= existing.GetCreatedAt() {
-			fsm.Registry.Idempotency.Put(ik.GetKey(), v)
-		}
-	}
-
-	if len(executionPlan.GetAttributes()) == 0 {
-		return nil
-	}
-
-	// Pre-validate every AttributeCoverage envelope before touching the
-	// cache. Without this, a forged plan with a nil/short AttributeID
-	// or an unknown attr_code would silently zero-pad through MirrorPreload,
-	// mutating both the in-memory cache and the 0xFF RocksDB writes. A
-	// later business rejection from the scope path commits its failure
-	// audit batch — and the cache mutations would commit with it. Run the
-	// same validation the scope path uses here, so a malformed plan is
-	// caught before the first MirrorPreload.
+	// Validate the entire preload before changing any live cache or idempotency state.
+	seen := make(map[struct {
+		code uint32
+		id   attributes.U128
+	}]struct{}, len(executionPlan.GetAttributes()))
 	for i, plan := range executionPlan.GetAttributes() {
 		if err := validatePlan(plan, i); err != nil {
 			return err
 		}
+		id := attributes.U128FromBytes(plan.GetId().GetId())
+		key := struct {
+			code uint32
+			id   attributes.U128
+		}{plan.GetAttrCode(), id}
+		if _, duplicate := seen[key]; duplicate {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: duplicate attribute coverage", i)}
+		}
+		seen[key] = struct{}{}
+		if plan.GetValue() != nil {
+			if err := fsm.cacheSnapshotter.ValidatePreload(plan.GetId(), byte(plan.GetAttrCode()), plan.GetValue()); err != nil {
+				return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("plans[%d]: invalid preload: %v", i, err)}
+			}
+		}
+	}
+	seenIdempotency := make(map[string]struct{}, len(executionPlan.GetIdempotencyKeys()))
+	for i, key := range executionPlan.GetIdempotencyKeys() {
+		if key == nil || key.GetKey() == "" {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("idempotency_keys[%d]: empty key", i)}
+		}
+		if _, duplicate := seenIdempotency[key.GetKey()]; duplicate {
+			return &domain.ErrInvalidExecutionPlan{Reason_: fmt.Sprintf("idempotency_keys[%d]: duplicate key", i)}
+		}
+		seenIdempotency[key.GetKey()] = struct{}{}
+	}
+
+	if len(executionPlan.GetAttributes()) == 0 {
+		fsm.restorePlanIdempotency(executionPlan)
+
+		return nil
 	}
 
 	// The preloads must target gen0 or gen1. The admission uses the
@@ -1011,6 +996,8 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		)
 	}
 
+	fsm.restorePlanIdempotency(executionPlan)
+
 	gen1Byte := genByte ^ 1
 	for _, plan := range executionPlan.GetAttributes() {
 		value := plan.GetValue()
@@ -1036,6 +1023,46 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	}
 
 	return nil
+}
+
+func (fsm *Machine) restorePlanIdempotency(executionPlan *raftcmdpb.ExecutionPlan) {
+	// Idempotency keys live outside the AttributeCoverage stream — they are not
+	// a cache attribute (the FSM applies them to the dedicated Idempotency-
+	// Store, not the per-kind cache). Apply them after plan validation:
+	// a proposal carrying only idempotency keys (idempotent maintenance /
+	// signature orders with no attribute needs) must still restore the
+	// IdempotencyStore, otherwise at-most-once breaks on replay.
+	for _, ik := range executionPlan.GetIdempotencyKeys() {
+		// Install any value carrying an outcome — a committed log sequence or a
+		// frozen business failure. Both must restore so a duplicate replays its
+		// stored outcome instead of re-executing. Two guards protect the map:
+		//
+		// (1) Eviction. Skip a value a committed IdempotencyEviction already
+		// removed between the leader's plan-build and this apply: re-injecting it
+		// leaves the map ahead of RocksDB, so a restart (which rebuilds the map from
+		// RocksDB) diverges from a live node at the same applied index. Eviction
+		// status is read from the replicated eviction cutoff, NOT the HLC: an
+		// eviction is a technical-only proposal that never advances
+		// LastAppliedTimestamp, so on an idle cluster the HLC lags the eviction's
+		// wall-clock cutoff and would wrongly consider the removed value live.
+		//
+		// (2) Freshness. Never re-inject a value older than the one already in the
+		// map. Two proposals can carry the same expired-but-not-yet-evicted value
+		// in their plans; if the first supersedes it with a fresh outcome, the
+		// second's stale plan value must not clobber that live outcome — doing so
+		// lets the duplicate re-execute, breaking at-most-once. created_at is the
+		// apply HLC, strictly monotonic, so a newer outcome always has a strictly
+		// higher created_at.
+		v := ik.GetValue()
+		if v == nil || (v.GetFirstLogSequence() == 0 && v.GetFailure() == nil) ||
+			IdempotencyEvicted(v.GetExpiresAt(), fsm.State.LastIdempotencyEvictionCutoff) {
+			continue
+		}
+
+		if existing, ok := fsm.Registry.Idempotency.Get(ik.GetKey()); !ok || v.GetCreatedAt() >= existing.GetCreatedAt() {
+			fsm.Registry.Idempotency.Put(ik.GetKey(), v)
+		}
+	}
 }
 
 // authorizedInMaintenanceMode returns true if every order in the batch is a SetMaintenanceMode order.
