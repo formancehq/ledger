@@ -74,6 +74,7 @@ func TestCheckpointStoreCacheJoinedWaiterHonorsCancellation(t *testing.T) {
 			return // Worker timeout was reported; do not inspect active state.
 		}
 		require.NoError(t, firstResult.err)
+		cache.evict(gateCheckpointID)
 		cache.mu.Lock()
 		remaining := len(cache.entries)
 		cache.mu.Unlock()
@@ -148,4 +149,18 @@ func TestOpenCheckpointStoresDeletionWaitsForBothReaders(t *testing.T) {
 	second()
 	_, err = os.Stat(dir)
 	require.True(t, os.IsNotExist(err), "the final release must remove the directory")
+}
+
+func TestOpenCheckpointStoresDeletionClosesIdlePair(t *testing.T) {
+	t.Parallel()
+	impl := newCheckpointGateFixture(t)
+	mainPath := impl.store.QueryCheckpointMainDir(gateCheckpointID)
+	_, _, release, err := impl.openCheckpointStores(t.Context(), gateCheckpointID)
+	require.NoError(t, err)
+	release()
+	require.Contains(t, impl.checkpointStores.entries, gateCheckpointID)
+
+	require.NoError(t, impl.store.DeleteQueryCheckpointFiles(gateCheckpointID))
+	require.NotContains(t, impl.checkpointStores.entries, gateCheckpointID)
+	require.NoDirExists(t, filepath.Dir(mainPath))
 }

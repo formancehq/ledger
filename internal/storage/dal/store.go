@@ -152,9 +152,10 @@ type Store struct {
 	stallState        *WriteStallState
 	iopsCounters      *IOPSCounters
 
-	queryCheckpointMu       sync.Mutex
-	queryCheckpointReaders  map[uint64]uint64
-	deletedQueryCheckpoints map[uint64]struct{}
+	queryCheckpointMu          sync.Mutex
+	queryCheckpointReaders     map[uint64]uint64
+	deletedQueryCheckpoints    map[uint64]struct{}
+	queryCheckpointDeleteHooks []func(uint64)
 }
 
 // getDB returns the current pebble.DB.
@@ -1166,6 +1167,9 @@ func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
 		s.deletedQueryCheckpoints = make(map[uint64]struct{})
 	}
 	s.deletedQueryCheckpoints[id] = struct{}{}
+	for _, hook := range s.queryCheckpointDeleteHooks {
+		hook(id)
+	}
 	readers := s.queryCheckpointReaders[id]
 	s.queryCheckpointMu.Unlock()
 
@@ -1174,6 +1178,14 @@ func (s *Store) DeleteQueryCheckpointFiles(id uint64) error {
 	}
 
 	return s.removeQueryCheckpointFiles(id)
+}
+
+// RegisterQueryCheckpointDeleteHook registers node-local reader cleanup that
+// must run before a checkpoint directory is removed.
+func (s *Store) RegisterQueryCheckpointDeleteHook(hook func(uint64)) {
+	s.queryCheckpointMu.Lock()
+	defer s.queryCheckpointMu.Unlock()
+	s.queryCheckpointDeleteHooks = append(s.queryCheckpointDeleteHooks, hook)
 }
 
 // QueryCheckpointReadIndexDir returns the path for the read index within a query checkpoint.

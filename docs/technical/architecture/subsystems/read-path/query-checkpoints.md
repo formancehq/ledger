@@ -70,14 +70,25 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
    keep writers from corrupting each other. A checkpoint is frozen and every one
    of these opens is read-only, so there is no writer to exclude:
    `checkpointStoreCache` (`internal/adapter/grpc/checkpoint_store_cache.go`)
-   holds one open per checkpoint id, refcounted, and the last reader to leave
-   closes both databases. A cache at rest holds no handles, so nothing has to be
-   drained at shutdown. Three properties it depends on:
+   holds one open per checkpoint id, refcounted. After the last reader leaves,
+   the pair remains idle for at most 30 seconds so sequential pages reuse the
+   same open and its warm block cache. At most four idle pairs remain; the
+   oldest is closed when another becomes idle. Each pair uses a 32 MiB main
+   block cache and a 16 MiB read-index block cache, with at most 64 open
+   files per database. The backup read-only profile remains at 32 files and
+   the default 8 MiB cache. Active pairs are bounded by the replicated query
+   checkpoint limit; idle pairs use at most 192 MiB of block cache and 512
+   Pebble table handles in total. Three properties it depends on:
    - **The lease of step 7 stays per-reader.** Taking it once per shared open
      would let a reader arriving after a committed deletion be served from an
      open held by an earlier one; per-reader keeps such a reader refused at
      acquisition, as that step describes.
-   - **The close runs in the same critical section that removes the entry.**
+   - **Deletion evicts the idle pair before removing its directory.** The
+     DAL deletion gate marks the checkpoint deleted and invokes the cache's
+     eviction hook under the same mutex. Active readers retain their leases;
+     their last release closes the pair before the files are removed. Idle
+     expiry and count eviction also close the pair. Every close runs in the
+     same critical section that removes the entry.
      Removing it first would let a reader arriving mid-close install a fresh
      entry and open the directory while Pebble still held its lock. The cost is
      that a slow close briefly delays acquisitions of other checkpoints.

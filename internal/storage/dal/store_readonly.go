@@ -26,10 +26,25 @@ import (
 // by several GiB and tipped the pod over its memory limit during full
 // backups. The default 8 MiB block cache is left in place.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
+	return openReadOnly(dirPath, logger, 32, 0)
+}
+
+// OpenQueryCheckpointReadOnly uses a bounded scan-oriented profile. The
+// backup reader's 32-file/8 MiB profile remains unchanged.
+func OpenQueryCheckpointReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
+	return openReadOnly(dirPath, logger, 64, 32<<20)
+}
+
+func openReadOnly(dirPath string, logger logging.Logger, maxOpenFiles int, cacheSize int64) (*Store, error) {
 	opts := &pebble.Options{
 		Logger:       NewPebbleLogger(logger),
 		ReadOnly:     true,
-		MaxOpenFiles: 32,
+		MaxOpenFiles: maxOpenFiles,
+	}
+	if cacheSize > 0 {
+		cache := pebble.NewCache(cacheSize)
+		defer cache.Unref()
+		opts.Cache = cache
 	}
 
 	db, err := pebble.Open(dirPath, opts)

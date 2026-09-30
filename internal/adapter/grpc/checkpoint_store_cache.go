@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime/debug"
 	"sync"
+	"time"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -26,8 +27,10 @@ import (
 // reader that opened and to those already waiting on it; the entry is withdrawn
 // as the error publishes, so a reader arriving after the failure opens again.
 //
-// An entry exists only while at least one reader holds it: the last release
-// closes both databases, so a cache at rest holds no handles.
+// Idle opens survive between pages for a bounded time and count.
+const checkpointStoreIdleTTL = 30 * time.Second
+const maxIdleCheckpointStores = 4
+
 type checkpointStoreCache struct {
 	mu      sync.Mutex
 	entries map[uint64]*checkpointStoreEntry
@@ -51,13 +54,16 @@ type checkpointStoreEntry struct {
 
 	logger logging.Logger
 
-	refs int
+	refs    int
+	idleAt  time.Time
+	timer   *time.Timer
+	deleted bool
 }
 
 // openCheckpointDirs opens a checkpoint's main store and read index read-only.
 // Both handles come back or neither does.
 func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (*dal.Store, *readstore.Store, error) {
-	mainStore, err := dal.OpenReadOnly(mainPath, logger)
+	mainStore, err := dal.OpenQueryCheckpointReadOnly(mainPath, logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening checkpoint main store: %w", err)
 	}
@@ -71,7 +77,7 @@ func openCheckpointDirs(mainPath, readIndexPath string, logger logging.Logger) (
 		}
 	}()
 
-	readIdx, err := readstore.OpenReadOnly(readIndexPath, logger)
+	readIdx, err := readstore.OpenQueryCheckpointReadOnly(readIndexPath, logger)
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening checkpoint read index: %w", err)
 	}
@@ -103,6 +109,10 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 		c.entries[id] = entry
 	}
 	entry.refs++
+	if entry.timer != nil {
+		entry.timer.Stop()
+		entry.timer = nil
+	}
 	c.mu.Unlock()
 
 	if joined {
@@ -170,11 +180,7 @@ func openSafe(open openCheckpointFn, logger logging.Logger) (main *dal.Store, re
 	return open()
 }
 
-// release drops one reader's hold, closing both databases once the last one
-// leaves. The close runs in the critical section that removes the entry, so a
-// reader arriving mid-close cannot start its own open before Pebble has
-// released the directory lock; a slow close therefore delays acquisitions of
-// every checkpoint.
+// release drops one reader's hold and starts the idle lifetime.
 func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -184,19 +190,74 @@ func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 		return
 	}
 
+	if entry.err != nil || entry.deleted || c.entries[id] != entry {
+		c.closeEntry(id, entry)
+
+		return
+	}
+	entry.idleAt = time.Now()
+	entry.timer = time.AfterFunc(checkpointStoreIdleTTL, func() { c.evictIdle(id, entry) })
+	c.trimIdle()
+}
+
+// evict is called by the store's deletion hook under the checkpoint lease
+// gate. Active readers keep their pair until they release it.
+func (c *checkpointStoreCache) evict(id uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if entry := c.entries[id]; entry != nil {
+		entry.deleted = true
+		if entry.refs == 0 {
+			c.closeEntry(id, entry)
+		}
+	}
+}
+
+func (c *checkpointStoreCache) evictIdle(id uint64, entry *checkpointStoreEntry) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if entry.refs == 0 && c.entries[id] == entry {
+		c.closeEntry(id, entry)
+	}
+}
+
+func (c *checkpointStoreCache) trimIdle() {
+	for {
+		var oldest *checkpointStoreEntry
+		var oldestID uint64
+		idle := 0
+		for id, entry := range c.entries {
+			if entry.refs == 0 {
+				idle++
+				if oldest == nil || entry.idleAt.Before(oldest.idleAt) {
+					oldest, oldestID = entry, id
+				}
+			}
+		}
+		if idle <= maxIdleCheckpointStores {
+			return
+		}
+		c.closeEntry(oldestID, oldest)
+	}
+}
+
+// Close and remove under one mutex so a second Pebble open cannot race the
+// directory lock held by the first.
+func (c *checkpointStoreCache) closeEntry(id uint64, entry *checkpointStoreEntry) {
+	if entry.timer != nil {
+		entry.timer.Stop()
+		entry.timer = nil
+	}
+	if entry.err == nil {
+		// Isolated from each other: pebble.DB.Close panics when a read resource on
+		// it is still referenced, and a panic out of the first close would skip the
+		// second, leaving that directory locked against every later reader.
+		closeSafe(entry.logger, "checkpoint read index", entry.readIdx.Close)
+		closeSafe(entry.logger, "checkpoint main store", entry.main.Close)
+	}
 	if c.entries[id] == entry {
 		delete(c.entries, id)
 	}
-
-	if entry.err != nil {
-		return
-	}
-
-	// Isolated from each other: pebble.DB.Close panics when a read resource on
-	// it is still referenced, and a panic out of the first close would skip the
-	// second, leaving that directory locked against every later reader.
-	closeSafe(entry.logger, "checkpoint read index", entry.readIdx.Close)
-	closeSafe(entry.logger, "checkpoint main store", entry.main.Close)
 }
 
 // closeSafe closes one store, logging a failure or a recovered panic out of

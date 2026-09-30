@@ -222,11 +222,30 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 // OpenReadOnly opens a Pebble read index at dirPath in read-only mode.
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
-	db, err := pebble.Open(dirPath, &pebble.Options{
+	return openReadOnly(dirPath, logger, 0, 0)
+}
+
+// OpenQueryCheckpointReadOnly keeps the frozen index warm for paged reads
+// while bounding its per-checkpoint block cache and table handles.
+func OpenQueryCheckpointReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
+	return openReadOnly(dirPath, logger, 64, 16<<20)
+}
+
+func openReadOnly(dirPath string, logger logging.Logger, maxOpenFiles int, cacheSize int64) (*Store, error) {
+	opts := &pebble.Options{
 		Logger:   dal.NewPebbleLogger(logger),
 		Comparer: ReadStoreComparer,
 		ReadOnly: true,
-	})
+	}
+	if maxOpenFiles > 0 {
+		opts.MaxOpenFiles = maxOpenFiles
+	}
+	if cacheSize > 0 {
+		cache := pebble.NewCache(cacheSize)
+		defer cache.Unref()
+		opts.Cache = cache
+	}
+	db, err := pebble.Open(dirPath, opts)
 	if err != nil {
 		return nil, fmt.Errorf("opening read-only Pebble read index at %s: %w", dirPath, err)
 	}

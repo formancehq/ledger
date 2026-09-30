@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -66,6 +67,7 @@ type BucketServiceServerImpl struct {
 	applyDuration         metric.Int64Histogram
 	forwarder             nodeForwarder
 	checkpointStores      checkpointStoreCache
+	checkpointHookOnce    sync.Once
 }
 
 func NewBucketServiceServer(logger logging.Logger, c ctrl.Controller, localCtrl *ctrl.DefaultController, s *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, sharedState *state.SharedState, responseSigner *signing.ResponseSigner, queryProfileThreshold time.Duration, clusterID string, meterProvider metric.MeterProvider, n *node.Node, servicePool *transport.ConnectionPool, info version.Info) servicepb.BucketServiceServer {
@@ -274,10 +276,11 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 
 // openCheckpointStores opens the checkpoint's main store and read index in
 // read-only mode. The caller must invoke cleanup after its last access: it
-// drops this reader's hold, closing both stores if it was the last, and then
-// releases its filesystem lease. The stores are shared with the checkpoint's
-// other readers, so cleanup ignores every call after the first.
+// drops this reader's hold and then releases its filesystem lease. An idle
+// pair remains briefly cached for subsequent pages; deletion or idle eviction
+// closes it. The stores are shared, so cleanup ignores every later call.
 func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, checkpointID uint64) (*dal.Store, *readstore.Store, func(), error) {
+	impl.checkpointHookOnce.Do(func() { impl.store.RegisterQueryCheckpointDeleteHook(impl.checkpointStores.evict) })
 	release, acquired := impl.store.AcquireQueryCheckpoint(checkpointID)
 	if !acquired {
 		return nil, nil, nil, impl.resolveMissingMarker(ctx, checkpointID)

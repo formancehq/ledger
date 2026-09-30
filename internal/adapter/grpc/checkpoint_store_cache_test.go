@@ -103,8 +103,9 @@ func TestCheckpointStoreCacheReopensAfterLastRelease(t *testing.T) {
 	require.NoError(t, err, "the previous open must have been closed")
 	release()
 
-	require.Equal(t, int64(2), opens.Load())
-	require.Empty(t, cache.entries, "a cache at rest holds no handles")
+	require.Equal(t, int64(1), opens.Load(), "consecutive pages reuse the open")
+	cache.evict(gateCheckpointID)
+	require.Empty(t, cache.entries)
 }
 
 func TestCheckpointStoreCacheDoesNotCacheAFailedOpen(t *testing.T) {
@@ -209,6 +210,7 @@ func TestCheckpointStoreCacheRefusesACancelledReader(t *testing.T) {
 	opener.release()
 
 	require.Equal(t, int64(1), opens.Load(), "the cancelled reader must not have started its own open")
+	cache.evict(gateCheckpointID)
 	require.Empty(t, cache.entries, "the cancelled reader must not have taken a hold")
 }
 
@@ -241,6 +243,7 @@ func TestCheckpointStoreCacheClosesMainStoreWhenReadIndexCloseFails(t *testing.T
 	require.True(t, iter.First(), "the iterator must hold an SST-backed reference")
 
 	release()
+	cache.evict(gateCheckpointID)
 
 	reopened, err := dal.OpenReadOnly(mainPath, testLogger())
 	require.NoError(t, err, "the main store must close even when the read index's close panics")
@@ -304,5 +307,33 @@ func TestCheckpointStoreCacheReleaseIsIdempotent(t *testing.T) {
 	require.Nil(t, closer)
 
 	releaseSecond()
+	cache.evict(gateCheckpointID)
 	require.Empty(t, cache.entries)
+}
+
+func TestCheckpointStoreCacheBoundsIdlePairs(t *testing.T) {
+	t.Parallel()
+	var cache checkpointStoreCache
+	for id := uint64(1); id <= maxIdleCheckpointStores+1; id++ {
+		mainPath := filepath.Join(t.TempDir(), "main")
+		indexRoot := filepath.Join(t.TempDir(), "index")
+		indexPath := filepath.Join(indexRoot, "readindex")
+		main, err := dal.OpenDirect(mainPath, testLogger())
+		require.NoError(t, err)
+		require.NoError(t, main.Close())
+		index, err := readstore.New(indexRoot, testLogger(), readstore.DefaultConfig())
+		require.NoError(t, err)
+		require.NoError(t, index.Close())
+
+		_, _, release, err := cache.acquire(t.Context(), id, testLogger(), func() (*dal.Store, *readstore.Store, error) {
+			return openCheckpointDirs(mainPath, indexPath, testLogger())
+		})
+		require.NoError(t, err)
+		release()
+	}
+	require.Len(t, cache.entries, maxIdleCheckpointStores)
+	require.NotContains(t, cache.entries, uint64(1), "the oldest idle pair must be closed")
+	for id := range cache.entries {
+		cache.evict(id)
+	}
 }
