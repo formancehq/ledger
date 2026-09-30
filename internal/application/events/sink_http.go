@@ -40,7 +40,9 @@ func NewHTTPSink(cfg HTTPSinkConfig) (*HTTPSink, error) {
 
 	return &HTTPSink{
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout:   30 * time.Second,
+			// Close must not tear down connections used by other parallel sinks.
+			Transport: http.DefaultTransport.(*http.Transport).Clone(),
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				// A bodyless GET cannot acknowledge the event POST. Return the
 				// redirect response so post reports its non-2xx status as a failure.
