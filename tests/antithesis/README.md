@@ -275,7 +275,7 @@ The workload uses a layered predicate set (`internal/client.go`):
   always ends: a batch of nothing but `SetMaintenanceMode` is exempt from the
   gate, so the enable's own retry reaches the success that schedules its
   disable, and business retries then replay the frozen outcome under the same
-  key. `IsAmbiguousCommit` no longer feeds this decision.
+  key.
 - `NewGRPCConn` performs application retries in interceptors, with no native
   service-config retry policy. `internal/client_transport_test.go` tests this
   real factory after a committed response is lost, including default, forever,
