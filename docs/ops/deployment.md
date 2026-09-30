@@ -792,10 +792,7 @@ across an FSM outcome change" above:
 - allotment portions summing past 100% next to `remaining` used to commit and
   now reject;
 - an allotment with two `remaining` clauses used to commit, silently giving
-  nothing to the second one, and now rejects;
-- a negative division portion on the destination side (`$n/3 to @a` with
-  `n = -1`) used to reject and now commits, sending the money to the other
-  destinations (numscript#206 tracks whether that is intended).
+  nothing to the second one, and now rejects.
 
 - **Mixed-binary rolling upgrades are not supported across this change.** Stop
   all nodes before deploying the new binary. The Kubernetes operator performs a

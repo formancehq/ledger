@@ -609,3 +609,30 @@ func TestSafeExecCompiled_OlderMinorRuns(t *testing.T) {
 	require.Len(t, result.Postings, 1)
 	require.Equal(t, int64(30), result.Postings[0].Amount.Int64())
 }
+
+// TestSafeExecCompiled_NegativePortionRejected: a division portion that comes
+// out negative at run time ($n/3 with n = -1) fails the order instead of
+// sending the money to the other destinations.
+func TestSafeExecCompiled_NegativePortionRejected(t *testing.T) {
+	t.Parallel()
+
+	compiled := mustCompile(t, mustEntry(t, `vars {
+  number $n
+}
+
+send [COIN 90] (
+  source = @world
+  destination = {
+    $n/3 to @acc1
+    remaining to @acc2
+  }
+)`), map[string]string{"n": "-1"})
+
+	result, err := SafeExecCompiled(NewNumscriptCache(16), compiled.ScriptHash, compiled.Program, compiled.Vars, NewVMStore(mapValueSource{}, false))
+	require.NotNil(t, err, "a negative portion must fail the order, got postings %+v", result.Postings)
+	require.False(t, IsPanic(err))
+
+	var runtimeErr *domain.ErrNumscriptRuntime
+	require.ErrorAs(t, err, &runtimeErr)
+	require.Contains(t, runtimeErr.Detail, "cannot be negative")
+}
