@@ -10,8 +10,7 @@ This document compares the POC's API with the original Formance ledger API and d
 
 For the per-operation Ledger v2 → v3 path mapping, see
 [`v2-to-v3-endpoint-map.json`](v2-to-v3-endpoint-map.json). Update it in the same
-change when a route it names is renamed or removed; `TestV2EndpointMap_TargetsExist`
-fails otherwise.
+change when a route it names is renamed or removed.
 
 HTTP typed metadata preserves exact integer values, including signed 64-bit
 bounds and values above 2^53, for metadata writes, transaction creation and
