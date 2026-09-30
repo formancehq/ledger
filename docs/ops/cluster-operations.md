@@ -501,7 +501,7 @@ off-cluster backup instead. See
 
 1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
 2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
-3. Membership cleanup then deletes the peer row from RocksDB (`[ZoneGlobal][SubGlobPeers]`), atomically writes the removed-member tombstone when the peer has an instance identity, and drops the peer from the in-memory cache + transport + service pool in lockstep
+3. Membership cleanup then deletes the peer row from RocksDB (`[ZoneClusterPersistent][SubGlobPeers]`), atomically writes the removed-member tombstone when the peer has an instance identity, and drops the peer from the in-memory cache + transport + service pool in lockstep
 4. After the command succeeds, Raft processing resumes with the reduced quorum.
 
 The live etcd/raft tracker mutation in step 1 cannot be rolled back safely. If

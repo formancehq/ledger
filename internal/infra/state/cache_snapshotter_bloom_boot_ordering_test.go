@@ -29,11 +29,11 @@ import (
 // drive cache rotations while !IsReady. writeCacheRotation wiped the
 // outgoing cache generation from 0xFF unconditionally while
 // PersistDirtyBlocks was gated on IsReady; keys whose volume entry
-// made it to Pebble 0x01 but whose bloom block was never persisted
+// made it to RocksDB 0x01 but whose bloom block was never persisted
 // ended up in neither the post-rotation 0xFF cache nor the persisted
 // bloom blocks. The next crash dropped them; the subsequent restart
 // rebuilt an incomplete bloom; MayContain returned false for keys
-// still present in Pebble; the resolver injected a zero VolumePair
+// still present in RocksDB; the resolver injected a zero VolumePair
 // (the includeZeroValue=true branch in plan/resolve.go); the FSM
 // apply path returned "insufficient funds available=0".
 //
@@ -71,7 +71,7 @@ func TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous(t *testing.T) {
 	//
 	// We need hasPersistedBloomBlocks to return true on the restart
 	// path. The fastest way is to add a key, mark IsReady true, and
-	// flush dirty blocks to Pebble explicitly.
+	// flush dirty blocks to RocksDB explicitly.
 	bloomFilters := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, bloomFilters)
 	bloomFilters.SetReady(true)
@@ -110,7 +110,7 @@ func TestCacheSnapshotter_BloomBootOrdering_RestoreIsSynchronous(t *testing.T) {
 		require.NoError(t, batch.Commit())
 	}
 
-	// ---- Process incarnation #2: fresh in-memory state, reuse Pebble ----
+	// ---- Process incarnation #2: fresh in-memory state, reuse RocksDB ----
 	freshBloom := bloom.NewFilterSet(bloomCfg, meter)
 	require.NotNil(t, freshBloom)
 
@@ -188,7 +188,7 @@ func TestCacheSnapshotter_BloomBootOrdering_PopulatePathStaysAsync(t *testing.T)
 // strict-decoding contract: a corrupt persisted bloom row must fail recovery
 // and must never leave the filter published ready. Before EN-1527 the row was
 // skipped and readiness was still set, producing a false-negative filter that
-// can suppress a required Pebble preload.
+// can suppress a required RocksDB preload.
 func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T) {
 	t.Parallel()
 
@@ -231,8 +231,8 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 		handle, err := dataStore.NewDirectReadHandle()
 		require.NoError(t, err)
 		iter, err := handle.NewIter(&kv.IterOptions{
-			LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
-			UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+			LowerBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+			UpperBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 		})
 		require.NoError(t, err)
 		require.True(t, iter.First(), "a persisted bloom row must exist")

@@ -261,11 +261,9 @@ Backup preparation is performed on the **restore side** (during `FinalizeRestore
 
 1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
 2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored RocksDB store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
-3. **Remove persisted config**: Node and cluster IDs are stripped for portability.
-4. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
-5. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
-6. **Drop persisted Raft peers**: Cluster membership is local to the source cluster; the booting node reseeds membership from its own config.
-7. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
+3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
+4. **Wipe the cluster-persistent zone**: One range delete removes source node/cluster identity, Raft peers, removed-member tombstones and stale Bloom blocks. The destination re-seeds its identity and membership and rebuilds Bloom from attributes. The restored genesis boundary is written back to this zone after the delete in the same batch.
+5. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
 
@@ -280,7 +278,13 @@ The backup is a complete RocksDB database that contains:
 | Per-Ledger | `0x03` | Per-ledger data (reversion bitset words, pending cleanups, mirror state) |
 | History | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
 | Idempotency | `0x05` | Idempotency keys |
-| Global | `0x06` | Last applied index (preserved on restore as the genesis boundary), last applied timestamp, signing keys, signing config, sink configs, sink cursors, sink statuses |
+| Global | `0x06` | Retained business and governance state: last applied timestamp, signing keys/config, sink config/cursors/status, replicated cluster config and policy, query checkpoints |
+| Cluster transient | `0x07` | Backup jobs, removed on cross-cluster restore |
+| Cluster persistent | `0x08` | Source applied index, node/cluster identity, Raft members and removal tombstones, Bloom blocks; removed on cross-cluster restore except for the rewritten genesis boundary |
+
+This changes the physical RocksDB layout. An older pre-release store is rejected
+at startup through its old boot anchor; take a new backup with the matching
+binary before recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
 
 
 ### Sequence Diagram

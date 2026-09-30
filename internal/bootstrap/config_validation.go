@@ -14,31 +14,10 @@ import (
 )
 
 // CurrentStorageSchemaVersion is the storage schema version that this binary
-// expects. Increment this when the Pebble key layout or value encoding changes
-// in a way that is not backward-compatible.
-//
-// v2: color-of-money segregation. VolumeKey canonical bytes gained a
-// [color]\x00 segment between account and asset (see domain.VolumeKey), so a
-// schema-v1 store's volume keys no longer parse under the v2 layout. Refusing
-// to open a v1 store (via SchemaVersionError, non-bypassable) turns what would
-// otherwise be silent balance corruption into a fatal, actionable boot error.
-//
-// v3: mirror ingestion position consolidation (EN-1513). The per-ledger
-// MirrorCursor row (ZonePerLedger / sub 0x05) was removed in favour of
-// LedgerBoundaries.last_mirror_v2_log_id, and MirrorSyncUpdate's field tags
-// were realigned. Refusing a v2 store guarantees no un-applied Raft WAL entry
-// carrying the old tag layout is ever replayed against the new one. The bump
-// also retroactively gates the EN-1550 last_mirror_v2_log_id field itself:
-// v2 predates it, and compareMirrorV2LogID requires it with no backfill
-// leniency.
-//
-// v4: chapter/cold-storage removal (EN-1945). The chapter registry rows and
-// several proto payloads are gone, the ZoneGlobal and ZonePerLedger
-// sub-prefix bytes were renumbered, and the LogPayload / Order / Request
-// field tags were realigned. A v3 store's global rows and any un-applied
-// Raft WAL entry are unreadable under the new layout, so opening one is
-// refused.
-const CurrentStorageSchemaVersion uint32 = 4
+// expects. Ledger v3 is unreleased; incompatible development stores must be
+// wiped rather than migrated. The old ZoneGlobal boot anchor is rejected
+// before the current layout is read.
+const CurrentStorageSchemaVersion uint32 = 1
 
 // SchemaVersionError is returned when the persisted storage schema version is
 // incompatible with the running binary. This is NOT bypassable with
@@ -58,7 +37,7 @@ func (e *SchemaVersionError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"storage schema version %d is too old: this binary requires version %d (run the migration tool or use the matching binary version)",
+		"storage schema version %d is too old: this binary requires version %d (wipe incompatible pre-release data or use the matching binary version)",
 		e.Persisted, e.Current,
 	)
 }
@@ -232,7 +211,7 @@ func validateHealthThresholds(block, resume float64) error {
 	return nil
 }
 
-// persistConfig writes the given configuration to Pebble.
+// persistConfig writes the given configuration to RocksDB.
 func persistConfig(store *dal.Store, cfg *commonpb.PersistedConfig) error {
 	batch := store.OpenWriteSession()
 

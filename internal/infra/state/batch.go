@@ -53,7 +53,7 @@ func SaveLedger(b *dal.WriteSession, name string, info *commonpb.LedgerInfo) err
 	return nil
 }
 
-// StoreNextLedgerID persists the next ledger ID counter to Pebble.
+// StoreNextLedgerID persists the next ledger ID counter to RocksDB.
 func StoreNextLedgerID(b *dal.WriteSession, nextID uint32) error {
 	b.KeyBuilder.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobNextLedgerID)
 
@@ -436,11 +436,12 @@ func SetAppliedIndex(b *dal.WriteSession, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
 
-	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, value)
+	return b.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, value)
 }
 
-// SetLastAppliedTimestamp writes the last applied HLC timestamp to the batch.
-func setLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
+// StoreLastAppliedTimestamp writes the last applied HLC timestamp to the batch.
+// Restore replay also uses it to fold post-checkpoint audit timestamps.
+func StoreLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, timestamp)
 
@@ -469,7 +470,7 @@ func setLastIdempotencyEvictionCutoff(b *dal.WriteSession, cutoffMicros uint64) 
 // (empty LedgerName) lives under a distinct all-zero 64B prefix and is
 // unreachable from a non-empty ledger name's range. processDeleteLedger also
 // clears the cache-resident entries up-front for immediate visibility; without
-// the Pebble-level range delete here, entries evicted from the cache before
+// the RocksDB-level range delete here, entries evicted from the cache before
 // deletion would survive the purge (PR #453 review).
 var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrVolume,
@@ -483,7 +484,7 @@ var ledgerScopedAttrTypes = []byte{
 	dal.SubAttrIndex,
 }
 
-// DeleteLedgerData removes all per-ledger data from Pebble for the given ledger.
+// DeleteLedgerData removes all per-ledger data from RocksDB for the given ledger.
 // This performs per-type range deletes on:
 //   - Attributes zone (0xF1): one range delete per ledger-scoped attribute type
 //   - Prepared queries: range delete for [zone][sub][ledgerName padded 64B]

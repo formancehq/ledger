@@ -243,7 +243,7 @@ func TestSetAppliedIndexAndTimestamp(t *testing.T) {
 
 	batch := s.OpenWriteSession()
 	require.NoError(t, SetAppliedIndex(batch, 42))
-	require.NoError(t, setLastAppliedTimestamp(batch, 1700000000))
+	require.NoError(t, StoreLastAppliedTimestamp(batch, 1700000000))
 	require.NoError(t, batch.Commit())
 
 	idx, err := query.ReadLastAppliedIndex(s)

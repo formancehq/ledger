@@ -35,7 +35,7 @@ func saveNextLedgerIDForBackupTest(t *testing.T, batch *dal.WriteSession, nextID
 // provides the interface-conformant surface and free call recording; this struct
 // holds the extra observations those tests assert on and cannot be expressed
 // with plain gomock expectations, because the number, keys and relative order of
-// the Put/Delete calls are driven by Pebble's checkpoint internals and are not
+// the Put/Delete calls are driven by RocksDB's checkpoint internals and are not
 // knowable at test-authoring time:
 //
 //   - ops records the ordered sequence of "put <key>" / "del <key>" so a test can
@@ -249,13 +249,13 @@ func TestRunBackup_ManifestWrittenAfterUploadsAndBeforeAnyDelete(t *testing.T) {
 }
 
 // TestRunBackup_NeverOverwritesManifestReferencedObject is the immutability
-// regression (MAJOR bug found in review of PR #1543): a Pebble checkpoint
+// regression (MAJOR bug found in review of PR #1543): a RocksDB checkpoint
 // contains a MANIFEST-NNNNNN file that keeps the SAME local name but GROWS
 // between checkpoints. With name-keyed storage keys, the second full backup
 // re-uploaded data/MANIFEST-NNNNNN in place — overwriting an object the
 // currently published backup manifest still referenced, BEFORE the manifest
 // swap. A crash in that window left the previous backup pointing at corrupt
-// Pebble metadata.
+// RocksDB metadata.
 //
 // With content-addressed keys, a file whose bytes change lands on a new key, so
 // no object a published manifest references is ever overwritten in place. This
@@ -285,7 +285,7 @@ func TestRunBackup_NeverOverwritesManifestReferencedObject(t *testing.T) {
 	keys1 := checkpointKeySet(manifest1)
 
 	// Mutate + compact so the checkpoint's file set changes — most notably
-	// Pebble's MANIFEST-NNNNNN, which keeps the same local name but grows in
+	// RocksDB's MANIFEST-NNNNNN, which keeps the same local name but grows in
 	// place. This is the exact trigger that made the pre-fix (name-keyed) code
 	// overwrite a manifest-referenced object.
 	mutate := store.OpenWriteSession()
@@ -444,7 +444,7 @@ func TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched(t *tes
 // rounds of (write new logs/audits → incremental backup), accumulating export
 // segments in one manifest. Applying every accumulated segment onto a store
 // that already holds the pre-checkpoint content (here reproduced by log replay,
-// since raw SST checkpoint files cannot be ingested into a fresh Pebble store
+// since raw SST checkpoint files cannot be ingested into a fresh RocksDB store
 // via a WriteSession) and rebuilding must reconstruct every post-checkpoint
 // ledger across all incrementals. The end-to-end variant, including the opaque
 // SST checkpoint restore, lives in tests/e2e/cluster/restore_test.go.
@@ -462,7 +462,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 		seq++
 		b := src.OpenWriteSession()
 		require.NoError(t, b.SetProto(coldLogKey(seq), createLedgerLog(seq, name, uint32(seq))))
-		require.NoError(t, b.SetProto(coldAuditKey(seq), auditSuccess(seq, seq, seq)))
+		audit := auditSuccess(seq, seq, seq)
+		audit.Timestamp = &commonpb.Timestamp{Data: seq * 100}
+		require.NoError(t, b.SetProto(coldAuditKey(seq), audit))
+		require.NoError(t, state.StoreLastAppliedTimestamp(b, seq*100))
 		saveNextLedgerIDForBackupTest(t, b, uint32(seq+1))
 		require.NoError(t, b.Commit())
 	}
@@ -502,7 +505,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 
 	seedBatch := dst.OpenWriteSession()
 	require.NoError(t, seedBatch.SetProto(coldLogKey(1), createLedgerLog(1, "ledger-0", 1)))
-	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), auditSuccess(1, 1, 1)))
+	seedAudit := auditSuccess(1, 1, 1)
+	seedAudit.Timestamp = &commonpb.Timestamp{Data: 100}
+	require.NoError(t, seedBatch.SetProto(coldAuditKey(1), seedAudit))
+	require.NoError(t, state.StoreLastAppliedTimestamp(seedBatch, 100))
 	saveNextLedgerIDForBackupTest(t, seedBatch, 2)
 	require.NoError(t, seedBatch.Commit())
 
@@ -523,6 +529,10 @@ func TestBackup_MultipleIncrementalsChain_RoundTrips(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(seq+1), restoredNextLedgerID,
 		"the next creation after restore must not reuse a post-checkpoint ledger ID")
+	restoredHLC, err := query.ReadLastAppliedTimestamp(handle)
+	require.NoError(t, err)
+	require.Equal(t, seq*100, restoredHLC,
+		"the next proposal must advance past every post-checkpoint audit timestamp")
 
 	for _, name := range incrementalLedgers {
 		info, err := query.GetLedgerByName(ctx, handle, name)

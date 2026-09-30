@@ -295,14 +295,14 @@ func (MetadataType) EnumDescriptor() ([]byte, []int) {
 type TransactionBuiltinIndex int32
 
 const (
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE           TransactionBuiltinIndex = 0 // requires Pebble "txref" index
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP           TransactionBuiltinIndex = 1 // requires Pebble "tstmp" index
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE           TransactionBuiltinIndex = 0 // requires RocksDB "txref" index
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP           TransactionBuiltinIndex = 1 // requires RocksDB "tstmp" index
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ID                  TransactionBuiltinIndex = 2 // range scan on existence bucket (no index)
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS             TransactionBuiltinIndex = 3 // account→transaction mapping (any role)
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS      TransactionBuiltinIndex = 4 // source account→transaction mapping
 	TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS TransactionBuiltinIndex = 5 // destination account→transaction mapping
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT         TransactionBuiltinIndex = 6 // requires Pebble "txiat" index (inserted_at date)
-	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT         TransactionBuiltinIndex = 7 // requires Pebble "rvat" index (reverted_at date)
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT         TransactionBuiltinIndex = 6 // requires RocksDB "txiat" index (inserted_at date)
+	TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT         TransactionBuiltinIndex = 7 // requires RocksDB "rvat" index (reverted_at date)
 )
 
 // Enum value maps for TransactionBuiltinIndex.
@@ -404,13 +404,13 @@ func (AccountBuiltinIndex) EnumDescriptor() ([]byte, []int) {
 }
 
 // LogBuiltinIndex identifies a built-in log field that can be indexed.
-// The per-ledger log index (Pebble "llog") is always built by the indexbuilder
+// The per-ledger log index (RocksDB "llog") is always built by the indexbuilder
 // and is not exposed here — only opt-in fields appear below.
 type LogBuiltinIndex int32
 
 const (
 	LogBuiltinIndex_LOG_BUILTIN_INDEX_UNSPECIFIED LogBuiltinIndex = 0
-	LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE        LogBuiltinIndex = 1 // per-ledger log date index (Pebble "lldt")
+	LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE        LogBuiltinIndex = 1 // per-ledger log date index (RocksDB "lldt")
 )
 
 // Enum value maps for LogBuiltinIndex.
@@ -6074,11 +6074,11 @@ type LedgerLog struct {
 	Date  *Timestamp             `protobuf:"bytes,2,opt,name=date,proto3" json:"date,omitempty"`
 	Id    uint64                 `protobuf:"fixed64,3,opt,name=id,proto3" json:"id,omitempty"`
 	// Volumes (account+asset) DRAINED to zero by THIS log — the entry had a
-	// pre-existing non-zero balance in Pebble and this log brought it back to
+	// pre-existing non-zero balance in RocksDB and this log brought it back to
 	// zero, causing the volume to be evicted from the attribute store at
 	// commit. Purged is DISJOINT from ephemeral_volumes and new_kept_volumes.
 	// The index builder skips account->transaction mappings for
-	// purged ∪ ephemeral (both are evicted from Pebble). The usagebuilder
+	// purged ∪ ephemeral (both are evicted from RocksDB). The usagebuilder
 	// subtracts len(purged_volumes) from VolumeCount — a draining eviction
 	// decreases the live cardinality by one.
 	PurgedVolumes []*TouchedVolume `protobuf:"bytes,4,rep,name=purged_volumes,json=purgedVolumes,proto3" json:"purged_volumes,omitempty"`
@@ -6089,7 +6089,7 @@ type LedgerLog struct {
 	// the live cardinality by one.
 	NewKeptVolumes []*TouchedVolume `protobuf:"bytes,5,rep,name=new_kept_volumes,json=newKeptVolumes,proto3" json:"new_kept_volumes,omitempty"`
 	// Volumes (account+asset) that were both newly created AND purged by
-	// THIS log — pure ephemeral. Written to Pebble briefly then evicted at
+	// THIS log — pure ephemeral. Written to RocksDB briefly then evicted at
 	// commit. Contributes +0 to VolumeCount (was zero, is zero after commit)
 	// and is tracked separately so:
 	//   - the index builder can skip acct->tx mappings for them (via
@@ -9051,7 +9051,7 @@ type LedgerInfo struct {
 	AccountTypes           map[string]*AccountType   `protobuf:"bytes,8,rep,name=account_types,json=accountTypes,proto3" json:"account_types,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Per-type account address validation
 	DefaultEnforcementMode ChartEnforcementMode      `protobuf:"varint,9,opt,name=default_enforcement_mode,json=defaultEnforcementMode,proto3,enum=common.ChartEnforcementMode" json:"default_enforcement_mode,omitempty"`         // Default enforcement for unmatched accounts
 	Metadata               map[string]*MetadataValue `protobuf:"bytes,10,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`                            // Populated at read time from separate attribute store
-	Id                     uint32                    `protobuf:"varint,11,opt,name=id,proto3" json:"id,omitempty"`                                                                                                                 // Unique numeric ledger ID (assigned by FSM, used as Pebble key prefix)
+	Id                     uint32                    `protobuf:"varint,11,opt,name=id,proto3" json:"id,omitempty"`                                                                                                                 // Unique numeric ledger ID (assigned by FSM, used as RocksDB key prefix)
 	unknownFields          protoimpl.UnknownFields
 	sizeCache              protoimpl.SizeCache
 }
@@ -9277,11 +9277,11 @@ type TransactionState struct {
 	Metadata              map[string]*MetadataValue `protobuf:"bytes,3,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Effective timestamp of the transaction (user-provided or command date at
 	// creation). Required for at_effective_date reverts to be deterministic
-	// without re-reading the original log from Pebble.
+	// without re-reading the original log from RocksDB.
 	Timestamp *Timestamp `protobuf:"bytes,4,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
 	// Postings captured at creation. Populated by processCreateTransaction (and
 	// the mirror equivalent) so a later revert reads them from the FSM cache
-	// without needing to scan the Pebble-backed log — invariant #3 (no Pebble
+	// without needing to scan the RocksDB-backed log — invariant #3 (no RocksDB
 	// reads on the hot path) and invariant #8 (business decisions belong in
 	// the audit chain, so a revert of a non-existent tx must reach the FSM
 	// apply loop rather than fail-fast at admission).
@@ -12080,8 +12080,9 @@ func (x *LedgerStats) GetLogCount() uint64 {
 }
 
 // PersistedConfig stores critical configuration parameters that must not change
-// between restarts with existing data. Stored at Pebble key {0x06, 0x0C}
-// (Global zone, SubGlobPersistedConfig).
+// between restarts with existing data. Stored at RocksDB key {0x08, 0x0C}
+// (ZoneClusterPersistent, SubGlobPersistedConfig). The old {0x06, 0x0C}
+// anchor from earlier development layouts is detected and rejected at boot.
 type PersistedConfig struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	NodeId               uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`

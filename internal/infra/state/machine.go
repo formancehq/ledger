@@ -703,7 +703,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 		return nil, fmt.Errorf("setting applied index: %w", err)
 	}
 
-	err = setLastAppliedTimestamp(batch, fsm.State.LastAppliedTimestamp)
+	err = StoreLastAppliedTimestamp(batch, fsm.State.LastAppliedTimestamp)
 	if err != nil {
 		_ = batch.Cancel()
 

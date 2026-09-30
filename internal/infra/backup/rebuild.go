@@ -1001,9 +1001,9 @@ func (w *attributeReplayWriter) RemoveAccountType(ledger string, name string) er
 }
 
 // attributeReplayWriter implements replay.Writer by writing directly to
-// Pebble attributes via Attribute[V].Set/Get/Delete.
+// RocksDB attributes via Attribute[V].Set/Get/Delete.
 //
-// Pebble batches are not indexed (see OpenWriteSession), so writes committed
+// RocksDB batches are not indexed (see OpenWriteSession), so writes committed
 // through w.batch are invisible to w.store.Get until Commit. The pending*
 // overlays make in-batch state visible to same-batch reads; both maps are
 // cleared on every batch commit alongside the batch itself.
@@ -1332,6 +1332,16 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.KVReader, from
 // audit reason, so no persisted TTL — and no ambiguous zero-value sentinel — is
 // consulted here.
 func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.KVReader, fromAuditSeq uint64) error {
+	// Business proposals advance the HLC and record their effective timestamp
+	// in the audit header, including failures. Fold the exported audit delta
+	// over the checkpoint value so the destination cannot issue an earlier
+	// effective timestamp after restore.
+	lastTimestamp, err := query.ReadLastAppliedTimestamp(reader)
+	if err != nil {
+		return fmt.Errorf("seeding last applied timestamp: %w", err)
+	}
+	checkpointTimestamp := lastTimestamp
+
 	var after *uint64
 	if fromAuditSeq > 0 {
 		after = &fromAuditSeq
@@ -1353,6 +1363,9 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 		}
 		if err != nil {
 			return fmt.Errorf("reading audit entry for idempotency rebuild: %w", err)
+		}
+		if timestamp := entry.GetTimestamp().GetData(); timestamp > lastTimestamp {
+			lastTimestamp = timestamp
 		}
 
 		key := entry.GetIdempotency().GetKey()
@@ -1384,6 +1397,11 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 			}
 
 			w.batch = w.store.OpenWriteSession()
+		}
+	}
+	if lastTimestamp > checkpointTimestamp {
+		if err := state.StoreLastAppliedTimestamp(w.batch, lastTimestamp); err != nil {
+			return fmt.Errorf("restoring last applied timestamp: %w", err)
 		}
 	}
 

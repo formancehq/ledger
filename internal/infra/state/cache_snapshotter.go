@@ -929,8 +929,8 @@ func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) (bo
 
 	defer func() { _ = handle.Close() }()
 
-	lower := []byte{dal.ZoneGlobal, dal.SubGlobBloom}
-	upper := []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1}
+	lower := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom}
+	upper := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1}
 
 	iter, err := handle.NewIter(&storagekv.IterOptions{
 		LowerBound: lower,

@@ -32,7 +32,7 @@ type Pool interface {
 }
 
 // Membership owns the cluster's peer-address state in two views kept in
-// lockstep: the durable RocksDB rows under [ZoneGlobal][SubGlobPeers] and
+// lockstep: the durable RocksDB rows under [ZoneClusterPersistent][SubGlobPeers] and
 // the in-memory cache the transport consults on every Raft tick. All
 // mutators below go through this type — writing the RocksDB key directly
 // or mutating the cache from outside is a bug.

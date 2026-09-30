@@ -40,7 +40,7 @@ func TestInternalReadFailuresAreSanitized(t *testing.T) {
 		server.downloaded = true
 		t.Cleanup(server.Shutdown)
 		batch := store.OpenWriteSession()
-		require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, []byte{0xff}))
+		require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, []byte{0xff}))
 		require.NoError(t, batch.Commit())
 		stream := NewMockServerStreamingServer[restorepb.ValidateRestoreEvent](gomock.NewController(t))
 		stream.EXPECT().Context().Return(ctx).AnyTimes()

@@ -42,7 +42,9 @@ The `instanceID` discriminates the exact case EN-1045 confuses today:
 
 ### The Registry
 
-The FSM keeps a replicated `RemovedMembers` set under a new sub-key of the `Global` zone. Entries are of shape:
+The FSM keeps a replicated `RemovedMembers` set under `ZoneClusterPersistent`.
+Entries survive ordinary restarts and in-cluster snapshots, but are removed on
+cross-cluster restore with the source membership. Entries are of shape:
 
 ```
 RemovedMemberEntry {
@@ -63,12 +65,12 @@ Two paths lead to a `RemovedMembers` entry, with different atomicity mechanisms.
 
 Ledger has two independent durable stores. This design must not conflate them:
 
-- **WAL** (`internal/storage/wal/`) — Raft's write-ahead log. Persists log entries, snapshots, HardState, ConfState. Its transactions do not span into Pebble.
-- **Pebble** (`internal/storage/dal/`) — the FSM state store. All `Registry.*` KeyStores live here, including `RemovedMembers`. So does the per-peer row that `membership.Register` / `membership.Unregister` maintains.
+- **WAL** (`internal/storage/wal/`) — Raft's write-ahead log. Persists log entries, snapshots, HardState, ConfState. Its transactions do not span into RocksDB.
+- **RocksDB** (`internal/storage/dal/`) — the FSM state store. All `Registry.*` KeyStores live here, including `RemovedMembers`. So does the per-peer row that `membership.Register` / `membership.Unregister` maintains.
 
-Cross-store atomicity is impossible. Today's `ForceRemoveNode` already reasons about a crash window between WAL and Pebble (see the block comment at `node.go:2229`, established by EN-1413). This design extends that reasoning to also cover the blacklist write.
+Cross-store atomicity is impossible. Today's `ForceRemoveNode` already reasons about a crash window between WAL and RocksDB (see the block comment at `node.go:2229`, established by EN-1413). This design extends that reasoning to also cover the blacklist write.
 
-`internal/infra/membership/` owns both the peer row and the `RemovedMembers` entry — they share the same per-peer lifecycle (the blacklist entry is effectively the tombstone of the peer row) and it is natural for a single package to manage both mutations in a single Pebble batch.
+`internal/infra/membership/` owns both the peer row and the `RemovedMembers` entry — they share the same per-peer lifecycle (the blacklist entry is effectively the tombstone of the peer row) and it is natural for a single package to manage both mutations in a single RocksDB batch.
 
 #### Consensus path (normal `RemoveNode`)
 
@@ -91,9 +93,9 @@ When the target peer's row exists but has no `instanceID` — a *phantom learner
 Every node applies the same log entry through the FSM apply path. The apply batch performs two mutations inside a single `dal.WriteSession`:
 
 1. Delegate the ConfChange to raft's own state machine (unchanged from today).
-2. Write `RemovedMembers[nodeID, instanceID]` to Pebble via `membership`.
+2. Write `RemovedMembers[nodeID, instanceID]` to RocksDB via `membership`.
 
-Both mutations belong to the same Pebble transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
+Both mutations belong to the same RocksDB transaction, so they are atomic. Cross-node convergence is guaranteed by [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism): same input log entry on every node → same `RemovedMembers` on every node.
 
 No crash window on this path.
 
@@ -106,8 +108,8 @@ Each committed removal has its own local barrier keyed by `(nodeID, committedInd
 This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only the leader's raft state; followers (if any survive) will learn about it via the next snapshot they receive to catch up. The design extends the existing two-write sequence to atomically embed the blacklist write in the second one:
 
 1. `rawNode.ApplyConfChange(cc)` — irreversible live tracker mutation; returns the new `ConfState`.
-2. `wal.UpdateSnapshotConfState(cs)` — WAL write, ordered before Pebble per EN-1413.
-3. When the peer has a valid instance identity, `membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt)` performs a Pebble batch atomic between:
+2. `wal.UpdateSnapshotConfState(cs)` — WAL write, ordered before RocksDB per EN-1413.
+3. When the peer has a valid instance identity, `membership.UnregisterAndBlacklist(nodeID, instanceID, removedAt)` performs a RocksDB batch atomic between:
    - Delete of the peer row.
    - Put of `RemovedMembers[nodeID, instanceID]`.
 
@@ -115,11 +117,11 @@ This path is intentionally leader-local: `rawNode.ApplyConfChange` mutates only 
    uses `membership.Unregister(nodeID)` because there is no identity to
    blacklist.
 
-The `instanceID` is read from the peer's Membership row just before the delete, so no explicit parameter needs to travel on the ledgerctl RPC. `membership.Unregister` reads from its own in-memory cache (populated at boot from Pebble), which is outside the FSM hot path and therefore not subject to invariants #3/#6/#9.
+The `instanceID` is read from the peer's Membership row just before the delete, so no explicit parameter needs to travel on the ledgerctl RPC. `membership.Unregister` reads from its own in-memory cache (populated at boot from RocksDB), which is outside the FSM hot path and therefore not subject to invariants #3/#6/#9.
 
 The file-scoped `forbidigo` exceptions for the membership peer-store lifecycle
 are justified as *"cluster-topology lifecycle path: force-remove writes
-ConfState (WAL) + peer tombstone (Pebble) outside the FSM hot path by necessity
+ConfState (WAL) + peer tombstone (RocksDB) outside the FSM hot path by necessity
 — see docs/technical/architecture/subsystems/consensus/removed-member-registry.md"*.
 
 `ApplyConfChange` replaces etcd/raft's active tracker and deletes the removed
@@ -133,7 +135,7 @@ If `Node.Run` stops before an admitted command executes, its waiter receives
 `raft.ErrStopped` after all node tasks have stopped; a result already produced
 by the command is preserved, with terminal persistence failure taking precedence.
 `Node.Run` propagates the task failure to the bootstrap runner, which terminates
-the process. The Pebble batch is not attempted. Applying an inverse add change
+the process. The RocksDB batch is not attempted. Applying an inverse add change
 is deliberately not used: it would create new progress, not restore the removed
 member's prior replication state.
 
@@ -155,8 +157,8 @@ can serve concurrently with a contradictory live tracker.
 |---|---|---|
 | in-memory `ApplyConfChange` and atomic snapshot-file replacement | ConfState unchanged; peer still voter. A returned persistence error fail-stops the running node and fails queued work. | Restart reconstructs the old membership; the reduced live quorum is never used by a continuing node. |
 | snapshot-file replacement and WAL snapshot-record write | The replacement file contains the reduced ConfState at the snapshot's existing term/index. A record-write error still fail-stops the node and skips peer cleanup. | Restart may reconstruct the new membership from the durable replacement file; no contradictory process continues serving. |
-| WAL write and Pebble batch | ConfState says "removed"; peer row still present (harmless per EN-1413); `RemovedMembers` empty. | Peer is out of quorum but not blacklisted. If the pod is still alive and rejoins **within this window**, EN-1045 loop briefly possible until the operator retries `remove-node`. |
-| After Pebble batch | Nominal. | — |
+| WAL write and RocksDB batch | ConfState says "removed"; peer row still present (harmless per EN-1413); `RemovedMembers` empty. | Peer is out of quorum but not blacklisted. If the pod is still alive and rejoins **within this window**, EN-1045 loop briefly possible until the operator retries `remove-node`. |
+| After RocksDB batch | Nominal. | — |
 
 The middle window is bounded by two fsyncs (~single-digit milliseconds on healthy disks) — strictly no worse than today, and orders of magnitude tighter than a Raft follow-up proposal would have been.
 
@@ -172,7 +174,7 @@ Two paths must consult the registry:
 
 2. **`checkAndPromoteLearners`** (`internal/infra/node/node.go`): before proposing `ConfChangeAddNode` for a caught-up learner, the promotion loop checks the same registry. Belt-and-suspenders — a learner should never be present in the ConfState if it was blacklisted at `JoinAsLearner`, but if for any reason it slipped in through an unforeseen path, promotion still refuses.
 
-Both checks are leader-only, outside the FSM hot path, so they read straight from Pebble via `NewDirectReadHandle`. There is no in-memory cache for the registry: the read cost is a single point lookup per admission / promotion tick, and the registry is small (bounded by the number of scale-down events over the cluster's lifetime, in practice tens to hundreds of entries). Invariants #6 and #9 (preload + coverage gate on FSM cache reads) do not apply — the check runs before any proposal is emitted, not from inside a hot-path apply.
+Both checks are leader-only, outside the FSM hot path, so they read straight from RocksDB via `NewDirectReadHandle`. There is no in-memory cache for the registry: the read cost is a single point lookup per admission / promotion tick, and the registry is small (bounded by the number of scale-down events over the cluster's lifetime, in practice tens to hundreds of entries). Invariants #6 and #9 (preload + coverage gate on FSM cache reads) do not apply — the check runs before any proposal is emitted, not from inside a hot-path apply.
 
 ### Peer-Side Behavior
 
@@ -215,7 +217,7 @@ Two secondary gaps in the "never rejoins" guarantee, kept out of this PR's scope
 New attribute on `Machine.Registry`:
 
 ```
-Registry.RemovedMembers   KeyStore    // Global zone, sub-key SubRemovedMembers
+Registry.RemovedMembers   KeyStore    // ClusterPersistent zone, sub-key SubGlobRemovedMembers
 ```
 
 Key format: `nodeID || instanceID` (uint64 big-endian || 16 bytes). Value: `RemovedMemberEntry` (protobuf).
@@ -226,11 +228,11 @@ The `RemovedMembers` KeyStore participates in:
 - **Cache preload**: the consensus-path FSM apply *writes* to `RemovedMembers` but does not read from it, so [invariant #6](../../../../../CLAUDE.md#invariants) does not require a `plan.Coverage` read declaration. The `JoinAsLearner` admission and `checkAndPromoteLearners` reads happen on the leader-only code path (before the FSM apply of any downstream proposal), so they are not subject to invariants #6 or #9 — they read `RemovedMembers` directly from the leader's in-memory KeyStore.
 - **Not covered by invariant #8**: `RemovedMembers` is a projection of Raft topology events, **not** of the hash-chained business audit. It cannot be reconstructed by replaying `AuditItem`s (ConfChanges never enter the audit chain). Its integrity relies on:
   - Consensus path: [invariant #2](../../../../../CLAUDE.md#invariants) (FSM determinism) — every node applies the same `ConfChangeRemoveNode`, produces the same entry.
-  - Force path: leader-local Pebble batch (see [Crash windows](#crash-windows-force-path-only) for the bounded gap); followers converge via the next snapshot.
+  - Force path: leader-local RocksDB batch (see [Crash windows](#crash-windows-force-path-only) for the bounded gap); followers converge via the next snapshot.
 
   A cross-node consistency check (dump `RemovedMembers` from each replica via an admin RPC and compare) is a possible future enhancement, out of scope here.
 
-- **Peer identity on the leader side**: the `Membership` row (per-peer, persisted in Pebble via EN-1413) is extended with an `instance_id` field. It is written once, when the leader admits the peer via `JoinAsLearner`, and read later by both consensus `RemoveNode` (to pack into `ConfChangeContext`) and `ForceRemoveNode` (to build the `RemovedMembers` entry). Storing it there — rather than re-carrying it on every removal RPC — keeps `ledgerctl cluster remove-node <id>` a single-argument command.
+- **Peer identity on the leader side**: the `Membership` row (per-peer, persisted in RocksDB via EN-1413) is extended with an `instance_id` field. It is written once, when the leader admits the peer via `JoinAsLearner`, and read later by both consensus `RemoveNode` (to pack into `ConfChangeContext`) and `ForceRemoveNode` (to build the `RemovedMembers` entry). Storing it there — rather than re-carrying it on every removal RPC — keeps `ledgerctl cluster remove-node <id>` a single-argument command.
 
 ### Proto Additions
 
@@ -268,7 +270,7 @@ sequenceDiagram
     Note over L,F: Every node (leader + followers) now applies the same entry
     L->>FSM: Apply(ConfChangeRemoveNode + ctx)
     F->>FSM: Apply(ConfChangeRemoveNode + ctx)
-    FSM->>FSM: raft.ApplyConfChange + RemovedMembers[3, instanceID]<br/>(single Pebble batch, via membership package)
+    FSM->>FSM: raft.ApplyConfChange + RemovedMembers[3, instanceID]<br/>(single RocksDB batch, via membership package)
     L->>Op: OK
 ```
 
@@ -367,5 +369,5 @@ Rejected as too invasive. etcd derives `memberID` from a hash of `(cluster-name,
 
 - [EN-1045](https://formance-team.atlassian.net/browse/EN-1045) — the ticket this design closes.
 - [EN-1436 / PR #1478](https://github.com/formancehq/ledger/pull/1478) — orthogonal fail-fast path for `JoinAsLearner` when the leader's Progress carries a stale nodeID after WAL reprovisioning. This design and EN-1436 both extend `JoinAsLearner` admission; the two checks compose (blacklist check first, stale-Progress check second).
-- [EN-1413](https://formance-team.atlassian.net/browse/EN-1413) — Pebble-persisted membership, whose ordering guarantees this design relies on (`ForceRemoveNode` persisting ConfState before peer delete).
+- [EN-1413](https://formance-team.atlassian.net/browse/EN-1413) — RocksDB-persisted membership, whose ordering guarantees this design relies on (`ForceRemoveNode` persisting ConfState before peer delete).
 - [`raft-consensus.md`](raft-consensus.md) — the surrounding consensus mechanics.

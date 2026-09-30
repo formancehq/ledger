@@ -20,6 +20,7 @@ var allCompactPrefixes = []compactPrefix{
 	{"per-ledger", ZonePerLedger, ZonePerLedger + 1},
 	{"idempotency", ZoneIdempotency, ZoneIdempotency + 1},
 	{"global", ZoneGlobal, ZoneGlobal + 1},
+	{"cluster-persistent", ZoneClusterPersistent, ZoneClusterPersistent + 1},
 }
 
 // compactRange compacts the single key range [start, end) under dbMu.RLock,
@@ -39,7 +40,7 @@ func (s *Store) compactRange(start, end byte) error {
 }
 
 // CompactAll runs a synchronous prefix-by-prefix compaction of the entire
-// Pebble keyspace, blocking until all prefixes are compacted.
+// RocksDB keyspace, blocking until all prefixes are compacted.
 // Returns the first error encountered (including ErrStoreClosed if the store closes).
 func (s *Store) CompactAll() error {
 	for _, p := range allCompactPrefixes {

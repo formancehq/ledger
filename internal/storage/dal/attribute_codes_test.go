@@ -37,13 +37,15 @@ func TestZonePrefixesUnique(t *testing.T) {
 	t.Parallel()
 
 	zones := map[byte]string{
-		dal.ZoneAttributes:  "Attributes",
-		dal.ZoneCache:       "Cache",
-		dal.ZonePerLedger:   "PerLedger",
-		dal.ZoneHistory:     "Cold",
-		dal.ZoneIdempotency: "Idempotency",
-		dal.ZoneGlobal:      "Global",
+		dal.ZoneAttributes:        "Attributes",
+		dal.ZoneCache:             "Cache",
+		dal.ZonePerLedger:         "PerLedger",
+		dal.ZoneHistory:           "Cold",
+		dal.ZoneIdempotency:       "Idempotency",
+		dal.ZoneGlobal:            "Global",
+		dal.ZoneClusterTransient:  "ClusterTransient",
+		dal.ZoneClusterPersistent: "ClusterPersistent",
 	}
 
-	require.Len(t, zones, 6, "duplicate zone prefix detected — map collapsed two entries with the same byte value")
+	require.Len(t, zones, 8, "duplicate zone prefix detected — map collapsed two entries with the same byte value")
 }
