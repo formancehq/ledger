@@ -163,10 +163,13 @@ func TestLedgerIdentityIsNotPinnedWhileACreateIsUnsettled(t *testing.T) {
 	require.Empty(t, c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}))
 
 	delete(c.inflight, 1)
-	c.ambiguousBulks[2] = oracle.Bulk{Requests: []*servicepb.Request{actions.CreateLedgerAction("model-0", nil)}}
-	require.Empty(t, c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}))
+	c.pending = []*pendingObservation{{obs: observation{
+		bulk: oracle.Bulk{Requests: []*servicepb.Request{actions.CreateLedgerAction("model-0", nil)}},
+	}}}
+	require.Empty(t, c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}),
+		"a create committed but not yet drained leaves either identity legal")
 
-	delete(c.ambiguousBulks, 2)
+	c.pending = nil
 	require.Equal(t, "model-0", c.ledgerIdentityViolation([]*commonpb.LedgerInfo{stale}),
 		"once no create can land, the identity is the one creation reported")
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
@@ -144,20 +143,6 @@ func TestCandidateBasesRejectsIntractableInflightSet(t *testing.T) {
 		// exhausting this search requires exploring every subset.
 		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
 	}
-
-	require.PanicsWithValue(t, "candidate search exceeded its bounded in-flight set", func() {
-		c.candidateBases(maxCandidateInflight+1, func(oracle.GlobalState) bool { return false })
-	})
-}
-
-func TestCandidateBasesCountsAmbiguousEnableInInflightBound(t *testing.T) {
-	t.Parallel()
-
-	c := NewChecker([]string{"L"}, nil)
-	for ticket := uint64(1); ticket <= maxCandidateInflight; ticket++ {
-		c.inflight[ticket] = bulkOf(oracletest.AddTypeReq(string(rune('A' + ticket))))
-	}
-	c.ambiguousBulks[maxCandidateInflight+1] = bulkOf(actions.SetMaintenanceModeAction(true))
 
 	require.PanicsWithValue(t, "candidate search exceeded its bounded in-flight set", func() {
 		c.candidateBases(maxCandidateInflight+1, func(oracle.GlobalState) bool { return false })

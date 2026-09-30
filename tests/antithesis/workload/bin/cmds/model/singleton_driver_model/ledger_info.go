@@ -115,15 +115,9 @@ func (c *Checker) ledgerIdentityViolation(infos []*commonpb.LedgerInfo) string {
 }
 
 // ledgerCreateUnsettled reports whether a create for name is dispatched but
-// unanswered, retained as ambiguous, or buffered undrained. Caller holds c.mu.
+// unanswered, or buffered undrained. Caller holds c.mu.
 func (c *Checker) ledgerCreateUnsettled(name string) bool {
 	for _, bulk := range c.inflight {
-		if bulkCreatesLedger(bulk, name) {
-			return true
-		}
-	}
-
-	for _, bulk := range c.ambiguousBulks {
 		if bulkCreatesLedger(bulk, name) {
 			return true
 		}
