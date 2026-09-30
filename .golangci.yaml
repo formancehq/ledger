@@ -95,7 +95,7 @@ linters:
       # See docs/technical/contributing/antithesis-assertions.md.
       - github.com/antithesishq/antithesis-sdk-go
       # Pebble's Formance fork retains the upstream module path.
-      - github.com/cockroachdb/pebble/v2
+      - github.com/cockroachdb/pebble
     revive:
       rules:
       - name: package-comments

@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/vfs"
-	"github.com/cockroachdb/pebble/v2/wal"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/wal"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -484,10 +484,9 @@ func NewStore(
 	iopsCounters := &IOPSCounters{}
 	opts.FS = NewMetricsFS(vfs.Default, iopsCounters)
 
-	// 9) Enable columnar blocks (required for value separation, also improves scans).
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
-
-	// 10) Value separation: store large values in blob files to reduce compaction IO.
+	// 9) Value separation: store large values in blob files to reduce
+	// compaction IO. Columnar blocks, which it requires, are the default
+	// since Pebble crl-release-26.2 (FormatColumnarBlocks is mandatory).
 	if cfg.ValueSeparation.Enabled {
 		vs := cfg.ValueSeparation
 		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
@@ -496,7 +495,11 @@ func NewStore(
 				MinimumSize:           vs.MinimumSize,
 				MaxBlobReferenceDepth: vs.MaxBlobReferenceDepth,
 				RewriteMinimumAge:     vs.RewriteMinimumAge,
-				TargetGarbageRatio:    vs.TargetGarbageRatio,
+				// TargetGarbageRatio predates Pebble's two-tier scheduling:
+				// it is the threshold at which rewrites start (low priority);
+				// rewrites outrank regular compactions at twice that ratio.
+				GarbageRatioLowPriority:  vs.TargetGarbageRatio,
+				GarbageRatioHighPriority: min(1.0, 2*vs.TargetGarbageRatio),
 			}
 		}
 	}
@@ -560,10 +563,10 @@ func NewStore(
 	m := db.Metrics()
 	logger.WithFields(map[string]any{
 		"duration":          time.Since(openStart).String(),
-		"l0FileCount":       m.Levels[0].TablesCount,
-		"l0Size":            m.Levels[0].TablesSize,
-		"l1FileCount":       m.Levels[1].TablesCount,
-		"l1Size":            m.Levels[1].TablesSize,
+		"l0FileCount":       m.Levels[0].Tables.Count,
+		"l0Size":            m.Levels[0].Tables.Bytes,
+		"l1FileCount":       m.Levels[1].Tables.Count,
+		"l1Size":            m.Levels[1].Tables.Bytes,
 		"memTableCount":     m.MemTable.Count,
 		"memTableSize":      m.MemTable.Size,
 		"compactionCount":   m.Compact.Count,

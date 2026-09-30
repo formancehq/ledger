@@ -31,8 +31,9 @@ type ValueSeparationConfig struct {
 	RewriteMinimumAge time.Duration `yaml:"rewriteMinimumAge"`
 
 	// TargetGarbageRatio is the fraction of unreferenced data in blob files
-	// before the DB rewrites them. Range [0, 1.0].
-	// 0.20 means rewrite when 20% of blob data is garbage.
+	// before the DB starts rewriting them (Pebble GarbageRatioLowPriority).
+	// Rewrites take priority over regular compactions at twice this ratio.
+	// Range [0, 1.0]. 0.20 means rewrite when 20% of blob data is garbage.
 	// 1.0 disables blob rewriting entirely.
 	// Default: 0.20
 	TargetGarbageRatio float64 `yaml:"targetGarbageRatio"`

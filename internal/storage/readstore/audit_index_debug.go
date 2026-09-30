@@ -1,7 +1,7 @@
 package readstore
 
 import (
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 )
 
 // DumpAuditIndexKeysForTest returns a copy of every audit-index key currently

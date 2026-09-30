@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"

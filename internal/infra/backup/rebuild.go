@@ -10,7 +10,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 	"github.com/holiman/uint256"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"

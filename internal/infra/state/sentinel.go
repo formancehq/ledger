@@ -8,7 +8,7 @@ import (
 	"slices"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
