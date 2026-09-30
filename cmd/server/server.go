@@ -384,15 +384,30 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 	}()
 
 	// Register before startup: service readiness precedes Fx's signal handler.
-	// Cancellation follows the service runner's bounded graceful shutdown path.
-	commandContext := cmd.Context()
-	ctx, stop := signal.NotifyContext(commandContext, os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	cmd.SetContext(ctx)
-	defer cmd.SetContext(commandContext)
+	// Queue shutdown through Fx without canceling an in-flight OnStart hook.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+	done := make(chan struct{})
+	defer close(done)
+	opts = append(opts, terminationSignals(signals, done))
 
 	// Run the application (handles startup, signal handling, and graceful shutdown)
 	return service.NewWithLogger(logger, opts...).Run(cmd)
+}
+
+func terminationSignals(signals <-chan os.Signal, done <-chan struct{}) fx.Option {
+	return fx.Invoke(func(shutdowner fx.Shutdowner, logger logging.Logger) {
+		go func() {
+			select {
+			case <-signals:
+				if err := shutdowner.Shutdown(); err != nil {
+					logger.Errorf("Failed to request application shutdown: %v", err)
+				}
+			case <-done:
+			}
+		}()
+	})
 }
 
 func LoadConfig(ctx context.Context, cmd *cobra.Command) (*bootstrap.Config, error) {
