@@ -278,7 +278,9 @@ sequenceDiagram
 
 The phase order in the diagram is load-bearing, and the code calls it out: `checkStaleProposal` runs **before** `Preload` (`internal/infra/state/machine.go`, with an explicit *"Phase ordering matters"* comment). A stale proposal must be rejected before it can seed the cache. Note also that `checkStaleProposal` gates **both** `predicted_index` and `cache_epoch` — the two are one gate, not two.
 
-`Machine.Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error` (`internal/infra/state/machine.go`) validates **every** `AttributeCoverage` entry before performing the first `MirrorPreload`. Doing it up front is deliberate: a malformed entry or an unknown `attr_code` discovered halfway through would leave the batch half-applied, and an unvalidated entry would otherwise silently zero-pad its way through `MirrorPreload`.
+`Machine.Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.WriteSession, genByte byte) error` (`internal/infra/state/machine.go`) validates **every** `AttributeCoverage` entry before restoring idempotency or performing the first `MirrorPreload`. It checks the full `uint32` attribute code before narrowing to the cache slot byte, the 16-byte ID, duplicate `(code, ID)` entries, and each seed's typed encoding and existing cache tags in both generations. The generation boundary is checked before idempotency restoration when attributes are present. This ordering ensures a malformed late entry cannot leave valid earlier seeds or idempotency keys partially installed. Idempotency-only plans still restore their keys without a generation boundary.
+
+Admission's coverage-bit construction also checks that every declared attribute need resolves to a plan entry with the expected tag. A missing need or mismatched tag aborts proposal submission instead of silently omitting the coverage bit.
 
 ## Where enforcement happens
 
