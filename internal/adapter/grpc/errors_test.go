@@ -71,6 +71,17 @@ func TestHandlePanic_DoesNotLeakStackToClient(t *testing.T) {
 	require.NotEmpty(t, ended[0].Events())
 }
 
+func TestInvalidCallerAttributionHasNoPublicReasonOrDiagnostic(t *testing.T) {
+	t.Parallel()
+
+	err := &domain.ErrInvalidCallerAttribution{Detail: "principal from internal trust boundary"}
+	st := status.Convert(convertToGRPCError(err, testLogger()))
+
+	require.Equal(t, codes.Internal, st.Code())
+	require.Equal(t, "internal error", st.Message())
+	require.Empty(t, st.Details())
+}
+
 func TestBusinessErrorToGRPCStatus_LedgerAlreadyExists(t *testing.T) {
 	t.Parallel()
 

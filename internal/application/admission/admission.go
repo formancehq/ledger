@@ -502,7 +502,7 @@ func (a *Admission) Admit(ctx context.Context, req *commonpb.ApplyRequest) (resp
 			return nil, fmt.Errorf("resolving caller attribution: %w", err)
 		}
 
-		return nil, &domain.BusinessError{Err: invalid}
+		return nil, invalid
 	}
 
 	if err := a.writeGate.CheckWritesAllowed(); err != nil {

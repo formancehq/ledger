@@ -550,7 +550,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 					ret.Results = append(ret.Results, ApplyResult{
 						ProposalID:   cmd.GetId(),
 						AppliedIndex: entryIndex,
-						Error:        &domain.BusinessError{Err: invalid},
+						Error:        invalid,
 					})
 
 					continue

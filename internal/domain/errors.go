@@ -155,10 +155,12 @@ type Describable interface {
 // duplicate of the key — and the API edge, which publishes it as the
 // ErrorInfo/response payload.
 //
-// Every error the FSM can emit must satisfy it, which is why the apply path
+// Every auditable FSM error must satisfy it, which is why the order apply path
 // types its returns as SerializableError: an error that cannot serialise its
-// context cannot reach the audit chain. An error raised outside the FSM adopts
-// the tier only when it actually has context to publish.
+// context cannot reach the audit chain. A malformed caller-attribution guard
+// rejects a committed entry before order apply and before audit capture. An
+// error raised outside the FSM adopts this tier only when it has context to
+// publish.
 //
 // API adapters read the presentation through PublicErrorDetails, so a type with
 // sensitive diagnostic context can publish a separate view; audit projections
@@ -314,7 +316,6 @@ const (
 	ErrReasonSequenceExhausted             = "SEQUENCE_EXHAUSTED"
 	ErrReasonMetadataLimitExceeded         = "METADATA_LIMIT_EXCEEDED"
 	ErrReasonRevertTargetCreatedInBatch    = "REVERT_TARGET_CREATED_IN_BATCH"
-	ErrReasonInvalidCallerAttribution      = "INVALID_CALLER_ATTRIBUTION"
 
 	// ErrReasonWritesBlockedDiskFull signals that the write gate rejected the
 	// request because disk usage is at or above the configured block threshold.
@@ -1835,7 +1836,10 @@ func (e *ErrInvalidExecutionPlan) Metadata() map[string]string {
 
 // ErrInvalidCallerAttribution means a write reached admission or the FSM
 // without a complete, canonical caller principal. This is a server-side trust
-// boundary violation rather than a client-correctable payload error.
+// boundary violation rather than a client-correctable payload error. It is
+// Classifiable for transport routing but has no public reason or audit failure:
+// admission rejects it before proposing, and the FSM rejects a malformed
+// committed entry before any business-state or audit mutation.
 type ErrInvalidCallerAttribution struct {
 	Detail string
 }
@@ -1844,10 +1848,6 @@ func (e *ErrInvalidCallerAttribution) Error() string {
 	return "invalid caller attribution: " + e.Detail
 }
 func (*ErrInvalidCallerAttribution) Kind() ErrorKind { return KindInternal }
-func (*ErrInvalidCallerAttribution) Reason() string  { return ErrReasonInvalidCallerAttribution }
-func (e *ErrInvalidCallerAttribution) Metadata() map[string]string {
-	return map[string]string{"detail": e.Detail}
-}
 
 // ErrExecutionPlanTooLarge is raised by plan.Builder.Build when the
 // aggregated ExecutionPlan exceeds the configured cap. The cap is a

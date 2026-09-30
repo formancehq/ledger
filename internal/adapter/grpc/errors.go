@@ -39,13 +39,17 @@ var errEnvelopesRequired = &validationError{msg: "at least one envelope is requi
 // The ErrorInfo detail is attached only when the error also owns a public wire
 // contract. An error that is merely Classifiable has no stable Reason for a
 // client to match, so inventing one here would ship a wire identifier the type
-// never committed to; it reaches the client as the right code and message with
-// no ErrorInfo.
+// never committed to; it reaches the client without ErrorInfo. Internal-only
+// errors keep their diagnostic message on the server and return a generic one.
 func classifiableToGRPCStatus(c domain.Classifiable) *status.Status {
 	code := grpcerr.CodeForKind(c.Kind())
 
 	d, ok := c.(domain.Describable)
 	if !ok {
+		if c.Kind() == domain.KindInternal {
+			return status.New(code, "internal error")
+		}
+
 		return status.New(code, c.Error())
 	}
 

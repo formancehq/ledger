@@ -10,6 +10,10 @@ replication, bootstrap, snapshot, and storage protocols remain private.
 
 The nested Go module at `pkg/client/v3` contains generated bindings, the six
 source `.proto` files, `proto/ledger-public.protoset`, and `contract.json`.
+Caller-attribution trust-boundary violations have no public `ErrorReason`:
+admission rejects them before proposing, and the FSM rejects malformed
+committed entries before audit or business-state mutation. The server reports
+only a generic `Internal` status to callers and retains details in diagnostics.
 `contract.json` binds its client version to the descriptor SHA-256, compiled
 service protocol revision, and server versions known to be compatible when
 the client is published. `misc/release/public-client.json` records the exact
