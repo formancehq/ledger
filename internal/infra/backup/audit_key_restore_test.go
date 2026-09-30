@@ -118,9 +118,9 @@ func TestAuditKeyFullIncrementalRestoreAcrossClusterIDs(t *testing.T) {
 		}
 	}
 	require.NoError(t, attributes.PrepareForBackup(restored))
-	config := &commonpb.PersistedConfig{NodeId: 1, ClusterId: "cluster-b", StorageSchemaVersion: 5}
+	config := &commonpb.PersistedConfig{NodeId: 1, ClusterId: "cluster-b", StorageSchemaVersion: 2}
 	batch := restored.OpenWriteSession()
-	require.NoError(t, batch.SetProto([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, config))
+	require.NoError(t, batch.SetProto([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, config))
 	require.NoError(t, batch.Commit())
 	keyB, err := query.ReadAuditKey(restored)
 	require.NoError(t, err)
