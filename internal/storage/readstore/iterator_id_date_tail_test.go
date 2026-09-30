@@ -142,6 +142,80 @@ func TestIDDateRangeIterator_SparseCursorGap(t *testing.T) {
 	desc.Close()
 }
 
+func TestIDDateRangeIterator_ManySparseMatchesHaveBoundedTotalVisits(t *testing.T) {
+	t.Parallel()
+	const matches = 200
+	const spacing = 65
+	const rows = 1 + (matches-1)*spacing
+	store, err := New(t.TempDir(), logging.FromContext(logging.TestingContext()), DefaultConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, store.Close()) })
+	kb := dal.NewKeyBuilder()
+	batch := store.NewBatch()
+	for id := uint64(1); id <= rows; id++ {
+		date := uint64(100)
+		if (id-1)%spacing == 0 {
+			date = 5
+		}
+		require.NoError(t, batch.SetBytes(TransactionTimestampKey(kb, "ledger", date, id), nil))
+		var value [8]byte
+		binary.BigEndian.PutUint64(value[:], date)
+		require.NoError(t, batch.SetBytes(IDDateKey(kb, PrefixTransactionTimestampByID, "ledger", id), value[:]))
+		if id%5_000 == 0 {
+			require.NoError(t, batch.Commit())
+			batch = store.NewBatch()
+		}
+	}
+	require.NoError(t, batch.Commit())
+	prefix := TransactionTimestampRangePrefix(kb, "ledger")
+	lower := append(append([]byte(nil), prefix...), EncodeTxID(nil, 5)...)
+	upper := append(append([]byte(nil), prefix...), EncodeTxID(nil, 6)...)
+	idPrefix := IDDatePrefix(kb, PrefixTransactionTimestampByID, "ledger")
+	for _, cursor := range []bool{false, true} {
+		if cursor {
+			asc, err := NewIDDateRangeIterator[Asc](store.DB(), idPrefix, lower, upper, len(prefix)+8, 5, 6, true, true, false, 0)
+			require.NoError(t, err)
+			items, more, err := PaginateForward(asc, matches-1, EncodeTxID(nil, 1))
+			require.NoError(t, err)
+			require.False(t, more)
+			require.Len(t, items, matches-1)
+			require.Less(t, asc.dateRowsVisited+uint64(asc.iter.Stats().ForwardStepCount[pebble.InterfaceCall]), uint64(15_000))
+			require.True(t, asc.fallbackUsed)
+			asc.Close()
+
+			desc, err := NewIDDateRangeIterator[Desc](store.DB(), idPrefix, lower, upper, len(prefix)+8, 5, 6, true, true, false, 0)
+			require.NoError(t, err)
+			items, more, err = PaginateReverse(desc, matches-1, EncodeTxID(nil, rows))
+			require.NoError(t, err)
+			require.False(t, more)
+			require.Len(t, items, matches-1)
+			require.Less(t, desc.dateRowsVisited+uint64(desc.iter.Stats().ReverseStepCount[pebble.InterfaceCall]), uint64(15_000))
+			require.True(t, desc.fallbackUsed)
+			desc.Close()
+		} else {
+			asc, err := NewIDDateRangeIterator[Asc](store.DB(), idPrefix, lower, upper, len(prefix)+8, 5, 6, true, true, false, 0)
+			require.NoError(t, err)
+			items, more, err := PaginateForward(asc, matches, nil)
+			require.NoError(t, err)
+			require.False(t, more)
+			require.Len(t, items, matches)
+			require.Less(t, asc.dateRowsVisited+uint64(asc.iter.Stats().ForwardStepCount[pebble.InterfaceCall]), uint64(15_000))
+			require.True(t, asc.fallbackUsed)
+			asc.Close()
+
+			desc, err := NewIDDateRangeIterator[Desc](store.DB(), idPrefix, lower, upper, len(prefix)+8, 5, 6, true, true, false, 0)
+			require.NoError(t, err)
+			items, more, err = PaginateReverse(desc, matches, nil)
+			require.NoError(t, err)
+			require.False(t, more)
+			require.Len(t, items, matches)
+			require.Less(t, desc.dateRowsVisited+uint64(desc.iter.Stats().ReverseStepCount[pebble.InterfaceCall]), uint64(15_000))
+			require.True(t, desc.fallbackUsed)
+			desc.Close()
+		}
+	}
+}
+
 func BenchmarkIDDateRangeNarrowTail(b *testing.B) {
 	for _, rows := range []uint64{10_000, 100_000} {
 		b.Run(fmt.Sprintf("rows=%d", rows), func(b *testing.B) {

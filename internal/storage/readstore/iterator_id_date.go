@@ -30,6 +30,8 @@ type IDDateRangeIterator[D Direction] struct {
 	firstID, lastID      []byte
 	extremaKnown         bool
 	unmatched            int
+	fallbackUsed         bool
+	dateRowsVisited      uint64
 	started, exhausted   bool
 	err                  error
 }
@@ -165,7 +167,10 @@ func (it *IDDateRangeIterator[D]) findMatch() bool {
 			return true
 		}
 		it.unmatched++
-		if it.unmatched >= idDateUnmatchedLimit {
+		// One bounded date scan can skip a sparse gap. Repeating that scan
+		// for every gap would make a large page quadratic in its matches.
+		if !it.fallbackUsed && it.unmatched >= idDateUnmatchedLimit {
+			it.fallbackUsed = true
 			first, last, next, ok := it.dateIDs(id)
 			if !ok {
 				it.exhausted = true
@@ -215,6 +220,7 @@ func (it *IDDateRangeIterator[D]) dateIDs(after []byte) ([]byte, []byte, []byte,
 	defer rangeIter.Close()
 	var first, last, next []byte
 	for rangeIter.Next() {
+		it.dateRowsVisited++
 		candidate := rangeIter.Current()
 		if first == nil || bytes.Compare(candidate, first) < 0 {
 			first = append(first[:0], candidate...)

@@ -218,9 +218,10 @@ ID-first walk at the appropriate end. The extrema stop the page-size lookahead
 at the last matching ID, so a narrow window does not walk unrelated history.
 This initial scan is linear in the date-window matches and keeps two IDs. A
 cursor page seeks directly into the ID-first view; after 64 unrelated IDs it
-consults the bounded date view once to find the next matching ID (or prove
-exhaustion), avoiding both sparse gaps and an unbounded empty tail. There is
-no server-side cursor state. This is exact even when mirror dates
+may consult the bounded date view once to find the next matching ID (or prove
+exhaustion). That fallback is limited to one scan per iterator, so a page with
+many sparse matches cannot repeatedly drain the date window. Later gaps use
+the ID-first view. There is no server-side cursor state. This is exact even when mirror dates
 invert relative to IDs. Both views come from one index snapshot; the
 reverted-at companion value carries the same fold stamp and pin gate as the
 date-first row. The public ID ordering and exclusive ID cursor are unchanged.
