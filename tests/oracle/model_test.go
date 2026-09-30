@@ -741,6 +741,20 @@ func TestGlobalState_Apply_PersistedZeroVolumeIsNotNewAgain(t *testing.T) {
 	require.Empty(t, logs[1].NewKeptVolumes)
 }
 
+func TestGlobalState_Apply_AccountTypePurgeAnnotatesPersistedZeroVolume(t *testing.T) {
+	t.Parallel()
+
+	seeded := NewGlobalState().Apply(bulkOf(oracletest.TxReq("world", "e:1", "USD", 0)))
+	require.True(t, seeded.OK)
+
+	purged := seeded.State.Apply(bulkOf(oracletest.AddTypeReqP("e", commonpb.AccountTypePersistence_ACCOUNT_TYPE_EPHEMERAL)))
+	require.True(t, purged.OK)
+
+	logs := purged.State.Ledger("L").LogRows()
+	require.Len(t, logs, 2)
+	require.Equal(t, "e:1:USD:", logs[1].PurgedVolumes)
+}
+
 // The volume annotations are part of a state's identity: the same transactions
 // grouped into different bulks leave identical volumes and identical logs, yet
 // the FSM annotates them differently. A fingerprint that collapsed the two
