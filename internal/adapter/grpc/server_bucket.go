@@ -638,10 +638,8 @@ func (impl *BucketServiceServerImpl) GetPrimaryMetrics(ctx context.Context, req 
 		return servicepb.NewBucketServiceClient(conn).GetPrimaryMetrics(ctx, req)
 	}
 
-	// Get metrics from the primary store directly. The protobuf envelope retains
-	// its original name for wire compatibility.
-	metrics, ok := impl.store.GetMetrics().(*servicepb.PebbleMetrics)
-	if !ok {
+	metrics := impl.store.GetMetrics()
+	if metrics == nil {
 		return &servicepb.GetPrimaryMetricsResponse{
 			Available: false,
 		}, nil

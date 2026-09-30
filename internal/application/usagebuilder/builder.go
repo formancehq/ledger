@@ -4,7 +4,7 @@
 // (postings, reverts, numscript executions, references).
 //
 // The projection is not part of the FSM authoritative state — it lives in a
-// dedicated secondary Pebble instance (usagestore) and is rebuildable from
+// dedicated secondary RocksDB instance (usagestore) and is rebuildable from
 // cursor=0 on demand.
 //
 // The subsystem reads from the audit chain (AuditEntry + AuditItem in
@@ -12,7 +12,7 @@
 // raw serialized order — the only place where the Numscript reference
 // survives past apply (the log's CreatedTransaction payload does not).
 // For posting/revert counts, we fetch the specific log referenced by
-// AuditItem.LogSequence — a single Get on the hot Pebble cache.
+// AuditItem.LogSequence — a single Get on the hot storage cache.
 //
 // Runs on every node; each replica maintains its own cursor (last consumed
 // audit sequence). Eventually consistent with the FSM: reads may lag by up
@@ -37,7 +37,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
-// DefaultBatchSize is the default number of audit entries per Pebble batch commit.
+// DefaultBatchSize is the default number of audit entries per RocksDB batch commit.
 const DefaultBatchSize = 200
 
 // TickInterval is the steady-state polling interval. Same rationale as the
@@ -52,7 +52,7 @@ const TickInterval = 100 * time.Millisecond
 const flushInterval = 30 * time.Second
 
 // catchUpBudget bounds how long a single processAuditEntries invocation
-// holds a Pebble snapshot during boot-time catch-up. Between slices the
+// holds a primary-store snapshot during boot-time catch-up. Between slices the
 // snapshot is released so compactions can proceed on long-history stores.
 const catchUpBudget = 5 * time.Second
 
@@ -60,7 +60,7 @@ const catchUpBudget = 5 * time.Second
 // Runs as a background goroutine on all nodes (not leader-only). Progress is
 // stored in the usagestore itself under [0xFE][0x01].
 type Builder struct {
-	pebbleStore   *dal.Store
+	primaryStore  *dal.Store
 	usageStore    *usagestore.Store
 	notifications *signal.Notifications
 	logger        logging.Logger
@@ -83,11 +83,11 @@ type Builder struct {
 
 	// lastProcessedAuditSeq mirrors usagestore.ReadProgress() and is
 	// updated on every successful commit — the atomic hint lets external
-	// readers (metrics, tests) avoid a Pebble Get.
+	// readers (metrics, tests) avoid a storage Get.
 	lastProcessedAuditSeq atomic.Uint64
-	// pebbleLastAuditSeq is the highest audit sequence in the main store,
+	// auditLastSeq is the highest audit sequence in the main store,
 	// resampled on each tick for the lag gauge.
-	pebbleLastAuditSeq atomic.Uint64
+	auditLastSeq atomic.Uint64
 
 	tw  *tailworker.TailWorker
 	reg metric.Registration
@@ -97,7 +97,7 @@ type Builder struct {
 // constructor rather than a setter to keep the fx graph explicit — see
 // feedback_constructor_injection in the project memory.
 func NewBuilder(
-	pebbleStore *dal.Store,
+	primaryStore *dal.Store,
 	usageStore *usagestore.Store,
 	notifications *signal.Notifications,
 	logger logging.Logger,
@@ -109,7 +109,7 @@ func NewBuilder(
 	}
 
 	return &Builder{
-		pebbleStore:   pebbleStore,
+		primaryStore:  primaryStore,
 		usageStore:    usageStore,
 		notifications: notifications,
 		logger:        logger.WithFields(map[string]any{"cmp": "usage-builder"}),
@@ -123,7 +123,7 @@ func NewBuilder(
 // Start launches the background tail loop and registers OTEL gauges.
 func (b *Builder) Start() {
 	if reg, err := tailworker.RegisterTailGauges(
-		b.meter, "usage.builder", "audit", &b.lastProcessedAuditSeq, &b.pebbleLastAuditSeq,
+		b.meter, "usage.builder", "audit", &b.lastProcessedAuditSeq, &b.auditLastSeq,
 	); err == nil {
 		b.reg = reg
 	}
@@ -159,15 +159,15 @@ func (b *Builder) Stop() {
 
 // LastProcessedAuditSequence returns the last audit sequence consumed
 // (atomic hint — same value as usagestore.ReadProgress but without a
-// Pebble Get). Exposed for tests and health checks.
+// storage Get). Exposed for tests and health checks.
 func (b *Builder) LastProcessedAuditSequence() uint64 {
 	return b.lastProcessedAuditSeq.Load()
 }
 
-// PebbleLastAuditSequence returns the last known main-store audit sequence
+// StorageLastAuditSequence returns the last known main-store audit sequence
 // (atomic hint refreshed each tick).
-func (b *Builder) PebbleLastAuditSequence() uint64 {
-	return b.pebbleLastAuditSeq.Load()
+func (b *Builder) StorageLastAuditSequence() uint64 {
+	return b.auditLastSeq.Load()
 }
 
 func (b *Builder) currentTime() time.Time {
@@ -220,25 +220,25 @@ func (b *Builder) boot(ctx context.Context) error {
 	b.lastFlushedAuditSeq = cursor
 	b.lastFlushAt = b.currentTime()
 
-	pebbleLast, sampleErr := b.sampleAuditHead()
+	auditLast, sampleErr := b.sampleAuditHead()
 	if sampleErr == nil {
-		b.pebbleLastAuditSeq.Store(pebbleLast)
+		b.auditLastSeq.Store(auditLast)
 
 		// Rollback detection before the catch-up: if the primary store was
 		// restored beneath the persisted cursor, drop the projection and rewind
 		// to 0 so the fold below replays into a clean store.
-		if cursor, err = b.resetIfRolledBack(cursor, pebbleLast); err != nil {
+		if cursor, err = b.resetIfRolledBack(cursor, auditLast); err != nil {
 			return err
 		}
 	}
 
 	b.logger.WithFields(map[string]any{
-		"cursor":     cursor,
-		"pebbleLast": pebbleLast,
-		"gap":        int64(pebbleLast) - int64(cursor),
+		"cursor":    cursor,
+		"auditLast": auditLast,
+		"gap":       int64(auditLast) - int64(cursor),
 	}).Infof("Usage builder started")
 
-	// Initial catch-up — time-bounded slices so the Pebble snapshot is
+	// Initial catch-up — time-bounded slices so the storage snapshot is
 	// released between passes. Larger batch size so bootstrap commits are
 	// coalesced.
 	prevCursor := cursor
@@ -302,7 +302,7 @@ func (b *Builder) tick(ctx context.Context) error {
 	cursor := b.lastProcessedAuditSeq.Load()
 
 	if last, err := b.sampleAuditHead(); err == nil {
-		b.pebbleLastAuditSeq.Store(last)
+		b.auditLastSeq.Store(last)
 
 		if cursor, err = b.resetIfRolledBack(cursor, last); err != nil {
 			return err
@@ -358,7 +358,7 @@ func (b *Builder) resetIfRolledBack(cursor, auditHead uint64) (uint64, error) {
 // head. The handle is closed immediately so RestoreCheckpoint's write lock
 // is not blocked during idle ticks.
 func (b *Builder) sampleAuditHead() (uint64, error) {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	if err != nil {
 		return 0, err
 	}

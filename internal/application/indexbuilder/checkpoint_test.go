@@ -23,18 +23,18 @@ func newCheckpointTestBuilder(t *testing.T) *Builder {
 	dataDir := t.TempDir()
 	meter := noop.NewMeterProvider().Meter("test")
 
-	pebbleStore, err := dal.NewStore(dataDir, logging.NopZap(), meter, dal.DefaultConfig())
+	primaryStore, err := dal.NewStore(dataDir, logging.NopZap(), meter, dal.DefaultConfig())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = pebbleStore.Close() })
+	t.Cleanup(func() { _ = primaryStore.Close() })
 
 	readStore, err := readstore.New(filepath.Join(dataDir, "readindex-root"), logging.NopZap(), readstore.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = readStore.Close() })
 
 	return &Builder{
-		pebbleStore: pebbleStore,
-		readStore:   readStore,
-		logger:      logging.NopZap(),
+		primaryStore: primaryStore,
+		readStore:    readStore,
+		logger:       logging.NopZap(),
 	}
 }
 
@@ -49,7 +49,7 @@ func TestCreateReadIndexCheckpointWritesReadyMarker(t *testing.T) {
 	const cpID = uint64(7)
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
-	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	dir := b.primaryStore.QueryCheckpointReadIndexDir(cpID)
 	require.True(t, dal.CheckpointDirReady(dir), "readiness marker must exist after creation")
 
 	ro, err := readstore.OpenReadOnly(dir, logging.NopZap())
@@ -67,7 +67,7 @@ func TestCreateReadIndexCheckpointRebuildsUnmarkedDir(t *testing.T) {
 	b := newCheckpointTestBuilder(t)
 
 	const cpID = uint64(11)
-	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	dir := b.primaryStore.QueryCheckpointReadIndexDir(cpID)
 
 	// Simulate a stale, markerless directory left by a crashed prior attempt.
 	require.NoError(t, os.MkdirAll(dir, 0o750))
@@ -98,7 +98,7 @@ func TestCreateReadIndexCheckpointLeavesNoTempDir(t *testing.T) {
 	const cpID = uint64(13)
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
-	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	finalDir := b.primaryStore.QueryCheckpointReadIndexDir(cpID)
 	require.True(t, dal.CheckpointDirReady(finalDir))
 
 	_, err := os.Stat(finalDir + ".tmp")
@@ -115,7 +115,7 @@ func TestCreateReadIndexCheckpointNoopWhenReady(t *testing.T) {
 	const cpID = uint64(17)
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
-	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	dir := b.primaryStore.QueryCheckpointReadIndexDir(cpID)
 	// Drop a sentinel; a no-op second call must leave it untouched.
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "sentinel"), nil, 0o640))
 
@@ -135,7 +135,7 @@ func TestCreateReadIndexCheckpointClearsStaleTempDir(t *testing.T) {
 	b := newCheckpointTestBuilder(t)
 
 	const cpID = uint64(19)
-	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	finalDir := b.primaryStore.QueryCheckpointReadIndexDir(cpID)
 	tmpDir := finalDir + ".tmp"
 
 	// Simulate a stale temp dir left by a crash mid-materialization.
@@ -159,7 +159,7 @@ func TestDeleteReadIndexCheckpoint(t *testing.T) {
 	const cpID = uint64(23)
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
 
-	dir := b.pebbleStore.QueryCheckpointReadIndexDir(cpID)
+	dir := b.primaryStore.QueryCheckpointReadIndexDir(cpID)
 	require.True(t, dal.CheckpointDirReady(dir))
 
 	b.deleteReadIndexCheckpoint(cpID)
@@ -178,13 +178,13 @@ func TestDeleteReadIndexCheckpointDefersRemovalForAcquiredReader(t *testing.T) {
 
 	const cpID = uint64(29)
 	require.NoError(t, b.createReadIndexCheckpoint(cpID, 0))
-	release, acquired := b.pebbleStore.AcquireQueryCheckpoint(cpID)
+	release, acquired := b.primaryStore.AcquireQueryCheckpoint(cpID)
 	require.True(t, acquired)
 
 	b.deleteReadIndexCheckpoint(cpID)
-	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(cpID)))
+	require.True(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(cpID)))
 
 	release()
-	_, err := os.Stat(b.pebbleStore.QueryCheckpointReadIndexDir(cpID))
+	_, err := os.Stat(b.primaryStore.QueryCheckpointReadIndexDir(cpID))
 	require.True(t, os.IsNotExist(err))
 }

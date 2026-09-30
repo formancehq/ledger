@@ -319,7 +319,7 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 		{"ghost", orphanID}, // orphan: no indexConfig entry
 	}
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	for _, s := range seeds {
 		k := domain.IndexKey{LedgerName: s.ledger, Canonical: indexes.Canonical(s.id)}.Bytes()
 		_, err := b.attrs.Index.Set(fsmBatch, k, &commonpb.Index{
@@ -333,7 +333,7 @@ func TestLoadIndexRegistry_StreamsAndDispatches(t *testing.T) {
 	b.putVersionState("ledgerA", indexes.Canonical(roleID), readstore.IndexVersionState{PendingVersion: 1})
 	b.putVersionState("ledgerB", indexes.Canonical(categoryID), readstore.IndexVersionState{PendingVersion: 1})
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = handle.Close() })
 
@@ -392,7 +392,7 @@ func TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill(t *testing.T) {
 		{"fresh", assetID},
 	}
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	for _, s := range seeds {
 		k := domain.IndexKey{LedgerName: s.ledger, Canonical: indexes.Canonical(s.id)}.Bytes()
 		_, err := b.attrs.Index.Set(fsmBatch, k, &commonpb.Index{
@@ -408,7 +408,7 @@ func TestLoadIndexRegistry_SkipsCompletedBuiltinBackfill(t *testing.T) {
 	b.putVersionState("done", indexes.Canonical(assetID), readstore.IndexVersionState{CurrentVersion: 1, PendingVersion: 0})
 	b.putVersionState("fresh", indexes.Canonical(assetID), readstore.IndexVersionState{CurrentVersion: 0, PendingVersion: 1})
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = handle.Close() })
 
@@ -905,14 +905,14 @@ func newTestBuilderWithStore(t *testing.T) *Builder {
 	t.Cleanup(func() { _ = fsm.Close() })
 
 	return &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
-		pebbleStore: fsm,
-		attrs:       attributes.New(),
-		kb:          dal.NewKeyBuilder(),
-		wb:          readstore.NewWriteBatch(),
-		accounts:    make(map[string]struct{}, 64),
-		logger:      noopLogger{},
+		indexConfig:  make(map[string]*ledgerIndexConfig),
+		readStore:    store,
+		primaryStore: fsm,
+		attrs:        attributes.New(),
+		kb:           dal.NewKeyBuilder(),
+		wb:           readstore.NewWriteBatch(),
+		accounts:     make(map[string]struct{}, 64),
+		logger:       noopLogger{},
 	}
 }
 
@@ -944,7 +944,7 @@ func (b *Builder) seedActiveBatch(t *testing.T) *dal.WriteSession {
 func (b *Builder) seedBatchSchema(t *testing.T) {
 	t.Helper()
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = handle.Close() })
@@ -1003,7 +1003,7 @@ func TestInitIndexConfig_ResumesRewriteFromPendingVersion(t *testing.T) {
 	// IndexVersionState entry). LedgerInfo lives under
 	// ZoneGlobal+SubGlobLedgerInfo (state.SaveLedger) and the Index
 	// row lives in the bucket-scoped SubAttrIndex zone (registry).
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{
@@ -1075,7 +1075,7 @@ func TestInitIndexConfig_CurrentZeroPendingResumesOnlyBackfill(t *testing.T) {
 	require.NoError(t, b.readStore.WriteBackfillProgress(progressBatch, backfillKey, 77))
 	require.NoError(t, progressBatch.Commit())
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{
@@ -1147,7 +1147,7 @@ func TestRetypeDuringBackfill_CursorResetSurvivesRestart(t *testing.T) {
 	require.NoError(t, b.readStore.WriteBackfillProgress(progressBatch, backfillKey, 77))
 	require.NoError(t, progressBatch.Commit())
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{
@@ -1233,7 +1233,7 @@ func TestInitIndexConfig_ResumeBeforeFirstBatch_TypeFromVersionState(t *testing.
 	}))
 	require.NoError(t, stateBatch.Commit())
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
 	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
@@ -1288,7 +1288,7 @@ func TestInitIndexConfig_ResumeCursorTypeMismatch_RestartsUnderPendingType(t *te
 	require.NoError(t, b.readStore.WriteBackfillCursor(cursorBatch, rewriteBBKey, val))
 	require.NoError(t, cursorBatch.Commit())
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 	indexKey := domain.IndexKey{LedgerName: ledger, Canonical: canonical}.Bytes()
 	_, err := b.attrs.Index.Set(fsmBatch, indexKey, &commonpb.Index{
@@ -1340,7 +1340,7 @@ func TestInitIndexConfig_PropagatesReadError(t *testing.T) {
 
 	// Close the FSM store so the first boot read (NewDirectReadHandle)
 	// fails. This is the error-injection seam — no mock store exists.
-	require.NoError(t, b.pebbleStore.Close())
+	require.NoError(t, b.primaryStore.Close())
 
 	err := b.initIndexConfig(context.Background())
 	require.Error(t, err, "a boot read failure must propagate, not be swallowed")
@@ -1366,7 +1366,7 @@ func TestInitIndexConfig_IdempotentAcrossRetries(t *testing.T) {
 	// it and the index is not dropped as an orphan) and an Index
 	// registry entry with no version state, so loadIndexRegistry defers it
 	// instead of guessing whether a backfill is needed.
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{

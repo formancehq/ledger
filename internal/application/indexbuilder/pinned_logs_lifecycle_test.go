@@ -63,7 +63,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 			}},
 		})
 	}
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, 4))
@@ -71,7 +71,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	foldCursor, err := b.processLogs(t.Context(), 0, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), foldCursor)
-	c := ctrl.NewDefaultController(nil, b.pebbleStore, b.logger, b.attrs, b.readStore, nil, noop.NewMeterProvider().Meter("pinned-logs"))
+	c := ctrl.NewDefaultController(nil, b.primaryStore, b.logger, b.attrs, b.readStore, nil, noop.NewMeterProvider().Meter("pinned-logs"))
 	baseline, err := c.ListLogs(query.WithReadBarrierHorizon(t.Context(), 4), ledger, 0, 3, nil)
 	require.NoError(t, err)
 	baselineLogs, err := cursor.Collect(baseline)
@@ -91,7 +91,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 	// A committed Raft entry without a native log is a valid production state.
 	// It makes alignment wait, providing a deterministic pause after opening
 	// the pre-deletion main snapshot without modifying production code.
-	batch = b.pebbleStore.OpenWriteSession()
+	batch = b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SetAppliedIndex(batch, 5))
 	require.NoError(t, batch.Commit())
 	deadlineCtx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
@@ -131,7 +131,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 
 	// Commit the real deletion representation, then run the actual indexbuilder
 	// deletion branch. The query's main snapshot must still see the old ledger.
-	batch = b.pebbleStore.OpenWriteSession()
+	batch = b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger, DeletedAt: &commonpb.Timestamp{Data: 6}}))
 	require.NoError(t, state.DeleteLedgerData(batch, ledger))
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
@@ -168,7 +168,7 @@ func TestListLogsRejectsLedgerDeletedDuringAlignment(t *testing.T) {
 
 	// The current ledger is absent while the fully acquired cursor above still
 	// served its pinned logs. Only the read straddling alignment must reject.
-	live, err := b.pebbleStore.NewReadHandle()
+	live, err := b.primaryStore.NewReadHandle()
 	require.NoError(t, err)
 	_, liveErr := query.GetLedgerByName(t.Context(), live, ledger)
 	require.NoError(t, live.Close())

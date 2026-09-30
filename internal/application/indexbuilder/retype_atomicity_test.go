@@ -55,7 +55,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 	require.NoError(t, b.readStore.WriteBackfillProgress(progressBatch, backfillKey, 77))
 	require.NoError(t, progressBatch.Commit())
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{
@@ -96,7 +96,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
 		PutUint64(2).
 		Build()
-	corruptBatch := b.pebbleStore.OpenWriteSession()
+	corruptBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, corruptBatch.SetBytes(corruptProposalKey, []byte{0x80}))
 	require.NoError(t, corruptBatch.Commit())
 
@@ -121,7 +121,7 @@ func TestRetypeDuringBackfill_FailedFoldRollsBackThenRetriesAndRestarts(t *testi
 	assert.Equal(t, uint64(77), persistedCursor,
 		"failed fold must retain the durable cursor paired with pending v1")
 
-	repairBatch := b.pebbleStore.OpenWriteSession()
+	repairBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, repairBatch.SetProto(corruptProposalKey, &proposalpb.AppliedProposal{Sequence: 2}))
 	require.NoError(t, repairBatch.Commit())
 

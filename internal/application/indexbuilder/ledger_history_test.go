@@ -940,7 +940,7 @@ func TestCreateIndexTrackerAndVersionRollbackTogether(t *testing.T) {
 		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).
 		PutUint64(3).
 		Build()
-	corrupt := b.pebbleStore.OpenWriteSession()
+	corrupt := b.primaryStore.OpenWriteSession()
 	require.NoError(t, corrupt.SetBytes(corruptKey, []byte{0x80}))
 	require.NoError(t, corrupt.Commit())
 
@@ -957,7 +957,7 @@ func TestCreateIndexTrackerAndVersionRollbackTogether(t *testing.T) {
 	assert.Zero(t, persistedCursor)
 	assert.NotContains(t, b.indexConfig, ledger)
 
-	repair := b.pebbleStore.OpenWriteSession()
+	repair := b.primaryStore.OpenWriteSession()
 	require.NoError(t, repair.SetProto(corruptKey, &proposalpb.AppliedProposal{Sequence: 3}))
 	require.NoError(t, repair.Commit())
 	cursor, err = b.processLogs(context.Background(), 0, time.Time{})
@@ -1149,12 +1149,12 @@ func TestEmptyLogDateFastPathIncludesEarlierControlLogs(t *testing.T) {
 			if mode == "restart" {
 				// A new builder owns no prior in-memory history/config. Recover only
 				// committed read-store state through the real boot path.
-				mainBatch := b.pebbleStore.OpenWriteSession()
+				mainBatch := b.primaryStore.OpenWriteSession()
 				require.NoError(t, state.SaveLedger(mainBatch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 				require.NoError(t, mainBatch.Commit())
 				restarted := newTestBuilderWithStore(t)
 				restarted.readStore = b.readStore
-				restarted.pebbleStore = b.pebbleStore
+				restarted.primaryStore = b.primaryStore
 				restarted.batchSize = DefaultBatchSize
 				restarted.notifications = signal.NewNotifications()
 				b = restarted
@@ -1362,7 +1362,7 @@ func TestHistoricalDeletePurgeSupportsEveryTransactionBuiltin(t *testing.T) {
 func persistLedgerAndIndexRegistry(t *testing.T, b *Builder, ledger string, id *commonpb.IndexID) {
 	t.Helper()
 
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(batch, ledger, &commonpb.LedgerInfo{Name: ledger}))
 	_, err := b.attrs.Index.Set(batch, domain.IndexKey{LedgerName: ledger, Canonical: indexes.Canonical(id)}.Bytes(), &commonpb.Index{
 		Ledger:                 ledger,

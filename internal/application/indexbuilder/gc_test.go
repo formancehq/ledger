@@ -569,7 +569,7 @@ func TestInitIndexConfig_PurgesOrphanVersionsOnBoot(t *testing.T) {
 	// (state.SaveLedger); the Index row lives in the bucket-scoped
 	// SubAttrIndex zone (registry).
 	id := indexes.MetadataID(commonpb.TargetType_TARGET_TYPE_ACCOUNT, key)
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 	}))

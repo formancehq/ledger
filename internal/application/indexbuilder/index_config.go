@@ -74,7 +74,7 @@ func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.KV
 	b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
 	b.pendingLedgerDeletes = make(map[string]struct{})
 
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.primaryStore.NewReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for index config: %w", err)
 	}

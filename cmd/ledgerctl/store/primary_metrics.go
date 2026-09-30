@@ -73,42 +73,41 @@ func runPrimaryMetrics(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
-// printFormattedMetrics shows only values with direct RocksDB equivalents. The
-// protobuf envelope still carries legacy fields for wire compatibility, but
-// their zero values do not mean RocksDB measured zero.
-func printFormattedMetrics(m *servicepb.PebbleMetrics) {
-	if cache := m.GetBlockCache(); cache != nil {
+// printFormattedMetrics shows properties RocksDB actually reported. Optional
+// fields are omitted when RocksDB did not expose the corresponding property.
+func printFormattedMetrics(m *servicepb.StorageMetrics) {
+	if m.BlockCacheUsageBytes != nil {
 		pterm.DefaultSection.Println("Block Cache")
 		_ = pterm.DefaultTable.WithHasHeader().WithData(pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Usage", cmdutil.FormatBytes(uint64(cache.GetSize()))},
+			{"Usage", cmdutil.FormatBytes(m.GetBlockCacheUsageBytes())},
 		}).Render()
 		pterm.Println()
 	}
 
-	if memtable := m.GetMemTable(); memtable != nil {
+	if m.MemtableSizeBytes != nil {
 		pterm.DefaultSection.Println("Memtables")
 		_ = pterm.DefaultTable.WithHasHeader().WithData(pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Current Size", cmdutil.FormatBytes(memtable.GetSize())},
+			{"Current Size", cmdutil.FormatBytes(m.GetMemtableSizeBytes())},
 		}).Render()
 		pterm.Println()
 	}
 
-	if compact := m.GetCompact(); compact != nil {
+	if m.PendingCompactionBytes != nil {
 		pterm.DefaultSection.Println("Compaction")
 		_ = pterm.DefaultTable.WithHasHeader().WithData(pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Estimated Pending Bytes", cmdutil.FormatBytes(compact.GetEstimatedDebt())},
+			{"Estimated Pending Bytes", cmdutil.FormatBytes(m.GetPendingCompactionBytes())},
 		}).Render()
 		pterm.Println()
 	}
 
-	if snapshots := m.GetSnapshots(); snapshots != nil {
+	if m.SnapshotCount != nil {
 		pterm.DefaultSection.Println("Snapshots")
 		_ = pterm.DefaultTable.WithHasHeader().WithData(pterm.TableData{
 			{"METRIC", "VALUE"},
-			{"Count", strconv.Itoa(int(snapshots.GetCount()))},
+			{"Count", strconv.FormatUint(m.GetSnapshotCount(), 10)},
 		}).Render()
 		pterm.Println()
 	}
@@ -119,8 +118,8 @@ func printFormattedMetrics(m *servicepb.PebbleMetrics) {
 		for _, level := range m.GetLevels() {
 			tableData = append(tableData, []string{
 				fmt.Sprintf("L%d", level.GetLevel()),
-				strconv.FormatInt(level.GetNumFiles(), 10),
-				cmdutil.FormatBytes(uint64(level.GetSize())),
+				strconv.FormatUint(level.GetNumFiles(), 10),
+				cmdutil.FormatBytes(level.GetSizeBytes()),
 			})
 		}
 		_ = pterm.DefaultTable.WithHasHeader().WithData(tableData).Render()

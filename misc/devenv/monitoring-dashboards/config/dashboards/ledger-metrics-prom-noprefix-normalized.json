@@ -11577,7 +11577,7 @@
                         "uid": "${datasource}"
                      },
                      "editorMode": "code",
-                     "expr": "index_builder_pebble_last_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
+                     "expr": "index_builder_storage_last_sequence{service_cluster=~\"$cluster\", service_node_id=~\"$node\"}",
                      "legendFormat": "Storage Last ({{service_node_id}})",
                      "range": true,
                      "refId": "B"

@@ -7,8 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
-
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 func TestStore_RegisterMetrics(t *testing.T) {
@@ -33,9 +31,7 @@ func TestStore_GetMetrics(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-	metrics, ok := s.GetMetrics().(*servicepb.PebbleMetrics)
-	require.True(t, ok)
+	metrics := s.GetMetrics()
 	require.NotNil(t, metrics)
-	// The envelope remains compatible; Pebble-only fields are absent.
-	require.Zero(t, metrics.GetDiskSpaceUsage())
+	require.NotNil(t, metrics.BlockCacheUsageBytes)
 }

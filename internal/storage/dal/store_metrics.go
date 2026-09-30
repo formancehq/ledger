@@ -10,10 +10,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// GetMetrics keeps the existing proto envelope for the primary store. Only
-// fields with a direct RocksDB equivalent are populated; absent fields are
-// unavailable Pebble metrics and must not be interpreted as RocksDB zeroes.
-func (s *Store) GetMetrics() any {
+// GetMetrics returns the properties RocksDB makes available for the primary
+// store. A nil optional field means the corresponding property was unavailable.
+func (s *Store) GetMetrics() *servicepb.StorageMetrics {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
 
@@ -25,34 +24,33 @@ func (s *Store) GetMetrics() any {
 	return rocksDBProtoMetrics(db.Raw())
 }
 
-func rocksDBProtoMetrics(db *grocksdb.DB) *servicepb.PebbleMetrics {
-	result := &servicepb.PebbleMetrics{}
-	if size, ok := db.GetIntProperty("rocksdb.block-cache-usage"); ok && size <= math.MaxInt64 {
-		result.BlockCache = &servicepb.BlockCacheMetrics{Size: int64(size)}
+func rocksDBProtoMetrics(db *grocksdb.DB) *servicepb.StorageMetrics {
+	result := &servicepb.StorageMetrics{}
+	if size, ok := db.GetIntProperty("rocksdb.block-cache-usage"); ok {
+		result.BlockCacheUsageBytes = &size
 	}
 	if debt, ok := db.GetIntProperty("rocksdb.estimate-pending-compaction-bytes"); ok {
-		result.Compact = &servicepb.CompactMetrics{EstimatedDebt: debt}
+		result.PendingCompactionBytes = &debt
 	}
 	if size, ok := db.GetIntProperty("rocksdb.cur-size-all-mem-tables"); ok {
-		result.MemTable = &servicepb.MemTableMetrics{Size: size}
+		result.MemtableSizeBytes = &size
 	}
-	if count, ok := db.GetIntProperty("rocksdb.num-snapshots"); ok && count <= math.MaxInt32 {
-		result.Snapshots = &servicepb.SnapshotsMetrics{Count: int32(count)}
+	if count, ok := db.GetIntProperty("rocksdb.num-snapshots"); ok {
+		result.SnapshotCount = &count
 	}
-	// Live SST files do not include WALs or obsolete SSTs, so they cannot
-	// truthfully populate Pebble's DiskSpaceUsage field.
-	levels := map[int]*servicepb.LevelMetrics{}
+
+	levels := map[int]*servicepb.StorageLevelMetrics{}
 	for _, file := range db.GetLiveFilesMetaData() {
-		if file.Level < 0 || file.Level > math.MaxInt32 {
+		if file.Level < 0 || file.Level > math.MaxInt32 || file.Size < 0 {
 			continue
 		}
 		level := levels[file.Level]
 		if level == nil {
-			level = &servicepb.LevelMetrics{Level: int32(file.Level)}
+			level = &servicepb.StorageLevelMetrics{Level: int32(file.Level)}
 			levels[file.Level] = level
 		}
 		level.NumFiles++
-		level.Size += file.Size
+		level.SizeBytes += uint64(file.Size)
 	}
 	for _, level := range slices.Sorted(maps.Keys(levels)) {
 		result.Levels = append(result.Levels, levels[level])

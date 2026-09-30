@@ -47,7 +47,7 @@
   'index.builder.lag': { kind: 'gauge', unit: null },
   'index.builder.last_indexed_sequence': { kind: 'gauge', unit: null },
   'index.builder.logs_indexed_total': { kind: 'gauge', unit: null },
-  'index.builder.pebble_last_sequence': { kind: 'gauge', unit: null },
+  'index.builder.storage_last_sequence': { kind: 'gauge', unit: null },
   'ledger.preload.coverage_miss': { kind: 'counter', unit: '1' },
   'mirror.batch.duration': { kind: 'histogram', unit: 'us' },
   'mirror.batch.total': { kind: 'counter', unit: '1' },

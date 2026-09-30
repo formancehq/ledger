@@ -45,7 +45,7 @@ These are guardrails, not complete explanations. Before changing the affected su
 
 1. **Cache consistency:** the in-memory cache must not diverge between nodes for the same applied index.
 2. **Deterministic FSM:** Raft apply must produce identical results on every node. No randomness, wall-clock-dependent behavior, or node-local state in the FSM apply path. Node-local configuration — including flags, environment variables, startup configuration, and version-dependent defaults — may gate admission, but must never affect how a committed entry is applied. See [the configuration boundary](docs/technical/architecture/subsystems/fsm/deterministic-fsm.md#34-node-local-configuration-and-rolling-upgrades).
-3. **No Pebble reads in the FSM hot path:** apply reads through the cache/command contract; do not introduce storage-read capabilities into the hot path.
+3. **No main-store reads in the FSM hot path:** apply reads through the cache/command contract; do not introduce storage-read capabilities into the hot path.
 4. **Main-store writes are capability-restricted:** new `OpenWriteSession` call sites require an explicitly justified lifecycle path and must satisfy `.golangci.yaml` enforcement.
 5. **Cache entries are not individually evicted:** eviction happens through generation rotation; do not delete individual cache entries outside that mechanism.
 6. **FSM reads require declared coverage/preload:** every cache-keyed FSM read must be authorized by the proposal's declared `plan.Coverage`; never widen the read horizon inside apply.

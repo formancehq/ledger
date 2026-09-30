@@ -347,10 +347,10 @@ func seedAuditData(t testing.TB, store *dal.Store, entries []seedAuditEntry) {
 // batch size (uses a no-op logger).
 func newTestBuilder(primary *dal.Store, usage *usagestore.Store, batchSize int) *Builder {
 	return &Builder{
-		pebbleStore: primary,
-		usageStore:  usage,
-		logger:      logging.NopZap(),
-		batchSize:   batchSize,
+		primaryStore: primary,
+		usageStore:   usage,
+		logger:       logging.NopZap(),
+		batchSize:    batchSize,
 	}
 }
 

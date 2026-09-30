@@ -64,7 +64,7 @@
   // index.builder — internal/application/indexbuilder/builder.go
   index_builder:: {
     last_indexed_sequence: 'index.builder.last_indexed_sequence',
-    pebble_last_sequence: 'index.builder.pebble_last_sequence',
+    storage_last_sequence: 'index.builder.storage_last_sequence',
     lag: 'index.builder.lag',
     logs_indexed_total: 'index.builder.logs_indexed_total',
   },

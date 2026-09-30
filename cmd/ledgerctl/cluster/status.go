@@ -342,16 +342,16 @@ func formatIndexProgress(ip *clusterpb.IndexProgress) string {
 		return pterm.Gray("unknown")
 	}
 
-	if ip.GetPebbleLastSequence() == 0 {
+	if ip.GetStorageLastSequence() == 0 {
 		return pterm.Green("ok")
 	}
 
-	lag := int64(ip.GetPebbleLastSequence()) - int64(ip.GetLastIndexedSequence())
+	lag := int64(ip.GetStorageLastSequence()) - int64(ip.GetLastIndexedSequence())
 	if lag <= 0 {
 		return pterm.Green("ok")
 	}
 
-	pctBehind := float64(lag) / float64(ip.GetPebbleLastSequence()) * 100
+	pctBehind := float64(lag) / float64(ip.GetStorageLastSequence()) * 100
 	label := fmt.Sprintf("%s behind (%.1f%%)", formatNumber(uint64(lag)), pctBehind)
 
 	if lag < 1000 {

@@ -33,6 +33,9 @@ native resume cursor and publish a separate Raft applied-index certificate for
 cross-store read alignment. `InspectIndex` is a projection consumer under the
 same contract: it certifies the fixed main horizon, resolves the servable index
 version at that pin, and ignores membership events committed after it.
+The `index.builder.storage_last_sequence` gauge reports the latest main-store
+log sequence known to the builder; `last_indexed_sequence` reports its local
+read-index cursor.
 
 ## Documents
 

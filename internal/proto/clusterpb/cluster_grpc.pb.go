@@ -60,15 +60,15 @@ type ClusterServiceClient interface {
 	// The request is forwarded to the leader. Cannot remove the leader itself.
 	RemoveNode(ctx context.Context, in *RemoveNodeRequest, opts ...grpc.CallOption) (*RemoveNodeResponse, error)
 	// CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
-	// primary Pebble store. Node-local operation (not forwarded to leader).
+	// primary store. Node-local operation (not forwarded to leader).
 	CompactPrimary(ctx context.Context, in *CompactPrimaryRequest, opts ...grpc.CallOption) (*CompactPrimaryResponse, error)
-	// CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
+	// CompactSecondary triggers an online compaction of the secondary (read index) store.
 	// Node-local operation (not forwarded to leader).
 	CompactSecondary(ctx context.Context, in *CompactSecondaryRequest, opts ...grpc.CallOption) (*CompactSecondaryResponse, error)
-	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
+	// CreateCheckpoint creates a storage checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(ctx context.Context, in *CreateCheckpointRequest, opts ...grpc.CallOption) (*CreateCheckpointResponse, error)
-	// Backup performs a full checkpoint backup of the Pebble store.
+	// Backup performs a full checkpoint backup of the primary store.
 	// The caller specifies the storage destination (filesystem or S3) in the request.
 	// The request is forwarded to the leader (SST files are node-local).
 	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (*BackupResponse, error)
@@ -76,13 +76,13 @@ type ClusterServiceClient interface {
 	// Can run on any node (log/audit sequences are identical across replicas).
 	IncrementalBackup(ctx context.Context, in *IncrementalBackupRequest, opts ...grpc.CallOption) (*IncrementalBackupResponse, error)
 	// ListQueryCheckpoints lists all existing query checkpoints.
-	// Reads from replicated Pebble state (available on any node).
+	// Reads from replicated primary-store state (available on any node).
 	ListQueryCheckpoints(ctx context.Context, in *ListQueryCheckpointsRequest, opts ...grpc.CallOption) (*ListQueryCheckpointsResponse, error)
 	// GetQueryCheckpointInfo returns detailed information about a query checkpoint.
-	// Reads from replicated Pebble state (available on any node).
+	// Reads from replicated primary-store state (available on any node).
 	GetQueryCheckpointInfo(ctx context.Context, in *GetQueryCheckpointInfoRequest, opts ...grpc.CallOption) (*QueryCheckpointInfo, error)
 	// GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
-	// Reads from replicated Pebble state (available on any node).
+	// Reads from replicated primary-store state (available on any node).
 	GetQueryCheckpointSchedule(ctx context.Context, in *GetQueryCheckpointScheduleRequest, opts ...grpc.CallOption) (*GetQueryCheckpointScheduleResponse, error)
 }
 
@@ -268,15 +268,15 @@ type ClusterServiceServer interface {
 	// The request is forwarded to the leader. Cannot remove the leader itself.
 	RemoveNode(context.Context, *RemoveNodeRequest) (*RemoveNodeResponse, error)
 	// CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
-	// primary Pebble store. Node-local operation (not forwarded to leader).
+	// primary store. Node-local operation (not forwarded to leader).
 	CompactPrimary(context.Context, *CompactPrimaryRequest) (*CompactPrimaryResponse, error)
-	// CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
+	// CompactSecondary triggers an online compaction of the secondary (read index) store.
 	// Node-local operation (not forwarded to leader).
 	CompactSecondary(context.Context, *CompactSecondaryRequest) (*CompactSecondaryResponse, error)
-	// CreateCheckpoint creates a Pebble checkpoint of the current live database state.
+	// CreateCheckpoint creates a storage checkpoint of the current live database state.
 	// Node-local operation (not forwarded to leader).
 	CreateCheckpoint(context.Context, *CreateCheckpointRequest) (*CreateCheckpointResponse, error)
-	// Backup performs a full checkpoint backup of the Pebble store.
+	// Backup performs a full checkpoint backup of the primary store.
 	// The caller specifies the storage destination (filesystem or S3) in the request.
 	// The request is forwarded to the leader (SST files are node-local).
 	Backup(context.Context, *BackupRequest) (*BackupResponse, error)
@@ -284,13 +284,13 @@ type ClusterServiceServer interface {
 	// Can run on any node (log/audit sequences are identical across replicas).
 	IncrementalBackup(context.Context, *IncrementalBackupRequest) (*IncrementalBackupResponse, error)
 	// ListQueryCheckpoints lists all existing query checkpoints.
-	// Reads from replicated Pebble state (available on any node).
+	// Reads from replicated primary-store state (available on any node).
 	ListQueryCheckpoints(context.Context, *ListQueryCheckpointsRequest) (*ListQueryCheckpointsResponse, error)
 	// GetQueryCheckpointInfo returns detailed information about a query checkpoint.
-	// Reads from replicated Pebble state (available on any node).
+	// Reads from replicated primary-store state (available on any node).
 	GetQueryCheckpointInfo(context.Context, *GetQueryCheckpointInfoRequest) (*QueryCheckpointInfo, error)
 	// GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
-	// Reads from replicated Pebble state (available on any node).
+	// Reads from replicated primary-store state (available on any node).
 	GetQueryCheckpointSchedule(context.Context, *GetQueryCheckpointScheduleRequest) (*GetQueryCheckpointScheduleResponse, error)
 	mustEmbedUnimplementedClusterServiceServer()
 }

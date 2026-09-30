@@ -88,7 +88,7 @@ func driveBackfills(t *testing.T, b *Builder, globalCursor uint64) {
 func declareFieldType(t *testing.T, b *Builder, ledger, key string, ft commonpb.MetadataType) {
 	t.Helper()
 
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.SaveLedger(fsmBatch, ledger, &commonpb.LedgerInfo{
 		Name: ledger,
 		MetadataSchema: &commonpb.MetadataSchema{

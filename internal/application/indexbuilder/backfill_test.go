@@ -1377,7 +1377,7 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 	// Seed the FSM-side canonical stored values for acct-003.status and
 	// acct-004.status. The schema rewrite reads from here, not from the rmap, so
 	// re-encoding is a pure function of immutable stored state.
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	for _, account := range []string{"acct-003", "acct-004"} {
 		canonicalKey := domain.MetadataKey{
 			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
@@ -1760,7 +1760,7 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 
 	// Seed FSM canonical stored value: STRING "030" (immutable through the
 	// whole test — only the indexer's encoding view changes).
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	canonicalKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
@@ -1867,7 +1867,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	)
 
 	// FSM holds a STRING that cannot be parsed as uint64.
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	canonicalKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
@@ -2053,7 +2053,7 @@ func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(log.GetSequence())
 
-	session := b.pebbleStore.OpenWriteSession()
+	session := b.primaryStore.OpenWriteSession()
 	require.NoError(t, session.SetBytes(kb.Build(), data))
 	require.NoError(t, session.Commit())
 }
@@ -2067,7 +2067,7 @@ func writeAppliedProposalToFSM(t *testing.T, b *Builder, seq, minLog, maxLog uin
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(seq)
 
-	session := b.pebbleStore.OpenWriteSession()
+	session := b.primaryStore.OpenWriteSession()
 	require.NoError(t, session.SetProto(kb.Build(), &proposalpb.AppliedProposal{
 		Sequence:       seq,
 		MinLogSequence: minLog,
@@ -2370,7 +2370,7 @@ func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCurs
 func mustReadHandle(t *testing.T, b *Builder) *dal.ReadHandle {
 	t.Helper()
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = handle.Close() })
 

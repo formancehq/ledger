@@ -77,9 +77,9 @@ type BucketServiceClient interface {
 	ListAccounts(ctx context.Context, in *ListAccountsRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[commonpb.Account], error)
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(ctx context.Context, in *ApplyRequest, opts ...grpc.CallOption) (*ApplyResponse, error)
-	// GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+	// GetPrimaryMetrics returns metrics from the primary store. Supports node_id targeting.
 	GetPrimaryMetrics(ctx context.Context, in *GetPrimaryMetricsRequest, opts ...grpc.CallOption) (*GetPrimaryMetricsResponse, error)
-	// GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+	// GetSecondaryMetrics returns metrics from the secondary (read index) store. Supports node_id targeting.
 	GetSecondaryMetrics(ctx context.Context, in *GetSecondaryMetricsRequest, opts ...grpc.CallOption) (*GetSecondaryMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(ctx context.Context, in *CheckStoreRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[CheckStoreEvent], error)
@@ -607,9 +607,9 @@ type BucketServiceServer interface {
 	ListAccounts(*ListAccountsRequest, grpc.ServerStreamingServer[commonpb.Account]) error
 	// Apply applies actions (create/delete ledger, create transaction, revert, save/delete metadata)
 	Apply(context.Context, *ApplyRequest) (*ApplyResponse, error)
-	// GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+	// GetPrimaryMetrics returns metrics from the primary store. Supports node_id targeting.
 	GetPrimaryMetrics(context.Context, *GetPrimaryMetricsRequest) (*GetPrimaryMetricsResponse, error)
-	// GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+	// GetSecondaryMetrics returns metrics from the secondary (read index) store. Supports node_id targeting.
 	GetSecondaryMetrics(context.Context, *GetSecondaryMetricsRequest) (*GetSecondaryMetricsResponse, error)
 	// CheckStore verifies store integrity (hash chain and derived data consistency)
 	CheckStore(*CheckStoreRequest, grpc.ServerStreamingServer[CheckStoreEvent]) error

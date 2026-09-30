@@ -64,11 +64,11 @@ service BucketService {
   rpc Apply(ApplyRequest) returns (ApplyResponse) {
     option (common.auth_policy) = { dynamic_resolver: DYNAMIC_AUTH_RESOLVER_APPLY };
   }
-  // GetPrimaryMetrics returns metrics from the primary Pebble store. Supports node_id targeting.
+  // GetPrimaryMetrics returns metrics from the primary store. Supports node_id targeting.
   rpc GetPrimaryMetrics(GetPrimaryMetricsRequest) returns (GetPrimaryMetricsResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
   }
-  // GetSecondaryMetrics returns metrics from the secondary (read index) Pebble store. Supports node_id targeting.
+  // GetSecondaryMetrics returns metrics from the secondary (read index) store. Supports node_id targeting.
   rpc GetSecondaryMetrics(GetSecondaryMetricsRequest) returns (GetSecondaryMetricsResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_OPS_READ };
   }
@@ -637,10 +637,9 @@ message GetPrimaryMetricsRequest {
 }
 
 message GetPrimaryMetricsResponse {
-  // available indicates if metrics are available (false for non-Pebble stores)
+  // available indicates whether the primary store can be queried.
   bool available = 1;
-  // metrics contains the Pebble metrics (only set if available is true)
-  PebbleMetrics metrics = 2;
+  StorageMetrics metrics = 2;
 }
 
 message GetSecondaryMetricsRequest {
@@ -649,113 +648,25 @@ message GetSecondaryMetricsRequest {
 }
 
 message GetSecondaryMetricsResponse {
-  // available indicates if the secondary store is active
+  // available indicates if the secondary store is active.
   bool available = 1;
-  // metrics contains the secondary Pebble metrics (only set if available is true)
-  PebbleMetrics metrics = 2;
+  StorageMetrics metrics = 2;
 }
 
-// PebbleMetrics contains metrics from the Pebble storage engine
-message PebbleMetrics {
-  BlockCacheMetrics block_cache = 1;
-  CompactMetrics compact = 2;
-  FlushMetrics flush = 3;
-  MemTableMetrics mem_table = 4;
-  SnapshotsMetrics snapshots = 5;
-  TableMetrics table = 6;
-  TableCacheMetrics table_cache = 7;
-  WALMetrics wal = 8;
-  KeysMetrics keys = 9;
-  repeated LevelMetrics levels = 10;
-  fixed64 disk_space_usage = 11;
+// StorageMetrics contains only measurements supported by the active RocksDB
+// stores. An absent optional property means RocksDB did not expose it.
+message StorageMetrics {
+  optional uint64 block_cache_usage_bytes = 1;
+  optional uint64 pending_compaction_bytes = 2;
+  optional uint64 memtable_size_bytes = 3;
+  optional uint64 snapshot_count = 4;
+  repeated StorageLevelMetrics levels = 5;
 }
 
-message BlockCacheMetrics {
-  int64 size = 1;
-  int64 count = 2;
-  int64 hits = 3;
-  int64 misses = 4;
-}
-
-message CompactMetrics {
-  int64 count = 1;
-  int64 default_count = 2;
-  int64 delete_only_count = 3;
-  int64 elision_only_count = 4;
-  int64 move_count = 5;
-  int64 read_count = 6;
-  int64 rewrite_count = 7;
-  int64 multi_level_count = 8;
-  fixed64 estimated_debt = 9;
-  int64 in_progress_bytes = 10;
-  int64 num_in_progress = 11;
-  int32 marked_files = 12;
-}
-
-message FlushMetrics {
-  int64 count = 1;
-  int64 num_in_progress = 2;
-  fixed64 as_ingest_count = 3;
-  fixed64 as_ingest_table_count = 4;
-  fixed64 as_ingest_bytes = 5;
-}
-
-message MemTableMetrics {
-  fixed64 size = 1;
-  int64 count = 2;
-  fixed64 zombie_size = 3;
-  int64 zombie_count = 4;
-}
-
-message SnapshotsMetrics {
-  int32 count = 1;
-  fixed64 earliest_seq_num = 2;
-  fixed64 pinned_keys = 3;
-  fixed64 pinned_size = 4;
-}
-
-message TableMetrics {
-  fixed64 zombie_size = 1;
-  int64 zombie_count = 2;
-  fixed64 backing_table_count = 3;
-  fixed64 backing_table_size = 4;
-}
-
-message TableCacheMetrics {
-  int64 size = 1;
-  int64 count = 2;
-  int64 hits = 3;
-  int64 misses = 4;
-}
-
-message WALMetrics {
-  int64 files = 1;
-  int64 obsolete_files = 2;
-  fixed64 size = 3;
-  fixed64 bytes_in = 4;
-  fixed64 bytes_written = 5;
-}
-
-message KeysMetrics {
-  fixed64 range_key_sets_count = 1;
-  fixed64 tombstone_count = 2;
-}
-
-message LevelMetrics {
+message StorageLevelMetrics {
   int32 level = 1;
-  int64 num_files = 2;
-  int64 size = 3;
-  double score = 4;
-  fixed64 bytes_in = 5;
-  fixed64 bytes_ingested = 6;
-  fixed64 bytes_moved = 7;
-  fixed64 bytes_read = 8;
-  fixed64 bytes_compacted = 9;
-  fixed64 bytes_flushed = 10;
-  fixed64 tables_compacted = 11;
-  fixed64 tables_flushed = 12;
-  fixed64 tables_ingested = 13;
-  fixed64 tables_moved = 14;
+  uint64 num_files = 2;
+  uint64 size_bytes = 3;
 }
 
 // ============================================================================
@@ -843,7 +754,7 @@ enum CheckStoreErrorType {
   // Emitted when the audit says a ledger is live (a CreateLedger event with no
   // later DeleteLedger) but the store has no live LedgerInfo for it — the entry is either
   // absent or tampered to a soft-deleted tombstone. The stored-ledger loops in
-  // compareSchema / compareAccountTypes only visit live ledgers Pebble returns,
+  // compareSchema / compareAccountTypes only visit live ledgers returned by the store,
   // so both shapes would otherwise escape every projection check. This is the
   // reverse of UNKNOWN_LEDGER.
   CHECK_STORE_ERROR_TYPE_MISSING_LEDGER = 15;
@@ -939,7 +850,7 @@ enum CheckStoreErrorType {
   // divergence can change write admission semantics.
   CHECK_STORE_ERROR_TYPE_DEFAULT_ENFORCEMENT_MODE_MISMATCH = 27;
   // Emitted when a Log row's `sequence` field disagrees with the sequence
-  // encoded in its Pebble key. Log rows are not hash-bound, so the two copies
+  // encoded in its storage key. Log rows are not hash-bound, so the two copies
   // of the sequence are held together by convention alone, and
   // query.ReadLastSequence reads the value's field off the last row -- a
   // single edited field could previously make a populated store look empty to
@@ -1489,7 +1400,7 @@ message IteratorProfile {
   int64 items_emitted = 8;
   // Range materializations performed at this node (typically leaf SliceIterator nodes).
   int32 materialized_ranges = 9;
-  // Items drained from Pebble cursors into the materialized SliceIterator.
+  // Items drained from storage cursors into the materialized SliceIterator.
   int64 materialized_items = 10;
   // For combinator nodes (And/Not/Or): candidates discarded by the merge/converge loop.
   int64 items_skipped = 11;

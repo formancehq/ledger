@@ -1486,23 +1486,29 @@ func (m *GetSecondaryMetricsResponse) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *PebbleMetrics) CloneVT() *PebbleMetrics {
+func (m *StorageMetrics) CloneVT() *StorageMetrics {
 	if m == nil {
-		return (*PebbleMetrics)(nil)
+		return (*StorageMetrics)(nil)
 	}
-	r := new(PebbleMetrics)
-	r.BlockCache = m.BlockCache.CloneVT()
-	r.Compact = m.Compact.CloneVT()
-	r.Flush = m.Flush.CloneVT()
-	r.MemTable = m.MemTable.CloneVT()
-	r.Snapshots = m.Snapshots.CloneVT()
-	r.Table = m.Table.CloneVT()
-	r.TableCache = m.TableCache.CloneVT()
-	r.Wal = m.Wal.CloneVT()
-	r.Keys = m.Keys.CloneVT()
-	r.DiskSpaceUsage = m.DiskSpaceUsage
+	r := new(StorageMetrics)
+	if rhs := m.BlockCacheUsageBytes; rhs != nil {
+		tmpVal := *rhs
+		r.BlockCacheUsageBytes = &tmpVal
+	}
+	if rhs := m.PendingCompactionBytes; rhs != nil {
+		tmpVal := *rhs
+		r.PendingCompactionBytes = &tmpVal
+	}
+	if rhs := m.MemtableSizeBytes; rhs != nil {
+		tmpVal := *rhs
+		r.MemtableSizeBytes = &tmpVal
+	}
+	if rhs := m.SnapshotCount; rhs != nil {
+		tmpVal := *rhs
+		r.SnapshotCount = &tmpVal
+	}
 	if rhs := m.Levels; rhs != nil {
-		tmpContainer := make([]*LevelMetrics, len(rhs))
+		tmpContainer := make([]*StorageLevelMetrics, len(rhs))
 		for k, v := range rhs {
 			tmpContainer[k] = v.CloneVT()
 		}
@@ -1515,217 +1521,18 @@ func (m *PebbleMetrics) CloneVT() *PebbleMetrics {
 	return r
 }
 
-func (m *PebbleMetrics) CloneMessageVT() proto.Message {
+func (m *StorageMetrics) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
-func (m *BlockCacheMetrics) CloneVT() *BlockCacheMetrics {
+func (m *StorageLevelMetrics) CloneVT() *StorageLevelMetrics {
 	if m == nil {
-		return (*BlockCacheMetrics)(nil)
+		return (*StorageLevelMetrics)(nil)
 	}
-	r := new(BlockCacheMetrics)
-	r.Size = m.Size
-	r.Count = m.Count
-	r.Hits = m.Hits
-	r.Misses = m.Misses
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *BlockCacheMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *CompactMetrics) CloneVT() *CompactMetrics {
-	if m == nil {
-		return (*CompactMetrics)(nil)
-	}
-	r := new(CompactMetrics)
-	r.Count = m.Count
-	r.DefaultCount = m.DefaultCount
-	r.DeleteOnlyCount = m.DeleteOnlyCount
-	r.ElisionOnlyCount = m.ElisionOnlyCount
-	r.MoveCount = m.MoveCount
-	r.ReadCount = m.ReadCount
-	r.RewriteCount = m.RewriteCount
-	r.MultiLevelCount = m.MultiLevelCount
-	r.EstimatedDebt = m.EstimatedDebt
-	r.InProgressBytes = m.InProgressBytes
-	r.NumInProgress = m.NumInProgress
-	r.MarkedFiles = m.MarkedFiles
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *CompactMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *FlushMetrics) CloneVT() *FlushMetrics {
-	if m == nil {
-		return (*FlushMetrics)(nil)
-	}
-	r := new(FlushMetrics)
-	r.Count = m.Count
-	r.NumInProgress = m.NumInProgress
-	r.AsIngestCount = m.AsIngestCount
-	r.AsIngestTableCount = m.AsIngestTableCount
-	r.AsIngestBytes = m.AsIngestBytes
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *FlushMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *MemTableMetrics) CloneVT() *MemTableMetrics {
-	if m == nil {
-		return (*MemTableMetrics)(nil)
-	}
-	r := new(MemTableMetrics)
-	r.Size = m.Size
-	r.Count = m.Count
-	r.ZombieSize = m.ZombieSize
-	r.ZombieCount = m.ZombieCount
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *MemTableMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *SnapshotsMetrics) CloneVT() *SnapshotsMetrics {
-	if m == nil {
-		return (*SnapshotsMetrics)(nil)
-	}
-	r := new(SnapshotsMetrics)
-	r.Count = m.Count
-	r.EarliestSeqNum = m.EarliestSeqNum
-	r.PinnedKeys = m.PinnedKeys
-	r.PinnedSize = m.PinnedSize
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *SnapshotsMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *TableMetrics) CloneVT() *TableMetrics {
-	if m == nil {
-		return (*TableMetrics)(nil)
-	}
-	r := new(TableMetrics)
-	r.ZombieSize = m.ZombieSize
-	r.ZombieCount = m.ZombieCount
-	r.BackingTableCount = m.BackingTableCount
-	r.BackingTableSize = m.BackingTableSize
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *TableMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *TableCacheMetrics) CloneVT() *TableCacheMetrics {
-	if m == nil {
-		return (*TableCacheMetrics)(nil)
-	}
-	r := new(TableCacheMetrics)
-	r.Size = m.Size
-	r.Count = m.Count
-	r.Hits = m.Hits
-	r.Misses = m.Misses
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *TableCacheMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *WALMetrics) CloneVT() *WALMetrics {
-	if m == nil {
-		return (*WALMetrics)(nil)
-	}
-	r := new(WALMetrics)
-	r.Files = m.Files
-	r.ObsoleteFiles = m.ObsoleteFiles
-	r.Size = m.Size
-	r.BytesIn = m.BytesIn
-	r.BytesWritten = m.BytesWritten
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *WALMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *KeysMetrics) CloneVT() *KeysMetrics {
-	if m == nil {
-		return (*KeysMetrics)(nil)
-	}
-	r := new(KeysMetrics)
-	r.RangeKeySetsCount = m.RangeKeySetsCount
-	r.TombstoneCount = m.TombstoneCount
-	if len(m.unknownFields) > 0 {
-		r.unknownFields = make([]byte, len(m.unknownFields))
-		copy(r.unknownFields, m.unknownFields)
-	}
-	return r
-}
-
-func (m *KeysMetrics) CloneMessageVT() proto.Message {
-	return m.CloneVT()
-}
-
-func (m *LevelMetrics) CloneVT() *LevelMetrics {
-	if m == nil {
-		return (*LevelMetrics)(nil)
-	}
-	r := new(LevelMetrics)
+	r := new(StorageLevelMetrics)
 	r.Level = m.Level
 	r.NumFiles = m.NumFiles
-	r.Size = m.Size
-	r.Score = m.Score
-	r.BytesIn = m.BytesIn
-	r.BytesIngested = m.BytesIngested
-	r.BytesMoved = m.BytesMoved
-	r.BytesRead = m.BytesRead
-	r.BytesCompacted = m.BytesCompacted
-	r.BytesFlushed = m.BytesFlushed
-	r.TablesCompacted = m.TablesCompacted
-	r.TablesFlushed = m.TablesFlushed
-	r.TablesIngested = m.TablesIngested
-	r.TablesMoved = m.TablesMoved
+	r.SizeBytes = m.SizeBytes
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -1733,7 +1540,7 @@ func (m *LevelMetrics) CloneVT() *LevelMetrics {
 	return r
 }
 
-func (m *LevelMetrics) CloneMessageVT() proto.Message {
+func (m *StorageLevelMetrics) CloneMessageVT() proto.Message {
 	return m.CloneVT()
 }
 
@@ -5370,37 +5177,22 @@ func (this *GetSecondaryMetricsResponse) EqualMessageVT(thatMsg proto.Message) b
 	}
 	return this.EqualVT(that)
 }
-func (this *PebbleMetrics) EqualVT(that *PebbleMetrics) bool {
+func (this *StorageMetrics) EqualVT(that *StorageMetrics) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
 		return false
 	}
-	if !this.BlockCache.EqualVT(that.BlockCache) {
+	if p, q := this.BlockCacheUsageBytes, that.BlockCacheUsageBytes; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
-	if !this.Compact.EqualVT(that.Compact) {
+	if p, q := this.PendingCompactionBytes, that.PendingCompactionBytes; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
-	if !this.Flush.EqualVT(that.Flush) {
+	if p, q := this.MemtableSizeBytes, that.MemtableSizeBytes; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
-	if !this.MemTable.EqualVT(that.MemTable) {
-		return false
-	}
-	if !this.Snapshots.EqualVT(that.Snapshots) {
-		return false
-	}
-	if !this.Table.EqualVT(that.Table) {
-		return false
-	}
-	if !this.TableCache.EqualVT(that.TableCache) {
-		return false
-	}
-	if !this.Wal.EqualVT(that.Wal) {
-		return false
-	}
-	if !this.Keys.EqualVT(that.Keys) {
+	if p, q := this.SnapshotCount, that.SnapshotCount; (p == nil && q != nil) || (p != nil && (q == nil || *p != *q)) {
 		return false
 	}
 	if len(this.Levels) != len(that.Levels) {
@@ -5410,306 +5202,27 @@ func (this *PebbleMetrics) EqualVT(that *PebbleMetrics) bool {
 		vy := that.Levels[i]
 		if p, q := vx, vy; p != q {
 			if p == nil {
-				p = &LevelMetrics{}
+				p = &StorageLevelMetrics{}
 			}
 			if q == nil {
-				q = &LevelMetrics{}
+				q = &StorageLevelMetrics{}
 			}
 			if !p.EqualVT(q) {
 				return false
 			}
 		}
 	}
-	if this.DiskSpaceUsage != that.DiskSpaceUsage {
-		return false
-	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *PebbleMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*PebbleMetrics)
+func (this *StorageMetrics) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*StorageMetrics)
 	if !ok {
 		return false
 	}
 	return this.EqualVT(that)
 }
-func (this *BlockCacheMetrics) EqualVT(that *BlockCacheMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Size != that.Size {
-		return false
-	}
-	if this.Count != that.Count {
-		return false
-	}
-	if this.Hits != that.Hits {
-		return false
-	}
-	if this.Misses != that.Misses {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *BlockCacheMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*BlockCacheMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *CompactMetrics) EqualVT(that *CompactMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Count != that.Count {
-		return false
-	}
-	if this.DefaultCount != that.DefaultCount {
-		return false
-	}
-	if this.DeleteOnlyCount != that.DeleteOnlyCount {
-		return false
-	}
-	if this.ElisionOnlyCount != that.ElisionOnlyCount {
-		return false
-	}
-	if this.MoveCount != that.MoveCount {
-		return false
-	}
-	if this.ReadCount != that.ReadCount {
-		return false
-	}
-	if this.RewriteCount != that.RewriteCount {
-		return false
-	}
-	if this.MultiLevelCount != that.MultiLevelCount {
-		return false
-	}
-	if this.EstimatedDebt != that.EstimatedDebt {
-		return false
-	}
-	if this.InProgressBytes != that.InProgressBytes {
-		return false
-	}
-	if this.NumInProgress != that.NumInProgress {
-		return false
-	}
-	if this.MarkedFiles != that.MarkedFiles {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *CompactMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*CompactMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *FlushMetrics) EqualVT(that *FlushMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Count != that.Count {
-		return false
-	}
-	if this.NumInProgress != that.NumInProgress {
-		return false
-	}
-	if this.AsIngestCount != that.AsIngestCount {
-		return false
-	}
-	if this.AsIngestTableCount != that.AsIngestTableCount {
-		return false
-	}
-	if this.AsIngestBytes != that.AsIngestBytes {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *FlushMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*FlushMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *MemTableMetrics) EqualVT(that *MemTableMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Size != that.Size {
-		return false
-	}
-	if this.Count != that.Count {
-		return false
-	}
-	if this.ZombieSize != that.ZombieSize {
-		return false
-	}
-	if this.ZombieCount != that.ZombieCount {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *MemTableMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*MemTableMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *SnapshotsMetrics) EqualVT(that *SnapshotsMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Count != that.Count {
-		return false
-	}
-	if this.EarliestSeqNum != that.EarliestSeqNum {
-		return false
-	}
-	if this.PinnedKeys != that.PinnedKeys {
-		return false
-	}
-	if this.PinnedSize != that.PinnedSize {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *SnapshotsMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*SnapshotsMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *TableMetrics) EqualVT(that *TableMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.ZombieSize != that.ZombieSize {
-		return false
-	}
-	if this.ZombieCount != that.ZombieCount {
-		return false
-	}
-	if this.BackingTableCount != that.BackingTableCount {
-		return false
-	}
-	if this.BackingTableSize != that.BackingTableSize {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *TableMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*TableMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *TableCacheMetrics) EqualVT(that *TableCacheMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Size != that.Size {
-		return false
-	}
-	if this.Count != that.Count {
-		return false
-	}
-	if this.Hits != that.Hits {
-		return false
-	}
-	if this.Misses != that.Misses {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *TableCacheMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*TableCacheMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *WALMetrics) EqualVT(that *WALMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.Files != that.Files {
-		return false
-	}
-	if this.ObsoleteFiles != that.ObsoleteFiles {
-		return false
-	}
-	if this.Size != that.Size {
-		return false
-	}
-	if this.BytesIn != that.BytesIn {
-		return false
-	}
-	if this.BytesWritten != that.BytesWritten {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *WALMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*WALMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *KeysMetrics) EqualVT(that *KeysMetrics) bool {
-	if this == that {
-		return true
-	} else if this == nil || that == nil {
-		return false
-	}
-	if this.RangeKeySetsCount != that.RangeKeySetsCount {
-		return false
-	}
-	if this.TombstoneCount != that.TombstoneCount {
-		return false
-	}
-	return string(this.unknownFields) == string(that.unknownFields)
-}
-
-func (this *KeysMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*KeysMetrics)
-	if !ok {
-		return false
-	}
-	return this.EqualVT(that)
-}
-func (this *LevelMetrics) EqualVT(that *LevelMetrics) bool {
+func (this *StorageLevelMetrics) EqualVT(that *StorageLevelMetrics) bool {
 	if this == that {
 		return true
 	} else if this == nil || that == nil {
@@ -5721,47 +5234,14 @@ func (this *LevelMetrics) EqualVT(that *LevelMetrics) bool {
 	if this.NumFiles != that.NumFiles {
 		return false
 	}
-	if this.Size != that.Size {
-		return false
-	}
-	if this.Score != that.Score {
-		return false
-	}
-	if this.BytesIn != that.BytesIn {
-		return false
-	}
-	if this.BytesIngested != that.BytesIngested {
-		return false
-	}
-	if this.BytesMoved != that.BytesMoved {
-		return false
-	}
-	if this.BytesRead != that.BytesRead {
-		return false
-	}
-	if this.BytesCompacted != that.BytesCompacted {
-		return false
-	}
-	if this.BytesFlushed != that.BytesFlushed {
-		return false
-	}
-	if this.TablesCompacted != that.TablesCompacted {
-		return false
-	}
-	if this.TablesFlushed != that.TablesFlushed {
-		return false
-	}
-	if this.TablesIngested != that.TablesIngested {
-		return false
-	}
-	if this.TablesMoved != that.TablesMoved {
+	if this.SizeBytes != that.SizeBytes {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
-func (this *LevelMetrics) EqualMessageVT(thatMsg proto.Message) bool {
-	that, ok := thatMsg.(*LevelMetrics)
+func (this *StorageLevelMetrics) EqualMessageVT(thatMsg proto.Message) bool {
+	that, ok := thatMsg.(*StorageLevelMetrics)
 	if !ok {
 		return false
 	}
@@ -11362,7 +10842,7 @@ func (m *GetSecondaryMetricsResponse) MarshalToSizedBufferVT(dAtA []byte) (int, 
 	return len(dAtA) - i, nil
 }
 
-func (m *PebbleMetrics) MarshalVT() (dAtA []byte, err error) {
+func (m *StorageMetrics) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11375,12 +10855,12 @@ func (m *PebbleMetrics) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PebbleMetrics) MarshalToVT(dAtA []byte) (int, error) {
+func (m *StorageMetrics) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PebbleMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *StorageMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11391,12 +10871,6 @@ func (m *PebbleMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.DiskSpaceUsage != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.DiskSpaceUsage))
-		i--
-		dAtA[i] = 0x59
 	}
 	if len(m.Levels) > 0 {
 		for iNdEx := len(m.Levels) - 1; iNdEx >= 0; iNdEx-- {
@@ -11407,156 +10881,33 @@ func (m *PebbleMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			i -= size
 			i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
 			i--
-			dAtA[i] = 0x52
+			dAtA[i] = 0x2a
 		}
 	}
-	if m.Keys != nil {
-		size, err := m.Keys.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x4a
-	}
-	if m.Wal != nil {
-		size, err := m.Wal.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x42
-	}
-	if m.TableCache != nil {
-		size, err := m.TableCache.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x3a
-	}
-	if m.Table != nil {
-		size, err := m.Table.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x32
-	}
-	if m.Snapshots != nil {
-		size, err := m.Snapshots.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x2a
-	}
-	if m.MemTable != nil {
-		size, err := m.MemTable.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x22
-	}
-	if m.Flush != nil {
-		size, err := m.Flush.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x1a
-	}
-	if m.Compact != nil {
-		size, err := m.Compact.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0x12
-	}
-	if m.BlockCache != nil {
-		size, err := m.BlockCache.MarshalToSizedBufferVT(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(size))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *BlockCacheMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *BlockCacheMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *BlockCacheMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Misses != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Misses))
+	if m.SnapshotCount != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.SnapshotCount))
 		i--
 		dAtA[i] = 0x20
 	}
-	if m.Hits != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Hits))
+	if m.MemtableSizeBytes != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.MemtableSizeBytes))
 		i--
 		dAtA[i] = 0x18
 	}
-	if m.Count != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Count))
+	if m.PendingCompactionBytes != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.PendingCompactionBytes))
 		i--
 		dAtA[i] = 0x10
 	}
-	if m.Size != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
+	if m.BlockCacheUsageBytes != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.BlockCacheUsageBytes))
 		i--
 		dAtA[i] = 0x8
 	}
 	return len(dAtA) - i, nil
 }
 
-func (m *CompactMetrics) MarshalVT() (dAtA []byte, err error) {
+func (m *StorageLevelMetrics) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -11569,12 +10920,12 @@ func (m *CompactMetrics) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CompactMetrics) MarshalToVT(dAtA []byte) (int, error) {
+func (m *StorageLevelMetrics) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *CompactMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *StorageLevelMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -11586,555 +10937,8 @@ func (m *CompactMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.MarkedFiles != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MarkedFiles))
-		i--
-		dAtA[i] = 0x60
-	}
-	if m.NumInProgress != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumInProgress))
-		i--
-		dAtA[i] = 0x58
-	}
-	if m.InProgressBytes != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.InProgressBytes))
-		i--
-		dAtA[i] = 0x50
-	}
-	if m.EstimatedDebt != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.EstimatedDebt))
-		i--
-		dAtA[i] = 0x49
-	}
-	if m.MultiLevelCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MultiLevelCount))
-		i--
-		dAtA[i] = 0x40
-	}
-	if m.RewriteCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.RewriteCount))
-		i--
-		dAtA[i] = 0x38
-	}
-	if m.ReadCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ReadCount))
-		i--
-		dAtA[i] = 0x30
-	}
-	if m.MoveCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MoveCount))
-		i--
-		dAtA[i] = 0x28
-	}
-	if m.ElisionOnlyCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ElisionOnlyCount))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.DeleteOnlyCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DeleteOnlyCount))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.DefaultCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DefaultCount))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Count != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *FlushMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *FlushMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *FlushMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.AsIngestBytes != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AsIngestBytes))
-		i--
-		dAtA[i] = 0x29
-	}
-	if m.AsIngestTableCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AsIngestTableCount))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.AsIngestCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.AsIngestCount))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.NumInProgress != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.NumInProgress))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Count != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *MemTableMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *MemTableMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *MemTableMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.ZombieCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ZombieCount))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.ZombieSize != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ZombieSize))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.Count != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Size != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Size))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *SnapshotsMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *SnapshotsMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *SnapshotsMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.PinnedSize != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PinnedSize))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.PinnedKeys != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PinnedKeys))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.EarliestSeqNum != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.EarliestSeqNum))
-		i--
-		dAtA[i] = 0x11
-	}
-	if m.Count != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *TableMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *TableMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *TableMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.BackingTableSize != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BackingTableSize))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.BackingTableCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BackingTableCount))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.ZombieCount != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ZombieCount))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.ZombieSize != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.ZombieSize))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *TableCacheMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *TableCacheMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *TableCacheMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.Misses != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Misses))
-		i--
-		dAtA[i] = 0x20
-	}
-	if m.Hits != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Hits))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.Count != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Count))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Size != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *WALMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *WALMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *WALMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.BytesWritten != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesWritten))
-		i--
-		dAtA[i] = 0x29
-	}
-	if m.BytesIn != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesIn))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.Size != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.Size))
-		i--
-		dAtA[i] = 0x19
-	}
-	if m.ObsoleteFiles != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ObsoleteFiles))
-		i--
-		dAtA[i] = 0x10
-	}
-	if m.Files != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Files))
-		i--
-		dAtA[i] = 0x8
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *KeysMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *KeysMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *KeysMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.TombstoneCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TombstoneCount))
-		i--
-		dAtA[i] = 0x11
-	}
-	if m.RangeKeySetsCount != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.RangeKeySetsCount))
-		i--
-		dAtA[i] = 0x9
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *LevelMetrics) MarshalVT() (dAtA []byte, err error) {
-	if m == nil {
-		return nil, nil
-	}
-	size := m.SizeVT()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBufferVT(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *LevelMetrics) MarshalToVT(dAtA []byte) (int, error) {
-	size := m.SizeVT()
-	return m.MarshalToSizedBufferVT(dAtA[:size])
-}
-
-func (m *LevelMetrics) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
-	if m == nil {
-		return 0, nil
-	}
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.unknownFields != nil {
-		i -= len(m.unknownFields)
-		copy(dAtA[i:], m.unknownFields)
-	}
-	if m.TablesMoved != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TablesMoved))
-		i--
-		dAtA[i] = 0x71
-	}
-	if m.TablesIngested != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TablesIngested))
-		i--
-		dAtA[i] = 0x69
-	}
-	if m.TablesFlushed != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TablesFlushed))
-		i--
-		dAtA[i] = 0x61
-	}
-	if m.TablesCompacted != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.TablesCompacted))
-		i--
-		dAtA[i] = 0x59
-	}
-	if m.BytesFlushed != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesFlushed))
-		i--
-		dAtA[i] = 0x51
-	}
-	if m.BytesCompacted != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesCompacted))
-		i--
-		dAtA[i] = 0x49
-	}
-	if m.BytesRead != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesRead))
-		i--
-		dAtA[i] = 0x41
-	}
-	if m.BytesMoved != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesMoved))
-		i--
-		dAtA[i] = 0x39
-	}
-	if m.BytesIngested != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesIngested))
-		i--
-		dAtA[i] = 0x31
-	}
-	if m.BytesIn != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.BytesIn))
-		i--
-		dAtA[i] = 0x29
-	}
-	if m.Score != 0 {
-		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(math.Float64bits(float64(m.Score))))
-		i--
-		dAtA[i] = 0x21
-	}
-	if m.Size != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Size))
+	if m.SizeBytes != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.SizeBytes))
 		i--
 		dAtA[i] = 0x18
 	}
@@ -16831,47 +15635,23 @@ func (m *GetSecondaryMetricsResponse) SizeVT() (n int) {
 	return n
 }
 
-func (m *PebbleMetrics) SizeVT() (n int) {
+func (m *StorageMetrics) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.BlockCache != nil {
-		l = m.BlockCache.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.BlockCacheUsageBytes != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.BlockCacheUsageBytes))
 	}
-	if m.Compact != nil {
-		l = m.Compact.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.PendingCompactionBytes != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.PendingCompactionBytes))
 	}
-	if m.Flush != nil {
-		l = m.Flush.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.MemtableSizeBytes != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.MemtableSizeBytes))
 	}
-	if m.MemTable != nil {
-		l = m.MemTable.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Snapshots != nil {
-		l = m.Snapshots.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Table != nil {
-		l = m.Table.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.TableCache != nil {
-		l = m.TableCache.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Wal != nil {
-		l = m.Wal.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
-	}
-	if m.Keys != nil {
-		l = m.Keys.SizeVT()
-		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	if m.SnapshotCount != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.SnapshotCount))
 	}
 	if len(m.Levels) > 0 {
 		for _, e := range m.Levels {
@@ -16879,236 +15659,11 @@ func (m *PebbleMetrics) SizeVT() (n int) {
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
 	}
-	if m.DiskSpaceUsage != 0 {
-		n += 9
-	}
 	n += len(m.unknownFields)
 	return n
 }
 
-func (m *BlockCacheMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Size != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Size))
-	}
-	if m.Count != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Count))
-	}
-	if m.Hits != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Hits))
-	}
-	if m.Misses != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Misses))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *CompactMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Count != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Count))
-	}
-	if m.DefaultCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DefaultCount))
-	}
-	if m.DeleteOnlyCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DeleteOnlyCount))
-	}
-	if m.ElisionOnlyCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ElisionOnlyCount))
-	}
-	if m.MoveCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MoveCount))
-	}
-	if m.ReadCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ReadCount))
-	}
-	if m.RewriteCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.RewriteCount))
-	}
-	if m.MultiLevelCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MultiLevelCount))
-	}
-	if m.EstimatedDebt != 0 {
-		n += 9
-	}
-	if m.InProgressBytes != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.InProgressBytes))
-	}
-	if m.NumInProgress != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumInProgress))
-	}
-	if m.MarkedFiles != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.MarkedFiles))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *FlushMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Count != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Count))
-	}
-	if m.NumInProgress != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumInProgress))
-	}
-	if m.AsIngestCount != 0 {
-		n += 9
-	}
-	if m.AsIngestTableCount != 0 {
-		n += 9
-	}
-	if m.AsIngestBytes != 0 {
-		n += 9
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *MemTableMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Size != 0 {
-		n += 9
-	}
-	if m.Count != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Count))
-	}
-	if m.ZombieSize != 0 {
-		n += 9
-	}
-	if m.ZombieCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ZombieCount))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *SnapshotsMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Count != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Count))
-	}
-	if m.EarliestSeqNum != 0 {
-		n += 9
-	}
-	if m.PinnedKeys != 0 {
-		n += 9
-	}
-	if m.PinnedSize != 0 {
-		n += 9
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *TableMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.ZombieSize != 0 {
-		n += 9
-	}
-	if m.ZombieCount != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ZombieCount))
-	}
-	if m.BackingTableCount != 0 {
-		n += 9
-	}
-	if m.BackingTableSize != 0 {
-		n += 9
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *TableCacheMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Size != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Size))
-	}
-	if m.Count != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Count))
-	}
-	if m.Hits != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Hits))
-	}
-	if m.Misses != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Misses))
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *WALMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.Files != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Files))
-	}
-	if m.ObsoleteFiles != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.ObsoleteFiles))
-	}
-	if m.Size != 0 {
-		n += 9
-	}
-	if m.BytesIn != 0 {
-		n += 9
-	}
-	if m.BytesWritten != 0 {
-		n += 9
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *KeysMetrics) SizeVT() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if m.RangeKeySetsCount != 0 {
-		n += 9
-	}
-	if m.TombstoneCount != 0 {
-		n += 9
-	}
-	n += len(m.unknownFields)
-	return n
-}
-
-func (m *LevelMetrics) SizeVT() (n int) {
+func (m *StorageLevelMetrics) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -17120,41 +15675,8 @@ func (m *LevelMetrics) SizeVT() (n int) {
 	if m.NumFiles != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.NumFiles))
 	}
-	if m.Size != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.Size))
-	}
-	if m.Score != 0 {
-		n += 9
-	}
-	if m.BytesIn != 0 {
-		n += 9
-	}
-	if m.BytesIngested != 0 {
-		n += 9
-	}
-	if m.BytesMoved != 0 {
-		n += 9
-	}
-	if m.BytesRead != 0 {
-		n += 9
-	}
-	if m.BytesCompacted != 0 {
-		n += 9
-	}
-	if m.BytesFlushed != 0 {
-		n += 9
-	}
-	if m.TablesCompacted != 0 {
-		n += 9
-	}
-	if m.TablesFlushed != 0 {
-		n += 9
-	}
-	if m.TablesIngested != 0 {
-		n += 9
-	}
-	if m.TablesMoved != 0 {
-		n += 9
+	if m.SizeBytes != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.SizeBytes))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -26782,7 +25304,7 @@ func (m *GetPrimaryMetricsResponse) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metrics == nil {
-				m.Metrics = &PebbleMetrics{}
+				m.Metrics = &StorageMetrics{}
 			}
 			if err := m.Metrics.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -26959,7 +25481,7 @@ func (m *GetSecondaryMetricsResponse) UnmarshalVT(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Metrics == nil {
-				m.Metrics = &PebbleMetrics{}
+				m.Metrics = &StorageMetrics{}
 			}
 			if err := m.Metrics.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -26987,7 +25509,7 @@ func (m *GetSecondaryMetricsResponse) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
+func (m *StorageMetrics) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27010,17 +25532,17 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PebbleMetrics: wiretype end group for non-group")
+			return fmt.Errorf("proto: StorageMetrics: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PebbleMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: StorageMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BlockCache", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockCacheUsageBytes", wireType)
 			}
-			var msglen int
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -27030,33 +25552,17 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.BlockCache == nil {
-				m.BlockCache = &BlockCacheMetrics{}
-			}
-			if err := m.BlockCache.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.BlockCacheUsageBytes = &v
 		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Compact", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field PendingCompactionBytes", wireType)
 			}
-			var msglen int
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -27066,33 +25572,17 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Compact == nil {
-				m.Compact = &CompactMetrics{}
-			}
-			if err := m.Compact.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.PendingCompactionBytes = &v
 		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Flush", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MemtableSizeBytes", wireType)
 			}
-			var msglen int
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -27102,33 +25592,17 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Flush == nil {
-				m.Flush = &FlushMetrics{}
-			}
-			if err := m.Flush.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.MemtableSizeBytes = &v
 		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MemTable", wireType)
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SnapshotCount", wireType)
 			}
-			var msglen int
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -27138,209 +25612,13 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= int(b&0x7F) << shift
+				v |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.MemTable == nil {
-				m.MemTable = &MemTableMetrics{}
-			}
-			if err := m.MemTable.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
+			m.SnapshotCount = &v
 		case 5:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Snapshots", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Snapshots == nil {
-				m.Snapshots = &SnapshotsMetrics{}
-			}
-			if err := m.Snapshots.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 6:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Table", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Table == nil {
-				m.Table = &TableMetrics{}
-			}
-			if err := m.Table.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 7:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TableCache", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.TableCache == nil {
-				m.TableCache = &TableCacheMetrics{}
-			}
-			if err := m.TableCache.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 8:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Wal", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Wal == nil {
-				m.Wal = &WALMetrics{}
-			}
-			if err := m.Wal.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 9:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Keys", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.Keys == nil {
-				m.Keys = &KeysMetrics{}
-			}
-			if err := m.Keys.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 10:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Levels", wireType)
 			}
@@ -27369,21 +25647,11 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Levels = append(m.Levels, &LevelMetrics{})
+			m.Levels = append(m.Levels, &StorageLevelMetrics{})
 			if err := m.Levels[len(m.Levels)-1].UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
-		case 11:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DiskSpaceUsage", wireType)
-			}
-			m.DiskSpaceUsage = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.DiskSpaceUsage = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -27406,7 +25674,7 @@ func (m *PebbleMetrics) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *BlockCacheMetrics) UnmarshalVT(dAtA []byte) error {
+func (m *StorageLevelMetrics) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -27429,1152 +25697,10 @@ func (m *BlockCacheMetrics) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: BlockCacheMetrics: wiretype end group for non-group")
+			return fmt.Errorf("proto: StorageLevelMetrics: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: BlockCacheMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
-			}
-			m.Size = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Size |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Hits", wireType)
-			}
-			m.Hits = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Hits |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Misses", wireType)
-			}
-			m.Misses = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Misses |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *CompactMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: CompactMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CompactMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DefaultCount", wireType)
-			}
-			m.DefaultCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DefaultCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DeleteOnlyCount", wireType)
-			}
-			m.DeleteOnlyCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DeleteOnlyCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ElisionOnlyCount", wireType)
-			}
-			m.ElisionOnlyCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ElisionOnlyCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MoveCount", wireType)
-			}
-			m.MoveCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MoveCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 6:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ReadCount", wireType)
-			}
-			m.ReadCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ReadCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 7:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RewriteCount", wireType)
-			}
-			m.RewriteCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.RewriteCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 8:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MultiLevelCount", wireType)
-			}
-			m.MultiLevelCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MultiLevelCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 9:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EstimatedDebt", wireType)
-			}
-			m.EstimatedDebt = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.EstimatedDebt = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 10:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field InProgressBytes", wireType)
-			}
-			m.InProgressBytes = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.InProgressBytes |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 11:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NumInProgress", wireType)
-			}
-			m.NumInProgress = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NumInProgress |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 12:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field MarkedFiles", wireType)
-			}
-			m.MarkedFiles = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.MarkedFiles |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *FlushMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: FlushMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: FlushMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NumInProgress", wireType)
-			}
-			m.NumInProgress = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.NumInProgress |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AsIngestCount", wireType)
-			}
-			m.AsIngestCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AsIngestCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AsIngestTableCount", wireType)
-			}
-			m.AsIngestTableCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AsIngestTableCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 5:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field AsIngestBytes", wireType)
-			}
-			m.AsIngestBytes = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.AsIngestBytes = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *MemTableMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: MemTableMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MemTableMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
-			}
-			m.Size = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Size = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ZombieSize", wireType)
-			}
-			m.ZombieSize = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ZombieSize = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ZombieCount", wireType)
-			}
-			m.ZombieCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ZombieCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *SnapshotsMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: SnapshotsMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SnapshotsMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= int32(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field EarliestSeqNum", wireType)
-			}
-			m.EarliestSeqNum = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.EarliestSeqNum = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PinnedKeys", wireType)
-			}
-			m.PinnedKeys = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.PinnedKeys = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PinnedSize", wireType)
-			}
-			m.PinnedSize = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.PinnedSize = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *TableMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: TableMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TableMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ZombieSize", wireType)
-			}
-			m.ZombieSize = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.ZombieSize = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ZombieCount", wireType)
-			}
-			m.ZombieCount = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ZombieCount |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BackingTableCount", wireType)
-			}
-			m.BackingTableCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BackingTableCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BackingTableSize", wireType)
-			}
-			m.BackingTableSize = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BackingTableSize = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *TableCacheMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: TableCacheMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: TableCacheMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
-			}
-			m.Size = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Size |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
-			}
-			m.Count = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Count |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Hits", wireType)
-			}
-			m.Hits = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Hits |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 4:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Misses", wireType)
-			}
-			m.Misses = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Misses |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *WALMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: WALMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: WALMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Files", wireType)
-			}
-			m.Files = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.Files |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ObsoleteFiles", wireType)
-			}
-			m.ObsoleteFiles = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.ObsoleteFiles |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
-			}
-			m.Size = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Size = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesIn", wireType)
-			}
-			m.BytesIn = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesIn = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 5:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesWritten", wireType)
-			}
-			m.BytesWritten = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesWritten = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *KeysMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: KeysMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: KeysMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RangeKeySetsCount", wireType)
-			}
-			m.RangeKeySetsCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.RangeKeySetsCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 2:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TombstoneCount", wireType)
-			}
-			m.TombstoneCount = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TombstoneCount = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		default:
-			iNdEx = preIndex
-			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return protohelpers.ErrInvalidLength
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.unknownFields = append(m.unknownFields, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *LevelMetrics) UnmarshalVT(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return protohelpers.ErrIntOverflow
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: LevelMetrics: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: LevelMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: StorageLevelMetrics: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -28610,16 +25736,16 @@ func (m *LevelMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.NumFiles |= int64(b&0x7F) << shift
+				m.NumFiles |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Size", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field SizeBytes", wireType)
 			}
-			m.Size = 0
+			m.SizeBytes = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return protohelpers.ErrIntOverflow
@@ -28629,122 +25755,11 @@ func (m *LevelMetrics) UnmarshalVT(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Size |= int64(b&0x7F) << shift
+				m.SizeBytes |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 4:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Score", wireType)
-			}
-			var v uint64
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			v = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-			m.Score = float64(math.Float64frombits(v))
-		case 5:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesIn", wireType)
-			}
-			m.BytesIn = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesIn = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 6:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesIngested", wireType)
-			}
-			m.BytesIngested = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesIngested = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 7:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesMoved", wireType)
-			}
-			m.BytesMoved = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesMoved = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 8:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesRead", wireType)
-			}
-			m.BytesRead = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesRead = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 9:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesCompacted", wireType)
-			}
-			m.BytesCompacted = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesCompacted = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 10:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field BytesFlushed", wireType)
-			}
-			m.BytesFlushed = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.BytesFlushed = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 11:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TablesCompacted", wireType)
-			}
-			m.TablesCompacted = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TablesCompacted = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 12:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TablesFlushed", wireType)
-			}
-			m.TablesFlushed = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TablesFlushed = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 13:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TablesIngested", wireType)
-			}
-			m.TablesIngested = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TablesIngested = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
-		case 14:
-			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field TablesMoved", wireType)
-			}
-			m.TablesMoved = 0
-			if (iNdEx + 8) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.TablesMoved = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
-			iNdEx += 8
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

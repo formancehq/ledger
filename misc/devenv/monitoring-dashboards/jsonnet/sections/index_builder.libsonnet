@@ -25,7 +25,7 @@ panels.row('Index Builder', 173, [
     { h: 8, w: 8, x: 16, y: 109 },
     [
       { expr: 'index.builder.last_indexed_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Last Indexed ({{service.node_id}})' },
-      { expr: 'index.builder.pebble_last_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Storage Last ({{service.node_id}})' },
+      { expr: 'index.builder.storage_last_sequence{service.cluster=~"$cluster", service.node_id=~"$node"}', legendFormat: 'Storage Last ({{service.node_id}})' },
     ], unit='none',
     description='Last indexed sequence vs storage last sequence. The gap between the two lines is the lag.', opts={ showPoints: 'auto' },
   ),

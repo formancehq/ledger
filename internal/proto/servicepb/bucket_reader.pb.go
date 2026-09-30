@@ -4253,7 +4253,7 @@ func NewGetPrimaryMetricsRequestListReader(s []*GetPrimaryMetricsRequest) GetPri
 // Call Mutate() to obtain a mutable clone.
 type GetPrimaryMetricsResponseReader interface {
 	GetAvailable() bool
-	GetMetrics() PebbleMetricsReader
+	GetMetrics() StorageMetricsReader
 	Mutate() *GetPrimaryMetricsResponse
 }
 
@@ -4263,7 +4263,7 @@ func (r *getPrimaryMetricsResponseReadonly) GetAvailable() bool {
 	return (*GetPrimaryMetricsResponse)(r).GetAvailable()
 }
 
-func (r *getPrimaryMetricsResponseReadonly) GetMetrics() PebbleMetricsReader {
+func (r *getPrimaryMetricsResponseReadonly) GetMetrics() StorageMetricsReader {
 	v := (*GetPrimaryMetricsResponse)(r).GetMetrics()
 	if v == nil {
 		return nil
@@ -4396,7 +4396,7 @@ func NewGetSecondaryMetricsRequestListReader(s []*GetSecondaryMetricsRequest) Ge
 // Call Mutate() to obtain a mutable clone.
 type GetSecondaryMetricsResponseReader interface {
 	GetAvailable() bool
-	GetMetrics() PebbleMetricsReader
+	GetMetrics() StorageMetricsReader
 	Mutate() *GetSecondaryMetricsResponse
 }
 
@@ -4406,7 +4406,7 @@ func (r *getSecondaryMetricsResponseReadonly) GetAvailable() bool {
 	return (*GetSecondaryMetricsResponse)(r).GetAvailable()
 }
 
-func (r *getSecondaryMetricsResponseReadonly) GetMetrics() PebbleMetricsReader {
+func (r *getSecondaryMetricsResponseReadonly) GetMetrics() StorageMetricsReader {
 	v := (*GetSecondaryMetricsResponse)(r).GetMetrics()
 	if v == nil {
 		return nil
@@ -4468,134 +4468,68 @@ func NewGetSecondaryMetricsResponseListReader(s []*GetSecondaryMetricsResponse) 
 	return getSecondaryMetricsResponseListReadonly(s)
 }
 
-// PebbleMetricsReader provides read-only access to PebbleMetrics.
+// StorageMetricsReader provides read-only access to StorageMetrics.
 // Call Mutate() to obtain a mutable clone.
-type PebbleMetricsReader interface {
-	GetBlockCache() BlockCacheMetricsReader
-	GetCompact() CompactMetricsReader
-	GetFlush() FlushMetricsReader
-	GetMemTable() MemTableMetricsReader
-	GetSnapshots() SnapshotsMetricsReader
-	GetTable() TableMetricsReader
-	GetTableCache() TableCacheMetricsReader
-	GetWal() WALMetricsReader
-	GetKeys() KeysMetricsReader
-	GetLevels() LevelMetricsListReader
-	GetDiskSpaceUsage() uint64
-	Mutate() *PebbleMetrics
+type StorageMetricsReader interface {
+	GetBlockCacheUsageBytes() uint64
+	GetPendingCompactionBytes() uint64
+	GetMemtableSizeBytes() uint64
+	GetSnapshotCount() uint64
+	GetLevels() StorageLevelMetricsListReader
+	Mutate() *StorageMetrics
 }
 
-type pebbleMetricsReadonly PebbleMetrics
+type storageMetricsReadonly StorageMetrics
 
-func (r *pebbleMetricsReadonly) GetBlockCache() BlockCacheMetricsReader {
-	v := (*PebbleMetrics)(r).GetBlockCache()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *storageMetricsReadonly) GetBlockCacheUsageBytes() uint64 {
+	return (*StorageMetrics)(r).GetBlockCacheUsageBytes()
 }
 
-func (r *pebbleMetricsReadonly) GetCompact() CompactMetricsReader {
-	v := (*PebbleMetrics)(r).GetCompact()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *storageMetricsReadonly) GetPendingCompactionBytes() uint64 {
+	return (*StorageMetrics)(r).GetPendingCompactionBytes()
 }
 
-func (r *pebbleMetricsReadonly) GetFlush() FlushMetricsReader {
-	v := (*PebbleMetrics)(r).GetFlush()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *storageMetricsReadonly) GetMemtableSizeBytes() uint64 {
+	return (*StorageMetrics)(r).GetMemtableSizeBytes()
 }
 
-func (r *pebbleMetricsReadonly) GetMemTable() MemTableMetricsReader {
-	v := (*PebbleMetrics)(r).GetMemTable()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *storageMetricsReadonly) GetSnapshotCount() uint64 {
+	return (*StorageMetrics)(r).GetSnapshotCount()
 }
 
-func (r *pebbleMetricsReadonly) GetSnapshots() SnapshotsMetricsReader {
-	v := (*PebbleMetrics)(r).GetSnapshots()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *storageMetricsReadonly) GetLevels() StorageLevelMetricsListReader {
+	return NewStorageLevelMetricsListReader((*StorageMetrics)(r).GetLevels())
 }
 
-func (r *pebbleMetricsReadonly) GetTable() TableMetricsReader {
-	v := (*PebbleMetrics)(r).GetTable()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
+func (r *storageMetricsReadonly) Mutate() *StorageMetrics {
+	return (*StorageMetrics)(r).CloneVT()
 }
 
-func (r *pebbleMetricsReadonly) GetTableCache() TableCacheMetricsReader {
-	v := (*PebbleMetrics)(r).GetTableCache()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *pebbleMetricsReadonly) GetWal() WALMetricsReader {
-	v := (*PebbleMetrics)(r).GetWal()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *pebbleMetricsReadonly) GetKeys() KeysMetricsReader {
-	v := (*PebbleMetrics)(r).GetKeys()
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (r *pebbleMetricsReadonly) GetLevels() LevelMetricsListReader {
-	return NewLevelMetricsListReader((*PebbleMetrics)(r).GetLevels())
-}
-
-func (r *pebbleMetricsReadonly) GetDiskSpaceUsage() uint64 {
-	return (*PebbleMetrics)(r).GetDiskSpaceUsage()
-}
-
-func (r *pebbleMetricsReadonly) Mutate() *PebbleMetrics {
-	return (*PebbleMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this PebbleMetrics.
-func (m *PebbleMetrics) AsReader() PebbleMetricsReader {
+// AsReader returns a read-only view of this StorageMetrics.
+func (m *StorageMetrics) AsReader() StorageMetricsReader {
 	if m == nil {
 		return nil
 	}
-	return (*pebbleMetricsReadonly)(m)
+	return (*storageMetricsReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this PebbleMetrics.
-func (m *PebbleMetrics) Mutate() *PebbleMetrics {
+// Mutate returns a mutable deep clone of this StorageMetrics.
+func (m *StorageMetrics) Mutate() *StorageMetrics {
 	return m.CloneVT()
 }
 
-// PebbleMetricsListReader provides read-only iteration over []*PebbleMetrics.
-type PebbleMetricsListReader interface {
+// StorageMetricsListReader provides read-only iteration over []*StorageMetrics.
+type StorageMetricsListReader interface {
 	Len() int
-	Get(i int) PebbleMetricsReader
-	Range(yield func(int, PebbleMetricsReader) bool)
+	Get(i int) StorageMetricsReader
+	Range(yield func(int, StorageMetricsReader) bool)
 }
 
-type pebbleMetricsListReadonly []*PebbleMetrics
+type storageMetricsListReadonly []*StorageMetrics
 
-func (l pebbleMetricsListReadonly) Len() int { return len(l) }
+func (l storageMetricsListReadonly) Len() int { return len(l) }
 
-func (l pebbleMetricsListReadonly) Get(i int) PebbleMetricsReader {
+func (l storageMetricsListReadonly) Get(i int) StorageMetricsReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -4603,9 +4537,9 @@ func (l pebbleMetricsListReadonly) Get(i int) PebbleMetricsReader {
 	return v.AsReader()
 }
 
-func (l pebbleMetricsListReadonly) Range(yield func(int, PebbleMetricsReader) bool) {
+func (l storageMetricsListReadonly) Range(yield func(int, StorageMetricsReader) bool) {
 	for i, v := range l {
-		var r PebbleMetricsReader
+		var r StorageMetricsReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -4615,895 +4549,64 @@ func (l pebbleMetricsListReadonly) Range(yield func(int, PebbleMetricsReader) bo
 	}
 }
 
-// NewPebbleMetricsListReader wraps s for read-only iteration. The returned
+// NewStorageMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewPebbleMetricsListReader(s []*PebbleMetrics) PebbleMetricsListReader {
-	return pebbleMetricsListReadonly(s)
+func NewStorageMetricsListReader(s []*StorageMetrics) StorageMetricsListReader {
+	return storageMetricsListReadonly(s)
 }
 
-// BlockCacheMetricsReader provides read-only access to BlockCacheMetrics.
+// StorageLevelMetricsReader provides read-only access to StorageLevelMetrics.
 // Call Mutate() to obtain a mutable clone.
-type BlockCacheMetricsReader interface {
-	GetSize() int64
-	GetCount() int64
-	GetHits() int64
-	GetMisses() int64
-	Mutate() *BlockCacheMetrics
-}
-
-type blockCacheMetricsReadonly BlockCacheMetrics
-
-func (r *blockCacheMetricsReadonly) GetSize() int64 {
-	return (*BlockCacheMetrics)(r).GetSize()
-}
-
-func (r *blockCacheMetricsReadonly) GetCount() int64 {
-	return (*BlockCacheMetrics)(r).GetCount()
-}
-
-func (r *blockCacheMetricsReadonly) GetHits() int64 {
-	return (*BlockCacheMetrics)(r).GetHits()
-}
-
-func (r *blockCacheMetricsReadonly) GetMisses() int64 {
-	return (*BlockCacheMetrics)(r).GetMisses()
-}
-
-func (r *blockCacheMetricsReadonly) Mutate() *BlockCacheMetrics {
-	return (*BlockCacheMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this BlockCacheMetrics.
-func (m *BlockCacheMetrics) AsReader() BlockCacheMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*blockCacheMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this BlockCacheMetrics.
-func (m *BlockCacheMetrics) Mutate() *BlockCacheMetrics {
-	return m.CloneVT()
-}
-
-// BlockCacheMetricsListReader provides read-only iteration over []*BlockCacheMetrics.
-type BlockCacheMetricsListReader interface {
-	Len() int
-	Get(i int) BlockCacheMetricsReader
-	Range(yield func(int, BlockCacheMetricsReader) bool)
-}
-
-type blockCacheMetricsListReadonly []*BlockCacheMetrics
-
-func (l blockCacheMetricsListReadonly) Len() int { return len(l) }
-
-func (l blockCacheMetricsListReadonly) Get(i int) BlockCacheMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l blockCacheMetricsListReadonly) Range(yield func(int, BlockCacheMetricsReader) bool) {
-	for i, v := range l {
-		var r BlockCacheMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewBlockCacheMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewBlockCacheMetricsListReader(s []*BlockCacheMetrics) BlockCacheMetricsListReader {
-	return blockCacheMetricsListReadonly(s)
-}
-
-// CompactMetricsReader provides read-only access to CompactMetrics.
-// Call Mutate() to obtain a mutable clone.
-type CompactMetricsReader interface {
-	GetCount() int64
-	GetDefaultCount() int64
-	GetDeleteOnlyCount() int64
-	GetElisionOnlyCount() int64
-	GetMoveCount() int64
-	GetReadCount() int64
-	GetRewriteCount() int64
-	GetMultiLevelCount() int64
-	GetEstimatedDebt() uint64
-	GetInProgressBytes() int64
-	GetNumInProgress() int64
-	GetMarkedFiles() int32
-	Mutate() *CompactMetrics
-}
-
-type compactMetricsReadonly CompactMetrics
-
-func (r *compactMetricsReadonly) GetCount() int64 {
-	return (*CompactMetrics)(r).GetCount()
-}
-
-func (r *compactMetricsReadonly) GetDefaultCount() int64 {
-	return (*CompactMetrics)(r).GetDefaultCount()
-}
-
-func (r *compactMetricsReadonly) GetDeleteOnlyCount() int64 {
-	return (*CompactMetrics)(r).GetDeleteOnlyCount()
-}
-
-func (r *compactMetricsReadonly) GetElisionOnlyCount() int64 {
-	return (*CompactMetrics)(r).GetElisionOnlyCount()
-}
-
-func (r *compactMetricsReadonly) GetMoveCount() int64 {
-	return (*CompactMetrics)(r).GetMoveCount()
-}
-
-func (r *compactMetricsReadonly) GetReadCount() int64 {
-	return (*CompactMetrics)(r).GetReadCount()
-}
-
-func (r *compactMetricsReadonly) GetRewriteCount() int64 {
-	return (*CompactMetrics)(r).GetRewriteCount()
-}
-
-func (r *compactMetricsReadonly) GetMultiLevelCount() int64 {
-	return (*CompactMetrics)(r).GetMultiLevelCount()
-}
-
-func (r *compactMetricsReadonly) GetEstimatedDebt() uint64 {
-	return (*CompactMetrics)(r).GetEstimatedDebt()
-}
-
-func (r *compactMetricsReadonly) GetInProgressBytes() int64 {
-	return (*CompactMetrics)(r).GetInProgressBytes()
-}
-
-func (r *compactMetricsReadonly) GetNumInProgress() int64 {
-	return (*CompactMetrics)(r).GetNumInProgress()
-}
-
-func (r *compactMetricsReadonly) GetMarkedFiles() int32 {
-	return (*CompactMetrics)(r).GetMarkedFiles()
-}
-
-func (r *compactMetricsReadonly) Mutate() *CompactMetrics {
-	return (*CompactMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this CompactMetrics.
-func (m *CompactMetrics) AsReader() CompactMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*compactMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this CompactMetrics.
-func (m *CompactMetrics) Mutate() *CompactMetrics {
-	return m.CloneVT()
-}
-
-// CompactMetricsListReader provides read-only iteration over []*CompactMetrics.
-type CompactMetricsListReader interface {
-	Len() int
-	Get(i int) CompactMetricsReader
-	Range(yield func(int, CompactMetricsReader) bool)
-}
-
-type compactMetricsListReadonly []*CompactMetrics
-
-func (l compactMetricsListReadonly) Len() int { return len(l) }
-
-func (l compactMetricsListReadonly) Get(i int) CompactMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l compactMetricsListReadonly) Range(yield func(int, CompactMetricsReader) bool) {
-	for i, v := range l {
-		var r CompactMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewCompactMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewCompactMetricsListReader(s []*CompactMetrics) CompactMetricsListReader {
-	return compactMetricsListReadonly(s)
-}
-
-// FlushMetricsReader provides read-only access to FlushMetrics.
-// Call Mutate() to obtain a mutable clone.
-type FlushMetricsReader interface {
-	GetCount() int64
-	GetNumInProgress() int64
-	GetAsIngestCount() uint64
-	GetAsIngestTableCount() uint64
-	GetAsIngestBytes() uint64
-	Mutate() *FlushMetrics
-}
-
-type flushMetricsReadonly FlushMetrics
-
-func (r *flushMetricsReadonly) GetCount() int64 {
-	return (*FlushMetrics)(r).GetCount()
-}
-
-func (r *flushMetricsReadonly) GetNumInProgress() int64 {
-	return (*FlushMetrics)(r).GetNumInProgress()
-}
-
-func (r *flushMetricsReadonly) GetAsIngestCount() uint64 {
-	return (*FlushMetrics)(r).GetAsIngestCount()
-}
-
-func (r *flushMetricsReadonly) GetAsIngestTableCount() uint64 {
-	return (*FlushMetrics)(r).GetAsIngestTableCount()
-}
-
-func (r *flushMetricsReadonly) GetAsIngestBytes() uint64 {
-	return (*FlushMetrics)(r).GetAsIngestBytes()
-}
-
-func (r *flushMetricsReadonly) Mutate() *FlushMetrics {
-	return (*FlushMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this FlushMetrics.
-func (m *FlushMetrics) AsReader() FlushMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*flushMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this FlushMetrics.
-func (m *FlushMetrics) Mutate() *FlushMetrics {
-	return m.CloneVT()
-}
-
-// FlushMetricsListReader provides read-only iteration over []*FlushMetrics.
-type FlushMetricsListReader interface {
-	Len() int
-	Get(i int) FlushMetricsReader
-	Range(yield func(int, FlushMetricsReader) bool)
-}
-
-type flushMetricsListReadonly []*FlushMetrics
-
-func (l flushMetricsListReadonly) Len() int { return len(l) }
-
-func (l flushMetricsListReadonly) Get(i int) FlushMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l flushMetricsListReadonly) Range(yield func(int, FlushMetricsReader) bool) {
-	for i, v := range l {
-		var r FlushMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewFlushMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewFlushMetricsListReader(s []*FlushMetrics) FlushMetricsListReader {
-	return flushMetricsListReadonly(s)
-}
-
-// MemTableMetricsReader provides read-only access to MemTableMetrics.
-// Call Mutate() to obtain a mutable clone.
-type MemTableMetricsReader interface {
-	GetSize() uint64
-	GetCount() int64
-	GetZombieSize() uint64
-	GetZombieCount() int64
-	Mutate() *MemTableMetrics
-}
-
-type memTableMetricsReadonly MemTableMetrics
-
-func (r *memTableMetricsReadonly) GetSize() uint64 {
-	return (*MemTableMetrics)(r).GetSize()
-}
-
-func (r *memTableMetricsReadonly) GetCount() int64 {
-	return (*MemTableMetrics)(r).GetCount()
-}
-
-func (r *memTableMetricsReadonly) GetZombieSize() uint64 {
-	return (*MemTableMetrics)(r).GetZombieSize()
-}
-
-func (r *memTableMetricsReadonly) GetZombieCount() int64 {
-	return (*MemTableMetrics)(r).GetZombieCount()
-}
-
-func (r *memTableMetricsReadonly) Mutate() *MemTableMetrics {
-	return (*MemTableMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this MemTableMetrics.
-func (m *MemTableMetrics) AsReader() MemTableMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*memTableMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this MemTableMetrics.
-func (m *MemTableMetrics) Mutate() *MemTableMetrics {
-	return m.CloneVT()
-}
-
-// MemTableMetricsListReader provides read-only iteration over []*MemTableMetrics.
-type MemTableMetricsListReader interface {
-	Len() int
-	Get(i int) MemTableMetricsReader
-	Range(yield func(int, MemTableMetricsReader) bool)
-}
-
-type memTableMetricsListReadonly []*MemTableMetrics
-
-func (l memTableMetricsListReadonly) Len() int { return len(l) }
-
-func (l memTableMetricsListReadonly) Get(i int) MemTableMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l memTableMetricsListReadonly) Range(yield func(int, MemTableMetricsReader) bool) {
-	for i, v := range l {
-		var r MemTableMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewMemTableMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewMemTableMetricsListReader(s []*MemTableMetrics) MemTableMetricsListReader {
-	return memTableMetricsListReadonly(s)
-}
-
-// SnapshotsMetricsReader provides read-only access to SnapshotsMetrics.
-// Call Mutate() to obtain a mutable clone.
-type SnapshotsMetricsReader interface {
-	GetCount() int32
-	GetEarliestSeqNum() uint64
-	GetPinnedKeys() uint64
-	GetPinnedSize() uint64
-	Mutate() *SnapshotsMetrics
-}
-
-type snapshotsMetricsReadonly SnapshotsMetrics
-
-func (r *snapshotsMetricsReadonly) GetCount() int32 {
-	return (*SnapshotsMetrics)(r).GetCount()
-}
-
-func (r *snapshotsMetricsReadonly) GetEarliestSeqNum() uint64 {
-	return (*SnapshotsMetrics)(r).GetEarliestSeqNum()
-}
-
-func (r *snapshotsMetricsReadonly) GetPinnedKeys() uint64 {
-	return (*SnapshotsMetrics)(r).GetPinnedKeys()
-}
-
-func (r *snapshotsMetricsReadonly) GetPinnedSize() uint64 {
-	return (*SnapshotsMetrics)(r).GetPinnedSize()
-}
-
-func (r *snapshotsMetricsReadonly) Mutate() *SnapshotsMetrics {
-	return (*SnapshotsMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this SnapshotsMetrics.
-func (m *SnapshotsMetrics) AsReader() SnapshotsMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*snapshotsMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this SnapshotsMetrics.
-func (m *SnapshotsMetrics) Mutate() *SnapshotsMetrics {
-	return m.CloneVT()
-}
-
-// SnapshotsMetricsListReader provides read-only iteration over []*SnapshotsMetrics.
-type SnapshotsMetricsListReader interface {
-	Len() int
-	Get(i int) SnapshotsMetricsReader
-	Range(yield func(int, SnapshotsMetricsReader) bool)
-}
-
-type snapshotsMetricsListReadonly []*SnapshotsMetrics
-
-func (l snapshotsMetricsListReadonly) Len() int { return len(l) }
-
-func (l snapshotsMetricsListReadonly) Get(i int) SnapshotsMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l snapshotsMetricsListReadonly) Range(yield func(int, SnapshotsMetricsReader) bool) {
-	for i, v := range l {
-		var r SnapshotsMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewSnapshotsMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewSnapshotsMetricsListReader(s []*SnapshotsMetrics) SnapshotsMetricsListReader {
-	return snapshotsMetricsListReadonly(s)
-}
-
-// TableMetricsReader provides read-only access to TableMetrics.
-// Call Mutate() to obtain a mutable clone.
-type TableMetricsReader interface {
-	GetZombieSize() uint64
-	GetZombieCount() int64
-	GetBackingTableCount() uint64
-	GetBackingTableSize() uint64
-	Mutate() *TableMetrics
-}
-
-type tableMetricsReadonly TableMetrics
-
-func (r *tableMetricsReadonly) GetZombieSize() uint64 {
-	return (*TableMetrics)(r).GetZombieSize()
-}
-
-func (r *tableMetricsReadonly) GetZombieCount() int64 {
-	return (*TableMetrics)(r).GetZombieCount()
-}
-
-func (r *tableMetricsReadonly) GetBackingTableCount() uint64 {
-	return (*TableMetrics)(r).GetBackingTableCount()
-}
-
-func (r *tableMetricsReadonly) GetBackingTableSize() uint64 {
-	return (*TableMetrics)(r).GetBackingTableSize()
-}
-
-func (r *tableMetricsReadonly) Mutate() *TableMetrics {
-	return (*TableMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this TableMetrics.
-func (m *TableMetrics) AsReader() TableMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*tableMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this TableMetrics.
-func (m *TableMetrics) Mutate() *TableMetrics {
-	return m.CloneVT()
-}
-
-// TableMetricsListReader provides read-only iteration over []*TableMetrics.
-type TableMetricsListReader interface {
-	Len() int
-	Get(i int) TableMetricsReader
-	Range(yield func(int, TableMetricsReader) bool)
-}
-
-type tableMetricsListReadonly []*TableMetrics
-
-func (l tableMetricsListReadonly) Len() int { return len(l) }
-
-func (l tableMetricsListReadonly) Get(i int) TableMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l tableMetricsListReadonly) Range(yield func(int, TableMetricsReader) bool) {
-	for i, v := range l {
-		var r TableMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewTableMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewTableMetricsListReader(s []*TableMetrics) TableMetricsListReader {
-	return tableMetricsListReadonly(s)
-}
-
-// TableCacheMetricsReader provides read-only access to TableCacheMetrics.
-// Call Mutate() to obtain a mutable clone.
-type TableCacheMetricsReader interface {
-	GetSize() int64
-	GetCount() int64
-	GetHits() int64
-	GetMisses() int64
-	Mutate() *TableCacheMetrics
-}
-
-type tableCacheMetricsReadonly TableCacheMetrics
-
-func (r *tableCacheMetricsReadonly) GetSize() int64 {
-	return (*TableCacheMetrics)(r).GetSize()
-}
-
-func (r *tableCacheMetricsReadonly) GetCount() int64 {
-	return (*TableCacheMetrics)(r).GetCount()
-}
-
-func (r *tableCacheMetricsReadonly) GetHits() int64 {
-	return (*TableCacheMetrics)(r).GetHits()
-}
-
-func (r *tableCacheMetricsReadonly) GetMisses() int64 {
-	return (*TableCacheMetrics)(r).GetMisses()
-}
-
-func (r *tableCacheMetricsReadonly) Mutate() *TableCacheMetrics {
-	return (*TableCacheMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this TableCacheMetrics.
-func (m *TableCacheMetrics) AsReader() TableCacheMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*tableCacheMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this TableCacheMetrics.
-func (m *TableCacheMetrics) Mutate() *TableCacheMetrics {
-	return m.CloneVT()
-}
-
-// TableCacheMetricsListReader provides read-only iteration over []*TableCacheMetrics.
-type TableCacheMetricsListReader interface {
-	Len() int
-	Get(i int) TableCacheMetricsReader
-	Range(yield func(int, TableCacheMetricsReader) bool)
-}
-
-type tableCacheMetricsListReadonly []*TableCacheMetrics
-
-func (l tableCacheMetricsListReadonly) Len() int { return len(l) }
-
-func (l tableCacheMetricsListReadonly) Get(i int) TableCacheMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l tableCacheMetricsListReadonly) Range(yield func(int, TableCacheMetricsReader) bool) {
-	for i, v := range l {
-		var r TableCacheMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewTableCacheMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewTableCacheMetricsListReader(s []*TableCacheMetrics) TableCacheMetricsListReader {
-	return tableCacheMetricsListReadonly(s)
-}
-
-// WALMetricsReader provides read-only access to WALMetrics.
-// Call Mutate() to obtain a mutable clone.
-type WALMetricsReader interface {
-	GetFiles() int64
-	GetObsoleteFiles() int64
-	GetSize() uint64
-	GetBytesIn() uint64
-	GetBytesWritten() uint64
-	Mutate() *WALMetrics
-}
-
-type wALMetricsReadonly WALMetrics
-
-func (r *wALMetricsReadonly) GetFiles() int64 {
-	return (*WALMetrics)(r).GetFiles()
-}
-
-func (r *wALMetricsReadonly) GetObsoleteFiles() int64 {
-	return (*WALMetrics)(r).GetObsoleteFiles()
-}
-
-func (r *wALMetricsReadonly) GetSize() uint64 {
-	return (*WALMetrics)(r).GetSize()
-}
-
-func (r *wALMetricsReadonly) GetBytesIn() uint64 {
-	return (*WALMetrics)(r).GetBytesIn()
-}
-
-func (r *wALMetricsReadonly) GetBytesWritten() uint64 {
-	return (*WALMetrics)(r).GetBytesWritten()
-}
-
-func (r *wALMetricsReadonly) Mutate() *WALMetrics {
-	return (*WALMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this WALMetrics.
-func (m *WALMetrics) AsReader() WALMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*wALMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this WALMetrics.
-func (m *WALMetrics) Mutate() *WALMetrics {
-	return m.CloneVT()
-}
-
-// WALMetricsListReader provides read-only iteration over []*WALMetrics.
-type WALMetricsListReader interface {
-	Len() int
-	Get(i int) WALMetricsReader
-	Range(yield func(int, WALMetricsReader) bool)
-}
-
-type wALMetricsListReadonly []*WALMetrics
-
-func (l wALMetricsListReadonly) Len() int { return len(l) }
-
-func (l wALMetricsListReadonly) Get(i int) WALMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l wALMetricsListReadonly) Range(yield func(int, WALMetricsReader) bool) {
-	for i, v := range l {
-		var r WALMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewWALMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewWALMetricsListReader(s []*WALMetrics) WALMetricsListReader { return wALMetricsListReadonly(s) }
-
-// KeysMetricsReader provides read-only access to KeysMetrics.
-// Call Mutate() to obtain a mutable clone.
-type KeysMetricsReader interface {
-	GetRangeKeySetsCount() uint64
-	GetTombstoneCount() uint64
-	Mutate() *KeysMetrics
-}
-
-type keysMetricsReadonly KeysMetrics
-
-func (r *keysMetricsReadonly) GetRangeKeySetsCount() uint64 {
-	return (*KeysMetrics)(r).GetRangeKeySetsCount()
-}
-
-func (r *keysMetricsReadonly) GetTombstoneCount() uint64 {
-	return (*KeysMetrics)(r).GetTombstoneCount()
-}
-
-func (r *keysMetricsReadonly) Mutate() *KeysMetrics {
-	return (*KeysMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this KeysMetrics.
-func (m *KeysMetrics) AsReader() KeysMetricsReader {
-	if m == nil {
-		return nil
-	}
-	return (*keysMetricsReadonly)(m)
-}
-
-// Mutate returns a mutable deep clone of this KeysMetrics.
-func (m *KeysMetrics) Mutate() *KeysMetrics {
-	return m.CloneVT()
-}
-
-// KeysMetricsListReader provides read-only iteration over []*KeysMetrics.
-type KeysMetricsListReader interface {
-	Len() int
-	Get(i int) KeysMetricsReader
-	Range(yield func(int, KeysMetricsReader) bool)
-}
-
-type keysMetricsListReadonly []*KeysMetrics
-
-func (l keysMetricsListReadonly) Len() int { return len(l) }
-
-func (l keysMetricsListReadonly) Get(i int) KeysMetricsReader {
-	v := l[i]
-	if v == nil {
-		return nil
-	}
-	return v.AsReader()
-}
-
-func (l keysMetricsListReadonly) Range(yield func(int, KeysMetricsReader) bool) {
-	for i, v := range l {
-		var r KeysMetricsReader
-		if v != nil {
-			r = v.AsReader()
-		}
-		if !yield(i, r) {
-			return
-		}
-	}
-}
-
-// NewKeysMetricsListReader wraps s for read-only iteration. The returned
-// view aliases the underlying slice; do not mutate s afterwards.
-func NewKeysMetricsListReader(s []*KeysMetrics) KeysMetricsListReader {
-	return keysMetricsListReadonly(s)
-}
-
-// LevelMetricsReader provides read-only access to LevelMetrics.
-// Call Mutate() to obtain a mutable clone.
-type LevelMetricsReader interface {
+type StorageLevelMetricsReader interface {
 	GetLevel() int32
-	GetNumFiles() int64
-	GetSize() int64
-	GetScore() float64
-	GetBytesIn() uint64
-	GetBytesIngested() uint64
-	GetBytesMoved() uint64
-	GetBytesRead() uint64
-	GetBytesCompacted() uint64
-	GetBytesFlushed() uint64
-	GetTablesCompacted() uint64
-	GetTablesFlushed() uint64
-	GetTablesIngested() uint64
-	GetTablesMoved() uint64
-	Mutate() *LevelMetrics
+	GetNumFiles() uint64
+	GetSizeBytes() uint64
+	Mutate() *StorageLevelMetrics
 }
 
-type levelMetricsReadonly LevelMetrics
+type storageLevelMetricsReadonly StorageLevelMetrics
 
-func (r *levelMetricsReadonly) GetLevel() int32 {
-	return (*LevelMetrics)(r).GetLevel()
+func (r *storageLevelMetricsReadonly) GetLevel() int32 {
+	return (*StorageLevelMetrics)(r).GetLevel()
 }
 
-func (r *levelMetricsReadonly) GetNumFiles() int64 {
-	return (*LevelMetrics)(r).GetNumFiles()
+func (r *storageLevelMetricsReadonly) GetNumFiles() uint64 {
+	return (*StorageLevelMetrics)(r).GetNumFiles()
 }
 
-func (r *levelMetricsReadonly) GetSize() int64 {
-	return (*LevelMetrics)(r).GetSize()
+func (r *storageLevelMetricsReadonly) GetSizeBytes() uint64 {
+	return (*StorageLevelMetrics)(r).GetSizeBytes()
 }
 
-func (r *levelMetricsReadonly) GetScore() float64 {
-	return (*LevelMetrics)(r).GetScore()
+func (r *storageLevelMetricsReadonly) Mutate() *StorageLevelMetrics {
+	return (*StorageLevelMetrics)(r).CloneVT()
 }
 
-func (r *levelMetricsReadonly) GetBytesIn() uint64 {
-	return (*LevelMetrics)(r).GetBytesIn()
-}
-
-func (r *levelMetricsReadonly) GetBytesIngested() uint64 {
-	return (*LevelMetrics)(r).GetBytesIngested()
-}
-
-func (r *levelMetricsReadonly) GetBytesMoved() uint64 {
-	return (*LevelMetrics)(r).GetBytesMoved()
-}
-
-func (r *levelMetricsReadonly) GetBytesRead() uint64 {
-	return (*LevelMetrics)(r).GetBytesRead()
-}
-
-func (r *levelMetricsReadonly) GetBytesCompacted() uint64 {
-	return (*LevelMetrics)(r).GetBytesCompacted()
-}
-
-func (r *levelMetricsReadonly) GetBytesFlushed() uint64 {
-	return (*LevelMetrics)(r).GetBytesFlushed()
-}
-
-func (r *levelMetricsReadonly) GetTablesCompacted() uint64 {
-	return (*LevelMetrics)(r).GetTablesCompacted()
-}
-
-func (r *levelMetricsReadonly) GetTablesFlushed() uint64 {
-	return (*LevelMetrics)(r).GetTablesFlushed()
-}
-
-func (r *levelMetricsReadonly) GetTablesIngested() uint64 {
-	return (*LevelMetrics)(r).GetTablesIngested()
-}
-
-func (r *levelMetricsReadonly) GetTablesMoved() uint64 {
-	return (*LevelMetrics)(r).GetTablesMoved()
-}
-
-func (r *levelMetricsReadonly) Mutate() *LevelMetrics {
-	return (*LevelMetrics)(r).CloneVT()
-}
-
-// AsReader returns a read-only view of this LevelMetrics.
-func (m *LevelMetrics) AsReader() LevelMetricsReader {
+// AsReader returns a read-only view of this StorageLevelMetrics.
+func (m *StorageLevelMetrics) AsReader() StorageLevelMetricsReader {
 	if m == nil {
 		return nil
 	}
-	return (*levelMetricsReadonly)(m)
+	return (*storageLevelMetricsReadonly)(m)
 }
 
-// Mutate returns a mutable deep clone of this LevelMetrics.
-func (m *LevelMetrics) Mutate() *LevelMetrics {
+// Mutate returns a mutable deep clone of this StorageLevelMetrics.
+func (m *StorageLevelMetrics) Mutate() *StorageLevelMetrics {
 	return m.CloneVT()
 }
 
-// LevelMetricsListReader provides read-only iteration over []*LevelMetrics.
-type LevelMetricsListReader interface {
+// StorageLevelMetricsListReader provides read-only iteration over []*StorageLevelMetrics.
+type StorageLevelMetricsListReader interface {
 	Len() int
-	Get(i int) LevelMetricsReader
-	Range(yield func(int, LevelMetricsReader) bool)
+	Get(i int) StorageLevelMetricsReader
+	Range(yield func(int, StorageLevelMetricsReader) bool)
 }
 
-type levelMetricsListReadonly []*LevelMetrics
+type storageLevelMetricsListReadonly []*StorageLevelMetrics
 
-func (l levelMetricsListReadonly) Len() int { return len(l) }
+func (l storageLevelMetricsListReadonly) Len() int { return len(l) }
 
-func (l levelMetricsListReadonly) Get(i int) LevelMetricsReader {
+func (l storageLevelMetricsListReadonly) Get(i int) StorageLevelMetricsReader {
 	v := l[i]
 	if v == nil {
 		return nil
@@ -5511,9 +4614,9 @@ func (l levelMetricsListReadonly) Get(i int) LevelMetricsReader {
 	return v.AsReader()
 }
 
-func (l levelMetricsListReadonly) Range(yield func(int, LevelMetricsReader) bool) {
+func (l storageLevelMetricsListReadonly) Range(yield func(int, StorageLevelMetricsReader) bool) {
 	for i, v := range l {
-		var r LevelMetricsReader
+		var r StorageLevelMetricsReader
 		if v != nil {
 			r = v.AsReader()
 		}
@@ -5523,10 +4626,10 @@ func (l levelMetricsListReadonly) Range(yield func(int, LevelMetricsReader) bool
 	}
 }
 
-// NewLevelMetricsListReader wraps s for read-only iteration. The returned
+// NewStorageLevelMetricsListReader wraps s for read-only iteration. The returned
 // view aliases the underlying slice; do not mutate s afterwards.
-func NewLevelMetricsListReader(s []*LevelMetrics) LevelMetricsListReader {
-	return levelMetricsListReadonly(s)
+func NewStorageLevelMetricsListReader(s []*StorageLevelMetrics) StorageLevelMetricsListReader {
+	return storageLevelMetricsListReadonly(s)
 }
 
 // CheckStoreRequestReader provides read-only access to CheckStoreRequest.

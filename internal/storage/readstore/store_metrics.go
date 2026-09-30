@@ -8,35 +8,35 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// GetMetrics retains the existing wire envelope for the read index. Only
-// fields with a direct RocksDB equivalent are populated.
-func (s *Store) GetMetrics() *servicepb.PebbleMetrics {
+// GetMetrics returns the RocksDB properties available for the read index.
+func (s *Store) GetMetrics() *servicepb.StorageMetrics {
 	raw := s.db.Raw()
-	result := &servicepb.PebbleMetrics{}
-	if size, ok := raw.GetIntProperty("rocksdb.block-cache-usage"); ok && size <= math.MaxInt64 {
-		result.BlockCache = &servicepb.BlockCacheMetrics{Size: int64(size)}
+	result := &servicepb.StorageMetrics{}
+	if size, ok := raw.GetIntProperty("rocksdb.block-cache-usage"); ok {
+		result.BlockCacheUsageBytes = &size
 	}
 	if debt, ok := raw.GetIntProperty("rocksdb.estimate-pending-compaction-bytes"); ok {
-		result.Compact = &servicepb.CompactMetrics{EstimatedDebt: debt}
+		result.PendingCompactionBytes = &debt
 	}
 	if size, ok := raw.GetIntProperty("rocksdb.cur-size-all-mem-tables"); ok {
-		result.MemTable = &servicepb.MemTableMetrics{Size: size}
+		result.MemtableSizeBytes = &size
 	}
-	if count, ok := raw.GetIntProperty("rocksdb.num-snapshots"); ok && count <= math.MaxInt32 {
-		result.Snapshots = &servicepb.SnapshotsMetrics{Count: int32(count)}
+	if count, ok := raw.GetIntProperty("rocksdb.num-snapshots"); ok {
+		result.SnapshotCount = &count
 	}
-	levels := map[int]*servicepb.LevelMetrics{}
+
+	levels := map[int]*servicepb.StorageLevelMetrics{}
 	for _, file := range raw.GetLiveFilesMetaData() {
-		if file.Level < 0 || file.Level > math.MaxInt32 {
+		if file.Level < 0 || file.Level > math.MaxInt32 || file.Size < 0 {
 			continue
 		}
 		level := levels[file.Level]
 		if level == nil {
-			level = &servicepb.LevelMetrics{Level: int32(file.Level)}
+			level = &servicepb.StorageLevelMetrics{Level: int32(file.Level)}
 			levels[file.Level] = level
 		}
 		level.NumFiles++
-		level.Size += file.Size
+		level.SizeBytes += uint64(file.Size)
 	}
 	for _, level := range slices.Sorted(maps.Keys(levels)) {
 		result.Levels = append(result.Levels, levels[level])

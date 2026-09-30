@@ -155,7 +155,7 @@ func (m *IndexProgress) CloneVT() *IndexProgress {
 	}
 	r := new(IndexProgress)
 	r.LastIndexedSequence = m.LastIndexedSequence
-	r.PebbleLastSequence = m.PebbleLastSequence
+	r.StorageLastSequence = m.StorageLastSequence
 	if len(m.unknownFields) > 0 {
 		r.unknownFields = make([]byte, len(m.unknownFields))
 		copy(r.unknownFields, m.unknownFields)
@@ -929,7 +929,7 @@ func (this *IndexProgress) EqualVT(that *IndexProgress) bool {
 	if this.LastIndexedSequence != that.LastIndexedSequence {
 		return false
 	}
-	if this.PebbleLastSequence != that.PebbleLastSequence {
+	if this.StorageLastSequence != that.StorageLastSequence {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -2061,9 +2061,9 @@ func (m *IndexProgress) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
-	if m.PebbleLastSequence != 0 {
+	if m.StorageLastSequence != 0 {
 		i -= 8
-		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.PebbleLastSequence))
+		binary.LittleEndian.PutUint64(dAtA[i:], uint64(m.StorageLastSequence))
 		i--
 		dAtA[i] = 0x11
 	}
@@ -3572,7 +3572,7 @@ func (m *IndexProgress) SizeVT() (n int) {
 	if m.LastIndexedSequence != 0 {
 		n += 9
 	}
-	if m.PebbleLastSequence != 0 {
+	if m.StorageLastSequence != 0 {
 		n += 9
 	}
 	n += len(m.unknownFields)
@@ -5286,13 +5286,13 @@ func (m *IndexProgress) UnmarshalVT(dAtA []byte) error {
 			iNdEx += 8
 		case 2:
 			if wireType != 1 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PebbleLastSequence", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StorageLastSequence", wireType)
 			}
-			m.PebbleLastSequence = 0
+			m.StorageLastSequence = 0
 			if (iNdEx + 8) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.PebbleLastSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
+			m.StorageLastSequence = uint64(binary.LittleEndian.Uint64(dAtA[iNdEx:]))
 			iNdEx += 8
 		default:
 			iNdEx = preIndex

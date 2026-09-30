@@ -676,7 +676,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	fsmHandle, err := b.pebbleStore.NewReadHandle()
+	fsmHandle, err := b.primaryStore.NewReadHandle()
 	if err != nil {
 		return false, fmt.Errorf("opening FSM snapshot for schema rewrite: %w", err)
 	}
@@ -1337,7 +1337,7 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 // overhead during catch-up. Processing continues until the deadline is reached
 // or EOF. Existence writes are skipped.
 func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for backfill: %w", err)
 	}

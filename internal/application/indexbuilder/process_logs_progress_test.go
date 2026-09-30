@@ -26,7 +26,7 @@ func seedLogTarget(t *testing.T, b *Builder, appliedIndex uint64, count int) {
 		logs = append(logs, &commonpb.Log{Sequence: uint64(sequence)})
 	}
 
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	if len(logs) > 0 {
 		require.NoError(t, state.AppendLogs(batch, logs))
 	}
@@ -37,7 +37,7 @@ func seedLogTarget(t *testing.T, b *Builder, appliedIndex uint64, count int) {
 func seedQueryCheckpointState(t *testing.T, b *Builder, checkpointID, appliedIndex uint64, restored bool) {
 	t.Helper()
 
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	key := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
 		PutUint64(checkpointID).
@@ -73,7 +73,7 @@ func TestProcessLogsRejectsCorruptTargetLog(t *testing.T) {
 
 	b := newTestBuilderWithStore(t)
 	b.notifications = signal.NewNotifications()
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	key := dal.NewKeyBuilder().PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(1).Build()
 	require.NoError(t, batch.SetBytes(key, []byte{0xff}))
 	require.NoError(t, state.SetAppliedIndex(batch, 9))
@@ -89,7 +89,7 @@ func TestProjectionTargetSnapshotExcludesCommitBetweenReads(t *testing.T) {
 	b := newTestBuilderWithStore(t)
 	seedLogTarget(t, b, 9, 0)
 
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.primaryStore.NewReadHandle()
 	require.NoError(t, err)
 	defer func() { _ = handle.Close() }()
 
@@ -127,7 +127,7 @@ func TestProcessLogsPublishesRaftHorizonOnlyAfterFinalNativeBatch(t *testing.T) 
 	// Advance the main store after the target was captured. Continuation calls
 	// must finish the original (H=23, seq=3) target rather than chase this newer
 	// head; the next target is captured only after H=23 is published.
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{Sequence: 4}}))
 	require.NoError(t, state.SetAppliedIndex(batch, 24))
 	require.NoError(t, batch.Commit())
@@ -181,7 +181,7 @@ func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T
 	// A newer snapshot contains a checkpoint immediately beyond the retained
 	// target. The continuation must consume only sequences 3..5 even though its
 	// first batch (3..4) produces no projection writes.
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 6,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
@@ -203,7 +203,7 @@ func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T
 	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(5), cursor, "the continuation must stop at its fixed native target")
-	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+	require.False(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)),
 		"a checkpoint beyond the fixed target must remain untouched")
 
 	// The next call captures the newer target and can now materialize the
@@ -211,7 +211,7 @@ func TestProcessLogsEmptyBatchDoesNotCrossFixedTargetOnContinuation(t *testing.T
 	cursor, err = b.processLogs(context.Background(), cursor, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(6), cursor)
-	dir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	dir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 	require.True(t, dal.CheckpointDirReady(dir))
 	frozen, err := readstore.OpenReadOnly(dir, noopLogger{})
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 		checkpointID = uint64(41)
 		horizon      = uint64(31)
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
@@ -264,7 +264,7 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 		return err == nil && progress == horizon
 	}, 5*time.Second, 10*time.Millisecond,
 		"the normal projection must reach the checkpoint log before waiting for audit")
-	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+	require.False(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)),
 		"the checkpoint must not be exposed while audit is behind")
 
 	auditBatch := b.readStore.NewBatch()
@@ -280,7 +280,7 @@ func TestProcessLogsWaitsForAuditBeforeFreezingQueryCheckpoint(t *testing.T) {
 		t.Fatal("processLogs did not resume after audit reached the fixed checkpoint horizon")
 	}
 
-	dir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	dir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 	require.True(t, dal.CheckpointDirReady(dir))
 	frozen, err := readstore.OpenReadOnly(dir, noopLogger{})
 	require.NoError(t, err)
@@ -302,7 +302,7 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 		checkpointID = uint64(42)
 		horizon      = uint64(32)
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
@@ -349,7 +349,7 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 		}
 	}, 100*time.Millisecond, 10*time.Millisecond,
 		"processLogs must not abandon a checkpoint while the audit projection rebuilds")
-	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)),
+	require.False(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)),
 		"a rebuilding audit projection must keep the checkpoint unmaterialized")
 
 	b.readStore.SetAuditProjectionState(false, false)
@@ -360,7 +360,7 @@ func TestProcessLogsWaitsWhenAuditStartsRebuilding(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("processLogs did not resume after the audit projection became ready")
 	}
-	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.True(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 
 func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T) {
@@ -375,7 +375,7 @@ func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T)
 		checkpointID = uint64(43)
 		horizon      = uint64(33)
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{{
 		Sequence: 1,
 		Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_CreatedQueryCheckpoint{
@@ -393,7 +393,7 @@ func TestProcessLogsLeavesCheckpointUnavailableWhenAuditIsDisabled(t *testing.T)
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cursor)
-	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.False(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 
 func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBatch(t *testing.T) {
@@ -409,7 +409,7 @@ func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBat
 		ledger       = "checkpoint-retry"
 		laterLedger  = "after-checkpoint"
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
 		{
 			Sequence: 1,
@@ -441,7 +441,7 @@ func TestProcessLogsRetriesCheckpointMaterializationWithoutReplayingCommittedBat
 	require.NoError(t, b.readStore.WriteAuditRaftProgress(auditBatch, horizon))
 	require.NoError(t, auditBatch.Commit())
 
-	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	finalDir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 	checkpointDir := filepath.Dir(finalDir)
 	require.NoError(t, os.MkdirAll(filepath.Dir(checkpointDir), 0o750))
 	require.NoError(t, os.WriteFile(checkpointDir, []byte("block first attempt"), 0o600))
@@ -492,7 +492,7 @@ func TestProcessLogsContinuesPastCheckpointWhenAuditFails(t *testing.T) {
 		checkpointID = uint64(46)
 		horizon      = uint64(36)
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
 		{
 			Sequence: 1,
@@ -514,7 +514,7 @@ func TestProcessLogsContinuesPastCheckpointWhenAuditFails(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), cursor,
 		"a failed audit projection must not park all subsequent normal projection progress")
-	require.False(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.False(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)))
 }
 
 func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
@@ -529,7 +529,7 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 		checkpointHorizon = uint64(34)
 		targetHorizon     = uint64(35)
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
 		{
 			Sequence: 1,
@@ -558,7 +558,7 @@ func TestProcessLogsCertifiesCheckpointHorizonBeforeLaterTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, checkpointHorizon, progress,
 		"the checkpoint log may certify its own horizon without certifying the later fixed target")
-	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.True(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)))
 
 	cursor, err = b.processLogs(context.Background(), cursor, time.Unix(1, 0))
 	require.NoError(t, err)
@@ -585,7 +585,7 @@ func TestProcessLogsUsesRestoreProvenanceAfterNewRaftOvertakesSourceCheckpoint(t
 		sourceCheckpointHorizon = uint64(110)
 		restoredTargetHorizon   = uint64(120)
 	)
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*commonpb.Log{
 		{
 			Sequence: 1,
@@ -611,7 +611,7 @@ func TestProcessLogsUsesRestoreProvenanceAfterNewRaftOvertakesSourceCheckpoint(t
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), cursor,
 		"the restored checkpoint must not wait for new-cluster writes")
-	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)))
+	require.True(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)))
 
 	progress, err := b.readStore.ReadRaftProgress()
 	require.NoError(t, err)

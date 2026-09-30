@@ -51,7 +51,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		return cursor, err
 	}
 
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.primaryStore.NewReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
 	}
@@ -529,7 +529,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// before signalling LogCommitted). This avoids opening a Pebble iterator
 		// and deserializing a protobuf just to read a counter.
 		if cached := b.notifications.LastSequence.Load(); cached > 0 {
-			b.pebbleLastSeq.Store(cached)
+			b.storageLastSeq.Store(cached)
 		}
 
 		// Periodic progress logging for long catch-up runs.
@@ -882,7 +882,7 @@ const checkpointLinkRetries = 5
 // so a restarted builder crosses it again and lands here: an unmarked residue is
 // discarded and rebuilt, a marked directory is left as is.
 func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64) (err error) {
-	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	finalDir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 
 	// Already materialized on this replica (redundant call). Nothing to do.
 	if dal.CheckpointDirReady(finalDir) {
@@ -985,7 +985,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 // FSM. The shared DAL lease gate makes this duplicate trigger idempotent and
 // prevents either component from being removed under an acquired reader.
 func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
-	if err := b.pebbleStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
+	if err := b.primaryStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
 		b.logger.WithFields(map[string]any{
 			"error":        err,
 			"checkpointID": checkpointID,

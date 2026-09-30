@@ -29,11 +29,11 @@ type EntityEnricher struct {
 }
 
 // Execute runs a prepared query against the read index and, for
-// AGGREGATE_VOLUMES mode, crosses into Pebble for volume data.
+// AGGREGATE_VOLUMES mode, crosses into the primary store for volume data.
 func Execute(
 	ctx context.Context,
 	rs *readstore.Store,
-	pebbleStore queryHandleStore,
+	primaryStore queryHandleStore,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	preparedQueryAttr *attributes.Attribute[*commonpb.PreparedQuery],
 	indexAttr *attributes.Attribute[*commonpb.Index],
@@ -53,7 +53,7 @@ func Execute(
 	// deletion, or schema change cannot be combined with entities from a newer
 	// state. The query shape is not known yet, so reserve the event-history floor
 	// until the definition tells us whether index alignment is owed.
-	handle, releaseHold, err := OpenReservedQueryHandle(rs, pebbleStore)
+	handle, releaseHold, err := OpenReservedQueryHandle(rs, primaryStore)
 	if err != nil {
 		return nil, fmt.Errorf("creating read handle: %w", err)
 	}
@@ -326,7 +326,7 @@ func EnrichTransactions(ctx context.Context, entityIDs [][]byte, enricher *Entit
 // compiled iterator) into full Log objects. It mirrors the direct ListLogs
 // path: the compiled iterator yields per-ledger logIDs, ReadLedgerLogsCompiled
 // resolves them to global sequences via the log read-index and reads the log
-// payloads from Pebble. mainReader reads the log payloads (History zone);
+// payloads from the primary store. mainReader reads the log payloads (History zone);
 // indexReader resolves logID → sequence through the same snapshot used for
 // iteration.
 func EnrichLogs(ctx context.Context, mainReader dal.KVReader, indexReader dal.KVReader, ledgerName string, logIDs [][]byte) ([]*commonpb.Log, error) {
