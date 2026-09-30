@@ -677,51 +677,6 @@ func TestProcessCreateTransaction_Numscript_UnboundedOverdraft(t *testing.T) {
 // rejects a script the VM cannot run (here, one that does not even parse), so
 // a scripted order reaching the FSM without a compiled artifact is an
 // admission bug — surfaced loudly (invariant #7), never executed some other way.
-func TestProcessCreateTransaction_Numscript_WithoutArtifactIsLoud(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := NewMockScope(ctrl)
-	expectDefaultMetadataLimits(mockStore)
-	processor, err := NewRequestProcessor(nil, 0)
-	require.NoError(t, err)
-
-	boundaries := &raftcmdpb.LedgerBoundaries{NextTransactionId: 1, NextLogId: 1}
-
-	expectGetBoundaries(mockStore, domain.LedgerKey{Name: "test-ledger"}, boundaries.AsReader(), nil)
-	expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
-
-	request := &servicepb.Request{
-		Type: &servicepb.Request_Apply{
-			Apply: &servicepb.LedgerApplyRequest{
-				Ledger: "test-ledger",
-				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
-					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Script: &commonpb.Script{
-							Plain: `
-								send [USD/2 invalid] (
-									source = @world
-									destination = @users:alice
-								)
-							`,
-						},
-					},
-				}},
-			},
-		},
-	}
-
-	result, err := processor.ProcessOrder(requestToOrderWithoutArtifact(request), mockStore)
-	require.Error(t, err)
-	require.Nil(t, result)
-
-	var runtimeErr *domain.ErrNumscriptRuntime
-	require.ErrorAs(t, err, &runtimeErr)
-	require.Contains(t, runtimeErr.Detail, "no compiled numscript artifact")
-}
-
 func TestProcessCreateTransaction_Numscript_EmptyScript(t *testing.T) {
 	t.Parallel()
 

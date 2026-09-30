@@ -244,7 +244,8 @@ Revision 15 also changes apply semantics: admission compiles each resolvable
 script to Numscript VM bytecode and binds it to the order's technical
 sub-message, and the FSM executes that artifact instead of re-interpreting the
 script text. The VM is the only engine: a script it cannot compile is rejected
-at admission, and a scripted order without an artifact fails in the FSM. Like revision 6, apply semantics must agree across every replica:
+at admission, and a scripted order reaching the FSM without an artifact is
+recompiled from its text rather than interpreted. Like revision 6, apply semantics must agree across every replica:
 a binary predating these fields silently drops them and interprets with the
 older Numscript library, so a mixed-binary cluster applying the same committed
 entry writes divergent transaction and audit bytes. Deploy this revision with

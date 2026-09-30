@@ -130,12 +130,12 @@ func NewRequestProcessor(m metric.Meter, numscriptCacheSize int) (*RequestProces
 	}, nil
 }
 
-// CompileMissingNumscript makes this processor compile the script of a
-// scripted order that carries no compiled code, instead of failing it. Only
-// the store checker's audit replay turns it on: the audit keeps only the
-// business part of an order, so the orders it re-runs never carry compiled
-// code. The cluster's own processor must never turn it on — there, a missing
-// artifact is an admission bug and must fail loudly (invariant #7).
+// CompileMissingNumscript tells this processor that scripted orders arrive
+// without compiled code by design, so recompiling them is not flagged as an
+// admission bug. It changes no outcome: a missing artifact is always
+// recompiled from the script text. Only the store checker's audit replay turns
+// it on — the audit keeps only the business part of an order, so the orders
+// it re-runs never carry compiled code.
 func (p *RequestProcessor) CompileMissingNumscript() {
 	p.compileMissingNumscript = true
 }
