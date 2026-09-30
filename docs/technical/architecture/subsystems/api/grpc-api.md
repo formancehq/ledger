@@ -74,6 +74,11 @@ diagnostic exemptions, revision maintenance, and adoption scope.
 
 ## Service Definition
 
+`Discovery` returns the replica's committed `ClusterPolicy` as an optional
+field. It is absent until a policy has been committed. Consumers of metadata
+ceilings should use those effective values, refresh after a policy revision
+change, and handle a limit rejection if the policy changes before a write.
+
 The main service is `BucketService`:
 
 > **Note:** The listing below is a partial excerpt. The actual `BucketService` in `misc/proto/bucket.proto` defines 30+ RPCs including prepared queries, numscript library, signing keys, index management, analysis, and more. See `bucket.proto` for the full definition.

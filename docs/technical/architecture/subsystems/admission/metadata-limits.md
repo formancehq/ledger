@@ -142,6 +142,61 @@ applied one, **changing a ceiling requires bumping `--cluster-policy-revision`**
 exactly like any other policy field. Setting a new ceiling without bumping the
 revision logs a payload-divergence error and changes nothing.
 
+`Discovery.cluster_policy` exposes the committed policy, including its revision
+and effective metadata ceilings. It is absent before policy initialization; a
+client must not substitute the server's built-in defaults for an absent policy.
+This read is local to the serving replica and can briefly lag a newly committed
+revision until that replica applies it. A connector should derive its budgets
+from the returned policy and still handle a typed limit rejection if the policy
+changes between discovery and its write. This read does not alter admission or
+the deterministic FSM limit checks.
+
+EN-2105's connector audit found 14 budget or state-capacity cases, but they do
+not establish a common higher value or entity default. In particular, the
+current cursor is a verbose JSON envelope stored as one base64 metadata value;
+compression or a compact encoding can recover more than the proposed fourfold
+cursor increase for measured shapes. Connector page splitting, generated
+metadata accounting and genuinely indivisible evidence need separate
+qualification. The existing 1 MiB command ceiling from #2081 remains the
+replication bound; raising value or entity ceilings would also increase Raft,
+audit, cache and downstream memory exposure for every accepted write.
+
+### EN-2105 RC qualification
+
+The [September 17 connector inventory](https://github.com/formancehq/connectivity-plugins-poc/issues/628)
+is a failure snapshot, not a current fleet-wide maximum or a proof that a
+larger Ledger policy resolves the failures. Its 14 connector cases route as
+follows (bytes are reported plugin estimates, not measured Raft entry sizes):
+
+| Connector | Reported binding case | Remaining qualification |
+|---|---:|---|
+| Alpaca | page 147,481 / 87,381 B | Byte-aware page delivery and cash/activity checkpoints |
+| Banking Bridge | page 101,036 / 87,381 B | Group sizing including generated metadata |
+| Braintree | page 402,051 / 87,381 B | Smaller resumable payment groups |
+| Fireblocks | page 354,658 / 87,381 B | Identify endpoint and full mapped output size |
+| PayPal | page 770,621 / 87,381 B | Bound reporting override and preserve recovery |
+| Routable | page 887,232 / 87,381 B | Split rich obligation groups |
+| Synthetic | page 87,384 / 87,381 B | Reproduce late-sequence workload; byte-aware generation |
+| Unit | page 90,254 / 87,381 B | Journal/reservation delivery and checkpoints |
+| AWS Costs | one contributing row over 16 KiB | Qualify complete indivisible evidence separately |
+| Bank CAMT | observation state over 6,144 B | Reconstruct lifecycle/correlation state |
+| Formance Payments | observation state over 6,144 B | Preserve payment and identity state compactly |
+| Bridge.xyz | raw cursor 12,409 / 12,288 B | Compact the envelope; measure complete cursor |
+| Stripe Connect | in-flight worklist limit 5,000 | Correct hydration classification and handoff |
+| Currencycloud | in-flight worklist limit 5,000 | Prove update-window recovery before handoff |
+
+The reported page allowance of 87,381 B was a plugin estimate derived from
+the former 256 KiB Ledger command default, and is not a Ledger ceiling. The
+existing 1 MiB command default is committed only after a policy revision bump;
+the 16 KiB value and 64 KiB entity defaults remain. The new Discovery field
+adds a small read response, with no additional proposal, audit, FSM cache or
+downstream event bytes. No representative post-optimization connector batch
+has been measured through Ledger's Raft/apply/memory path yet, so this change
+does not claim a safe larger value or entity ceiling. Before any such increase,
+measure the full encoded command and peak apply/cache/event footprint against
+both the current and proposed replicated policy using representative mapped
+connector output, including generated metadata and the complete cursor.
+
 Zero is never "unlimited" — it is the absence of configuration, and it fails
 loudly at three points rather than silently removing the protection:
 
