@@ -186,6 +186,30 @@ func TestVerifyAuditHashChain_RejectsValidHashWithInvalidAttribution(t *testing.
 	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
 }
 
+func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	const clusterID = "invalid-attribution-chain-cluster"
+
+	first, firstItems := newRichAuditEntry("success")
+	first.CallerSnapshot = &commonpb.CallerSnapshot{}
+	persistAuditEntry(t, store, first, firstItems, clusterID)
+
+	second, secondItems := newRichAuditEntry("success")
+	second.Sequence = 2
+	second.Timestamp.Data++
+	second.GetSuccess().MinLogSequence = 3
+	second.GetSuccess().MaxLogSequence = 4
+	secondItems[0].LogSequence = 3
+	secondItems[1].LogSequence = 4
+	persistAuditEntryAfter(t, store, second, secondItems, clusterID, first.GetHash())
+
+	mismatches := runChainVerifier(t, store, clusterID)
+	require.Len(t, mismatches, 1)
+	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
+}
+
 // newRichAuditEntry returns a fully-populated AuditEntry (sequence 1,
 // realistic timestamps, two ledgers, caller snapshot with key_id source,
 // either a success outcome with transient + purged maps or a failure
@@ -285,6 +309,10 @@ func richAuditOrder(ledger string) []byte {
 // builders, assigns them on the entry, then writes the entry + items to
 // Pebble at their canonical keys.
 func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string) {
+	persistAuditEntryAfter(t, store, entry, items, clusterID, nil)
+}
+
+func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string, lastHash []byte) {
 	t.Helper()
 	_ = clusterID
 	if entry.GetCallerSnapshot() == nil {
@@ -303,7 +331,7 @@ func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	_, entry.Hash = gen.Compute(nil, nil, hashSlices)
+	_, entry.Hash = gen.Compute(nil, lastHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)
 }

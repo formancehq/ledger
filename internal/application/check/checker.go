@@ -2571,17 +2571,6 @@ func (c *Checker) verifyAuditHashChain(
 
 		hasVerifiedRange = true
 
-		if attributionErr := attribution.Validate(entry.GetCallerSnapshot()); attributionErr != nil {
-			callback(errorEvent(
-				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
-				fmt.Sprintf("audit entry %d has invalid caller attribution: %v", entry.GetSequence(), attributionErr),
-				logSequenceFromAuditEntry(entry), "", "", "",
-			))
-			folds.markLiveTruncated()
-
-			continue
-		}
-
 		// `items` on the stored AuditEntry value is reserved for
 		// GetAuditEntry response shaping — the apply path forces it
 		// nil. A non-empty list here is a tampering attempt: items
@@ -2701,6 +2690,17 @@ func (c *Checker) verifyAuditHashChain(
 
 		lastHash = entry.GetHash()
 		checked++
+
+		if attributionErr := attribution.Validate(entry.GetCallerSnapshot()); attributionErr != nil {
+			callback(errorEvent(
+				servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH,
+				fmt.Sprintf("audit entry %d has invalid caller attribution: %v", entry.GetSequence(), attributionErr),
+				logSequenceFromAuditEntry(entry), "", "", "",
+			))
+			folds.markLiveTruncated()
+
+			continue
+		}
 
 		// Now that the entry is chain-verified, re-derive the idempotency
 		// outcome a keyed proposal would have frozen under it. items carries
