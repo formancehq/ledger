@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
+	"slices"
 
 	"github.com/holiman/uint256"
 
@@ -292,7 +293,11 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	var txMeta map[string]*commonpb.MetadataValue
 	if len(result.Metadata) > 0 {
 		txMeta = make(map[string]*commonpb.MetadataValue, len(result.Metadata))
-		for key, value := range result.Metadata {
+		// A validation failure becomes hash-chained audit state. Select the
+		// first invalid key canonically on every replica.
+		keys := slices.Sorted(maps.Keys(result.Metadata))
+		for _, key := range keys {
+			value := result.Metadata[key]
 			if err := domain.ValidateMetadataKey(key); err != nil {
 				return nil, err
 			}
