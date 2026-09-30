@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,8 +26,49 @@ type unauthBootstrapServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
 }
 
+type transientCanceledBootstrapServer struct {
+	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+	calls atomic.Int32
+}
+
+func (s *transientCanceledBootstrapServer) JoinAsLearner(context.Context, *clusterbootstrappb.JoinAsLearnerRequest) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
+	if s.calls.Add(1) == 1 {
+		return nil, status.Error(codes.Canceled, "grpc: the client connection is closing")
+	}
+	return &clusterbootstrappb.JoinAsLearnerResponse{}, nil
+}
+
 func (unauthBootstrapServer) JoinAsLearner(context.Context, *clusterbootstrappb.JoinAsLearnerRequest) (*clusterbootstrappb.JoinAsLearnerResponse, error) {
 	return nil, status.Error(codes.Unauthenticated, "invalid cluster credentials on Raft RPC")
+}
+
+func TestTryAddLearner_RetriesTransientCanceled(t *testing.T) {
+	t.Parallel()
+
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	bootstrapServer := &transientCanceledBootstrapServer{}
+	srv := grpc.NewServer()
+	clusterbootstrappb.RegisterClusterBootstrapServiceServer(srv, bootstrapServer)
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+
+	cfg := Config{
+		ClusterID: "test-cluster",
+		TLSConfig: TLSConfig{Mode: TLSModeDisabled},
+		RaftConfig: node.NodeConfig{
+			NodeID:        2,
+			WalDir:        t.TempDir(),
+			AdvertiseAddr: "127.0.0.1:7777",
+			Peers:         []node.Peer{{ID: 1, Address: lis.Addr().String()}},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	require.NoError(t, tryAddLearner(ctx, cfg, cfg.TLSConfig, logging.Testing()))
+	require.EqualValues(t, 2, bootstrapServer.calls.Load())
 }
 
 // TestTryAddLearner_FailsFastOnUnauthenticated pins EN-1080: learner

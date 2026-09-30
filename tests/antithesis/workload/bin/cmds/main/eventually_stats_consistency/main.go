@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -28,6 +30,18 @@ func main() {
 		return
 	}
 	defer conns.Close()
+	// A maintenance driver may have been terminated after enabling the
+	// cluster-wide write gate. The parallel pool has stopped by this point.
+	// Clear that gate before the oracle creates a write witness.
+	source, err := selectSource(ctx, conns)
+	if err == nil {
+		_, err = source.Bucket.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.SetMaintenanceModeAction(false)))
+	}
+	assert.Always(err == nil, "stats oracle clears inherited maintenance mode", internal.Details{"error": err})
+	if err != nil {
+		log.Printf("stats convergence: cannot clear maintenance mode: %v", err)
+		return
+	}
 	report := runOracle(ctx, conns, oracleConfig{
 		Attempts: 3, ConvergenceWindow: 60 * time.Second, Wait: pollDelay,
 	})

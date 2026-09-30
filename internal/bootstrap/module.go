@@ -1329,12 +1329,16 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				return nil
 			}
 
-			// Unavailable is transient (no leader, node syncing, etc.) — retry.
-			if ok && st.Code() == codes.Unavailable {
+			// A connection can close during a network fault before the local
+			// startup context is cancelled. Treat that peer's Canceled or
+			// DeadlineExceeded response like Unavailable and try another peer.
+			// A cancelled startup context must still abort promptly.
+			if ok && (st.Code() == codes.Unavailable ||
+				(ctx.Err() == nil && (st.Code() == codes.Canceled || st.Code() == codes.DeadlineExceeded))) {
 				logger.WithFields(map[string]any{
 					"peer":  peer.ID,
 					"error": err,
-				}).Infof("JoinAsLearner unavailable, will retry")
+				}).Infof("JoinAsLearner transient failure, will retry")
 
 				continue
 			}
