@@ -4,9 +4,9 @@
 
 The leader proposes `ClusterConfig.failure_projection_version` through Raft.
 The FSM applies it at one index; later proposals use that applied value to
-project their failure reason, message and context. Version 0 is the exact
-pre-versioning projection, including its hash pre-image. Version 1 currently
-uses the same error mapping but adds a chain-bound version stamp. A future
+project their failure reason, message and context. Version 0 uses the existing error mapping in the new canonical hash format.
+Version 1 currently uses the same error mapping; both versions are stamped and
+chain-bound. A future
 relabel needs a new version and must preserve every older branch, including
 upstream error construction when that determines the emitted error. A local CLI
 flag only expresses the leader's desired proposal and cannot select an apply

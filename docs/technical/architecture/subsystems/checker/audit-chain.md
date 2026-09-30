@@ -32,11 +32,10 @@ Built by `state.BuildHashedHeaderPayload(entry)` (`internal/infra/state/audit_en
 | `IdempotencyKey` | length-prefixed bytes |
 | `IdempotencyExpiresAt` | `uint64` BE |
 | `Signature` | length-prefixed bytes (Ed25519 from the originator) |
-| `FailureProjectionVersion` | absent for version 0; `uint32` BE for nonzero versions |
+| `FailureProjectionVersion` | `uint32` BE for every version |
 
-Every existing field remains hashed. Version 0 deliberately omits the new
-version field from the hash pre-image so historical entries re-hash byte for
-byte. Version 1 appends its number after the existing signature encoding. The
+Every field remains hashed. Both version 0 and version 1 append their number
+after the signature encoding in this unreleased v3 format. The
 checker reads the persisted entry's version, not current cluster config;
 unsupported versions report a hash mismatch. Success entries carry the stamp
 too, showing the boundary even without a failure. `IdempotencyExpiresAt` is

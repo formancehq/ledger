@@ -285,7 +285,7 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 	}
 }
 
-func TestFailureProjectionEnvelopeFlipPreservesHistoricalBytes(t *testing.T) {
+func TestFailureProjectionEnvelopeBindsBothVersions(t *testing.T) {
 	t.Parallel()
 
 	entry := &auditpb.AuditEntry{
@@ -297,15 +297,16 @@ func TestFailureProjectionEnvelopeFlipPreservesHistoricalBytes(t *testing.T) {
 			Context: map[string]string{"field": "amount"},
 		}},
 	}
-	legacy, err := BuildHashedHeaderPayload(entry)
+	versionZero, err := BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
-	require.Equal(t, goldenBuildHeader(entry), legacy,
-		"version zero must retain the exact pre-versioning hash pre-image")
+	require.Equal(t, goldenBuildHeader(entry), versionZero)
+	require.Equal(t, []byte{0, 0, 0, 0}, versionZero[len(versionZero)-4:])
 
 	entry.FailureProjectionVersion = FailureProjectionVersionV1
 	versioned, err := BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
-	require.Equal(t, appendU32(slices.Clone(legacy), FailureProjectionVersionV1), versioned)
+	require.Equal(t, goldenBuildHeader(entry), versioned)
+	require.Equal(t, appendU32(slices.Clone(versionZero[:len(versionZero)-4]), FailureProjectionVersionV1), versioned)
 
 	entry.FailureProjectionVersion++
 	_, err = BuildHashedHeaderPayload(entry)
@@ -396,6 +397,7 @@ func goldenBuildHeader(e *auditpb.AuditEntry) []byte {
 	buf = goldenLenString(buf, e.GetIdempotency().GetKey())
 	buf = goldenU64(buf, e.GetIdempotency().GetExpiresAt())
 	buf = goldenLenBytes(buf, goldenBuildSignature(e.GetSignature()))
+	buf = goldenU32(buf, e.GetFailureProjectionVersion())
 
 	return buf
 }

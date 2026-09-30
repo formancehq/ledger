@@ -10,8 +10,8 @@ product guarantee or authorization to run an audit.
 ## Evidence contract
 
 For versioned failures, retain the entry's stored projection version in the
-fixture. A historical version-zero entry must rebuild with its original header
-bytes even if the current cluster config is version one. Pair a healthy chain
+fixture. A version-zero entry must rebuild with its own stamped header
+even if the current cluster config is version one. Pair a healthy chain
 spanning the flip with mutations of the stamp and unknown version values;
 observe the checker callback, not only its terminal error.
 

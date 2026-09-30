@@ -159,11 +159,8 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 	buf = appendLenString(buf, entry.GetIdempotency().GetKey())
 	buf = appendU64(buf, entry.GetIdempotency().GetExpiresAt())
 	buf = appendLenBytes(buf, buildSignaturePayload(entry.GetSignature()))
-	// Version zero must remain byte-identical to historical entries. Starting
-	// with version one, bind the selected projection to the hash chain.
-	if entry.GetFailureProjectionVersion() != 0 {
-		buf = appendU32(buf, entry.GetFailureProjectionVersion())
-	}
+	// Bind the selected projection version on every entry, including version zero.
+	buf = appendU32(buf, entry.GetFailureProjectionVersion())
 
 	return buf, nil
 }

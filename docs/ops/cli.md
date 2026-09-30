@@ -4032,9 +4032,8 @@ between rebuilds or an explicit resize policy.
 ### Server `--failure-projection-version` Flag
 
 `--failure-projection-version` selects the Raft-replicated audit failure
-projection. It defaults to `0` (historical bytes); `1` is accepted only after
-every replica runs a binary that understands the field. Values above `1` are
-rejected. Follow the [two-phase operator procedure](cluster-operations.md#rolling-upgrade-procedure)
+projection. It defaults to `0`; both `0` and `1` are stamped in the canonical audit
+header. Values above `1` are rejected. Follow the [operator procedure](cluster-operations.md#version-flip-procedure)
 before changing it.
 
 ### Server `--hash-algorithm` Flag
