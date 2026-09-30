@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // suggestFilePaths provides file path suggestions for autocompletion.
@@ -373,7 +374,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 								Postings:  postings,
 								Script:    script,
 								Reference: reference,
-								Metadata:  commonpb.MetadataFromGoMap(metadata),
+								Metadata:  protohelpers.MetadataFromGoMap(metadata),
 								Force:     force,
 							},
 						},
@@ -505,7 +506,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		for key, value := range tx.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
 				key,
-				commonpb.MetadataValueToString(value),
+				protohelpers.MetadataValueToString(value),
 			})
 		}
 
@@ -555,7 +556,7 @@ func parsePosting(s string) (*commonpb.Posting, error) {
 		return nil, fmt.Errorf("invalid amount: %s", amountStr)
 	}
 
-	return commonpb.NewColoredPosting(source, destination, asset, color, amount), nil
+	return protohelpers.NewColoredPosting(source, destination, asset, color, amount), nil
 }
 
 // promptVariable prompts the user for a Numscript variable value based on its type.
@@ -677,5 +678,5 @@ func promptPosting(index int) (*commonpb.Posting, error) {
 		pterm.Yellow(asset),
 	)
 
-	return commonpb.NewPosting(source, destination, asset, amount), nil
+	return protohelpers.NewPosting(source, destination, asset, amount), nil
 }

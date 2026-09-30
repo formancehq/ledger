@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"encoding/json"
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,7 @@ import (
 func TestPosting_MarshalJSON_EmitsEmptyColor(t *testing.T) {
 	t.Parallel()
 
-	p := NewPosting("world", "users:alice", "USD/2", big.NewInt(100))
+	p := &Posting{Source: "world", Destination: "users:alice", Asset: "USD/2", Amount: &Uint256{V0: 100}}
 
 	data, err := json.Marshal(p)
 	require.NoError(t, err)
@@ -27,7 +26,7 @@ func TestPosting_MarshalJSON_EmitsEmptyColor(t *testing.T) {
 func TestPosting_MarshalJSON_EmitsColor(t *testing.T) {
 	t.Parallel()
 
-	p := NewColoredPosting("world", "users:alice", "USD/2", "GRANTS", big.NewInt(100))
+	p := &Posting{Source: "world", Destination: "users:alice", Asset: "USD/2", Color: "GRANTS", Amount: &Uint256{V0: 100}}
 
 	data, err := json.Marshal(p)
 	require.NoError(t, err)

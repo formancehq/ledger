@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -81,7 +82,7 @@ func TestRetypeWindow_LiveWriteIsCoercedPerVersion(t *testing.T) {
 	require.NoError(t, b.wb.Flush())
 
 	oldEncoded := readstore.EncodeMetadataValue(nil, commonpb.NewIntValue(-1))
-	newEncoded := readstore.EncodeMetadataValue(nil, commonpb.ConvertMetadataValue(commonpb.NewIntValue(-1), commonpb.MetadataType_METADATA_TYPE_UINT32))
+	newEncoded := readstore.EncodeMetadataValue(nil, protohelpers.ConvertMetadataValue(commonpb.NewIntValue(-1), commonpb.MetadataType_METADATA_TYPE_UINT32))
 
 	assert.True(t, eventGroupExists(t, b.readStore, ledger, readstore.NamespaceAccount, metaKey, 1, oldEncoded, []byte(account)),
 		"v_current must hold the OLD encoding: the window serves the index as if no retype had happened")
@@ -129,7 +130,7 @@ func TestRetypeWindow_NullOriginalRoundTripsIntoTheOldEncoding(t *testing.T) {
 	b.wb.SetEventSequence(1)
 
 	// What the FSM stores for a post-retype write of -1 under UINT32.
-	stored := commonpb.ConvertMetadataValue(commonpb.NewIntValue(-1), commonpb.MetadataType_METADATA_TYPE_UINT32)
+	stored := protohelpers.ConvertMetadataValue(commonpb.NewIntValue(-1), commonpb.MetadataType_METADATA_TYPE_UINT32)
 	_, isNull := stored.GetType().(*commonpb.MetadataValue_NullValue)
 	require.True(t, isNull, "premise: -1 under UINT32 is stored as null-with-original")
 

@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func TestValidateOrder_LedgerName(t *testing.T) {
@@ -1190,7 +1191,7 @@ func TestValidateOrder_RejectsInvalidPostingColor(t *testing.T) {
 								Data: &raftcmdpb.LedgerApplyOrder_CreateTransaction{
 									CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 										Postings: []*commonpb.Posting{
-											commonpb.NewColoredPosting("world", "users:alice", "USD/2", tt.color, big.NewInt(100)),
+											protohelpers.NewColoredPosting("world", "users:alice", "USD/2", tt.color, big.NewInt(100)),
 										},
 									},
 								},

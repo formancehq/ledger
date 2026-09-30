@@ -4,6 +4,7 @@ package business
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"time"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -397,7 +398,7 @@ send $amount (
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			metaMap := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(metaMap["type"]).To(Equal("payment"))
 			Expect(metaMap["category"]).To(Equal("purchase"))
 		})
@@ -430,7 +431,7 @@ send $amount (
 				Address: "users:grace:savings",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["account_type"]).To(Equal("savings"))
 			Expect(metaMap["created_by"]).To(Equal("numscript"))
 		})

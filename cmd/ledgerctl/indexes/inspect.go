@@ -13,6 +13,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewInspectCommand creates the indexes inspect command.
@@ -145,7 +146,7 @@ func declaredMetadataType(
 		return commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	_, fs := commonpb.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
+	_, fs := protohelpers.SchemaFieldForTarget(ledger.GetMetadataSchema(), targetType, key)
 
 	return fs.GetType()
 }
@@ -207,7 +208,7 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 	case *commonpb.MetadataValue_IntValue:
 		// Datetime index keys share the int64 encoding, so the server returns an
 		// int_value for them; render as RFC3339 when the field is declared datetime.
-		if commonpb.IsDatetimeType(declaredType) {
+		if protohelpers.IsDatetimeType(declaredType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
@@ -215,7 +216,7 @@ func formatMetadataValue(v *commonpb.MetadataValue, declaredType commonpb.Metada
 	case *commonpb.MetadataValue_UintValue:
 		return strconv.FormatUint(t.UintValue, 10)
 	case *commonpb.MetadataValue_DatetimeValue:
-		return commonpb.MetadataValueToString(v)
+		return protohelpers.MetadataValueToString(v)
 	case *commonpb.MetadataValue_BoolValue:
 		return strconv.FormatBool(t.BoolValue)
 	case *commonpb.MetadataValue_NullValue:

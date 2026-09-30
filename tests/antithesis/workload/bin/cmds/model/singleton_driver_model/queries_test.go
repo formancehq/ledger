@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"testing"
 
@@ -763,11 +764,11 @@ func TestTxRecordMatches_ComparesPostingColour(t *testing.T) {
 	}
 
 	require.False(t, txRecordMatches(rec, served(
-		commonpb.NewColoredPosting("world", "acc:1", "USD", "GOLD", big.NewInt(5)),
+		protohelpers.NewColoredPosting("world", "acc:1", "USD", "GOLD", big.NewInt(5)),
 	)), "a recoloured posting moves a bucket the model never touched")
 
 	require.False(t, txRecordMatches(rec, served(
-		commonpb.NewPosting("world", "acc:1", "USD", big.NewInt(5)),
+		protohelpers.NewPosting("world", "acc:1", "USD", big.NewInt(5)),
 	)), "dropping the colour claims the uncolored bucket moved")
 }
 

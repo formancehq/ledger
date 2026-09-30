@@ -7,6 +7,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -41,7 +42,7 @@ func main() {
 				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: []*commonpb.Posting{
-							commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+							protohelpers.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 						},
 						Force: true,
 					},

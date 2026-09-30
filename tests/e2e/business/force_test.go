@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
@@ -139,8 +140,8 @@ var _ = Describe("Force Transactions", Ordered, func() {
 			applyLog := log.Payload.GetApply()
 			createdTx := applyLog.Log.Data.GetCreatedTransaction()
 			Expect(createdTx.Transaction.Metadata).NotTo(BeNil())
-			Expect(commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)["description"]).To(Equal("Forced transaction"))
-			Expect(commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)["reason"]).To(Equal("bulk import"))
+			Expect(protohelpers.MetadataToGoMap(createdTx.Transaction.Metadata)["description"]).To(Equal("Forced transaction"))
+			Expect(protohelpers.MetadataToGoMap(createdTx.Transaction.Metadata)["reason"]).To(Equal("bulk import"))
 		})
 
 		It("Should handle bulk transactions with mixed force flags", func() {

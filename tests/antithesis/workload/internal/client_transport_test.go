@@ -3,6 +3,7 @@ package internal_test
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"io"
 	"math/big"
 	"net"
@@ -175,7 +176,7 @@ func testLostCommittedResponse(t *testing.T, mode string) {
 	}
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, callerConn.Close()) })
-	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{commonpb.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
+	request := actions.WithIdempotencyKey("one-logical-transaction", actions.CreateTransactionAction("L", []*commonpb.Posting{protohelpers.NewPosting("world", "user", "USD", big.NewInt(10))}, nil, nil))
 	type result struct {
 		response *commonpb.ApplyResponse
 		err      error

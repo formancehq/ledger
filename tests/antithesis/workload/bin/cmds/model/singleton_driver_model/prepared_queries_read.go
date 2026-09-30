@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -847,8 +848,8 @@ func aggregateMatches(ls oracle.LedgerState, bound *commonpb.QueryFilter, agg *c
 		}
 
 		var pair oracle.VolumePair
-		v.GetInput().IntoUint256(&pair.Input)
-		v.GetOutput().IntoUint256(&pair.Output)
+		protohelpers.IntoUint256(v.GetInput(), &pair.Input)
+		protohelpers.IntoUint256(v.GetOutput(), &pair.Output)
 		got[key] = pair
 	}
 
@@ -915,8 +916,8 @@ func describeAggregate(agg *commonpb.AggregateResult) string {
 	parts := make([]string, 0, len(agg.GetVolumes()))
 	for _, v := range agg.GetVolumes() {
 		var in, out uint256.Int
-		v.GetInput().IntoUint256(&in)
-		v.GetOutput().IntoUint256(&out)
+		protohelpers.IntoUint256(v.GetInput(), &in)
+		protohelpers.IntoUint256(v.GetOutput(), &out)
 
 		parts = append(parts, fmt.Sprintf("%s/%s=%s:%s", v.GetAsset(), v.GetColor(), in.Dec(), out.Dec()))
 	}

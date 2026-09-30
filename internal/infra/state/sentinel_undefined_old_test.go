@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/pkg/kv"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // TestVerifyVolumeUpdateMonotonicity_UndefinedOldIsAllowed pins the EN-1378
@@ -90,15 +91,13 @@ func TestVerifyVolumeDeltasMatchPostings_UndefinedOldZeroBaseline(t *testing.T) 
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{
 				Apply: &commonpb.ApplyLedgerLog{
 					LedgerName: ledger,
-					Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+					Log: protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 						Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 							CreatedTransaction: &commonpb.CreatedTransaction{
-								Transaction: commonpb.NewTransaction().
-									WithPostings(commonpb.NewPosting("world", "users:bob", "USD", new(big.Int).SetUint64(amount))).
-									WithID(1),
+								Transaction: protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "users:bob", "USD", new(big.Int).SetUint64(amount))), 1),
 							},
 						},
-					}).WithID(1),
+					}), 1),
 				},
 			}},
 		},

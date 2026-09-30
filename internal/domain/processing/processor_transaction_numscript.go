@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/processing/numscript"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 type numscriptPostingProducer struct {
@@ -164,7 +165,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		postings[i] = &commonpb.Posting{
 			Source:      posting.Source,
 			Destination: posting.Destination,
-			Amount:      commonpb.NewUint256(&u256Amount),
+			Amount:      protohelpers.NewUint256(&u256Amount),
 			Asset:       posting.Asset,
 			Color:       posting.Color,
 		}
@@ -187,7 +188,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		sourceVol := sourceReader.Mutate()
-		sourceVol.GetOutput().IntoUint256(&scratch)
+		protohelpers.IntoUint256(sourceVol.GetOutput(), &scratch)
 
 		// AddOverflow: plain Add would wrap silently and let extreme
 		// Numscript-driven postings silently destroy funds. See #321.
@@ -201,8 +202,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				Current: scratch.Dec(),
 			}
 		}
-
-		sourceVol.GetOutput().SetFromUint256(&sum)
+		protohelpers.SetFromUint256(sourceVol.GetOutput(), &sum)
 		s.Volumes().Put(sourceKey, sourceVol)
 
 		// Update destination input (money coming in)
@@ -223,7 +223,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 		}
 
 		destVol := destReader.Mutate()
-		destVol.GetInput().IntoUint256(&scratch)
+		protohelpers.IntoUint256(destVol.GetInput(), &scratch)
 
 		if _, overflow := sum.AddOverflow(&scratch, &u256Amount); overflow {
 			return nil, &domain.ErrVolumeOverflow{
@@ -235,8 +235,7 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 				Current: scratch.Dec(),
 			}
 		}
-
-		destVol.GetInput().SetFromUint256(&sum)
+		protohelpers.SetFromUint256(destVol.GetInput(), &sum)
 		s.Volumes().Put(destKey, destVol)
 	}
 
@@ -351,8 +350,8 @@ func (s *scopeValueSource) Balance(account, asset, color string) (*big.Int, erro
 	}
 
 	var inputVal, outputVal uint256.Int
-	vol.GetInput().IntoUint256(&inputVal)
-	vol.GetOutput().IntoUint256(&outputVal)
+	protohelpers.IntoUint256(vol.GetInput(), &inputVal)
+	protohelpers.IntoUint256(vol.GetOutput(), &outputVal)
 
 	// Convert to *big.Int at the numscript boundary (numscript uses *big.Int).
 	return new(big.Int).Sub(inputVal.ToBig(), outputVal.ToBig()), nil
@@ -388,5 +387,5 @@ func (s *scopeValueSource) Metadata(account, key string) (string, bool, error) {
 	// str=="" would make a valid meta() read of an empty string resolve as
 	// absent, diverging from the admission-side admissionValueSource and
 	// poisoning the resolution hash with the absent sentinel.
-	return commonpb.MetadataValueToString(valueReader.Mutate()), true, nil
+	return protohelpers.MetadataValueToString(valueReader.Mutate()), true, nil
 }

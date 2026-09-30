@@ -5,6 +5,7 @@ package business
 import (
 	"bytes"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"io"
 	"math/big"
 	"net/http"
@@ -56,15 +57,15 @@ var _ = Describe("Encoded metadata keys (EN-2015)", func() {
 			case "account":
 				account, err := sharedClient.GetAccount(sharedCtx, &commonpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 				g.Expect(err).To(Succeed())
-				return commonpb.MetadataToGoMap(account.GetMetadata())
+				return protohelpers.MetadataToGoMap(account.GetMetadata())
 			case "transaction":
 				tx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{Ledger: ledgerName, TransactionId: txID})
 				g.Expect(err).To(Succeed())
-				return commonpb.MetadataToGoMap(tx.GetTransaction().GetMetadata())
+				return protohelpers.MetadataToGoMap(tx.GetTransaction().GetMetadata())
 			default:
 				ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 				g.Expect(err).To(Succeed())
-				return commonpb.MetadataToGoMap(ledger.GetMetadata())
+				return protohelpers.MetadataToGoMap(ledger.GetMetadata())
 			}
 		}
 		request(http.MethodPost, ledgerName, path, `{"formance.com/reviewed":"yes","keep":"untouched"}`, http.StatusNoContent)

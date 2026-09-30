@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
@@ -36,7 +37,7 @@ func PreCommitSentinel(ctx context.Context, client commonpb.BucketServiceClient,
 				Ledger: ledger,
 				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 					CreateTransaction: &commonpb.CreateTransactionPayload{
-						Postings:  []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
+						Postings:  []*commonpb.Posting{protohelpers.NewPosting("world", destination, "COIN", RandomBigInt())},
 						Reference: ref,
 						Force:     true,
 					},

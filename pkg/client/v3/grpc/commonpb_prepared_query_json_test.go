@@ -2,7 +2,6 @@ package grpc
 
 import (
 	stdjson "encoding/json"
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -22,7 +21,7 @@ func TestPreparedQueryCursor_LogDataOutput(t *testing.T) {
 					Id:        9,
 					Reference: "order-789",
 					Postings: []*Posting{
-						NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+						{Source: "world", Destination: "alice", Asset: "USD/2", Color: "pending", Amount: &Uint256{V0: 1000}},
 					},
 					Metadata: map[string]*MetadataValue{"note": NewStringValue("checkout")},
 				},

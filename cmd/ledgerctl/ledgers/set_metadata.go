@@ -9,6 +9,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewSetMetadataCommand creates the ledgers set-metadata command.
@@ -107,7 +108,7 @@ func runSetMetadata(cmd *cobra.Command, _ []string) error {
 			Type: &commonpb.Request_SaveLedgerMetadata{
 				SaveLedgerMetadata: &commonpb.SaveLedgerMetadataRequest{
 					Ledger:   ledgerName,
-					Metadata: commonpb.MetadataFromGoMap(metadata),
+					Metadata: protohelpers.MetadataFromGoMap(metadata),
 				},
 			},
 		},

@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"time"
 
@@ -135,8 +136,8 @@ var _ = Describe("Accounts", Ordered, func() {
 			}
 			Expect(aliceAccount).NotTo(BeNil())
 			Expect(aliceAccount.Metadata).NotTo(BeNil())
-			Expect(commonpb.MetadataToGoMap(aliceAccount.Metadata)["role"]).To(Equal("admin"))
-			Expect(commonpb.MetadataToGoMap(aliceAccount.Metadata)["tier"]).To(Equal("premium"))
+			Expect(protohelpers.MetadataToGoMap(aliceAccount.Metadata)["role"]).To(Equal("admin"))
+			Expect(protohelpers.MetadataToGoMap(aliceAccount.Metadata)["tier"]).To(Equal("premium"))
 		})
 	})
 

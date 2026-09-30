@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math"
 	"math/big"
 	"math/rand"
@@ -53,7 +54,7 @@ func RandomPostings() []*commonpb.Posting {
 		destination := GetRandomAddress()
 		amount := RandomBigInt()
 		asset := antirandom.RandomChoice([]string{"USD/2", "EUR/2", "COIN"})
-		postings = append(postings, commonpb.NewPosting(source, destination, asset, amount))
+		postings = append(postings, protohelpers.NewPosting(source, destination, asset, amount))
 	}
 
 	return postings

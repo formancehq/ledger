@@ -12,6 +12,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/query"
 )
 
@@ -128,7 +129,7 @@ func protectedRPCPolicy(method string) (*commonpb.MethodAuthPolicy, bool, error)
 		return nil, false, nil
 	}
 
-	policy, err := commonpb.RPCAuthPolicyForMethod(method)
+	policy, err := publicpolicy.RPCAuthPolicyForMethod(method)
 	if err != nil {
 		return nil, false, status.Error(codes.Internal, err.Error())
 	}

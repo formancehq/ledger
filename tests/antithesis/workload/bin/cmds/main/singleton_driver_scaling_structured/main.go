@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"log"
 	"time"
 
@@ -120,7 +121,7 @@ func verifyFreshCommit(ctx context.Context, client clusterpb.BucketServiceClient
 				Ledger: sentinelLedger,
 				Action: &clusterpb.LedgerAction{Data: &clusterpb.LedgerAction_CreateTransaction{
 					CreateTransaction: &clusterpb.CreateTransactionPayload{
-						Postings: []*clusterpb.Posting{clusterpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
+						Postings: []*clusterpb.Posting{protohelpers.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
 						Force:    true,
 					},
 				}},

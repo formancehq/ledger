@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -40,8 +41,8 @@ func TestListEntitiesAppliesReverseMainStoreOnlyFilter(t *testing.T) {
 
 	store := newCtrlTestStore(t)
 	attrs := attributes.New()
-	seedCreatedTransaction(t, store, attrs, "ledger", 1, 1, commonpb.NewTransaction().WithID(1))
-	seedCreatedTransaction(t, store, attrs, "ledger", 2, 2, commonpb.NewTransaction().WithID(2))
+	seedCreatedTransaction(t, store, attrs, "ledger", 1, 1, protohelpers.WithTransactionID(protohelpers.NewTransaction(), 1))
+	seedCreatedTransaction(t, store, attrs, "ledger", 2, 2, protohelpers.WithTransactionID(protohelpers.NewTransaction(), 2))
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)

@@ -7,6 +7,8 @@ import (
 	"math/big"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func AddTypeReqP(name string, p commonpb.AccountTypePersistence) *commonpb.Request {
@@ -54,7 +56,7 @@ func TxReqColoredL(ledger, src, dest, asset, color string, amount int64) *common
 					Data: &commonpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(src, dest, asset, color, big.NewInt(amount)),
+								protohelpers.NewColoredPosting(src, dest, asset, color, big.NewInt(amount)),
 							},
 						},
 					},

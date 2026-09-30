@@ -36,6 +36,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/pkg/vtmarshal"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -2144,7 +2145,7 @@ func (a *Admission) resolveScriptsAndEnrichNeeds(ctx context.Context, orders []*
 					effects.setMetadata(domain.MetadataKey{
 						AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: acct.Account.GetAddr()},
 						Key:        k,
-					}, commonpb.MetadataValueToString(v))
+					}, protohelpers.MetadataValueToString(v))
 				}
 			}
 

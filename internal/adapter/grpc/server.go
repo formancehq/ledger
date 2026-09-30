@@ -31,7 +31,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/adapter/apitrace"
 	internalauth "github.com/formancehq/ledger/v3/internal/adapter/auth"
@@ -44,6 +43,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 )
 
 // vtFallbackCodec is a gRPC codec that uses vtprotobuf when available
@@ -782,7 +782,7 @@ func isInfrastructureRPCMethod(fullMethod string) bool {
 }
 
 func validatePublicRPCPolicies(services map[string]ggrpc.ServiceInfo) error {
-	unregisteredPolicies := commonpb.AllRPCAuthPolicies()
+	unregisteredPolicies := publicpolicy.AllRPCAuthPolicies()
 	for serviceName, service := range services {
 		for _, method := range service.Methods {
 			fullMethod := "/" + serviceName + "/" + method.Name
@@ -790,7 +790,7 @@ func validatePublicRPCPolicies(services map[string]ggrpc.ServiceInfo) error {
 				continue
 			}
 
-			if _, err := commonpb.RPCAuthPolicyForMethod(fullMethod); err != nil {
+			if _, err := publicpolicy.RPCAuthPolicyForMethod(fullMethod); err != nil {
 				return err
 			}
 

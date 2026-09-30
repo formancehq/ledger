@@ -10,6 +10,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/holiman/uint256"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -1289,16 +1290,16 @@ func unionNeeds(children []indexNeed) indexNeed {
 // validity before index availability, so callers must consult this before
 // filterNeedsIndex.
 func filterInvalidForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarget) bool {
-	invalidKind := func(kind commonpb.ConditionKind) bool {
-		return !commonpb.ConditionValidForTarget(target, kind)
+	invalidKind := func(kind publicpolicy.ConditionKind) bool {
+		return !publicpolicy.ConditionValidForTarget(target, kind)
 	}
 
 	return foldFilter(f, filterFold[bool]{
-		and: func(children []bool) bool { return invalidKind(commonpb.ConditionKindAnd) || anyOf(children) },
-		or:  func(children []bool) bool { return invalidKind(commonpb.ConditionKindOr) || anyOf(children) },
-		not: func(child bool) bool { return invalidKind(commonpb.ConditionKindNot) || child },
+		and: func(children []bool) bool { return invalidKind(publicpolicy.ConditionKindAnd) || anyOf(children) },
+		or:  func(children []bool) bool { return invalidKind(publicpolicy.ConditionKindOr) || anyOf(children) },
+		not: func(child bool) bool { return invalidKind(publicpolicy.ConditionKindNot) || child },
 		leaf: func(leaf *commonpb.QueryFilter) bool {
-			return leaf.GetFilter() != nil && invalidKind(commonpb.ConditionKindOf(leaf))
+			return leaf.GetFilter() != nil && invalidKind(publicpolicy.ConditionKindOf(leaf))
 		},
 	})
 }

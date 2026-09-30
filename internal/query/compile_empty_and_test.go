@@ -8,6 +8,7 @@ import (
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -32,7 +33,7 @@ func TestCompileEmptyCombinators(t *testing.T) {
 		commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS,
 		commonpb.QueryTarget_QUERY_TARGET_LOGS,
 	} {
-		t.Run(commonpb.TargetHumanName(target), func(t *testing.T) {
+		t.Run(publicpolicy.TargetHumanName(target), func(t *testing.T) {
 			t.Parallel()
 
 			universe := ascendingReference(t, store, target, nil)

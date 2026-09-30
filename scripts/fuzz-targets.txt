@@ -9,7 +9,7 @@
 ./internal/proto/rafttransportpb/ FuzzSendMessageRequestUnmarshalVT
 ./internal/proto/snapshotpb/ FuzzFetchFileResponseUnmarshalVT
 ./internal/proto/snapshotpb/ FuzzPrepareSnapshotResponseUnmarshalVT
-./pkg/client/v3/grpc/ FuzzConvertMetadataValue
+./internal/protohelpers/ FuzzConvertMetadataValue
 ./pkg/client/v3/grpc/ FuzzMetadataMapUnmarshalJSON
 ./pkg/client/v3/grpc/ FuzzSignedApplyBatchUnmarshalVT
 ./pkg/client/v3/grpc/ FuzzSignedLogUnmarshalVT

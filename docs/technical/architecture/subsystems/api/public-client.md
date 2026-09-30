@@ -41,10 +41,14 @@ _, err = client.Discovery(ctx, &ledgergrpc.DiscoveryRequest{})
 ```
 
 The public client has no dependency on `ledger/v3/internal/proto`, server
-bootstrap, consensus, or storage packages. Ledger's REST-only bulk envelope
-and server-only not-found errors remain in root-owned packages. Public messages
-retain their JSON behavior, including precise integer decoding and audit
-serializer errors.
+bootstrap, consensus, storage, SQL, or server schema packages. The nested
+module contains the wire types, generated gRPC bindings, and the JSON behavior
+needed to exchange those types, including precise integer decoding and audit
+serializer errors. Server-side policy tables, SQL and schema adapters, metadata
+coercion, transaction builders, and conversion to Ledger's domain types live in
+root-owned `internal/proto/publicpolicy`, `internal/protosql`, and
+`internal/protohelpers`. Ledger's REST-only bulk envelope and server-only
+not-found errors also remain in root-owned packages.
 
 ## Regeneration and checks
 

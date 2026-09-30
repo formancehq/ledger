@@ -154,6 +154,7 @@ fuzz-check:
     set -euo pipefail
     echo "==> Replaying fuzz seed corpora..."
     go -C pkg/client/v3 test ./grpc/ -run 'Fuzz' -timeout 60s
+    go test ./internal/protohelpers/ -run 'Fuzz' -timeout 60s
     go test ./internal/adapter/restbulk/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/rafttransportpb/ -run 'Fuzz' -timeout 60s
     go test ./internal/proto/raftcmdpb/ -run 'Fuzz' -timeout 60s

@@ -5,10 +5,9 @@ import (
 
 	"github.com/holiman/uint256"
 
-	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // foldCallerAccountMetadata folds a CreateTransaction's caller-supplied account
@@ -22,7 +21,7 @@ func foldCallerAccountMetadata(effects *batchEffects, ledgerName string, ct *raf
 			effects.setMetadata(domain.MetadataKey{
 				AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 				Key:        k,
-			}, commonpb.MetadataValueToString(v))
+			}, protohelpers.MetadataValueToString(v))
 		}
 	}
 }
@@ -177,8 +176,8 @@ func (s *admissionValueSource) Balance(account, asset, color string) (*big.Int, 
 	balance := new(big.Int)
 	if vol != nil && vol.GetInput() != nil && vol.GetOutput() != nil {
 		var inputVal, outputVal uint256.Int
-		vol.GetInput().IntoUint256(&inputVal)
-		vol.GetOutput().IntoUint256(&outputVal)
+		protohelpers.IntoUint256(vol.GetInput(), &inputVal)
+		protohelpers.IntoUint256(vol.GetOutput(), &outputVal)
 		balance.Sub(inputVal.ToBig(), outputVal.ToBig())
 	}
 	// vol == nil (or partially materialised) is a fresh account with a zero
@@ -231,5 +230,5 @@ func (s *admissionValueSource) Metadata(account, key string) (string, bool, erro
 	// present=false on str=="" would make a valid meta() read of an empty string
 	// resolve as absent, diverging from the FSM-side scopeValueSource and
 	// poisoning the resolution hash with the absent sentinel.
-	return commonpb.MetadataValueToString(value), true, nil
+	return protohelpers.MetadataValueToString(value), true, nil
 }

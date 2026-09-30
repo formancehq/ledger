@@ -2,40 +2,10 @@ package grpc
 
 import (
 	"errors"
-
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
-
-// NewLedgerLog creates a new LedgerLog from a LedgerLogPayload.
-func NewLedgerLog(payload *LedgerLogPayload) *LedgerLog {
-	return &LedgerLog{
-		Data: payload,
-	}
-}
-
-// WithDate sets the date of the log.
-func (l *LedgerLog) WithDate(date time.Time) *LedgerLog {
-	if l == nil {
-		l = &LedgerLog{}
-	}
-
-	l.Date = NewTimestamp(date)
-
-	return l
-}
-
-// WithID sets the ID of the log.
-func (l *LedgerLog) WithID(id uint64) *LedgerLog {
-	if l == nil {
-		l = &LedgerLog{}
-	}
-
-	l.Id = id
-
-	return l
-}
 
 // MarshalJSON implements json.Marshaler for LedgerLog.
 func (l *LedgerLog) MarshalJSON() ([]byte, error) {

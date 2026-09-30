@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
@@ -42,7 +43,7 @@ func main() {
 					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+								protohelpers.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 							},
 							Force: true,
 						},
@@ -81,7 +82,7 @@ func main() {
 					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
+								protohelpers.NewPosting("world", "users:0", "USD/2", internal.RandomBigInt()),
 							},
 							Force: true,
 						},

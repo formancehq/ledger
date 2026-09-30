@@ -3,7 +3,6 @@ package grpc_test
 import (
 	"encoding/json"
 	"math"
-	"math/big"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -26,7 +25,7 @@ func TestLedgerLogJSONOutput(t *testing.T) {
 		Id: 9007199254740993, Reference: "ref-1", Timestamp: timestamp, InsertedAt: timestamp, UpdatedAt: timestamp,
 		Reverted: true, RevertedAt: timestamp, RevertedByTransaction: 9007199254740994,
 		Metadata: metadata,
-		Postings: []*commonpb.Posting{commonpb.NewColoredPosting("world", "users:alice", "USD/2", "GOLD", new(big.Int).Lsh(big.NewInt(1), 100))},
+		Postings: []*commonpb.Posting{{Source: "world", Destination: "users:alice", Asset: "USD/2", Color: "GOLD", Amount: &commonpb.Uint256{V1: 1 << 36}}},
 		PostCommitVolumes: &commonpb.PostCommitVolumes{VolumesByAccount: map[string]*commonpb.VolumesByAssets{
 			"users:alice": {Volumes: []*commonpb.VolumeEntry{
 				{Asset: "USD/2", Color: "", Volumes: &commonpb.Volumes{Input: "123", Output: "0"}},

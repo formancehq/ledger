@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/types/metadata"
-
 	jsonPkg "github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
 
@@ -18,56 +16,6 @@ const (
 	MetaTargetTypeAccount     = "ACCOUNT"
 	MetaTargetTypeTransaction = "TRANSACTION"
 )
-
-// MetadataFromGoMap converts a metadata.Metadata (map[string]string) to a map[string]*MetadataValue.
-func MetadataFromGoMap(m metadata.Metadata) map[string]*MetadataValue {
-	if m == nil {
-		return nil
-	}
-
-	result := make(map[string]*MetadataValue, len(m))
-	for k, v := range m {
-		result[k] = NewStringValue(v)
-	}
-
-	return result
-}
-
-// MetadataToGoMap converts a map[string]*MetadataValue to metadata.Metadata (map[string]string).
-func MetadataToGoMap(m map[string]*MetadataValue) metadata.Metadata {
-	if m == nil {
-		return nil
-	}
-
-	result := make(metadata.Metadata, len(m))
-	for k, v := range m {
-		if v != nil {
-			result[k] = MetadataValueToString(v)
-		}
-	}
-
-	return result
-}
-
-// MetadataMapToGoMap converts a *MetadataMap to metadata.Metadata (map[string]string).
-func MetadataMapToGoMap(mm *MetadataMap) metadata.Metadata {
-	if mm == nil {
-		return nil
-	}
-
-	return MetadataToGoMap(mm.GetValues())
-}
-
-// MetadataMapFromGoMap converts a metadata.Metadata (map[string]string) to a *MetadataMap.
-func MetadataMapFromGoMap(m metadata.Metadata) *MetadataMap {
-	if m == nil {
-		return nil
-	}
-
-	return &MetadataMap{
-		Values: MetadataFromGoMap(m),
-	}
-}
 
 // MetadataValueToAny converts a MetadataValue to a JSON-compatible any value.
 // string_value → string, int_value → int64, uint_value → uint64,

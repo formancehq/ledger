@@ -1,7 +1,6 @@
 package grpc
 
 import (
-	"database/sql/driver"
 	"fmt"
 
 	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
@@ -25,26 +24,6 @@ const (
 )
 
 type LogType int16
-
-func (lt LogType) Value() (driver.Value, error) {
-	return lt.String(), nil
-}
-
-func (lt *LogType) Scan(src any) error {
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("LogType.Scan: expected string, got %T", src)
-	}
-
-	v, err := LogTypeFromString(s)
-	if err != nil {
-		return err
-	}
-
-	*lt = v
-
-	return nil
-}
 
 func (lt LogType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(lt.String())

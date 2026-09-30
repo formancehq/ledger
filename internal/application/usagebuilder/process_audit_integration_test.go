@@ -17,6 +17,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
@@ -222,7 +223,7 @@ func metadataOrder(ledger, account string) *raftcmdpb.Order {
 		Payload: &raftcmdpb.LedgerScopedOrder_Apply{Apply: &raftcmdpb.LedgerApplyOrder{
 			Data: &raftcmdpb.LedgerApplyOrder_AddMetadata{AddMetadata: &raftcmdpb.SaveMetadataOrder{
 				Target:   &auditpb.Target{Target: &auditpb.Target_Account{Account: &auditpb.TargetAccount{Addr: account}}},
-				Metadata: auditpb.MetadataFromGoMap(map[string]string{"note": "purge"}),
+				Metadata: protohelpers.MetadataFromGoMap(map[string]string{"note": "purge"}),
 			}},
 		}},
 	}}}

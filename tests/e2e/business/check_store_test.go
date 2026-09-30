@@ -5,6 +5,7 @@ package business
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -302,7 +303,7 @@ var _ = Describe("CheckStore", Ordered, func() {
 			_, err = sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "customer:2", big.NewInt(3000), "EUR"),
 			}, map[string]string{"type": "fx-deposit"}, map[string]*commonpb.MetadataMap{
-				"customer:2": commonpb.MetadataMapFromGoMap(map[string]string{
+				"customer:2": protohelpers.MetadataMapFromGoMap(map[string]string{
 					"joined":  "2026-01-15",
 					"country": "FR",
 				}),

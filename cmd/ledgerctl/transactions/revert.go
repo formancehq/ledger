@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewRevertCommand creates the transactions revert command.
@@ -152,7 +153,7 @@ func runRevert(cmd *cobra.Command, args []string) error {
 								TransactionId:   txID,
 								Force:           force,
 								AtEffectiveDate: atEffectiveDate,
-								Metadata:        commonpb.MetadataFromGoMap(metadata),
+								Metadata:        protohelpers.MetadataFromGoMap(metadata),
 							},
 						},
 					},

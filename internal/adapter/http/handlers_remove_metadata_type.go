@@ -6,6 +6,8 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // handleRemoveMetadataType handles DELETE /{ledgerName}/metadata-schema/{targetType}/{key}.
@@ -17,7 +19,7 @@ func (s *Server) handleRemoveMetadataType(w http.ResponseWriter, r *http.Request
 
 	targetTypeStr := chi.URLParam(r, "targetType")
 
-	targetType, err := commonpb.ParseTargetType(targetTypeStr)
+	targetType, err := protohelpers.ParseTargetType(targetTypeStr)
 	if err != nil {
 		writeBadRequest(w, "INVALID_REQUEST", err)
 

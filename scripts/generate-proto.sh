@@ -53,9 +53,6 @@ generate() {
         options+=("--go-vtproto_opt=pool=${client_module}/grpc.AuditEntry")
         options+=(
             "--skippable_out=${output}" "--skippable_opt=module=${module}"
-            "--queryfilter-validity_out=${output}" "--queryfilter-validity_opt=module=${module}"
-            "--ledger-log-category_out=${output}" "--ledger-log-category_opt=module=${module}"
-            "--rpcauth_out=${output}" "--rpcauth_opt=module=${module}"
         )
     fi
     local files=()
@@ -64,9 +61,6 @@ generate() {
     if [[ $module == "$client_module" ]]; then
         enabled_plugins+=(
             --plugin=protoc-gen-skippable=build/protoc-gen-skippable
-            --plugin=protoc-gen-queryfilter-validity=build/protoc-gen-queryfilter-validity
-            --plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category
-            --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth
         )
     fi
     protoc "${options[@]}" "${enabled_plugins[@]}" -I misc/proto "${files[@]}"
@@ -74,6 +68,15 @@ generate() {
 
 generate "$client_module" "${public[@]}"
 generate "$root_module" "${internal[@]}"
+
+# These tables validate public proto options but are consumed only by the server.
+# Generate them against the public schemas into the root module, without a
+# second copy of the message types or their descriptor registry.
+protoc -I misc/proto \
+    --queryfilter-validity_out=. --plugin=protoc-gen-queryfilter-validity=build/protoc-gen-queryfilter-validity \
+    --ledger-log-category_out=. --plugin=protoc-gen-ledger-log-category=build/protoc-gen-ledger-log-category \
+    --rpcauth_out=. --plugin=protoc-gen-rpcauth=build/protoc-gen-rpcauth \
+    "${public[@]/%/.proto}"
 
 protoc -I misc/proto --include_imports \
     --descriptor_set_out=pkg/client/v3/proto/ledger-public.protoset \

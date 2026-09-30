@@ -17,7 +17,7 @@ python3 scripts/verify_client_release_contract.py "$PWD" "$server_version" \
 GOWORK=off go -C pkg/client/v3 test ./...
 
 if GOWORK=off go -C pkg/client/v3 list -deps -f '{{.ImportPath}}' ./... |
-    grep -E '^github.com/formancehq/ledger/v3/|^github.com/cockroachdb/pebble/' ; then
+    grep -E '^(github.com/formancehq/ledger/v3/|github.com/cockroachdb/pebble/|github.com/formancehq/go-libs/v5/|github.com/holiman/uint256$|github.com/invopop/jsonschema$|database/sql(/|$))' ; then
     echo 'public client imports server-only dependencies' >&2
     exit 1
 fi

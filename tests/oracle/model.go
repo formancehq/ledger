@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/accounttype"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // TypeState is the model's view of one account type.
@@ -475,7 +476,7 @@ func txTerm(idx int, tx *txRecord) Digest {
 	var amt uint256.Int
 	t.u64(uint64(len(tx.postings)))
 	for _, p := range tx.postings {
-		p.GetAmount().IntoUint256(&amt)
+		protohelpers.IntoUint256(p.GetAmount(), &amt)
 		t.str(p.GetSource(), p.GetDestination(), p.GetAsset(), p.GetColor())
 		t.u256(&amt)
 	}
@@ -1767,7 +1768,7 @@ func (s *LedgerState) applyPostings(postings []*commonpb.Posting, force bool, to
 	var zero uint256.Int
 	for _, p := range postings {
 		var amt uint256.Int
-		p.GetAmount().IntoUint256(&amt)
+		protohelpers.IntoUint256(p.GetAmount(), &amt)
 		asset, color := p.GetAsset(), p.GetColor()
 		srcKey := VolumeKey{Address: p.GetSource(), Asset: asset, Color: color}
 		src := s.vol(srcKey)

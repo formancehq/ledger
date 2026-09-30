@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"slices"
 	"sort"
 	"strconv"
@@ -1063,7 +1064,7 @@ func indexedQueryOutcomeLegal(
 	// ErrorInfo metadata. A sibling index being active must still make its
 	// own refusal a finding, even when this filter also touches a retype.
 	if errKind == indexedErrNotReady {
-		targetName := commonpb.TargetHumanName(target)
+		targetName := publicpolicy.TargetHumanName(target)
 		for _, ref := range refs {
 			if rejectedIndex == fmt.Sprintf("metadata[%q] on %s", ref.key, targetName) {
 				return true

@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -177,7 +178,7 @@ func TestExecute_ParameterizedFilterAggregateStillUsesAccountIterator(t *testing
 	require.Equal(t, "USD/2", got.GetVolumes()[0].GetAsset())
 
 	var input uint256.Int
-	got.GetVolumes()[0].GetInput().IntoUint256(&input)
+	protohelpers.IntoUint256(got.GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(10), &input,
 		"only the matched account's volumes may be aggregated")
 }
@@ -197,9 +198,9 @@ func TestExecute_NilFilterAggregateOverflow(t *testing.T) {
 			for i, amount := range []*uint256.Int{new(uint256.Int).SetAllOne(), uint256.NewInt(1)} {
 				pair := &raftcmdpb.VolumePair{}
 				if side == "input" {
-					pair.Input = commonpb.NewUint256(amount)
+					pair.Input = protohelpers.NewUint256(amount)
 				} else {
-					pair.Output = commonpb.NewUint256(amount)
+					pair.Output = protohelpers.NewUint256(amount)
 				}
 				_, err := attrs.Volume.Set(batch, domain.NewVolumeKey("l", []string{"a", "b"}[i], "USD/2", "").Bytes(), pair)
 				require.NoError(t, err)

@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewGetCommand creates the transactions get command.
@@ -223,7 +224,7 @@ func runGet(cmd *cobra.Command, args []string) error {
 		for key, value := range tx.GetMetadata() {
 			metadataTable = append(metadataTable, []string{
 				key,
-				commonpb.MetadataValueToString(value),
+				protohelpers.MetadataValueToString(value),
 			})
 		}
 

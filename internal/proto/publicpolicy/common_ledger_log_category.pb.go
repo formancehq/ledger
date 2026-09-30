@@ -4,7 +4,11 @@
 // Exhaustive LedgerLogPayload HISTORY/CONTROL classification (EN-1771).
 // Edit common.ledger_log_is_history annotations and run `just generate-proto`.
 
-package grpc
+package publicpolicy
+
+import (
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
+)
 
 // LedgerLogCategory is the generated, build-enforced business-history class.
 type LedgerLogCategory uint8
@@ -18,37 +22,37 @@ const (
 // LedgerLogCategoryOf returns the protobuf-declared category of payload.
 // Nil and unknown payloads return LEDGER_LOG_CATEGORY_UNSPECIFIED so callers
 // can surface malformed or forward-incompatible input as an invariant error.
-func LedgerLogCategoryOf(payload *LedgerLogPayload) LedgerLogCategory {
+func LedgerLogCategoryOf(payload *grpc.LedgerLogPayload) LedgerLogCategory {
 	if payload == nil {
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED
 	}
 
 	switch payload.GetPayload().(type) {
-	case *LedgerLogPayload_CreatedTransaction:
+	case *grpc.LedgerLogPayload_CreatedTransaction:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
-	case *LedgerLogPayload_RevertedTransaction:
+	case *grpc.LedgerLogPayload_RevertedTransaction:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
-	case *LedgerLogPayload_SavedMetadata:
+	case *grpc.LedgerLogPayload_SavedMetadata:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
-	case *LedgerLogPayload_DeletedMetadata:
+	case *grpc.LedgerLogPayload_DeletedMetadata:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
-	case *LedgerLogPayload_SetMetadataFieldType:
+	case *grpc.LedgerLogPayload_SetMetadataFieldType:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_RemovedMetadataFieldType:
+	case *grpc.LedgerLogPayload_RemovedMetadataFieldType:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_FillGap:
+	case *grpc.LedgerLogPayload_FillGap:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_CreateIndex:
+	case *grpc.LedgerLogPayload_CreateIndex:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_DropIndex:
+	case *grpc.LedgerLogPayload_DropIndex:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_AddedAccountType:
+	case *grpc.LedgerLogPayload_AddedAccountType:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_RemovedAccountType:
+	case *grpc.LedgerLogPayload_RemovedAccountType:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_UpdatedDefaultEnforcementMode:
+	case *grpc.LedgerLogPayload_UpdatedDefaultEnforcementMode:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_CONTROL
-	case *LedgerLogPayload_OrderSkipped:
+	case *grpc.LedgerLogPayload_OrderSkipped:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
 	default:
 		return LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED
@@ -56,6 +60,6 @@ func LedgerLogCategoryOf(payload *LedgerLogPayload) LedgerLogCategory {
 }
 
 // IsLedgerHistoryPayload reports whether payload contributes business history.
-func IsLedgerHistoryPayload(payload *LedgerLogPayload) bool {
+func IsLedgerHistoryPayload(payload *grpc.LedgerLogPayload) bool {
 	return LedgerLogCategoryOf(payload) == LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY
 }

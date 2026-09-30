@@ -5,36 +5,38 @@ import (
 	"strings"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // ParseTargetType converts "account"/"transaction" to commonpb.TargetType.
 func ParseTargetType(s string) (commonpb.TargetType, error) {
-	return commonpb.ParseTargetType(s)
+	return protohelpers.ParseTargetType(s)
 }
 
 // ParseMetadataType converts "string"/"int64"/"bool"/etc to commonpb.MetadataType.
 func ParseMetadataType(s string) (commonpb.MetadataType, error) {
-	return commonpb.ParseMetadataType(s)
+	return protohelpers.ParseMetadataType(s)
 }
 
 // MetadataTypeString returns user-friendly name for a MetadataType.
 func MetadataTypeString(t commonpb.MetadataType) string {
-	return commonpb.MetadataTypeToString(t)
+	return protohelpers.MetadataTypeToString(t)
 }
 
 // TargetTypeString returns user-friendly name for a TargetType.
 func TargetTypeString(t commonpb.TargetType) string {
-	return commonpb.TargetTypeToString(t)
+	return protohelpers.TargetTypeToString(t)
 }
 
 // MetadataTypeOptions returns valid type names for interactive select.
 func MetadataTypeOptions() []string {
-	return commonpb.MetadataTypeOptions()
+	return protohelpers.MetadataTypeOptions()
 }
 
 // TargetTypeOptions returns valid target names for interactive select.
 func TargetTypeOptions() []string {
-	return commonpb.TargetTypeOptions()
+	return protohelpers.TargetTypeOptions()
 }
 
 // ParseSchemaEntry parses a "target:key:type" string into its components.

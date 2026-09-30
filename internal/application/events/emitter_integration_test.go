@@ -25,6 +25,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/futures"
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -203,18 +204,13 @@ func TestEmitterIntegration_ProcessExistingLogs(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(
-											commonpb.NewPosting("world", "bank", "USD", big.NewInt(1000)),
-										).
-										WithID(1).
-										WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(1000))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -286,18 +282,13 @@ func TestEmitterIntegration_NotificationDrivenProcessing(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "payments",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(
-											commonpb.NewPosting("world", "merchant", "EUR", big.NewInt(500)),
-										).
-										WithID(1).
-										WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "merchant", "EUR", big.NewInt(500))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -346,15 +337,13 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
-										WithID(1).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(100))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -365,7 +354,7 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 								SavedMetadata: &commonpb.SavedMetadata{
 									Target: &commonpb.Target{
@@ -373,10 +362,10 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 											Account: &commonpb.TargetAccount{Addr: "bank"},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(map[string]string{"type": "asset"}),
+									Metadata: protohelpers.MetadataFromGoMap(map[string]string{"type": "asset"}),
 								},
 							},
-						}).WithID(2).WithDate(now),
+						}), 2), now),
 					},
 				},
 			},
@@ -408,15 +397,13 @@ func TestEmitterIntegration_CursorResumesAfterRestart(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "orders",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("bank", "user", "USD", big.NewInt(50))).
-										WithID(2).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("bank", "user", "USD", big.NewInt(50))), 2), now),
 								},
 							},
-						}).WithID(3).WithDate(now),
+						}), 3), now),
 					},
 				},
 			},
@@ -477,15 +464,13 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
-										WithID(1).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(100))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -497,16 +482,14 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_RevertedTransaction{
 								RevertedTransaction: &commonpb.RevertedTransaction{
 									RevertedTransactionId: 1,
-									RevertTransaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("bank", "world", "USD", big.NewInt(100))).
-										WithID(2).WithTimestamp(now),
+									RevertTransaction:     protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("bank", "world", "USD", big.NewInt(100))), 2), now),
 								},
 							},
-						}).WithID(2).WithDate(now),
+						}), 2), now),
 					},
 				},
 			},
@@ -518,7 +501,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 								SavedMetadata: &commonpb.SavedMetadata{
 									Target: &commonpb.Target{
@@ -526,10 +509,10 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 											Account: &commonpb.TargetAccount{Addr: "bank"},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+									Metadata: protohelpers.MetadataFromGoMap(map[string]string{"k": "v"}),
 								},
 							},
-						}).WithID(3).WithDate(now),
+						}), 3), now),
 					},
 				},
 			},
@@ -541,7 +524,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_DeletedMetadata{
 								DeletedMetadata: &commonpb.DeletedMetadata{
 									Target: &commonpb.Target{
@@ -552,7 +535,7 @@ func TestEmitterIntegration_AllEventTypes(t *testing.T) {
 									Key: "k",
 								},
 							},
-						}).WithID(4).WithDate(now),
+						}), 4), now),
 					},
 				},
 			},
@@ -621,15 +604,13 @@ func TestEmitterIntegration_Batching(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(int64(i*100)))).
-										WithID(i).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(int64(i*100)))), i), now),
 								},
 							},
-						}).WithID(i).WithDate(now),
+						}), i), now),
 					},
 				},
 			},
@@ -696,15 +677,13 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_CreatedTransaction{
 								CreatedTransaction: &commonpb.CreatedTransaction{
-									Transaction: commonpb.NewTransaction().
-										WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
-										WithID(1).WithTimestamp(now),
+									Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(100))), 1), now),
 								},
 							},
-						}).WithID(1).WithDate(now),
+						}), 1), now),
 					},
 				},
 			},
@@ -716,7 +695,7 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 				Type: &commonpb.LogPayload_Apply{
 					Apply: &commonpb.ApplyLedgerLog{
 						LedgerName: "test",
-						Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+						Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 							Payload: &commonpb.LedgerLogPayload_SavedMetadata{
 								SavedMetadata: &commonpb.SavedMetadata{
 									Target: &commonpb.Target{
@@ -724,10 +703,10 @@ func TestEmitterIntegration_EventTypeFilter(t *testing.T) {
 											Account: &commonpb.TargetAccount{Addr: "bank"},
 										},
 									},
-									Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+									Metadata: protohelpers.MetadataFromGoMap(map[string]string{"k": "v"}),
 								},
 							},
-						}).WithID(2).WithDate(now),
+						}), 2), now),
 					},
 				},
 			},
@@ -828,50 +807,46 @@ func TestEmitterIntegration_FilteredLogDoesNotSkipPendingBatchOnFailure(t *testi
 			Sequence: 1,
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+				Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-						Transaction: commonpb.NewTransaction().
-							WithPostings(commonpb.NewPosting("world", "bank", "USD", big.NewInt(100))).
-							WithID(1).WithTimestamp(now),
+						Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "bank", "USD", big.NewInt(100))), 1), now),
 					}},
-				}).WithID(1).WithDate(now),
+				}), 1), now),
 			}}},
 		},
 		&commonpb.Log{
 			Sequence: 2,
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+				Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 					Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
 						Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "bank"}}},
-						Metadata: commonpb.MetadataFromGoMap(map[string]string{"k": "v"}),
+						Metadata: protohelpers.MetadataFromGoMap(map[string]string{"k": "v"}),
 					}},
-				}).WithID(2).WithDate(now),
+				}), 2), now),
 			}}},
 		},
 		&commonpb.Log{
 			Sequence: 3,
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+				Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 					Payload: &commonpb.LedgerLogPayload_CreatedTransaction{CreatedTransaction: &commonpb.CreatedTransaction{
-						Transaction: commonpb.NewTransaction().
-							WithPostings(commonpb.NewPosting("world", "alice", "USD", big.NewInt(50))).
-							WithID(2).WithTimestamp(now),
+						Transaction: protohelpers.WithTransactionTimestamp(protohelpers.WithTransactionID(protohelpers.WithTransactionPostings(protohelpers.NewTransaction(), protohelpers.NewPosting("world", "alice", "USD", big.NewInt(50))), 2), now),
 					}},
-				}).WithID(3).WithDate(now),
+				}), 3), now),
 			}}},
 		},
 		&commonpb.Log{
 			Sequence: 4,
 			Payload: &commonpb.LogPayload{Type: &commonpb.LogPayload_Apply{Apply: &commonpb.ApplyLedgerLog{
 				LedgerName: "test",
-				Log: commonpb.NewLedgerLog(&commonpb.LedgerLogPayload{
+				Log: protohelpers.WithLedgerLogDate(protohelpers.WithLedgerLogID(protohelpers.NewLedgerLog(&commonpb.LedgerLogPayload{
 					Payload: &commonpb.LedgerLogPayload_SavedMetadata{SavedMetadata: &commonpb.SavedMetadata{
 						Target:   &commonpb.Target{Target: &commonpb.Target_Account{Account: &commonpb.TargetAccount{Addr: "alice"}}},
-						Metadata: commonpb.MetadataFromGoMap(map[string]string{"k2": "v2"}),
+						Metadata: protohelpers.MetadataFromGoMap(map[string]string{"k2": "v2"}),
 					}},
-				}).WithID(4).WithDate(now),
+				}), 4), now),
 			}}},
 		},
 	)

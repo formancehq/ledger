@@ -12,6 +12,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -209,14 +211,14 @@ func compile(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.EntityIte
 // by the compile* combinators, each of which re-enters compile() and thus
 // re-runs this check per child.
 func rejectInvalidCondition(target commonpb.QueryTarget, filter *commonpb.QueryFilter) error {
-	kind := commonpb.ConditionKindOf(filter)
-	if commonpb.ConditionValidForTarget(target, kind) {
+	kind := publicpolicy.ConditionKindOf(filter)
+	if publicpolicy.ConditionValidForTarget(target, kind) {
 		return nil
 	}
 
 	return domain.NewFilterCompilationError(
 		"condition %q is not valid on target %s",
-		kind.String(), commonpb.TargetHumanName(target))
+		kind.String(), publicpolicy.TargetHumanName(target))
 }
 
 // compileUniverse returns an iterator over ALL entities (no filter).
@@ -1719,10 +1721,10 @@ func isSupportedTarget(target commonpb.QueryTarget) bool {
 }
 
 // targetHumanName returns a human-readable name for a query target. It
-// delegates to commonpb.TargetHumanName so the compile layer and the shared
+// delegates to publicpolicy.TargetHumanName so the compile layer and the shared
 // validity table produce identical target labels.
 func targetHumanName(target commonpb.QueryTarget) string {
-	return commonpb.TargetHumanName(target)
+	return publicpolicy.TargetHumanName(target)
 }
 
 // targetNamespace returns the read-index namespace for a query target.
@@ -2124,18 +2126,18 @@ func validateAndCoerceCondition(fc *commonpb.FieldCondition, fieldSchema *common
 		// Datetime is stored as signed int64 micros, so it accepts integer
 		// bounds verbatim like any signed field (compileIntCondition uses the
 		// order-preserving EncodeInt64 path, matching the index encoding).
-		if commonpb.IsSignedType(schemaType) || commonpb.IsDatetimeType(schemaType) {
+		if protohelpers.IsSignedType(schemaType) || protohelpers.IsDatetimeType(schemaType) {
 			return fc, nil
 		}
 
-		if commonpb.IsUnsignedType(schemaType) {
+		if protohelpers.IsUnsignedType(schemaType) {
 			return coerceIntToUint(fc)
 		}
 
 		return nil, domain.NewFilterCompilationError("field %q is declared as %s, cannot use integer condition", fieldName, schemaType)
 
 	case *commonpb.FieldCondition_UintCond:
-		if commonpb.IsUnsignedType(schemaType) {
+		if protohelpers.IsUnsignedType(schemaType) {
 			return fc, nil
 		}
 

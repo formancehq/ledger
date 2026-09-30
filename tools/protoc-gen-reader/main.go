@@ -50,7 +50,6 @@ type extraMethod struct {
 // back to the concrete message pointer (e.g., "(*Uint256)(r)").
 var extraMethods = map[string][]extraMethod{
 	"common.Uint256": {
-		{name: "IntoUint256", signature: "(dst *uint256.Int)", call: "%BASE%.IntoUint256(dst)"},
 		{name: "IsZero", signature: "() bool", call: "return %BASE%.IsZero()"},
 	},
 }

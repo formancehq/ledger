@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // metadataFieldStatusJSON is the camelCase JSON DTO for MetadataFieldStatus.
@@ -20,7 +22,7 @@ type metadataSchemaStatusJSON struct {
 
 func toFieldStatusJSON(fs *commonpb.MetadataFieldStatus) *metadataFieldStatusJSON {
 	return &metadataFieldStatusJSON{
-		DeclaredType: commonpb.MetadataTypeToString(fs.GetDeclaredType()),
+		DeclaredType: protohelpers.MetadataTypeToString(fs.GetDeclaredType()),
 	}
 }
 

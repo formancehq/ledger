@@ -1,4 +1,4 @@
-package grpc_test
+package publicpolicy_test
 
 import (
 	"testing"
@@ -7,6 +7,8 @@ import (
 	ggrpc "google.golang.org/grpc"
 
 	clusterpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 )
 
 func TestRPCAuthPoliciesCoverEveryPublicServiceMethod(t *testing.T) {
@@ -30,13 +32,13 @@ func TestRPCAuthPoliciesCoverEveryPublicServiceMethod(t *testing.T) {
 		}
 	}
 
-	require.Len(t, clusterpb.AllRPCAuthPolicies(), methodCount)
+	require.Len(t, publicpolicy.AllRPCAuthPolicies(), methodCount)
 }
 
 func TestRPCAuthPoliciesPinExceptionalMethods(t *testing.T) {
 	t.Parallel()
 
-	policies := clusterpb.AllRPCAuthPolicies()
+	policies := publicpolicy.AllRPCAuthPolicies()
 
 	publicMethods := map[string]bool{}
 	dynamicMethods := map[string]clusterpb.DynamicAuthResolver{}
@@ -119,17 +121,17 @@ func expectedFixedRPCAuthPolicies() map[string]clusterpb.AuthScope {
 func TestRPCAuthPolicyLookupFailsClosedForUnknownMethod(t *testing.T) {
 	t.Parallel()
 
-	policy, err := clusterpb.RPCAuthPolicyForMethod("/ledger.BucketService/Unknown")
+	policy, err := publicpolicy.RPCAuthPolicyForMethod("/ledger.BucketService/Unknown")
 
 	require.Nil(t, policy)
-	require.ErrorAs(t, err, new(*clusterpb.UnknownRPCMethodError))
+	require.ErrorAs(t, err, new(*publicpolicy.UnknownRPCMethodError))
 }
 
 func assertKnownPolicy(t *testing.T, serviceName, methodName string) {
 	t.Helper()
 
 	fullMethod := "/" + serviceName + "/" + methodName
-	policy, err := clusterpb.RPCAuthPolicyForMethod(fullMethod)
+	policy, err := publicpolicy.RPCAuthPolicyForMethod(fullMethod)
 	require.NoError(t, err, fullMethod)
 	require.NotNil(t, policy, fullMethod)
 }

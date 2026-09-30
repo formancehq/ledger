@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 	"time"
@@ -118,7 +119,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			Expect(strVal.StringValue).To(Equal("42"))
 
 			// String projection still surfaces the same value.
-			Expect(commonpb.MetadataToGoMap(account.Metadata)["age"]).To(Equal("42"))
+			Expect(protohelpers.MetadataToGoMap(account.Metadata)["age"]).To(Equal("42"))
 		})
 	})
 
@@ -241,7 +242,7 @@ var _ = Describe("TypedMetadata", Ordered, func() {
 			Expect(strVal.StringValue).To(Equal("not-a-number"))
 
 			// ToMap surfaces the same raw value.
-			Expect(commonpb.MetadataToGoMap(account.Metadata)["age"]).To(Equal("not-a-number"))
+			Expect(protohelpers.MetadataToGoMap(account.Metadata)["age"]).To(Equal("not-a-number"))
 		})
 	})
 
@@ -522,7 +523,7 @@ set_account_meta(@user, "account_type", "true")
 			})
 			Expect(err).To(Succeed())
 
-			m := commonpb.MetadataToGoMap(account.Metadata)
+			m := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(m["field_int8"]).To(Equal("-42"))
 			Expect(m["field_int16"]).To(Equal("1000"))
 			Expect(m["field_int32"]).To(Equal("100000"))

@@ -1,24 +1,26 @@
-package grpc
+package publicpolicy
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/reflect/protoreflect"
+
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // queryFilterOneofArms returns the descriptors of every arm of the
-// QueryFilter.filter oneof, read from the compiled proto descriptor. Deriving
+// grpc.QueryFilter.filter oneof, read from the compiled proto descriptor. Deriving
 // the expected set from the descriptor (rather than a hand-maintained list) is
 // what makes the completeness gate real: a new arm added to the .proto shows up
 // here automatically and must be handled by the generated table.
 func queryFilterOneofArms(t *testing.T) []protoreflect.FieldDescriptor {
 	t.Helper()
 
-	md := (&QueryFilter{}).ProtoReflect().Descriptor()
+	md := (&grpc.QueryFilter{}).ProtoReflect().Descriptor()
 
 	oneof := md.Oneofs().ByName("filter")
-	require.NotNil(t, oneof, "QueryFilter.filter oneof not found in descriptor")
+	require.NotNil(t, oneof, "grpc.QueryFilter.filter oneof not found in descriptor")
 
 	fields := oneof.Fields()
 	arms := make([]protoreflect.FieldDescriptor, 0, fields.Len())
@@ -29,21 +31,21 @@ func queryFilterOneofArms(t *testing.T) []protoreflect.FieldDescriptor {
 	return arms
 }
 
-// queryTargetValues returns every QueryTarget enum value from the descriptor.
-func queryTargetValues(t *testing.T) []QueryTarget {
+// queryTargetValues returns every grpc.QueryTarget enum value from the descriptor.
+func queryTargetValues(t *testing.T) []grpc.QueryTarget {
 	t.Helper()
 
-	ed := QueryTarget(0).Descriptor().Values()
-	targets := make([]QueryTarget, 0, ed.Len())
+	ed := grpc.QueryTarget(0).Descriptor().Values()
+	targets := make([]grpc.QueryTarget, 0, ed.Len())
 	for i := range ed.Len() {
-		targets = append(targets, QueryTarget(ed.Get(i).Number()))
+		targets = append(targets, grpc.QueryTarget(ed.Get(i).Number()))
 	}
 
 	return targets
 }
 
 // TestConditionKindsCoverEveryOneofArm asserts that every arm of the
-// QueryFilter.filter oneof — enumerated from the proto descriptor — maps to a
+// grpc.QueryFilter.filter oneof — enumerated from the proto descriptor — maps to a
 // distinct, real (non-Unknown) ConditionKind via ConditionKindOf, and that the
 // generated allConditionKinds has exactly one entry per arm. So a new arm added
 // to the .proto that the generator does not handle (or handles ambiguously)
@@ -54,16 +56,16 @@ func TestConditionKindsCoverEveryOneofArm(t *testing.T) {
 	arms := queryFilterOneofArms(t)
 
 	require.Len(t, allConditionKinds, len(arms),
-		"allConditionKinds must have exactly one entry per QueryFilter oneof arm")
+		"allConditionKinds must have exactly one entry per grpc.QueryFilter oneof arm")
 
 	seen := make(map[ConditionKind]bool, len(arms))
 	for _, arm := range arms {
-		msg := (&QueryFilter{}).ProtoReflect()
-		// Build a QueryFilter whose oneof is set to this arm, so ConditionKindOf
+		msg := (&grpc.QueryFilter{}).ProtoReflect()
+		// Build a grpc.QueryFilter whose oneof is set to this arm, so ConditionKindOf
 		// exercises the real type switch on the concrete wrapper type.
 		msg.Set(arm, defaultValueForArm(t, msg, arm))
 
-		kind := ConditionKindOf(msg.Interface().(*QueryFilter))
+		kind := ConditionKindOf(msg.Interface().(*grpc.QueryFilter))
 		require.NotEqualf(t, ConditionKindUnknown, kind,
 			"oneof arm %q maps to ConditionKindUnknown — the generator must handle it", arm.Name())
 		require.Falsef(t, seen[kind], "two oneof arms map to the same ConditionKind %s", kind)
@@ -77,7 +79,7 @@ func defaultValueForArm(t *testing.T, msg protoreflect.Message, arm protoreflect
 	t.Helper()
 
 	require.Equal(t, protoreflect.MessageKind, arm.Kind(),
-		"every QueryFilter oneof arm is expected to be a message")
+		"every grpc.QueryFilter oneof arm is expected to be a message")
 
 	return protoreflect.ValueOfMessage(msg.NewField(arm).Message())
 }
@@ -94,10 +96,10 @@ func TestTargetConditionValidityIsComplete(t *testing.T) {
 
 	// The generated allQueryTargets must match the enum descriptor exactly.
 	require.ElementsMatch(t, targets, allQueryTargets,
-		"allQueryTargets must list exactly the QueryTarget enum values")
+		"allQueryTargets must list exactly the grpc.QueryTarget enum values")
 
 	require.Len(t, targetConditionValidity, len(targets),
-		"targetConditionValidity must have one row per QueryTarget")
+		"targetConditionValidity must have one row per grpc.QueryTarget")
 
 	for _, kind := range allConditionKinds {
 		name, ok := conditionKindNames[kind]
@@ -153,13 +155,13 @@ func TestConditionValidityMatchesExpectedMatrix(t *testing.T) {
 	}
 
 	for _, r := range want {
-		require.Equalf(t, r.accounts, ConditionValidForTarget(QueryTarget_QUERY_TARGET_ACCOUNTS, r.kind),
+		require.Equalf(t, r.accounts, ConditionValidForTarget(grpc.QueryTarget_QUERY_TARGET_ACCOUNTS, r.kind),
 			"%s on accounts", r.kind)
-		require.Equalf(t, r.txs, ConditionValidForTarget(QueryTarget_QUERY_TARGET_TRANSACTIONS, r.kind),
+		require.Equalf(t, r.txs, ConditionValidForTarget(grpc.QueryTarget_QUERY_TARGET_TRANSACTIONS, r.kind),
 			"%s on transactions", r.kind)
-		require.Equalf(t, r.logs, ConditionValidForTarget(QueryTarget_QUERY_TARGET_LOGS, r.kind),
+		require.Equalf(t, r.logs, ConditionValidForTarget(grpc.QueryTarget_QUERY_TARGET_LOGS, r.kind),
 			"%s on logs", r.kind)
-		require.Equalf(t, r.audit, ConditionValidForTarget(QueryTarget_QUERY_TARGET_AUDIT, r.kind),
+		require.Equalf(t, r.audit, ConditionValidForTarget(grpc.QueryTarget_QUERY_TARGET_AUDIT, r.kind),
 			"%s on audit", r.kind)
 	}
 }
@@ -171,7 +173,7 @@ func TestNilFilterIsUnknownAndNeverValid(t *testing.T) {
 	t.Parallel()
 
 	require.Equal(t, ConditionKindUnknown, ConditionKindOf(nil))
-	require.Equal(t, ConditionKindUnknown, ConditionKindOf(&QueryFilter{}))
+	require.Equal(t, ConditionKindUnknown, ConditionKindOf(&grpc.QueryFilter{}))
 
 	for _, target := range queryTargetValues(t) {
 		require.Falsef(t, ConditionValidForTarget(target, ConditionKindUnknown),

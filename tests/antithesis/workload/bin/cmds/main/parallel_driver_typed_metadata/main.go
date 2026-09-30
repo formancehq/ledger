@@ -7,6 +7,7 @@ import (
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -72,7 +73,7 @@ func main() {
 									Account: &commonpb.TargetAccount{Addr: address},
 								},
 							},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{
+							Metadata: protohelpers.MetadataFromGoMap(map[string]string{
 								metaKey: strconv.FormatInt(metaValue, 10),
 							}),
 						},
@@ -230,7 +231,7 @@ func main() {
 									Account: &commonpb.TargetAccount{Addr: address},
 								},
 							},
-							Metadata: commonpb.MetadataFromGoMap(map[string]string{
+							Metadata: protohelpers.MetadataFromGoMap(map[string]string{
 								badKey: "not-a-number",
 							}),
 						},

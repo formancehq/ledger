@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
@@ -497,8 +498,8 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	// within the same tx. The per-posting floor reads the running volumes, so the
 	// second posting spends what the first funded; PCV covers every touched cell.
 	ok := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
-		commonpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
-		commonpb.NewPosting("a:1", "b:1", "USD", big.NewInt(10)),
+		protohelpers.NewPosting("world", "a:1", "USD", big.NewInt(10)),
+		protohelpers.NewPosting("a:1", "b:1", "USD", big.NewInt(10)),
 	)))
 	require.True(t, ok.OK)
 	ls := ok.State.Ledger("L")
@@ -509,8 +510,8 @@ func TestApplyTransaction_MultiPosting(t *testing.T) {
 	// A later posting that exceeds a:1's running balance rejects the whole tx;
 	// the atomic bulk commits nothing.
 	over := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
-		commonpb.NewPosting("world", "a:1", "USD", big.NewInt(10)),
-		commonpb.NewPosting("a:1", "b:1", "USD", big.NewInt(15)),
+		protohelpers.NewPosting("world", "a:1", "USD", big.NewInt(10)),
+		protohelpers.NewPosting("a:1", "b:1", "USD", big.NewInt(15)),
 	)))
 	require.False(t, over.OK)
 	require.Equal(t, domain.ErrReasonInsufficientFunds, over.Reason)
@@ -616,8 +617,8 @@ func TestApplyTransaction_VolumeOverflow_SourceOutput(t *testing.T) {
 	// running Output (2^255 + 2^255 = 2^256).
 	half := new(big.Int).Lsh(big.NewInt(1), 255)
 	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(false,
-		commonpb.NewPosting("world", "d:1", "USD", half),
-		commonpb.NewPosting("world", "d:1", "USD", half),
+		protohelpers.NewPosting("world", "d:1", "USD", half),
+		protohelpers.NewPosting("world", "d:1", "USD", half),
 	)))
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonVolumeOverflow, res.Reason)
@@ -630,8 +631,8 @@ func TestApplyTransaction_VolumeOverflow_DestInput(t *testing.T) {
 	// skipped and neither source Output overflows): d:1's Input overflows.
 	half := new(big.Int).Lsh(big.NewInt(1), 255)
 	res := NewGlobalState().Apply(bulkOf(oracletest.TxReqMulti(true,
-		commonpb.NewPosting("world", "d:1", "USD", half),
-		commonpb.NewPosting("a:1", "d:1", "USD", half),
+		protohelpers.NewPosting("world", "d:1", "USD", half),
+		protohelpers.NewPosting("a:1", "d:1", "USD", half),
 	)))
 	require.False(t, res.OK)
 	require.Equal(t, domain.ErrReasonVolumeOverflow, res.Reason)
@@ -688,9 +689,9 @@ func TestGlobalState_Apply_VolumeAnnotations(t *testing.T) {
 	got := base.State.Apply(bulkOf(
 		oracletest.TxReq("e:1", "world", "USD", 7), // drains a funded ephemeral
 		oracletest.TxReqMulti(false, // three first writes in one order
-			commonpb.NewPosting("world", "n:3", "USD", big.NewInt(1)),
-			commonpb.NewPosting("world", "n:1", "USD", big.NewInt(1)),
-			commonpb.NewPosting("world", "n:2", "USD", big.NewInt(1)),
+			protohelpers.NewPosting("world", "n:3", "USD", big.NewInt(1)),
+			protohelpers.NewPosting("world", "n:1", "USD", big.NewInt(1)),
+			protohelpers.NewPosting("world", "n:2", "USD", big.NewInt(1)),
 		),
 		oracletest.TxReq("world", "e:2", "USD", 4), // creates...
 		oracletest.TxReq("e:2", "world", "USD", 4), // ...and drains it in the same bulk

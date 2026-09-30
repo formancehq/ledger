@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"testing"
 
 	"github.com/holiman/uint256"
@@ -14,7 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
 )
 
-func u256(v uint64) *commonpb.Uint256 { return commonpb.NewUint256(uint256.NewInt(v)) }
+func u256(v uint64) *commonpb.Uint256 { return protohelpers.NewUint256(uint256.NewInt(v)) }
 
 func aggVolume(asset string, in, out uint64) *commonpb.AggregatedVolume {
 	return &commonpb.AggregatedVolume{Asset: asset, Input: u256(in), Output: u256(out)}

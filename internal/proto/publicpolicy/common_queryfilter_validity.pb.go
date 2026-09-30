@@ -6,10 +6,11 @@
 // annotations on the QueryFilter.filter oneof arms. Edit the annotations in
 // the .proto and re-run `just generate-proto`, never this file.
 
-package grpc
+package publicpolicy
 
 import (
 	fmt "fmt"
+	grpc "github.com/formancehq/ledger/pkg/client/v3/grpc"
 )
 
 // ConditionKind enumerates the arms of the QueryFilter.filter oneof at the
@@ -83,37 +84,37 @@ func (k ConditionKind) String() string {
 
 // ConditionKindOf maps a QueryFilter node to its ConditionKind. A nil filter
 // or an unmapped arm returns ConditionKindUnknown (valid on no target).
-func ConditionKindOf(f *QueryFilter) ConditionKind {
+func ConditionKindOf(f *grpc.QueryFilter) ConditionKind {
 	if f == nil {
 		return ConditionKindUnknown
 	}
 
 	switch f.GetFilter().(type) {
-	case *QueryFilter_Field:
+	case *grpc.QueryFilter_Field:
 		return ConditionKindField
-	case *QueryFilter_Address:
+	case *grpc.QueryFilter_Address:
 		return ConditionKindAddress
-	case *QueryFilter_And:
+	case *grpc.QueryFilter_And:
 		return ConditionKindAnd
-	case *QueryFilter_Or:
+	case *grpc.QueryFilter_Or:
 		return ConditionKindOr
-	case *QueryFilter_Not:
+	case *grpc.QueryFilter_Not:
 		return ConditionKindNot
-	case *QueryFilter_Reference:
+	case *grpc.QueryFilter_Reference:
 		return ConditionKindReference
-	case *QueryFilter_BuiltinUint:
+	case *grpc.QueryFilter_BuiltinUint:
 		return ConditionKindBuiltinUint
-	case *QueryFilter_Ledger:
+	case *grpc.QueryFilter_Ledger:
 		return ConditionKindLedger
-	case *QueryFilter_LogId:
+	case *grpc.QueryFilter_LogId:
 		return ConditionKindLogId
-	case *QueryFilter_LogBuiltinUint:
+	case *grpc.QueryFilter_LogBuiltinUint:
 		return ConditionKindLogBuiltinUint
-	case *QueryFilter_AccountHasAsset:
+	case *grpc.QueryFilter_AccountHasAsset:
 		return ConditionKindAccountHasAsset
-	case *QueryFilter_Reverted:
+	case *grpc.QueryFilter_Reverted:
 		return ConditionKindReverted
-	case *QueryFilter_Audit:
+	case *grpc.QueryFilter_Audit:
 		return ConditionKindAudit
 	default:
 		return ConditionKindUnknown
@@ -123,18 +124,18 @@ func ConditionKindOf(f *QueryFilter) ConditionKind {
 // allQueryTargets lists every QueryTarget in declaration order. The
 // completeness test iterates it to assert every (target, kind) pair is
 // explicitly decided by the table.
-var allQueryTargets = []QueryTarget{
-	QueryTarget_QUERY_TARGET_ACCOUNTS,
-	QueryTarget_QUERY_TARGET_TRANSACTIONS,
-	QueryTarget_QUERY_TARGET_LOGS,
-	QueryTarget_QUERY_TARGET_AUDIT,
+var allQueryTargets = []grpc.QueryTarget{
+	grpc.QueryTarget_QUERY_TARGET_ACCOUNTS,
+	grpc.QueryTarget_QUERY_TARGET_TRANSACTIONS,
+	grpc.QueryTarget_QUERY_TARGET_LOGS,
+	grpc.QueryTarget_QUERY_TARGET_AUDIT,
 }
 
 // targetConditionValidity is the generated per-target validity table. Every
 // (target, kind) pair is present with an explicit verdict — a missing pair
 // is impossible by construction (the generator emits the full cross-product).
-var targetConditionValidity = map[QueryTarget]map[ConditionKind]bool{
-	QueryTarget_QUERY_TARGET_ACCOUNTS: {
+var targetConditionValidity = map[grpc.QueryTarget]map[ConditionKind]bool{
+	grpc.QueryTarget_QUERY_TARGET_ACCOUNTS: {
 		ConditionKindField:           true,
 		ConditionKindAddress:         true,
 		ConditionKindAnd:             true,
@@ -149,7 +150,7 @@ var targetConditionValidity = map[QueryTarget]map[ConditionKind]bool{
 		ConditionKindReverted:        false,
 		ConditionKindAudit:           false,
 	},
-	QueryTarget_QUERY_TARGET_TRANSACTIONS: {
+	grpc.QueryTarget_QUERY_TARGET_TRANSACTIONS: {
 		ConditionKindField:           true,
 		ConditionKindAddress:         true,
 		ConditionKindAnd:             true,
@@ -164,7 +165,7 @@ var targetConditionValidity = map[QueryTarget]map[ConditionKind]bool{
 		ConditionKindReverted:        true,
 		ConditionKindAudit:           false,
 	},
-	QueryTarget_QUERY_TARGET_LOGS: {
+	grpc.QueryTarget_QUERY_TARGET_LOGS: {
 		ConditionKindField:           false,
 		ConditionKindAddress:         false,
 		ConditionKindAnd:             true,
@@ -179,7 +180,7 @@ var targetConditionValidity = map[QueryTarget]map[ConditionKind]bool{
 		ConditionKindReverted:        false,
 		ConditionKindAudit:           false,
 	},
-	QueryTarget_QUERY_TARGET_AUDIT: {
+	grpc.QueryTarget_QUERY_TARGET_AUDIT: {
 		ConditionKindField:           false,
 		ConditionKindAddress:         false,
 		ConditionKindAnd:             true,
@@ -199,7 +200,7 @@ var targetConditionValidity = map[QueryTarget]map[ConditionKind]bool{
 // ConditionValidForTarget reports whether the ConditionKind is valid on the
 // QueryTarget, per the single source of truth. An unknown kind or target is
 // never valid.
-func ConditionValidForTarget(target QueryTarget, kind ConditionKind) bool {
+func ConditionValidForTarget(target grpc.QueryTarget, kind ConditionKind) bool {
 	byKind, ok := targetConditionValidity[target]
 	if !ok {
 		return false
@@ -210,15 +211,15 @@ func ConditionValidForTarget(target QueryTarget, kind ConditionKind) bool {
 
 // TargetHumanName returns a human-readable name for a query target, used in
 // uniform validation error messages.
-func TargetHumanName(target QueryTarget) string {
+func TargetHumanName(target grpc.QueryTarget) string {
 	switch target {
-	case QueryTarget_QUERY_TARGET_ACCOUNTS:
+	case grpc.QueryTarget_QUERY_TARGET_ACCOUNTS:
 		return "accounts"
-	case QueryTarget_QUERY_TARGET_TRANSACTIONS:
+	case grpc.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		return "transactions"
-	case QueryTarget_QUERY_TARGET_LOGS:
+	case grpc.QueryTarget_QUERY_TARGET_LOGS:
 		return "logs"
-	case QueryTarget_QUERY_TARGET_AUDIT:
+	case grpc.QueryTarget_QUERY_TARGET_AUDIT:
 		return "audit"
 	default:
 		return fmt.Sprintf("QueryTarget(%d)", int(target))

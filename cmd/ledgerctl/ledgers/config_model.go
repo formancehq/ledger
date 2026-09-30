@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/accounttypes"
 	"github.com/formancehq/ledger/v3/internal/pkg/filterexpr"
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // EditableConfig represents the editable (declarative) configuration of a ledger.
@@ -116,7 +117,7 @@ func ConfigFromProto(
 			m := make(map[string]EditableMetaField, len(acct))
 			for key, field := range acct {
 				m[key] = EditableMetaField{
-					Type:    commonpb.MetadataTypeToString(field.GetType()),
+					Type:    protohelpers.MetadataTypeToString(field.GetType()),
 					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_ACCOUNT][key],
 				}
 			}
@@ -126,7 +127,7 @@ func ConfigFromProto(
 			m := make(map[string]EditableMetaField, len(tx))
 			for key, field := range tx {
 				m[key] = EditableMetaField{
-					Type:    commonpb.MetadataTypeToString(field.GetType()),
+					Type:    protohelpers.MetadataTypeToString(field.GetType()),
 					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_TRANSACTION][key],
 				}
 			}
@@ -136,7 +137,7 @@ func ConfigFromProto(
 			m := make(map[string]EditableMetaField, len(lf))
 			for key, field := range lf {
 				m[key] = EditableMetaField{
-					Type:    commonpb.MetadataTypeToString(field.GetType()),
+					Type:    protohelpers.MetadataTypeToString(field.GetType()),
 					Indexed: indexedKeys[commonpb.TargetType_TARGET_TYPE_LEDGER][key],
 				}
 			}
@@ -447,7 +448,7 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 	var actions []DiffAction
 
 	for _, target := range []string{"account", "transaction", "ledger"} {
-		targetType, err := commonpb.ParseTargetType(target)
+		targetType, err := protohelpers.ParseTargetType(target)
 		if err != nil {
 			return nil, err
 		}
@@ -460,7 +461,7 @@ func diffMetadataSchema(ledgerName string, current, desired *EditableConfig) ([]
 			currentField, exists := currentFields[key]
 
 			if !exists || currentField.Type != desiredField.Type {
-				mdType, err := commonpb.ParseMetadataType(desiredField.Type)
+				mdType, err := protohelpers.ParseMetadataType(desiredField.Type)
 				if err != nil {
 					return nil, fmt.Errorf("metadata field %s.%s: %w", target, key, err)
 				}

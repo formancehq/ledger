@@ -7,6 +7,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -88,5 +89,5 @@ func (r *schemaResolver) coerceFor(ledger string, target commonpb.TargetType, ke
 		return nil, err
 	}
 
-	return commonpb.CoerceToDeclaredType(schema, target, key, v), nil
+	return protohelpers.CoerceToDeclaredType(schema, target, key, v), nil
 }

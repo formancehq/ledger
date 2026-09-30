@@ -27,6 +27,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
@@ -260,7 +261,7 @@ func rebuildDelta(
 			// Reconstruct the full LedgerInfo from the creation log — including
 			// MirrorSource, AccountTypes, and DefaultEnforcementMode, all part of
 			// the stored projection. ToLedgerInfo copies every creation-time field.
-			info := p.CreateLedger.ToLedgerInfo()
+			info := protohelpers.ToLedgerInfo(p.CreateLedger)
 			advancedLedgerID, exhausted := domain.CheckedNextLedgerID(info.GetId())
 			if exhausted != nil {
 				_ = batch.Cancel()
@@ -1648,8 +1649,8 @@ func (w *attributeReplayWriter) AddVolumeDelta(canonicalKey []byte, inputDelta, 
 	outVal.Add(&outVal, &deltaOut)
 
 	pair := &raftcmdpb.VolumePair{
-		Input:  auditpb.NewUint256(&inVal),
-		Output: auditpb.NewUint256(&outVal),
+		Input:  protohelpers.NewUint256(&inVal),
+		Output: protohelpers.NewUint256(&outVal),
 	}
 
 	_, err = w.volume.Set(w.batch, canonicalKey, pair)

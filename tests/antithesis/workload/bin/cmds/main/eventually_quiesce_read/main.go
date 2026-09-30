@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"log"
 	"math/big"
 	"time"
@@ -122,7 +123,7 @@ func writeProbeTransaction(ctx context.Context, client commonpb.BucketServiceCli
 					Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewPosting("world", dest, "COIN", big.NewInt(1)),
+								protohelpers.NewPosting("world", dest, "COIN", big.NewInt(1)),
 							},
 							Force: true,
 						},

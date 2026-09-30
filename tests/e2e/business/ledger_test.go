@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
@@ -45,7 +46,7 @@ var _ = Describe("Ledger", Ordered, func() {
 			_, err := sharedClient.Apply(sharedCtx, commonpb.UnsignedApplyRequest("", actions.CreateTransactionAction(ledgerName, []*commonpb.Posting{
 				actions.NewPosting("world", "merge-account", big.NewInt(50), "USD"),
 			}, nil, map[string]*commonpb.MetadataMap{
-				"merge-account": commonpb.MetadataMapFromGoMap(map[string]string{
+				"merge-account": protohelpers.MetadataMapFromGoMap(map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 				}),

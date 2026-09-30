@@ -6,6 +6,8 @@ import (
 
 	"github.com/formancehq/invariants"
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 )
 
 // maxNumscriptNameLength caps numscript identifiers. Numscript is a
@@ -219,7 +221,7 @@ func IsPreparedQueryExecutableTarget(target commonpb.QueryTarget) bool {
 
 // ValidateFilterForTarget walks a QueryFilter tree and returns the first leaf
 // condition that is not valid on `target`, per the generated per-target
-// validity table (commonpb.ConditionValidForTarget) — the same gate
+// validity table (publicpolicy.ConditionValidForTarget) — the same gate
 // query.compile applies per-condition at execute time. Combinators
 // ($and/$or/$not) are structural and always valid; the walk recurses into their
 // children. Used at prepared-query write time so a stored filter is always
@@ -276,14 +278,14 @@ func validateFilterForTarget(f *commonpb.QueryFilter, target commonpb.QueryTarge
 		return validateFilterForTarget(v.Not.GetFilter(), target, depth+1)
 	}
 
-	kind := commonpb.ConditionKindOf(f)
-	if commonpb.ConditionValidForTarget(target, kind) {
+	kind := publicpolicy.ConditionKindOf(f)
+	if publicpolicy.ConditionValidForTarget(target, kind) {
 		return nil
 	}
 
 	return &ErrFilterCompilation{
 		Detail: fmt.Sprintf("condition %q is not valid on %s queries",
-			kind.String(), commonpb.TargetHumanName(target)),
+			kind.String(), publicpolicy.TargetHumanName(target)),
 	}
 }
 

@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
@@ -30,7 +31,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 		ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 		Expect(err).To(Succeed())
 		Expect(ledger.Metadata).NotTo(BeNil())
-		metaMap := commonpb.MetadataToGoMap(ledger.Metadata)
+		metaMap := protohelpers.MetadataToGoMap(ledger.Metadata)
 		Expect(metaMap["environment"]).To(Equal("production"))
 		Expect(metaMap["team"]).To(Equal("payments"))
 		Expect(metaMap["region"]).To(Equal("eu-west-1"))
@@ -45,7 +46,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 		ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 		Expect(err).To(Succeed())
-		metaMap := commonpb.MetadataToGoMap(ledger.Metadata)
+		metaMap := protohelpers.MetadataToGoMap(ledger.Metadata)
 		Expect(metaMap["environment"]).To(Equal("production"))
 		Expect(metaMap["team"]).To(Equal("platform"))
 		Expect(metaMap["version"]).To(Equal("v3"))
@@ -58,7 +59,7 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 		ledger, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 		Expect(err).To(Succeed())
-		metaMap := commonpb.MetadataToGoMap(ledger.Metadata)
+		metaMap := protohelpers.MetadataToGoMap(ledger.Metadata)
 		Expect(metaMap["environment"]).To(Equal("production"))
 		Expect(metaMap["team"]).To(Equal("platform"))
 		_, exists := metaMap["region"]
@@ -93,13 +94,13 @@ var _ = Describe("Ledger Metadata", Ordered, func() {
 
 			original, err := actions.GetLedger(sharedCtx, sharedClient, ledgerName)
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(original.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(original.Metadata)
 			_, exists := metaMap["isolated"]
 			Expect(exists).To(BeFalse())
 
 			other, err := actions.GetLedger(sharedCtx, sharedClient, otherLedger)
 			Expect(err).To(Succeed())
-			otherMeta := commonpb.MetadataToGoMap(other.Metadata)
+			otherMeta := protohelpers.MetadataToGoMap(other.Metadata)
 			Expect(otherMeta["isolated"]).To(Equal("true"))
 		})
 	})

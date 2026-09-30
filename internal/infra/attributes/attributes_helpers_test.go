@@ -10,6 +10,7 @@ import (
 
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -208,13 +209,13 @@ func TestAccumulatorFeedAndFlush(t *testing.T) {
 		if canonical == string(keyA) {
 			foundAlice = true
 
-			require.Equal(t, "alice-val", commonpb.MetadataValueToString(entry.Value))
+			require.Equal(t, "alice-val", protohelpers.MetadataValueToString(entry.Value))
 		}
 
 		if canonical == string(keyB) {
 			foundBob = true
 
-			require.Equal(t, "bob-val", commonpb.MetadataValueToString(entry.Value))
+			require.Equal(t, "bob-val", protohelpers.MetadataValueToString(entry.Value))
 		}
 	}
 

@@ -5,7 +5,6 @@ package grpc
 
 import (
 	bytes "bytes"
-	uint256 "github.com/holiman/uint256"
 	slices "slices"
 )
 
@@ -445,7 +444,6 @@ type Uint256Reader interface {
 	GetV1() uint64
 	GetV2() uint64
 	GetV3() uint64
-	IntoUint256(dst *uint256.Int)
 	IsZero() bool
 	Mutate() *Uint256
 }
@@ -466,10 +464,6 @@ func (r *uint256Readonly) GetV2() uint64 {
 
 func (r *uint256Readonly) GetV3() uint64 {
 	return (*Uint256)(r).GetV3()
-}
-
-func (r *uint256Readonly) IntoUint256(dst *uint256.Int) {
-	(*Uint256)(r).IntoUint256(dst)
 }
 
 func (r *uint256Readonly) IsZero() bool {

@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
 
 	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )

@@ -4,6 +4,7 @@ package business
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"time"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
@@ -414,7 +415,7 @@ send $bonus (
 			Expect(createdTx.Transaction.Postings).To(HaveLen(3))
 			Expect(createdTx.Transaction.Postings[0].Asset).To(Equal("USD/2"))
 
-			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			meta := protohelpers.MetadataToGoMap(createdTx.Transaction.Metadata)
 			Expect(meta["note"]).To(Equal("typed-vars"))
 
 			// src sends 400 + 50 = 450 (1000 - 450 = 550 left).

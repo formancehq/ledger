@@ -32,6 +32,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/semver"
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -1960,7 +1961,7 @@ func metaValueDisplay(v *auditpb.MetadataValue) string {
 		kind = "unset"
 	}
 
-	return fmt.Sprintf("%q (%s)", auditpb.MetadataValueToString(v), kind)
+	return fmt.Sprintf("%q (%s)", protohelpers.MetadataValueToString(v), kind)
 }
 
 // compareMetadata compares replayed account metadata against the live rows.

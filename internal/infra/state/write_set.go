@@ -19,6 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/bloom"
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -1564,10 +1565,10 @@ func (b *WriteSet) SetDate(date *commonpb.Timestamp) {
 // Known values are always non-nil (preloaders send explicit 0).
 // Uses the provided tmp and scratch uint256.Ints for intermediate computations to avoid heap allocations.
 func addVolumeSideDelta(acc *uint256.Int, tmp *uint256.Int, scratch *uint256.Int, newKnown, oldKnown *commonpb.Uint256) {
-	newKnown.IntoUint256(tmp)
+	protohelpers.IntoUint256(newKnown, tmp)
 
 	if oldKnown != nil {
-		oldKnown.IntoUint256(scratch)
+		protohelpers.IntoUint256(oldKnown, scratch)
 		tmp.Sub(tmp, scratch)
 	}
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -366,7 +367,7 @@ func (c *Checker) compareReverseMapOrphans(
 					// DropIndex; an undeclared (or removal-recorded) one against
 					// RemovedMetadataFieldType. The registry remains the sole
 					// liveness oracle.
-					_, declared := commonpb.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
+					_, declared := protohelpers.SchemaFieldForTarget(scope.replayedSchemas[parsed.Ledger], target, parsed.MetadataKey)
 					if declared != nil {
 						verdict.lifecycleLabel = "DropIndex purge"
 					} else {

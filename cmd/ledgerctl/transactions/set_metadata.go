@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewSetMetadataCommand creates the transactions set-metadata command.
@@ -144,7 +145,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 								Target: &commonpb.Target{
 									Target: &commonpb.Target_TransactionId{TransactionId: txID},
 								},
-								Metadata: commonpb.MetadataFromGoMap(metadata),
+								Metadata: protohelpers.MetadataFromGoMap(metadata),
 							},
 						},
 					},

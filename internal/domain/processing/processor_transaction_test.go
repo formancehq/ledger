@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func TestProcessCreateTransactionRejectsExhaustedIDBeforeWrites(t *testing.T) {
@@ -888,7 +889,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	setupNumscriptVolumeMocks(mockStore)
 	mockStore.EXPECT().GetNextSequenceID().Return(uint64(1))
 	expectPutTransactionState(t, mockStore, domain.TransactionKey{LedgerName: "test-ledger", ID: 1}, nil, func(_ domain.TransactionKey, state *internalcommonpb.TransactionState) {
-		metadata := commonpb.MetadataToGoMap(state.GetMetadata())
+		metadata := protohelpers.MetadataToGoMap(state.GetMetadata())
 		require.Equal(t, "payment", metadata["type"])
 		require.Equal(t, "purchase", metadata["category"])
 	})
@@ -928,7 +929,7 @@ func TestProcessCreateTransaction_Numscript_SetTxMeta(t *testing.T) {
 	require.NotNil(t, createdTx.GetTransaction().GetMetadata())
 
 	// Verify metadata was set
-	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	metaMap := protohelpers.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "payment", metaMap["type"])
 	require.Equal(t, "purchase", metaMap["category"])
 }
@@ -1005,7 +1006,7 @@ func TestProcessCreateTransaction_Numscript_DoesNotMutateOrderMetadata(t *testin
 	createdTx := result.GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
 
-	metaMap := commonpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	metaMap := protohelpers.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "caller-wins", metaMap["type"], "caller metadata must win collisions")
 	require.Equal(t, "purchase", metaMap["category"], "script metadata must be merged in")
 	require.Equal(t, "kept", metaMap["caller-only"], "caller-only metadata must be preserved")
@@ -1257,7 +1258,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta(t *testing.T) {
 	require.Contains(t, createdTx.GetAccountMetadata(), "users:alice", "AccountMetadata should contain users:alice")
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	metaMap := commonpb.MetadataMapToGoMap(aliceMeta)
+	metaMap := protohelpers.MetadataMapToGoMap(aliceMeta)
 	require.Equal(t, "savings", metaMap["account_type"])
 	require.Equal(t, "numscript", metaMap["created_by"])
 }
@@ -1328,7 +1329,7 @@ func TestProcessCreateTransaction_Numscript_SetAccountMeta_WritesOnce(t *testing
 	// New metadata in the log.
 	aliceMeta := createdTx.GetAccountMetadata()["users:alice"]
 	require.NotNil(t, aliceMeta)
-	require.Equal(t, "viewer", commonpb.MetadataMapToGoMap(aliceMeta)["role"])
+	require.Equal(t, "viewer", protohelpers.MetadataMapToGoMap(aliceMeta)["role"])
 }
 
 func TestProcessCreateTransaction_Force_InsufficientFunds(t *testing.T) {

@@ -16,6 +16,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -321,7 +322,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 				continue
 			}
 			historyBefore, historyExists := b.historyStateFor(ledgerName)
-			category := commonpb.LedgerLogCategoryOf(ledgerLog.GetData())
+			category := publicpolicy.LedgerLogCategoryOf(ledgerLog.GetData())
 			if err := b.observeLedgerPayload(ledgerName, ledgerLog.GetData()); err != nil {
 				_ = batch.Cancel()
 
@@ -354,7 +355,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 			// rebuild the complete stream through its normal backfill.
 			logDateActive := cfg.isLogBuiltinIndexed(commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE)
 			wasEmpty := historyExists && historyBefore == ledgerHistoryEmpty
-			if wasEmpty && category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY && !logDateActive {
+			if wasEmpty && category == publicpolicy.LedgerLogCategory_LEDGER_LOG_CATEGORY_HISTORY && !logDateActive {
 				if err := readstore.DeleteLedgerIndexPrefix(batch, readstore.PrefixLedgerLogDate, ledgerName); err != nil {
 					_ = batch.Cancel()
 

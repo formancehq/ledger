@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"math/bits"
 	"slices"
@@ -477,7 +478,7 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *commonpb.Request
 	n := 1 + int(random.RandomChoice([]uint8{0, 1, 2, 3}))
 	postings := make([]*commonpb.Posting, n)
 	for i := range postings {
-		postings[i] = commonpb.NewColoredPosting(sourceAddress(), poolAddress(), assets[int(random.RandomChoice([]uint8{0, 1, 2}))], randomColor(), internal.RandomBigInt())
+		postings[i] = protohelpers.NewColoredPosting(sourceAddress(), poolAddress(), assets[int(random.RandomChoice([]uint8{0, 1, 2}))], randomColor(), internal.RandomBigInt())
 	}
 
 	// Every transaction gets a unique reference so it is targetable by later
@@ -559,7 +560,7 @@ func duplicateReferenceTransaction(ledger string, ls oracle.LedgerState) *common
 	}
 
 	return applyCreate(ledger, &commonpb.CreateTransactionPayload{
-		Postings:  []*commonpb.Posting{commonpb.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
+		Postings:  []*commonpb.Posting{protohelpers.NewPosting("world", poolAddress(), assets[0], big.NewInt(1))},
 		Reference: ref,
 	})
 }
@@ -573,8 +574,8 @@ func overflowTransaction(ledger string) *commonpb.Request {
 
 	return applyCreate(ledger, &commonpb.CreateTransactionPayload{
 		Postings: []*commonpb.Posting{
-			commonpb.NewPosting("world", dst, assets[0], half),
-			commonpb.NewPosting("world", dst, assets[0], half),
+			protohelpers.NewPosting("world", dst, assets[0], half),
+			protohelpers.NewPosting("world", dst, assets[0], half),
 		},
 	})
 }
@@ -626,7 +627,7 @@ func txRequest(ledger, src, dest, asset, color string, amount *big.Int, force bo
 					Data: &commonpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(src, dest, asset, color, amount),
+								protohelpers.NewColoredPosting(src, dest, asset, color, amount),
 							},
 							Force: force,
 						},
@@ -693,7 +694,7 @@ func generateDrainTransaction(ledger string, ls oracle.LedgerState) *commonpb.Re
 					Data: &commonpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &commonpb.CreateTransactionPayload{
 							Postings: []*commonpb.Posting{
-								commonpb.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
+								protohelpers.NewColoredPosting(srcKey.Address, "world", srcKey.Asset, srcKey.Color, balance.ToBig()),
 							},
 							Force: true,
 						},

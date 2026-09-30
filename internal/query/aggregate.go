@@ -12,6 +12,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
@@ -72,14 +73,14 @@ func (va *volumeAggregator) accumulateAsset(base string, precision uint8, color 
 	if value != nil {
 		var tmp uint256.Int
 		if value.GetInput() != nil {
-			value.GetInput().IntoUint256(&tmp)
+			protohelpers.IntoUint256(value.GetInput(), &tmp)
 			if _, overflow := agg.input.AddOverflow(agg.input, &tmp); overflow {
 				return &ErrAggregateOverflow{Stage: "accumulate", Side: "input"}
 			}
 		}
 
 		if value.GetOutput() != nil {
-			value.GetOutput().IntoUint256(&tmp)
+			protohelpers.IntoUint256(value.GetOutput(), &tmp)
 			if _, overflow := agg.output.AddOverflow(agg.output, &tmp); overflow {
 				return &ErrAggregateOverflow{Stage: "accumulate", Side: "output"}
 			}
@@ -123,8 +124,8 @@ func (va *volumeAggregator) result() (*commonpb.AggregateResult, error) {
 		volumes = append(volumes, &commonpb.AggregatedVolume{
 			Asset:  domain.FormatAsset(key.base, key.precision),
 			Color:  key.color,
-			Input:  commonpb.NewUint256(agg.input),
-			Output: commonpb.NewUint256(agg.output),
+			Input:  protohelpers.NewUint256(agg.input),
+			Output: protohelpers.NewUint256(agg.output),
 		})
 	}
 
@@ -247,8 +248,8 @@ func (va *volumeAggregator) resultWithMaxPrecision() (*commonpb.AggregateResult,
 		volumes = append(volumes, &commonpb.AggregatedVolume{
 			Asset:  domain.FormatAsset(key.base, key.precision),
 			Color:  key.color,
-			Input:  commonpb.NewUint256(agg.input),
-			Output: commonpb.NewUint256(agg.output),
+			Input:  protohelpers.NewUint256(agg.input),
+			Output: protohelpers.NewUint256(agg.output),
 		})
 	}
 

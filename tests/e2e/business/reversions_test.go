@@ -4,6 +4,7 @@ package business
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"time"
 
@@ -74,8 +75,8 @@ var _ = Describe("Reversions", Ordered, func() {
 			revertTx := revertApplyLog.Log.Data.GetRevertedTransaction()
 			Expect(revertTx).NotTo(BeNil())
 			Expect(revertTx.RevertTransaction.Metadata).NotTo(BeNil())
-			Expect(commonpb.MetadataToGoMap(revertTx.RevertTransaction.Metadata)["reason"]).To(Equal("correction"))
-			Expect(commonpb.MetadataToGoMap(revertTx.RevertTransaction.Metadata)["source"]).To(Equal("support"))
+			Expect(protohelpers.MetadataToGoMap(revertTx.RevertTransaction.Metadata)["reason"]).To(Equal("correction"))
+			Expect(protohelpers.MetadataToGoMap(revertTx.RevertTransaction.Metadata)["source"]).To(Equal("support"))
 		})
 
 		It("Should revert a transaction with force flag", func() {

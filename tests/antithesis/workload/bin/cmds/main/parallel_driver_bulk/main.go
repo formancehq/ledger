@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
@@ -70,7 +71,7 @@ func main() {
 										Account: &commonpb.TargetAccount{Addr: addr1},
 									},
 								},
-								Metadata: commonpb.MetadataFromGoMap(map[string]string{metaKey: metaValue}),
+								Metadata: protohelpers.MetadataFromGoMap(map[string]string{metaKey: metaValue}),
 							},
 						}},
 					},

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"fmt"
 	"maps"
 	"slices"
@@ -910,8 +911,8 @@ func postingsEqual(a, b []*commonpb.Posting) bool {
 
 	for i := range a {
 		var x, y uint256.Int
-		a[i].GetAmount().IntoUint256(&x)
-		b[i].GetAmount().IntoUint256(&y)
+		protohelpers.IntoUint256(a[i].GetAmount(), &x)
+		protohelpers.IntoUint256(b[i].GetAmount(), &y)
 
 		if a[i].GetSource() != b[i].GetSource() ||
 			a[i].GetDestination() != b[i].GetDestination() ||
@@ -930,7 +931,7 @@ func renderPostings(ps []*commonpb.Posting) string {
 	out := ""
 	for _, p := range ps {
 		var amt uint256.Int
-		p.GetAmount().IntoUint256(&amt)
+		protohelpers.IntoUint256(p.GetAmount(), &amt)
 		if out != "" {
 			out += ","
 		}

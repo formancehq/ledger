@@ -11,6 +11,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -154,7 +155,7 @@ func mirrorSaveAccountMetadataOrder(ledger, account string, metadata map[string]
 											Account: &auditpb.TargetAccount{Addr: account},
 										},
 									},
-									Metadata: auditpb.MetadataFromGoMap(metadata),
+									Metadata: protohelpers.MetadataFromGoMap(metadata),
 								},
 							},
 						},

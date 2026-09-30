@@ -4,6 +4,7 @@ package business
 
 import (
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"sync"
 	"time"
 
@@ -400,7 +401,7 @@ send [USD/2 100] (
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			meta := protohelpers.MetadataToGoMap(createdTx.Transaction.Metadata)
 
 			Expect(meta["label"]).To(Equal("gold-tier"))             // string: unquoted
 			Expect(meta["count"]).To(Equal("42"))                    // number: unquoted
@@ -429,7 +430,7 @@ send [USD/2 100] (
 					Address: "vts:acct",
 				})
 				g.Expect(err).To(Succeed())
-				meta := commonpb.MetadataToGoMap(account.Metadata)
+				meta := protohelpers.MetadataToGoMap(account.Metadata)
 				g.Expect(meta["tier"]).To(Equal("premium"))
 				g.Expect(meta["score"]).To(Equal("7"))
 			}).Within(10 * time.Second).WithPolling(100 * time.Millisecond).Should(Succeed())
@@ -734,7 +735,7 @@ set_tx_meta("probe_balance", balance(@fns:ms_probe, USD/2))
 				actions.CreateScriptTransactionAction(ledgerName, script, nil, nil)))
 			Expect(err).To(Succeed())
 			createdTx := resp.Logs[0].Payload.GetApply().Log.Data.GetCreatedTransaction()
-			meta := commonpb.MetadataToGoMap(createdTx.Transaction.Metadata)
+			meta := protohelpers.MetadataToGoMap(createdTx.Transaction.Metadata)
 			// balance() of 512 stored as a monetary => "USD/2 512".
 			Expect(meta["probe_balance"]).To(Equal("USD/2 512"))
 

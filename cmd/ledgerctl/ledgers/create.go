@@ -15,6 +15,7 @@ import (
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/indexes"
 	domainindexes "github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewCreateCommand creates the ledgers create command.
@@ -186,7 +187,7 @@ func runCreate(cmd *cobra.Command, _ []string) error {
 		return cmdutil.Displayed(errors.New("unexpected response type"))
 	}
 
-	ledger := createLedgerLog.ToLedgerInfo()
+	ledger := protohelpers.ToLedgerInfo(createLedgerLog)
 
 	spinner.Success("Created")
 

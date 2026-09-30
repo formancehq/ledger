@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -31,7 +32,7 @@ func randomPostingsRequest(ledger string) *commonpb.Request {
 				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: internal.RandomPostings(),
-						Metadata: commonpb.MetadataFromGoMap(internal.RandomMetadata()),
+						Metadata: protohelpers.MetadataFromGoMap(internal.RandomMetadata()),
 						Force:    true,
 					},
 				}},

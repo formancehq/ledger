@@ -15,6 +15,8 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/proto/publicpolicy"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
@@ -848,7 +850,7 @@ scan:
 			continue
 		}
 
-		newMV := commonpb.ConvertMetadataValue(rawValue, task.toType)
+		newMV := protohelpers.ConvertMetadataValue(rawValue, task.toType)
 		newEncoded := readstore.EncodeMetadataValue(nil, newMV)
 
 		// ReplaceMetadataIndexV at v_pending deletes the old v_pending
@@ -1449,8 +1451,8 @@ func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, tas
 				continue
 			}
 
-			category := commonpb.LedgerLogCategoryOf(ledgerLog.GetData())
-			if category == commonpb.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
+			category := publicpolicy.LedgerLogCategoryOf(ledgerLog.GetData())
+			if category == publicpolicy.LedgerLogCategory_LEDGER_LOG_CATEGORY_UNSPECIFIED {
 				_ = batch.Cancel()
 
 				return fmt.Errorf("invariant: unclassified ledger log payload %T at global sequence %d", ledgerLog.GetData().GetPayload(), log.GetSequence())
@@ -1565,7 +1567,7 @@ func isHistoryLog(log *commonpb.Log) bool {
 		return false
 	}
 
-	return commonpb.IsLedgerHistoryPayload(applyLog.Apply.GetLog().GetData())
+	return publicpolicy.IsLedgerHistoryPayload(applyLog.Apply.GetLog().GetData())
 }
 
 func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {

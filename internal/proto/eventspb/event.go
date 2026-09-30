@@ -29,7 +29,7 @@ func (x *Event) MarshalJSON() ([]byte, error) {
 	}
 
 	if x.GetDate() != nil {
-		t := x.GetDate().AsTime()
+		t := time.New(x.GetDate().AsTime())
 		aux.Date = &t
 	}
 

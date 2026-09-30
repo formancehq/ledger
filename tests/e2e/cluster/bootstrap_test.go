@@ -4,6 +4,7 @@ package cluster
 
 import (
 	"context"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -370,7 +371,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have the correct account metadata", func() {
 			aliceResp, err := client.GetAccount(ctx, &clusterpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(clusterpb.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+			Expect(protohelpers.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
 		})
 
 		It("should have the data added after the first backup (via second full backup)", func() {

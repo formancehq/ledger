@@ -22,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/pkg/bitset"
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -938,7 +939,7 @@ func createTransactionWithMetadataOrder(ledger string, force bool, metadata map[
 						CreateTransaction: &raftcmdpb.CreateTransactionOrder{
 							Postings:        postings,
 							Force:           force,
-							Metadata:        auditpb.MetadataFromGoMap(metadata),
+							Metadata:        protohelpers.MetadataFromGoMap(metadata),
 							AccountMetadata: accountMeta,
 						},
 					},
@@ -1000,7 +1001,7 @@ func saveAccountMetadataOrder(ledger, account string, metadata map[string]string
 									},
 								},
 							},
-							Metadata: auditpb.MetadataFromGoMap(metadata),
+							Metadata: protohelpers.MetadataFromGoMap(metadata),
 						},
 					},
 					},
@@ -1193,7 +1194,7 @@ func TestCheckerComprehensive(t *testing.T) {
 	engine.processAndCommit(createTransactionWithMetadataOrder("payments", true,
 		map[string]string{"type": "deposit"},
 		map[string]*auditpb.MetadataMap{
-			"customer:dave": auditpb.MetadataMapFromGoMap(map[string]string{
+			"customer:dave": protohelpers.MetadataMapFromGoMap(map[string]string{
 				"joined": "2026-01-01",
 			}),
 		},
@@ -1448,8 +1449,8 @@ func TestCheckerDetectsSequenceGap(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{log1, log3}))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
-	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetName(), log3.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), protohelpers.ToLedgerInfo(log1.GetPayload().GetCreateLedger())))
+	require.NoError(t, state.SaveLedger(batch, log3.GetPayload().GetCreateLedger().GetName(), protohelpers.ToLedgerInfo(log3.GetPayload().GetCreateLedger())))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)
@@ -1618,7 +1619,7 @@ func saveTransactionMetadataOrder(ledger string, txID uint64, metadata map[strin
 							Target: &auditpb.Target{
 								Target: &auditpb.Target_TransactionId{TransactionId: txID},
 							},
-							Metadata: auditpb.MetadataFromGoMap(metadata),
+							Metadata: protohelpers.MetadataFromGoMap(metadata),
 						},
 					},
 					},
@@ -1944,7 +1945,7 @@ func TestCheckerDetectsDoubleRevert(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{log1, log2, log3, log4}))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), protohelpers.ToLedgerInfo(log1.GetPayload().GetCreateLedger())))
 	require.NoError(t, writeVolumes(batch, attrs, posting, "test"))
 	require.NoError(t, batch.Commit())
 
@@ -2005,7 +2006,7 @@ func TestCheckerDetectsRevertOfNonExistentTransaction(t *testing.T) {
 
 	batch := store.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, []*auditpb.Log{log1, log2}))
-	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), log1.GetPayload().GetCreateLedger().ToLedgerInfo()))
+	require.NoError(t, state.SaveLedger(batch, log1.GetPayload().GetCreateLedger().GetName(), protohelpers.ToLedgerInfo(log1.GetPayload().GetCreateLedger())))
 	require.NoError(t, batch.Commit())
 
 	errors := collectCheckErrors(t, store, attrs)

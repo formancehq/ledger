@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"io"
 	"math/big"
 	"os"
@@ -724,7 +725,7 @@ var _ = Describe("Restore", Ordered, func() {
 		It("should have the correct account metadata", func() {
 			aliceResp, err := client.GetAccount(ctx, &auditpb.GetAccountRequest{Ledger: ledgerName, Address: "alice"})
 			Expect(err).To(Succeed())
-			Expect(auditpb.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
+			Expect(protohelpers.MetadataToGoMap(aliceResp.Metadata)).To(HaveKeyWithValue("role", "customer"))
 		})
 
 		It("should preserve the metadata schema declared after the checkpoint", func() {

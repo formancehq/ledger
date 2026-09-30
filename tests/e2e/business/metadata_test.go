@@ -3,6 +3,7 @@
 package business
 
 import (
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"math/big"
 
@@ -45,7 +46,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(account.Metadata).NotTo(BeNil())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["type"]).To(Equal("savings"))
 			Expect(metaMap["owner"]).To(Equal("user123"))
 			Expect(metaMap["tier"]).To(Equal("premium"))
@@ -72,7 +73,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("updated_value2"))
 			Expect(metaMap["key3"]).To(Equal("value3"))
@@ -96,7 +97,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -116,7 +117,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "new-account",
 			})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
+			Expect(protohelpers.MetadataToGoMap(account.Metadata)["created"]).To(Equal("via-metadata"))
 		})
 
 		It("Should handle metadata with special characters", func() {
@@ -135,7 +136,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			Expect(metaMap["url"]).To(Equal("https://example.com/path?query=value"))
 			Expect(metaMap["description"]).To(Equal("A \"quoted\" string with 'apostrophes'"))
 			Expect(metaMap["json"]).To(Equal(`{"key": "value"}`))
@@ -163,7 +164,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				Address: "test-account",
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(account.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(account.Metadata)
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			_, key2Exists := metaMap["key2"]
@@ -232,7 +233,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed(), "GetTransaction after metadata should succeed")
 			Expect(txAfter.Transaction.Id).To(Equal(transactionID))
-			Expect(commonpb.MetadataToGoMap(txAfter.Transaction.Metadata)["key"]).To(Equal("value"))
+			Expect(protohelpers.MetadataToGoMap(txAfter.Transaction.Metadata)["key"]).To(Equal("value"))
 		})
 
 		It("Should set metadata and verify it persists", func() {
@@ -261,7 +262,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(tx.Transaction.Metadata).NotTo(BeNil())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["reference"]).To(Equal("order-123"))
 			Expect(metaMap["source"]).To(Equal("api"))
 			Expect(metaMap["status"]).To(Equal("processed"))
@@ -297,7 +298,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["status"]).To(Equal("completed"))
 			Expect(metaMap["key1"]).To(Equal("value1"))
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -330,7 +331,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["keep"]).To(Equal("this"))
 			// Deleted metadata key should not exist in the map
 			_, exists := metaMap["delete"]
@@ -355,7 +356,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
+			Expect(protohelpers.MetadataToGoMap(tx.Transaction.Metadata)).To(BeEmpty())
 		})
 
 		It("Should preserve metadata set at transaction creation", func() {
@@ -384,7 +385,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: newTxID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			Expect(metaMap["initial"]).To(Equal("metadata"))
 			Expect(metaMap["type"]).To(Equal("deposit"))
 			Expect(metaMap["additional"]).To(Equal("metadata"))
@@ -420,7 +421,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: transactionID,
 			})
 			Expect(err).To(Succeed())
-			metaMap := commonpb.MetadataToGoMap(tx.Transaction.Metadata)
+			metaMap := protohelpers.MetadataToGoMap(tx.Transaction.Metadata)
 			_, key1Exists := metaMap["key1"]
 			Expect(key1Exists).To(BeFalse())
 			Expect(metaMap["key2"]).To(Equal("value2"))
@@ -457,7 +458,7 @@ var _ = Describe("Metadata", Ordered, func() {
 				TransactionId: revertTxID,
 			})
 			Expect(err).To(Succeed())
-			Expect(commonpb.MetadataToGoMap(revertTx.Transaction.Metadata)["revert_reason"]).To(Equal("test"))
+			Expect(protohelpers.MetadataToGoMap(revertTx.Transaction.Metadata)["revert_reason"]).To(Equal("test"))
 
 			// Original transaction should still have its metadata and be marked as reverted
 			originalTx, err := sharedClient.GetTransaction(sharedCtx, &commonpb.GetTransactionRequest{
@@ -466,7 +467,7 @@ var _ = Describe("Metadata", Ordered, func() {
 			})
 			Expect(err).To(Succeed())
 			Expect(originalTx.Transaction.Reverted).To(BeTrue())
-			Expect(commonpb.MetadataToGoMap(originalTx.Transaction.Metadata)["original"]).To(Equal("true"))
+			Expect(protohelpers.MetadataToGoMap(originalTx.Transaction.Metadata)["original"]).To(Equal("true"))
 		})
 	})
 })

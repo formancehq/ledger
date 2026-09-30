@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -125,7 +126,7 @@ func TestDeleteRemovesAllEntries(t *testing.T) {
 	result, err := attrs.Metadata.Get(store, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "inactive", commonpb.MetadataValueToString(result))
+	require.Equal(t, "inactive", protohelpers.MetadataValueToString(result))
 
 	// Delete all entries for this key
 	batch = store.OpenWriteSession()
@@ -182,7 +183,7 @@ func TestDeleteThenReAdd(t *testing.T) {
 	result, err := attrs.Metadata.Get(store, testKey)
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	require.Equal(t, "new-value", commonpb.MetadataValueToString(result))
+	require.Equal(t, "new-value", protohelpers.MetadataValueToString(result))
 }
 
 func TestDeleteNonExistentKey(t *testing.T) {

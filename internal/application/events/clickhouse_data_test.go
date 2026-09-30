@@ -761,7 +761,7 @@ func TestSinkTime_MarshalJSON(t *testing.T) {
 
 	// 2023-11-14 22:13:20 UTC (timestamp 1700000000)
 	ts := &commonpb.Timestamp{Data: 1700000000}
-	goTime := ts.AsTime().Time
+	goTime := ts.AsTime()
 	ct := sinkTime(goTime)
 
 	data, err := ct.MarshalJSON()

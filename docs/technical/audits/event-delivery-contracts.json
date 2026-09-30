@@ -15,7 +15,7 @@
     "internal/proto/eventspb/**",
     "pkg/client/v3/grpc/commonpb_log.go",
     "pkg/client/v3/grpc/commonpb_log_payload.go",
-    "pkg/client/v3/grpc/commonpb_ledger_log.go",
+    "internal/protohelpers/builders.go",
     "pkg/client/v3/grpc/commonpb_posting.go",
     "pkg/client/v3/grpc/commonpb_log_json_test.go",
     "internal/adapter/json/**",

@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/cmd/ledgerctl/cmdutil"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // NewSetMetadataCommand creates the accounts set-metadata command.
@@ -134,7 +135,7 @@ func runSetMetadata(cmd *cobra.Command, args []string) error {
 										Account: &commonpb.TargetAccount{Addr: address},
 									},
 								},
-								Metadata: commonpb.MetadataFromGoMap(metadata),
+								Metadata: protohelpers.MetadataFromGoMap(metadata),
 							},
 						},
 					},

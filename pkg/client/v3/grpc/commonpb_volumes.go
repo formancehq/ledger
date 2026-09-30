@@ -1,49 +1,11 @@
 package grpc
 
 import (
-	"database/sql/driver"
-	"fmt"
 	"math/big"
 	"sort"
-	"strings"
-
-	"github.com/invopop/jsonschema"
 
 	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
-
-// Value implements driver.Valuer for Volumes (for database storage).
-func (v *Volumes) Value() (driver.Value, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	return fmt.Sprintf("(%s, %s)", v.GetInput(), v.GetOutput()), nil
-}
-
-// Scan implements sql.Scanner for Volumes (for database reading).
-func (v *Volumes) Scan(src any) error {
-	if src == nil {
-		return nil
-	}
-	s, ok := src.(string)
-	if !ok {
-		return fmt.Errorf("Volumes.Scan: expected string, got %T", src)
-	}
-	// stored as (input, output)
-	parts := strings.Split(s[1:(len(s)-1)], ",")
-
-	v.Input = strings.TrimSpace(parts[0])
-	v.Output = strings.TrimSpace(parts[1])
-
-	return nil
-}
-
-// JSONSchemaExtend extends the JSON schema for Volumes.
-func (*Volumes) JSONSchemaExtend(schema *jsonschema.Schema) {
-	inputProperty, _ := schema.Properties.Get("input")
-	schema.Properties.Set("balance", inputProperty)
-}
 
 // Balance calculates the balance (input - output).
 func (v *Volumes) Balance() *big.Int {

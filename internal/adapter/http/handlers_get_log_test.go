@@ -14,6 +14,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	protoerr "github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func TestHandleGetLog_Success(t *testing.T) {
@@ -28,7 +29,7 @@ func TestHandleGetLog_Success(t *testing.T) {
 					Id:        1,
 					Reference: "order-123",
 					Postings: []*commonpb.Posting{
-						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+						protohelpers.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
 					},
 					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
 				},

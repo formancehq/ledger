@@ -7,7 +7,7 @@
     "internal/application/ctrl/list_entities.go",
     "internal/application/ctrl/controller_default.go",
     "internal/storage/readstore/**",
-    "pkg/client/v3/grpc/commonpb_metadata_convert.go",
+    "internal/protohelpers/metadata_convert.go",
     "internal/domain/validation.go",
     "internal/domain/indexes/**",
     "tests/oracle/**",

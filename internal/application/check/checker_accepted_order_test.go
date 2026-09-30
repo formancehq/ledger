@@ -13,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	internalcommonpb "github.com/formancehq/ledger/v3/internal/proto/internalcommonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
@@ -81,7 +82,7 @@ func TestVerifyAuditHashChain_KeyedNumscriptTxBindsAcceptedOrder(t *testing.T) {
 
 	createdTx := logs[0].GetPayload().GetApply().GetLog().GetData().GetCreatedTransaction()
 	require.NotNil(t, createdTx)
-	txMeta := auditpb.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
+	txMeta := protohelpers.MetadataToGoMap(createdTx.GetTransaction().GetMetadata())
 	require.Equal(t, "caller-wins", txMeta["type"], "caller metadata must win collisions")
 	require.Equal(t, "purchase", txMeta["category"], "script metadata must be merged into the transaction")
 	require.Equal(t, "kept", txMeta["caller-only"], "caller-only metadata must be preserved")

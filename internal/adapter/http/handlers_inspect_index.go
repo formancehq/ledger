@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 type inspectDistinctValuesJSON struct {
@@ -50,7 +51,7 @@ func metadataValueToAny(v *commonpb.MetadataValue, declaredType commonpb.Metadat
 	case *commonpb.MetadataValue_StringValue:
 		return t.StringValue
 	case *commonpb.MetadataValue_IntValue:
-		if commonpb.IsDatetimeType(declaredType) {
+		if protohelpers.IsDatetimeType(declaredType) {
 			return time.UnixMicro(t.IntValue).UTC().Format(time.RFC3339Nano)
 		}
 
@@ -190,7 +191,7 @@ func (s *Server) declaredMetadataType(ctx context.Context, ledgerName string, ta
 		return commonpb.MetadataType_METADATA_TYPE_STRING
 	}
 
-	_, fs := commonpb.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
+	_, fs := protohelpers.SchemaFieldForTarget(info.GetMetadataSchema(), targetType, key)
 
 	return fs.GetType()
 }

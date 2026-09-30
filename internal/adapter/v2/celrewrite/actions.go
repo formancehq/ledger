@@ -12,6 +12,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // Per-variant compilers. Each turns a *Rule proto into an applyRuleFn that,
@@ -602,7 +603,7 @@ func (r *Rewriter) actionSetAccountMetadataFromAddress(spec *commonpb.SetAccount
 
 				sv := commonpb.NewStringValue(value)
 				if rep.typed {
-					sv = commonpb.ConvertMetadataValue(sv, rep.typ)
+					sv = protohelpers.ConvertMetadataValue(sv, rep.typ)
 				}
 
 				mm.Values[rep.key] = sv

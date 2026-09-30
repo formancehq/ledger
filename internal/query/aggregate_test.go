@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func makeEntry(ledgerName string, account, asset string, input, output uint64) attributes.ComputedEntry[*raftcmdpb.VolumePair] {
@@ -22,8 +23,8 @@ func makeEntry(ledgerName string, account, asset string, input, output uint64) a
 	return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 		CanonicalKey: vk.Bytes(),
 		Value: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256(uint256.NewInt(input)),
-			Output: commonpb.NewUint256(uint256.NewInt(output)),
+			Input:  protohelpers.NewUint256(uint256.NewInt(input)),
+			Output: protohelpers.NewUint256(uint256.NewInt(output)),
 		},
 	}
 }
@@ -59,8 +60,8 @@ func TestVolumeAggregator_UseMaxPrecision(t *testing.T) {
 	require.Equal(t, "USD/4", result.GetVolumes()[0].GetAsset())
 
 	var gotInput, gotOutput uint256.Int
-	result.GetVolumes()[0].GetInput().IntoUint256(&gotInput)
-	result.GetVolumes()[0].GetOutput().IntoUint256(&gotOutput)
+	protohelpers.IntoUint256(result.GetVolumes()[0].GetInput(), &gotInput)
+	protohelpers.IntoUint256(result.GetVolumes()[0].GetOutput(), &gotOutput)
 
 	require.Equal(t, uint256.NewInt(20000), &gotInput)  // 10000 + 100*100
 	require.Equal(t, uint256.NewInt(10000), &gotOutput) // 5000 + 50*100
@@ -80,7 +81,7 @@ func TestVolumeAggregator_UseMaxPrecision_SamePrecision(t *testing.T) {
 	require.Equal(t, "EUR/2", result.GetVolumes()[0].GetAsset())
 
 	var gotInput uint256.Int
-	result.GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	protohelpers.IntoUint256(result.GetVolumes()[0].GetInput(), &gotInput)
 	require.Equal(t, uint256.NewInt(500), &gotInput)
 }
 
@@ -115,7 +116,7 @@ func TestVolumeAggregator_UseMaxPrecision_NoPrecision(t *testing.T) {
 	require.Equal(t, "GOLD", result.GetVolumes()[0].GetAsset())
 
 	var gotInput uint256.Int
-	result.GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	protohelpers.IntoUint256(result.GetVolumes()[0].GetInput(), &gotInput)
 	require.Equal(t, uint256.NewInt(800), &gotInput)
 }
 
@@ -140,14 +141,14 @@ func TestGroupedAggregator_BasicPrefixes(t *testing.T) {
 	require.Len(t, result.GetGroups()[0].GetVolumes(), 1)
 
 	var usersInput uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&usersInput)
+	protohelpers.IntoUint256(result.GetGroups()[0].GetVolumes()[0].GetInput(), &usersInput)
 	require.Equal(t, uint256.NewInt(300), &usersInput) // 100 + 200
 
 	require.Equal(t, "merchants:", result.GetGroups()[1].GetPrefix())
 	require.Len(t, result.GetGroups()[1].GetVolumes(), 1)
 
 	var merchantsInput uint256.Int
-	result.GetGroups()[1].GetVolumes()[0].GetInput().IntoUint256(&merchantsInput)
+	protohelpers.IntoUint256(result.GetGroups()[1].GetVolumes()[0].GetInput(), &merchantsInput)
 	require.Equal(t, uint256.NewInt(500), &merchantsInput)
 }
 
@@ -166,7 +167,7 @@ func TestGroupedAggregator_UnmatchedAccountSkipped(t *testing.T) {
 	require.Len(t, result.GetGroups(), 1)
 
 	var input uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
+	protohelpers.IntoUint256(result.GetGroups()[0].GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(100), &input)
 }
 
@@ -188,7 +189,7 @@ func TestGroupedAggregator_WithMaxPrecision(t *testing.T) {
 	require.Equal(t, "USD/4", result.GetGroups()[0].GetVolumes()[0].GetAsset())
 
 	var gotInput uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&gotInput)
+	protohelpers.IntoUint256(result.GetGroups()[0].GetVolumes()[0].GetInput(), &gotInput)
 	require.Equal(t, uint256.NewInt(20000), &gotInput) // 100*100 + 10000
 }
 
@@ -205,7 +206,7 @@ func TestGroupedAggregator_FirstPrefixWins(t *testing.T) {
 	require.NoError(t, err)
 	// "users:vip1" matches "users:" first.
 	var input uint256.Int
-	result.GetGroups()[0].GetVolumes()[0].GetInput().IntoUint256(&input)
+	protohelpers.IntoUint256(result.GetGroups()[0].GetVolumes()[0].GetInput(), &input)
 	require.Equal(t, uint256.NewInt(100), &input)
 
 	// Second group should be empty.
@@ -284,8 +285,8 @@ func TestVolumeAggregator_UseMaxPrecision_FactorBoundary(t *testing.T) {
 
 		expected := mustUint256Decimal(t, "100000000000000000000000000000000000000000000000000000000000000000000000000001")
 		var input, output uint256.Int
-		result.GetVolumes()[0].GetInput().IntoUint256(&input)
-		result.GetVolumes()[0].GetOutput().IntoUint256(&output)
+		protohelpers.IntoUint256(result.GetVolumes()[0].GetInput(), &input)
+		protohelpers.IntoUint256(result.GetVolumes()[0].GetOutput(), &output)
 		require.Equal(t, expected, &input)
 		require.Equal(t, expected, &output)
 	})
@@ -358,8 +359,8 @@ func makeColoredEntry(ledgerName, account, asset, color string, input, output ui
 	return attributes.ComputedEntry[*raftcmdpb.VolumePair]{
 		CanonicalKey: vk.Bytes(),
 		Value: &raftcmdpb.VolumePair{
-			Input:  commonpb.NewUint256(uint256.NewInt(input)),
-			Output: commonpb.NewUint256(uint256.NewInt(output)),
+			Input:  protohelpers.NewUint256(uint256.NewInt(input)),
+			Output: protohelpers.NewUint256(uint256.NewInt(output)),
 		},
 	}
 }
@@ -388,7 +389,7 @@ func TestVolumeAggregator_SegregatesColorsByDefault(t *testing.T) {
 	require.Contains(t, byColor, "OPS")
 
 	var got uint256.Int
-	byColor["GRANTS"].GetInput().IntoUint256(&got)
+	protohelpers.IntoUint256(byColor["GRANTS"].GetInput(), &got)
 	require.Equal(t, uint256.NewInt(200), &got, "GRANTS bucket must keep its own input")
 }
 
@@ -410,8 +411,8 @@ func TestVolumeAggregator_CollapseColors(t *testing.T) {
 	require.Equal(t, "", vol.GetColor(), "collapsed entries are produced under the empty color")
 
 	var input, output uint256.Int
-	vol.GetInput().IntoUint256(&input)
-	vol.GetOutput().IntoUint256(&output)
+	protohelpers.IntoUint256(vol.GetInput(), &input)
+	protohelpers.IntoUint256(vol.GetOutput(), &output)
 	require.Equal(t, uint256.NewInt(330), &input, "100+200+30")
 	require.Equal(t, uint256.NewInt(140), &output, "50+80+10")
 }
@@ -437,8 +438,8 @@ func TestVolumeAggregator_CollapseColors_WithMaxPrecision(t *testing.T) {
 	require.Empty(t, vol.GetColor())
 
 	var input, output uint256.Int
-	vol.GetInput().IntoUint256(&input)
-	vol.GetOutput().IntoUint256(&output)
+	protohelpers.IntoUint256(vol.GetInput(), &input)
+	protohelpers.IntoUint256(vol.GetOutput(), &output)
 	require.Equal(t, uint256.NewInt(10003), &input, "10000 + 1 + 2")
 	require.Equal(t, uint256.NewInt(5001), &output, "5000 + 0 + 1")
 }

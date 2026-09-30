@@ -10,6 +10,7 @@ import (
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
 
 	"github.com/formancehq/ledger/v3/internal/proto/eventspb"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 func TestLogToEvent(t *testing.T) {
@@ -248,7 +249,7 @@ func TestSerializeEvent_JSONLedgerLogOutput(t *testing.T) {
 					Id:        9,
 					Reference: "order-456",
 					Postings: []*commonpb.Posting{
-						commonpb.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
+						protohelpers.NewColoredPosting("world", "alice", "USD/2", "pending", big.NewInt(1000)),
 					},
 					Metadata: map[string]*commonpb.MetadataValue{"note": commonpb.NewStringValue("checkout")},
 				},

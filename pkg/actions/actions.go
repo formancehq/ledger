@@ -9,6 +9,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	commonpb "github.com/formancehq/ledger/pkg/client/v3/grpc"
+
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 )
 
 // ExtractGRPCErrorInfo extracts the ErrorInfo detail from a gRPC error.
@@ -57,7 +59,7 @@ func CreateTransactionAction(ledgerName string, postings []*commonpb.Posting, me
 				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings:        postings,
-						Metadata:        commonpb.MetadataFromGoMap(metadata),
+						Metadata:        protohelpers.MetadataFromGoMap(metadata),
 						AccountMetadata: accountMetadata,
 					},
 				}},
@@ -75,7 +77,7 @@ func CreateForceTransactionAction(ledgerName string, postings []*commonpb.Postin
 				Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{
 					CreateTransaction: &commonpb.CreateTransactionPayload{
 						Postings: postings,
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+						Metadata: protohelpers.MetadataFromGoMap(metadata),
 						Force:    true,
 					},
 				}},
@@ -96,7 +98,7 @@ func CreateForceScriptTransactionAction(ledgerName string, script string, vars m
 							Plain: script,
 							Vars:  vars,
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+						Metadata: protohelpers.MetadataFromGoMap(metadata),
 						Force:    true,
 					},
 				}},
@@ -117,7 +119,7 @@ func CreateScriptTransactionAction(ledgerName string, script string, vars map[st
 							Plain: script,
 							Vars:  vars,
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+						Metadata: protohelpers.MetadataFromGoMap(metadata),
 					},
 				}},
 			},
@@ -187,7 +189,7 @@ func SaveAccountMetadataAction(ledgerName, address string, metadata map[string]s
 								Account: &commonpb.TargetAccount{Addr: address},
 							},
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+						Metadata: protohelpers.MetadataFromGoMap(metadata),
 					},
 				}},
 			},
@@ -227,7 +229,7 @@ func SaveTransactionMetadataAction(ledgerName string, transactionID uint64, meta
 						Target: &commonpb.Target{
 							Target: &commonpb.Target_TransactionId{TransactionId: transactionID},
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+						Metadata: protohelpers.MetadataFromGoMap(metadata),
 					},
 				}},
 			},
@@ -260,7 +262,7 @@ func SaveLedgerMetadataAction(ledgerName string, metadata map[string]string) *co
 		Type: &commonpb.Request_SaveLedgerMetadata{
 			SaveLedgerMetadata: &commonpb.SaveLedgerMetadataRequest{
 				Ledger:   ledgerName,
-				Metadata: commonpb.MetadataFromGoMap(metadata),
+				Metadata: protohelpers.MetadataFromGoMap(metadata),
 			},
 		},
 	}
@@ -289,7 +291,7 @@ func RevertTransactionAction(ledgerName string, transactionID uint64, force, atE
 						TransactionId:   transactionID,
 						Force:           force,
 						AtEffectiveDate: atEffectiveDate,
-						Metadata:        commonpb.MetadataFromGoMap(metadata),
+						Metadata:        protohelpers.MetadataFromGoMap(metadata),
 					},
 				}},
 			},
@@ -310,12 +312,12 @@ func WithTimestamp(req *commonpb.Request, t time.Time) *commonpb.Request {
 
 // NewPosting creates a new uncolored posting protobuf message.
 func NewPosting(source, destination string, amount *big.Int, asset string) *commonpb.Posting {
-	return commonpb.NewPosting(source, destination, asset, amount)
+	return protohelpers.NewPosting(source, destination, asset, amount)
 }
 
 // NewColoredPosting creates a new posting with an explicit color.
 func NewColoredPosting(source, destination string, amount *big.Int, asset, color string) *commonpb.Posting {
-	return commonpb.NewColoredPosting(source, destination, asset, color, amount)
+	return protohelpers.NewColoredPosting(source, destination, asset, color, amount)
 }
 
 // RegisterSigningKeyAction creates a RegisterSigningKey request.
@@ -505,7 +507,7 @@ func CreateScriptRefTransactionAction(ledgerName, scriptName, version string, va
 							Version: version,
 							Vars:    vars,
 						},
-						Metadata: commonpb.MetadataFromGoMap(metadata),
+						Metadata: protohelpers.MetadataFromGoMap(metadata),
 					},
 				}},
 			},

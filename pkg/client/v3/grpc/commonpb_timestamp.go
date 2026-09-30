@@ -3,9 +3,7 @@ package grpc
 import (
 	"errors"
 	"fmt"
-	libtime "time"
-
-	"github.com/formancehq/go-libs/v5/pkg/types/time"
+	"time"
 
 	"github.com/formancehq/ledger/pkg/client/v3/internal/json"
 )
@@ -18,14 +16,14 @@ var ErrTimestampBeforeEpoch = errors.New("timestamp before Unix epoch (1970-01-0
 // NewTimestamp creates a Timestamp from a time.Time.
 // Caller must ensure the time is not before the Unix epoch; pre-epoch times
 // will silently overflow the uint64 Data field.
-func NewTimestamp(time time.Time) *Timestamp {
+func NewTimestamp(t interface{ UnixMicro() int64 }) *Timestamp {
 	return &Timestamp{
-		Data: uint64(time.UnixMicro()),
+		Data: uint64(t.UnixMicro()),
 	}
 }
 
 func (x *Timestamp) AsTime() time.Time {
-	return time.New(libtime.UnixMicro(int64(x.GetData())))
+	return time.UnixMicro(int64(x.GetData())).UTC()
 }
 
 func (x *Timestamp) MarshalJSON() ([]byte, error) {
@@ -40,16 +38,17 @@ func (x *Timestamp) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	t, err := time.ParseTime(v)
+	t, err := time.Parse(time.RFC3339Nano, v)
 	if err != nil {
 		return err
 	}
 
-	if t.UnixMicro() < 0 {
+	rounded := t.Round(time.Microsecond).UTC()
+	if rounded.UnixMicro() < 0 {
 		return ErrTimestampBeforeEpoch
 	}
 
-	x.Data = uint64(t.UnixMicro())
+	x.Data = uint64(rounded.UnixMicro())
 
 	return nil
 }

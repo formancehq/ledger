@@ -15,6 +15,7 @@ package main
 
 import (
 	"context"
+	"github.com/formancehq/ledger/v3/internal/protohelpers"
 	"log"
 	"slices"
 	"sync/atomic"
@@ -194,7 +195,7 @@ func writeBurst(ctx context.Context, client clusterpb.BucketServiceClient, commi
 					Ledger: rrSentinelLedger,
 					Action: &clusterpb.LedgerAction{Data: &clusterpb.LedgerAction_CreateTransaction{
 						CreateTransaction: &clusterpb.CreateTransactionPayload{
-							Postings: []*clusterpb.Posting{clusterpb.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
+							Postings: []*clusterpb.Posting{protohelpers.NewPosting("world", "burst:rr", "COIN", internal.RandomBigInt())},
 							Force:    true,
 						},
 					}},
