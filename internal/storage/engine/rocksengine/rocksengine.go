@@ -309,6 +309,17 @@ func (s *snapshot) Close() error {
 
 // --- iterators ---
 
+// iterator wraps a RocksDB iterator with a Go-side read-ahead buffer.
+//
+// Every RocksDB call is a cgo transition (~40 ns), and a plain forward scan
+// needs four per key (next, valid, key, value). Forward positioning calls
+// therefore pull a batch of entries into buf through ledger_iter_fill (one
+// transition per ~500 keys) and Next/Key/Value are served from Go memory.
+// The C iterator is then ahead of the logical position; before a backward
+// step (Prev, and Last/SeekLT which read the current entry through C) the
+// wrapper re-seeks it to the current key. Key/Value stay valid until the
+// next positioning call, as the engine contract requires: a refill only
+// happens when the buffer is exhausted on Next.
 type iterator struct {
 	it        *grocksdb.Iterator
 	ro        *grocksdb.ReadOptions
@@ -317,6 +328,23 @@ type iterator struct {
 	prefixLen int
 	// prefix is non-nil while confined by SeekPrefixGE.
 	prefix []byte
+
+	// Buffered mode state. buffered is true when the current entry lives in
+	// buf; off points at the record, n counts remaining records, cAhead is
+	// true when the C iterator has been advanced past the buffered entries.
+	buf      []byte
+	buffered bool
+	off      int
+	n        int
+	cAhead   bool
+	key, val []byte
+	// window is the byte budget of the next fill: small for the first
+	// batch (short scans and point-like seeks dominate), doubling on each
+	// refill up to the buffer size for long scans.
+	window int
+	// exhausted records which end the iterator ran off (-1 before first,
+	// +1 after last) so the opposite step re-enters like Pebble does.
+	exhausted int8
 }
 
 func newIter(db *grocksdb.DB, snap *grocksdb.Snapshot, opts *engine.IterOptions, prefixLen int) (engine.Iterator, error) {
@@ -324,7 +352,7 @@ func newIter(db *grocksdb.DB, snap *grocksdb.Snapshot, opts *engine.IterOptions,
 	if snap != nil {
 		ro.SetSnapshot(snap)
 	}
-	it := &iterator{ro: ro, prefixLen: prefixLen}
+	it := &iterator{ro: ro, prefixLen: prefixLen, buf: iterBufPool.Get().([]byte), window: iterFillInitialWindow}
 	if opts != nil {
 		// Copy: RocksDB keeps referencing the bound bytes for the lifetime of
 		// the read options, and callers commonly reuse key buffers.
@@ -342,11 +370,62 @@ func newIter(db *grocksdb.DB, snap *grocksdb.Snapshot, opts *engine.IterOptions,
 	return it, nil
 }
 
+// refill pulls the next batch from the C iterator (positioned at the next
+// logical entry) and makes its first record current. Returns false when
+// the C iterator is exhausted.
+func (it *iterator) refill() bool {
+	for {
+		n, _, grow := fill(it.it, it.buf[:it.window])
+		if grow > 0 {
+			if grow > len(it.buf) {
+				it.buf = make([]byte, grow*2) // oversized entry: private buffer, not pooled back
+			}
+			it.window = grow
+
+			continue
+		}
+		if n == 0 {
+			it.buffered = false
+			it.cAhead = false
+
+			return false
+		}
+		it.n, it.off, it.buffered, it.cAhead = n, 0, true, true
+		it.decode()
+		if it.window < len(it.buf) {
+			it.window = min(it.window*2, len(it.buf))
+		}
+
+		return true
+	}
+}
+
+// decode reads the record at off into key/val.
+func (it *iterator) decode() {
+	kl := int(binary.LittleEndian.Uint32(it.buf[it.off:]))
+	it.key = it.buf[it.off+4 : it.off+4+kl]
+	vo := it.off + 4 + kl
+	vl := int(binary.LittleEndian.Uint32(it.buf[vo:]))
+	it.val = it.buf[vo+4 : vo+4+vl]
+}
+
+// direct leaves buffered mode: the C iterator is re-seeked to the logical
+// position when it had run ahead, so Prev/Key/Value through C are exact.
+func (it *iterator) direct() {
+	if it.buffered && it.cAhead {
+		it.it.Seek(it.key) // exact key, exists in this view
+	}
+	it.buffered = false
+	it.cAhead = false
+}
+
 func (it *iterator) SeekGE(key []byte) bool {
 	it.prefix = nil
+	it.buffered, it.cAhead = false, false
+	it.window = iterFillInitialWindow
 	it.it.Seek(key)
 
-	return it.Valid()
+	return it.settle(it.refill() && it.Valid(), 1)
 }
 
 // SeekPrefixGE confines the iterator to key's prefix. RocksDB decides
@@ -359,50 +438,105 @@ func (it *iterator) SeekPrefixGE(key []byte) bool {
 		n = it.prefixLen
 	}
 	it.prefix = bytes.Clone(key[:n])
+	it.buffered, it.cAhead = false, false
+	it.window = iterFillInitialWindow
 	it.it.Seek(key)
 
-	return it.Valid()
+	return it.settle(it.refill() && it.Valid(), 1)
 }
 
 // SeekLT positions on the last key strictly below key. RocksDB's SeekForPrev
-// is "last key <= key", so an exact hit steps back once.
+// is "last key <= key", so an exact hit steps back once. Backward
+// positioning runs in direct mode.
 func (it *iterator) SeekLT(key []byte) bool {
 	it.prefix = nil
+	it.buffered, it.cAhead = false, false
 	it.it.SeekForPrev(key)
 	if it.it.Valid() && bytes.Equal(it.it.KeySlice().Data(), key) {
 		it.it.Prev()
 	}
 
-	return it.Valid()
+	return it.settle(it.Valid(), -1)
 }
 
 func (it *iterator) First() bool {
 	it.prefix = nil
+	it.buffered, it.cAhead = false, false
+	it.window = iterFillInitialWindow
 	it.it.SeekToFirst()
 
-	return it.Valid()
+	return it.settle(it.refill() && it.Valid(), 1)
 }
 
 func (it *iterator) Last() bool {
 	it.prefix = nil
+	it.buffered, it.cAhead = false, false
 	it.it.SeekToLast()
 
-	return it.Valid()
+	return it.settle(it.Valid(), -1)
 }
 
 func (it *iterator) Next() bool {
+	if it.exhausted < 0 {
+		return it.First()
+	}
+	if it.exhausted > 0 {
+		return false
+	}
+	if it.buffered {
+		it.n--
+		if it.n > 0 {
+			it.off += 8 + len(it.key) + len(it.val)
+			it.decode()
+
+			return it.settle(it.Valid(), 1)
+		}
+		if !it.cAhead {
+			return it.settle(false, 1)
+		}
+
+		return it.settle(it.refill() && it.Valid(), 1)
+	}
+	if !it.it.Valid() {
+		return it.settle(false, 1)
+	}
 	it.it.Next()
 
-	return it.Valid()
+	return it.settle(it.refill() && it.Valid(), 1)
 }
 
 func (it *iterator) Prev() bool {
+	if it.exhausted > 0 {
+		return it.Last()
+	}
+	if it.exhausted < 0 {
+		return false
+	}
+	it.direct()
+	if !it.it.Valid() {
+		return it.settle(false, -1)
+	}
 	it.it.Prev()
 
-	return it.Valid()
+	return it.settle(it.Valid(), -1)
+}
+
+// settle records the exhausted edge when a positioning call in direction
+// dir (+1 forward, -1 backward) ended invalid, and clears it otherwise.
+func (it *iterator) settle(valid bool, dir int8) bool {
+	if valid {
+		it.exhausted = 0
+	} else {
+		it.exhausted = dir
+	}
+
+	return valid
 }
 
 func (it *iterator) Valid() bool {
+	if it.buffered {
+		return it.prefix == nil || bytes.HasPrefix(it.key, it.prefix)
+	}
 	if !it.it.Valid() {
 		return false
 	}
@@ -413,9 +547,21 @@ func (it *iterator) Valid() bool {
 	return true
 }
 
-func (it *iterator) Key() []byte { return it.it.KeySlice().Data() }
+func (it *iterator) Key() []byte {
+	if it.buffered {
+		return it.key
+	}
 
-func (it *iterator) Value() []byte { return it.it.ValueSlice().Data() }
+	return it.it.KeySlice().Data()
+}
+
+func (it *iterator) Value() []byte {
+	if it.buffered {
+		return it.val
+	}
+
+	return it.it.ValueSlice().Data()
+}
 
 // ValueAndErr never reports an error here: RocksDB surfaces iteration
 // errors through Error() once the iterator turns invalid, and polling
@@ -427,6 +573,10 @@ func (it *iterator) Error() error { return it.it.Err() }
 func (it *iterator) Close() error {
 	it.it.Close()
 	it.ro.Destroy()
+	if len(it.buf) == iterFillBufferSize {
+		iterBufPool.Put(it.buf) //nolint:staticcheck // slice header is what the pool hands out
+	}
+	it.buf, it.key, it.val = nil, nil, nil
 
 	return nil
 }

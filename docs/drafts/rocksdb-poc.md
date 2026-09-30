@@ -290,9 +290,35 @@ one is a paid, explicit step left to the team.
 Recommendation: keep the `engine` abstraction and the RocksDB
 implementation behind its build tag, do not switch the default. The scan
 penalty hits exactly the paths the read store, cache restore, checker and
-backup rebuild lean on; closing it means batching iteration across the cgo
-boundary (a C shim returning N key/value pairs per call), which is a
-follow-up worth measuring before any migration decision. Meanwhile the
+backup rebuild lean on; the batched-iteration shim below recovers a third of
+it, the rest is RocksDB's own iterator cost. Meanwhile the
 abstraction makes a Pebble fork, a later RocksDB switch, or another pure-Go
 engine equally reachable.
+
+## Follow-up — batched iteration across the cgo boundary
+
+Implemented in `rocksengine/iter_fill.go`: a C shim (`ledger_iter_fill`)
+copies consecutive entries into a Go buffer and advances the iterator in one
+call; `Next`/`Key`/`Value` are then served from Go memory. The window
+starts at 2 KiB after a seek and doubles per refill up to 64 KiB (a fixed
+64 KiB first fill made every short scan pay for ~500 entries), buffers are
+pooled, and backward steps re-seek the C iterator to the logical position.
+The conformance suite gained a long mixed-direction scan and now pins
+Pebble's edge semantics (Next after running off the start re-enters at the
+first key, and symmetrically). All RocksDB suites stay green.
+
+| | before shim | after shim | Pebble |
+|---|---|---|---|
+| NewIter + First + Close (µs) | 35.6 (eager 64 KiB fill) / ~1.6 (direct) | 2.0 | 1.2 |
+| ScanHistory1000 (keys/s) | 8.5 M | 12.1 M | 30.6 M |
+| SnapshotIterAttributes 1000 keys (µs) | 93 | 100 | 31 |
+
+The cgo transitions were about a third of the gap. A CPU profile of the
+scan benchmark puts 88 % of the time inside the single C call, i.e. in
+RocksDB's own iterator (`DBIter::Next`, block delta decoding, upper-bound
+check): ~80 ns per key on this machine against ~30 ns for Pebble's columnar
+blocks. Block size, delta encoding and restart interval were tried and move
+the result by under 10 %. **Scans stay ~2.5× slower per key**; the go/no-go
+criterion on scans remains unmet, and the remaining gap is RocksDB's, not
+the binding's.
 

@@ -23,21 +23,22 @@ func Run(t *testing.T, open Opener) {
 	t.Helper()
 
 	cases := map[string]func(*testing.T, Opener){
-		"GetSetNotFound":        testGetSetNotFound,
-		"BatchAtomicAndCount":   testBatchAtomicAndCount,
-		"BatchCloseDiscards":    testBatchCloseDiscards,
-		"Deletes":               testDeletes,
-		"IteratorBounds":        testIteratorBounds,
-		"IteratorSeeks":         testIteratorSeeks,
-		"SeekPrefixGE":          testSeekPrefixGE,
-		"IteratorEmpty":         testIteratorEmpty,
-		"SnapshotIsolation":     testSnapshotIsolation,
-		"CheckpointIsOpenable":  testCheckpointIsOpenable,
-		"CheckpointRefusesDir":  testCheckpointRefusesExistingDir,
-		"PersistsAcrossReopen":  testPersistsAcrossReopen,
-		"FlushCompactAndStats":  testFlushCompactAndStats,
-		"PrefixBloomOption":     testPrefixBloomOption,
-		"ErrorIfExistsReadOnly": testErrorIfExistsAndReadOnly,
+		"GetSetNotFound":         testGetSetNotFound,
+		"BatchAtomicAndCount":    testBatchAtomicAndCount,
+		"BatchCloseDiscards":     testBatchCloseDiscards,
+		"Deletes":                testDeletes,
+		"IteratorBounds":         testIteratorBounds,
+		"IteratorSeeks":          testIteratorSeeks,
+		"SeekPrefixGE":           testSeekPrefixGE,
+		"LongScanMixedDirection": testLongScanMixedDirection,
+		"IteratorEmpty":          testIteratorEmpty,
+		"SnapshotIsolation":      testSnapshotIsolation,
+		"CheckpointIsOpenable":   testCheckpointIsOpenable,
+		"CheckpointRefusesDir":   testCheckpointRefusesExistingDir,
+		"PersistsAcrossReopen":   testPersistsAcrossReopen,
+		"FlushCompactAndStats":   testFlushCompactAndStats,
+		"PrefixBloomOption":      testPrefixBloomOption,
+		"ErrorIfExistsReadOnly":  testErrorIfExistsAndReadOnly,
 	}
 	for name, fn := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -303,6 +304,105 @@ func testIteratorEmpty(t *testing.T, open Opener) {
 }
 
 func testSeekPrefixGE(t *testing.T, open Opener) {
+	testSeekPrefixGEImpl(t, open)
+}
+
+// testLongScanMixedDirection exercises read-ahead implementations: a scan
+// spanning many refill boundaries, direction changes mid-scan, seeks that
+// land inside a buffered window, and a value larger than any read-ahead
+// buffer.
+func testLongScanMixedDirection(t *testing.T, open Opener) {
+	db := mustOpen(t, open, t.TempDir(), engine.Options{})
+	const n = 5000
+	value := make([]byte, 100)
+	b := db.NewBatch()
+	for i := range n {
+		for j := range value {
+			value[j] = byte(i + j)
+		}
+		require.NoError(t, b.Set(fmt.Appendf(nil, "k%06d", i), value))
+	}
+	big := make([]byte, 300<<10)
+	require.NoError(t, b.Set([]byte("k999999"), big))
+	require.NoError(t, b.Commit(false))
+	require.NoError(t, b.Close())
+	require.NoError(t, db.Flush())
+
+	keyAt := func(i int) string { return fmt.Sprintf("k%06d", i) }
+	it, err := db.NewIter(nil)
+	require.NoError(t, err)
+	defer func() { require.NoError(t, it.Close()) }()
+
+	// Full forward scan, values checked, then the oversized value.
+	i := 0
+	for ok := it.First(); ok; ok = it.Next() {
+		if i == n {
+			require.Equal(t, "k999999", string(it.Key()))
+			require.Len(t, it.Value(), len(big))
+			i++
+
+			continue
+		}
+		require.Equal(t, keyAt(i), string(it.Key()))
+		require.Equal(t, byte(i), it.Value()[0])
+		i++
+	}
+	require.Equal(t, n+1, i)
+	require.NoError(t, it.Error())
+
+	// Forward 1234 then back 100: exact positions.
+	require.True(t, it.First())
+	for range 1234 {
+		require.True(t, it.Next())
+	}
+	require.Equal(t, keyAt(1234), string(it.Key()))
+	for k := 1; k <= 100; k++ {
+		require.True(t, it.Prev())
+		require.Equal(t, keyAt(1234-k), string(it.Key()))
+	}
+	// Forward again after backing up.
+	require.True(t, it.Next())
+	require.Equal(t, keyAt(1135), string(it.Key()))
+
+	// Seek inside, step back, step forward twice.
+	require.True(t, it.SeekGE([]byte(keyAt(2500))))
+	require.True(t, it.Prev())
+	require.Equal(t, keyAt(2499), string(it.Key()))
+	require.True(t, it.Next())
+	require.True(t, it.Next())
+	require.Equal(t, keyAt(2501), string(it.Key()))
+
+	// Pebble semantics: running off either end leaves a position "before
+	// first" / "after last", so the opposite step re-enters at the edge.
+	require.True(t, it.First())
+	require.False(t, it.Prev())
+	require.True(t, it.Next())
+	require.Equal(t, keyAt(0), string(it.Key()))
+	require.True(t, it.Last())
+	require.False(t, it.Next())
+	require.True(t, it.Prev())
+	require.Equal(t, "k999999", string(it.Key()))
+	require.False(t, it.SeekGE([]byte("z")))
+	require.True(t, it.Prev())
+	require.Equal(t, "k999999", string(it.Key()))
+	require.False(t, it.SeekLT([]byte("a")))
+	require.True(t, it.Next())
+	require.Equal(t, keyAt(0), string(it.Key()))
+
+	// Bounds hold across refills.
+	bit, err := db.NewIter(&engine.IterOptions{LowerBound: []byte(keyAt(100)), UpperBound: []byte(keyAt(4100))})
+	require.NoError(t, err)
+	cnt := 0
+	for ok := bit.First(); ok; ok = bit.Next() {
+		cnt++
+	}
+	require.Equal(t, 4000, cnt)
+	require.True(t, bit.Last())
+	require.Equal(t, keyAt(4099), string(bit.Key()))
+	require.NoError(t, bit.Close())
+}
+
+func testSeekPrefixGEImpl(t *testing.T, open Opener) {
 	// Whole-key prefix (no extractor): SeekPrefixGE is a point probe.
 	db := mustOpen(t, open, t.TempDir(), engine.Options{})
 	put(t, db, "a", "1", "b", "2", "c", "3")

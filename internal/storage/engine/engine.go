@@ -11,6 +11,9 @@
 //     valid until the returned io.Closer is closed.
 //   - Iterator.Key / Value are valid until the next positioning call.
 //   - SeekLT positions on the last key strictly less than the argument.
+//   - Running off either end leaves the iterator invalid but positioned
+//     "before first" / "after last": the opposite step (Next after Prev
+//     exhausted, Prev after Next exhausted) re-enters at that edge.
 //   - IterOptions bounds are [LowerBound, UpperBound).
 //   - Batch.Commit(sync=false) is durable only after a later sync (Pebble
 //     NoSync); Commit(sync=true) fsyncs the WAL.

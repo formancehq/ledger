@@ -13,3 +13,9 @@ func BenchmarkEngine(b *testing.B) {
 		return pebbleengine.Open(dir, o)
 	})
 }
+
+func BenchmarkIterSetup(b *testing.B) {
+	enginetest.RunIterSetupBenchmark(b, func(dir string, o engine.Options) (engine.DB, error) {
+		return pebbleengine.Open(dir, o)
+	})
+}
