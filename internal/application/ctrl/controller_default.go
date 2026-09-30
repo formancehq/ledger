@@ -1112,16 +1112,21 @@ func (ctrl *DefaultController) InspectIndex(ctx context.Context, req *servicepb.
 		return nil, fmt.Errorf("inspecting index: %w", err)
 	}
 
-	return toInspectIndexResponse(inspectResult), nil
+	return toInspectIndexResponse(mode, inspectResult), nil
 }
 
-func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexResponse {
-	if r.Values != nil {
-		var nextCursor string
-		if r.HasMore && len(r.NextCursor) > 0 {
-			nextCursor = encodeCursor(r.NextCursor)
-		}
+// toInspectIndexResponse builds the arm the request asked for. The arm is the
+// answer to which question was asked, so it comes from the mode and never from
+// which result slice the scan happened to populate: an index holding no live
+// values answers on its own arm with an empty list.
+func toInspectIndexResponse(mode readstore.InspectMode, r *readstore.InspectResult) *servicepb.InspectIndexResponse {
+	var nextCursor string
+	if r.HasMore && len(r.NextCursor) > 0 {
+		nextCursor = encodeCursor(r.NextCursor)
+	}
 
+	switch mode { //exhaustive:enforce
+	case readstore.InspectDistinctValuesMode:
 		return &servicepb.InspectIndexResponse{
 			Result: &servicepb.InspectIndexResponse_DistinctValues{
 				DistinctValues: &servicepb.InspectDistinctValues{
@@ -1131,20 +1136,14 @@ func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexR
 				},
 			},
 		}
-	}
 
-	if r.Facets != nil {
+	case readstore.InspectFacetsMode:
 		facets := make([]*servicepb.InspectFacet, len(r.Facets))
 		for i, f := range r.Facets {
 			facets[i] = &servicepb.InspectFacet{
 				Value: f.Value,
 				Count: f.Count,
 			}
-		}
-
-		var nextCursor string
-		if r.HasMore && len(r.NextCursor) > 0 {
-			nextCursor = encodeCursor(r.NextCursor)
 		}
 
 		return &servicepb.InspectIndexResponse{
@@ -1156,16 +1155,29 @@ func toInspectIndexResponse(r *readstore.InspectResult) *servicepb.InspectIndexR
 				},
 			},
 		}
+
+	case readstore.InspectSummaryMode:
+		return &servicepb.InspectIndexResponse{
+			Result: &servicepb.InspectIndexResponse_Summary{
+				Summary: &servicepb.InspectSummary{
+					Cardinality:      r.Cardinality,
+					Min:              r.Min,
+					Max:              r.Max,
+					EntitiesWithKey:  r.EntitiesWithKey,
+					EntitiesWithNull: r.EntitiesWithNull,
+				},
+			},
+		}
 	}
 
+	// Unreachable when the exhaustive linter is enabled. Distinct values is
+	// what the request-side mode resolution assigns to an unrecognized mode.
 	return &servicepb.InspectIndexResponse{
-		Result: &servicepb.InspectIndexResponse_Summary{
-			Summary: &servicepb.InspectSummary{
-				Cardinality:      r.Cardinality,
-				Min:              r.Min,
-				Max:              r.Max,
-				EntitiesWithKey:  r.EntitiesWithKey,
-				EntitiesWithNull: r.EntitiesWithNull,
+		Result: &servicepb.InspectIndexResponse_DistinctValues{
+			DistinctValues: &servicepb.InspectDistinctValues{
+				Values:     r.Values,
+				HasMore:    r.HasMore,
+				NextCursor: nextCursor,
 			},
 		},
 	}
