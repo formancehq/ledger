@@ -78,7 +78,7 @@ func TestAdmission_MalformedHTTPMirrorRejectedBeforeProposal(t *testing.T) {
 	logger := logrus.New()
 	logger.SetOutput(&logs)
 	a.logger = logging.NewLogrus(logger)
-	ctx := context.Background()
+	ctx := attributedTestContext(context.Background())
 	_, err := a.Admit(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{Type: &servicepb.Request_CreateLedger{
 		CreateLedger: &servicepb.CreateLedgerRequest{
 			Name: ledgerName, Mode: commonpb.LedgerMode_LEDGER_MODE_MIRROR,

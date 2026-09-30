@@ -43,7 +43,7 @@ func TestAdmit_CreateLedgerNamesForEventRouting(t *testing.T) {
 				},
 			).Times(1)
 			admission, _ := createTestAdmissionWithReader(t, store, proposer)
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(attributedTestContext(context.Background()), 3*time.Second)
 			defer cancel()
 
 			_, err := admission.Admit(ctx, businessWrite(name))
@@ -67,7 +67,7 @@ func TestAdmit_CreateLedgerNamesForEventRouting(t *testing.T) {
 			// No Propose expectation: malformed names must fail before consensus.
 			proposer := NewMockProposer(gomock.NewController(t))
 			admission, _ := createTestAdmissionWithReader(t, store, proposer)
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(attributedTestContext(context.Background()), 3*time.Second)
 			defer cancel()
 
 			_, err := admission.Admit(ctx, businessWrite(tc.name))
