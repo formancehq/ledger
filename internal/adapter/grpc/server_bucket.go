@@ -32,6 +32,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/state"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/pkg/sensitive"
 	"github.com/formancehq/ledger/v3/internal/pkg/version"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
@@ -873,6 +874,9 @@ func (impl *BucketServiceServerImpl) GetEventsSinks(ctx context.Context, _ *serv
 	sinks, statuses, err := impl.ctrl.GetEventsSinks(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("loading events sinks: %w", err)
+	}
+	for i, s := range sinks {
+		sinks[i] = sensitive.Clone(s)
 	}
 
 	return &servicepb.GetEventsSinksResponse{

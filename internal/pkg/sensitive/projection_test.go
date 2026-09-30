@@ -135,3 +135,80 @@ func TestCloneMasksMirrorDiagnostic(t *testing.T) {
 	require.Equal(t, Marker, projected.GetMessage())
 	require.Equal(t, "connection password=sentinel", source.GetMessage())
 }
+
+func TestRedactURL(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "empty",
+			in:   "",
+			want: "",
+		},
+		{
+			name: "clickhouse with password",
+			in:   "clickhouse://user:secret@host:9000/db",
+			want: "clickhouse://user:xxxxx@host:9000/db",
+		},
+		{
+			name: "clickhouse password in query",
+			in:   "clickhouse://host:9000/db?password=secret",
+			want: "clickhouse://host:9000/db?password=xxxxx",
+		},
+		{
+			name: "nats token in username",
+			in:   "nats://mytoken@host:4222",
+			want: "nats://xxxxx@host:4222",
+		},
+		{
+			name: "nats with password",
+			in:   "nats://user:secret@host:4222",
+			want: "nats://user:xxxxx@host:4222",
+		},
+		{
+			name: "postgres password in url",
+			in:   "postgres://user:hunter2@host:5432/ledger?sslmode=disable",
+			want: "postgres://user:xxxxx@host:5432/ledger?sslmode=disable",
+		},
+		{
+			name: "no credentials preserved",
+			in:   "clickhouse://host:9000/db",
+			want: "clickhouse://host:9000/db",
+		},
+		{
+			name: "unparseable falls back to Marker",
+			in:   "not a url",
+			want: Marker,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tc.want, redactURL(tc.in))
+		})
+	}
+}
+
+func TestCloneSensitiveURL(t *testing.T) {
+	t.Parallel()
+	source := &commonpb.ClickHouseSinkConfig{
+		Dsn:   "clickhouse://user:secret@host:9000/db",
+		Table: "ledger_events",
+	}
+	view := Clone(source)
+	require.Equal(t, "clickhouse://user:xxxxx@host:9000/db", view.GetDsn())
+	require.Equal(t, "ledger_events", view.GetTable())
+	require.Equal(t, "clickhouse://user:secret@host:9000/db", source.GetDsn())
+
+	nats := &commonpb.NatsSinkConfig{
+		Url:   "nats://mytoken@host:4222",
+		Topic: "events",
+	}
+	natsView := Clone(nats)
+	require.Equal(t, "nats://xxxxx@host:4222", natsView.GetUrl())
+	require.Equal(t, "events", natsView.GetTopic())
+	require.Equal(t, "nats://mytoken@host:4222", nats.GetUrl())
+}
