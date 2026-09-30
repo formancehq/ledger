@@ -26,6 +26,30 @@ The boundary is about impact, not package location. A value under a technical
 keyspace can become business-impacting if future code starts using it to decide
 whether a business command is accepted or which business data is returned.
 
+### Audit-key root of trust (EN-2479)
+
+`ZoneGlobal/SubGlobAuditKey` is a 32-byte governance secret, not a derived
+business projection. It selects the authentication key for the audit chain, so
+it cannot be independently re-derived from that same chain. This is an explicit
+root-of-trust exemption from the projection comparison rule, not a claim that
+Raft replication itself verifies the secret. A leader obtains random bytes
+outside FSM apply; the first committed technical update stores them in Pebble
+and FSM memory. Later initialization proposals leave the first value intact.
+Admission holds audited requests until the key is committed. On restart or
+follower sync, recovery reads the durable key before swapping FSM state and
+rejects malformed bytes, history without a key, and a key that cannot
+recompute the genesis hash. The checker reads key and full history from one
+snapshot and fails on absence/corruption or a mismatched chain. A coordinated rewrite of the key and complete chain remains outside
+the checker's ability to detect without an external anchor.
+
+The key is **preserved** by a full checkpoint. It never changes in an
+incremental delta: backup refuses to take the prerequisite full checkpoint
+before initialization, and no rotation operation exists. Restore preparation
+removes the source node/cluster identity but keeps this root of trust. A
+plaintext backup reveals the key, so backup confidentiality, access control,
+and independent artifact integrity are part of the security boundary. Rotation
+would need its own explicit audited and verifiable protocol.
+
 Invariant #8 ([AGENTS.md](../../../AGENTS.md)) is the floor: every non-audit
 dataset persisted in the main Pebble store is a projection that the checker must
 verify, unless it is genuinely discarded and rebuilt by a lifecycle path or lives

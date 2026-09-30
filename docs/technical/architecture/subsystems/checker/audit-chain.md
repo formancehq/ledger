@@ -6,10 +6,10 @@ The audit hash chain is the **only cryptographically-bound dataset** in the syst
 
 The chain serves two purposes:
 
-1. **Tamper-evidence**: any post-commit mutation of an audit entry (or of an `AuditItem` belonging to it) breaks the chain at that point. The break is detectable by recomputing the hashes forward; an attacker that rewrites entry *N* would have to recompute every entry from *N+1* onwards — and cannot, because the chain key is derived from the immutable `ClusterID`.
+1. **Tamper-evidence**: any post-commit mutation of an audit entry (or of an `AuditItem` belonging to it) breaks the chain at that point. The break is detectable by recomputing the hashes forward. Recomputing a forged suffix requires access to the audit secret; ordinary storage corruption does not have it.
 2. **A canonical derivation source**: because the orders that produced every projection are bound by the chain, every projection becomes verifiable by replaying those orders.
 
-Hash primitive: BLAKE3, **keyed** with a per-cluster key derived from the `ClusterID` (so two distinct clusters cannot forge each other's chains, and the chain cannot be replayed offline without the key).
+Hash primitive: BLAKE3, **keyed** with a value derived from a cryptographically random 32-byte audit secret. Fresh clusters have independent secrets. A restored cluster retains the source secret with its audit history, even when it has a different operational `ClusterID`.
 
 ## What is hash-bound
 
@@ -162,15 +162,15 @@ The two layers exist because ledger-internal mutations have a fundamentally diff
 
 ## Hash primitive
 
-Default: **BLAKE3 keyed** (`internal/domain/processing/hash_blake3.go:18-32`). The key is derived once at boot:
+Default: **BLAKE3 keyed** (`internal/domain/processing/hash_blake3.go`). The leader generates a 32-byte secret before the first audit entry and commits it in a one-time Raft technical update. Every node derives the algorithm key from those committed bytes:
 
 ```
-key = blake3.Sum256([]byte("audit-hash:blake3:v1:" + ClusterID))
+key = blake3.Sum256([]byte("audit-hash:blake3:v1:") || auditSecret)
 ```
 
-The `ClusterID` is part of the persisted config validated on boot (`internal/bootstrap/config_validation.go`) and a `node-id`/`cluster-id` mismatch is fatal — see [CLAUDE.md / Configuration Safety Checks](../../../../../AGENTS.md#configuration-safety-checks). This makes the chain key effectively immutable for the lifetime of the cluster.
+The secret lives at `ZoneGlobal/SubGlobAuditKey`, outside the public `ClusterConfig`. Admission waits for it before proposing any audited order. Recovery rejects a malformed or missing key and recomputes the genesis hash before installing FSM state, so a different valid key cannot be used to append. The checker reads the key and entire history from the same pinned snapshot. A later initialization proposal never rotates the first committed key. Rotation requires a separate explicit, verifiable design.
 
-A `HashVersion` field on every entry allows future rotation (an alternate algorithm like `HASH_ALGORITHM_XXH3` exists as a fallback, mapped to a different `HashGenerator` per entry).
+A `HashVersion` field on every entry selects the configured algorithm; it does not rotate the audit secret. `HASH_ALGORITHM_XXH3` provides corruption detection only, not cryptographic authentication, even when seeded from this secret.
 
 ## Companion streams and their gaps
 
@@ -226,13 +226,13 @@ Nothing recovers the lost head, because both counters are re-derived from the st
 
 What the checker does instead is **declare what it could not authenticate**. `logBoundsVerifier` (see [checker.md → Stored log bounds](checker.md#stored-log-bounds)) catches the *uncoordinated* case: logs truncated while the audit chain survives, which is the shape a restore bug takes. Where the chain itself is cut short it reports `LOG_VERIFICATION_INCOMPLETE` rather than a bound it cannot derive. The absence of findings is therefore a statement about the range that was verified, not a promise that no entry was ever removed from the head.
 
-The threat model matters here. The chain key is derived from the `ClusterID` persisted beside the store, so an attacker with write access to the data directory has the key and can re-chain a forged history end to end — the paragraph below already says the chain does not defend against that. The bound pass is an **ops-correctness detector**, aimed at a restore or migration that silently drops tail logs, not a defence against a local adversary.
+The threat model matters here. The audit secret is stored beside the history and included in plaintext checkpoints. An attacker with read access to a plaintext backup or the data directory learns it; an attacker who can also rewrite history can then re-chain a forged history end to end. Backup access control and external integrity protection remain necessary. The bound pass is an **ops-correctness detector**, aimed at a restore or migration that silently drops tail logs, not a defence against a local adversary.
 
-The chain does *not* defend against an attacker who has the cluster's BLAKE3 key — that key is local to the node and is the same secret that lets the node propose. Securing the key is part of the threat model the operator-level [Security](../../../../security/) and [Request Signing](../../../../ops/signing.md) docs cover.
+The chain does *not* defend against an attacker who can read the audit secret and rewrite the store. The secret is replicated to every Raft node and is carried by backup artifacts; limiting access to those artifacts is part of the trust boundary.
 
 ## Genesis
 
-The first entry carries `Sequence = 1` and is computed with `lastHash = nil`. `NewFSMState` starts `NextAuditSequenceID` at 1 (`internal/infra/state/fsmstate.go`) and `AppendAuditEntry` hands out the value before the bump, so no entry ever carries sequence 0. The per-cluster BLAKE3 key is the only secret needed; there is no external seed and no genesis ceremony.
+The first entry carries `Sequence = 1` and is computed with `lastHash = nil`. `NewFSMState` starts `NextAuditSequenceID` at 1 (`internal/infra/state/fsmstate.go`) and `AppendAuditEntry` hands out the value before the bump, so no entry ever carries sequence 0. The one-time Raft initialization is the genesis ceremony for the audit secret; no audit entry may precede it.
 
 ## Verification
 

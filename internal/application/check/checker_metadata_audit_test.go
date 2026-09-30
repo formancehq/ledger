@@ -191,7 +191,7 @@ func tamperSavedMetadata(t *testing.T, engine *testEngine, log *commonpb.Log, le
 }
 
 func runMetadataAuditCheck(engine *testEngine) ([]*servicepb.CheckStoreError, error) {
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 	var errors []*servicepb.CheckStoreError
 	err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
 		if checkErr := event.GetError(); checkErr != nil {

@@ -324,6 +324,10 @@ const (
 	// re-injection gate reads it — not the wall-clock-lagging HLC — as a skip hint;
 	// correctness rests on the in-memory map, not on this cutoff being exact.
 	SubGlobLastIdempotencyEvictionCutoff byte = 0x14
+	// SubGlobAuditKey is the once-initialized Raft-replicated secret used to
+	// authenticate audit history. It is part of checkpoints, unlike the
+	// operational cluster identity removed during restore preparation.
+	SubGlobAuditKey byte = 0x15
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).

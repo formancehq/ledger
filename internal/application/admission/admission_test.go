@@ -87,6 +87,7 @@ func createTestStoreWithoutPolicy(t *testing.T) *dal.Store {
 		CreatedAt: commonpb.NewTimestamp(time.Now()),
 	}
 	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
 	require.NoError(t, state.SaveLedger(batch, info.GetName(), info))
 	_, err = testAttrs.Ledger.Set(batch, domain.LedgerKey{Name: testLedgerName}.Bytes(), info)
 	require.NoError(t, err)

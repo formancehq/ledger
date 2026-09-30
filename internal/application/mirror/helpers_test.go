@@ -34,6 +34,7 @@ func newTestBuilder(t *testing.T) (*plan.Builder, *dal.Store) {
 
 	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
+	seedMirrorAuditKey(t, store)
 
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -41,6 +42,13 @@ func newTestBuilder(t *testing.T) (*plan.Builder, *dal.Store) {
 	require.NoError(t, err)
 
 	return plan.NewBuilder(node.NewIndexTracker(1), testCache, attributes.New(), store, nil, logger, 0), store
+}
+
+func seedMirrorAuditKey(t *testing.T, store *dal.Store) {
+	t.Helper()
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
+	require.NoError(t, batch.Commit())
 }
 
 // writeBoundaries persists a LedgerBoundaries row so a worker constructed

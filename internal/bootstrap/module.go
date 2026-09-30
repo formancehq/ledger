@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -308,7 +310,7 @@ func Module() fx.Option {
 					ss,
 					fanOut,
 					bloomFilters,
-					cfg.ClusterID,
+					"", // Audit key is loaded from replicated state during recovery.
 					cfg.NumscriptCacheSize,
 					membership.WriteConfChange,
 				)
@@ -645,8 +647,16 @@ func Module() fx.Option {
 
 				return clusterhealth.NewGRPCHealthUpdater(n, hs, clusterPolicyReady, rs.ReadProjectionHealthy)
 			},
-			func(admission ctrl.Admission, store *dal.Store, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
+			func(admission ctrl.Admission, store *dal.Store, builder *plan.Builder, cfg Config, raftNode *node.Node, logger logging.Logger) *ClusterPolicyReconciler {
 				return NewClusterPolicyReconciler(func(ctx context.Context) {
+					if !raftNode.IsLeader() {
+						return
+					}
+					if err := proposeAuditKeyIfNeeded(ctx, raftNode, builder, store); err != nil {
+						logger.WithFields(map[string]any{"error": err}).Errorf("Audit key initialization failed; will retry")
+
+						return
+					}
 					reconcileClusterPolicy(ctx, admission, store, cfg, raftNode.IsLeader, logger)
 				})
 			},
@@ -1388,6 +1398,49 @@ func isStaleRaftProgress(st *status.Status) bool {
 	}
 
 	return false
+}
+
+// proposeAuditKeyIfNeeded generates a secret only on the leader side. The FSM
+// commits the proposed bytes without using node-local randomness. The first
+// committed value wins if leadership changes during initialization.
+func proposeAuditKeyIfNeeded(ctx context.Context, n *node.Node, builder *plan.Builder, store *dal.Store) error {
+	key, err := query.ReadAuditKey(store)
+	if err != nil {
+		return err
+	}
+	if key != nil {
+		return nil
+	}
+	key, err = generateAuditKey()
+	if err != nil {
+		return err
+	}
+	proposal := commands.NewCommand()
+	proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentClusterConfig)
+	proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_AuditKey{AuditKey: key},
+	}}
+	if err := proposeTechnical(ctx, builder, n, proposal, []plan.WriteOperation{{Target: &proposal.TechnicalUpdates[0].CoverageBits}}); err != nil {
+		return fmt.Errorf("proposing audit key: %w", err)
+	}
+	committed, err := query.ReadAuditKey(store)
+	if err != nil {
+		return err
+	}
+	if committed == nil {
+		return errors.New("audit key proposal completed without persisted key")
+	}
+
+	return nil
+}
+
+func generateAuditKey() ([]byte, error) {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("generating audit key: %w", err)
+	}
+
+	return key, nil
 }
 
 // proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble

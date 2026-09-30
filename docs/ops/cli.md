@@ -1950,7 +1950,9 @@ ledgerctl store dump <data-dir> [flags]
 |------|---------|-------------|
 | `--prefix` | | Only dump keys starting with this hex prefix (e.g. `01` for logs, `f1` for attributes) |
 | `--limit` | `0` | Maximum number of entries to print (0 = unlimited) |
-| `--raw` | `false` | Print raw hex values instead of decoded output |
+| `--raw` | `false` | Print raw hex values instead of decoded output; the audit key remains redacted |
+
+The audit key is redacted in both modes. Use a full backup to transfer it for restore.
 
 **Example:**
 

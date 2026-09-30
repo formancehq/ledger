@@ -62,6 +62,13 @@ func RunBackup(
 	checkpointName string,
 ) (*Result, error) {
 	start := time.Now()
+	key, err := query.ReadAuditKey(store)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit key before full backup: %w", err)
+	}
+	if key == nil {
+		return nil, errors.New("full backup requires a committed audit key")
+	}
 
 	manifestKey := ManifestKey(bucketID)
 
@@ -410,6 +417,13 @@ func RunIncrementalBackup(
 	maxSegmentBytes int64,
 ) (*IncrementalBackupResult, error) {
 	start := time.Now()
+	key, err := query.ReadAuditKey(store)
+	if err != nil {
+		return nil, fmt.Errorf("reading audit key before incremental backup: %w", err)
+	}
+	if key == nil {
+		return nil, errors.New("incremental backup requires a committed audit key")
+	}
 
 	if maxSegmentBytes <= 0 {
 		maxSegmentBytes = maxExportSegmentBytes

@@ -75,6 +75,7 @@ func TestWorker_RotationPreloadsReadOnlyLedger(t *testing.T) {
 			meters := noop.NewMeterProvider()
 			store, err := dal.NewStore(t.TempDir(), logger, meters.Meter("test"), dal.DefaultConfig())
 			require.NoError(t, err)
+			seedMirrorAuditKey(t, store)
 			t.Cleanup(func() { require.NoError(t, store.Close()) })
 			attrs := attributes.New()
 			c, err := cache.New(1, meters.Meter("test"))

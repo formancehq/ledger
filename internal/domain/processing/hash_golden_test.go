@@ -14,7 +14,7 @@ import (
 // Golden tests pin the entire audit-hash specification against an
 // externally reproducible computation. They cover:
 //
-//   - the per-cluster key derivation (domain separator string,
+//   - the audit-secret key derivation (domain separator string,
 //     BLAKE3-Sum256 input shape, XXH3 seed extraction)
 //   - the payload concatenation order (concat(orders) || lastHash)
 //   - the algorithm and output encoding (BLAKE3-256 keyed, XXH3-128
@@ -28,10 +28,10 @@ import (
 // consistent — so historical audit entries that survive a refactor stay
 // verifiable.
 //
-// If you intentionally change the spec, bump commonpb.HashAlgorithm and
-// add a new generator implementation; do not edit these constants.
+// Future algorithm changes require a new HashAlgorithm value; the key input
+// changed for this unreleased-v3 audit-key cutover.
 
-const goldenClusterID = "golden-cluster-id"
+const goldenAuditKey = "0123456789abcdef0123456789abcdef"
 
 var (
 	goldenLastHash = []byte("previous-chain-link")
@@ -45,9 +45,9 @@ func TestHashGenerator_BLAKE3_Golden(t *testing.T) {
 	t.Parallel()
 
 	// Recompute the BLAKE3 audit hash by hand, following the spec from
-	// hash_blake3.go: key = BLAKE3-Sum256("audit-hash:blake3:v1:" + clusterID),
+	// hash_blake3.go: key = BLAKE3-Sum256("audit-hash:blake3:v1:" + auditKey),
 	// digest = BLAKE3-Keyed(key, concat(orders) || lastHash).
-	keyMaterial := blake3.Sum256([]byte("audit-hash:blake3:v1:" + goldenClusterID))
+	keyMaterial := blake3.Sum256([]byte("audit-hash:blake3:v1:" + goldenAuditKey))
 
 	hasher, err := blake3.NewKeyed(keyMaterial[:])
 	require.NoError(t, err)
@@ -59,12 +59,12 @@ func TestHashGenerator_BLAKE3_Golden(t *testing.T) {
 
 	expected := hasher.Sum(nil)
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, goldenClusterID)
+	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, goldenAuditKey)
 	_, got := g.Compute(nil, goldenLastHash, goldenOrders)
 
 	require.Equal(t, expected, got,
 		"BLAKE3 audit-hash spec drifted: the generator no longer produces "+
-			"BLAKE3-Keyed(BLAKE3-Sum256(\"audit-hash:blake3:v1:\"+clusterID), concat(orders)||lastHash). "+
+			"BLAKE3-Keyed(BLAKE3-Sum256(\"audit-hash:blake3:v1:\"+auditKey), concat(orders)||lastHash). "+
 			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new generator.")
 }
 
@@ -72,9 +72,9 @@ func TestHashGenerator_XXH3_Golden(t *testing.T) {
 	t.Parallel()
 
 	// Recompute the XXH3 audit hash by hand, following the spec from
-	// hash_xxh3.go: seed = first 8 bytes BE of BLAKE3-Sum256("audit-hash:xxh3:v1:" + clusterID),
+	// hash_xxh3.go: seed = first 8 bytes BE of BLAKE3-Sum256("audit-hash:xxh3:v1:" + auditKey),
 	// digest = LE(XXH3-128(concat(orders) || lastHash, seed).Lo) || LE(...Hi).
-	derived := blake3.Sum256([]byte("audit-hash:xxh3:v1:" + goldenClusterID))
+	derived := blake3.Sum256([]byte("audit-hash:xxh3:v1:" + goldenAuditKey))
 	seed := binary.BigEndian.Uint64(derived[:8])
 
 	var payload []byte
@@ -89,12 +89,12 @@ func TestHashGenerator_XXH3_Golden(t *testing.T) {
 	binary.LittleEndian.PutUint64(expected[:8], h.Lo)
 	binary.LittleEndian.PutUint64(expected[8:], h.Hi)
 
-	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, goldenClusterID)
+	g := NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3, goldenAuditKey)
 	_, got := g.Compute(nil, goldenLastHash, goldenOrders)
 
 	require.Equal(t, expected[:], got,
 		"XXH3 audit-hash spec drifted: the generator no longer produces "+
-			"LE(XXH3-128(concat(orders)||lastHash, seed=BE-u64(BLAKE3-Sum256(\"audit-hash:xxh3:v1:\"+clusterID)[:8]))). "+
+			"LE(XXH3-128(concat(orders)||lastHash, seed=BE-u64(BLAKE3-Sum256(\"audit-hash:xxh3:v1:\"+auditKey)[:8]))). "+
 			"If this drift is intentional, bump commonpb.HashAlgorithm and add a new generator.")
 }
 
@@ -116,7 +116,7 @@ func TestHashGenerator_PayloadIsBytesOnly(t *testing.T) {
 		commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3,
 		commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3,
 	} {
-		g := NewHashGenerator(algo, goldenClusterID)
+		g := NewHashGenerator(algo, goldenAuditKey)
 
 		_, got := g.Compute(nil, nil, nonProto)
 		require.NotEmpty(t, got, "algo %s: must hash arbitrary bytes without proto involvement", algo)

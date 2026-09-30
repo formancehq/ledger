@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -67,6 +68,8 @@ func TestCheckerBoundaryRebuildRejectsExhaustedCounters(t *testing.T) {
 	})
 }
 
+const checkerTestAuditKey = "0123456789abcdef0123456789abcdef"
+
 func createTestStore(t *testing.T) *dal.Store {
 	t.Helper()
 
@@ -77,6 +80,9 @@ func createTestStore(t *testing.T) *dal.Store {
 	s, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = s.Close() })
+	batch := s.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte(checkerTestAuditKey)))
+	require.NoError(t, batch.Commit())
 
 	return s
 }
@@ -131,7 +137,7 @@ func newTestEngine(t *testing.T) *testEngine {
 		attrs:               attrs,
 		processor:           proc,
 		cache:               c,
-		clusterID:           "test-cluster",
+		clusterID:           checkerTestAuditKey,
 		nextSequenceID:      1,
 		nextLedgerID:        1,
 		ledgers:             make(map[string]*commonpb.LedgerInfo),
@@ -1033,7 +1039,7 @@ func deleteAccountMetadataOrder(ledger, account, key string) *raftcmdpb.Order {
 func collectCheckErrors(t *testing.T, store *dal.Store, attrs *attributes.Attributes) []*servicepb.CheckStoreError {
 	t.Helper()
 
-	checker := NewChecker(store, attrs, "test-cluster", nil, logging.Testing())
+	checker := NewChecker(store, attrs, nil, logging.Testing())
 
 	var errors []*servicepb.CheckStoreError
 
@@ -1056,6 +1062,48 @@ func TestCheckerEmptyStore(t *testing.T) {
 
 	errors := collectCheckErrors(t, store, attrs)
 	require.Empty(t, errors, "empty store should have no errors")
+}
+
+func TestCheckerAuditKeyMissingCorruptOrMismatched(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		key       []byte
+		wantError bool
+	}{
+		{name: "missing", wantError: true},
+		{name: "corrupt", key: []byte("bad"), wantError: true},
+		{name: "mismatched", key: []byte("abcdef0123456789abcdef0123456789")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			engine := newTestEngine(t)
+			engine.processAndCommit(createLedgerOrder("ledger"))
+			batch := engine.store.OpenWriteSession()
+			if tc.key == nil {
+				require.NoError(t, batch.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}))
+			} else {
+				require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, tc.key))
+			}
+			require.NoError(t, batch.Commit())
+			checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
+			var findings []*servicepb.CheckStoreError
+			err := checker.Check(context.Background(), func(event *servicepb.CheckStoreEvent) {
+				if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
+					findings = append(findings, e.Error)
+				}
+			})
+			if tc.wantError {
+				require.ErrorContains(t, err, "audit key")
+
+				return
+			}
+			require.NoError(t, err)
+			require.True(t, slices.ContainsFunc(findings, func(f *servicepb.CheckStoreError) bool {
+				return f.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH
+			}))
+		})
+	}
 }
 
 // TestCheckerComprehensive performs a thorough check with many different write types:
@@ -1434,7 +1482,7 @@ func TestCheckerProgressEvents(t *testing.T) {
 		))
 	}
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 
 	var progressEvents []*servicepb.CheckStoreProgress
 
@@ -1761,7 +1809,7 @@ func TestCheckerSurfacesCorruptAuditEntry(t *testing.T) {
 	require.NoError(t, batch.SetBytes(auditKey, []byte{0xFF, 0xFF, 0xFF, 0xFF}))
 	require.NoError(t, batch.Commit())
 
-	checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
+	checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 	err := checker.Check(context.Background(), func(_ *servicepb.CheckStoreEvent) {})
 
 	// Before the fix: Check returned nil; the cursor break swallowed the
@@ -2146,7 +2194,7 @@ func indexCheckerFor(t *testing.T, stored map[domain.IndexKey]*commonpb.Index) (
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, "test-cluster", nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
 }
 
 // TestCompareIndexes_Identical pins the happy path: when the SubAttrIndex
@@ -2422,7 +2470,7 @@ func schemaCheckerFor(t *testing.T, ledgers []*commonpb.LedgerInfo) (*Checker, *
 
 	ctx := logging.TestingContext()
 
-	return NewChecker(store, attrs, "test-cluster", nil, logging.FromContext(ctx)), store
+	return NewChecker(store, attrs, nil, logging.FromContext(ctx)), store
 }
 
 func accountFieldSchema(key string, typ commonpb.MetadataType) *commonpb.MetadataSchema {

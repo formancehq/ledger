@@ -97,3 +97,13 @@ After review and merge, a separately authorized outer task may run
 Provider workers remain leaves. Manifest creation launches no product audit;
 first-pass findings remain hypotheses, and Jira publication and product fixes
 are separately authorized downstream actions.
+
+## EN-2479 write-readiness gate
+
+`Admission.waitAuditKeyReady` applies to every audited request, including the
+policy reconciler's first order. It polls only until a committed key is seen,
+then latches. Cancellation and malformed-row errors must return to the caller.
+The periodic leader reconciler proposes initialization before policy and
+retries on transient failure, so an early request cannot wedge the FSM or wait
+forever after a one-shot failure. The FSM domain owns deterministic first-wins
+apply semantics; this domain owns gate reachability and liveness.

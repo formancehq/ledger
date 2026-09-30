@@ -267,8 +267,9 @@ func richAuditOrder(ledger string) []byte {
 // Pebble at their canonical keys.
 func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string) {
 	t.Helper()
+	_ = clusterID
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	headerPayload, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
@@ -325,7 +326,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
 		attrs := attributes.New()
-		checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
+		checker := NewChecker(store, attrs, nil, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -334,7 +335,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 		var got []*servicepb.CheckStoreError
 
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), newChainVerifierFolds(), func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), newChainVerifierFolds(), func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
@@ -471,7 +472,7 @@ func runChainVerifierWithFolds(
 	t.Helper()
 
 	attrs := attributes.New()
-	checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
+	checker := NewChecker(store, attrs, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -482,7 +483,7 @@ func runChainVerifierWithFolds(
 	folds := newChainVerifierFolds()
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), folds, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}

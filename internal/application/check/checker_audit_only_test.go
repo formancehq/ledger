@@ -76,7 +76,7 @@ func persistFailureOnlyHistory(
 ) ([]*auditpb.AuditEntry, [][]*auditpb.AuditItem) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -128,7 +128,7 @@ func countErrorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckSt
 func collectCheckProgress(t *testing.T, store *dal.Store) []*servicepb.CheckStoreProgress {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), auditOnlyClusterID, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
 	var progress []*servicepb.CheckStoreProgress
 
@@ -491,7 +491,7 @@ func TestCheck_EmptyStore_EmitsSingleProgressEvent(t *testing.T) {
 			))
 		}
 
-		checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
+		checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 
 		var progress []*servicepb.CheckStoreProgress
 

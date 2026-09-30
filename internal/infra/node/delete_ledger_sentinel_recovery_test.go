@@ -146,6 +146,7 @@ func newDeleteSentinelApplier(t *testing.T, dir string) (*testApplierSetup, func
 	require.NoError(t, err)
 	s, err := dal.NewStore(filepath.Join(dir, "data"), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
+	seedApplierAuditKey(t, s)
 	sp, err := spool.NewDefault(spool.DefaultSpoolConfig{Dir: filepath.Join(dir, "spool")})
 	require.NoError(t, err)
 	closeSetup := sync.OnceFunc(func() {
@@ -159,7 +160,7 @@ func newDeleteSentinelApplier(t *testing.T, dir string) (*testApplierSetup, func
 	registry := state.NewStateRegistry(c, attributes.New())
 	fsm, err := state.NewMachine(logger, registry, state.NewCacheSnapshotter(logger, registry, nil),
 		s, dal.NewSentinelFactory(s, true), provider, nil, state.NewSharedState(), newNoopNotifier(t), nil,
-		"test-cluster", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
+		"", 0, func(*raftpb.Entry, *dal.WriteSession) error { return nil })
 	require.NoError(t, err)
 	recovery := state.NewRecovery(fsm, s)
 	require.NoError(t, recovery.RecoverState())

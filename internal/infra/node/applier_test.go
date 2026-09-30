@@ -40,6 +40,13 @@ func newNoopNotifier(t *testing.T) *MockNotifier {
 	return n
 }
 
+func seedApplierAuditKey(t *testing.T, store *dal.Store) {
+	t.Helper()
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
+	require.NoError(t, batch.Commit())
+}
+
 func listLedgerContains(s *dal.Store, name string) bool {
 	handle, err := s.NewDirectReadHandle()
 	if err != nil {
@@ -124,6 +131,7 @@ func newTestApplierSetupWithNotifier(t *testing.T, sink LocalResponses, notifier
 
 	pebbleStore, err := dal.NewStore(dataDir, logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
+	seedApplierAuditKey(t, pebbleStore)
 
 	// Create initial snapshot at index 0 so the WAL is initialized.
 	confState := &raftpb.ConfState{Voters: []uint64{1}}
