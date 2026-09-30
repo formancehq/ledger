@@ -643,13 +643,13 @@ message SinkError {
 
 // NatsSinkConfig holds NATS JetStream sink configuration.
 message NatsSinkConfig {
-  string url = 1;
+  string url = 1 [(sensitive_url) = true];  // may embed a token in the userinfo position
   string topic = 2;
 }
 
 // ClickHouseSinkConfig holds ClickHouse sink configuration.
 message ClickHouseSinkConfig {
-  string dsn = 1;    // e.g. "clickhouse://user:pass@host:9000/db"
+  string dsn = 1 [(sensitive_url) = true];    // e.g. "clickhouse://user:pass@host:9000/db"
   string table = 2;  // Table name (default: "ledger_events")
 }
 
@@ -1073,7 +1073,7 @@ message OAuth2ClientCredentials {
 }
 
 message PostgresMirrorSourceConfig {
-  string dsn = 1;  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
+  string dsn = 1 [(sensitive_url) = true];  // e.g. "postgres://user:pass@host:5432/ledger?sslmode=disable"
   // When set, the DSN password is overridden by a freshly minted AWS RDS IAM
   // authentication token on every new pool connection. Ambient AWS credentials
   // (IRSA, instance profile, env vars, profile) are loaded via the default
@@ -1443,6 +1443,12 @@ extend google.protobuf.FieldOptions {
   // sensitive marks fields that must not appear verbatim in a detached public
   // projection. Strings are replaced with a marker; other field kinds are cleared.
   bool sensitive = 50126;
+  // sensitive_url marks string fields whose value is a URL or DSN that may embed
+  // credentials in the userinfo component or recognised credential query parameters.
+  // The projection replaces credentials with "xxxxx" while preserving the host,
+  // port, path and non-credential query parameters. Falls back to Marker when the
+  // value cannot be parsed as a URL.
+  bool sensitive_url = 50127;
 }
 
 message QueryFilter {

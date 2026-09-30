@@ -5435,7 +5435,7 @@ func (x *SinkError) GetOccurredAt() *Timestamp {
 // NatsSinkConfig holds NATS JetStream sink configuration.
 type NatsSinkConfig struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"`
+	Url           string                 `protobuf:"bytes,1,opt,name=url,proto3" json:"url,omitempty"` // may embed a token in the userinfo position
 	Topic         string                 `protobuf:"bytes,2,opt,name=topic,proto3" json:"topic,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -12972,6 +12972,14 @@ var file_common_proto_extTypes = []protoimpl.ExtensionInfo{
 		Tag:           "varint,50126,opt,name=sensitive",
 		Filename:      "common.proto",
 	},
+	{
+		ExtendedType:  (*descriptorpb.FieldOptions)(nil),
+		ExtensionType: (*bool)(nil),
+		Field:         50127,
+		Name:          "common.sensitive_url",
+		Tag:           "varint,50127,opt,name=sensitive_url",
+		Filename:      "common.proto",
+	},
 }
 
 // Extension fields to descriptorpb.MethodOptions.
@@ -13002,6 +13010,14 @@ var (
 	//
 	// optional bool sensitive = 50126;
 	E_Sensitive = &file_common_proto_extTypes[4]
+	// sensitive_url marks string fields whose value is a URL or DSN that may embed
+	// credentials in the userinfo component or recognised credential query parameters.
+	// The projection replaces credentials with "xxxxx" while preserving the host,
+	// port, path and non-credential query parameters. Falls back to Marker when the
+	// value cannot be parsed as a URL.
+	//
+	// optional bool sensitive_url = 50127;
+	E_SensitiveUrl = &file_common_proto_extTypes[5]
 )
 
 var File_common_proto protoreflect.FileDescriptor
@@ -13326,12 +13342,12 @@ const file_common_proto_rawDesc = "" +
 	"\tSinkError\x12\x18\n" +
 	"\amessage\x18\x01 \x01(\tR\amessage\x122\n" +
 	"\voccurred_at\x18\x02 \x01(\v2\x11.common.TimestampR\n" +
-	"occurredAt\"8\n" +
-	"\x0eNatsSinkConfig\x12\x10\n" +
-	"\x03url\x18\x01 \x01(\tR\x03url\x12\x14\n" +
-	"\x05topic\x18\x02 \x01(\tR\x05topic\">\n" +
-	"\x14ClickHouseSinkConfig\x12\x10\n" +
-	"\x03dsn\x18\x01 \x01(\tR\x03dsn\x12\x14\n" +
+	"occurredAt\">\n" +
+	"\x0eNatsSinkConfig\x12\x16\n" +
+	"\x03url\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03url\x12\x14\n" +
+	"\x05topic\x18\x02 \x01(\tR\x05topic\"D\n" +
+	"\x14ClickHouseSinkConfig\x12\x16\n" +
+	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12\x14\n" +
 	"\x05table\x18\x02 \x01(\tR\x05table\"\xca\x01\n" +
 	"\x0fKafkaSinkConfig\x12\x18\n" +
 	"\abrokers\x18\x01 \x03(\tR\abrokers\x12\x14\n" +
@@ -13551,9 +13567,9 @@ const file_common_proto_rawDesc = "" +
 	"\tclient_id\x18\x01 \x01(\tR\bclientId\x12)\n" +
 	"\rclient_secret\x18\x02 \x01(\tB\x04\xf0\xbc\x18\x01R\fclientSecret\x12%\n" +
 	"\x0etoken_endpoint\x18\x03 \x01(\tR\rtokenEndpoint\x12\x16\n" +
-	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"l\n" +
-	"\x1aPostgresMirrorSourceConfig\x12\x10\n" +
-	"\x03dsn\x18\x01 \x01(\tR\x03dsn\x12<\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopes\"r\n" +
+	"\x1aPostgresMirrorSourceConfig\x12\x16\n" +
+	"\x03dsn\x18\x01 \x01(\tB\x04\xf8\xbc\x18\x01R\x03dsn\x12<\n" +
 	"\faws_iam_auth\x18\x02 \x01(\v2\x1a.common.PostgresAwsIamAuthR\n" +
 	"awsIamAuth\"T\n" +
 	"\x12PostgresAwsIamAuth\x12\x16\n" +
@@ -14020,7 +14036,8 @@ const file_common_proto_rawDesc = "" +
 	"\x15allowed_query_targets\x12\x1d.google.protobuf.FieldOptions\x18ˇ\x03 \x03(\x0e2\x13.common.QueryTargetR\x13allowedQueryTargets:W\n" +
 	"\x18valid_on_no_query_target\x12\x1d.google.protobuf.FieldOptions\x18̇\x03 \x01(\bR\x14validOnNoQueryTarget:R\n" +
 	"\x15ledger_log_is_history\x12\x1d.google.protobuf.FieldOptions\x18͇\x03 \x01(\bR\x12ledgerLogIsHistory:=\n" +
-	"\tsensitive\x12\x1d.google.protobuf.FieldOptions\x18·\x03 \x01(\bR\tsensitiveB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
+	"\tsensitive\x12\x1d.google.protobuf.FieldOptions\x18·\x03 \x01(\bR\tsensitive:D\n" +
+	"\rsensitive_url\x12\x1d.google.protobuf.FieldOptions\x18χ\x03 \x01(\bR\fsensitiveUrlB9Z7github.com/formancehq/ledger/v3/internal/proto/commonpbb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once
@@ -14509,12 +14526,13 @@ var file_common_proto_depIdxs = []int32{
 	198, // 268: common.valid_on_no_query_target:extendee -> google.protobuf.FieldOptions
 	198, // 269: common.ledger_log_is_history:extendee -> google.protobuf.FieldOptions
 	198, // 270: common.sensitive:extendee -> google.protobuf.FieldOptions
-	18,  // 271: common.auth_policy:type_name -> common.MethodAuthPolicy
-	16,  // 272: common.allowed_query_targets:type_name -> common.QueryTarget
-	273, // [273:273] is the sub-list for method output_type
-	273, // [273:273] is the sub-list for method input_type
-	271, // [271:273] is the sub-list for extension type_name
-	266, // [266:271] is the sub-list for extension extendee
+	198, // 271: common.sensitive_url:extendee -> google.protobuf.FieldOptions
+	18,  // 272: common.auth_policy:type_name -> common.MethodAuthPolicy
+	16,  // 273: common.allowed_query_targets:type_name -> common.QueryTarget
+	274, // [274:274] is the sub-list for method output_type
+	274, // [274:274] is the sub-list for method input_type
+	272, // [272:274] is the sub-list for extension type_name
+	266, // [266:272] is the sub-list for extension extendee
 	0,   // [0:266] is the sub-list for field type_name
 }
 
@@ -14719,7 +14737,7 @@ func file_common_proto_init() {
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_common_proto_rawDesc), len(file_common_proto_rawDesc)),
 			NumEnums:      18,
 			NumMessages:   178,
-			NumExtensions: 5,
+			NumExtensions: 6,
 			NumServices:   0,
 		},
 		GoTypes:           file_common_proto_goTypes,
