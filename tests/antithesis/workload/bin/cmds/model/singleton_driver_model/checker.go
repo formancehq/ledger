@@ -197,6 +197,7 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		indexCreateSeq: map[string]map[string]uint64{},
 	}
 	c.ledgerSeq.Store(uint64(len(ledgerNames)))
+
 	return c
 }
 
@@ -207,6 +208,7 @@ func (c *Checker) nextLedgerName() string {
 func (c *Checker) ledgerNamesSnapshot() []string {
 	c.ledgerMu.RLock()
 	defer c.ledgerMu.RUnlock()
+
 	return append([]string(nil), c.ledgerNames...)
 }
 
@@ -227,6 +229,7 @@ func (c *Checker) reserveLedgerCreate(bulk oracle.Bulk) bool {
 	for _, req := range bulk.Requests {
 		if req.GetCreateLedger() != nil {
 			name = req.GetCreateLedger().GetName()
+
 			break
 		}
 	}
@@ -263,6 +266,7 @@ func (c *Checker) releaseLedgerCreate(bulk oracle.Bulk) {
 			}
 		}
 		c.mu.Unlock()
+
 		return
 	}
 }

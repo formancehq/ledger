@@ -11,8 +11,10 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/lifecycle"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -38,6 +40,7 @@ func main() {
 		c, conn, err := internal.NewClient()
 		if err != nil {
 			fmt.Printf("Not ready (connect): %s\n", err)
+
 			continue
 		}
 		// Try listing ledgers as a health check
@@ -45,10 +48,12 @@ func main() {
 		if err != nil {
 			fmt.Printf("Not ready (list): %s\n", err)
 			_ = conn.Close()
+
 			continue
 		}
 		client = c
 		clusterClient = clusterpb.NewClusterServiceClient(conn)
+
 		break
 	}
 
@@ -61,10 +66,12 @@ func main() {
 		state, err := clusterClient.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil {
 			fmt.Printf("Not ready (cluster state): %s\n", err)
+
 			continue
 		}
 		if state.GetLeader() == 0 {
 			fmt.Println("Not ready: no leader elected")
+
 			continue
 		}
 		voterCount := 0
@@ -75,9 +82,11 @@ func main() {
 		}
 		if voterCount < expectedVoters {
 			fmt.Printf("Not ready: %d/%d voters\n", voterCount, expectedVoters)
+
 			continue
 		}
 		log.Printf("init: cluster ready (leader=%d, voters=%d)", state.GetLeader(), voterCount)
+
 		break
 	}
 
@@ -87,6 +96,7 @@ func main() {
 	// after signaling setup_complete so the main workload container can start.
 	if os.Getenv("EXIT_AFTER_SETUP") == "true" {
 		log.Println("init: EXIT_AFTER_SETUP=true, exiting")
+
 		return
 	}
 

@@ -211,3 +211,14 @@ The owning audit is determined by the violated oracle:
 When one failure crosses several rows, report one root cause here only if
 confidentiality is violated. Cite the neighboring effect as impact or evidence
 and let the challenge pass reject duplicate ownership.
+
+## EN-2479 audit-key secret boundary
+
+Classify `SubGlobAuditKey` and `TechnicalUpdate_AuditKey` as secret material.
+Authorized readers are Raft replicas and backup operators; a plaintext
+checkpoint necessarily exposes the key, so backup access control is part of
+the design rather than a redaction promise. Public `ClusterConfig`, service
+responses, errors, logs, telemetry, manifests and diagnostics must not contain
+the raw key. A canary probe must trace actual serializers and distinguish an
+authorized checkpoint from an unintended public exposure. Rotation and
+external secret storage are outside this revision.

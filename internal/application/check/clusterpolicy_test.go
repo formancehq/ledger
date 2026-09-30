@@ -174,7 +174,7 @@ func TestCheck_ClusterPolicyProjection_EmptyAuditWiring(t *testing.T) {
 
 		// No readstore handle: the reverse-map pass skips itself, keeping the
 		// events attributable to the policy comparison alone.
-		checker := NewChecker(store, attributes.New(), "test-cluster", nil, logging.Testing())
+		checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
 		var got []*servicepb.CheckStoreError
 

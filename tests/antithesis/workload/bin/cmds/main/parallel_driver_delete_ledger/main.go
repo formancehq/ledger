@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -18,9 +21,10 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ledgerName := internal.PrefixEphemeral.New()
 	details := internal.Details{"ledger": ledgerName}
@@ -72,6 +76,7 @@ func main() {
 	stream, err := client.ListLedgers(ctx, &servicepb.ListLedgersRequest{})
 	if err != nil {
 		internal.LogCleanupError("list ledgers after delete", err)
+
 		return
 	}
 
@@ -79,11 +84,12 @@ func main() {
 
 	for {
 		info, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			internal.LogCleanupError("list ledgers stream after delete", err)
+
 			return
 		}
 

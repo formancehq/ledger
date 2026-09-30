@@ -4,7 +4,9 @@ import (
 	"context"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -16,8 +18,8 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:      internal.RandomPostings(),
-							Force:         true,
+							Postings: internal.RandomPostings(),
+							Force:    true,
 						},
 					}},
 				},
@@ -34,7 +36,7 @@ func main() {
 			return
 		}
 
-		txID := createdTx.Transaction.Id
+		txID := createdTx.GetTransaction().GetId()
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
 		revertResp, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
@@ -56,10 +58,10 @@ func main() {
 			return
 		}
 
-		if revertResp != nil && len(revertResp.Logs) > 0 {
-			applyLog := revertResp.Logs[0].Payload.GetApply()
+		if revertResp != nil && len(revertResp.GetLogs()) > 0 {
+			applyLog := revertResp.GetLogs()[0].GetPayload().GetApply()
 			if applyLog != nil {
-				if revertedTx := applyLog.Log.Data.GetRevertedTransaction(); revertedTx != nil {
+				if revertedTx := applyLog.GetLog().GetData().GetRevertedTransaction(); revertedTx != nil {
 					internal.CheckPostCommitVolumes(revertedTx.GetRevertTransaction().GetPostCommitVolumes(), details)
 				}
 			}
@@ -71,6 +73,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("get transaction after revert", err)
+
 			return
 		}
 

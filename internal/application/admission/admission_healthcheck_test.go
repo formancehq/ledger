@@ -27,7 +27,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.writeGate = mockWriteGate
 
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_CreateLedger{
 				CreateLedger: &servicepb.CreateLedgerRequest{
 					Name: "test-ledger-rejected",
@@ -49,7 +49,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.writeGate = mockWriteGate
 
-		_, err := a.Admit(context.Background(),
+		_, err := a.Admit(attributedTestContext(context.Background()),
 			servicepb.UnsignedApplyRequest("",
 				&servicepb.Request{
 					Type: &servicepb.Request_CreateLedger{
@@ -96,7 +96,7 @@ func TestAdmitRejectsWhenUnhealthy(t *testing.T) {
 		a, _ := createTestAdmission(t, store)
 		a.writeGate = mockWriteGate
 
-		_, err := a.Admit(context.Background(), servicepb.UnsignedApplyRequest("", &servicepb.Request{
+		_, err := a.Admit(attributedTestContext(context.Background()), servicepb.UnsignedApplyRequest("", &servicepb.Request{
 			Type: &servicepb.Request_Apply{
 				Apply: &servicepb.LedgerApplyRequest{
 					Ledger: testLedgerName,

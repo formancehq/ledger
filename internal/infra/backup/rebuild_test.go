@@ -45,6 +45,7 @@ func newRebuildTestStore(t *testing.T) *dal.Store {
 	store, err := dal.NewStore(t.TempDir(), logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+	seedBackupTestAuditKey(t, store)
 
 	return store
 }

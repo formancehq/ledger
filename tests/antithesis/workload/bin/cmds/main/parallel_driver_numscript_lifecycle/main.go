@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -70,6 +72,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("get numscript after second version", err)
+
 			return
 		}
 
@@ -85,6 +88,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("list numscript versions", err)
+
 			return
 		}
 
@@ -106,6 +110,7 @@ func numscriptIsListed(ctx context.Context, client servicepb.BucketServiceClient
 			return true, nil
 		}
 	}
+
 	return false, nil
 }
 

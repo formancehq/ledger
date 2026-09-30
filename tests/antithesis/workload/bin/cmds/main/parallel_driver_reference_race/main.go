@@ -93,12 +93,7 @@ func writeMarker(ctx context.Context, client servicepb.BucketServiceClient, ledg
 		return false
 	}
 
-	logs := resp.GetLogs()
-	if len(logs) == 0 {
-		return false
-	}
-
-	return true
+	return len(resp.GetLogs()) != 0
 }
 
 // countTransactionsWithReference lists transactions matching ref after an
@@ -111,6 +106,7 @@ func countTransactionsWithReference(
 	ledger, ref string,
 ) ([]uint64, bool) {
 	ids, err := internal.ReadOracleTransactions(ctx, client, ledger, actions.ReferenceFilter(ref))
+
 	return ids, err == nil
 }
 

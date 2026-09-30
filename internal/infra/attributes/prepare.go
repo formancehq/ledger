@@ -21,23 +21,12 @@ import (
 // exactly one Pebble entry that Set overwrites in place, so there are no
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
-// The seven restore preparations are:
-//  1. lastAppliedIndex is preserved as the restored genesis boundary — the
-//     raft index the restored FSM genesis occupies in the new log (see
-//     below); a genesis checkpoint (index 0) gets the fallback boundary 1.
-//  2. live query-checkpoint rows marked as restored, because their physical
-//     checkpoint directories are not part of the restored Pebble store.
-//  3. persisted config (nodeId, clusterId) deleted, so the backup is portable
-//     to any cluster.
-//  4. ZoneClusterTransient wiped — in-flight-only tracking (backup jobs) has
-//     no meaning on the restored cluster.
-//  5. persisted bloom blocks dropped, so the booting node rebuilds the bloom
-//     from a full attribute scan using its own config.
-//  6. persisted Raft peers dropped (EN-1413), so the restored cluster does
-//     not dial the source cluster's pods. NewNode reseeds [ZoneGlobal]
-//     [SubGlobPeers] from cfg.Peers + self on the next boot.
-//  7. cache zone (ZoneCache) cleared, so the restored node boots with a cold
-//     cache and re-seeds from the rebuilt attribute zone on first touch.
+// Restore preparation retains business rows, marks query checkpoints as
+// restored, discards both cluster-local zones and the cache, then writes the
+// restored genesis boundary into the new cluster's durable zone. The applied
+// index is read before the local zone is cleared; index 0 maps to boundary 1.
+// The destination reseeds its persisted identity, peers and bloom filters.
+// The removed-member registry is intentionally discarded with the source peers.
 //
 // The caller must ensure all in-memory state has been flushed to Pebble before
 // the checkpoint was taken. The backup flow achieves this by running the flush
@@ -61,7 +50,7 @@ func PrepareForBackup(s *dal.Store) error {
 	// silently rewritten as the genesis fallback.
 	var genesisBoundary uint64
 
-	switch val, closer, err := s.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}); {
+	switch val, closer, err := s.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}); {
 	case err == nil:
 		if len(val) != 8 {
 			_ = closer.Close()
@@ -89,15 +78,6 @@ func PrepareForBackup(s *dal.Store) error {
 	}
 
 	batch := s.OpenWriteSession()
-
-	appliedIndex := make([]byte, 8)
-	binary.BigEndian.PutUint64(appliedIndex, genesisBoundary)
-
-	if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, appliedIndex); err != nil {
-		_ = batch.Cancel()
-
-		return fmt.Errorf("writing genesis boundary: %w", err)
-	}
 
 	// Query-checkpoint metadata survives in the primary Pebble store, but the
 	// physical main/read-index checkpoint directories do not. Mark every live
@@ -135,13 +115,6 @@ func PrepareForBackup(s *dal.Store) error {
 		}
 	}
 
-	// Remove persisted config (nodeId, clusterId) so the backup is portable to any cluster.
-	if err := batch.DeleteKey([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}); err != nil {
-		_ = batch.Cancel()
-
-		return fmt.Errorf("deleting persisted config: %w", err)
-	}
-
 	// Wipe ZoneClusterTransient — backup-job state and any other
 	// in-flight-only tracking has no meaning on the restored cluster.
 	// A backup taken while a job was RUNNING would otherwise carry that
@@ -160,36 +133,26 @@ func PrepareForBackup(s *dal.Store) error {
 		return fmt.Errorf("deleting cluster-transient zone: %w", err)
 	}
 
-	// Drop persisted bloom blocks. After an incremental restore they are stale
-	// (they predate the logs RebuildDelta replayed into the attribute zone, so
-	// they lack any post-checkpoint account), and their block layout is tied to
-	// the source's bloom config — not necessarily the config of the cluster that
-	// boots this data. Clearing them forces the booting node to rebuild the
-	// bloom from a full attribute scan using its own config; otherwise
-	// RestoreFromStore loads the stale blocks and post-checkpoint accounts get
-	// bloom-false-negatived (read as {0,0}) on the apply path.
+	// Drop all durable cluster-local rows in one range tombstone. This includes
+	// identity, topology, membership, removal tombstones and bloom blocks.
+	// New local prefixes inherit the same restore contract automatically.
 	if err := batch.DeleteRange(
-		[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
-		[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+		[]byte{dal.ZoneClusterPersistent},
+		[]byte{dal.ZoneClusterPersistent + 1},
 		pebble.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
-		return fmt.Errorf("deleting persisted bloom blocks: %w", err)
+		return fmt.Errorf("deleting cluster-persistent zone: %w", err)
 	}
 
-	// Drop persisted Raft peers (EN-1413). Cluster membership is local to
-	// the source cluster; carrying it over would make a restored node dial
-	// the source pods. The booting node reseeds membership from cfg.Peers
-	// + self via n.RegisterPeer in the bootstrap module.
-	if err := batch.DeleteRange(
-		[]byte{dal.ZoneGlobal, dal.SubGlobPeers},
-		[]byte{dal.ZoneGlobal, dal.SubGlobPeers + 1},
-		pebble.NoSync,
-	); err != nil {
+	appliedIndex := make([]byte, 8)
+	binary.BigEndian.PutUint64(appliedIndex, genesisBoundary)
+
+	if err := batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, appliedIndex); err != nil {
 		_ = batch.Cancel()
 
-		return fmt.Errorf("deleting persisted Raft peers: %w", err)
+		return fmt.Errorf("writing genesis boundary: %w", err)
 	}
 
 	// Clear the cache zone (per-entry cache rows + rotation metadata). Same

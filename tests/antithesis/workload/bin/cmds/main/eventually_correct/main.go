@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -33,6 +35,7 @@ func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient
 			}
 			if internal.IsTransient(err) {
 				log.Printf("composer: barrier #%d transient, retrying: %s", attempt, err)
+
 				continue
 			}
 
@@ -49,6 +52,7 @@ func waitForQuiescence(ctx context.Context, client servicepb.BucketServiceClient
 
 		if lastCommitIndex > 0 && currentIndex == lastCommitIndex+1 {
 			log.Printf("composer: quiescence confirmed at commitIndex=%d after %d barriers", currentIndex, attempt)
+
 			return currentIndex
 		}
 
@@ -66,15 +70,17 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	commitIndex := waitForQuiescence(ctx, client, 0)
 	assert.Sometimes(commitIndex > 0, "barrier quiescence achieved", nil)
 
 	if commitIndex == 0 {
 		log.Printf("composer: could not achieve quiescence, aborting")
+
 		return
 	}
 
@@ -111,7 +117,7 @@ func listAccounts(ctx context.Context, client servicepb.BucketServiceClient, led
 
 	for {
 		account, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return accounts, nil
 		}
 		if err != nil {
@@ -203,7 +209,7 @@ func checkAccountBalances(ctx context.Context, client servicepb.BucketServiceCli
 			"address": address,
 		})
 
-		internal.CheckAccountVolumes(account.Volumes, internal.Details{
+		internal.CheckAccountVolumes(account.GetVolumes(), internal.Details{
 			"ledger":  ledger,
 			"address": address,
 		})
@@ -249,19 +255,19 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			balance := parseBalance(vol.GetBalance())
 
 			internal.CheckVolume(input, output, balance, details.With(internal.Details{
-				"account": account.Address,
+				"account": account.GetAddress(),
 				"asset":   asset,
 				"color":   color,
 			}))
 
 			getAcc, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledger,
-				Address: account.Address,
+				Address: account.GetAddress(),
 			})
 			if err != nil {
 				if !internal.IsTransient(err) {
 					assert.Unreachable("GetAccount returned unexpected error in cross-check", details.With(internal.Details{
-						"account": account.Address,
+						"account": account.GetAddress(),
 						"error":   err,
 					}))
 				}
@@ -273,7 +279,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			actualVol := getAcc.FindVolume(asset, color)
 			if actualVol == nil {
 				assert.Unreachable("should get requested volumes", details.With(internal.Details{
-					"account": account.Address,
+					"account": account.GetAddress(),
 					"asset":   asset,
 					"color":   color,
 				}))
@@ -289,18 +295,20 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 				newCommitIndex := waitForQuiescence(ctx, client, quiescentCommitIndex)
 				if newCommitIndex == 0 {
 					log.Printf("composer: balance comparison inconclusive for ledger %s: quiescence unavailable", ledger)
+
 					return 0
 				}
 				if newCommitIndex != quiescentCommitIndex+1 {
 					log.Printf("composer: balance mismatch on %s/%s (list=%s, get=%s), additional proposals at %d→%d — re-reading",
-						account.Address, asset, balance.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+						account.GetAddress(), asset, balance.String(), actualBalance.String(), quiescentCommitIndex, newCommitIndex)
+
 					return newCommitIndex
 				}
 				quiescentCommitIndex = newCommitIndex
 
 				// No proposal other than our own barrier crossed the observation.
 				assert.Unreachable("list/get balance divergence persisted past quiescence", details.With(internal.Details{
-					"account":       account.Address,
+					"account":       account.GetAddress(),
 					"asset":         asset,
 					"listBalance":   balance.String(),
 					"actualBalance": actualBalance.String(),
@@ -312,7 +320,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 			}
 
 			assert.Reachable("list/get balance pair verified matching", details.With(internal.Details{
-				"account":       account.Address,
+				"account":       account.GetAddress(),
 				"asset":         asset,
 				"listBalance":   balance.String(),
 				"actualBalance": actualBalance.String(),
@@ -323,10 +331,10 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 
 		// Cross-check metadata: ListAccounts metadata should match GetAccount metadata.
 		// Only check if we successfully got the account above (getAcc from the last asset iteration).
-		if len(account.Volumes) > 0 {
+		if len(account.GetVolumes()) > 0 {
 			getAcc, err := client.GetAccount(ctx, &servicepb.GetAccountRequest{
 				Ledger:  ledger,
-				Address: account.Address,
+				Address: account.GetAddress(),
 			})
 			if err == nil {
 				crossCheckMetadata(account, getAcc, details)
@@ -342,6 +350,7 @@ func checkVolumesConsistentAttempt(ctx context.Context, client servicepb.BucketS
 
 	assert.Reachable("can check all volumes for consistency", details)
 	log.Printf("composer: volumes_consistent: done for ledger %s", ledger)
+
 	return 0
 }
 
@@ -353,13 +362,13 @@ func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details inter
 	for key, listVal := range listMeta {
 		getVal, ok := getMeta[key]
 		assert.AlwaysOrUnreachable(ok, "list metadata key should exist in getaccount", details.With(internal.Details{
-			"account": listAccount.Address,
+			"account": listAccount.GetAddress(),
 			"key":     key,
 		}))
 
 		if ok {
 			assert.AlwaysOrUnreachable(listVal == getVal, "list metadata value should match getaccount", details.With(internal.Details{
-				"account": listAccount.Address,
+				"account": listAccount.GetAddress(),
 				"key":     key,
 				"listVal": listVal,
 				"getVal":  getVal,
@@ -368,7 +377,7 @@ func crossCheckMetadata(listAccount, getAccount *commonpb.Account, details inter
 	}
 
 	assert.AlwaysOrUnreachable(len(listMeta) == len(getMeta), "metadata key count should match between list and get", details.With(internal.Details{
-		"account":  listAccount.Address,
+		"account":  listAccount.GetAddress(),
 		"listKeys": len(listMeta),
 		"getKeys":  len(getMeta),
 	}))

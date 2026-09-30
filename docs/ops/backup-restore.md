@@ -195,9 +195,9 @@ manifest, is not a usable backup.
 
 ---
 
-The restore validation step above is recommended, but not enforced by
-finalization. Offline bootstrap runs Checker only with `--validate`; see
-[Validate](#step-2-validate-recommended) for the operational recommendation.
+The restore validation step above is required before gRPC finalization.
+Offline bootstrap runs Checker only with `--validate`; see
+[Validate](#step-2-validate-required-for-grpc-finalization) for details.
 
 ## Backup ()
 
@@ -261,13 +261,21 @@ Backup preparation is performed on the **restore side** (during `FinalizeRestore
 
 1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
 2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
-3. **Remove persisted config**: Node and cluster IDs are stripped for portability.
-4. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
-5. **Drop persisted bloom blocks**: Stale bloom blocks are cleared so the booting node rebuilds the bloom from a full attribute scan using its own config.
-6. **Drop persisted Raft peers**: Cluster membership is local to the source cluster; the booting node reseeds membership from its own config.
-7. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
+3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
+4. **Wipe the cluster-persistent zone**: One range delete removes source node/cluster identity, Raft peers, removed-member tombstones and stale Bloom blocks. The destination re-seeds its identity and membership and rebuilds Bloom from attributes. The restored genesis boundary is written back to this zone after the delete in the same batch.
+5. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
 
 **File**: `internal/infra/attributes/prepare.go` — `PrepareForBackup()`
+
+The audit key is a 32-byte random secret committed by Raft before the first
+audit entry. Full backup is refused until it exists. A full checkpoint contains
+the key; later incremental segments contain audit entries and orders but do
+not change the key. Restoring A into B therefore keeps A's audit key while B
+uses its own cluster ID for membership and its default backup namespace. A
+later backup from B carries the same audit key under B's backup namespace.
+Anyone who can read a plaintext backup can read the key and, with write access
+to history, forge a new chain. Protect backup artifacts accordingly; checker
+validation does not authenticate a coordinated rewrite of key and history.
 
 ### What the Backup Contains
 
@@ -280,7 +288,13 @@ The backup is a complete Pebble database that contains:
 | Per-Ledger | `0x03` | Per-ledger data (reversion bitset words, pending cleanups, mirror state) |
 | History | `0x04` | Transaction logs (`{0x04, 0x01}`), audit entries (`{0x04, 0x02}`) |
 | Idempotency | `0x05` | Idempotency keys |
-| Global | `0x06` | Last applied index (preserved on restore as the genesis boundary), last applied timestamp, signing keys, signing config, sink configs, sink cursors, sink statuses |
+| Global | `0x06` | Retained business and governance state: last applied timestamp, signing keys/config, sink config/cursors/status, replicated cluster config and policy, query checkpoints |
+| Cluster transient | `0x07` | Backup jobs, removed on cross-cluster restore |
+| Cluster persistent | `0x08` | Source applied index, node/cluster identity, Raft members and removal tombstones, Bloom blocks; removed on cross-cluster restore except for the rewritten genesis boundary |
+
+This changes the physical Pebble layout. An older pre-release store is rejected
+at startup through its old boot anchor; take a new backup with the matching
+binary before recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
 
 
 ### Sequence Diagram
@@ -484,18 +498,18 @@ outside this timeout; size the process termination grace period to allow that
 additional work. Staging-store close errors are logged under the existing close
 policy and are not returned by the restore stop hook.
 
-### Step 2: Validate (Recommended)
+### Step 2: Validate (Required for gRPC Finalization)
 
 Checker validation is an operator-invoked integrity check, outside the normal
 request-processing path. During restore it checks the staged data before it
 becomes live: `restore validate` invokes it through the restore-mode server's
 gRPC API, while offline `store bootstrap --validate` runs it without a server.
-It is not an automatic prerequisite of `FinalizeRestore`.
+It is a prerequisite of `FinalizeRestore`.
 
 For recovery and restore drills, run validation after download and incremental
 replay complete, before finalization. Investigate any reported integrity errors
 before proceeding. The numbered workflow is the recommended operational
-sequence; the server does not enforce successful validation before finalization.
+sequence; the server enforces successful validation before gRPC finalization.
 
 ```bash
 ledgerctl restore validate
@@ -550,10 +564,8 @@ ledgerctl restore finalize --yes
 
 Calls `RestoreService.FinalizeRestore` (unary). This commits the staged backup as live data.
 
-`FinalizeRestore` does not run Checker or require a prior successful
-`ValidateRestore` call. Successful finalization therefore does not establish
-that the restored data passed integrity validation. To make validation success
-a condition of finalization in an operator script, use:
+`FinalizeRestore` does not run Checker itself, but requires a prior successful
+`ValidateRestore` call for the currently staged backup. Use:
 
 ```bash
 ledgerctl restore validate && ledgerctl restore finalize

@@ -56,7 +56,7 @@ func (r *Recovery) RecoverState() error {
 
 	// Phase 1: load a fresh FSMState in its entirety. Any error returns
 	// before we touch the Machine.
-	newState, err := LoadFSMStateFromStore(r.reader, handle, r.apply.State.ClusterID)
+	newState, err := LoadFSMStateFromStore(r.reader, handle)
 	if err != nil {
 		return err
 	}

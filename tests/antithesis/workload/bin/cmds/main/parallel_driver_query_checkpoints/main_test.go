@@ -12,6 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -21,11 +27,6 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
 )
 
 // The subprocess sets SDK output before package initialization and runs the
@@ -41,13 +42,16 @@ func TestQueryCheckpointDriverProcess(t *testing.T) {
 			grpc.WithUnaryInterceptor(func(callCtx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoke grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 				if method == clusterpb.ClusterService_ListQueryCheckpoints_FullMethodName {
 					cancel()
+
 					return status.FromContextError(ctx.Err()).Err()
 				}
+
 				return invoke(callCtx, method, req, reply, cc, opts...)
 			}))
 		require.NoError(t, err)
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		runQueryCheckpointDriver(ctx, clusterpb.NewClusterServiceClient(conn), servicepb.NewBucketServiceClient(conn))
+
 		return
 	}
 	main()
@@ -109,6 +113,7 @@ func runCheckpointDriver(t *testing.T, address string, extraEnv ...string) []sdk
 		}
 	}
 	require.NotEmpty(t, assertions, "the real driver must emit SDK events")
+
 	return assertions
 }
 
@@ -143,6 +148,7 @@ func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.Buck
 	})
 	instruments = append(instruments, testserver.WithBootstrap(), testservice.InstrumentationFunc(func(_ context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--query-checkpoint-limit", "10")
+
 		return nil
 	}))
 	server := lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
@@ -160,10 +166,12 @@ func checkpointTestServer(t *testing.T) (context.Context, string, servicepb.Buck
 	client := servicepb.NewBucketServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", actions.CreateLedgerAction("checkpoint-driver", nil)))
 	require.NoError(t, err)
+
 	return ctx, address, client, cluster
 }
 
@@ -175,6 +183,7 @@ func listCheckpointIDs(t *testing.T, ctx context.Context, cluster clusterpb.Clus
 	for _, checkpoint := range list.GetCheckpoints() {
 		ids = append(ids, checkpoint.GetCheckpointId())
 	}
+
 	return ids
 }
 

@@ -571,9 +571,11 @@ func lookupUint(params preparedParams, name string) (uint64, bool) {
 		if v.Int64Value < 0 {
 			return 0, false
 		}
+
 		return uint64(v.Int64Value), true
 	case *commonpb.ParameterValue_StringValue:
 		n, err := strconv.ParseUint(v.StringValue, 10, 64)
+
 		return n, err == nil
 	default:
 		return 0, false
@@ -593,9 +595,11 @@ func lookupInt(params preparedParams, name string) (int64, bool) {
 		if v.Uint64Value > math.MaxInt64 {
 			return 0, false
 		}
+
 		return int64(v.Uint64Value), true
 	case *commonpb.ParameterValue_StringValue:
 		n, err := strconv.ParseInt(v.StringValue, 10, 64)
+
 		return n, err == nil
 	default:
 		return 0, false

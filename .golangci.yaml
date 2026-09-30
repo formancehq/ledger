@@ -94,6 +94,8 @@ linters:
       # upstream module path, so a replace is the only way to select it.
       # See docs/technical/contributing/antithesis-assertions.md.
       - github.com/antithesishq/antithesis-sdk-go
+      # Pebble's Formance fork retains the upstream module path.
+      - github.com/cockroachdb/pebble/v2
     revive:
       rules:
       - name: package-comments

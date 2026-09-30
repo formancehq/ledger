@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -15,6 +16,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
@@ -23,14 +32,8 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+
 	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"github.com/stretchr/testify/require"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/proto"
 )
 
 // This runs the actual driver through the workload's automatic retries. A
@@ -126,6 +129,7 @@ func TestReferenceConflictSkipUnkeyedControl(t *testing.T) {
 			}
 		}
 		require.Equal(t, 1, hits, "driver must still report an unexpected fresh-reference skip")
+
 		return
 	}
 
@@ -177,6 +181,7 @@ func TestReferenceConflictSkipUnexpectedFreshResponse(t *testing.T) {
 				require.Equal(t, 1, hits, "unexpected successful response must remain observable")
 			})
 		}
+
 		return
 	}
 
@@ -211,7 +216,7 @@ func captureAssertions(t *testing.T, testName, childEnv string) []assertionEvent
 	data, err := os.ReadFile(outputPath)
 	require.NoError(t, err)
 	var events []assertionEvent
-	for _, line := range bytes.Split(data, []byte("\n")) {
+	for line := range bytes.SplitSeq(data, []byte("\n")) {
 		if len(bytes.TrimSpace(line)) == 0 {
 			continue
 		}
@@ -219,6 +224,7 @@ func captureAssertions(t *testing.T, testName, childEnv string) []assertionEvent
 		require.NoError(t, json.Unmarshal(line, &event))
 		events = append(events, event)
 	}
+
 	return events
 }
 
@@ -232,6 +238,7 @@ type applyAttempt struct {
 // This is a transport fault injector, not a mock of Ledger business semantics.
 type lostResponseServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	backend           servicepb.BucketServiceClient
 	lostStep          string
 	unkeyedFresh      bool
@@ -276,6 +283,7 @@ func (s *lostResponseServer) Apply(ctx context.Context, req *servicepb.ApplyRequ
 			resp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().Payload = nil
 		}
 	}
+
 	return resp, err
 }
 
@@ -286,6 +294,7 @@ func (s *lostResponseServer) snapshot() map[string][]applyAttempt {
 	for step, attempts := range s.attempts {
 		ret[step] = append([]applyAttempt(nil), attempts...)
 	}
+
 	return ret
 }
 
@@ -307,6 +316,7 @@ func retryingClient(t *testing.T, proxy *lostResponseServer) servicepb.BucketSer
 	conn, err := workloadinternal.NewGRPCConn()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return servicepb.NewBucketServiceClient(conn)
 }
 
@@ -330,14 +340,17 @@ func referenceTestServer(t *testing.T) (context.Context, servicepb.BucketService
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+
 	return ctx, servicepb.NewBucketServiceClient(conn)
 }
 
 func applyPayload(t *testing.T, resp *servicepb.ApplyResponse) *commonpb.LedgerLogPayload {
 	t.Helper()
 	require.Len(t, resp.GetLogs(), 1, "Apply must return exactly one log")
+
 	return resp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData()
 }
 
@@ -349,7 +362,7 @@ func assertTransactions(t *testing.T, ctx context.Context, client servicepb.Buck
 	byReference := make(map[string][]*commonpb.Transaction)
 	for {
 		tx, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)
@@ -374,7 +387,7 @@ func assertLogCount(t *testing.T, ctx context.Context, client servicepb.BucketSe
 	count := 0
 	for {
 		_, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)

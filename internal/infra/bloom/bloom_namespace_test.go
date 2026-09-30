@@ -28,13 +28,13 @@ func newBloomTestStore(t *testing.T) *dal.Store {
 }
 
 // writeBloomRow writes a raw persisted bloom row at
-// [ZoneGlobal][SubGlobBloom][attrCode][blockIndex BE 8] with a valid
+// [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8] with a valid
 // block-sized value, so tests can control exactly which attrCode/shape is on
 // disk.
 func writeBloomRow(t *testing.T, store *dal.Store, attrCode byte, blockIdx uint64) {
 	t.Helper()
 
-	key := []byte{dal.ZoneGlobal, dal.SubGlobBloom, attrCode}
+	key := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, attrCode}
 	key = binary.BigEndian.AppendUint64(key, blockIdx)
 
 	batch := store.OpenWriteSession()
@@ -104,9 +104,9 @@ func TestFilterSet_EN1527_ClassifyRejectsShortBloomRow(t *testing.T) {
 	fs := NewFilterSet(bloomCfg(), meter)
 	store := newBloomTestStore(t)
 
-	// [ZoneGlobal][SubGlobBloom] with no attrCode byte.
+	// [ZoneClusterPersistent][SubGlobBloom] with no attrCode byte.
 	batch := store.OpenWriteSession()
-	require.NoError(t, batch.Set([]byte{dal.ZoneGlobal, dal.SubGlobBloom}, make([]byte, blockBytes), nil))
+	require.NoError(t, batch.Set([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom}, make([]byte, blockBytes), nil))
 	require.NoError(t, batch.Commit())
 
 	handle, err := store.NewDirectReadHandle()

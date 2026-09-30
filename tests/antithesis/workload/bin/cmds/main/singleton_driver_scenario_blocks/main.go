@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/formancehq/ledger/v3/pkg/scenario"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block"
-
 	// Register all scenario blocks via init().
 	_ "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block/gaming"
 	_ "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/block/lending"
@@ -26,9 +26,10 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// SCENARIO env var selects which scenarios to run.
 	// Empty or "all" runs everything. Comma-separated for multiple scenarios.
@@ -36,16 +37,17 @@ func main() {
 	scenarioEnv := os.Getenv("SCENARIO")
 
 	var groups []*scenario.BlockGroup
-	switch {
-	case scenarioEnv == "" || scenarioEnv == "all":
+	switch scenarioEnv {
+	case "", "all":
 		groups = block.All()
 		log.Printf("composer: scenario_blocks: running all groups from %v", block.Scenarios())
 	default:
-		for _, name := range strings.Split(scenarioEnv, ",") {
+		for name := range strings.SplitSeq(scenarioEnv, ",") {
 			name = strings.TrimSpace(name)
 			selected := block.ForScenario(name)
 			if len(selected) == 0 {
 				log.Printf("composer: scenario_blocks: unknown scenario %q (available: %v)", name, block.Scenarios())
+
 				continue
 			}
 			groups = append(groups, selected...)

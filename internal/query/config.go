@@ -10,7 +10,7 @@ import (
 // ReadLastAppliedIndex returns the last applied Raft index from the given reader.
 // Returns 0 if not found.
 func ReadLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
-	return dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, 0)
+	return dal.ReadUint64(reader, []byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, 0)
 }
 
 // ReadLastAppliedTimestamp returns the last applied HLC timestamp (microseconds since epoch) from the given reader.
@@ -48,6 +48,20 @@ func ReadClusterState(reader dal.PebbleGetter) (*commonpb.PersistedClusterState,
 	return state, nil
 }
 
+// ReadAuditKey returns the replicated audit secret. Absence is valid only
+// before the first audit entry; malformed rows always fail closed.
+func ReadAuditKey(reader dal.PebbleGetter) ([]byte, error) {
+	key, err := dal.GetValue(reader, []byte{dal.ZoneGlobal, dal.SubGlobAuditKey})
+	if err != nil {
+		return nil, fmt.Errorf("loading audit key: %w", err)
+	}
+	if key != nil && len(key) != 32 {
+		return nil, fmt.Errorf("invalid audit key length %d", len(key))
+	}
+
+	return key, nil
+}
+
 // ReadClusterPolicy loads the replicated cluster policy from the given reader.
 // Returns nil if the key does not exist (no policy committed yet).
 func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error) {
@@ -66,7 +80,7 @@ func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error)
 // adapter and CLI code can read ClusterID from an opened store without
 // pulling in the composition root (which would create an import cycle).
 func ReadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
-	cfg, err := dal.ReadProto[*commonpb.PersistedConfig](reader, []byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
+	cfg, err := dal.ReadProto[*commonpb.PersistedConfig](reader, []byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
 	if err != nil {
 		return nil, fmt.Errorf("loading persisted config: %w", err)
 	}

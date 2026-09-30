@@ -2,6 +2,13 @@
 
 The persistence layer (`internal/storage/dal`, `internal/storage/wal`, `internal/storage/spool`, `internal/storage/pebblecfg`). One Pebble database backs the main store (WAL enabled); a second backs the read store (WAL disabled, fully rebuildable). The spool sits between Raft commit and FSM apply.
 
+The main-store key map distinguishes `ZoneGlobal` (`0x06`, retained business and
+governance state), `ZoneClusterTransient` (`0x07`, backup jobs), and
+`ZoneClusterPersistent` (`0x08`, durable cluster-local identity, topology,
+applied index and Bloom blocks). Cross-cluster restore clears both cluster-only
+zones and re-seeds the persistent zone for the destination; ordinary restart and
+in-cluster snapshot installation retain it. See the [restore classification](../backup/README.md#global-key-lifetimes-en-1415).
+
 ## Documents
 
 | Document | Description |

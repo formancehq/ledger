@@ -42,7 +42,9 @@ The `instanceID` discriminates the exact case EN-1045 confuses today:
 
 ### The Registry
 
-The FSM keeps a replicated `RemovedMembers` set under a new sub-key of the `Global` zone. Entries are of shape:
+The FSM keeps a replicated `RemovedMembers` set under `ZoneClusterPersistent`.
+Entries survive ordinary restarts and in-cluster snapshots, but are removed on
+cross-cluster restore with the source membership. Entries are of shape:
 
 ```
 RemovedMemberEntry {
@@ -213,7 +215,7 @@ Two secondary gaps in the "never rejoins" guarantee, kept out of this PR's scope
 New attribute on `Machine.Registry`:
 
 ```
-Registry.RemovedMembers   KeyStore    // Global zone, sub-key SubRemovedMembers
+Registry.RemovedMembers   KeyStore    // ClusterPersistent zone, sub-key SubGlobRemovedMembers
 ```
 
 Key format: `nodeID || instanceID` (uint64 big-endian || 16 bytes). Value: `RemovedMemberEntry` (protobuf).

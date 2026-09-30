@@ -42,7 +42,7 @@ func main() {
 
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 

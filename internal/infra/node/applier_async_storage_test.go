@@ -141,6 +141,7 @@ func TestApplierNewApplierRejectsNilSink(t *testing.T) {
 
 	pebbleStore, err := dal.NewStore(dataDir, logger, meter, dal.DefaultConfig())
 	require.NoError(t, err)
+	seedApplierAuditKey(t, pebbleStore)
 
 	t.Cleanup(func() {
 		_ = pebbleStore.Close()

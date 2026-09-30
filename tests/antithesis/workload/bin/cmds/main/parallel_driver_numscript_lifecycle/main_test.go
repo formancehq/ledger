@@ -8,12 +8,6 @@ import (
 	"testing"
 	"time"
 
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
-	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
-	"github.com/formancehq/ledger/v3/internal/pkg/version"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"go.uber.org/mock/gomock"
@@ -22,6 +16,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+
+	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
+	"github.com/formancehq/ledger/v3/internal/application/ctrl/ctrlmock"
+	"github.com/formancehq/ledger/v3/internal/pkg/version"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Exercise the production list handler and real gRPC trailers, rather than
@@ -50,6 +51,7 @@ func TestNumscriptIsListedBeyondDefaultPage(t *testing.T) {
 		_, err := stream.Recv()
 		if err != nil {
 			require.ErrorIs(t, err, io.EOF)
+
 			break
 		}
 		count++
@@ -80,6 +82,7 @@ func dialNumscriptServer(t *testing.T, service servicepb.BucketServiceServer, op
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return servicepb.NewBucketServiceClient(conn)
 }
 
@@ -176,6 +179,7 @@ func (s *failingNumscriptStream) SendMsg(msg any) error {
 	if msg.(*commonpb.NumscriptInfo).GetName() == "lifecycle-102" {
 		return status.Error(codes.DataLoss, "injected mid-stream failure")
 	}
+
 	return nil
 }
 
@@ -196,6 +200,7 @@ func numscriptNames(count int) []*commonpb.NumscriptInfo {
 		// Return unsorted data so the production handler also exercises sorting.
 		scripts[i] = &commonpb.NumscriptInfo{Name: fmt.Sprintf("lifecycle-%03d", count-i), Version: "1.0.0"}
 	}
+
 	return scripts
 }
 

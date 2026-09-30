@@ -1299,6 +1299,10 @@ enum ErrorReason {
   // Creation never evicts; an existing checkpoint must be deleted first. See
   // EN-1501.
   ERROR_REASON_CHECKPOINT_LIMIT_REACHED = 65;
+  // ERROR_REASON_INVALID_CALLER_ATTRIBUTION: a proposal reached admission or
+  // the FSM without a complete canonical caller principal. This is an internal
+  // trust-boundary violation and is never client-correctable.
+  ERROR_REASON_INVALID_CALLER_ATTRIBUTION = 72;
   // ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
   // that is not live (never created, or already deleted). See EN-1501.
   ERROR_REASON_CHECKPOINT_NOT_FOUND = 66;
@@ -1332,7 +1336,7 @@ enum ErrorReason {
   // construct, exceeded VM capacity, or a var value that does not bind.
   // Deterministic for a given script and vars (Kind=Validation); rejected at
   // admission, never proposed.
-  ERROR_REASON_NUMSCRIPT_COMPILE_ERROR = 72;
+  ERROR_REASON_NUMSCRIPT_COMPILE_ERROR = 73;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key
@@ -1790,8 +1794,9 @@ message LedgerStats {
 }
 
 // PersistedConfig stores critical configuration parameters that must not change
-// between restarts with existing data. Stored at Pebble key {0x06, 0x0C}
-// (Global zone, SubGlobPersistedConfig).
+// between restarts with existing data. Stored at Pebble key {0x08, 0x0C}
+// (ZoneClusterPersistent, SubGlobPersistedConfig). The old {0x06, 0x0C}
+// anchor from earlier development layouts is detected and rejected at boot.
 message PersistedConfig {
   uint64 node_id = 1;
   string cluster_id = 2;

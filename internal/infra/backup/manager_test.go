@@ -69,8 +69,16 @@ func newBackupTestStore(t *testing.T) *dal.Store {
 	store, err := dal.NewStore(t.TempDir(), logging.FromContext(ctx), noop.NewMeterProvider().Meter("test"), dal.DefaultConfig())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
+	seedBackupTestAuditKey(t, store)
 
 	return store
+}
+
+func seedBackupTestAuditKey(t *testing.T, store *dal.Store) {
+	t.Helper()
+	batch := store.OpenWriteSession()
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, []byte("0123456789abcdef0123456789abcdef")))
+	require.NoError(t, batch.Commit())
 }
 
 // writeCorruptColdEntry writes an undecodable value under the given cold sub-zone

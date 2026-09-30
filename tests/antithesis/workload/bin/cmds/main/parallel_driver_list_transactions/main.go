@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -38,7 +41,7 @@ func main() {
 			return
 		}
 
-		txID := createdTx.Transaction.Id
+		txID := createdTx.GetTransaction().GetId()
 		details := internal.Details{"ledger": ledger, "txId": txID}
 
 		// 2. Paginate through all transactions until we find the one we created.
@@ -75,7 +78,7 @@ func main() {
 
 			for {
 				tx, err := stream.Recv()
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 
@@ -118,6 +121,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("reverse list transactions", err)
+
 			return
 		}
 
@@ -126,7 +130,7 @@ func main() {
 
 		for {
 			_, err := reverseStream.Recv()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 

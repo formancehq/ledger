@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -17,12 +16,14 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+
 	workloadinternal "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -32,6 +33,7 @@ import (
 // is discarded. The workload's normal retry policy then resubmits the request.
 type checkpointResponseLossProxy struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	backend servicepb.BucketServiceClient
 	cluster clusterpb.ClusterServiceClient
 
@@ -59,6 +61,7 @@ func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *servicepb.
 		registry, readErr := p.cluster.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 		if readErr != nil {
 			p.registryError = fmt.Errorf("read checkpoint registry after committed Apply: %w", readErr)
+
 			return nil, p.registryError
 		}
 		for _, checkpoint := range registry.GetCheckpoints() {
@@ -68,6 +71,7 @@ func (p *checkpointResponseLossProxy) Apply(ctx context.Context, req *servicepb.
 	if err == nil && len(p.requests) <= p.lostResponses {
 		return nil, status.Error(codes.Unavailable, "injected response loss after committed checkpoint mutation")
 	}
+
 	return resp, err
 }
 
@@ -225,6 +229,7 @@ func checkpointRetryServer(t *testing.T) (context.Context, servicepb.BucketServi
 	})
 	instruments = append(instruments, testserver.WithBootstrap(), testservice.InstrumentationFunc(func(_ context.Context, cfg *testservice.RunConfiguration) error {
 		cfg.AppendArgs("--query-checkpoint-limit", "10")
+
 		return nil
 	}))
 	server := lease.NewService(cmdserver.NewRunCommandWithBindings, testservice.WithInstruments(instruments...))
@@ -240,6 +245,7 @@ func checkpointRetryServer(t *testing.T) (context.Context, servicepb.BucketServi
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
 	backend := servicepb.NewBucketServiceClient(conn)
@@ -260,5 +266,6 @@ func checkpointRetryServer(t *testing.T) (context.Context, servicepb.BucketServi
 	workloadConn, err := workloadinternal.NewGRPCConn()
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, workloadConn.Close()) })
+
 	return ctx, backend, cluster, servicepb.NewBucketServiceClient(workloadConn), proxy
 }

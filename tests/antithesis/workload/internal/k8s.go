@@ -1,7 +1,9 @@
 package internal
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -11,9 +13,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"golang.org/x/net/context"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -21,6 +20,9 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // ClusterGVR is the GroupVersionResource for the Cluster CRD.
@@ -140,9 +142,10 @@ func pollForVoters(parentCtx context.Context, clusterClient clusterpb.ClusterSer
 	for {
 		select {
 		case <-ctx.Done():
-			if parentCtx.Err() == nil && ctx.Err() == context.DeadlineExceeded {
+			if parentCtx.Err() == nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				log.Printf("scaling: timed out waiting for %d voters", expected)
 			}
+
 			return false
 		case <-time.After(5 * time.Second):
 		}
@@ -234,6 +237,7 @@ func PodOrdinal(podName string) int {
 	if err != nil {
 		return -1
 	}
+
 	return n
 }
 
@@ -254,6 +258,7 @@ func ListLedgerPods(ctx context.Context, clientset kubernetes.Interface) ([]stri
 	sort.Slice(names, func(i, j int) bool {
 		return PodOrdinal(names[i]) < PodOrdinal(names[j])
 	})
+
 	return names, nil
 }
 
@@ -261,6 +266,7 @@ func ListLedgerPods(ctx context.Context, clientset kubernetes.Interface) ([]stri
 // quickly. Suitable for fault-injection scenarios; not for graceful shutdowns.
 func DeletePod(ctx context.Context, clientset kubernetes.Interface, name string) error {
 	zero := int64(0)
+
 	return clientset.CoreV1().Pods(ClusterNamespace()).Delete(ctx, name, metav1.DeleteOptions{
 		GracePeriodSeconds: &zero,
 	})
@@ -361,6 +367,7 @@ func GetPodUID(ctx context.Context, clientset kubernetes.Interface, name string)
 	if err != nil {
 		return "", err
 	}
+
 	return pod.UID, nil
 }
 
@@ -391,6 +398,7 @@ func GetNonLeaderVoter(ctx context.Context, clusterClient clusterpb.ClusterServi
 			return n.GetId(), nil
 		}
 	}
+
 	return 0, nil
 }
 
@@ -401,6 +409,7 @@ func GetClusterConfig(ctx context.Context, clusterClient clusterpb.ClusterServic
 	if err != nil {
 		return nil, err
 	}
+
 	return state.GetClusterConfig(), nil
 }
 
@@ -442,6 +451,7 @@ func WaitForClusterConfigOnNode(ctx context.Context, clusterClient clusterpb.Clu
 func PatchCacheRotationThreshold(ctx context.Context, lsClient dynamic.ResourceInterface, name string, threshold int32) error {
 	patch := []byte(fmt.Sprintf(`{"spec":{"cache":{"rotationThreshold":%d}}}`, threshold))
 	_, err := lsClient.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+
 	return err
 }
 
@@ -452,6 +462,7 @@ func PatchCacheRotationThreshold(ctx context.Context, lsClient dynamic.ResourceI
 func PatchBloomExpectedKeys(ctx context.Context, lsClient dynamic.ResourceInterface, name, category string, expectedKeys int64) error {
 	patch := []byte(fmt.Sprintf(`{"spec":{"bloom":{%q:{"expectedKeys":%d}}}}`, category, expectedKeys))
 	_, err := lsClient.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+
 	return err
 }
 
@@ -460,5 +471,6 @@ func PatchBloomExpectedKeys(ctx context.Context, lsClient dynamic.ResourceInterf
 func PatchBloomFPRate(ctx context.Context, lsClient dynamic.ResourceInterface, name, category, rate string) error {
 	patch := []byte(fmt.Sprintf(`{"spec":{"bloom":{%q:{"fpRate":%q}}}}`, category, rate))
 	_, err := lsClient.Patch(ctx, name, types.MergePatchType, patch, metav1.PatchOptions{})
+
 	return err
 }

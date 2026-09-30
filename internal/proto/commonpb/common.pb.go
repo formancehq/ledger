@@ -767,6 +767,10 @@ const (
 	// Creation never evicts; an existing checkpoint must be deleted first. See
 	// EN-1501.
 	ErrorReason_ERROR_REASON_CHECKPOINT_LIMIT_REACHED ErrorReason = 65
+	// ERROR_REASON_INVALID_CALLER_ATTRIBUTION: a proposal reached admission or
+	// the FSM without a complete canonical caller principal. This is an internal
+	// trust-boundary violation and is never client-correctable.
+	ErrorReason_ERROR_REASON_INVALID_CALLER_ATTRIBUTION ErrorReason = 72
 	// ERROR_REASON_CHECKPOINT_NOT_FOUND: a DeleteQueryCheckpoint targeted an id
 	// that is not live (never created, or already deleted). See EN-1501.
 	ErrorReason_ERROR_REASON_CHECKPOINT_NOT_FOUND ErrorReason = 66
@@ -800,7 +804,7 @@ const (
 	// construct, exceeded VM capacity, or a var value that does not bind.
 	// Deterministic for a given script and vars (Kind=Validation); rejected at
 	// admission, never proposed.
-	ErrorReason_ERROR_REASON_NUMSCRIPT_COMPILE_ERROR ErrorReason = 72
+	ErrorReason_ERROR_REASON_NUMSCRIPT_COMPILE_ERROR ErrorReason = 73
 )
 
 // Enum value maps for ErrorReason.
@@ -872,13 +876,14 @@ var (
 		63: "ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT",
 		64: "ERROR_REASON_CLUSTER_POLICY_INVALID",
 		65: "ERROR_REASON_CHECKPOINT_LIMIT_REACHED",
+		72: "ERROR_REASON_INVALID_CALLER_ATTRIBUTION",
 		66: "ERROR_REASON_CHECKPOINT_NOT_FOUND",
 		67: "ERROR_REASON_SEQUENCE_EXHAUSTED",
 		68: "ERROR_REASON_INDEX_ALREADY_EXISTS",
 		69: "ERROR_REASON_METADATA_LIMIT_EXCEEDED",
 		70: "ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH",
 		71: "ERROR_REASON_SINK_CONTROLLER_MISMATCH",
-		72: "ERROR_REASON_NUMSCRIPT_COMPILE_ERROR",
+		73: "ERROR_REASON_NUMSCRIPT_COMPILE_ERROR",
 	}
 	ErrorReason_value = map[string]int32{
 		"ERROR_REASON_UNSPECIFIED":                      0,
@@ -947,13 +952,14 @@ var (
 		"ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT": 63,
 		"ERROR_REASON_CLUSTER_POLICY_INVALID":           64,
 		"ERROR_REASON_CHECKPOINT_LIMIT_REACHED":         65,
+		"ERROR_REASON_INVALID_CALLER_ATTRIBUTION":       72,
 		"ERROR_REASON_CHECKPOINT_NOT_FOUND":             66,
 		"ERROR_REASON_SEQUENCE_EXHAUSTED":               67,
 		"ERROR_REASON_INDEX_ALREADY_EXISTS":             68,
 		"ERROR_REASON_METADATA_LIMIT_EXCEEDED":          69,
 		"ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH":   70,
 		"ERROR_REASON_SINK_CONTROLLER_MISMATCH":         71,
-		"ERROR_REASON_NUMSCRIPT_COMPILE_ERROR":          72,
+		"ERROR_REASON_NUMSCRIPT_COMPILE_ERROR":          73,
 	}
 )
 
@@ -12089,8 +12095,9 @@ func (x *LedgerStats) GetLogCount() uint64 {
 }
 
 // PersistedConfig stores critical configuration parameters that must not change
-// between restarts with existing data. Stored at Pebble key {0x06, 0x0C}
-// (Global zone, SubGlobPersistedConfig).
+// between restarts with existing data. Stored at Pebble key {0x08, 0x0C}
+// (ZoneClusterPersistent, SubGlobPersistedConfig). The old {0x06, 0x0C}
+// anchor from earlier development layouts is detected and rejected at boot.
 type PersistedConfig struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	NodeId               uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
@@ -13905,7 +13912,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12LEDGER_MODE_MIRROR\x10\x01*Q\n" +
 	"\x0fMirrorSyncState\x12\x1d\n" +
 	"\x19MIRROR_SYNC_STATE_SYNCING\x10\x00\x12\x1f\n" +
-	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\x8d\x17\n" +
+	"\x1bMIRROR_SYNC_STATE_FOLLOWING\x10\x01*\xba\x17\n" +
 	"\vErrorReason\x12\x1c\n" +
 	"\x18ERROR_REASON_UNSPECIFIED\x10\x00\x12&\n" +
 	"\"ERROR_REASON_LEDGER_ALREADY_EXISTS\x10\x01\x12!\n" +
@@ -13973,14 +13980,15 @@ const file_common_proto_rawDesc = "" +
 	"!ERROR_REASON_STALE_CLUSTER_POLICY\x10>\x121\n" +
 	"-ERROR_REASON_CLUSTER_POLICY_REVISION_CONFLICT\x10?\x12'\n" +
 	"#ERROR_REASON_CLUSTER_POLICY_INVALID\x10@\x12)\n" +
-	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10A\x12%\n" +
+	"%ERROR_REASON_CHECKPOINT_LIMIT_REACHED\x10A\x12+\n" +
+	"'ERROR_REASON_INVALID_CALLER_ATTRIBUTION\x10H\x12%\n" +
 	"!ERROR_REASON_CHECKPOINT_NOT_FOUND\x10B\x12#\n" +
 	"\x1fERROR_REASON_SEQUENCE_EXHAUSTED\x10C\x12%\n" +
 	"!ERROR_REASON_INDEX_ALREADY_EXISTS\x10D\x12(\n" +
 	"$ERROR_REASON_METADATA_LIMIT_EXCEEDED\x10E\x12/\n" +
 	"+ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH\x10F\x12)\n" +
 	"%ERROR_REASON_SINK_CONTROLLER_MISMATCH\x10G\x12(\n" +
-	"$ERROR_REASON_NUMSCRIPT_COMPILE_ERROR\x10H*Q\n" +
+	"$ERROR_REASON_NUMSCRIPT_COMPILE_ERROR\x10I*Q\n" +
 	"\x14ChartEnforcementMode\x12\x1c\n" +
 	"\x18CHART_ENFORCEMENT_STRICT\x10\x00\x12\x1b\n" +
 	"\x17CHART_ENFORCEMENT_AUDIT\x10\x01*i\n" +

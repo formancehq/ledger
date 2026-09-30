@@ -19,9 +19,11 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"k8s.io/client-go/dynamic"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // recoveryTimeout is how long we wait for the cluster to converge after
@@ -38,15 +40,17 @@ func main() {
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)
+
 		return
 	}
 
 	_, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("cannot create ledger gRPC client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
@@ -89,6 +93,7 @@ func chaosRound(ctx context.Context, lsClient dynamic.ResourceInterface, cluster
 
 		if err != nil {
 			log.Printf("chaos-scaling: patch failed: %s", err)
+
 			return
 		}
 

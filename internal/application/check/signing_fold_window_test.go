@@ -46,10 +46,11 @@ func writeSigningAuditEntry(
 	t.Helper()
 
 	entry := &auditpb.AuditEntry{
-		Sequence:    seq,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000 + seq},
-		OrderCount:  uint32(len(items)),
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Sequence:       seq,
+		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + seq},
+		OrderCount:     uint32(len(items)),
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minLog, MaxLogSequence: maxLog},
 		},
@@ -65,7 +66,7 @@ func writeSigningAuditEntry(
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 	_, entry.Hash = gen.Compute(nil, prevHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)
@@ -127,7 +128,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	})
 
 	verifier := newSigningVerifier()
-	checker := NewChecker(store, attributes.New(), clusterID, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -141,7 +142,7 @@ func TestVerifyAuditHashChain_SigningFoldIgnoresLegacyReplayReferences(t *testin
 	folds := newChainVerifierFolds()
 	folds.signing = verifier
 
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), folds, func(*servicepb.CheckStoreEvent) {})
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(*servicepb.CheckStoreEvent) {})
 	require.NoError(t, err)
 
 	require.NotContains(t, verifier.keys, "legacy-key",

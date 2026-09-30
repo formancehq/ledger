@@ -125,7 +125,7 @@ func writeRawLogRows(t *testing.T, store *dal.Store, from, to uint64) {
 func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -137,11 +137,12 @@ func persistSuccessAuditEntries(t *testing.T, store *dal.Store, ranges [][2]uint
 		items := successRangeAuditItems(logRange[0], logRange[1])
 
 		entry := &auditpb.AuditEntry{
-			Sequence:    sequence,
-			Timestamp:   &commonpb.Timestamp{Data: 1700000000 + sequence},
-			ProposalId:  sequence,
-			HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-			OrderCount:  uint32(len(items)),
+			Sequence:       sequence,
+			Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
+			ProposalId:     sequence,
+			HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+			OrderCount:     uint32(len(items)),
+			CallerSnapshot: testCallerSnapshot(),
 			Outcome: &auditpb.AuditEntry_Success{
 				Success: &auditpb.AuditSuccess{
 					MinLogSequence: logRange[0],
@@ -232,6 +233,7 @@ func appendEngineAuditEntry(t *testing.T, in engineAuditEntry) {
 	in.entry.ProposalId = engine.raftIndex
 	in.entry.HashVersion = uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3)
 	in.entry.OrderCount = uint32(len(in.items))
+	in.entry.CallerSnapshot = testCallerSnapshot()
 
 	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, engine.clusterID)
 
@@ -945,13 +947,14 @@ func TestCheck_LogBounds_LargeTruncationStaysBounded(t *testing.T) {
 func persistItemlessSuccessAuditEntry(t *testing.T, store *dal.Store, minSeq, maxSeq uint64) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	entry := &auditpb.AuditEntry{
-		Sequence:    1,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000001},
-		ProposalId:  1,
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Sequence:       1,
+		Timestamp:      &commonpb.Timestamp{Data: 1700000001},
+		ProposalId:     1,
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Success{
 			Success: &auditpb.AuditSuccess{MinLogSequence: minSeq, MaxLogSequence: maxSeq},
 		},
@@ -1162,14 +1165,15 @@ func TestCheck_LogBounds_SuccessRangeWithoutItemsIsNotAnOracle(t *testing.T) {
 			store := createTestStore(t)
 			writeRawLogRows(t, store, 1, 4)
 
-			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+			gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 			entry := &auditpb.AuditEntry{
-				Sequence:    1,
-				Timestamp:   &commonpb.Timestamp{Data: 1700000001},
-				ProposalId:  1,
-				HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
-				OrderCount:  uint32(len(tc.items)),
+				Sequence:       1,
+				Timestamp:      &commonpb.Timestamp{Data: 1700000001},
+				ProposalId:     1,
+				HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+				OrderCount:     uint32(len(tc.items)),
+				CallerSnapshot: testCallerSnapshot(),
 				Outcome: &auditpb.AuditEntry_Success{
 					Success: &auditpb.AuditSuccess{MinLogSequence: 1, MaxLogSequence: 4},
 				},

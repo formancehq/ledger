@@ -37,11 +37,12 @@ const auditOnlyClusterID = "test-cluster"
 // and an unkeyed entry keeps this fixture's expectation empty.
 func newFailureAuditEntry(sequence uint64, orderCount int) (*auditpb.AuditEntry, []*auditpb.AuditItem) {
 	entry := &auditpb.AuditEntry{
-		Sequence:    sequence,
-		Timestamp:   &commonpb.Timestamp{Data: 1700000000 + sequence},
-		ProposalId:  sequence,
-		OrderCount:  uint32(orderCount),
-		HashVersion: uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		Sequence:       sequence,
+		Timestamp:      &commonpb.Timestamp{Data: 1700000000 + sequence},
+		ProposalId:     sequence,
+		OrderCount:     uint32(orderCount),
+		HashVersion:    uint32(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3),
+		CallerSnapshot: testCallerSnapshot(),
 		Outcome: &auditpb.AuditEntry_Failure{
 			Failure: &auditpb.AuditFailure{
 				Reason:  commonpb.ErrorReason_ERROR_REASON_INSUFFICIENT_FUNDS,
@@ -76,7 +77,7 @@ func persistFailureOnlyHistory(
 ) ([]*auditpb.AuditEntry, [][]*auditpb.AuditItem) {
 	t.Helper()
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, auditOnlyClusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	var (
 		lastHash    []byte
@@ -128,7 +129,7 @@ func countErrorsOfType(errs []*servicepb.CheckStoreError, want servicepb.CheckSt
 func collectCheckProgress(t *testing.T, store *dal.Store) []*servicepb.CheckStoreProgress {
 	t.Helper()
 
-	checker := NewChecker(store, attributes.New(), auditOnlyClusterID, nil, logging.Testing())
+	checker := NewChecker(store, attributes.New(), nil, logging.Testing())
 
 	var progress []*servicepb.CheckStoreProgress
 
@@ -491,7 +492,7 @@ func TestCheck_EmptyStore_EmitsSingleProgressEvent(t *testing.T) {
 			))
 		}
 
-		checker := NewChecker(engine.store, engine.attrs, engine.clusterID, nil, logging.Testing())
+		checker := NewChecker(engine.store, engine.attrs, nil, logging.Testing())
 
 		var progress []*servicepb.CheckStoreProgress
 

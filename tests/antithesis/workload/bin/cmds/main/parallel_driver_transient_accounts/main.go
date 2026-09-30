@@ -5,9 +5,11 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -22,7 +24,7 @@ func main() {
 		}
 
 		typeName := fmt.Sprintf("clearing-%d", r.Uint64()%10000)
-		pattern := fmt.Sprintf("%s:{id}", typeName)
+		pattern := typeName + ":{id}"
 		details := internal.Details{"ledger": ledger, "typeName": typeName, "pattern": pattern}
 
 		// 1. Add an account type with TRANSIENT persistence.
@@ -50,7 +52,7 @@ func main() {
 		}
 
 		clearingAddr := fmt.Sprintf("%s:%d", typeName, r.Uint64()%1000)
-		amount := uint64(r.Uint64()%1000 + 100)
+		amount := r.Uint64()%1000 + 100
 		details["clearingAddr"] = clearingAddr
 		details["amount"] = amount
 

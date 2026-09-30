@@ -15,6 +15,7 @@ func generateEnforcementMode(ledger string) *servicepb.Request {
 		commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_STRICT,
 		commonpb.ChartEnforcementMode_CHART_ENFORCEMENT_AUDIT,
 	})
+
 	return enforcementModeRequest(ledger, mode, random.RandomChoice([]bool{false, true}))
 }
 
@@ -22,5 +23,6 @@ func enforcementModeRequest(ledger string, mode commonpb.ChartEnforcementMode, n
 	if nested {
 		return &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{Ledger: ledger, Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeRequest{EnforcementMode: mode}}}}}}
 	}
+
 	return &servicepb.Request{Type: &servicepb.Request_SetDefaultEnforcementMode{SetDefaultEnforcementMode: &servicepb.SetDefaultEnforcementModeLedgerRequest{Ledger: ledger, EnforcementMode: mode}}}
 }

@@ -20,6 +20,7 @@ var allCompactPrefixes = []compactPrefix{
 	{"per-ledger", ZonePerLedger, ZonePerLedger + 1},
 	{"idempotency", ZoneIdempotency, ZoneIdempotency + 1},
 	{"global", ZoneGlobal, ZoneGlobal + 1},
+	{"cluster-persistent", ZoneClusterPersistent, ZoneClusterPersistent + 1},
 }
 
 // compactRange compacts the single key range [start, end) under dbMu.RLock,

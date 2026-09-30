@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -100,6 +102,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("read account after bulk apply", err)
+
 			return
 		}
 

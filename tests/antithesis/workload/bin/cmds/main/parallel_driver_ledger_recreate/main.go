@@ -24,6 +24,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -46,12 +47,14 @@ func createTx(ctx context.Context, client servicepb.BucketServiceClient, key, le
 func operationFailed(err error, stage string, details internal.Details) bool {
 	assert.Always(internal.IsTolerated(err), "ledger deletion scenario has no unexpected operation errors",
 		details.With(internal.Details{"stage": stage, "error": err}))
+
 	return err != nil
 }
 
 func confirmedTransaction(resp *servicepb.ApplyResponse, details internal.Details) *commonpb.CreatedTransaction {
 	created := internal.CheckCreatedTransaction(resp, details)
 	assert.Always(created != nil, "ledger deletion acknowledged transaction includes its created log", details)
+
 	return created
 }
 
@@ -62,6 +65,7 @@ func confirmTombstone(ctx context.Context, client servicepb.BucketServiceClient,
 	}
 	rejected := status.Code(err) == codes.FailedPrecondition && internal.IsLedgerDeleted(err)
 	assert.Always(rejected, "deleted ledger name remains permanently reserved", details.With(internal.Details{"probeKey": key, "error": err}))
+
 	return rejected
 }
 

@@ -5,8 +5,10 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -30,9 +32,10 @@ func main() {
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	run(ctx, clusterpb.NewClusterServiceClient(conn))
 }
@@ -50,6 +53,7 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 	}); err != nil {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
 			log.Printf("Backup (pre-incremental) inconclusive error after retries: %v", err)
+
 			return
 		}
 
@@ -66,12 +70,14 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 	if err != nil {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
 			log.Printf("IncrementalBackup inconclusive error after retries: %v", err)
+
 			return
 		}
 
 		// External service errors (S3 connectivity) are acceptable under chaos.
 		if internal.IsExternalServiceError(err) {
 			log.Printf("IncrementalBackup external service error: %v", err)
+
 			return
 		}
 
@@ -80,6 +86,7 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 		// is then an expected, acceptable outcome — not a finding (EN-888).
 		if internal.IsNoFullCheckpoint(err) {
 			log.Printf("IncrementalBackup: no full checkpoint at destination (acceptable): %v", err)
+
 			return
 		}
 
@@ -109,6 +116,7 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsExternalServiceError(err) ||
 			internal.IsNoFullCheckpoint(err) || internal.IsBackupInProgress(err) {
 			log.Printf("second IncrementalBackup inconclusive error after retries: %v", err)
+
 			return
 		}
 

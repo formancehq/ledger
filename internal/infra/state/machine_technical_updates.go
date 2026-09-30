@@ -39,6 +39,22 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 		}
 
 		switch kind := tu.GetKind().(type) {
+		case *raftcmdpb.TechnicalUpdate_AuditKey:
+			if len(kind.AuditKey) != 32 {
+				return fmt.Errorf("technical_updates[%d]: invalid audit key length %d", i, len(kind.AuditKey))
+			}
+			// Two leaders may both propose initialization before observing the
+			// first commit. Raft's first value wins; a later proposal cannot
+			// rotate it or make replicas diverge.
+			if fsm.State.AuditKey == "" {
+				if fsm.State.NextAuditSequenceID != 1 {
+					return fmt.Errorf("technical_updates[%d]: audit key initialized after audit history", i)
+				}
+				if err := batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobAuditKey}, kind.AuditKey); err != nil {
+					return fmt.Errorf("persisting audit key: %w", err)
+				}
+				fsm.State.InstallAuditKey(kind.AuditKey)
+			}
 		case *raftcmdpb.TechnicalUpdate_ClusterConfig:
 			if err := fsm.applyClusterConfig(batch, raftIndex, kind.ClusterConfig); err != nil {
 				return fmt.Errorf("applying technical_updates[%d] cluster config: %w", i, err)
@@ -64,30 +80,12 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 				return fmt.Errorf("applying technical_updates[%d] incremental backup order: %w", i, err)
 			}
 		default:
-			// Rolling-upgrade hazard for the EN-1323 cutover: the
-			// cluster-wide IndexReady mechanism (oneof field 8) was
-			// removed and the field number reserved. New nodes
-			// unmarshal a pre-upgrade IndexReadyUpdate proposal into
-			// a nil-kind TechnicalUpdate and fall here, while old
-			// nodes still in the cluster successfully apply the
-			// proposal via the now-deleted applyIndexReady — FSM
-			// divergence.
-			//
-			// Mitigation is operational, not in-code: drain Raft
-			// commit-side before rolling the binary upgrade. A clean
-			// drain ensures no IndexReadyUpdate sits past the
-			// last-applied index of the old replicas, so newcomers
-			// never see one. See docs/ops/deployment.md for the
-			// upgrade procedure.
-			//
-			// Returning an error here (rather than silently no-op'ing)
-			// is intentional: per CLAUDE.md invariant #7 a truly-
-			// impossible case must surface loudly, and an FSM
-			// divergence is the only way this arm fires. All-error
-			// on every new node is the safer divergence pattern —
-			// operators see the failure on upgraded nodes immediately
-			// rather than discover stale forward indexes later.
-			return fmt.Errorf("technical_updates[%d]: unsupported kind %T (drain Raft commits before upgrading past EN-1323)", i, kind)
+			// Unknown technical updates violate the committed proposal
+			// contract and must surface rather than silently diverge.
+			// An old IndexReady payload at field 8 now decodes as AuditKey
+			// and is rejected by its length check, unless it happens to
+			// contain exactly 32 bytes. Mixed revisions are unsupported.
+			return fmt.Errorf("technical_updates[%d]: unsupported kind %T", i, kind)
 		}
 	}
 
@@ -176,8 +174,8 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 
 		// Purge all persisted bloom blocks.
 		if err := batch.DeleteRangeNoSync(
-			[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
-			[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 		); err != nil {
 			return fmt.Errorf("purging bloom blocks: %w", err)
 		}

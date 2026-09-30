@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -25,6 +26,7 @@ func main() {
 	assert.Always(connected, "stats convergence oracle connects to replicas", internal.Details{"replicas": len(conns), "error": err})
 	if !connected {
 		log.Printf("stats convergence: cannot connect: %v", err)
+
 		return
 	}
 	defer conns.Close()

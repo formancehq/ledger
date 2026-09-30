@@ -199,9 +199,10 @@ func (s *Store) IsWriteStalled() bool {
 //	0x03  Per-ledger   — per-ledger config/state (prepared queries, reversions, mirror).
 //	0x04  History            — permanent history (logs, audit entries/items, applied proposals).
 //	0x05  Idempotency        — TTL-managed idempotency keys (evicted by Raft command).
-//	0x06  Global             — cluster-wide metadata persisted forever (applied index, signing, sinks, ...).
+//	0x06  Global             — state retained across a cross-cluster restore.
 //	0x07  ClusterTransient   — FSM-tracked state that has no meaning after restore (backup jobs, future ephemeral state).
-//	0x08..0xFF                — reserved for future zones.
+//	0x08  ClusterPersistent  — durable node/cluster-local state, discarded on cross-cluster restore.
+//	0x09..0xFF                — reserved for future zones.
 
 // Zone bytes — first byte of every Pebble key.
 const (
@@ -224,6 +225,9 @@ const (
 	// (cluster config, signing keys, …) stays in
 	// ZoneGlobal.
 	ZoneClusterTransient byte = 0x07
+	// ZoneClusterPersistent survives ordinary restarts and in-cluster snapshot
+	// installation, but is discarded as a whole on cross-cluster restore.
+	ZoneClusterPersistent byte = 0x08
 )
 
 // Attribute sub-prefixes (zone 0x01), ordered by hot-path write frequency.
@@ -271,7 +275,8 @@ const (
 	SubIdempTimeIdx byte = 0x02
 )
 
-// Global sub-prefixes (zone 0x06), ordered by hot-path write frequency.
+// Global and cluster-persistent sub-prefixes. Existing sub-prefix numbers are
+// retained; the zone byte determines their restore lifetime.
 const (
 	SubGlobLastAppliedIndex      byte = 0x01
 	SubGlobLastAppliedTimestamp  byte = 0x02
@@ -284,25 +289,23 @@ const (
 	SubGlobMaintenanceMode       byte = 0x09
 	SubGlobQueryCheckpoint       byte = 0x0A
 	SubGlobNextQueryCheckpointID byte = 0x0B
-	// SubGlobPersistedConfig is the boot-validation anchor: the loader reads
-	// it to compare the store's storage_schema_version against the running
-	// binary BEFORE any other key is interpreted. Its byte is pinned across
-	// schema versions — renumbering it would hide an old store's version row
-	// from the very check meant to reject that store.
+	// SubGlobPersistedConfig is the boot-validation anchor in
+	// ZoneClusterPersistent. Boot explicitly detects the old ZoneGlobal anchor
+	// and rejects old schema stores before interpreting other keys.
 	SubGlobPersistedConfig         byte = 0x0C
 	SubGlobQueryCheckpointSchedule byte = 0x0D
 	SubGlobClusterConfig           byte = 0x0E
 	SubGlobBloom                   byte = 0x0F
 	SubGlobNextLedgerID            byte = 0x10
 	// SubGlobPeers stores Raft cluster membership (one entry per voter or
-	// learner): [ZoneGlobal][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress.
+	// learner): [ZoneClusterPersistent][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress.
 	// Mutations are driven by the Raft ConfChange apply path; the node
 	// reloads from this prefix at boot so the bootstrap voter and every
 	// other peer survive restarts without relying on the WAL snapshot
 	// payload (EN-1413).
 	SubGlobPeers byte = 0x11
 	// SubGlobRemovedMembers stores the removed-member registry (EN-1045):
-	// [ZoneGlobal][SubGlobRemovedMembers][node_id BE 8][instance_id 16] →
+	// [ZoneClusterPersistent][SubGlobRemovedMembers][node_id BE 8][instance_id 16] →
 	// raftcmdpb.RemovedMemberEntry. Written atomically with the peer row
 	// delete on ConfChangeRemoveNode (consensus and force paths), read by
 	// JoinAsLearner admission and checkAndPromoteLearners to prevent a
@@ -321,6 +324,10 @@ const (
 	// re-injection gate reads it — not the wall-clock-lagging HLC — as a skip hint;
 	// correctness rests on the in-memory map, not on this cutoff being exact.
 	SubGlobLastIdempotencyEvictionCutoff byte = 0x14
+	// SubGlobAuditKey is the once-initialized Raft-replicated secret used to
+	// authenticate audit history. It is part of checkpoints, unlike the
+	// operational cluster identity removed during restore preparation.
+	SubGlobAuditKey byte = 0x15
 )
 
 // ClusterTransient sub-prefixes (zone 0x07).
@@ -655,8 +662,9 @@ func (s *Store) WarmSystemKeys() {
 	db := s.getDB()
 
 	ranges := [][2]byte{
-		{ZonePerLedger, ZonePerLedger + 1}, // zone 0x03 (per-ledger system keys)
-		{ZoneGlobal, ZoneGlobal + 1},       // zone 0x06 (global system keys)
+		{ZonePerLedger, ZonePerLedger + 1},                 // zone 0x03 (per-ledger system keys)
+		{ZoneGlobal, ZoneGlobal + 1},                       // zone 0x06 (global system keys)
+		{ZoneClusterPersistent, ZoneClusterPersistent + 1}, // zone 0x08 (local durable keys)
 	}
 
 	var totalKeys int64
@@ -1463,7 +1471,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	var preservedConfig []byte
 
 	if oldDB != nil {
-		if value, closer, getErr := oldDB.Get([]byte{ZoneGlobal, SubGlobPersistedConfig}); getErr == nil {
+		if value, closer, getErr := oldDB.Get([]byte{ZoneClusterPersistent, SubGlobPersistedConfig}); getErr == nil {
 			preservedConfig = append([]byte(nil), value...)
 			_ = closer.Close()
 		}
@@ -1559,7 +1567,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Step 6: re-write this node's persisted config and re-checkpoint
 	// (still inside the staging directory).
 	if preservedConfig != nil {
-		if err := newDB.Set([]byte{ZoneGlobal, SubGlobPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+		if err := newDB.Set([]byte{ZoneClusterPersistent, SubGlobPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
 			return rollback(fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err))
 		}
 

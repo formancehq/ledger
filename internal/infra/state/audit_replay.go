@@ -53,7 +53,7 @@ func (auditReplayNotifier) NotifyConfigChanged()       {}
 // deliberately ignored: they are an admission/performance contract, while the
 // checker already has the complete chain-bound orders and must reproduce their
 // business effects without consulting the live projections.
-func NewAuditReplayer(logger logging.Logger, clusterID string) (*AuditReplayer, error) {
+func NewAuditReplayer(logger logging.Logger, auditKey string) (*AuditReplayer, error) {
 	dir, err := os.MkdirTemp("", "checker-audit-replay-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating audit replay directory: %w", err)
@@ -88,7 +88,7 @@ func NewAuditReplayer(logger logging.Logger, clusterID string) (*AuditReplayer, 
 		NewSharedState(),
 		auditReplayNotifier{},
 		nil,
-		clusterID,
+		auditKey,
 		0,
 		func(_ *raftpb.Entry, _ *dal.WriteSession) error { return nil },
 	)
@@ -106,6 +106,9 @@ func NewAuditReplayer(logger logging.Logger, clusterID string) (*AuditReplayer, 
 		_ = os.RemoveAll(dir)
 
 		return nil, fmt.Errorf("initializing audit replay state: %w", err)
+	}
+	if auditKey != "" {
+		machine.State.InstallAuditKey([]byte(auditKey))
 	}
 
 	return &AuditReplayer{machine: machine, store: store, dir: dir}, nil

@@ -3,8 +3,9 @@ package main
 import (
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
 func TestCheckpointBaselineUsesProbeAllocationFrontier(t *testing.T) {
@@ -42,5 +43,6 @@ func checkpointRegistry(ids ...uint64) *clusterpb.ListQueryCheckpointsResponse {
 	for _, id := range ids {
 		response.Checkpoints = append(response.Checkpoints, &clusterpb.QueryCheckpointInfo{CheckpointId: id})
 	}
+
 	return response
 }

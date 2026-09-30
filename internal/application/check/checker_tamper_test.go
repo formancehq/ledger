@@ -11,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/infra/state"
+	"github.com/formancehq/ledger/v3/internal/pkg/commands"
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
@@ -167,6 +168,48 @@ func TestVerifyAuditHashChain_DetectsTampering(t *testing.T) {
 	}
 }
 
+func TestVerifyAuditHashChain_RejectsValidHashWithInvalidAttribution(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	const clusterID = "invalid-attribution-cluster"
+
+	entry, items := newRichAuditEntry("success")
+	entry.CallerSnapshot = &commonpb.CallerSnapshot{}
+	// Compute a legitimate hash over the malformed replicated value. This pins
+	// the semantic validation used by restore/check independently of tamper
+	// detection: possession of a matching hash cannot legitimize attribution.
+	persistAuditEntry(t, store, entry, items, clusterID)
+
+	mismatches := runChainVerifier(t, store, clusterID)
+	require.Len(t, mismatches, 1)
+	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
+}
+
+func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T) {
+	t.Parallel()
+
+	store := createTestStore(t)
+	const clusterID = "invalid-attribution-chain-cluster"
+
+	first, firstItems := newRichAuditEntry("success")
+	first.CallerSnapshot = &commonpb.CallerSnapshot{}
+	persistAuditEntry(t, store, first, firstItems, clusterID)
+
+	second, secondItems := newRichAuditEntry("success")
+	second.Sequence = 2
+	second.Timestamp.Data++
+	second.GetSuccess().MinLogSequence = 3
+	second.GetSuccess().MaxLogSequence = 4
+	secondItems[0].LogSequence = 3
+	secondItems[1].LogSequence = 4
+	persistAuditEntryAfter(t, store, second, secondItems, clusterID, first.GetHash())
+
+	mismatches := runChainVerifier(t, store, clusterID)
+	require.Len(t, mismatches, 1)
+	require.Contains(t, mismatches[0].GetMessage(), "invalid caller attribution")
+}
+
 // newRichAuditEntry returns a fully-populated AuditEntry (sequence 1,
 // realistic timestamps, two ledgers, caller snapshot with key_id source,
 // either a success outcome with transient + purged maps or a failure
@@ -266,9 +309,17 @@ func richAuditOrder(ledger string) []byte {
 // builders, assigns them on the entry, then writes the entry + items to
 // Pebble at their canonical keys.
 func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string) {
-	t.Helper()
+	persistAuditEntryAfter(t, store, entry, items, clusterID, nil)
+}
 
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+func persistAuditEntryAfter(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry, items []*auditpb.AuditItem, clusterID string, lastHash []byte) {
+	t.Helper()
+	_ = clusterID
+	if entry.GetCallerSnapshot() == nil {
+		entry.CallerSnapshot = testCallerSnapshot()
+	}
+
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 
 	headerPayload, err := state.BuildHashedHeaderPayload(entry)
 	require.NoError(t, err)
@@ -280,9 +331,13 @@ func persistAuditEntry(t *testing.T, store *dal.Store, entry *auditpb.AuditEntry
 		hashSlices = append(hashSlices, state.BuildPerItemPayload(item))
 	}
 
-	_, entry.Hash = gen.Compute(nil, nil, hashSlices)
+	_, entry.Hash = gen.Compute(nil, lastHash, hashSlices)
 
 	rewriteAuditEntry(t, store, entry, items)
+}
+
+func testCallerSnapshot() *commonpb.CallerSnapshot {
+	return commands.SystemCallerSnapshot(commands.ComponentClusterPolicy)
 }
 
 // rewriteAuditEntry writes entry + items at their canonical keys WITHOUT
@@ -325,7 +380,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 	collectIdempotencyMismatches := func(store *dal.Store) []*servicepb.CheckStoreError {
 		attrs := attributes.New()
-		checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
+		checker := NewChecker(store, attrs, nil, logging.Testing())
 
 		handle, err := store.NewReadHandle()
 		require.NoError(t, err)
@@ -334,7 +389,7 @@ func TestVerifyAuditHashChain_DetectsIdempotencyOutcomeTampering(t *testing.T) {
 
 		var got []*servicepb.CheckStoreError
 
-		_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), newChainVerifierFolds(), func(event *servicepb.CheckStoreEvent) {
+		_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), newChainVerifierFolds(), func(event *servicepb.CheckStoreEvent) {
 			if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok &&
 				e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_IDEMPOTENCY_MISMATCH {
 				got = append(got, e.Error)
@@ -471,7 +526,7 @@ func runChainVerifierWithFolds(
 	t.Helper()
 
 	attrs := attributes.New()
-	checker := NewChecker(store, attrs, clusterID, nil, logging.Testing())
+	checker := NewChecker(store, attrs, nil, logging.Testing())
 
 	handle, err := store.NewReadHandle()
 	require.NoError(t, err)
@@ -482,7 +537,7 @@ func runChainVerifierWithFolds(
 	folds := newChainVerifierFolds()
 
 	// This test isolates HASH_MISMATCH; the idempotency TTL is irrelevant.
-	_, err = checker.verifyAuditHashChain(context.Background(), handle, newChainBoundState(), folds, func(event *servicepb.CheckStoreEvent) {
+	_, err = checker.verifyAuditHashChain(context.Background(), handle, checkerTestAuditKey, newChainBoundState(), folds, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok && e.Error.GetErrorType() == servicepb.CheckStoreErrorType_CHECK_STORE_ERROR_TYPE_HASH_MISMATCH {
 			mismatches = append(mismatches, e.Error)
 		}

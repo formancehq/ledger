@@ -702,6 +702,14 @@ The server persists critical configuration parameters in Pebble under the Global
 
 The idempotency TTL is **not** a persisted-config parameter: it lives in the Raft-replicated cluster policy and is changed by a policy revision bump, not a restart. See [Idempotency Keys](../technical/architecture/subsystems/admission/idempotency.md).
 
+The audit key is also separate from `cluster-id`: the leader generates 32
+random bytes and commits them once through Raft before any audited write.
+Replicas recover the committed key from Pebble; a malformed key or audit
+history without its key stops recovery. A restore preserves this key with the
+history while the destination uses its own `cluster-id` for membership and
+backup naming. `--unsafe-skip-config-validation` cannot regenerate or bypass
+the audit key. Its rotation is not an implicit configuration change.
+
 #### Edge Cases
 
 - **First boot**: No persisted config exists -- current config is saved (no error)

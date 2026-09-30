@@ -28,11 +28,27 @@ export may be skipped, and no restored row may be dropped afterwards.
 
 ## Restore evidence and responsibilities
 
+The last applied HLC timestamp starts at the checkpoint value and folds the
+maximum effective timestamp from every exported post-checkpoint audit entry.
+Successful and failed business proposals both advance that clock. Technical-only
+proposals do not. `RebuildDelta` stores the folded value before staging is
+activated, so the first destination proposal cannot acquire a timestamp older
+than a restored audit entry.
+
 A full checkpoint carries the Pebble state at its log and audit sequence
 boundaries. Incremental backup segments after that boundary carry raw log,
 audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores those
 rows, then `RebuildDelta` reconstructs the derived state that the live FSM wrote
 after the checkpoint.
+
+The audit secret is **preserved** checkpoint state, not a rebuilt projection:
+it is initialized once before the first audit entry and cannot be changed by
+post-checkpoint live apply. `RunBackup` refuses a full checkpoint without a
+committed key, so an incremental delta can never contain the first audit entry
+without its key in the base checkpoint. `PrepareForBackup` discards the source
+operational cluster identity but leaves the secret alongside the source
+history. The destination uses that secret to check and extend the chain while
+its own cluster ID names membership and subsequent backup artifacts.
 
 Raft applied indexes embedded in rebuilt business records remain source-cluster
 provenance, not certificates in the restored cluster's new Raft domain. A

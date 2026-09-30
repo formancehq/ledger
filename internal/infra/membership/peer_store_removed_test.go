@@ -146,6 +146,29 @@ func TestPeerStore_AnyRemovedForNodeID(t *testing.T) {
 	require.False(t, no)
 }
 
+func TestPeerStore_AnyRemovedForMaximumNodeID(t *testing.T) {
+	t.Parallel()
+
+	rms, store := newTestPeerStoreWithDAL(t)
+	maxNodeID := ^uint64(0)
+
+	session := store.OpenWriteSession()
+	require.NoError(t, rms.MarkRemoved(session, &raftcmdpb.RemovedMemberEntry{
+		NodeId:     maxNodeID,
+		InstanceId: bytesN(0xBB),
+		Reason:     "consensus",
+	}))
+	require.NoError(t, session.Commit())
+
+	yes, err := rms.AnyRemovedForNodeID(maxNodeID)
+	require.NoError(t, err)
+	require.True(t, yes)
+
+	no, err := rms.AnyRemovedForNodeID(maxNodeID - 1)
+	require.NoError(t, err)
+	require.False(t, no)
+}
+
 func TestPeerStore_MarkRemovedRejectsWrongInstanceIDLen(t *testing.T) {
 	t.Parallel()
 

@@ -1332,6 +1332,16 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 // audit reason, so no persisted TTL — and no ambiguous zero-value sentinel — is
 // consulted here.
 func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.PebbleReader, fromAuditSeq uint64) error {
+	// Business proposals advance the HLC and record their effective timestamp
+	// in the audit header, including failures. Fold the exported audit delta
+	// over the checkpoint value so the destination cannot issue an earlier
+	// effective timestamp after restore.
+	lastTimestamp, err := query.ReadLastAppliedTimestamp(reader)
+	if err != nil {
+		return fmt.Errorf("seeding last applied timestamp: %w", err)
+	}
+	checkpointTimestamp := lastTimestamp
+
 	var after *uint64
 	if fromAuditSeq > 0 {
 		after = &fromAuditSeq
@@ -1353,6 +1363,9 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 		}
 		if err != nil {
 			return fmt.Errorf("reading audit entry for idempotency rebuild: %w", err)
+		}
+		if timestamp := entry.GetTimestamp().GetData(); timestamp > lastTimestamp {
+			lastTimestamp = timestamp
 		}
 
 		key := entry.GetIdempotency().GetKey()
@@ -1384,6 +1397,11 @@ func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader d
 			}
 
 			w.batch = w.store.OpenWriteSession()
+		}
+	}
+	if lastTimestamp > checkpointTimestamp {
+		if err := state.StoreLastAppliedTimestamp(w.batch, lastTimestamp); err != nil {
+			return fmt.Errorf("restoring last applied timestamp: %w", err)
 		}
 	}
 

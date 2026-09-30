@@ -6,9 +6,11 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain/crypto/signing"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -20,9 +22,10 @@ func main() {
 	bucketClient, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	r := internal.Rand()
 	keyID := fmt.Sprintf("test-key-%d", r.Uint64())
@@ -87,6 +90,7 @@ func main() {
 	}, keyID, privateKey)
 	if err != nil {
 		log.Printf("failed to sign revoke request: %s", err)
+
 		return
 	}
 

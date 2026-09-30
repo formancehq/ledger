@@ -193,6 +193,15 @@ and authenticated authorization state moved under its principal variant.
 Revision 12 clients and servers would decode these field numbers with different
 types and must not communicate with revision 13 peers.
 
+## Required caller attribution (revision 14)
+
+Revision 14 makes caller attribution mandatory at the common Apply boundary.
+Followers freeze and forward a validated principal, leaders reject missing or
+malformed attribution before preload or proposal, and every FSM replica repeats
+the same validation for replicated writes before mutation. Direct clients cannot provide
+the peer-only forwarding field. This semantic tightening requires revision 14
+clients and servers to communicate together.
+
 ## Numscript metadata rendering and VM execution (revision 15)
 
 Revision 15 stores and returns an account-typed Numscript metadata value

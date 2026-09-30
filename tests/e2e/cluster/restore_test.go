@@ -84,6 +84,27 @@ func newRestoreGRPCClient(grpcPort int) (restorepb.RestoreServiceClient, *grpc.C
 	return restorepb.NewRestoreServiceClient(conn), conn, nil
 }
 
+func validateRestoreWithoutErrors(ctx context.Context, client restorepb.RestoreServiceClient) error {
+	stream, err := client.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
+	if err != nil {
+		return fmt.Errorf("starting restore validation: %w", err)
+	}
+
+	var validationErr error
+	for {
+		event, err := stream.Recv()
+		if err == io.EOF {
+			return validationErr
+		}
+		if err != nil {
+			return fmt.Errorf("receiving restore validation event: %w", err)
+		}
+		if event.GetError() != nil && validationErr == nil {
+			validationErr = fmt.Errorf("restore validation failed: %s", event.GetError().GetMessage())
+		}
+	}
+}
+
 var _ = Describe("Restore", Ordered, func() {
 	const (
 		ledgerName     = "restore-ledger"
@@ -111,8 +132,23 @@ var _ = Describe("Restore", Ordered, func() {
 		s3Client                    *s3.Client
 		deltaCheckpointID           uint64
 		deltaCheckpointMaxSequence  uint64
+		deltaCallerAuditSequence    uint64
+		sourceCheckpointAuditSeqs   []uint64
 		scheduleDeletionLogSequence uint64
 	)
+
+	checkpointAuditByCaller := func(client servicepb.BucketServiceClient, checkpointID uint64, filtered bool) ([]*auditpb.AuditEntry, error) {
+		options := &commonpb.ListOptions{Read: &commonpb.ReadOptions{CheckpointId: checkpointID}}
+		if filtered {
+			options.Filter = &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Audit{
+				Audit: &commonpb.AuditCondition{
+					Field:     commonpb.AuditField_AUDIT_FIELD_IDEMPOTENCY_KEY,
+					Condition: &commonpb.AuditCondition_StringPrefix{StringPrefix: deltaCallerKey},
+				},
+			}}
+		}
+		return actions.ListAuditEntriesWithRequest(ctx, client, &servicepb.ListAuditEntriesRequest{Options: options})
+	}
 
 	BeforeAll(func() {
 		ctx = logging.TestingContext()
@@ -356,6 +392,18 @@ var _ = Describe("Restore", Ordered, func() {
 			deltaCheckpointID, deltaCheckpointMaxSequence, err = actions.CreateQueryCheckpoint(ctx, client)
 			Expect(err).To(Succeed())
 			Expect(deltaCheckpointID).NotTo(BeZero())
+			unfiltered, err := checkpointAuditByCaller(client, deltaCheckpointID, false)
+			Expect(err).To(Succeed())
+			for _, entry := range unfiltered {
+				sourceCheckpointAuditSeqs = append(sourceCheckpointAuditSeqs, entry.GetSequence())
+			}
+			filtered, err := checkpointAuditByCaller(client, deltaCheckpointID, true)
+			Expect(err).To(Succeed())
+			Expect(filtered).To(HaveLen(1), "the source checkpoint must expose its audited delta entry through the frozen filter index")
+			Expect(filtered[0].GetIdempotency().GetKey()).To(Equal(deltaCallerKey))
+			deltaCallerAuditSequence = filtered[0].GetSequence()
+			Expect(unfiltered).To(ContainElement(HaveField("Sequence", deltaCallerAuditSequence)),
+				"the source checkpoint's authoritative audit zone must contain the filtered entry")
 
 			resp, err := clusterClient.IncrementalBackup(ctx, &clusterpb.IncrementalBackupRequest{
 				Storage: testutil.S3BackupStorage(&commonpb.S3StorageConfig{
@@ -534,24 +582,7 @@ var _ = Describe("Restore", Ordered, func() {
 		})
 
 		It("should validate the backup without errors", func() {
-			stream, err := restoreClient.ValidateRestore(ctx, &restorepb.ValidateRestoreRequest{})
-			Expect(err).To(Succeed())
-
-			var gotErrors bool
-			for {
-				event, err := stream.Recv()
-				if err == io.EOF {
-					break
-				}
-				Expect(err).To(Succeed())
-
-				if event.GetError() != nil {
-					gotErrors = true
-					GinkgoWriter.Printf("Validation error: %s\n", event.GetError().Message)
-				}
-			}
-
-			Expect(gotErrors).To(BeFalse(), "validation should not report errors")
+			Expect(validateRestoreWithoutErrors(ctx, restoreClient)).To(Succeed())
 		})
 
 		It("should preview the backup", func() {
@@ -748,6 +779,39 @@ var _ = Describe("Restore", Ordered, func() {
 			Expect(info.GetCheckpointId()).To(Equal(deltaCheckpointID))
 			Expect(info.GetMaxSequence()).To(Equal(deltaCheckpointMaxSequence),
 				"the restored logical projection must match the live source row")
+			// The source checkpoint's physical files are deliberately absent from
+			// a cross-cluster backup. A fresh checkpoint on the restored cluster
+			// freezes its rebuilt audit index for the source-history comparison.
+			restoredCheckpointID, _, err := actions.CreateQueryCheckpoint(ctx, client)
+			Expect(err).To(Succeed())
+			var unfilteredCheckpoint []*auditpb.AuditEntry
+			Eventually(func(g Gomega) {
+				var readErr error
+				unfilteredCheckpoint, readErr = checkpointAuditByCaller(client, restoredCheckpointID, false)
+				g.Expect(readErr).To(Succeed(), "the restored checkpoint must finish materializing before audit comparison")
+			}, 30*time.Second, 200*time.Millisecond).Should(Succeed())
+			var restoredCheckpointAuditSeqs []uint64
+			var sourceAuditBoundary uint64
+			for _, sequence := range sourceCheckpointAuditSeqs {
+				if sequence > sourceAuditBoundary {
+					sourceAuditBoundary = sequence
+				}
+			}
+			for _, entry := range unfilteredCheckpoint {
+				if entry.GetSequence() <= sourceAuditBoundary {
+					restoredCheckpointAuditSeqs = append(restoredCheckpointAuditSeqs, entry.GetSequence())
+				}
+			}
+			Expect(restoredCheckpointAuditSeqs).To(Equal(sourceCheckpointAuditSeqs),
+				"the restored checkpoint must preserve the complete source audit history at its frozen boundary")
+			filteredCheckpoint, err := checkpointAuditByCaller(client, restoredCheckpointID, true)
+			Expect(err).To(Succeed())
+			Expect(filteredCheckpoint).To(HaveLen(1),
+				"the restored checkpoint must freeze a complete filtered audit index")
+			Expect(filteredCheckpoint[0].GetSequence()).To(Equal(deltaCallerAuditSequence))
+			Expect(filteredCheckpoint[0].GetIdempotency().GetKey()).To(Equal(deltaCallerKey))
+			Expect(unfilteredCheckpoint).To(ContainElement(HaveField("Sequence", deltaCallerAuditSequence)),
+				"the restored checkpoint's authoritative audit zone must agree with its filter index")
 
 			entries, err := actions.ListAuditEntries(ctx, client, false)
 			Expect(err).To(Succeed())

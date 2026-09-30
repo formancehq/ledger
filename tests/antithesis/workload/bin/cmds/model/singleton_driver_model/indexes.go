@@ -849,6 +849,7 @@ func (c *Checker) validateIndexedTransactionQuery(maxTicket uint64, ledger strin
 		if !live {
 			return false
 		}
+
 		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 		})
@@ -1001,6 +1002,7 @@ func rejectedIndexLabel(err error) string {
 			return info.GetMetadata()["index"]
 		}
 	}
+
 	return ""
 }
 
@@ -1229,6 +1231,7 @@ func (c *Checker) validateIndexedAccountQuery(maxTicket uint64, ledger string, f
 		if !live {
 			return false
 		}
+
 		return indexedQueryOutcomeLegal(ls, commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS, filter, needed, errKind, rejectedIndex, func(ls oracle.LedgerState) bool {
 			want := accountWindow(ls, filter, cursor, pageSize, reverse)
 			if len(want) != len(serverAccts) {

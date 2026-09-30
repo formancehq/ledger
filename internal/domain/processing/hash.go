@@ -1,18 +1,16 @@
 // Package processing computes the chained audit hash that anchors every
 // FSM proposal to the cluster's append-only audit log.
 //
-// The hash is keyed by a value derived from the immutable ClusterID, so
-// an attacker who learns the hashing algorithm but not the ClusterID
-// cannot forge audit entries offline. ClusterID immutability is
-// enforced by bootstrap.ValidateOrPersistConfig; the per-algorithm key
-// derivation uses domain-separated BLAKE3.
+// The hash is keyed by a value derived from the once-committed random audit
+// secret. The secret is independent of the operational cluster ID and travels
+// with the audit history through backup and restore.
 //
 // The generator hashes opaque byte slices, never a proto. The apply
 // path assembles those slices from canonical binary encodings of every
 // bound AuditEntry and AuditItem field (cf. state.BuildHashedHeaderPayload
 // and state.BuildPerItemPayload). The verifier reassembles the same
 // slices from the persisted entry and items, so reproducing the chain
-// requires only the stored bytes + the ClusterID — no proto schema, no
+// requires only the stored bytes + the audit key — no proto schema, no
 // vtprotobuf, no marshaller version.
 package processing
 
@@ -25,7 +23,7 @@ import (
 // HashAlgorithm (xxh3HashGenerator, blake3HashGenerator).
 //
 // Generators are immutable once constructed: the per-cluster key is
-// derived from the ClusterID at construction time and never changes.
+// derived from the audit key at construction time and never changes.
 // When the cluster config swaps the active algorithm, a new generator
 // is constructed via NewHashGenerator and replaces the previous one.
 type HashGenerator interface {
@@ -43,7 +41,7 @@ type HashGenerator interface {
 }
 
 // NewHashGenerator selects the implementation matching algorithm and
-// derives its per-cluster key from clusterID. Use this both in fx
+// derives its key from the committed audit secret. Use this both in fx
 // wiring (FSM) and per-entry in the checker (algorithm read from
 // AuditEntry.HashVersion).
 //
@@ -51,12 +49,12 @@ type HashGenerator interface {
 // BLAKE3 (the default, value 0). This preserves the lenient behavior of
 // the previous free-function code path and keeps the checker robust
 // against future enum values or stale data.
-func NewHashGenerator(algorithm commonpb.HashAlgorithm, clusterID string) HashGenerator {
+func NewHashGenerator(algorithm commonpb.HashAlgorithm, auditKey string) HashGenerator {
 	switch algorithm {
 	case commonpb.HashAlgorithm_HASH_ALGORITHM_XXH3:
-		return newXXH3HashGenerator(clusterID)
+		return newXXH3HashGenerator(auditKey)
 	default:
-		return newBLAKE3HashGenerator(clusterID)
+		return newBLAKE3HashGenerator(auditKey)
 	}
 }
 

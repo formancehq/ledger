@@ -16,15 +16,18 @@ package main
 import (
 	"context"
 	"log"
+	"slices"
 	"sync/atomic"
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"k8s.io/client-go/kubernetes"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"k8s.io/client-go/kubernetes"
 )
 
 var rrSentinelLedger = internal.PrefixSentinel.WithSuffix("rolling-restart")
@@ -45,15 +48,17 @@ func main() {
 	clientset, err := internal.NewKubeClientset()
 	if err != nil {
 		log.Printf("cannot build k8s clientset: %s", err)
+
 		return
 	}
 
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("cannot create ledger gRPC client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 
@@ -76,6 +81,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 	pods, err := internal.ListLedgerPods(ctx, clientset)
 	if err != nil {
 		log.Printf("rolling-restart: list pods failed: %s", err)
+
 		return
 	}
 	if len(pods) == 0 {
@@ -88,6 +94,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 		if !internal.IsTransient(err) {
 			log.Printf("rolling-restart: precommit failed: %s", err)
 		}
+
 		return
 	}
 
@@ -98,8 +105,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 	go writeBurst(burstCtx, client, &committedDuringRestart)
 
 	// Highest ordinal down to 0 — matches kubernetes StatefulSet rolling-update direction.
-	for i := len(pods) - 1; i >= 0; i-- {
-		pod := pods[i]
+	for _, pod := range slices.Backward(pods) {
 		details := internal.Details{
 			"pod":      pod,
 			"ordinal":  internal.PodOrdinal(pod),
@@ -113,6 +119,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 		uid, err := internal.GetPodUID(ctx, clientset, pod)
 		if err != nil {
 			log.Printf("rolling-restart: get UID %s failed: %s", pod, err)
+
 			continue
 		}
 
@@ -125,6 +132,7 @@ func runSweep(ctx context.Context, clientset kubernetes.Interface, clusterClient
 
 		if !internal.WaitForPodGone(ctx, clientset, pod, uid, rrPodGoneTimeout) {
 			log.Printf("rolling-restart: %s did not disappear within %s", pod, rrPodGoneTimeout)
+
 			continue
 		}
 		ready := internal.WaitForPodReady(ctx, clientset, pod, rrPodReadyTimeout)
@@ -171,6 +179,7 @@ func transferAwayFrom(ctx context.Context, clusterClient clusterpb.ClusterServic
 	if err == nil {
 		assert.Reachable("rolling-restart transferred leadership before pod delete", details.With(internal.Details{"to": target}))
 	}
+
 	return err
 }
 

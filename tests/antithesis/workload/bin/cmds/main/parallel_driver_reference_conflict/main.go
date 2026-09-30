@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -43,7 +45,7 @@ func main() {
 			return
 		}
 
-		details["firstTxId"] = createdTx.Transaction.Id
+		details["firstTxId"] = createdTx.GetTransaction().GetId()
 
 		// 2. Create a different transaction with the same reference — must fail.
 		_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{

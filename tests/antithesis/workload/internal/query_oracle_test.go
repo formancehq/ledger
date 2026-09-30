@@ -16,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	workload "github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 )
@@ -47,7 +48,7 @@ func TestQueryOracleReadErrors(t *testing.T) {
 				} else {
 					seedOracle(t, ctx, client)
 				}
-				var reader servicepb.BucketServiceClient = client
+				var reader = client
 				if !tc.missingIndex {
 					reader = &faultedQueryClient{BucketServiceClient: client, failure: status.Error(tc.code, "injected read failure"), open: tc.open}
 				}
@@ -145,6 +146,7 @@ func TestQueryOracleSetupError(t *testing.T) {
 			if record.Hit && record.Message == permanentOracleError {
 				require.False(t, record.Condition)
 				require.Equal(t, "create ledger and indexes", record.Details["operation"])
+
 				return
 			}
 		}
@@ -183,6 +185,7 @@ func seedOracle(t *testing.T, ctx context.Context, client servicepb.BucketServic
 	ids, err := workload.ReadOracleTransactions(ctx, client, "oracle", actions.ReferenceFilter("reference"))
 	require.NoError(t, err)
 	require.Len(t, ids, 1)
+
 	return ids
 }
 
@@ -190,6 +193,7 @@ func seedOracle(t *testing.T, ctx context.Context, client servicepb.BucketServic
 // neither implement a substitute query engine nor manufacture missing indexes.
 type faultedQueryClient struct {
 	servicepb.BucketServiceClient
+
 	failure      error
 	open         bool
 	once         bool
@@ -206,17 +210,20 @@ func (c *faultedQueryClient) ListTransactions(ctx context.Context, request *serv
 		if c.afterFailure != nil {
 			c.afterFailure()
 		}
+
 		return nil, c.failure
 	}
 	stream, err := c.BucketServiceClient.ListTransactions(ctx, request, opts...)
 	if err != nil {
 		return nil, err
 	}
+
 	return &faultedQueryStream{ServerStreamingClient: stream, failure: c.failure}, nil
 }
 
 type faultedQueryStream struct {
 	grpc.ServerStreamingClient[commonpb.Transaction]
+
 	failure error
 }
 
@@ -225,5 +232,6 @@ func (s *faultedQueryStream) Recv() (*commonpb.Transaction, error) {
 	if errors.Is(err, io.EOF) && s.failure != nil {
 		return nil, s.failure
 	}
+
 	return tx, err
 }
