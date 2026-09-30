@@ -52,7 +52,7 @@ func BenchmarkTimestampRangePage(b *testing.B) {
 						profile := &QueryProfile{}
 						ctx := &compileCtx{kb: dal.NewKeyBuilder(), indexReader: store.DB(), ledgerName: "bench", profile: profile}
 						minV, maxV := uint64(0), uint64(rows-1)
-						iter, err := compileTimestampRangeCondition(ctx, &commonpb.UintCondition{Min: &minV, Max: &maxV}, readstore.TransactionTimestampRangePrefix(ctx.kb, "bench"), "tstmp", 0)
+						iter, err := compileTimestampRangeCondition(ctx, &commonpb.UintCondition{Min: &minV, Max: &maxV}, timestampArm{prefix: readstore.TransactionTimestampRangePrefix(ctx.kb, "bench"), idPrefix: readstore.PrefixTransactionTimestampByID, bucket: "tstmp"})
 						require.NoError(b, err)
 						items, _, err := readstore.PaginateForward(iter, 15, page.after)
 						require.NoError(b, err)

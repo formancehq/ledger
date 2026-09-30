@@ -123,7 +123,7 @@ func TestConsumerGuards_DegenerateRangeShortCircuits(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, it.Next(), "txID guard must yield the empty iterator")
 
-	it, err = compileTimestampRangeCondition(ctx, cond, []byte("p"), "tstmp", 0)
+	it, err = compileTimestampRangeCondition(ctx, cond, timestampArm{prefix: []byte("p"), idPrefix: readstore.PrefixTransactionTimestampByID, bucket: "tstmp"})
 	require.NoError(t, err)
 	require.False(t, it.Next(), "timestamp guard must yield the empty iterator")
 

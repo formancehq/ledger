@@ -810,7 +810,7 @@ func compileBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.BuiltinUintC
 		return nil, err
 	}
 
-	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm)
 }
 
 func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {
@@ -871,15 +871,12 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}), nil
 }
 
-// compileTimestampRangeConditionRev is the value-ordered fallback: the scan
-// surfaces rows in (timestamp, entity) order, so the sorted result is
-// unavoidable. Descending reuses it rather than building another one.
+// compileTimestampRangeConditionRev scans the ID-first companion in descending
+// entity order, using the date-first index only to find the initial ID.
 func compileTimestampRangeConditionRev(
 	ctx *compileCtx,
 	cond *commonpb.UintCondition,
-	ledgerPrefix []byte,
-	bucketLabel string,
-	stampPin uint64,
+	arm timestampArm,
 ) (readstore.ReverseIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
@@ -890,21 +887,17 @@ func compileTimestampRangeConditionRev(
 		return emptyReverse(), nil
 	}
 
-	lower, upper, entityOffset, _ := timestampRangeBounds(ledgerPrefix, bounds)
-	idPrefixByte, stamped, err := idDatePrefixForBucket(bucketLabel)
-	if err != nil {
-		return nil, err
-	}
-	idPrefix := readstore.IDDatePrefix(ctx.kb, idPrefixByte, ctx.ledgerName)
-	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Desc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, stamped, stampPin)
+	lower, upper, entityOffset, _ := timestampRangeBounds(arm.prefix, bounds)
+	idPrefix := readstore.IDDatePrefix(ctx.kb, arm.idPrefix, ctx.ledgerName)
+	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Desc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, arm.stamped, arm.stampPin)
 	if rErr != nil {
 		return nil, fmt.Errorf("creating ID-ordered timestamp range iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("ReverseIDDateRangeIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
+		Label:  fmt.Sprintf("ReverseIDDateRangeIterator(%s:%s range)", arm.bucket, ctx.ledgerName),
 		Kind:   "Range",
-		Prefix: bucketLabel,
+		Prefix: arm.bucket,
 	}
 
 	return trackReverse(iter, ctx.profile, stats), nil
@@ -924,7 +917,7 @@ func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuilti
 		return nil, err
 	}
 
-	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return compileTimestampRangeConditionRev(ctx, cond.GetCond(), arm)
 }
 
 func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (readstore.ReverseIterator, error) {

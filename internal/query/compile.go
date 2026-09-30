@@ -1235,7 +1235,7 @@ func compileBuiltinUintCondition(ctx *compileCtx, cond *commonpb.BuiltinUintCond
 		return nil, err
 	}
 
-	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm)
 }
 
 // compileTxIDCondition filters transactions by ID using Pebble transaction updates.
@@ -1300,8 +1300,8 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 
 // timestampArm is everything a timestamp-keyed builtin scan needs that does
 // NOT depend on direction: the index it requires, the label used in errors and
-// profiling, its key prefix, the profile bucket, and whether the scan is
-// stamp-gated.
+// profiling, both key prefixes, and whether the companion value carries a
+// fold stamp.
 //
 // It exists so the ascending and descending compilers cannot drift on any of
 // those. They are the values that decide which keyspace is scanned and how the
@@ -1310,7 +1310,9 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 // profile read wrong or a scan read the wrong prefix.
 type timestampArm struct {
 	prefix   []byte
+	idPrefix byte
 	bucket   string
+	stamped  bool
 	stampPin uint64
 }
 
@@ -1320,21 +1322,26 @@ func resolveTxTimestampArm(ctx *compileCtx, field commonpb.TransactionBuiltinInd
 	var (
 		label       string
 		buildPrefix func() []byte
+		idPrefix    byte
 		bucket      string
+		stamped     bool
 		stampPin    uint64
 	)
 
 	switch field {
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_TIMESTAMP:
 		label, bucket = "timestamp", "tstmp"
+		idPrefix = readstore.PrefixTransactionTimestampByID
 		buildPrefix = func() []byte { return readstore.TransactionTimestampRangePrefix(ctx.kb, ctx.ledgerName) }
 
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_INSERTED_AT:
 		label, bucket = "inserted_at", "txiat"
+		idPrefix = readstore.PrefixTransactionInsertedAtByID
 		buildPrefix = func() []byte { return readstore.TransactionInsertedAtRangePrefix(ctx.kb, ctx.ledgerName) }
 
 	case commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REVERTED_AT:
 		label, bucket = "reverted_at", "rvat"
+		idPrefix, stamped = readstore.PrefixTransactionRevertedAtByID, true
 		buildPrefix = func() []byte { return readstore.TransactionRevertedAtRangePrefix(ctx.kb, ctx.ledgerName) }
 		// reverted_at is the one transaction builtin written AFTER the
 		// transaction's creation (the revert's own fold), so the TRANSACTIONS
@@ -1354,7 +1361,7 @@ func resolveTxTimestampArm(ctx *compileCtx, field commonpb.TransactionBuiltinInd
 		return timestampArm{}, err
 	}
 
-	return timestampArm{prefix: buildPrefix(), bucket: bucket, stampPin: stampPin}, nil
+	return timestampArm{prefix: buildPrefix(), idPrefix: idPrefix, bucket: bucket, stamped: stamped, stampPin: stampPin}, nil
 }
 
 // resolveLogDateArm is resolveTxTimestampArm for the log date builtin, whose
@@ -1368,8 +1375,9 @@ func resolveLogDateArm(ctx *compileCtx) (timestampArm, error) {
 	}
 
 	return timestampArm{
-		prefix: readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName),
-		bucket: "lldt",
+		prefix:   readstore.LedgerLogDateRangePrefix(ctx.kb, ctx.ledgerName),
+		idPrefix: readstore.PrefixLedgerLogDateByID,
+		bucket:   "lldt",
 	}, nil
 }
 
@@ -1382,9 +1390,7 @@ func resolveLogDateArm(ctx *compileCtx) (timestampArm, error) {
 func compileTimestampRangeCondition(
 	ctx *compileCtx,
 	cond *commonpb.UintCondition,
-	ledgerPrefix []byte,
-	bucketLabel string,
-	stampPin uint64,
+	arm timestampArm,
 ) (readstore.EntityIterator, error) {
 	bounds, err := resolveUintBounds(cond, ctx.params)
 	if err != nil {
@@ -1395,39 +1401,20 @@ func compileTimestampRangeCondition(
 		return readstore.NewSliceIterator(nil), nil
 	}
 
-	lower, upper, entityOffset, _ := timestampRangeBounds(ledgerPrefix, bounds)
-	idPrefixByte, stamped, err := idDatePrefixForBucket(bucketLabel)
-	if err != nil {
-		return nil, err
-	}
-	idPrefix := readstore.IDDatePrefix(ctx.kb, idPrefixByte, ctx.ledgerName)
-	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Asc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, stamped, stampPin)
+	lower, upper, entityOffset, _ := timestampRangeBounds(arm.prefix, bounds)
+	idPrefix := readstore.IDDatePrefix(ctx.kb, arm.idPrefix, ctx.ledgerName)
+	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Asc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, arm.stamped, arm.stampPin)
 	if rErr != nil {
 		return nil, fmt.Errorf("creating ID-ordered timestamp range iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("IDDateRangeIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
+		Label:  fmt.Sprintf("IDDateRangeIterator(%s:%s range)", arm.bucket, ctx.ledgerName),
 		Kind:   "Range",
-		Prefix: bucketLabel,
+		Prefix: arm.bucket,
 	}
 
 	return trackIterator(iter, ctx.profile, stats), nil
-}
-
-func idDatePrefixForBucket(bucket string) (byte, bool, error) {
-	switch bucket {
-	case "tstmp":
-		return readstore.PrefixTransactionTimestampByID, false, nil
-	case "txiat":
-		return readstore.PrefixTransactionInsertedAtByID, false, nil
-	case "rvat":
-		return readstore.PrefixTransactionRevertedAtByID, true, nil
-	case "lldt":
-		return readstore.PrefixLedgerLogDateByID, false, nil
-	default:
-		return 0, false, fmt.Errorf("invariant: unsupported ID-date range bucket %q", bucket)
-	}
 }
 
 // compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.
@@ -1445,7 +1432,7 @@ func compileLogBuiltinUintCondition(ctx *compileCtx, cond *commonpb.LogBuiltinUi
 		return nil, err
 	}
 
-	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm.prefix, arm.bucket, arm.stampPin)
+	return compileTimestampRangeCondition(ctx, cond.GetCond(), arm)
 }
 
 // compileLogIdCondition filters logs by ledger-local log ID using the ledger logs index.
