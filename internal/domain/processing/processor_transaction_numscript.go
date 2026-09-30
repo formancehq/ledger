@@ -9,6 +9,7 @@ import (
 	"math/big"
 	"slices"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
 
 	numscriptlib "github.com/formancehq/numscript"
@@ -30,17 +31,18 @@ type numscriptPostingProducer struct {
 	// compiledProgram/compiledVars/compiledScriptHash are the Numscript VM
 	// artifact admission compiled on the leader's parallel path (from
 	// OrderTechnical, staged like the hash above). Execution decodes and runs
-	// the bytecode on the VM, the only engine, and fails the order loudly if it
-	// is missing or was not encoded in the bundled library's artifact format
-	// (another binary's, e.g. a Raft log replayed across a library upgrade). The
+	// the bytecode on the VM, the only engine. A missing artifact is recompiled
+	// from the script text; one not encoded in the bundled library's artifact
+	// format (another binary's, e.g. a Raft log replayed across a library
+	// upgrade) fails the order loudly. The
 	// outcome is a function of the committed entry and the running binary
 	// alone, so every node on that binary applies it identically (invariant #2).
 	compiledProgram    []byte
 	compiledVars       []byte
 	compiledScriptHash []byte
-	// compileMissing compiles the script when the order carries no compiled
-	// code, instead of failing it. Set only for the store checker's audit
-	// replay (see RequestProcessor.CompileMissingNumscript).
+	// compileMissing marks the store checker's audit replay, whose orders
+	// never carry compiled code, so a missing artifact there is expected (see
+	// RequestProcessor.CompileMissingNumscript).
 	compileMissing bool
 }
 
@@ -136,26 +138,27 @@ func (p *numscriptPostingProducer) produce(s Scope, ledgerName string, order *ra
 	// Execute the script on the VM, the only execution engine. When Force is
 	// true, the store returns unlimited balances to bypass balance checks.
 	//
-	// Admission binds an artifact to every scripted order it proposes: a script
-	// the VM cannot run is rejected there (ErrNumscriptCompile), and an order it
-	// forwards without one is marked preload_unavailable and rejected before
-	// reaching here. A scripted order without an artifact is therefore an
-	// admission bug, surfaced loudly (invariant #7) — except when re-running
-	// an audited order, which never carries compiled code: then compile it here.
+	// The artifact is derivable from the script text, so a missing one is
+	// recompiled here exactly as admission compiles it: it costs a compile and
+	// never changes the outcome. Re-running an audited order, which never
+	// carries compiled code, always gets here. Anywhere else it is an admission
+	// bug — admission binds an artifact to every scripted order it proposes,
+	// and one it forwards without is marked preload_unavailable and rejected
+	// before reaching here — so it is flagged under Antithesis (invariant #7).
 	compiledProgram, compiledVars, compiledScriptHash := p.compiledProgram, p.compiledVars, p.compiledScriptHash
-	if len(compiledProgram) == 0 && p.compileMissing {
+	if len(compiledProgram) == 0 {
+		if !p.compileMissing {
+			assert.Unreachable("scripted order reached FSM apply without its compiled numscript artifact", map[string]any{
+				"ledger": ledgerName,
+			})
+		}
+
 		compiled, compileErr := numscript.CompileForReplay(p.cache, script.GetPlain(), script.GetVars())
 		if compileErr != nil {
 			return nil, compileErr
 		}
 
 		compiledProgram, compiledVars, compiledScriptHash = compiled.Program, compiled.Vars, compiled.ScriptHash
-	}
-
-	if len(compiledProgram) == 0 {
-		return nil, &domain.ErrNumscriptRuntime{
-			Detail: "scripted order carries no compiled numscript artifact",
-		}
 	}
 
 	// The artifact is bound to the exact text admission compiled. The text

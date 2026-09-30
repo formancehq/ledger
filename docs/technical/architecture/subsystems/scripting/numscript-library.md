@@ -237,8 +237,13 @@ wire-supplied bytecode without per-instruction checks.
 
 Every scripted order admission proposes carries an artifact; an order it
 forwards without one is marked `preload_unavailable` and rejected before any
-read. A scripted order reaching execution without an artifact is therefore an
-admission bug, and the FSM fails it with `ErrNumscriptRuntime` (invariant #7).
+read. The artifact is an optimization derivable from the script text, not
+part of the order's meaning, so a scripted order reaching execution without
+one is recompiled from its text (`numscript.CompileForReplay`, the same
+compile admission runs) and executed on the VM: it costs a compile and never
+changes the outcome. Outside audit replay (below) a missing artifact is still
+an admission bug, so it is flagged with an Antithesis `assert.Unreachable`
+(invariant #7), which never feeds the outcome (invariant #2).
 
 The FSM rejects an artifact — failing the order with `ErrNumscriptRuntime`
 (invariant #7), identically on every node running the binary — when: either
@@ -265,11 +270,12 @@ requests cannot carry technical fields: `ApplyBatch` is made of `Request`
 messages and admission builds the `raftcmdpb.Order` itself.
 
 Because the audit never holds the artifact, the store checker, which re-runs
-audited orders to rebuild state, compiles each script itself before running it
-(`RequestProcessor.CompileMissingNumscript`, turned on only by
-`state.AuditReplayer`). Every compilation of a script means the same thing, so
-this gives the order its original outcome. The cluster's own processor never
-turns it on: there, a scripted order without an artifact still fails.
+audited orders to rebuild state, takes the same recompile path for every
+scripted order. Every compilation of a script means the same thing, so this
+gives the order its original outcome. Missing artifacts are expected there, so
+`state.AuditReplayer` turns on `RequestProcessor.CompileMissingNumscript`,
+which only skips the `assert.Unreachable`; the cluster's own processor never
+calls it.
 
 ### Version Pinning Examples
 

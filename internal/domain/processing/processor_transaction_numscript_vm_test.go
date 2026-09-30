@@ -131,14 +131,22 @@ func TestProduce_CompiledArtifactExecutesOnTheVM(t *testing.T) {
 	require.Equal(t, "vm-test", commonpb.MetadataValueToString(vmResult.TransactionMetadata["kind"]))
 }
 
-// TestProduce_MissingArtifactIsLoud: the VM is the only engine, so a scripted
-// order without an artifact is an admission bug surfaced loudly (invariant
-// #7) — the script text is never run some other way.
-func TestProduce_MissingArtifactIsLoud(t *testing.T) {
+// TestProduce_MissingArtifactRecompilesToTheSameOutcome: the artifact is
+// derivable from the script text, so an order without one is recompiled and
+// produces exactly what the admission-compiled artifact produces — still on
+// the VM, the only engine.
+func TestProduce_MissingArtifactRecompilesToTheSameOutcome(t *testing.T) {
 	t.Parallel()
 
-	_, err := produceVMScript(t, vmScriptVars, nil, nil, nil)
-	requireNumscriptRuntimeError(t, err, "no compiled numscript artifact")
+	programBytes, varsBytes, scriptHash := compileArtifactForTest(t, vmScript, vmScriptVars)
+
+	withArtifact, err := produceVMScript(t, vmScriptVars, programBytes, varsBytes, scriptHash)
+	require.Nil(t, err)
+
+	recompiled, err := produceVMScript(t, vmScriptVars, nil, nil, nil)
+	require.Nil(t, err)
+
+	require.Equal(t, withArtifact, recompiled)
 }
 
 // TestProduce_CompiledArtifactHashMismatchIsLoud: an artifact bound to a

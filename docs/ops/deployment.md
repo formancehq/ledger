@@ -794,7 +794,8 @@ the FSM executes instead of re-interpreting the script text; the bundled
 Numscript library also changes how an account-typed metadata value is rendered
 (`merchants:acme` instead of `@merchants:acme`). The VM is the new binary's
 only execution engine: admission rejects a script it cannot compile, and the
-FSM fails a scripted order that carries no artifact rather than interpreting it.
+FSM runs a scripted order that carries no artifact by recompiling its text for
+the VM, never by interpreting it.
 
 The technical fields are additive protobuf, so a binary predating them decodes
 the same committed entry without the artifact and takes the interpreter path
@@ -821,10 +822,13 @@ across an FSM outcome change" above:
   committed before the stop but applied by a node only after it restarts on
   the new binary — the entries it replays above its last snapshot — runs on
   the new binary. An entry the old binary committed carries no artifact, so
-  the new binary fails it, although replicas that applied it before the stop
-  succeeded. The same holds for a rollback, and for a later library update
-  that changes the bytecode major version (see the next point). Such a replica must
-  be resynchronised from the leader.
+  the new binary recompiles its script with the new library and runs it on
+  the VM, while the replicas that applied it before the stop interpreted it
+  with the old library: for the scripts listed above the outcome differs. A
+  rollback exposes the same window in the other direction, and a later
+  library update that changes the bytecode major version fails such entries
+  instead (see the next point). Such a replica must be resynchronised from the
+  leader.
 - **`ledgerctl check` does not detect a straddled window** for the usual
   reason: each replica's audit chain stays internally consistent. Detecting a
   divergence means comparing transaction metadata and audit entries across
