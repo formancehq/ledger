@@ -3,6 +3,9 @@ package numscript
 import (
 	"testing"
 
+	numscriptlib "github.com/formancehq/numscript"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/stretchr/testify/require"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
@@ -147,7 +150,7 @@ func TestNumscriptCache_RecordSize_NilGauge(t *testing.T) {
 
 	c := NewNumscriptCache(10)
 	// Should not panic when sizeGauge is nil
-	c.recordSize(5)
+	c.recordSize(cacheSideParsed, 5)
 }
 
 func TestNumscriptCache_RecordSize_WithGauge(t *testing.T) {
@@ -167,4 +170,51 @@ func TestNumscriptCache_RecordSize_WithGauge(t *testing.T) {
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(t.Context(), &rm))
 	require.NotEmpty(t, rm.ScopeMetrics)
+}
+
+// TestNumscriptCache_RecordSize_ReportsBothSides pins that numscript.cache.size
+// reports the compiled-artifact LRU next to the parse LRU: the compiled side
+// holds the warm VMs, so a gauge fed by the parse side alone under-reports the
+// cache's footprint.
+func TestNumscriptCache_RecordSize_ReportsBothSides(t *testing.T) {
+	t.Parallel()
+
+	c := NewNumscriptCache(10)
+
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	require.NoError(t, c.InitCacheMetrics(provider.Meter("test")))
+
+	entry := c.getOrParseEntry(`send [USD/2 100] (source = @world destination = @users:alice)`)
+	require.Nil(t, entry.script.err)
+
+	compiled := mustCompile(t, entry, nil)
+	vars, decErr := numscriptlib.DecodeVars(compiled.Vars)
+	require.NoError(t, decErr)
+
+	_, err := c.getOrDecodeCompiled(compiled.ScriptHash, compiled.Program, &vars)
+	require.Nil(t, err)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	sizes := map[string]int64{}
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != "numscript.cache.size" {
+				continue
+			}
+
+			gauge, ok := m.Data.(metricdata.Gauge[int64])
+			require.True(t, ok)
+
+			for _, point := range gauge.DataPoints {
+				side, found := point.Attributes.Value(attribute.Key("cache"))
+				require.True(t, found)
+				sizes[side.AsString()] = point.Value
+			}
+		}
+	}
+
+	require.Equal(t, map[string]int64{cacheSideParsed: 1, cacheSideCompiled: 1}, sizes)
 }
