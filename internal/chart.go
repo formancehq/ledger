@@ -45,9 +45,13 @@ type ChartOfAccounts map[string]ChartSegment
 
 var ChartSegmentRegexp = regexp.MustCompile(`^(\$|\.)?[a-zA-Z0-9_-]+$`)
 
-const patternCacheMaxSize = 4096
+// patternCacheMaxSize bounds the number of compiled patterns retained.
+// An entry is one distinct pattern string shared process-wide, not per
+// query or transaction, so a few hundred covers the realistic working
+// set across charts while capping retention.
+const patternCacheMaxSize = 512
 
-var patternCache = gcache.New(patternCacheMaxSize).LFU().Build()
+var patternCache = gcache.New(patternCacheMaxSize).LRU().Build()
 
 func ValidateSegment(addr string) bool {
 	return ChartSegmentRegexp.Match([]byte(addr))
