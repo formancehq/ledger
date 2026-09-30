@@ -1395,24 +1395,39 @@ func compileTimestampRangeCondition(
 		return readstore.NewSliceIterator(nil), nil
 	}
 
-	lower, upper, entityOffset, entityLen := timestampRangeBounds(ledgerPrefix, bounds)
-
-	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
-	if rErr != nil {
-		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
-	}
-
-	stats := &IteratorStats{
-		Label:  fmt.Sprintf("SliceIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
-		Kind:   "Range",
-		Prefix: bucketLabel,
-	}
-	matIter, err := materializeIterator(iter, ctx.profile, stats)
+	lower, upper, entityOffset, _ := timestampRangeBounds(ledgerPrefix, bounds)
+	idPrefixByte, stamped, err := idDatePrefixForBucket(bucketLabel)
 	if err != nil {
 		return nil, err
 	}
+	idPrefix := readstore.IDDatePrefix(ctx.kb, idPrefixByte, ctx.ledgerName)
+	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Asc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, stamped, stampPin)
+	if rErr != nil {
+		return nil, fmt.Errorf("creating ID-ordered timestamp range iterator: %w", rErr)
+	}
 
-	return trackIterator(matIter, ctx.profile, stats), nil
+	stats := &IteratorStats{
+		Label:  fmt.Sprintf("IDDateRangeIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
+		Kind:   "Range",
+		Prefix: bucketLabel,
+	}
+
+	return trackIterator(iter, ctx.profile, stats), nil
+}
+
+func idDatePrefixForBucket(bucket string) (byte, bool, error) {
+	switch bucket {
+	case "tstmp":
+		return readstore.PrefixTransactionTimestampByID, false, nil
+	case "txiat":
+		return readstore.PrefixTransactionInsertedAtByID, false, nil
+	case "rvat":
+		return readstore.PrefixTransactionRevertedAtByID, true, nil
+	case "lldt":
+		return readstore.PrefixLedgerLogDateByID, false, nil
+	default:
+		return 0, false, fmt.Errorf("invariant: unsupported ID-date range bucket %q", bucket)
+	}
 }
 
 // compileLogBuiltinUintCondition dispatches to the appropriate log builtin uint condition compiler.

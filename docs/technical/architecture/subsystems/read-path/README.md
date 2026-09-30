@@ -11,6 +11,11 @@ and audit-index and usagestore exceptions are documented in the
 [consensus matrix](../consensus/raft-consensus.md#linearizable-reads-via-readindex)
 and the pipeline pages.
 
+Builtin transaction and log date ranges retain ID-ordered pagination through
+the read store's ID-first companion projection. Cursor pages seek by ID;
+uncursored pages find the exact starting ID by scanning the date range with
+constant result memory. See [query-pipeline.md](query-pipeline.md).
+
 ## Documents
 
 | Document | Description |

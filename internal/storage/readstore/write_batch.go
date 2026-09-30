@@ -397,15 +397,25 @@ func (wb *WriteBatch) WriteTransactionReferenceIndex(kb *dal.KeyBuilder, ledgerN
 // WriteTransactionTimestampIndex inserts an entry in the transaction timestamp index.
 func (wb *WriteBatch) WriteTransactionTimestampIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
 	key := TransactionTimestampKey(kb, ledgerName, timestamp, txID)
+	if err := wb.put(key, nil); err != nil {
+		return err
+	}
+	var date [8]byte
+	binary.BigEndian.PutUint64(date[:], timestamp)
 
-	return wb.put(key, nil)
+	return wb.put(IDDateKey(kb, PrefixTransactionTimestampByID, ledgerName, txID), date[:])
 }
 
 // WriteTransactionInsertedAtIndex inserts an entry in the transaction inserted_at index.
 func (wb *WriteBatch) WriteTransactionInsertedAtIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, txID uint64) error {
 	key := TransactionInsertedAtKey(kb, ledgerName, timestamp, txID)
+	if err := wb.put(key, nil); err != nil {
+		return err
+	}
+	var date [8]byte
+	binary.BigEndian.PutUint64(date[:], timestamp)
 
-	return wb.put(key, nil)
+	return wb.put(IDDateKey(kb, PrefixTransactionInsertedAtByID, ledgerName, txID), date[:])
 }
 
 // WriteTransactionRevertedAtIndex inserts an entry in the transaction
@@ -426,14 +436,26 @@ func (wb *WriteBatch) WriteTransactionRevertedAtIndex(kb *dal.KeyBuilder, ledger
 	var stamp [8]byte
 	binary.BigEndian.PutUint64(stamp[:], seq)
 
-	return wb.put(key, stamp[:])
+	if err := wb.put(key, stamp[:]); err != nil {
+		return err
+	}
+	var value [16]byte
+	binary.BigEndian.PutUint64(value[:8], timestamp)
+	copy(value[8:], stamp[:])
+
+	return wb.put(IDDateKey(kb, PrefixTransactionRevertedAtByID, ledgerName, txID), value[:])
 }
 
 // WriteLedgerLogDateIndex inserts an entry in the per-ledger log date index.
 func (wb *WriteBatch) WriteLedgerLogDateIndex(kb *dal.KeyBuilder, ledgerName string, timestamp, logID uint64) error {
 	key := LedgerLogDateKey(kb, ledgerName, timestamp, logID)
+	if err := wb.put(key, nil); err != nil {
+		return err
+	}
+	var date [8]byte
+	binary.BigEndian.PutUint64(date[:], timestamp)
 
-	return wb.put(key, nil)
+	return wb.put(IDDateKey(kb, PrefixLedgerLogDateByID, ledgerName, logID), date[:])
 }
 
 // WriteLedgerLogIndex inserts an entry in the per-ledger log index.

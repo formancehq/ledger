@@ -890,25 +890,24 @@ func compileTimestampRangeConditionRev(
 		return emptyReverse(), nil
 	}
 
-	lower, upper, entityOffset, entityLen := timestampRangeBounds(ledgerPrefix, bounds)
-
-	iter, rErr := readstore.NewStampGatedRangeIterator(ctx.indexReader, lower, upper, entityOffset, entityLen, stampPin)
+	lower, upper, entityOffset, _ := timestampRangeBounds(ledgerPrefix, bounds)
+	idPrefixByte, stamped, err := idDatePrefixForBucket(bucketLabel)
+	if err != nil {
+		return nil, err
+	}
+	idPrefix := readstore.IDDatePrefix(ctx.kb, idPrefixByte, ctx.ledgerName)
+	iter, rErr := readstore.NewIDDateRangeIterator[readstore.Desc](ctx.indexReader, idPrefix, lower, upper, entityOffset, bounds.min, bounds.max, bounds.hasMin, bounds.hasMax, stamped, stampPin)
 	if rErr != nil {
-		return nil, fmt.Errorf("creating timestamp range iterator: %w", rErr)
+		return nil, fmt.Errorf("creating ID-ordered timestamp range iterator: %w", rErr)
 	}
 
 	stats := &IteratorStats{
-		Label:  fmt.Sprintf("ReverseSliceIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
+		Label:  fmt.Sprintf("ReverseIDDateRangeIterator(%s:%s range)", bucketLabel, ctx.ledgerName),
 		Kind:   "Range",
 		Prefix: bucketLabel,
 	}
 
-	matIter, err := materializeReverse(iter, ctx.profile, stats)
-	if err != nil {
-		return nil, err
-	}
-
-	return trackReverse(matIter, ctx.profile, stats), nil
+	return trackReverse(iter, ctx.profile, stats), nil
 }
 
 func compileLogBuiltinUintConditionRev(ctx *compileCtx, cond *commonpb.LogBuiltinUintCondition) (readstore.ReverseIterator, error) {

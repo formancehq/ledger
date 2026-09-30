@@ -111,6 +111,15 @@ The generated `LedgerLogCategoryOf` table classifies every ledger-local payload.
 
 At `CreateIndex`, `EMPTY` promotes a fresh version directly (`current > 0`, `pending = 0`) with no task or cursor. `NON_EMPTY` follows the normal backfill path. The decision therefore survives arbitrary proposal boundaries and restart. For `log_date`, which indexes CONTROL too, the live fold pre-populates date rows while `EMPTY`; the first HISTORY deletes those speculative rows if the date index is not active. If the incarnation stays `EMPTY` and never declares `log_date`, the speculative rows remain by design so a later direct promotion can include every earlier CONTROL log; they are bounded by that incarnation's CONTROL-log count and disappear on first HISTORY or deletion.
 
+Builtin transaction dates and log dates have two read-store views: the
+existing `(date, entity ID)` row for bounded date scans and a companion
+`(entity ID) -> date` row for public ID-cursor pagination. Both are written in
+the same `WriteBatch` and are covered by the same progress certificate and
+read-store snapshot. A reverted-at companion also carries its fold-sequence
+stamp. Backfill-generation purge, speculative EMPTY log-date cleanup and live
+ledger deletion erase both views together. These are peer-local, rebuildable
+read projections; they add no primary-store state or incremental-restore delta.
+
 ## Handlers
 
 `internal/application/indexbuilder/process_logs.go` — the `indexPayload` dispatcher and every per-payload handler live in this single file.
@@ -182,6 +191,13 @@ The read store partitions its keyspace by a single leading byte:
 | `0x09` | Per-ledger logs | dedicated |
 | `0x0A` | Per-ledger log date index | dedicated |
 | `0x0B` | Transaction inserted-at index | dedicated |
+| `0x0C` | Account-by-asset index | dedicated |
+| `0x0D` | Transaction reverted-at index | dedicated |
+| `0x0E` | Asset-by-account reverse membership | dedicated |
+| `0x0F` | Transaction timestamp by ID, date in value | `IDDateKey` |
+| `0x10` | Transaction inserted-at by ID, date in value | `IDDateKey` |
+| `0x11` | Transaction reverted-at by ID, date and stamp in value | `IDDateKey` |
+| `0x12` | Ledger log date by ID, date in value | `IDDateKey` |
 | `0xFE` | Internal | sub-prefix below |
 
 Internal sub-prefixes (`0xFE` + 1 B):

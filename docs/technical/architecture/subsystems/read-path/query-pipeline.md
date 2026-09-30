@@ -174,6 +174,7 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 |----------|------|---------|
 | `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
 | `BoundedEntityIterator` with `LedgerLogRangeIterator`/`PebbleTxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
+| `IDDateRangeIterator[D]` | `iterator_id_date.go` | Serves builtin transaction/log date ranges in entity-ID order from an ID-first companion index; cursor seeks do not drain the date range. |
 | `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
 | `OrIterator[D]` | `combinator_or.go` | Merge-union. |
 | `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
@@ -199,7 +200,7 @@ What *is* shared is what a filter means: predicate resolution, schema validation
 
 | Fallback | Why it does not stream backwards | Descending behaviour |
 |---|---|---|
-| Value-ordered ranges — int/uint metadata ranges, transaction timestamp / inserted-at / reverted-at, log date | Intrinsic. The scan spans several index-value buckets, so rows surface in `(value, entity)` order and "the next entity below X" is undefined without the sorted result | `materializeReverse` reuses the ascending path's single `materializeEntities` drain and hands out a borrowed `SliceIterator[Desc]` over that one slice |
+| Value-ordered metadata ranges — int/uint | Intrinsic. The scan spans several index-value buckets, so rows surface in `(value, entity)` order and "the next entity below X" is undefined without the sorted result | `materializeReverse` reuses the ascending path's single `materializeEntities` drain and hands out a borrowed `SliceIterator[Desc]` over that one slice |
 | `AddressTxIterator[D]` — the account→transaction union, including the exact-address form | Intrinsic. Members come from N per-account scans, each ascending but collectively unordered | Both directions share one `addressTxUnion` and its one sorted slice, walked through a `SliceIterator[D]` |
 | Log-ID ranges | **Temporary, not an ordering property.** The key is `llog:<ledger>` followed directly by the big-endian log ID — `logIDRangeBounds` appends nothing else, and the leaf is built with `entityOffset == len(prefix)`, `entityLen == 8` — so byte order *is* entity order and there is no value bucket. It materializes only because `RangeIterator` has no reverse form yet | Same `materializeReverse` as the value-ordered rows above. The ascending leaf already uses the bounded entity iterator introduced by [#1922](https://github.com/formancehq/ledger/pull/1922) (EN-1967); the descending half still needs the equivalent streaming implementation |
 
@@ -207,13 +208,26 @@ Only the first two are ordering limitations. The log-ID row is an implementation
 
 Materializing is also **not** a descending-only cost, and none of the three is a regression introduced by direction support: the ascending compiler drains the same three leaves through `materializeIterator`, and did so before this work. The descending page costs exactly the one materialization the ascending page already pays, with no second complete-result collection for the reversal. All three stay visible in the iterator tree under their own `Kind`, so [query-profile](query-profile.md) still attributes their cost.
 
+Builtin transaction timestamp/inserted-at/reverted-at and log-date ranges now
+have a second projection keyed by `(ledger, entity ID)`, with the date in the
+value. The indexer writes both views in one batch. A page with an ID cursor
+seeks the ID-first view and filters dates as it walks; it does not repeat the
+date-range drain. For an uncursored first page, the iterator scans the
+date-first view once to find the exact minimum or maximum matching ID, then
+starts the ID-first walk there. This initial scan is linear in the date-window
+matches but keeps only one ID; later pages cost the IDs visited from their
+cursor, with no server-side cursor state. This is exact even when mirror dates
+invert relative to IDs. Both views come from one index snapshot; the
+reverted-at companion value carries the same fold stamp and pin gate as the
+date-first row. The public ID ordering and exclusive ID cursor are unchanged.
+
 Transaction ID ranges are *not* in this table: the Pebble transaction zone is keyed by txID, so `compileTxIDConditionRev` builds a `PebbleReverseTxRangeIterator` and streams, exactly as its ascending twin does.
 
 A gate that hides rows must hide them in **both** directions. `ReversePrefixIterator` carries the same fold-sequence stamp gate as `PrefixIterator`, and `ReverseEventResolveIterator` resolves each group at the same pin as its ascending twin — walking a group backwards, the *first* event with `seq <= pin` is the latest one at or below it, which is the event the forward pass settles on. A gate present on one side only is a direction-dependent visibility bug that a whole-set parity test cannot see, because both directions are compared against the same pinned view; the registry-driven conformance suite in `internal/storage/readstore/iterator_conformance_test.go` compares each direction against the independently declared set at a pin instead.
 
 The acceptance oracle for the compiled path is `internal/query/compile_reverse_parity_test.go`: for **every supported target** — ACCOUNTS, TRANSACTIONS and LOGS — crossed with the filter families the per-target validity table allows on it and six page sizes, a full descending traversal *by pages* equals the reversed ascending reference. Target is part of the case matrix rather than a constant because TRANSACTIONS is the public default descending direction, so an ACCOUNTS-only oracle would prove the criterion on the wrong surface.
 
-Concretely the matrix drives, per target: on ACCOUNTS the string / uint / int / bool metadata leaves, both `exists` arms including the null OR, the account address prefix and exact forms, and the stamp-gated has-asset scan; on TRANSACTIONS the streaming id range, the timestamp and inserted-at materializing fallbacks, the reference prefix, the reversion bitset and its complement, and the account→transaction union in both match forms and on a role bucket; on LOGS the id leaves and the log-date fallback — each crossed with AND/OR/NOT compositions and an empty-result shape.
+Concretely the matrix drives, per target: on ACCOUNTS the string / uint / int / bool metadata leaves, both `exists` arms including the null OR, the account address prefix and exact forms, and the stamp-gated has-asset scan; on TRANSACTIONS the streaming id range, the timestamp and inserted-at ID-ordered range leaves, the reference prefix, the reversion bitset and its complement, and the account→transaction union in both match forms and on a role bucket; on LOGS the id leaves and the log-date ID-ordered range — each crossed with AND/OR/NOT compositions and an empty-result shape.
 
 Three guards keep the matrix from passing for the wrong reason. `TestDescendingParity_EveryTargetIsCovered` fails if a target drops out. `TestDescendingParity_NonEmptyFixtures` fails if a target's universe is unseeded. `TestDescendingParity_LeafFixtureSizes` pins the exact result size of each leaf family, because a case whose index rows are missing or written under the wrong prefix still compiles and still yields an empty reference — so `descending == reverse(ascending)` holds on `[] == []` and proves nothing about the leaf it was added for. One has-asset row is deliberately stamped **above** the read pin, so a direction that drops the gate serves a row the other hides and the oracle fails rather than agreeing on the same over-wide view.
 

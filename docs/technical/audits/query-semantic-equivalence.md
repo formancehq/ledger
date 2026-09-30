@@ -8,6 +8,13 @@ fixed input state. Existing temporal and adapter domains do not isolate this
 property; a separate manifest makes its oracle and exclusions explicit without
 adding a runner, framework or product test suite.
 
+The builtin-date ID-first plan is a fixed-state semantic surface. For an
+independent fixture where dates invert relative to IDs, compare both compiler
+directions and every exclusive ID-cursor page against sorted expected IDs.
+Include equal dates, excluded bounds, and a widening-window memory/visit
+measurement. Atomic publication of its date-first and ID-first projections
+belongs to read-consistency-projections.
+
 ## Comparison preconditions and production anchors
 
 Record ledger, target, predicate, bound parameters, mode, effective ordering,

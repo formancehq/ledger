@@ -7,6 +7,13 @@ the readiness/version contract of each projection it consults. This domain owns
 certification and publication of that state; it does not re-audit filter meaning
 once the state is fixed.
 
+Builtin-date queries now consult two peer read-store views: date-first rows for
+the exact first-page ID extremum and ID-first rows for cursor pagination. Audit
+their atomic fold/backfill/EMPTY cleanup/delete lifecycle and the shared
+snapshot at the published certificate. Reverted-at companion values must honor
+the same fold stamp as the date-first row. Fixed-state ID ordering and bound
+membership remain with query-semantic-equivalence.
+
 ## Temporal coordinates
 
 Record every applicable coordinate before comparing reads or calling a result

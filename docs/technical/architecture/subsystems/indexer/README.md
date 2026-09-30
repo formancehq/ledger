@@ -34,6 +34,11 @@ cross-store read alignment. `InspectIndex` is a projection consumer under the
 same contract: it certifies the fixed main horizon, resolves the servable index
 version at that pin, and ignores membership events committed after it.
 
+The indexbuilder writes builtin transaction and log dates in both date-first
+and ID-first order in the same read-store batch. The latter serves public
+ID-cursor pages without materializing the date range; both views share
+backfill, ledger-deletion and projection-progress boundaries.
+
 ## Documents
 
 | Document | Description |

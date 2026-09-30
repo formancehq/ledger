@@ -94,6 +94,32 @@ func seedPrefixRows(t *testing.T, entities ...string) (*Store, []byte, int) {
 func conformancePairs() []iterPair {
 	return []iterPair{
 		{
+			name: "IDDateRangeIterator",
+			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
+				s := newTestStore(t)
+				kb := dal.NewKeyBuilder()
+				for id, date := range map[uint64]uint64{1: 10, 2: 12, 3: 11, 4: 13} {
+					var encoded [8]byte
+					binary.BigEndian.PutUint64(encoded[:], date)
+					require.NoError(t, s.DB().Set(TransactionTimestampKey(kb, "l", date, id), nil, pebble.NoSync))
+					require.NoError(t, s.DB().Set(IDDateKey(kb, PrefixTransactionTimestampByID, "l", id), encoded[:], pebble.NoSync))
+				}
+				prefix := TransactionTimestampRangePrefix(kb, "l")
+				lower := append(append([]byte(nil), prefix...), EncodeTxID(nil, 10)...)
+				upper := append(append([]byte(nil), prefix...), EncodeTxID(nil, 13)...)
+				idPrefix := IDDatePrefix(kb, PrefixTransactionTimestampByID, "l")
+				fwd, err := NewIDDateRangeIterator[Asc](s.DB(), idPrefix, lower, upper, len(prefix)+8, 10, 13, true, true, false, 0)
+				require.NoError(t, err)
+				t.Cleanup(fwd.Close)
+				rev, err := NewIDDateRangeIterator[Desc](s.DB(), idPrefix, lower, upper, len(prefix)+8, 10, 13, true, true, false, 0)
+				require.NoError(t, err)
+				t.Cleanup(rev.Close)
+
+				return fwd, rev
+			},
+			want: []string{"1", "2", "3"}, entityB: txEntity, render: renderTx,
+		},
+		{
 			name: "PrefixIterator",
 			build: func(t *testing.T) (EntityIterator, ReverseIterator) {
 				s, prefix, off := seedPrefixRows(t, "a", "b", "c", "d")

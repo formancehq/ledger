@@ -225,12 +225,17 @@ func seedParityTransactions(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBu
 		// scan spans several value buckets.
 		require.NoError(t, batch.SetBytes(readstore.TransactionTimestampKey(
 			dal.NewKeyBuilder(), parityLedger, uint64(1_000+i), id), nil))
+		var timestamp [8]byte
+		binary.BigEndian.PutUint64(timestamp[:], uint64(1_000+i))
+		require.NoError(t, batch.SetBytes(readstore.IDDateKey(kb, readstore.PrefixTransactionTimestampByID, parityLedger, id), timestamp[:]))
 
 		// inserted_at is the same fallback class over a different prefix, so
 		// a bound built against the wrong index shows up here and not in the
 		// timestamp case.
 		require.NoError(t, batch.SetBytes(readstore.TransactionInsertedAtKey(
 			dal.NewKeyBuilder(), parityLedger, uint64(2_000+i), id), nil))
+		binary.BigEndian.PutUint64(timestamp[:], uint64(2_000+i))
+		require.NoError(t, batch.SetBytes(readstore.IDDateKey(kb, readstore.PrefixTransactionInsertedAtByID, parityLedger, id), timestamp[:]))
 	}
 }
 
@@ -245,6 +250,9 @@ func seedParityLogs(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 
 		require.NoError(t, batch.SetBytes(readstore.LedgerLogDateKey(
 			dal.NewKeyBuilder(), parityLedger, uint64(3_000+i), id), nil))
+		var date [8]byte
+		binary.BigEndian.PutUint64(date[:], uint64(3_000+i))
+		require.NoError(t, batch.SetBytes(readstore.IDDateKey(kb, readstore.PrefixLedgerLogDateByID, parityLedger, id), date[:]))
 	}
 }
 

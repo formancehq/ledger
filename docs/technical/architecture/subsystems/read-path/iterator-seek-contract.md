@@ -101,6 +101,12 @@ construction site materializes it into a sorted `SliceIterator` before
 composing, and a direct `Seek` call fails the query with an invariant
 error.
 
+`IDDateRangeIterator[D]` is a separate entity-ordered builtin-date leaf. Its
+`Seek` is absolute in both directions because it probes the ID-first companion
+keyspace, then filters dates and the reverted-at fold stamp. Its first `Next`
+without a prior seek determines the exact minimum/maximum ID from the
+date-first range with constant result memory. A failed seek remains re-seekable.
+
 ### Bounded entity-ordered leaves
 
 A leaf whose keys place the entity at a fixed suffix and are physically
