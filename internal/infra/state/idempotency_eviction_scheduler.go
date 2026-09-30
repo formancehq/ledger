@@ -118,7 +118,7 @@ func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
 				continue
 			}
 
-			s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, pebbleKeys=%d", cutoff, len(hashes))
+			s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, scannedKeys=%d", cutoff, len(hashes))
 			s.proposeFn(ctx, cutoff, lastScannedKey, hashes)
 		}
 	}

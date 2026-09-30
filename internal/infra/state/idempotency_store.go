@@ -256,7 +256,7 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	//     (see the dedup rule below).
 	//
 	//   * For each scanned hash, the delete is gated on "still present in
-	//     the map". Cache and Pebble stay in sync (entries enter via Put,
+	//     the map". Cache and the primary store stay in sync (entries enter via Put,
 	//     exit here, and RestoreFromStore rebuilds the map from Pebble), so
 	//     a hash absent from the map at apply time was already evicted by a
 	//     previous apply — re-deleting is redundant and would over-count.

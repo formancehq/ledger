@@ -211,7 +211,7 @@ func TestVerifyPostCommitVolumes(t *testing.T) {
 		persisted *raftcmdpb.VolumePair
 		want      string
 	}{
-		{"missing", nil, "volume missing from pebble after commit"},
+		{"missing", nil, "volume missing from storage after commit"},
 		{"matching", sentinelVolume("a", "USD", "", 0, 0, 10, 0).New, ""},
 		{"mismatched", sentinelVolume("a", "USD", "", 0, 0, 11, 0).New, "cache/storage volume divergence"},
 	} {
@@ -250,7 +250,7 @@ func TestVerifyPostCommitVolumesReadFailure(t *testing.T) {
 	getter := sentinelFailingGetter(func([]byte) ([]byte, io.Closer, error) { return nil, nil, failure })
 	err := verifyPostCommitVolumes(getter, machine.Registry.Attrs.Volume, []attributes.Update[domain.VolumeKey, *raftcmdpb.VolumePair]{sentinelVolume("account", "USD", "", 0, 0, 10, 0)}, 42, machine.logger)
 	require.ErrorIs(t, err, failure)
-	require.ErrorContains(t, err, "reading volume from pebble for verification")
+	require.ErrorContains(t, err, "reading volume from storage for verification")
 	require.NotContains(t, err.Error(), "volume missing")
 }
 
