@@ -42,6 +42,39 @@ func TestApplyProposalRejectsAuditExhaustionBeforeStateOrDurableMutation(t *test
 	require.Nil(t, lastLog)
 }
 
+func TestApplyEntriesFailureProjectionBoundary(t *testing.T) {
+	t.Parallel()
+
+	machine, dataStore, _ := newTestMachine(t)
+	ctx := context.Background()
+	apply := func(index uint64, proposal *raftcmdpb.Proposal) {
+		t.Helper()
+		_, err := machine.ApplyEntries(ctx, dataStore, makeEntry(t, index, proposal))
+		require.NoError(t, err)
+	}
+
+	apply(1, makeProposal(1, createLedgerOrder("projection-ledger")))
+	apply(2, makeProposal(2, createLedgerOrder("projection-ledger")))
+
+	flip := makeProposal(3)
+	flip.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
+		Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{ClusterConfig: &commonpb.ClusterConfig{
+			RotationThreshold:        machine.Registry.Cache.GenerationThreshold(),
+			FailureProjectionVersion: FailureProjectionVersionV1,
+		}},
+	}}
+	apply(3, flip)
+	apply(4, makeProposal(4, createLedgerOrder("projection-ledger")))
+
+	entries := listAuditEntries(t, dataStore, 0)
+	require.Len(t, entries, 3, "the technical flip has no audit entry")
+	require.Zero(t, entries[1].GetFailureProjectionVersion())
+	require.Equal(t, FailureProjectionVersionV1, entries[2].GetFailureProjectionVersion())
+	require.Equal(t, entries[1].GetFailure().GetReason(), entries[2].GetFailure().GetReason())
+	require.Equal(t, entries[1].GetFailure().GetMessage(), entries[2].GetFailure().GetMessage())
+	require.Equal(t, entries[1].GetFailure().GetContext(), entries[2].GetFailure().GetContext())
+}
+
 func TestApplyProposalRejectsLogSequenceExhaustionWithoutPublishingBusinessWrites(t *testing.T) {
 	t.Parallel()
 

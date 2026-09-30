@@ -24,6 +24,7 @@ type AuditEntryReader interface {
 	GetCallerSnapshot() commonpb.CallerSnapshotReader
 	GetIdempotency() commonpb.IdempotencyReader
 	GetSignature() signaturepb.SignedApplyBatchReader
+	GetFailureProjectionVersion() uint32
 	GetOutcome() isAuditEntry_Outcome
 	Mutate() *AuditEntry
 }
@@ -88,6 +89,10 @@ func (r *auditEntryReadonly) GetSignature() signaturepb.SignedApplyBatchReader {
 		return nil
 	}
 	return v.AsReader()
+}
+
+func (r *auditEntryReadonly) GetFailureProjectionVersion() uint32 {
+	return (*AuditEntry)(r).GetFailureProjectionVersion()
 }
 
 func (r *auditEntryReadonly) GetOutcome() isAuditEntry_Outcome {

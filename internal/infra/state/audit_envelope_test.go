@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/binary"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -282,6 +283,33 @@ func TestHashChain_Envelope_Failure(t *testing.T) {
 		require.Equal(t, headerPayload, again,
 			"BuildHashedHeaderPayload is not stable across calls (iteration %d)", i)
 	}
+}
+
+func TestFailureProjectionEnvelopeFlipPreservesHistoricalBytes(t *testing.T) {
+	t.Parallel()
+
+	entry := &auditpb.AuditEntry{
+		Sequence:  1,
+		Timestamp: &commonpb.Timestamp{Data: 1700000000},
+		Outcome: &auditpb.AuditEntry_Failure{Failure: &auditpb.AuditFailure{
+			Reason:  commonpb.ErrorReason_ERROR_REASON_VALIDATION,
+			Message: "invalid order",
+			Context: map[string]string{"field": "amount"},
+		}},
+	}
+	legacy, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	require.Equal(t, goldenBuildHeader(entry), legacy,
+		"version zero must retain the exact pre-versioning hash pre-image")
+
+	entry.FailureProjectionVersion = FailureProjectionVersionV1
+	versioned, err := BuildHashedHeaderPayload(entry)
+	require.NoError(t, err)
+	require.Equal(t, appendU32(slices.Clone(legacy), FailureProjectionVersionV1), versioned)
+
+	entry.FailureProjectionVersion++
+	_, err = BuildHashedHeaderPayload(entry)
+	require.ErrorContains(t, err, "unsupported failure projection version")
 }
 
 // TestAuditEntry_MarshalDeterministicVT_StableAcrossRuns guards the OTHER

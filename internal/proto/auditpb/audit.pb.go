@@ -52,9 +52,10 @@ type AuditEntry struct {
 	// where:
 	//   - `key` is derived from the once-committed random audit secret via
 	//     domain-separated BLAKE3, independently of the operational cluster ID
-	//   - `header_payload` is the canonical binary encoding of EVERY other field
+	//   - `header_payload` is the canonical binary encoding of every other field
 	//     of this AuditEntry (sequence, timestamp, proposal_id, outcome,
-	//     order_count, ledgers, hash_version, caller_snapshot), rebuilt by the
+	//     order_count, ledgers, hash_version, caller_snapshot, and nonzero
+	//     failure_projection_version), rebuilt by the
 	//     verifier at check time from the stored fields via
 	//     state.BuildHashedHeaderPayload — never persisted separately, so the
 	//     typed fields ARE the source of truth
@@ -79,10 +80,13 @@ type AuditEntry struct {
 	// This is the authoritative, chain-verified home for batch non-repudiation;
 	// the AppliedProposal projection carries a copy of the idempotency key for
 	// event consumers, which the checker verifies against this entry.
-	Idempotency   *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
-	Signature     *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Idempotency *commonpb.Idempotency         `protobuf:"bytes,12,opt,name=idempotency,proto3" json:"idempotency,omitempty"`
+	Signature   *signaturepb.SignedApplyBatch `protobuf:"bytes,13,opt,name=signature,proto3" json:"signature,omitempty"`
+	// Raft-applied failure projection semantics in force for this entry.
+	// Zero is the pre-versioning projection; the checker retains its wire bytes.
+	FailureProjectionVersion uint32 `protobuf:"varint,14,opt,name=failure_projection_version,json=failureProjectionVersion,proto3" json:"failure_projection_version,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *AuditEntry) Reset() {
@@ -215,6 +219,13 @@ func (x *AuditEntry) GetSignature() *signaturepb.SignedApplyBatch {
 		return x.Signature
 	}
 	return nil
+}
+
+func (x *AuditEntry) GetFailureProjectionVersion() uint32 {
+	if x != nil {
+		return x.FailureProjectionVersion
+	}
+	return 0
 }
 
 type isAuditEntry_Outcome interface {
@@ -433,7 +444,7 @@ var File_audit_proto protoreflect.FileDescriptor
 
 const file_audit_proto_rawDesc = "" +
 	"\n" +
-	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xb4\x04\n" +
+	"\vaudit.proto\x12\x05audit\x1a\fcommon.proto\x1a\x0fsignature.proto\"\xf2\x04\n" +
 	"\n" +
 	"AuditEntry\x12\x1a\n" +
 	"\bsequence\x18\x01 \x01(\x06R\bsequence\x12/\n" +
@@ -451,7 +462,8 @@ const file_audit_proto_rawDesc = "" +
 	" \x01(\rR\vhashVersion\x12?\n" +
 	"\x0fcaller_snapshot\x18\v \x01(\v2\x16.common.CallerSnapshotR\x0ecallerSnapshot\x125\n" +
 	"\vidempotency\x18\f \x01(\v2\x13.common.IdempotencyR\vidempotency\x129\n" +
-	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignatureB\t\n" +
+	"\tsignature\x18\r \x01(\v2\x1b.signature.SignedApplyBatchR\tsignature\x12<\n" +
+	"\x1afailure_projection_version\x18\x0e \x01(\rR\x18failureProjectionVersionB\t\n" +
 	"\aoutcome\"z\n" +
 	"\tAuditItem\x12\x1f\n" +
 	"\vorder_index\x18\x01 \x01(\rR\n" +

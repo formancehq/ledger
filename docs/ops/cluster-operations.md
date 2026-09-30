@@ -540,6 +540,7 @@ Some configuration parameters can be changed on a live cluster via a **rolling u
 | Parameter | CLI Flag | Effect of change |
 |-----------|----------|-----------------|
 | Cache rotation threshold | `--cache-rotation-threshold` | Controls how many Raft entries per cache generation. Lower = less memory, more Pebble reads. Higher = more memory, fewer preloads. |
+| Audit failure projection | `--failure-projection-version` | Selects the hash-bound failure projection at one Raft index. Default `0` preserves historical bytes; `1` is enabled only after every node understands the field. |
 
 ### Immutable Parameters
 
@@ -560,6 +561,28 @@ Mutable config parameters are propagated through the Raft log to ensure all node
 4. The change takes effect immediately -- no restart required for the nodes that already received the Raft entry.
 
 ### Rolling Upgrade Procedure
+
+For the audit failure projection, use two phases. First deploy a build that
+understands both versions to **every** node while keeping
+`--failure-projection-version=0`; a node still running the previous binary
+ignores the new cluster-config field. Verify every member is upgraded and no old
+binary can rejoin. Then set `--failure-projection-version=1` on all nodes and
+transfer leadership to an updated node. Its leader-ready handler proposes the
+new `ClusterConfig` through Raft. Verify
+`cluster_config.failure_projection_version=1` on each node before allowing a
+later release to change the failure projection. A leader still configured for
+version 0 can propose a reversal on leadership acquisition, so keep the CLI
+flags uniform. Version 1 currently uses the same reason/message/context mapping
+as version 0; the flip establishes the explicit hash-bound version boundary.
+
+The config change itself is technical state and produces no audit entry. The
+first subsequent business proposal stamps version 1 on its audit entry; entries
+before the flip retain version 0 and their exact historical hash pre-image.
+Snapshots carry the cluster configuration. Cross-cluster incremental restore
+retains the checkpoint's configuration and preserves exported audit entries
+verbatim; a post-checkpoint technical-only config flip is not in the delta, so
+the destination leader must re-propose the desired CLI version before new
+business writes use it.
 
 To change `--cache-rotation-threshold` from 1000 to 500 on a 3-node cluster:
 

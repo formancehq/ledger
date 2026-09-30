@@ -115,6 +115,16 @@ func TestApplyProposal_PerProposalIdempotency(t *testing.T) {
 	var replayed *domain.ReplayedFailure
 	require.ErrorAs(t, r.Results[0].Error, &replayed, "frozen failure is replayed")
 	require.Equal(t, frozenMsg, r.Results[0].Error.Error(), "replayed failure matches the original")
+	failures := listAuditEntries(t, dataStore, 0)
+	var auditedContext map[string]string
+	for _, entry := range failures {
+		if entry.GetProposalId() == 5 {
+			auditedContext = entry.GetFailure().GetContext()
+		}
+	}
+	require.NotEmpty(t, auditedContext, "the fixture must carry metadata through the pooled audit entry")
+	require.Equal(t, auditedContext, replayed.Metadata(),
+		"the idempotency cache must own metadata after the audit entry returns to its pool")
 }
 
 // TestApplyProposal_AuditEntryCarriesIdentity asserts the FSM records the batch

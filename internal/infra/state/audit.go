@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"maps"
 	"slices"
 
@@ -11,24 +12,10 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-// describeFailure derives the two fields both failure projections share from a
-// typed domain error: the wire reason code and the human-readable message.
-// buildAuditFailure writes them into the hash-chained AuditFailure and
-// recordIdempotencyFailure freezes them into the SubIdempKeys projection, and
-// the checker requires the two byte-equal — the comparison lives in
-// idempotencyMismatch, reached from compareIdempotencyOutcomes
-// (internal/application/check/checker.go). Single-sourcing the derivation makes
-// that equality structural instead of coincidental: a reshape of the message
-// cannot reach one projection without the other. The audit side lives inside
-// the hash chain, so a drift there is not repairable after the fact (EN-1772).
-//
-// Metadata is deliberately NOT part of this helper. The two sites handle it
-// asymmetrically on purpose — buildAuditFailure copies into a non-nil map,
-// recordIdempotencyFailure passes Metadata() through possibly-nil — and the
-// checker's metadataEqual treats nil and empty as equal, so the asymmetry
-// cannot produce a false mismatch. On the checker's actual read path it never
-// even shows: a proto3 map with no entries emits no bytes, so an empty Context
-// unmarshals back as nil and both sides read nil out of Pebble.
+// describeFailure derives the wire reason and message from a typed domain
+// error. buildAuditFailureForVersion freezes these with context into the audit
+// chain; recordIdempotencyFailure copies that exact projection into the
+// idempotency row, so a future versioned relabel cannot drift between them.
 func describeFailure(d domain.SerializableError) (commonpb.ErrorReason, string) {
 	return domain.ReasonCode(d.Reason()), d.Error()
 }
@@ -40,6 +27,20 @@ func describeFailure(d domain.SerializableError) (commonpb.ErrorReason, string) 
 // invariant violation that must fail loudly at its origin, never be downgraded
 // to an unspecified business outcome in the authoritative chain.
 func buildAuditFailure(d domain.SerializableError) *auditpb.AuditFailure {
+	return buildAuditFailureForVersion(d, 0)
+}
+
+// buildAuditFailureForVersion pins the failure projection chosen by the last
+// applied cluster config. Versions zero and one intentionally emit the same
+// reason, message and context in this preparatory release. Future relabels
+// must add a new case while leaving these cases byte-identical.
+func buildAuditFailureForVersion(d domain.SerializableError, version uint32) *auditpb.AuditFailure {
+	switch version {
+	case 0, FailureProjectionVersionV1:
+	default:
+		panic(fmt.Sprintf("unsupported failure projection version %d", version))
+	}
+
 	reason, message := describeFailure(d)
 
 	failure := &auditpb.AuditFailure{

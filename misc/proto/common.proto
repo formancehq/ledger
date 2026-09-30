@@ -470,6 +470,9 @@ message ClusterConfig {
   BloomTypeConfig bloom_ledger_metadata = 12;
   BloomTypeConfig bloom_prepared_queries = 13;
   BloomTypeConfig bloom_indexes = 14;
+  // 0 preserves the failure bytes emitted before projection versioning.
+  // Change only after every replica understands the selected version.
+  uint32 failure_projection_version = 15;
 }
 
 // PersistedClusterState wraps ClusterConfig with internal FSM state that must

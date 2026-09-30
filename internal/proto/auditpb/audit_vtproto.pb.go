@@ -36,6 +36,7 @@ func (m *AuditEntry) CloneVT() *AuditEntry {
 	r.CallerSnapshot = m.CallerSnapshot.CloneVT()
 	r.Idempotency = m.Idempotency.CloneVT()
 	r.Signature = m.Signature.CloneVT()
+	r.FailureProjectionVersion = m.FailureProjectionVersion
 	if m.Outcome != nil {
 		r.Outcome = m.Outcome.(interface{ CloneVT() isAuditEntry_Outcome }).CloneVT()
 	}
@@ -222,6 +223,9 @@ func (this *AuditEntry) EqualVT(that *AuditEntry) bool {
 	if !this.Signature.EqualVT(that.Signature) {
 		return false
 	}
+	if this.FailureProjectionVersion != that.FailureProjectionVersion {
+		return false
+	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
 
@@ -401,6 +405,11 @@ func (m *AuditEntry) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
+	}
+	if m.FailureProjectionVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FailureProjectionVersion))
+		i--
+		dAtA[i] = 0x70
 	}
 	if m.Signature != nil {
 		size, err := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
@@ -774,6 +783,9 @@ func (m *AuditEntry) SizeVT() (n int) {
 	if m.Signature != nil {
 		l = m.Signature.SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.FailureProjectionVersion != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.FailureProjectionVersion))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1284,6 +1296,25 @@ func (m *AuditEntry) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 14:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field FailureProjectionVersion", wireType)
+			}
+			m.FailureProjectionVersion = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.FailureProjectionVersion |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

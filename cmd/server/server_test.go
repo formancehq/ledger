@@ -26,6 +26,25 @@ func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
 	require.Equal(t, 0.01, cfg.GetBloomLedgerMetadata().GetFpRate())
 }
 
+func TestLoadConfigFailureProjectionVersion(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.NoError(t, cmd.Flags().Set("node-id", "1"))
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+	require.Zero(t, cfg.BloomConfig.GetFailureProjectionVersion())
+
+	require.NoError(t, cmd.Flags().Set("failure-projection-version", "1"))
+	cfg, err = LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), cfg.BloomConfig.GetFailureProjectionVersion())
+
+	require.NoError(t, cmd.Flags().Set("failure-projection-version", "2"))
+	_, err = LoadConfig(context.Background(), cmd)
+	require.ErrorContains(t, err, "unsupported failure projection version 2")
+}
+
 // TestLoadConfig_ZeroPreservedForSentinelFlags pins the fix for #324.
 // Several flags document `0` as a meaningful sentinel (disable /
 // never expire). The pre-fix helpers swallowed any value-zero through

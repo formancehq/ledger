@@ -8,6 +8,10 @@ see [audit-chain.md](audit-chain.md) for the trust boundary.
 
 The checker (`internal/application/check`) is the integrity verification subsystem. It does **not** sit on the request path — it is invoked on demand via gRPC (`BucketService.CheckStore`) and produces a stream of `CheckStoreEvent`s describing any divergence between the persisted projections and what the audit chain says they should hold.
 
+The audit-chain verifier reads each entry's failure projection version to
+rebuild its hash header across a Raft-ordered flip; see
+[audit-chain.md](audit-chain.md).
+
 Two pages cover what the checker depends on and what it does.
 
 ## Documents

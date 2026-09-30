@@ -1,5 +1,25 @@
 # RFC: Deterministic FSM Cache + Preload (Raft Ledger + Pebble)
 
+## Versioned audit failures
+
+The leader proposes `ClusterConfig.failure_projection_version` through Raft.
+The FSM applies it at one index; later proposals use that applied value to
+project their failure reason, message and context. Version 0 is the exact
+pre-versioning projection, including its hash pre-image. Version 1 currently
+uses the same error mapping but adds a chain-bound version stamp. A future
+relabel needs a new version and must preserve every older branch, including
+upstream error construction when that determines the emitted error. A local CLI
+flag only expresses the leader's desired proposal and cannot select an apply
+outcome on its own. The idempotency failure row copies the already projected
+audit failure, keeping its reason, message and metadata aligned.
+
+The config is technical state: its Pebble write is queued before the in-memory
+`LastClusterConfig` pointer changes, then the batch commits. If commit fails,
+the in-memory pointer may be ahead of durable state and the apply process must
+stop and recover from Pebble before processing further entries. The config
+change emits no audit entry. The next business entry records the selected
+version, so the boundary is unambiguous after recovery.
+
 **Status:** Implemented
 **Scope:** Raft FSM apply determinism, cache strategy, admission + Preload, AttributeLoader for concurrent loads, storage layout, snapshots, backpressure
 **Non-goals:** consensus algorithm changes, networking, client API semantics beyond admission/preload requirements

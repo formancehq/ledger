@@ -41,6 +41,11 @@ func (m *AuditEntry) MarshalToSizedBufferDeterministicVT(dAtA []byte) (int, erro
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.FailureProjectionVersion != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FailureProjectionVersion))
+		i--
+		dAtA[i] = 0x70
+	}
 	if m.Signature != nil {
 		size, _ := m.Signature.MarshalToSizedBufferVT(dAtA[:i])
 		i -= size

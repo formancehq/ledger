@@ -3,6 +3,7 @@ package state
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/formancehq/ledger/v3/internal/proto/auditpb"
@@ -16,6 +17,11 @@ import (
 // apply time is an FSM bug, and at verify time it means a persisted entry
 // was tampered to wipe its outcome.
 var ErrAuditEntryMissingOutcome = errors.New("audit entry has no outcome (neither success nor failure)")
+
+// FailureProjectionVersionV1 is the first explicit, Raft-selected failure
+// projection. Version zero is the exact pre-versioning projection. Both map
+// errors identically today; changing either mapping requires a new version.
+const FailureProjectionVersionV1 uint32 = 1
 
 // Audit hash envelope — canonical binary encoding of AuditEntry and AuditItem
 // fields that feed the audit hash chain.
@@ -104,6 +110,10 @@ func appendU64(buf []byte, v uint64) []byte {
 // nor a failure outcome. Apply path callers treat this as a fatal FSM
 // bug; verifier callers treat it as a tampering signal.
 func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
+	if entry.GetFailureProjectionVersion() > FailureProjectionVersionV1 {
+		return nil, fmt.Errorf("unsupported failure projection version %d", entry.GetFailureProjectionVersion())
+	}
+
 	buf := make([]byte, 0, 128)
 
 	buf = appendU64(buf, entry.GetSequence())
@@ -149,6 +159,11 @@ func BuildHashedHeaderPayload(entry *auditpb.AuditEntry) ([]byte, error) {
 	buf = appendLenString(buf, entry.GetIdempotency().GetKey())
 	buf = appendU64(buf, entry.GetIdempotency().GetExpiresAt())
 	buf = appendLenBytes(buf, buildSignaturePayload(entry.GetSignature()))
+	// Version zero must remain byte-identical to historical entries. Starting
+	// with version one, bind the selected projection to the hash chain.
+	if entry.GetFailureProjectionVersion() != 0 {
+		buf = appendU32(buf, entry.GetFailureProjectionVersion())
+	}
 
 	return buf, nil
 }
