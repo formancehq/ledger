@@ -9,6 +9,10 @@ Ledger v3 exposes two types of APIs:
 
 ## HTTP server lifecycle
 
+The run command registers SIGINT and SIGTERM handling before starting the service
+lifecycle. Termination cancels the command context and enters the service runner's
+bounded shutdown path, including when a signal arrives immediately after readiness.
+
 Normal and restore mode supervise the HTTP endpoint through the bootstrap
 lifecycle. Listener bind errors fail startup synchronously. An unexpected
 `http.Server.Serve` error requests application shutdown and is returned during

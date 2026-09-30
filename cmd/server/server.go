@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"os/signal"
 	"runtime"
 	"runtime/debug"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -380,6 +382,14 @@ func runServer(cmd *cobra.Command, bindings network.Bindings) error {
 			logger.Errorf("Unknown logger provider type: %T", loggerProvider)
 		}
 	}()
+
+	// Register before startup: service readiness precedes Fx's signal handler.
+	// Cancellation follows the service runner's bounded graceful shutdown path.
+	commandContext := cmd.Context()
+	ctx, stop := signal.NotifyContext(commandContext, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	cmd.SetContext(ctx)
+	defer cmd.SetContext(commandContext)
 
 	// Run the application (handles startup, signal handling, and graceful shutdown)
 	return service.NewWithLogger(logger, opts...).Run(cmd)
