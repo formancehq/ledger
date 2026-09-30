@@ -6,19 +6,24 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
@@ -34,6 +39,9 @@ const (
 
 	annotationLastExpansionAt     = "ledger.formance.com/last-expansion-at"
 	annotationLastExpansionTarget = "ledger.formance.com/last-expansion-target"
+
+	walVolumeExpansionCondition  = "WALVolumeExpansionReady"
+	dataVolumeExpansionCondition = "DataVolumeExpansionReady"
 )
 
 var (
@@ -85,9 +93,21 @@ type measuredVolume struct {
 
 type readPodDiskUsageFunc func(ctx context.Context, ledger *ledgerv1alpha1.Cluster, pod, tlsMode string) (podDiskUsage, error)
 
+type podDiskUsageResult struct {
+	Pod   string
+	Usage podDiskUsage
+	Err   error
+}
+
+type reconcileDiskUsage struct {
+	once    sync.Once
+	results []podDiskUsageResult
+}
+
 // VolumeExpansionReconciler periodically grows the live PVCs owned by one
-// Cluster. It owns neither Cluster status nor StatefulSet templates; its entire
-// mutation surface is the storage request and bookkeeping annotations on PVCs.
+// Cluster. It owns the per-volume expansion readiness conditions and the live
+// PVC storage requests plus their bookkeeping annotations. It never owns or
+// mutates StatefulSet templates.
 type VolumeExpansionReconciler struct {
 	client.Client
 
@@ -100,13 +120,14 @@ type VolumeExpansionReconciler struct {
 }
 
 // +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;patch;update
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;patch
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get
 
-func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
 	var ledger ledgerv1alpha1.Cluster
 	if err := r.Get(ctx, req.NamespacedName, &ledger); err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -120,20 +141,29 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		return ctrl.Result{}, nil
 	}
+	defer func() {
+		if err := r.persistVolumeExpansionConditions(ctx, &ledger); err != nil {
+			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("persisting volume expansion status: %w", err))
+			result.RequeueAfter = volumeExpansionRetryInterval
+		}
+	}()
 
 	applyDefaults(&ledger)
 	definitions := enabledVolumeExpansionDefinitions(&ledger)
 	if len(definitions) == 0 {
 		deleteVolumeMetrics(ledger.Namespace, ledger.Name)
+		removeVolumeExpansionConditions(&ledger)
 
 		return ctrl.Result{}, nil
 	}
+	removeDisabledVolumeExpansionConditions(&ledger, definitions)
 	resetVolumeGaugeMetrics(ledger.Namespace, ledger.Name)
 
 	var statefulSet appsv1.StatefulSet
 	if err := r.Get(ctx, types.NamespacedName{Namespace: ledger.Namespace, Name: resourceName(ledger.Name)}, &statefulSet); err != nil {
 		for _, definition := range definitions {
 			r.recordWarningf(&ledger, "VolumeExpansionPending", "%s auto-expansion is waiting for the live StatefulSet: %v", definition.Name, err)
+			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetUnavailable", err.Error())
 		}
 		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
 
@@ -145,6 +175,9 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	if liveReplicas < 1 {
 		volumeExpansionErrorsMetric.WithLabelValues("statefulset", "cluster").Inc()
+		for _, definition := range definitions {
+			setVolumeExpansionCondition(&ledger, definition.Name, metav1.ConditionFalse, "StatefulSetInvalid", fmt.Sprintf("live StatefulSet has %d replicas", liveReplicas))
+		}
 
 		return ctrl.Result{RequeueAfter: volumeExpansionRetryInterval}, fmt.Errorf("invariant: live StatefulSet %s/%s has %d replicas", statefulSet.Namespace, statefulSet.Name, liveReplicas)
 	}
@@ -152,8 +185,9 @@ func (r *VolumeExpansionReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	nextRequeue := volumeExpansionRequeueInterval
 	var reconcileErrors []error
+	usage := &reconcileDiskUsage{}
 	for _, definition := range definitions {
-		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode, liveReplicas)
+		retrySoon, err := r.reconcileVolume(ctx, &ledger, definition, tlsMode, liveReplicas, usage)
 		if retrySoon {
 			nextRequeue = volumeExpansionRetryInterval
 		}
@@ -186,6 +220,7 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	definition persistenceVolumeDefinition,
 	tlsMode string,
 	replicas int32,
+	usage *reconcileDiskUsage,
 ) (bool, error) {
 	logger := ctrl.LoggerFrom(ctx).WithValues("volume", definition.Name)
 	policy, err := validateAndResolveVolumeSpec(
@@ -196,11 +231,14 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	)
 	if err != nil {
 		r.recordWarningf(ledger, "VolumeExpansionUnsupported", "%s auto-expansion policy is invalid: %v", definition.Name, err)
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PolicyInvalid", err.Error())
 		volumeExpansionErrorsMetric.WithLabelValues("policy", definition.Name).Inc()
 
 		return false, nil
 	}
 	if policy == nil {
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "InvariantViolation", "enabled auto-expansion did not resolve a policy")
+
 		return false, fmt.Errorf("invariant: enabled %s auto-expansion did not resolve a policy", definition.Name)
 	}
 
@@ -208,12 +246,14 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	if err != nil {
 		volumeExpansionErrorsMetric.WithLabelValues("pvc", definition.Name).Inc()
 		r.recordWarningf(ledger, "VolumeExpansionPending", "%s PVC group is not ready: %v", definition.Name, err)
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PVCGroupNotReady", err.Error())
 
 		return true, nil
 	}
 	if err := r.validateExpandableStorageClasses(ctx, pvcs); err != nil {
 		volumeExpansionErrorsMetric.WithLabelValues("storage-class", definition.Name).Inc()
 		r.recordWarningf(ledger, "VolumeExpansionUnsupported", "%s PVC group cannot expand: %v", definition.Name, err)
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "StorageClassUnsupported", err.Error())
 
 		return true, nil
 	}
@@ -224,7 +264,10 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	decision := decideVolumeExpansion(*policy, states, nil, r.now())
 	var measurements []podVolumeMeasurement
 	if decision.Kind == volumeExpansionDecisionIncomplete {
-		measurements = r.collectMeasurements(ctx, ledger, definition.Name, tlsMode, replicas)
+		usage.once.Do(func() {
+			usage.results = r.collectDiskUsage(ctx, ledger, tlsMode, replicas)
+		})
+		measurements = r.measurementsForVolume(usage.results, definition.Name)
 		decision = decideVolumeExpansion(*policy, states, measurements, r.now())
 	}
 	volumeRequestedBytesMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name).
@@ -255,34 +298,40 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 	case volumeExpansionDecisionConverge:
 		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, decision.LastExpansionAt); err != nil {
 			volumeExpansionErrorsMetric.WithLabelValues("patch", definition.Name).Inc()
+			setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PatchFailed", err.Error())
 
 			return true, fmt.Errorf("converging %s PVCs: %w", definition.Name, err)
 		}
 		logger.Info("converged partially-expanded PVC group")
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "converged").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "ExpansionPending", "PVC requests converged; waiting for Kubernetes and CSI to finish the resize")
 
 		return true, nil
 	case volumeExpansionDecisionPending:
 		logger.Info("volume expansion is pending")
 		r.recordNormalf(ledger, "VolumeExpansionPending", "%s PVC expansion is still pending", definition.Name)
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "pending").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "ExpansionPending", "Kubernetes or CSI is still resizing at least one PVC")
 
 		return true, nil
 	case volumeExpansionDecisionCooldown:
 		logger.Info("volume expansion is in cooldown", "cooldownUntil", decision.LastExpansionAt.Add(policy.Cooldown))
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "cooldown").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionTrue, "Ready", "PVC group is healthy and observing the expansion cooldown")
 
 		return false, nil
 	case volumeExpansionDecisionIncomplete:
 		logger.Info("volume usage measurement is incomplete")
 		r.recordWarningf(ledger, "VolumeExpansionMeasurementFailed", "%s usage could not be measured on every replica; no threshold crossing was observed", definition.Name)
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "measurement-incomplete").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "MeasurementFailed", "usage could not be measured on every replica and no threshold crossing was observed")
 
 		return true, nil
 	case volumeExpansionDecisionLimit:
 		logger.Info("volume expansion maximum reached")
 		r.recordWarningf(ledger, "VolumeExpansionLimitReached", "%s PVCs reached maximumSize %s at %.1f%% usage", definition.Name, policy.MaximumSize.String(), decision.MaxUsageRatio*100)
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "limit-reached").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "LimitReached", fmt.Sprintf("PVCs reached maximumSize %s at %.1f%% usage", policy.MaximumSize.String(), decision.MaxUsageRatio*100))
 
 		return false, nil
 	case volumeExpansionDecisionAboveMax:
@@ -296,12 +345,14 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 			policy.MaximumSize.String(),
 		)
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "above-maximum").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "RequestAboveMaximum", "a live PVC request exceeds maximumSize")
 
 		return false, nil
 	case volumeExpansionDecisionExpand:
 		now := r.now()
 		if err := r.patchPVCGroup(ctx, pvcs, decision.TargetBytes, now); err != nil {
 			volumeExpansionErrorsMetric.WithLabelValues("patch", definition.Name).Inc()
+			setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "PatchFailed", err.Error())
 
 			return true, fmt.Errorf("expanding %s PVCs: %w", definition.Name, err)
 		}
@@ -310,14 +361,18 @@ func (r *VolumeExpansionReconciler) reconcileVolume(
 		r.recordNormalf(ledger, "VolumeExpansionRequested", "%s PVCs expanding from %s to %s after reaching %.1f%% usage", definition.Name, formatBytesAsQuantity(decision.LargestRequestBytes), target.String(), decision.MaxUsageRatio*100)
 		volumeRequestedBytesMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name).Set(float64(decision.TargetBytes))
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "requested").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "ExpansionPending", "requested expansion to "+target.String())
 
 		return true, nil
 	case volumeExpansionDecisionNone:
 		logger.Info("volume expansion not required")
 		volumeExpansionsMetric.WithLabelValues(ledger.Namespace, ledger.Name, definition.Name, "unchanged").Inc()
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionTrue, "Ready", "PVC group is below the expansion threshold")
 
 		return false, nil
 	default:
+		setVolumeExpansionCondition(ledger, definition.Name, metav1.ConditionFalse, "InvariantViolation", fmt.Sprintf("unknown decision %q", decision.Kind))
+
 		return false, fmt.Errorf("invariant: unknown volume expansion decision %q", decision.Kind)
 	}
 }
@@ -347,9 +402,23 @@ func (r *VolumeExpansionReconciler) loadVolumePVCs(
 
 		requested := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
 		capacity := pvc.Status.Capacity[corev1.ResourceStorage]
-		lastExpansion, err := parseExpansionTime(pvc.Annotations[annotationLastExpansionAt])
+		annotationValue := pvc.Annotations[annotationLastExpansionAt]
+		lastExpansion, err := parseExpansionTime(annotationValue)
 		if err != nil {
-			return nil, nil, fmt.Errorf("PVC %s has invalid %s annotation: %w", name, annotationLastExpansionAt, err)
+			r.recordWarningf(
+				ledger,
+				"VolumeExpansionAnnotationInvalid",
+				"PVC %s has invalid %s value %q; ignoring it for cooldown",
+				name,
+				annotationLastExpansionAt,
+				annotationValue,
+			)
+			ctrl.LoggerFrom(ctx).WithValues(
+				"pvc", name,
+				"annotation", annotationLastExpansionAt,
+				"value", annotationValue,
+			).Info("ignoring invalid volume expansion timestamp", "error", err)
+			lastExpansion = time.Time{}
 		}
 		if lastExpansion.After(now) {
 			r.recordWarningf(
@@ -408,29 +477,42 @@ func (r *VolumeExpansionReconciler) validateExpandableStorageClasses(ctx context
 	return nil
 }
 
-func (r *VolumeExpansionReconciler) collectMeasurements(
+func (r *VolumeExpansionReconciler) collectDiskUsage(
 	ctx context.Context,
 	ledger *ledgerv1alpha1.Cluster,
-	volume, tlsMode string,
+	tlsMode string,
 	replicas int32,
-) []podVolumeMeasurement {
+) []podDiskUsageResult {
 	read := r.ReadDiskUsage
 	if read == nil {
 		read = r.readPodDiskUsage
 	}
 
-	measurements := make([]podVolumeMeasurement, 0, replicas)
+	results := make([]podDiskUsageResult, replicas)
+	var waitGroup sync.WaitGroup
 	for ordinal := range replicas {
-		pod := podName(ledger.Name, int(ordinal))
-		usage, err := read(ctx, ledger, pod, tlsMode)
-		measurement := podVolumeMeasurement{Pod: pod, Err: err}
-		if err == nil {
+		waitGroup.Go(func() {
+			pod := podName(ledger.Name, int(ordinal))
+			usage, err := read(ctx, ledger, pod, tlsMode)
+			results[ordinal] = podDiskUsageResult{Pod: pod, Usage: usage, Err: err}
+		})
+	}
+	waitGroup.Wait()
+
+	return results
+}
+
+func (r *VolumeExpansionReconciler) measurementsForVolume(results []podDiskUsageResult, volume string) []podVolumeMeasurement {
+	measurements := make([]podVolumeMeasurement, 0, len(results))
+	for _, result := range results {
+		measurement := podVolumeMeasurement{Pod: result.Pod, Err: result.Err}
+		if measurement.Err == nil {
 			var selected measuredVolume
 			switch volume {
 			case "wal":
-				selected = usage.WAL
+				selected = result.Usage.WAL
 			case "data":
-				selected = usage.Data
+				selected = result.Usage.Data
 			default:
 				measurement.Err = fmt.Errorf("invariant: unsupported volume kind %q", volume)
 			}
@@ -448,6 +530,71 @@ func (r *VolumeExpansionReconciler) collectMeasurements(
 	}
 
 	return measurements
+}
+
+func volumeExpansionConditionType(volume string) string {
+	if volume == "wal" {
+		return walVolumeExpansionCondition
+	}
+
+	return dataVolumeExpansionCondition
+}
+
+func setVolumeExpansionCondition(ledger *ledgerv1alpha1.Cluster, volume string, status metav1.ConditionStatus, reason, message string) {
+	meta.SetStatusCondition(&ledger.Status.Conditions, metav1.Condition{
+		Type:               volumeExpansionConditionType(volume),
+		Status:             status,
+		ObservedGeneration: ledger.Generation,
+		Reason:             reason,
+		Message:            message,
+	})
+}
+
+func removeVolumeExpansionConditions(ledger *ledgerv1alpha1.Cluster) {
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, walVolumeExpansionCondition)
+	meta.RemoveStatusCondition(&ledger.Status.Conditions, dataVolumeExpansionCondition)
+}
+
+func removeDisabledVolumeExpansionConditions(ledger *ledgerv1alpha1.Cluster, definitions []persistenceVolumeDefinition) {
+	enabled := make(map[string]struct{}, len(definitions))
+	for _, definition := range definitions {
+		enabled[volumeExpansionConditionType(definition.Name)] = struct{}{}
+	}
+	for _, conditionType := range []string{walVolumeExpansionCondition, dataVolumeExpansionCondition} {
+		if _, ok := enabled[conditionType]; !ok {
+			meta.RemoveStatusCondition(&ledger.Status.Conditions, conditionType)
+		}
+	}
+}
+
+func isVolumeExpansionCondition(condition metav1.Condition) bool {
+	return condition.Type == walVolumeExpansionCondition || condition.Type == dataVolumeExpansionCondition
+}
+
+func (r *VolumeExpansionReconciler) persistVolumeExpansionConditions(ctx context.Context, desired *ledgerv1alpha1.Cluster) error {
+	desiredConditions := make([]metav1.Condition, 0, 2)
+	for _, condition := range desired.Status.Conditions {
+		if isVolumeExpansionCondition(condition) {
+			desiredConditions = append(desiredConditions, condition)
+		}
+	}
+
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		latest := &ledgerv1alpha1.Cluster{}
+		if err := r.Get(ctx, client.ObjectKeyFromObject(desired), latest); err != nil {
+			return client.IgnoreNotFound(err)
+		}
+		before := append([]metav1.Condition(nil), latest.Status.Conditions...)
+		removeVolumeExpansionConditions(latest)
+		for _, condition := range desiredConditions {
+			meta.SetStatusCondition(&latest.Status.Conditions, condition)
+		}
+		if apiequality.Semantic.DeepEqual(before, latest.Status.Conditions) {
+			return nil
+		}
+
+		return r.Status().Update(ctx, latest)
+	})
 }
 
 func (r *VolumeExpansionReconciler) readPodDiskUsage(

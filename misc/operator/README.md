@@ -228,7 +228,9 @@ Prometheus server: every five minutes a separate controller evaluates the live
 PVC group. When the group is ready for a new capacity decision, it executes
 `ledgerctl cluster disk-usage --json` inside each Ledger pod, uses the highest
 valid utilization for the volume kind, and patches every replica's PVC to the
-same target size. It skips pod exec while PVCs are converging, resizing, or in
+same target size. Replica calls run in parallel, and WAL and data share the same
+response so the command executes at most once per pod and reconciliation. It
+skips pod exec while PVCs are converging, resizing, or in
 cooldown. Each measurement carries validity, server-computed age, last
 successful observation time, and an optional diagnostic error. The operator
 rejects the selected volume when collection failed, the sample is older than
@@ -276,12 +278,15 @@ live request. A resize already in progress and the cooldown both block further
 growth. The PVC annotations
 `ledger.formance.com/last-expansion-at` and
 `ledger.formance.com/last-expansion-target` make retries and operator restarts
-idempotent. The timestamp drives cooldown; a future timestamp is rejected as
-invalid evidence rather than allowing an external annotation edit or clock skew
-to suppress expansion indefinitely. The target annotation is diagnostic only.
+idempotent. The timestamp drives cooldown; a malformed or future timestamp is
+rejected as invalid evidence rather than allowing an external annotation edit
+or clock skew to suppress expansion indefinitely. The target annotation is
+diagnostic only.
 
 Troubleshooting surfaces:
 
+- Cluster conditions: `WALVolumeExpansionReady` and
+  `DataVolumeExpansionReady`, with a reason describing the latest state.
 - Cluster events: `VolumeExpansionRequested`, `VolumeExpansionPending`,
   `VolumeExpansionMeasurementFailed`, `VolumeExpansionUnsupported`, and
   `VolumeExpansionLimitReached`.

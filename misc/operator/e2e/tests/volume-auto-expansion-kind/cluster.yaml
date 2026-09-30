@@ -1,0 +1,18 @@
+apiVersion: ledger.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: auto-expand-kind
+spec:
+  replicas: 3
+  image:
+    repository: ledger
+    tag: e2e
+    pullPolicy: Never
+  persistence:
+    deletionProtection: false
+    wal:
+      size: 1Gi
+      storageClass: ledger-e2e-expandable
+    data:
+      size: 1Gi
+      storageClass: ledger-e2e-expandable

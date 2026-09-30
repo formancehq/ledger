@@ -9,8 +9,9 @@ code responsible for cloud storage mutations.
 
 The mechanism is implemented by a dedicated `VolumeExpansionReconciler` in the
 existing Ledger v3 Operator. It is separate from `ClusterReconciler`: the latter
-owns declarative workload resources and Cluster status, while volume expansion
-owns only live PVC storage requests and two bookkeeping annotations.
+owns declarative workload resources and the general Cluster status, while volume
+expansion owns two per-volume readiness conditions, live PVC storage requests,
+and two bookkeeping annotations.
 
 ## Interface and prerequisites
 
@@ -27,14 +28,18 @@ support automatic expansion.
 No Prometheus server is required. On every enabled Cluster reconcile interval,
 the operator first evaluates PVC convergence, resize state, and cooldown. When
 the group is ready for a new capacity decision, it runs the existing command
-below in each expected pod; the other states deliberately skip pod exec:
+below once in each expected pod; the other states deliberately skip pod exec:
 
 ```text
 ledgerctl cluster disk-usage --json
 ```
 
-Pod exec deliberately reuses the Ledger container's cluster token, TLS CA,
-headless DNS identity, and transport mode. For each local WAL and data volume,
+Pod exec currently reuses the Ledger container's cluster token, TLS CA,
+headless DNS identity, and transport mode. Calls to distinct replicas run in
+parallel, and the single response per replica is shared by the WAL and data
+policies. This is a pragmatic initial transport boundary, not a requirement of
+the capacity policy; a direct authenticated RPC may replace it without changing
+the decision or PVC actuation contracts. For each local WAL and data volume,
 the JSON response carries the last known used/total bytes, `valid`,
 `sampleAgeMs`, `observedAtUs`, and an optional diagnostic `error`. The operator
 uses only the selected volume's validity and server-computed age for its
@@ -106,13 +111,17 @@ client or cloud credentials.
 - Partial patch: the largest PVC request becomes the recovery target on the
   next pass when it remains within `maximumSize`; cooldown does not prevent
   convergence.
-- A future `last-expansion-at` annotation: emit
+- A malformed or future `last-expansion-at` annotation: emit
   `VolumeExpansionAnnotationInvalid` and ignore it for cooldown, so externally
   edited or clock-skewed metadata cannot suspend expansion indefinitely. The
   `last-expansion-target` value remains diagnostic and is not decision input.
 
 Structured logs record the decision, current/target/max bytes, highest usage,
-and failed measurement count. Kubernetes events provide the human-facing state.
+and failed measurement count. Kubernetes events provide transient diagnostics.
+The durable `WALVolumeExpansionReady` and `DataVolumeExpansionReady` Cluster
+conditions expose the latest state independently for both volume groups. Their
+reasons distinguish ready, pending, invalid-policy, unsupported-storage,
+measurement-failure, patch-failure, above-maximum, and limit-reached states.
 The operator's existing metrics endpoint exports usage ratios, sample age,
 requested bytes, decision counters, and error counters; scraping these metrics
 is optional and does not participate in the control loop. Ratio and age series

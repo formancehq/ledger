@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	storagev1 "k8s.io/api/storage/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -25,6 +28,22 @@ import (
 
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
+
+type failNthPatchClient struct {
+	client.Client
+
+	failAt   int
+	attempts int
+}
+
+func (c *failNthPatchClient) Patch(ctx context.Context, object client.Object, patch client.Patch, options ...client.PatchOption) error {
+	c.attempts++
+	if c.attempts == c.failAt {
+		return errors.New("injected PVC patch failure")
+	}
+
+	return c.Client.Patch(ctx, object, patch, options...)
+}
 
 func TestParsePodDiskUsage(t *testing.T) {
 	t.Parallel()
@@ -107,28 +126,45 @@ func TestValidateMeasuredVolume(t *testing.T) {
 	}
 }
 
-func TestCollectMeasurementsValidatesOnlySelectedVolume(t *testing.T) {
+func TestMeasurementsForVolumeValidatesOnlySelectedVolume(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
-	reconciler := &VolumeExpansionReconciler{
-		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
-			return podDiskUsage{
+	reconciler := &VolumeExpansionReconciler{}
+	results := []podDiskUsageResult{
+		{
+			Pod: "ledger-test-0",
+			Usage: podDiskUsage{
 				WAL:  measuredVolume{UsedBytes: 90, TotalBytes: 100, ObservedAt: now, Valid: false, Error: "WAL Statfs failed"},
 				Data: measuredVolume{UsedBytes: 80, TotalBytes: 100, ObservedAt: now, Valid: true},
-			}, nil
+			},
 		},
 	}
-	ledger := &ledgerv1alpha1.Cluster{ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"}}
 
-	data := reconciler.collectMeasurements(t.Context(), ledger, "data", "disabled", 1)
+	data := reconciler.measurementsForVolume(results, "data")
 	require.Len(t, data, 1)
 	require.NoError(t, data[0].Err)
 	require.Equal(t, uint64(80), data[0].UsedBytes)
 
-	wal := reconciler.collectMeasurements(t.Context(), ledger, "wal", "disabled", 1)
+	wal := reconciler.measurementsForVolume(results, "wal")
 	require.Len(t, wal, 1)
 	require.ErrorContains(t, wal[0].Err, "WAL Statfs failed")
+}
+
+func TestRemoveDisabledVolumeExpansionConditions(t *testing.T) {
+	t.Parallel()
+
+	ledger := &ledgerv1alpha1.Cluster{Status: ledgerv1alpha1.ClusterStatus{Conditions: []metav1.Condition{
+		{Type: walVolumeExpansionCondition, Status: metav1.ConditionTrue, Reason: "Ready"},
+		{Type: dataVolumeExpansionCondition, Status: metav1.ConditionFalse, Reason: "ExpansionPending"},
+		{Type: "Ready", Status: metav1.ConditionTrue, Reason: "AllReplicasReady"},
+	}}}
+
+	removeDisabledVolumeExpansionConditions(ledger, []persistenceVolumeDefinition{{Name: "data"}})
+
+	require.Nil(t, meta.FindStatusCondition(ledger.Status.Conditions, walVolumeExpansionCondition))
+	require.NotNil(t, meta.FindStatusCondition(ledger.Status.Conditions, dataVolumeExpansionCondition))
+	require.NotNil(t, meta.FindStatusCondition(ledger.Status.Conditions, "Ready"))
 }
 
 func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
@@ -169,7 +205,7 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 	for ordinal := range liveReplicas {
 		objects = append(objects, boundTestPVC("data-ledger-test-"+strconv.Itoa(int(ordinal)), storageClassName, "100Gi"))
 	}
-	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(objects...).Build()
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(objects...).Build()
 	recorder := record.NewFakeRecorder(10)
 	reconciler := &VolumeExpansionReconciler{
 		Client:    k8sClient,
@@ -205,6 +241,12 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 		assert.Equal(t, now.Format(time.RFC3339), pvc.Annotations[annotationLastExpansionAt])
 		assert.Equal(t, "146Gi", pvc.Annotations[annotationLastExpansionTarget])
 	}
+	var updatedCluster ledgerv1alpha1.Cluster
+	require.NoError(t, k8sClient.Get(ctx, client.ObjectKeyFromObject(ledger), &updatedCluster))
+	condition := meta.FindStatusCondition(updatedCluster.Status.Conditions, dataVolumeExpansionCondition)
+	require.NotNil(t, condition)
+	require.Equal(t, metav1.ConditionFalse, condition.Status)
+	require.Equal(t, "ExpansionPending", condition.Reason)
 
 	events := make([]string, 0, 2)
 	for len(events) < 2 {
@@ -221,6 +263,109 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 	assert.Condition(t, func() bool {
 		return strings.Contains(events[0], "VolumeExpansionRequested") || strings.Contains(events[1], "VolumeExpansionRequested")
 	})
+}
+
+func TestVolumeExpansionReconcilerConvergesPartialPatchAfterRestart(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	now := time.Date(2026, time.September, 30, 8, 0, 0, 0, time.UTC)
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, storagev1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	allowExpansion := true
+	storageClassName := "expandable"
+	maximum := resource.MustParse("200Gi")
+	replicas := int32(3)
+	ledger := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "restart", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				Data: ledgerv1alpha1.VolumeSpec{
+					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: &maximum},
+				},
+			},
+		},
+	}
+	objects := []runtime.Object{
+		ledger,
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "ledger-restart", Namespace: "default"},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		},
+		&storagev1.StorageClass{
+			ObjectMeta:           metav1.ObjectMeta{Name: storageClassName},
+			AllowVolumeExpansion: &allowExpansion,
+		},
+	}
+	for ordinal := range replicas {
+		objects = append(objects, boundTestPVC("data-ledger-restart-"+strconv.Itoa(int(ordinal)), storageClassName, "100Gi"))
+	}
+	baseClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(objects...).Build()
+	failingClient := &failNthPatchClient{Client: baseClient, failAt: 2}
+	var measurementCalls atomic.Int64
+	readDiskUsage := func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+		measurementCalls.Add(1)
+
+		return podDiskUsage{Data: freshMeasuredVolume(
+			uint64(testQuantityValue("80Gi")),
+			uint64(testQuantityValue("100Gi")),
+			now,
+		)}, nil
+	}
+	firstGeneration := &VolumeExpansionReconciler{
+		Client:        failingClient,
+		APIReader:     baseClient,
+		Now:           func() time.Time { return now },
+		ReadDiskUsage: readDiskUsage,
+	}
+
+	_, err := firstGeneration.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "restart"}})
+	require.ErrorContains(t, err, "injected PVC patch failure")
+	require.Equal(t, 2, failingClient.attempts)
+	require.Equal(t, int64(3), measurementCalls.Load())
+
+	requests := map[string]int{}
+	for ordinal := range replicas {
+		var pvc corev1.PersistentVolumeClaim
+		require.NoError(t, baseClient.Get(ctx, types.NamespacedName{
+			Namespace: "default",
+			Name:      "data-ledger-restart-" + strconv.Itoa(int(ordinal)),
+		}, &pvc))
+		request := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		requests[request.String()]++
+	}
+	require.Equal(t, map[string]int{"100Gi": 2, "146Gi": 1}, requests)
+
+	// A fresh reconciler instance models an operator restart. It must recover
+	// from persisted PVC state alone, without taking another usage measurement
+	// and without allowing cooldown to block convergence.
+	secondGeneration := &VolumeExpansionReconciler{
+		Client:        baseClient,
+		APIReader:     baseClient,
+		Now:           func() time.Time { return now.Add(time.Minute) },
+		ReadDiskUsage: readDiskUsage,
+	}
+	result, err := secondGeneration.Reconcile(ctx, ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "default", Name: "restart"}})
+	require.NoError(t, err)
+	require.Equal(t, volumeExpansionRetryInterval, result.RequeueAfter)
+	require.Equal(t, int64(3), measurementCalls.Load(), "partial-patch convergence must not depend on a new measurement")
+
+	for ordinal := range replicas {
+		var pvc corev1.PersistentVolumeClaim
+		require.NoError(t, baseClient.Get(ctx, types.NamespacedName{
+			Namespace: "default",
+			Name:      "data-ledger-restart-" + strconv.Itoa(int(ordinal)),
+		}, &pvc))
+		request := pvc.Spec.Resources.Requests[corev1.ResourceStorage]
+		require.Equal(t, "146Gi", request.String())
+		require.Equal(t, "146Gi", pvc.Annotations[annotationLastExpansionTarget])
+		require.Equal(t, now.Format(time.RFC3339), pvc.Annotations[annotationLastExpansionAt])
+	}
 }
 
 func TestLoadVolumePVCsUsesDirectAPIReader(t *testing.T) {
@@ -277,6 +422,165 @@ func TestLoadVolumePVCsIgnoresDiagnosticTargetAndFutureCooldown(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("expected a warning for the future cooldown annotation")
 	}
+}
+
+func TestVolumeExpansionReconcilerIgnoresMalformedCooldownAnnotation(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.September, 30, 9, 0, 0, 0, time.UTC)
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, storagev1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	allowExpansion := true
+	storageClassName := "expandable"
+	maximum := resource.MustParse("200Gi")
+	replicas := int32(1)
+	ledger := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "malformed-cooldown", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				Data: ledgerv1alpha1.VolumeSpec{
+					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: &maximum},
+				},
+			},
+		},
+	}
+	pvc := boundTestPVC("data-ledger-malformed-cooldown-0", storageClassName, "100Gi")
+	pvc.Annotations = map[string]string{annotationLastExpansionAt: "not-a-timestamp"}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
+		ledger,
+		&appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: "ledger-malformed-cooldown", Namespace: "default"},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &replicas},
+		},
+		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}, AllowVolumeExpansion: &allowExpansion},
+		pvc,
+	).Build()
+	recorder := record.NewFakeRecorder(10)
+	reconciler := &VolumeExpansionReconciler{
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Recorder:  recorder,
+		Now:       func() time.Time { return now },
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			return podDiskUsage{Data: freshMeasuredVolume(uint64(testQuantityValue("80Gi")), uint64(testQuantityValue("100Gi")), now)}, nil
+		},
+	}
+
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(ledger)})
+	require.NoError(t, err)
+
+	var got corev1.PersistentVolumeClaim
+	require.NoError(t, k8sClient.Get(t.Context(), client.ObjectKeyFromObject(pvc), &got))
+	requested := got.Spec.Resources.Requests[corev1.ResourceStorage]
+	require.Equal(t, "146Gi", requested.String())
+	require.Equal(t, now.Format(time.RFC3339), got.Annotations[annotationLastExpansionAt])
+
+	events := make([]string, 0, 2)
+	for range 2 {
+		select {
+		case event := <-recorder.Events:
+			events = append(events, event)
+		case <-time.After(time.Second):
+			t.Fatalf("expected invalid annotation and expansion events, got %v", events)
+		}
+	}
+	require.Condition(t, func() bool {
+		return strings.Contains(events[0], "VolumeExpansionAnnotationInvalid") || strings.Contains(events[1], "VolumeExpansionAnnotationInvalid")
+	})
+}
+
+func TestVolumeExpansionReconcilerCollectsWALAndDataOnceInParallel(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.September, 30, 10, 0, 0, 0, time.UTC)
+	scheme := runtime.NewScheme()
+	require.NoError(t, appsv1.AddToScheme(scheme))
+	require.NoError(t, corev1.AddToScheme(scheme))
+	require.NoError(t, storagev1.AddToScheme(scheme))
+	require.NoError(t, ledgerv1alpha1.AddToScheme(scheme))
+
+	allowExpansion := true
+	storageClassName := "expandable"
+	maximum := resource.MustParse("200Gi")
+	replicas := int32(3)
+	autoExpansion := &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: &maximum}
+	ledger := &ledgerv1alpha1.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-measurement", Namespace: "default"},
+		Spec: ledgerv1alpha1.ClusterSpec{
+			Replicas: &replicas,
+			Persistence: ledgerv1alpha1.PersistenceSpec{
+				WAL:  ledgerv1alpha1.VolumeSpec{AutoExpansion: autoExpansion.DeepCopy()},
+				Data: ledgerv1alpha1.VolumeSpec{AutoExpansion: autoExpansion.DeepCopy()},
+			},
+		},
+	}
+	objects := []runtime.Object{
+		ledger,
+		&appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{Name: "ledger-shared-measurement", Namespace: "default"}, Spec: appsv1.StatefulSetSpec{Replicas: &replicas}},
+		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}, AllowVolumeExpansion: &allowExpansion},
+	}
+	for ordinal := range replicas {
+		objects = append(objects,
+			boundTestPVC("wal-ledger-shared-measurement-"+strconv.Itoa(int(ordinal)), storageClassName, "100Gi"),
+			boundTestPVC("data-ledger-shared-measurement-"+strconv.Itoa(int(ordinal)), storageClassName, "100Gi"),
+		)
+	}
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(objects...).Build()
+	started := make(chan struct{}, replicas)
+	release := make(chan struct{})
+	var lock sync.Mutex
+	calls := 0
+	active := 0
+	maxActive := 0
+	reconciler := &VolumeExpansionReconciler{
+		Client:    k8sClient,
+		APIReader: k8sClient,
+		Now:       func() time.Time { return now },
+		ReadDiskUsage: func(context.Context, *ledgerv1alpha1.Cluster, string, string) (podDiskUsage, error) {
+			lock.Lock()
+			calls++
+			active++
+			maxActive = max(maxActive, active)
+			lock.Unlock()
+			started <- struct{}{}
+			<-release
+			lock.Lock()
+			active--
+			lock.Unlock()
+
+			fresh := freshMeasuredVolume(uint64(testQuantityValue("50Gi")), uint64(testQuantityValue("100Gi")), now)
+
+			return podDiskUsage{WAL: fresh, Data: fresh}, nil
+		},
+	}
+	type reconcileResult struct {
+		result ctrl.Result
+		err    error
+	}
+	done := make(chan reconcileResult, 1)
+	go func() {
+		result, err := reconciler.Reconcile(t.Context(), ctrl.Request{NamespacedName: client.ObjectKeyFromObject(ledger)})
+		done <- reconcileResult{result: result, err: err}
+	}()
+	for range replicas {
+		select {
+		case <-started:
+		case <-time.After(2 * time.Second):
+			close(release)
+			t.Fatal("disk usage calls did not start concurrently")
+		}
+	}
+	close(release)
+	outcome := <-done
+	require.NoError(t, outcome.err)
+	require.Equal(t, volumeExpansionRequeueInterval, outcome.result.RequeueAfter)
+	require.Equal(t, int(replicas), calls, "WAL and data must share one disk-usage call per pod")
+	require.Equal(t, int(replicas), maxActive, "disk-usage calls should run concurrently across replicas")
 }
 
 func TestPatchPVCGroupUsesOptimisticLock(t *testing.T) {
@@ -357,7 +661,7 @@ func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T)
 		},
 	}
 	pvc := boundTestPVC("data-ledger-fixed-0", storageClassName, "100Gi")
-	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
 		&storagev1.StorageClass{ObjectMeta: metav1.ObjectMeta{Name: storageClassName}},
 		pvc,
@@ -377,7 +681,7 @@ func TestVolumeExpansionReconcilerRejectsNonExpandableStorageClass(t *testing.T)
 		Spec:                 &ledger.Spec.Persistence.Data,
 		DefaultSize:          "10Gi",
 		AutoExpansionAllowed: true,
-	}, "disabled", replicas)
+	}, "disabled", replicas, &reconcileDiskUsage{})
 	require.NoError(t, err)
 	assert.True(t, retry)
 
@@ -411,7 +715,7 @@ func TestVolumeExpansionReconcilerDoesNotExpandFromInvalidMeasurement(t *testing
 		},
 	}
 	pvc := boundTestPVC("data-ledger-invalid-sample-0", storageClassName, "100Gi")
-	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
 		&storagev1.StorageClass{
 			ObjectMeta:           metav1.ObjectMeta{Name: storageClassName},
@@ -443,7 +747,7 @@ func TestVolumeExpansionReconcilerDoesNotExpandFromInvalidMeasurement(t *testing
 		Spec:                 &ledger.Spec.Persistence.Data,
 		DefaultSize:          "10Gi",
 		AutoExpansionAllowed: true,
-	}, "disabled", 1)
+	}, "disabled", 1, &reconcileDiskUsage{})
 	require.NoError(t, err)
 	require.True(t, retry)
 
@@ -480,7 +784,7 @@ func TestVolumeExpansionReconcilerRejectsHostPathPolicyBeforeSideEffects(t *test
 		},
 	}
 	pvc := boundTestPVC("data-ledger-host-path-0", "fixed", "100Gi")
-	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
 		&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-host-path", Namespace: "default"},
@@ -553,7 +857,7 @@ func TestVolumeExpansionReconcilerDoesNotConvergeAboveMaximum(t *testing.T) {
 	}
 	pvc0 := boundTestPVC("data-ledger-above-maximum-0", storageClassName, "200Gi")
 	pvc1 := boundTestPVC("data-ledger-above-maximum-1", storageClassName, "100Gi")
-	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(
+	k8sClient := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(ledger).WithRuntimeObjects(
 		ledger,
 		&appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{Name: "ledger-above-maximum", Namespace: "default"},

@@ -364,13 +364,27 @@ func (r *ClusterReconciler) updateStatus(ctx context.Context, ledger *ledgerv1al
 	}
 
 	// ledger was fetched fresh at the top of Reconcile and this reconciler is the
-	// sole writer of Cluster status conditions, so ledger.Status.Conditions is
-	// the authoritative desired set after this pass — including conditions removed
+	// primary writer of Cluster status conditions, so its non-volume conditions
+	// are the authoritative desired set after this pass — including conditions removed
 	// during reconcile (e.g. DeletionProtectionInactive once the cluster policy is
 	// installed or protection is disabled). Assign it onto the freshly-fetched latest
-	// so those removals are persisted; an additive SetStatusCondition merge would
-	// leave stale conditions in .status.conditions forever.
-	latest.Status.Conditions = ledger.Status.Conditions
+	// so those removals are persisted. Volume expansion conditions have a separate
+	// writer and are merged from the latest object below.
+	volumeConditions := make([]metav1.Condition, 0, 2)
+	for _, condition := range latest.Status.Conditions {
+		if isVolumeExpansionCondition(condition) {
+			volumeConditions = append(volumeConditions, condition)
+		}
+	}
+	latest.Status.Conditions = latest.Status.Conditions[:0]
+	for _, condition := range ledger.Status.Conditions {
+		if !isVolumeExpansionCondition(condition) {
+			latest.Status.Conditions = append(latest.Status.Conditions, condition)
+		}
+	}
+	for _, condition := range volumeConditions {
+		meta.SetStatusCondition(&latest.Status.Conditions, condition)
+	}
 
 	// Preserve the phase set during reconciliation (e.g. "Degraded" from
 	// validation failure) before we try to recompute from StatefulSet state.
