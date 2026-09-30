@@ -214,9 +214,8 @@ func TestVerifyAuditHashChain_InvalidAttributionPreservesHashChain(t *testing.T)
 func TestVerifyAuditHashChainAcrossFailureProjectionFlip(t *testing.T) {
 	t.Parallel()
 
-	const clusterID = "failure-projection-flip"
 	store := createTestStore(t)
-	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, clusterID)
+	gen := processing.NewHashGenerator(commonpb.HashAlgorithm_HASH_ALGORITHM_BLAKE3, checkerTestAuditKey)
 	var previous []byte
 
 	for _, version := range []uint32{0, state.FailureProjectionVersionV1} {
@@ -239,7 +238,7 @@ func TestVerifyAuditHashChainAcrossFailureProjectionFlip(t *testing.T) {
 		previous = entry.GetHash()
 	}
 
-	require.Empty(t, runChainVerifier(t, store, clusterID),
+	require.Empty(t, runChainVerifier(t, store, checkerTestAuditKey),
 		"the checker must use each entry's stored version across the flip")
 }
 

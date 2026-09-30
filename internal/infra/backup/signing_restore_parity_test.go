@@ -294,7 +294,7 @@ func TestBackupFailureProjectionFlipAfterCheckpoint(t *testing.T) {
 		"the exported entry retains its source projection version")
 
 	var findings []*servicepb.CheckStoreError
-	checker := check.NewChecker(dstStore, dstAttrs, signingParityClusterID, nil, testLogger())
+	checker := check.NewChecker(dstStore, dstAttrs, nil, testLogger())
 	require.NoError(t, checker.Check(ctx, func(event *servicepb.CheckStoreEvent) {
 		if e, ok := event.GetType().(*servicepb.CheckStoreEvent_Error); ok {
 			findings = append(findings, e.Error)

@@ -90,7 +90,7 @@ func TestApplyClusterConfigFailureProjectionFlip(t *testing.T) {
 	require.Equal(t, FailureProjectionVersionV1, fsm.State.LastClusterConfig.GetFailureProjectionVersion())
 	handle, err := dataStore.NewReadHandle()
 	require.NoError(t, err)
-	recovered, err := LoadFSMStateFromStore(dataStore, handle, fsm.State.ClusterID)
+	recovered, err := LoadFSMStateFromStore(dataStore, handle)
 	require.NoError(t, handle.Close())
 	require.NoError(t, err)
 	require.Equal(t, FailureProjectionVersionV1, recovered.LastClusterConfig.GetFailureProjectionVersion())
