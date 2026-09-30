@@ -949,7 +949,7 @@ func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (re
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
 		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
 
-		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
+		exists, pErr := storageKeyExists(ctx.indexReader, key)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking log existence: %w", pErr)
 		}

@@ -379,12 +379,12 @@ func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 func LoadIdempotencyKey(reader dal.KVReader, key string) (*commonpb.IdempotencyKeyValue, error) {
 	keyHash := HashIdempotencyKey(key)
 
-	pebbleKey := make([]byte, 2+16)
-	pebbleKey[0] = dal.ZoneIdempotency
-	pebbleKey[1] = dal.SubIdempKeys
-	copy(pebbleKey[2:], keyHash[:])
+	storageKey := make([]byte, 2+16)
+	storageKey[0] = dal.ZoneIdempotency
+	storageKey[1] = dal.SubIdempKeys
+	copy(storageKey[2:], keyHash[:])
 
-	val, closer, err := reader.Get(pebbleKey)
+	val, closer, err := reader.Get(storageKey)
 	if err != nil {
 		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil

@@ -1459,8 +1459,8 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
 		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
 
-		// Point lookup in Pebble index
-		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
+		// Point lookup in the read index
+		exists, pErr := storageKeyExists(ctx.indexReader, key)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking log existence: %w", pErr)
 		}
@@ -1672,8 +1672,8 @@ func mainTxExists(reader dal.KVReader, ledgerName string, txID uint64) (bool, er
 	return iter.First(), nil
 }
 
-// pebbleKeyExists checks if an exact key exists in a Pebble reader.
-func pebbleKeyExists(reader dal.KVReader, key []byte) (bool, error) {
+// storageKeyExists checks if an exact key exists in a storage reader.
+func storageKeyExists(reader dal.KVReader, key []byte) (bool, error) {
 	upper := readstore.IncrementBytes(key)
 
 	iter, err := dal.NewBoundedIter(reader, key, upper)

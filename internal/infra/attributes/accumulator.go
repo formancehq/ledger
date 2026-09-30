@@ -25,17 +25,17 @@ type accumulatorBase[V proto.Message] struct {
 // When a canonical key boundary is crossed, it returns the result for the
 // previous key as prev (non-nil). The caller must handle prev
 // before the next call.
-func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool, prev *ComputedEntry[V], err error) {
-	if len(pebbleKey) <= 1+AttrTypeLen {
+func (ab *accumulatorBase[V]) feed(storageKey, storageValue []byte) (matched bool, prev *ComputedEntry[V], err error) {
+	if len(storageKey) <= 1+AttrTypeLen {
 		return false, nil, nil
 	}
 
-	attrType := pebbleKey[1]
+	attrType := storageKey[1]
 	if attrType != ab.attr.prefix {
 		return false, nil, nil
 	}
 
-	canonical := string(pebbleKey[2:])
+	canonical := string(storageKey[2:])
 
 	if canonical != ab.currentCanonical {
 		// Return the previous canonical key's result before resetting.
@@ -56,7 +56,7 @@ func (ab *accumulatorBase[V]) feed(pebbleKey, pebbleValue []byte) (matched bool,
 	}
 
 	v := ab.attr.newValue()
-	if err := unmarshalProto(pebbleValue, v); err != nil {
+	if err := unmarshalProto(storageValue, v); err != nil {
 		return false, nil, fmt.Errorf("unmarshaling value: %w", err)
 	}
 
@@ -114,11 +114,11 @@ func (acc *Accumulator[V]) Prefix() byte {
 	return acc.attr.prefix
 }
 
-// Feed processes a raw Pebble key-value pair from the attribute range.
+// Feed processes a raw storage key-value pair from the attribute range.
 // Returns true if the entry matched this accumulator's attribute type and was consumed.
-// Entries must be fed in Pebble key order for correct computation.
-func (acc *Accumulator[V]) Feed(pebbleKey, pebbleValue []byte) (bool, error) {
-	matched, prev, err := acc.feed(pebbleKey, pebbleValue)
+// Entries must be fed in storage key order for correct computation.
+func (acc *Accumulator[V]) Feed(storageKey, storageValue []byte) (bool, error) {
+	matched, prev, err := acc.feed(storageKey, storageValue)
 	if err != nil {
 		return false, err
 	}
