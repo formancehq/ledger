@@ -146,6 +146,33 @@ A stalled initialization or drain can therefore retain the hook and its
 resources until it completes. Fatal `Run` errors retain their existing
 process-failure behavior.
 
+#### Leader readiness generations
+
+Leadership acquisition does not admit writes immediately. The node first
+drains previously submitted apply work and waits until the FSM has applied the
+new leader's current-term no-op entry. Applying that entry proves that every
+preceding entry is committed and locally applied. `WaitLeaderReady` exposes
+this generation-specific gate to admission, and `LeaderReadyEvent` lets
+bootstrap reconcile persisted cluster configuration only after the same gate.
+
+Each acquisition owns a cancellable readiness generation. After the FSM
+wait succeeds, the waiter rechecks cancellation before emitting the event and
+releasing admission. Leadership loss cancels the generation and joins its
+waiter through `done` before publishing the loss event. Cancellation observed
+by the recheck prevents the old generation from emitting `LeaderReadyEvent`
+or releasing admission. Cancellation can also arrive after the recheck;
+in that case, the join ensures readiness publication and its synchronous
+observer callback finish before the loss transition is published. The join
+provides this ordering; `cancelAndWait` does not acquire the publication lock.
+The leadership-loss signal wakes requests already waiting on that generation
+with `ErrNotLeader`. A later acquisition always installs a new independent
+generation.
+
+A failed FSM wait completes the background waiter without marking the
+generation ready, so admission remains blocked until its request context is
+cancelled. Leadership loss separately wakes existing waiters with
+`ErrNotLeader`; a later acquisition installs a fresh gate for new requests.
+
 #### Applier
 
 `internal/infra/node/applier.go` decouples WAL writes from FSM application by running as a dedicated goroutine. This provides two levels of pipelining:
