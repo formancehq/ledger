@@ -209,6 +209,9 @@ func makeDeleteSentinelEntry(t *testing.T, index uint64, ledger string, deleting
 	}
 	proposal := &raftcmdpb.Proposal{
 		Id: index, Date: &commonpb.Timestamp{Data: 1700000000 + index},
+		CallerSnapshot: &commonpb.CallerSnapshot{
+			Principal: &commonpb.CallerSnapshot_AuthDisabled{AuthDisabled: &commonpb.AuthDisabledCaller{}},
+		},
 		ExecutionPlan: &raftcmdpb.ExecutionPlan{Attributes: plans},
 		Orders: []*raftcmdpb.Order{{Type: &raftcmdpb.Order_LedgerScoped{LedgerScoped: ls},
 			Technical: &raftcmdpb.OrderTechnical{CoverageBits: []byte{byte(1<<len(plans)) - 1}}}},
