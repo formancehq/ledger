@@ -30,17 +30,17 @@ def after_execution(*, method="GET", path="/v3/test", checks=(), errors=()):
     )
 
 
-def finished(*, passed=0, errored=0):
+def finished(*, passed=0, errored=0, has_errors=None, generic_errors=()):
     return Finished(
         passed_count=passed,
         skipped_count=0,
         failed_count=0,
         errored_count=errored,
         has_failures=False,
-        has_errors=bool(errored),
+        has_errors=bool(errored) if has_errors is None else has_errors,
         has_logs=False,
         is_empty=passed == 0 and errored == 0,
-        generic_errors=[],
+        generic_errors=list(generic_errors),
         warnings=[],
         total={},
         running_time=0,
@@ -151,6 +151,29 @@ class ReportingTest(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertIn("Passed: 1 | Failed: 0 | Errored: 0", output)
         self.assertIn("RESULT: ALL CHECKS PASSED", output)
+
+    def test_success_followed_by_final_only_error_fails(self):
+        for has_errors, errored in [(True, 1), (True, 0), (False, 1)]:
+            with self.subTest(has_errors=has_errors, errored=errored):
+                exit_code, output = self.report(
+                    [
+                        after_execution(
+                            checks=[SimpleNamespace(value=Status.success, message=None)]
+                        ),
+                        finished(
+                            passed=1,
+                            errored=errored,
+                            has_errors=has_errors,
+                            generic_errors=["InvalidSchema: invalid shared parameter"],
+                        ),
+                    ]
+                )
+
+                self.assertEqual(1, exit_code)
+                self.assertIn("ERROR: InvalidSchema: invalid shared parameter", output)
+                self.assertIn(f"Passed: 1 | Failed: 0 | Errored: {errored}", output)
+                self.assertIn("RESULT: FAILURES DETECTED", output)
+                self.assertNotIn("RESULT: ALL CHECKS PASSED", output)
 
     def test_non_network_error_followed_by_success_fails(self):
         exit_code, output = self.report(

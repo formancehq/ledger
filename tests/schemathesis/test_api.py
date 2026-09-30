@@ -368,6 +368,10 @@ def _report_events(events):
 
         elif isinstance(event, Finished):
             finished = True
+            if event.has_errors or event.errored_count:
+                has_errors = True
+            for error in event.generic_errors:
+                print(f"    ERROR: {error}", file=sys.stderr)
             print("=" * 60)
             passed = event.passed_count
             errored = event.errored_count
