@@ -6,13 +6,15 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func main() {
@@ -23,9 +25,10 @@ func main() {
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := clusterpb.NewClusterServiceClient(conn)
 	// Checkpoint mutations are audited writes: they travel as ledger.Request
@@ -50,6 +53,7 @@ func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServi
 		}
 		if internal.IsTransient(err) {
 			log.Printf("CreateQueryCheckpoint transient: %v", err)
+
 			return
 		}
 
@@ -157,6 +161,7 @@ func runQueryCheckpointDriver(ctx context.Context, client clusterpb.ClusterServi
 	listAfter, err := client.ListQueryCheckpoints(ctx, &clusterpb.ListQueryCheckpointsRequest{})
 	if err != nil {
 		internal.LogCleanupError("list query checkpoints after delete", err)
+
 		return
 	}
 

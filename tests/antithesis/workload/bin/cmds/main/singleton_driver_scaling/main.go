@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"k8s.io/client-go/dynamic"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // maxStep is the maximum number of replicas to add or remove in a single
@@ -28,15 +30,17 @@ func main() {
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)
+
 		return
 	}
 
 	_, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("cannot create ledger gRPC client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
@@ -58,11 +62,13 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 	currentReplicas, err := internal.GetCurrentReplicas(ctx, lsClient, "ledger")
 	if err != nil {
 		log.Printf("scaling: cannot get Cluster: %s", err)
+
 		return
 	}
 
 	if currentReplicas == target {
 		log.Printf("scaling: already at %d replicas, skipping", target)
+
 		return
 	}
 
@@ -71,7 +77,7 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 		next := nextStep(currentReplicas, target)
 
 		details := internal.Details{
-			"cluster":   "ledger",
+			"cluster":         "ledger",
 			"currentReplicas": currentReplicas,
 			"stepTarget":      next,
 			"finalTarget":     target,
@@ -84,6 +90,7 @@ func scale(ctx context.Context, lsClient dynamic.ResourceInterface, clusterClien
 
 		if err != nil {
 			log.Printf("scaling: patch failed: %s", err)
+
 			return
 		}
 
@@ -115,20 +122,4 @@ func nextStep(current, target int64) int64 {
 	}
 
 	return max(next, 3)
-}
-
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-
-	return b
-}
-
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-
-	return b
 }

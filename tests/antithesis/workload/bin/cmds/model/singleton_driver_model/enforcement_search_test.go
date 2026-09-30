@@ -35,8 +35,10 @@ func TestCandidateBasesExplainsRevertAfterEnforcementAndChartChanges(t *testing.
 		c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
 			result := base.Apply(failed)
 			matched = !result.OK && result.Reason == domain.ErrReasonAccountNotMatchingType
+
 			return matched
 		})
+
 		return matched
 	}
 	require.True(t, c.modelState.Apply(failed).OK, "the initial AUDIT state accepts the revert")

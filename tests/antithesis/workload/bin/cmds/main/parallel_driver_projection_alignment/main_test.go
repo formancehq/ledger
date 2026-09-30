@@ -4,10 +4,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
 )
 
 func TestIsInconclusiveProjectionRead_OnlyToleratesReplicaBuildLag(t *testing.T) {

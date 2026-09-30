@@ -28,6 +28,7 @@ func (immediateApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...g
 
 type scriptedApplyClient struct {
 	servicepb.BucketServiceClient
+
 	responses []*servicepb.ApplyResponse
 	errors    []error
 	calls     int
@@ -40,6 +41,7 @@ func (c *scriptedApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ..
 	}
 	err := c.errors[c.calls]
 	c.calls++
+
 	return response, err
 }
 
@@ -184,6 +186,7 @@ func TestProcessorPreservesAmbiguousMaintenanceEnableAsCandidate(t *testing.T) {
 	found := false
 	c.candidateBases(ticket, func(state oracle.GlobalState) bool {
 		found = found || state.MaintenanceMode()
+
 		return found
 	})
 	require.True(t, found)

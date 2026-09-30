@@ -5,20 +5,20 @@ import (
 	"math"
 	"math/big"
 	"math/rand"
+	"strconv"
 
 	antirandom "github.com/antithesishq/antithesis-sdk-go/random"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
-// GeometricBulkSize returns a value in [min, max] drawn from a Geometric(p) distribution
+// GeometricBulkSize returns a value in [low, high] drawn from a Geometric(p) distribution
 // via inverse-CDF sampling: k = ⌊log(u) / log(1−p)⌋ for u ~ Uniform(0,1).
-func GeometricBulkSize(p float64, min uint64, max uint64) uint64 {
+func GeometricBulkSize(p float64, low uint64, high uint64) uint64 {
 	u := 1 - Rand().Float64()
-	size := uint64(math.Floor(math.Log(u) / math.Log(1-p)))
-	if size > max-min {
-		size = max - min
-	}
-	return size + min
+	size := min(uint64(math.Floor(math.Log(u)/math.Log(1-p))), high-low)
+
+	return size + low
 }
 
 const UserAccountCount uint64 = 32
@@ -56,6 +56,7 @@ func RandomPostings() []*commonpb.Posting {
 		asset := antirandom.RandomChoice([]string{"USD/2", "EUR/2", "COIN"})
 		postings = append(postings, commonpb.NewPosting(source, destination, asset, amount))
 	}
+
 	return postings
 }
 
@@ -65,8 +66,9 @@ func RandomMetadata() map[string]string {
 
 	metadata := make(map[string]string)
 	for range r.Uint64() % 3 {
-		key := fmt.Sprintf("%v", r.Uint64()%999)
-		metadata[key] = fmt.Sprintf("%v", r.Uint64()%999)
+		key := strconv.FormatUint(r.Uint64()%999, 10)
+		metadata[key] = strconv.FormatUint(r.Uint64()%999, 10)
 	}
+
 	return metadata
 }

@@ -19,7 +19,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
-
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/adapter/grpcerr"
 	"github.com/formancehq/ledger/v3/internal/domain"
@@ -30,6 +29,7 @@ import (
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/grpcprotocol"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -129,6 +129,7 @@ func workloadTestConn(t *testing.T, addr, mode string) (*grpc.ClientConn, error)
 	if mode == "forever" {
 		t.Setenv("LEDGER_RETRY_FOREVER", "1")
 	}
+
 	return internal.NewGRPCConn()
 }
 

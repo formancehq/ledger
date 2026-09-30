@@ -18,6 +18,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -65,11 +66,13 @@ func (f *oracleLifecycleFixture) bucket(addr string) *oracleTestServer {
 			f.mu.Unlock()
 			if !member {
 				f.inactiveRequests.Add(1)
+
 				return nil, status.Error(codes.Unavailable, "source candidate is not a cluster member")
 			}
 			if unavailable {
 				return nil, status.Error(codes.Unavailable, "active source candidate is unreachable")
 			}
+
 			return f.barrier(ctx, req)
 		},
 		applyFn: f.apply, listLedgersFn: f.listLedgers,
@@ -95,6 +98,7 @@ func (f *oracleLifecycleFixture) barrier(context.Context, *servicepb.BarrierRequ
 		}
 	}
 	f.index++
+
 	return &servicepb.BarrierResponse{CommitIndex: f.index}, nil
 }
 
@@ -113,6 +117,7 @@ func (f *oracleLifecycleFixture) apply(_ context.Context, req *servicepb.ApplyRe
 		f.witnesses[create.GetName()] = oracleLifecycleWitness{id: uint32(100 + len(f.witnesses))}
 		f.barriers = 0
 		f.index++
+
 		return &servicepb.ApplyResponse{}, nil
 	}
 	apply := request.GetApply()
@@ -126,6 +131,7 @@ func (f *oracleLifecycleFixture) apply(_ context.Context, req *servicepb.ApplyRe
 	witness.written = true
 	f.witnesses[apply.GetLedger()] = witness
 	f.index++
+
 	return &servicepb.ApplyResponse{}, nil
 }
 
@@ -142,6 +148,7 @@ func (f *oracleLifecycleFixture) listLedgers(_ *servicepb.ListLedgersRequest, st
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -154,6 +161,7 @@ func (f *oracleLifecycleFixture) listLogs(req *servicepb.ListLogsRequest, stream
 		}
 	} else if witness, exists := f.witnesses[req.GetLedger()]; !exists {
 		f.mu.Unlock()
+
 		return status.Error(codes.NotFound, "unknown source ledger")
 	} else if witness.written {
 		logs = append(logs, sourceTestCreatedLog(req.GetLedger(), 1, 1, 1))
@@ -164,6 +172,7 @@ func (f *oracleLifecycleFixture) listLogs(req *servicepb.ListLogsRequest, stream
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -177,6 +186,7 @@ func (f *oracleLifecycleFixture) getLedger(_ context.Context, req *servicepb.Get
 	if !exists {
 		return nil, status.Error(codes.NotFound, "unknown ledger")
 	}
+
 	return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: witness.id}, nil
 }
 
@@ -192,6 +202,7 @@ func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLe
 		if f.incorrectUsage {
 			postings--
 		}
+
 		return &commonpb.LedgerStats{LogCount: uint64(f.targetLogs), TransactionCount: uint64(f.targetLogs), PostingCount: postings}, nil
 	}
 	witness, exists := f.witnesses[req.GetLedger()]
@@ -201,6 +212,7 @@ func (f *oracleLifecycleFixture) stats(ctx context.Context, req *servicepb.GetLe
 	if !witness.written {
 		return &commonpb.LedgerStats{}, nil
 	}
+
 	return &commonpb.LedgerStats{LogCount: 1, TransactionCount: 1, PostingCount: 1, ReferenceCount: 1}, nil
 }
 
@@ -210,6 +222,7 @@ func (f *oracleLifecycleFixture) clusterState(_ context.Context, req *clusterpb.
 	id, exists := f.members[addr]
 	if !exists {
 		f.inactiveRequests.Add(1)
+
 		return nil, status.Error(codes.Unavailable, "configured pod slot is not a cluster member")
 	}
 	if req.GetNodeId() != 0 {
@@ -230,6 +243,7 @@ func (f *oracleLifecycleFixture) clusterState(_ context.Context, req *clusterpb.
 		}
 		sort.Slice(members, func(i, j int) bool { return members[i].GetId() < members[j].GetId() })
 	}
+
 	return &clusterpb.ClusterState{
 		LocalNode: id, Nodes: members, SyncProgress: &clusterpb.SyncProgress{Status: "normal"},
 		RaftStatus: &clusterpb.RaftStatus{LastPersistedIndex: f.index},
@@ -238,6 +252,7 @@ func (f *oracleLifecycleFixture) clusterState(_ context.Context, req *clusterpb.
 
 type oracleLifecycleClusterServer struct {
 	clusterpb.UnimplementedClusterServiceServer
+
 	fixture *oracleLifecycleFixture
 	addr    string
 }
@@ -250,6 +265,7 @@ func newOracleLifecycleClients(t *testing.T, fixture *oracleLifecycleFixture) (s
 	t.Helper()
 	conn := newOracleTestConn(t, fixture.bucket("replica-1"), &oracleLifecycleClusterServer{fixture: fixture, addr: "replica-1"})
 	client := servicepb.NewBucketServiceClient(conn)
+
 	return client, internal.PerNodeConns{&internal.PerNodeConn{
 		Addr: "replica-1", NodeID: 1, Bucket: client, Cluster: clusterpb.NewClusterServiceClient(conn),
 	}}
@@ -266,6 +282,7 @@ func newOracleLifecycleFleet(t *testing.T, fixture *oracleLifecycleFixture, cand
 			Addr: addr, Bucket: servicepb.NewBucketServiceClient(conn), Cluster: clusterpb.NewClusterServiceClient(conn),
 		})
 	}
+
 	return conns[0].Bucket, conns
 }
 
@@ -280,6 +297,7 @@ func TestRunOracleRetainsQualifiedIncorrectReplica(t *testing.T) {
 			if waits.Add(1) == 3 {
 				return context.DeadlineExceeded
 			}
+
 			return nil
 		},
 	})
@@ -306,7 +324,11 @@ func TestRunOracleRequalifiesAfterFinalSourceChange(t *testing.T) {
 	var retries atomic.Uint32
 	reports := runOracle(sourceTestContext(t), replicas, oracleConfig{
 		Attempts: 3, ConvergenceWindow: time.Minute,
-		Wait: func(context.Context) error { retries.Add(1); return nil },
+		Wait: func(context.Context) error {
+			retries.Add(1)
+
+			return nil
+		},
 	})
 	require.Len(t, reports, 2)
 	first, second := reports[0], reports[1]
@@ -362,6 +384,7 @@ func TestRunOracleCancellationPreservesReplicaEvidenceWithoutFinalFence(t *testi
 		Wait: func(context.Context) error {
 			waits.Add(1)
 			cancel() // The first bad sample exists before the whole command expires.
+
 			return ctx.Err()
 		},
 	})
@@ -434,6 +457,7 @@ func TestRunOracleRetainsUnavailableActiveMember(t *testing.T) {
 	for _, got := range report.Observations {
 		if got.Converged {
 			converged++
+
 			continue
 		}
 		failed++
@@ -523,6 +547,7 @@ func TestRunOracleWitnessIsExcludedFromGenericLedgerSelection(t *testing.T) {
 					if shared != "" {
 						return stream.Send(&commonpb.LedgerInfo{Name: shared})
 					}
+
 					return nil
 				},
 			})

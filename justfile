@@ -29,7 +29,9 @@ lint:
     echo "==> golangci-lint (.)"
     golangci-lint run --fix --build-tags it,local,enable_antithesis_sdk,{{all_tags}} --timeout 5m
     echo "==> golangci-lint (operator)"
-    cd misc/operator && golangci-lint run --fix --timeout 5m
+    (cd misc/operator && golangci-lint run --fix --timeout 5m)
+    echo "==> golangci-lint (model workload)"
+    (cd tests/antithesis/workload && golangci-lint run --fix --build-tags enable_antithesis_sdk --timeout 5m)
 
 tidy:
     #!/usr/bin/env bash

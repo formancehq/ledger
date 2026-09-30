@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -40,6 +42,7 @@ func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witne
 		}
 		if matched && err == nil {
 			result.Converged = true
+
 			return result
 		}
 		if err != nil && !internal.IsTransient(err) && !internal.IsCanceled(err) {
@@ -47,6 +50,7 @@ func awaitUsage(ctx context.Context, client servicepb.BucketServiceClient, witne
 		}
 		if err := wait(ctx); err != nil {
 			result.Error = fmt.Sprintf("usage convergence did not complete: %v; last RPC error: %s", err, result.Error)
+
 			return result
 		}
 	}
@@ -59,7 +63,7 @@ func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witn
 		return false, err
 	}
 	if witnessInfo.GetId() != witness.GetId() {
-		return false, fmt.Errorf("usage witness incarnation changed")
+		return false, errors.New("usage witness incarnation changed")
 	}
 	marker, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: witness.GetName()})
 	if err != nil {
@@ -96,6 +100,7 @@ func sampleUsage(ctx context.Context, client servicepb.BucketServiceClient, witn
 		return false, err
 	}
 	result.WitnessReferences = marker.GetReferenceCount()
+
 	return marker.GetReferenceCount() == 1 && len(result.Mismatches) == 0, nil
 }
 

@@ -14,11 +14,13 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"k8s.io/client-go/dynamic"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"k8s.io/client-go/dynamic"
 )
 
 var sentinelLedger = internal.PrefixSentinel.WithSuffix("scaling-structured")
@@ -41,15 +43,17 @@ func main() {
 	dynClient, err := internal.NewK8sClient()
 	if err != nil {
 		log.Printf("cannot build k8s client: %s", err)
+
 		return
 	}
 
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("cannot create ledger gRPC client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	clusterClient := clusterpb.NewClusterServiceClient(conn)
 	lsClient := dynClient.Resource(internal.ClusterGVR).Namespace(internal.ClusterNamespace())
@@ -76,6 +80,7 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 		if !internal.IsTransient(err) {
 			log.Printf("structured-scaling: cannot precommit sentinel: %s", err)
 		}
+
 		return
 	}
 
@@ -89,6 +94,7 @@ func runCycle(ctx context.Context, lsClient dynamic.ResourceInterface, clusterCl
 		assert.Sometimes(err == nil, "structured scaling patch should succeed", details.With(internal.Details{"error": err}))
 		if err != nil {
 			log.Printf("structured-scaling: patch failed: %s", err)
+
 			return
 		}
 
@@ -118,8 +124,8 @@ func verifyFreshCommit(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: sentinelLedger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
-						Force:         true,
+						Postings: []*commonpb.Posting{commonpb.NewPosting("world", "scaling:check", "COIN", internal.RandomBigInt())},
+						Force:    true,
 					},
 				}},
 			},
@@ -145,5 +151,6 @@ func stringify(v int64) string {
 	case 7:
 		return "7"
 	}
+
 	return "other"
 }

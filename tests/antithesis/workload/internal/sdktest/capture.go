@@ -40,6 +40,7 @@ func Capture(t *testing.T, scenario func()) []Event {
 	const childEnv = "LEDGER_SDK_TEST_CHILD"
 	if os.Getenv(childEnv) == t.Name() {
 		scenario()
+
 		return nil
 	}
 
@@ -72,6 +73,7 @@ func Capture(t *testing.T, scenario func()) []Event {
 	}
 	require.NoError(t, scanner.Err())
 	require.NotEmpty(t, events, "SDK emission must be enabled for these regressions")
+
 	return events
 }
 
@@ -86,6 +88,7 @@ func Find(t *testing.T, events []Event, message string) Event {
 	require.Len(t, found, 1, "expected one SDK event for %q", message)
 	require.Equal(t, message, found[0].ID)
 	require.True(t, found[0].Hit)
+
 	return found[0]
 }
 
@@ -115,5 +118,6 @@ func Client(t *testing.T, implementation servicepb.BucketServiceServer, options 
 	conn, err := grpc.NewClient("passthrough:///sdk-fixture", options...)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return servicepb.NewBucketServiceClient(conn)
 }

@@ -31,24 +31,20 @@ func TestGenerateBulkConcurrentWithApply(t *testing.T) {
 	state := c.modelState.Apply(seed).State
 
 	var wg sync.WaitGroup
-	for w := 0; w < 4; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < 200; i++ {
+	for range 4 {
+		wg.Go(func() {
+			for range 200 {
 				generateBulk(state, c.ledgerNames, c.nextLedgerName(), c.liveTarget)
 			}
-		}()
+		})
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		s := state
-		for i := 0; i < 200; i++ {
+		for i := range 200 {
 			s = s.Apply(bulkOf(oracletest.TxReq("world", fmt.Sprintf("t-0:%d", i%100), "USD/2", 1))).State
 		}
-	}()
+	})
 
 	wg.Wait()
 }

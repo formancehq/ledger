@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -41,7 +43,7 @@ func main() {
 			return
 		}
 
-		txID := createdTx.Transaction.Id
+		txID := createdTx.GetTransaction().GetId()
 		details := internal.Details{"ledger": ledger, "txId": txID, "key": key}
 
 		// 2. Save metadata on the transaction.
@@ -73,6 +75,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("read transaction after metadata write", err)
+
 			return
 		}
 
@@ -111,6 +114,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("read transaction after metadata delete", err)
+
 			return
 		}
 

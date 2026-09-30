@@ -60,9 +60,10 @@ func RunDriver(name string, fn func(ctx context.Context, client servicepb.Bucket
 	client, conn, err := NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ledger, err := GetRandomLedger(ctx, client)
 	if err != nil {

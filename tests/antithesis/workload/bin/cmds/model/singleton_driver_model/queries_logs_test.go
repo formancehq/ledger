@@ -11,9 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
 	"github.com/formancehq/ledger/v3/tests/oracle/oracletest"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 const logTestPageSize = 8
@@ -60,21 +61,21 @@ func servedRows(ls oracle.LedgerState, ledger string, ids ...uint64) []serverLog
 }
 
 func filterLogDateLeaf() *commonpb.QueryFilter {
-	min := uint64(1)
+	lower := uint64(1)
 
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogBuiltinUint{
 		LogBuiltinUint: &commonpb.LogBuiltinUintCondition{
 			Field: commonpb.LogBuiltinIndex_LOG_BUILTIN_INDEX_DATE,
-			Cond:  &commonpb.UintCondition{Min: &min},
+			Cond:  &commonpb.UintCondition{Min: &lower},
 		},
 	}}
 }
 
 func filterLogIDLeaf() *commonpb.QueryFilter {
-	min := uint64(1)
+	lower := uint64(1)
 
 	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_LogId{
-		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{Min: &min}},
+		LogId: &commonpb.LogIdCondition{Cond: &commonpb.UintCondition{Min: &lower}},
 	}}
 }
 

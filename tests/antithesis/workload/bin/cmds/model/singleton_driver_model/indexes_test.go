@@ -92,7 +92,7 @@ func TestAccountHasAsset(t *testing.T) {
 func TestGenAccountAssetFilterAssetOnly(t *testing.T) {
 	t.Parallel()
 
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		f := genAccountAssetFilter()
 		a, o := indexNeeds(f, accounts)
 		require.True(t, a, "must need the asset index: %s", describeFilter(f))
@@ -188,6 +188,7 @@ func TestIndexedQueryOutcomeLegal_MismatchAndAbsentCoexist(t *testing.T) {
 // interface — the poller must not call anything else.
 type fakeStatusClient struct {
 	servicepb.BucketServiceClient
+
 	resp *servicepb.GetIndexStatusResponse
 }
 
@@ -419,6 +420,7 @@ func TestIndexedQueryOutcomeLegal_RetypeRefusalAttribution(t *testing.T) {
 					require.True(t, ok)
 					legal := indexedQueryOutcomeLegal(gs.Ledger("L"), target.query, filter, needed, errKind, rejectedIndexLabel(st.Err()), func(oracle.LedgerState) bool {
 						t.Fatal("a refusal must not use the result-window branch")
+
 						return false
 					})
 					require.Equal(t, key == "changing", legal, "%s attributed to %q", refusal.reason, label)

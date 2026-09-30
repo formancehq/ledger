@@ -25,9 +25,11 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -72,7 +74,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 		return
 	}
 
-	details["firstTxId"] = firstTx.Transaction.Id
+	details["firstTxId"] = firstTx.GetTransaction().GetId()
 	details["idempotencyKey"] = keyPrefix + ":duplicate"
 
 	// 2. Replay with the SAME reference AND skippable_reasons opt-in — the
@@ -117,7 +119,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 		return
 	}
 
-	skipLog := skipResp.Logs[0].GetPayload().GetApply().GetLog()
+	skipLog := skipResp.GetLogs()[0].GetPayload().GetApply().GetLog()
 	if skipLog == nil {
 		assert.Unreachable("skip-tolerant duplicate reference must return an Apply log",
 			details)
@@ -149,7 +151,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 		details.With(internal.Details{"context_ledger": gotLedger}))
 
 	gotExistingID := skipped.GetContext()["existingTransactionId"]
-	expectedExistingID := strconv.FormatUint(firstTx.Transaction.Id, 10)
+	expectedExistingID := strconv.FormatUint(firstTx.GetTransaction().GetId(), 10)
 	assert.AlwaysOrUnreachable(gotExistingID == expectedExistingID,
 		"OrderSkipped.context.existingTransactionId must point to the first tx",
 		details.With(internal.Details{"context_existingTransactionId": gotExistingID, "expected": expectedExistingID}))
@@ -162,7 +164,7 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 	// first-claim path here.
 	// This driver's private prefix and the newly committed transaction ID make
 	// the reference unique within this ledger, rather than only probably fresh.
-	freshRef := fmt.Sprintf("skipref-fresh-tx-%d", firstTx.Transaction.Id)
+	freshRef := fmt.Sprintf("skipref-fresh-tx-%d", firstTx.GetTransaction().GetId())
 	freshDetails := internal.Details{"ledger": ledger, "reference": freshRef, "idempotencyKey": keyPrefix + ":fresh"}
 
 	freshReq := servicepb.UnsignedApplyRequest(keyPrefix+":fresh", actions.WithSkippableReasons(
@@ -200,12 +202,12 @@ func run(ctx context.Context, client servicepb.BucketServiceClient, ledger strin
 	// With a stable key, an ambiguous committed attempt must replay its original
 	// CreatedTransaction. An OrderSkipped here is still an invariant failure.
 	if len(freshResp.GetLogs()) > 0 {
-		if skipped := freshResp.Logs[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped(); skipped != nil {
+		if skipped := freshResp.GetLogs()[0].GetPayload().GetApply().GetLog().GetData().GetOrderSkipped(); skipped != nil {
 			assert.Unreachable("skip-tolerant first-claim on a fresh reference must NOT fire the skip",
 				freshDetails.With(internal.Details{
 					"skipReason":  skipped.GetReason().String(),
 					"skipContext": skipped.GetContext(),
-					"logSequence": freshResp.Logs[0].GetSequence(),
+					"logSequence": freshResp.GetLogs()[0].GetSequence(),
 				}))
 
 			return

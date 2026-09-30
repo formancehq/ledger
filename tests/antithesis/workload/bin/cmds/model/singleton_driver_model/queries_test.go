@@ -729,7 +729,7 @@ func TestTxRecordMatches_ComparesPostCommitVolumes(t *testing.T) {
 		"serving the current balance instead of the snapshot is a finding")
 
 	dropped := serverTxFromRec(rec)
-	delete(dropped.PostCommitVolumes.GetVolumesByAccount(), "acc:1")
+	delete(dropped.GetPostCommitVolumes().GetVolumesByAccount(), "acc:1")
 	require.False(t, txRecordMatches(rec, dropped), "a missing cell is a finding")
 
 	invented := serverTxFromRec(rec)

@@ -69,6 +69,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
 			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, false)
+
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetAccount returned unexpected error", internal.Details{
@@ -77,6 +78,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 			"asset":   asset,
 			"error":   err.Error(),
 		})
+
 		return
 	}
 
@@ -141,7 +143,7 @@ func pickAbsentAccount(g oracle.GlobalState, ledgers []string) (ledger, addr, as
 
 	ledger = random.RandomChoice(ledgers)
 	ls := g.Ledger(ledger)
-	for tries := 0; tries < 8; tries++ {
+	for range 8 {
 		cand := poolAddress()
 		if !modelKnowsAccount(ls, cand) {
 			return ledger, cand, random.RandomChoice(assets), true
@@ -160,6 +162,7 @@ func modelKnowsAccount(ls oracle.LedgerState, addr string) bool {
 		if k.Address == addr {
 			return true
 		}
+
 		break // A later volume address does not rule out metadata on addr.
 	}
 	for k := range ls.Metadata().From(oracle.MetaKey{Address: addr}) {
@@ -184,7 +187,7 @@ func pickCell(g oracle.GlobalState, ledgers []string) (ledger, addr, asset strin
 	start := int(internal.Rand().Uint64() % uint64(len(ledgers)))
 	metaPick := percentChance(25)
 
-	for i := 0; i < len(ledgers); i++ {
+	for i := range ledgers {
 		name := ledgers[(start+i)%len(ledgers)]
 		ls := g.Ledger(name)
 
@@ -295,6 +298,7 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 				assert.Reachable("singleton_driver_model: GetLedger on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
 			}
 			c.validateLedgerNotFound(maxTicket, ledger, "GetLedger")
+
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetLedger returned unexpected error", internal.Details{
@@ -302,11 +306,13 @@ func runLedgerRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 			"absent": absent,
 			"error":  err.Error(),
 		})
+
 		return
 	}
 
 	if absent {
 		assert.Unreachable("singleton_driver_model: GetLedger served a ledger outside the fleet", internal.Details{"ledger": ledger})
+
 		return
 	}
 
@@ -373,6 +379,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 		// serialization — validate it like a returned transaction, not a finding.
 		if status.Code(err) == codes.NotFound {
 			c.validateTransactionRead(maxTicket, ledger, id, nil, false)
+
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetTransaction returned unexpected error", internal.Details{
@@ -380,6 +387,7 @@ func runTransactionRead(ctx context.Context, client servicepb.BucketServiceClien
 			"id":     id,
 			"error":  err.Error(),
 		})
+
 		return
 	}
 
@@ -413,6 +421,7 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 				assert.Reachable("singleton_driver_model: GetMetadataSchemaStatus on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
 			}
 			c.validateLedgerNotFound(maxTicket, ledger, "GetMetadataSchemaStatus")
+
 			return
 		}
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus returned unexpected error", internal.Details{
@@ -420,11 +429,13 @@ func runSchemaRead(ctx context.Context, client servicepb.BucketServiceClient, c 
 			"absent": absent,
 			"error":  err.Error(),
 		})
+
 		return
 	}
 
 	if absent {
 		assert.Unreachable("singleton_driver_model: GetMetadataSchemaStatus served a ledger outside the fleet", internal.Details{"ledger": ledger})
+
 		return
 	}
 

@@ -5,8 +5,10 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -18,9 +20,10 @@ func main() {
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	run(ctx, clusterpb.NewClusterServiceClient(conn))
 }
@@ -42,6 +45,7 @@ func run(ctx context.Context, client clusterpb.ClusterServiceClient) {
 	if err != nil {
 		if internal.IsBackupCallerCancellation(ctx, err) || internal.IsTransient(err) || internal.IsBackupInProgress(err) {
 			log.Printf("Backup inconclusive error after retries: %s", err)
+
 			return
 		}
 

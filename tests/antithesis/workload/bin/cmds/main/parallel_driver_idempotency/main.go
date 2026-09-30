@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -20,8 +22,8 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:      postings,
-							Force:         true,
+							Postings: postings,
+							Force:    true,
 						},
 					}},
 				},
@@ -52,10 +54,10 @@ func main() {
 			return
 		}
 
-		assert.Always(tx1.Transaction.Id == tx2.Transaction.Id,
+		assert.Always(tx1.GetTransaction().GetId() == tx2.GetTransaction().GetId(),
 			"idempotent transactions should return the same ID", details.With(internal.Details{
-				"firstTxId":  tx1.Transaction.Id,
-				"secondTxId": tx2.Transaction.Id,
+				"firstTxId":  tx1.GetTransaction().GetId(),
+				"secondTxId": tx2.GetTransaction().GetId(),
 			}))
 	})
 }

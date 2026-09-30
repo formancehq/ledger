@@ -6,15 +6,16 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/pkg/actions"
 )
 
 // A wire boundary lets the real driver observe one controlled response while
@@ -23,6 +24,7 @@ import (
 type checkpointProxy struct {
 	servicepb.UnimplementedBucketServiceServer
 	clusterpb.UnimplementedClusterServiceServer
+
 	apply func(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error)
 	list  func(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error)
 	info  func(context.Context, *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error)
@@ -53,6 +55,7 @@ func serveCheckpointProxy(t *testing.T, proxy *checkpointProxy) string {
 		server.Stop()
 		require.NoError(t, <-done)
 	})
+
 	return listener.Addr().String()
 }
 
@@ -91,6 +94,7 @@ func TestQueryCheckpointDriverRejectsOtherErrors(t *testing.T) {
 			var calls atomic.Int32
 			address := serveCheckpointProxy(t, &checkpointProxy{apply: func(context.Context, *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 				calls.Add(1)
+
 				return nil, response.Err()
 			}})
 			assertions := runCheckpointDriver(t, address)
@@ -147,6 +151,7 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 					if id, _, ok := actions.GetCreatedQueryCheckpoint(response); ok {
 						createdID.Store(id)
 					}
+
 					return response, err
 				},
 				list: func(callCtx context.Context, req *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
@@ -156,12 +161,14 @@ func TestQueryCheckpointDriverCleansOwnedCheckpointAfterReadFailure(t *testing.T
 					if tc.omitList {
 						return &clusterpb.ListQueryCheckpointsResponse{}, nil
 					}
+
 					return cluster.ListQueryCheckpoints(callCtx, req)
 				},
 				info: func(callCtx context.Context, req *clusterpb.GetQueryCheckpointInfoRequest) (*clusterpb.QueryCheckpointInfo, error) {
 					if tc.infoError != nil {
 						return nil, tc.infoError
 					}
+
 					return cluster.GetQueryCheckpointInfo(callCtx, req)
 				},
 			}
@@ -214,6 +221,7 @@ func TestQueryCheckpointDriversCompeteForLastSlot(t *testing.T) {
 					close(createsFinished)
 				}
 			}
+
 			return resp, err
 		},
 		list: func(callCtx context.Context, req *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {

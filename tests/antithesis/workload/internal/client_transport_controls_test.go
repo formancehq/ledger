@@ -15,11 +15,13 @@ import (
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 type terminalApplyServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	attempts atomic.Int32
 	entered  chan struct{}
 	err      error
@@ -30,8 +32,10 @@ func (s *terminalApplyServer) Apply(ctx context.Context, _ *servicepb.ApplyReque
 	if s.entered != nil {
 		s.entered <- struct{}{}
 		<-ctx.Done()
+
 		return nil, ctx.Err()
 	}
+
 	return nil, s.err
 }
 
@@ -44,6 +48,7 @@ func factoryForwardingClient(t *testing.T, server servicepb.BucketServiceServer)
 	conn, err := workloadTestConn(t, serveApplyProxy(t, forwarder), "default")
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return servicepb.NewBucketServiceClient(conn)
 }
 
@@ -75,6 +80,7 @@ func TestNewGRPCConn_ServerStatusesAreNotRetried(t *testing.T) {
 			Domain: "ledger", Reason: reason, Metadata: map[string]string{"request": "original"},
 		})
 		require.NoError(t, err)
+
 		return st
 	}
 	for _, test := range []struct {

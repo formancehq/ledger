@@ -106,6 +106,7 @@ func TestRetryUnaryInterceptor_MaintenanceRequiresAmbiguousAttempt(t *testing.T)
 			invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
 				err := tt.errors[attempts]
 				attempts++
+
 				return err
 			}
 			err := retryUnaryInterceptor(len(tt.errors))(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker)

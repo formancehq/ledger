@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/formancehq/go-libs/v5/pkg/testing/testservice"
 	cmdserver "github.com/formancehq/ledger/v3/cmd/server"
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -75,6 +75,7 @@ func CheckEmissions(t *testing.T, scenario func(), check func([]Assertion)) {
 	t.Helper()
 	if os.Getenv("LEDGER_ORACLE_TEST_CHILD") == t.Name() {
 		scenario()
+
 		return
 	}
 	t.Parallel()
@@ -86,7 +87,7 @@ func CheckEmissions(t *testing.T, scenario func(), check func([]Assertion)) {
 	cmd := exec.CommandContext(ctx, executable, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.v")
 	cmd.Env = append(os.Environ(), "LEDGER_ORACLE_TEST_CHILD="+t.Name(), "ANTITHESIS_SDK_LOCAL_OUTPUT="+outputPath)
 	output, err := cmd.CombinedOutput()
-	for _, line := range strings.Split(string(output), "\n") {
+	for line := range strings.SplitSeq(string(output), "\n") {
 		if strings.Contains(line, "index not found:") {
 			t.Log(line)
 		}
@@ -137,7 +138,9 @@ func StartServer(t *testing.T) (context.Context, servicepb.BucketServiceClient) 
 	cluster := clusterpb.NewClusterServiceClient(conn)
 	require.Eventually(t, func() bool {
 		state, err := cluster.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
+
 		return err == nil && state.GetLeader() != 0
 	}, 5*time.Second, 10*time.Millisecond)
+
 	return ctx, servicepb.NewBucketServiceClient(conn)
 }

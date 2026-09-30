@@ -17,6 +17,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -50,7 +51,7 @@ func TestCheckpointMetadataForwardedLedgerDoesNotFenceFollower(t *testing.T) {
 				response, err := readCheckpointRegistry(ctx, checkpointTestNode(bucket, cluster))
 				require.NoError(t, err)
 				require.Len(t, response.GetCheckpoints(), 1, "forwarded GetLedger must not authorize stale follower registry")
-				require.Equal(t, uint64(7), response.Checkpoints[0].GetCheckpointId())
+				require.Equal(t, uint64(7), response.GetCheckpoints()[0].GetCheckpointId())
 			} else {
 				response, err := readCheckpointSchedule(ctx, checkpointTestNode(bucket, cluster))
 				require.NoError(t, err)
@@ -67,6 +68,7 @@ type checkpointFenceLeader struct {
 
 func (s *checkpointFenceLeader) GetLedger(context.Context, *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	s.fenced.Store(true)
+
 	return &commonpb.LedgerInfo{}, nil
 }
 
@@ -76,6 +78,7 @@ func (*checkpointFenceLeader) Barrier(context.Context, *servicepb.BarrierRequest
 
 type checkpointFenceFollower struct {
 	checkpointMetadataServer
+
 	leader     servicepb.BucketServiceClient
 	forwarded  atomic.Int32
 	localPolls atomic.Int32
@@ -83,6 +86,7 @@ type checkpointFenceFollower struct {
 
 func (s *checkpointFenceFollower) GetLedger(ctx context.Context, req *servicepb.GetLedgerRequest) (*commonpb.LedgerInfo, error) {
 	s.forwarded.Add(1)
+
 	return s.leader.GetLedger(ctx, req)
 }
 
@@ -100,6 +104,7 @@ func (s *checkpointFenceFollower) GetClusterState(_ context.Context, req *cluste
 		persisted = 996
 		s.fenced.Store(true)
 	}
+
 	return &clusterpb.ClusterState{
 		LocalNode:  2,
 		RaftStatus: &clusterpb.RaftStatus{Applied: 1992, Commit: 1992, LastPersistedIndex: persisted},
@@ -117,6 +122,7 @@ func serveCheckpointMetadata(t *testing.T, bucket servicepb.BucketServiceServer,
 	conn, err := grpc.NewClient("passthrough:///checkpoint-fence", grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return listener.DialContext(ctx) }), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
+
 	return servicepb.NewBucketServiceClient(conn), clusterpb.NewClusterServiceClient(conn)
 }
 
@@ -196,6 +202,7 @@ func TestCheckpointMetadataAllowsProgressBeyondFixedBarrier(t *testing.T) {
 
 type checkpointFenceProbe struct {
 	checkpointMetadataServer
+
 	state      *clusterpb.ClusterState
 	topology   *clusterpb.ClusterState
 	target     uint64
@@ -217,6 +224,7 @@ func newCheckpointFenceProbe() *checkpointFenceProbe {
 
 func (s *checkpointFenceProbe) Barrier(context.Context, *servicepb.BarrierRequest) (*servicepb.BarrierResponse, error) {
 	s.barriers.Add(1)
+
 	return &servicepb.BarrierResponse{CommitIndex: s.target}, s.barrierErr
 }
 
@@ -224,5 +232,6 @@ func (s *checkpointFenceProbe) GetClusterState(_ context.Context, req *clusterpb
 	if req.GetNodeId() == 0 {
 		return s.topology, nil
 	}
+
 	return s.state, s.stateErr
 }

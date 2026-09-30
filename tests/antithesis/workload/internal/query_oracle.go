@@ -35,6 +35,7 @@ func CreateQueryOracleLedger(ctx context.Context, client servicepb.BucketService
 	if err != nil {
 		reportQueryOracleError(ctx, err, Details{"ledger": ledger, "operation": "create ledger and indexes"})
 	}
+
 	return err
 }
 
@@ -56,7 +57,8 @@ func ReadOracleTransactions(ctx context.Context, client servicepb.BucketServiceC
 			select {
 			case <-readCtx.Done():
 				timer.Stop()
-				return nil, fmt.Errorf("waiting for query oracle index readiness: %w (last error: %v)", readCtx.Err(), err)
+
+				return nil, fmt.Errorf("waiting for query oracle index readiness: %w (last error: %w)", readCtx.Err(), err)
 			case <-timer.C:
 				continue
 			}
@@ -64,6 +66,7 @@ func ReadOracleTransactions(ctx context.Context, client servicepb.BucketServiceC
 		reportQueryOracleError(readCtx, err, Details{
 			"ledger": ledger, "operation": "list transactions", "filter": filter.String(), "partialTxIds": ids,
 		})
+
 		return nil, err
 	}
 }

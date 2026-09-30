@@ -93,9 +93,10 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	defer func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -108,6 +109,7 @@ func main() {
 	// Recover before setup so CreateLedger cannot wait behind maintenance forever.
 	if _, err := client.Apply(ctx, servicepb.UnsignedApplyRequest(idempotencyKey(), actions.SetMaintenanceModeAction(false))); err != nil {
 		log.Printf("disable maintenance during startup: %v", err)
+
 		return
 	}
 
@@ -137,6 +139,7 @@ func main() {
 	cancelDial()
 	if len(checkpointNodes) == 0 {
 		assert.Unreachable("singleton_driver_model: checkpoint node connections unavailable", nil)
+
 		return
 	}
 	defer checkpointNodes.Close()
@@ -145,6 +148,7 @@ func main() {
 		if ctx.Err() == nil {
 			assert.Unreachable("singleton_driver_model: no checkpoint setup node available", internal.Details{"error": err.Error()})
 		}
+
 		return
 	}
 	if !setupQueryCheckpoints(ctx, checkpointSetupNode, checker) {
@@ -163,28 +167,22 @@ func main() {
 	log.Printf("starting %d workers across %d ledgers", numWorkers, numLedgers)
 
 	var processors sync.WaitGroup
-	processors.Add(1)
-	go func() {
-		defer processors.Done()
+	processors.Go(func() {
 		checker.runProcessor(ctx)
-	}()
+	})
 
 	var workers sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		workers.Add(1)
-		go func() {
-			defer workers.Done()
+	for range numWorkers {
+		workers.Go(func() {
 			runWorker(ctx, client, checkpointNodes, checker)
-		}()
+		})
 	}
 
 	var restore sync.WaitGroup
 	if trigger := selectRestoreTrigger(); trigger != nil {
-		restore.Add(1)
-		go func() {
-			defer restore.Done()
+		restore.Go(func() {
 			runRestoreCycle(ctx, checker, trigger, restoreInterval())
-		}()
+		})
 		log.Printf("restore cycle enabled (interval ~%s)", restoreInterval())
 	}
 
@@ -193,11 +191,9 @@ func main() {
 	// index is live everywhere. Per-node conns are lazy, so a down node is handled
 	// by the poller's transient-error path.
 	var pollers sync.WaitGroup
-	pollers.Add(1)
-	go func() {
-		defer pollers.Done()
+	pollers.Go(func() {
 		runIndexReadinessPoller(ctx, checker, checkpointNodes, indexPollInterval)
-	}()
+	})
 
 	// Workers stop on ctx.Done. Wait for the restore cycle and poller too before
 	// closing the processor's channel, so nothing touches the checker during
@@ -268,6 +264,7 @@ func runWorker(
 			default:
 				runRead(ctx, client, c)
 			}
+
 			continue
 		}
 
@@ -277,6 +274,7 @@ func runWorker(
 		c.mu.Lock()
 		if c.paused {
 			c.mu.Unlock()
+
 			continue
 		}
 		state := c.modelState
@@ -315,6 +313,7 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	if c.paused {
 		c.mu.Unlock()
 		c.dispatchMu.Unlock()
+
 		return
 	}
 	c.stampIdempotency(&bulk)
@@ -421,6 +420,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		}
 		recoverySeq := c.maintenanceEnableSeq
 		c.mu.Unlock()
+
 		return recoverySeq
 	}
 	c.maintenanceEnableSeq++
@@ -450,6 +450,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 				c.mu.Lock()
 				c.maintenanceRecoveryActive = false
 				c.mu.Unlock()
+
 				return
 			case <-time.After(delay):
 			}
@@ -460,6 +461,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 			if c.maintenanceEnableSeq == enableSeq {
 				c.maintenanceRecoveryActive = false
 				c.mu.Unlock()
+
 				return
 			}
 			recoveryID = c.registerRead()
@@ -537,6 +539,7 @@ func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -546,6 +549,7 @@ func bulkDisablesMaintenance(bulk oracle.Bulk) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -564,7 +568,7 @@ func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguous
 func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
 	n := int(random.RandomChoice([]uint8{0, 1, 2, 3}))
 	cmds := make([]*commonpb.SetMetadataFieldTypeCommand, 0, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		cmds = append(cmds, &commonpb.SetMetadataFieldTypeCommand{
 			TargetType: random.RandomChoice(metaTargetPool),
 			Key:        metaKey(),
@@ -579,9 +583,10 @@ func initialSchema() []*commonpb.SetMetadataFieldTypeCommand {
 // is in internal.ownedLedgerPrefixes so generic drivers skip them.
 func ledgerNames(runID string, n int) []string {
 	out := make([]string, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		out[i] = internal.PrefixModel.WithSuffix(fmt.Sprintf("%s-%d", runID, i))
 	}
+
 	return out
 }
 
@@ -595,6 +600,7 @@ func envInt(key string, def int) int {
 	v, err := strconv.Atoi(raw)
 	if err != nil || v < 1 {
 		log.Printf("warning: invalid %s=%q, using default %d", key, raw, def)
+
 		return def
 	}
 
