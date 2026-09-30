@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/tests/oracle"
 
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
@@ -18,13 +20,15 @@ import (
 // InspectIndex reads the metadata index a filtered query is served from, so it
 // answers from the same projection and is gated by the same readiness.
 //
-// Only the page contract is judged — length, one entry per value, a resume
-// cursor published exactly when the scan has more, a facet counting at least the
-// group that produced it. The served values and counts are not held to the
-// model: the index and the entity-exists keyspace are separate projections with
-// separate lifetimes, so a key whose metadata was deleted leaves value groups
-// live that no entity carries any more. Summary's cardinality counts the former
-// and entities_with_key the latter, which is why neither bounds the other.
+// Every mode is judged on its page contract — length, one entry per value, a
+// resume cursor published exactly when the scan has more, a facet counting at
+// least the group that produced it. Summary is judged further: its three
+// counters are folded from the model exactly (see modelInspectCounts).
+//
+// The paged modes' VALUES are not compared. Predicting which slice of the value
+// space lands on a page needs the index's own order-preserving encoding per
+// declared type, which the model does not reproduce; the counters need no
+// ordering, so they are exact.
 func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
 
@@ -39,9 +43,13 @@ func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, 
 		return
 	}
 
+	// Summary carries the only arm held to the model, and a successful
+	// inspection is already rare — the index has to be built and the key
+	// declared — so it takes half the rolls rather than a third.
 	mode := random.RandomChoice([]servicepb.InspectIndexMode{
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_DISTINCT_VALUES,
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_FACETS,
+		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 		servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY,
 	})
 	requestedPageSize, pageSize := queryPageSize()
@@ -140,6 +148,12 @@ func runInspectIndex(ctx context.Context, client servicepb.BucketServiceClient, 
 		assert.Unreachable("singleton_driver_model: index inspection violates its own contract", details)
 
 		return
+	}
+
+	if mode == servicepb.InspectIndexMode_INSPECT_INDEX_MODE_SUMMARY && checkpointID == 0 {
+		if !c.validateInspectSummary(maxTicket, ledger, queryTarget, key, declared, res.GetSummary(), details) {
+			return
+		}
 	}
 
 	// Coverage: an inspection answered and held its page contract.
@@ -308,4 +322,154 @@ func (c *Checker) resumeInspectIndex(
 
 	// Coverage: a second page was fetched with the cursor the first published.
 	assert.Reachable("singleton_driver_model: index inspection resumed from its cursor", internal.Details{"mode": mode.String()})
+}
+
+// inspectCounts is what a summary inspection reports about one (target, key).
+type inspectCounts struct {
+	cardinality      uint64
+	entitiesWithKey  uint64
+	entitiesWithNull uint64
+}
+
+// modelInspectCounts folds a base's metadata for one (target, key) the way the
+// index writer keys it: every entity carrying the key contributes exactly one
+// encoded value, coerced to the declared type first, and the distinct encodings
+// are the value index's groups.
+//
+// A value that does not survive the coercion becomes a null encoding, and the
+// encoder carries the text it failed to convert into the key
+// (readstore.EncodeNull), so two entities holding different unconvertible text
+// are two groups, not one. Those entities are counted by entities_with_null;
+// entities_with_key counts only the rest. That split is why cardinality does
+// not bound entities_with_key on its own — a key every entity holds
+// unconvertibly reports entities_with_key 0 with a non-zero cardinality.
+func modelInspectCounts(ls oracle.LedgerState, target commonpb.QueryTarget, key string, declared commonpb.MetadataType) inspectCounts {
+	var counts inspectCounts
+
+	groups := map[string]struct{}{}
+
+	fold := func(stored *commonpb.MetadataValue) {
+		coerced := stored
+		if !commonpb.TypeMatches(stored, declared) {
+			coerced = commonpb.ConvertMetadataValue(stored, declared)
+		}
+
+		groups[oracle.MetaValueString(coerced)] = struct{}{}
+
+		if _, isNull := coerced.GetType().(*commonpb.MetadataValue_NullValue); isNull {
+			counts.entitiesWithNull++
+
+			return
+		}
+
+		counts.entitiesWithKey++
+	}
+
+	if target == commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS {
+		txs := ls.Txs()
+		for i := range txs.Len() {
+			if v, ok := txs.Get(i).Metadata()[key]; ok {
+				fold(v)
+			}
+		}
+	} else {
+		for k, v := range ls.Metadata().All() {
+			if k.Key == key {
+				fold(v)
+			}
+		}
+	}
+
+	counts.cardinality = uint64(len(groups))
+
+	return counts
+}
+
+// validateInspectSummary holds a summary's three counters to the model. Returns
+// false once it has reported a finding.
+//
+// A retype rewrites the keyspace under a new encoding while the resolver may
+// still serve the version it replaced, so the counters are read against the old
+// declared type for as long as that window is open and are not judged.
+func (c *Checker) validateInspectSummary(
+	maxTicket uint64,
+	ledger string,
+	target commonpb.QueryTarget,
+	key string,
+	declared commonpb.MetadataType,
+	summary *servicepb.InspectSummary,
+	details internal.Details,
+) bool {
+	if summary == nil {
+		assert.Unreachable("singleton_driver_model: summary mode answered another arm", details)
+
+		return false
+	}
+
+	served := inspectCounts{
+		cardinality:      summary.GetCardinality(),
+		entitiesWithKey:  summary.GetEntitiesWithKey(),
+		entitiesWithNull: summary.GetEntitiesWithNull(),
+	}
+
+	canonical := metadataCanonical(target, key)
+
+	if c.matchesModel(maxTicket, "INSPECTSUMMARY", func(base oracle.GlobalState) bool {
+		ls, live := liveLedgerState(base, ledger)
+		if !live {
+			return false
+		}
+
+		if _, open := ls.RetypeWindow(canonical); open {
+			return true
+		}
+
+		return modelInspectCounts(ls, target, key, declared) == served
+	}) {
+		// Coverage: a summary's counters were the model's own fold of the key.
+		// An empty index agrees on zeroes whatever the fold does, so the
+		// populated case is its own fact — that is the one that proves the
+		// comparison has teeth.
+		assert.Reachable("singleton_driver_model: index inspection summary matched the model", internal.Details{
+			"cardinality": served.cardinality,
+		})
+
+		if served.cardinality > 0 {
+			assert.Reachable("singleton_driver_model: index inspection summary matched a populated index", internal.Details{
+				"cardinality": served.cardinality,
+				"withKey":     served.entitiesWithKey,
+				"withNull":    served.entitiesWithNull,
+			})
+		}
+
+		if served.entitiesWithNull > 0 {
+			// Coverage: the null split is exercised — a value the declared type
+			// could not hold, counted apart from the carriers.
+			assert.Reachable("singleton_driver_model: index inspection summary counted unconvertible values", internal.Details{
+				"withNull": served.entitiesWithNull,
+			})
+		}
+
+		return true
+	}
+
+	details["servedCardinality"] = served.cardinality
+	details["servedWithKey"] = served.entitiesWithKey
+	details["servedWithNull"] = served.entitiesWithNull
+	details["modelCounts"] = c.modelInspectCountsDump(ledger, target, key, declared)
+	assert.Unreachable("singleton_driver_model: index inspection summary outside model", details)
+
+	return false
+}
+
+// modelInspectCountsDump renders the committed model's fold for a finding.
+// Acquires c.mu.
+func (c *Checker) modelInspectCountsDump(ledger string, target commonpb.QueryTarget, key string, declared commonpb.MetadataType) string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	counts := modelInspectCounts(c.modelState.Ledger(ledger), target, key, declared)
+
+	return fmt.Sprintf("cardinality=%d withKey=%d withNull=%d",
+		counts.cardinality, counts.entitiesWithKey, counts.entitiesWithNull)
 }
