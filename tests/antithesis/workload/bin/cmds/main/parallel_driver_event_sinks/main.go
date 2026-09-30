@@ -5,8 +5,10 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -18,9 +20,10 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	r := internal.Rand()
 	sinkName := fmt.Sprintf("nats-sink-%d", r.Uint64())
@@ -57,6 +60,7 @@ func main() {
 	sinksResp, err := client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
 		internal.LogCleanupError("get events sinks after add", err)
+
 		return
 	}
 
@@ -78,7 +82,7 @@ func main() {
 		return
 	}
 
-	_, err = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+	_, _ = client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
 		Type: &servicepb.Request_Apply{
 			Apply: &servicepb.LedgerApplyRequest{
 				Ledger: ledger,
@@ -112,6 +116,7 @@ func main() {
 	sinksResp, err = client.GetEventsSinks(ctx, &servicepb.GetEventsSinksRequest{})
 	if err != nil {
 		internal.LogCleanupError("get events sinks after remove", err)
+
 		return
 	}
 

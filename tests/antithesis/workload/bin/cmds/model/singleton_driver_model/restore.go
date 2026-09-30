@@ -29,6 +29,7 @@ func (c *Checker) awaitResume(ctx context.Context) bool {
 		c.mu.Lock()
 		if !c.paused {
 			c.mu.Unlock()
+
 			return true
 		}
 		ch := c.resumeCh
@@ -109,6 +110,7 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 		log.Printf("restore cycle: quiescing")
 		if !c.pauseAndDrain(ctx) {
 			c.resume()
+
 			return
 		}
 
@@ -120,6 +122,7 @@ func runRestoreCycle(ctx context.Context, c *Checker, trigger RestoreTrigger, in
 			// backfill catches up; the model must tolerate a not-ready rejection
 			// again until the poller reconfirms readiness.
 			defer c.demoteAllIndexes()
+
 			return trigger.Fire(ctx)
 		}()
 		if err != nil {
@@ -157,8 +160,8 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 		return fmt.Errorf("writing restore request: %w", err)
 	}
 
-	cap := restoreTimeout()
-	timeout := time.NewTimer(cap)
+	budget := restoreTimeout()
+	timeout := time.NewTimer(budget)
 	defer timeout.Stop()
 
 	for {
@@ -168,23 +171,25 @@ func (t *fileTrigger) Fire(ctx context.Context) error {
 			if line := strings.TrimSpace(string(data)); line != "" && line != "ok" {
 				return fmt.Errorf("orchestrator reported: %s", line)
 			}
+
 			return nil
 		}
 
 		select {
 		case <-ctx.Done():
 			t.withdraw()
+
 			return ctx.Err()
 		case <-timeout.C:
 			if t.withdraw() {
-				return fmt.Errorf("restore timed out after %s (request never claimed)", cap)
+				return fmt.Errorf("restore timed out after %s (request never claimed)", budget)
 			}
 			// The orchestrator claimed the request and is mid-cycle — possibly
 			// past the teardown, where the driver's state exists only in the
 			// backup. Resuming unquiesced would cut commits the restore then
 			// erases, poisoning every model check, so keep waiting.
-			log.Printf("restore cycle: lease %s expired but the request is claimed; waiting for the orchestrator", cap)
-			timeout.Reset(cap)
+			log.Printf("restore cycle: lease %s expired but the request is claimed; waiting for the orchestrator", budget)
+			timeout.Reset(budget)
 		case <-time.After(restorePoll):
 		}
 	}
@@ -199,6 +204,7 @@ func (t *fileTrigger) withdraw() bool {
 		return false
 	}
 	_ = os.Remove(t.reqPath + ".expired")
+
 	return true
 }
 

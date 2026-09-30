@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"math/bits"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/antithesishq/antithesis-sdk-go/random"
@@ -41,6 +42,7 @@ func indexPool(n int) []uint8 {
 	for i := range out {
 		out[i] = uint8(i)
 	}
+
 	return out
 }
 
@@ -82,7 +84,7 @@ func poolAddress() string {
 // where a leak has no re-touch to give it away. Drawn at the point of decision
 // so Antithesis controls it.
 func randomColor() string {
-	return colorName(bits.TrailingZeros64(random.GetRandom()))
+	return colorName(bits.TrailingZeros64(internal.Rand().Uint64()))
 }
 
 // colorName encodes k as bijective base-26 letters — 0 is the uncolored
@@ -192,17 +194,19 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		requests = append(requests, maybeAddSkippableReason(ls, req))
 	}
 
-	for i := 0; i < size; i++ {
+	for range size {
 		ledger := random.RandomChoice(picks)
 		ls := g.Ledger(ledger)
 
 		if random.RandomChoice([]uint8{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) == 0 {
 			appendRequest(ls, generateEnforcementMode(ledger))
+
 			continue
 		}
 		if rollChartOp() {
 			if req := generateChartOp(ledger); req != nil {
 				appendRequest(ls, req)
+
 				continue
 			}
 		}
@@ -210,6 +214,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		if rollSchemaOp() {
 			if req := generateSchemaOp(ledger, ls); req != nil {
 				appendRequest(ls, req)
+
 				continue
 			}
 		}
@@ -217,6 +222,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		if rollMetadataOp() {
 			if req := generateMetadataOp(ledger, ls); req != nil {
 				appendRequest(ls, req)
+
 				continue
 			}
 		}
@@ -224,6 +230,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		if rollRevert() {
 			if req := generateRevert(ledger, ls); req != nil {
 				appendRequest(ls, req)
+
 				continue
 			}
 		}
@@ -231,6 +238,7 @@ func generateBulk(g oracle.GlobalState, ledgers []string, newLedger string, live
 		if rollTransaction(ls) {
 			if req := generateTransaction(ledger, ls); req != nil {
 				appendRequest(ls, req)
+
 				continue
 			}
 		}
@@ -263,6 +271,7 @@ func activeLedgers(g oracle.GlobalState, ledgers []string) []string {
 			out = append(out, name)
 		}
 	}
+
 	return out
 }
 
@@ -281,6 +290,7 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 				MirrorSource: &commonpb.MirrorSourceConfig{LedgerName: "unused"},
 			}}}
 		}
+
 		return actions.CreateLedgerAction(newLedger, nil)
 	}
 	if random.RandomChoice(indexPool(24)) != 0 {
@@ -292,6 +302,7 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 		if len(live) > 0 {
 			return actions.DeleteLedgerAction(random.RandomChoice(live))
 		}
+
 		return nil
 	case 1:
 		mirrors := make([]string, 0, len(live))
@@ -303,6 +314,7 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 		if len(mirrors) == 0 {
 			return nil
 		}
+
 		return &servicepb.Request{Type: &servicepb.Request_PromoteLedger{PromoteLedger: &servicepb.PromoteLedgerRequest{Ledger: random.RandomChoice(mirrors)}}}
 	default:
 		// Enables stop every business worker for the recovery window, so generate
@@ -311,6 +323,7 @@ func generateLifecycle(g oracle.GlobalState, ledgers []string, newLedger string,
 		if !g.MaintenanceMode() && random.RandomChoice(indexPool(8)) != 0 {
 			return nil
 		}
+
 		return actions.SetMaintenanceModeAction(!g.MaintenanceMode())
 	}
 }
@@ -445,6 +458,7 @@ func generateTransaction(ledger string, ls oracle.LedgerState) *servicepb.Reques
 	if random.RandomChoice(indexPool(16)) == 0 {
 		if req := duplicateReferenceTransaction(ledger, ls); req != nil {
 			req.GetApply().SkippableReasons = []commonpb.ErrorReason{commonpb.ErrorReason_ERROR_REASON_TRANSACTION_REFERENCE_CONFLICT}
+
 			return req
 		}
 	}
@@ -771,7 +785,7 @@ func randomMetaValue() *commonpb.MetadataValue {
 func randomMetaMap() map[string]*commonpb.MetadataValue {
 	n := 1 + int(random.RandomChoice([]uint8{0, 1}))
 	md := make(map[string]*commonpb.MetadataValue, n)
-	for i := 0; i < n; i++ {
+	for range n {
 		md[metaKey()] = randomMetaValue()
 	}
 
@@ -1203,7 +1217,7 @@ func sampleAddress(pattern string) (string, error) {
 			parts[i] = seg.Value
 		case accounttype.SegmentVariable:
 			// Small range so addresses recur and volumes accumulate.
-			parts[i] = fmt.Sprintf("%d", internal.Rand().Uint64()%1000)
+			parts[i] = strconv.FormatUint(internal.Rand().Uint64()%1000, 10)
 		}
 	}
 

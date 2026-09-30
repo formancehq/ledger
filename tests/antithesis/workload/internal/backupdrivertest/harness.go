@@ -15,12 +15,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 )
 
 // driverConn runs the generated gRPC client against a deterministic transport
@@ -83,6 +84,7 @@ func Run(t *testing.T, runDriver func(context.Context, clusterpb.ClusterServiceC
 				case "external-service":
 					st, err := status.New(codes.FailedPrecondition, "object store unavailable").WithDetails(&errdetails.ErrorInfo{Reason: "EXTERNAL_SERVICE_ERROR"})
 					require.NoError(t, err)
+
 					return st.Err()
 				case "no-checkpoint":
 					return status.Error(codes.FailedPrecondition, "full checkpoint required")
@@ -98,10 +100,12 @@ func Run(t *testing.T, runDriver func(context.Context, clusterpb.ClusterServiceC
 			default:
 				t.Fatalf("unexpected response type %T", reply)
 			}
+
 			return nil
 		}))
 		runDriver(ctx, client)
 		require.Equal(t, tc.Stage, calls, "the driver must stop after the failing stage")
+
 		return
 	}
 

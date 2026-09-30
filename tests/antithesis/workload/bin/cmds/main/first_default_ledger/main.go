@@ -10,17 +10,19 @@ import (
 func main() {
 	log.Println("composer: first_default_ledger")
 
-	ctx := context.Background()
-	client, conn, err := internal.NewClient()
-	if err != nil {
-		log.Fatalf("error creating client: %s", err)
-	}
-	defer conn.Close()
-
-	err = internal.CreateLedger(ctx, client, "default")
-	if err != nil {
-		log.Fatalf("error creating ledger default: %s", err)
+	if err := run(); err != nil {
+		log.Fatalf("composer: first_default_ledger: %s", err)
 	}
 
 	log.Println("composer: first_default_ledger: done")
+}
+
+func run() error {
+	client, conn, err := internal.NewClient()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+
+	return internal.CreateLedger(context.Background(), client, "default")
 }

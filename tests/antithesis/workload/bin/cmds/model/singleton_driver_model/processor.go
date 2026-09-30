@@ -62,11 +62,11 @@ func (c *Checker) finishRead(ticket uint64) {
 // outstanding reads); empty=true when there are none. See tryDrain for the gate.
 // Caller holds c.mu.
 func (c *Checker) earliestOutstanding() (uint64, bool) {
-	var min uint64
+	var earliest uint64
 	found := false
 	consider := func(t uint64) {
-		if !found || t < min {
-			min = t
+		if !found || t < earliest {
+			earliest = t
 			found = true
 		}
 	}
@@ -78,7 +78,7 @@ func (c *Checker) earliestOutstanding() (uint64, bool) {
 		consider(ticket)
 	}
 
-	return min, !found
+	return earliest, !found
 }
 
 // Response handler. Failures validate immediately against state + in-flight
@@ -124,8 +124,9 @@ func (c *Checker) handleObservation(obs observation) {
 	// from MODEL_MAX_SECONDS) are dropped the same way: the outcome is
 	// unknown but we're tearing down, so there's nothing to validate.
 	if obs.err != nil && ((internal.IsTransient(obs.err) && !internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode)) || isShutdownError(obs.err)) {
-		dbg("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
+		dbgf("TRANSIENT/SHUTDOWN SKIP: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		markObservationProcessed(obs)
+
 		return
 	}
 
@@ -133,13 +134,14 @@ func (c *Checker) handleObservation(obs observation) {
 		// Failed bulk consumes no log sequence. Accept iff some serialization of
 		// the in-flight bulks dispatched no later than this failure's observe
 		// high-water reproduces the observed error (validateFailure).
-		dbg("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
+		dbgf("BULK ERR: ledgers=%s kinds=%s meta=%s err=%v", bulkLedgers(obs.bulk), requestKinds(obs.bulk), bulkMeta(obs.bulk), obs.err)
 		c.validateFailure(obs.observeTicket, obs.bulk, obs.err)
 		if internal.HasErrorReason(obs.err, domain.ErrReasonMaintenanceMode) {
 			emitCoverage(true, coverageMaintenanceMessage, internal.Details{})
 		}
 		markModelOutcomeVerified()
 		markObservationProcessed(obs)
+
 		return
 	}
 
@@ -149,6 +151,7 @@ func (c *Checker) handleObservation(obs observation) {
 		c.validateEmptyCommit(obs.bulk)
 		markModelOutcomeVerified()
 		markObservationProcessed(obs)
+
 		return
 	}
 
@@ -203,6 +206,7 @@ func (c *Checker) clearAmbiguousMaintenanceEnable(recoverySeq uint64) {
 		if bulkEnablesMaintenance(bulk) {
 			delete(c.ambiguousBulks, ticket)
 			c.ambiguousEnableClearSeq = 0
+
 			return
 		}
 	}
@@ -235,26 +239,28 @@ func (c *Checker) insertPending(entry *pendingObservation) {
 
 // Smallest non-zero Log.Sequence in logs, or 0 if none.
 func minLogSequence(logs []*commonpb.Log) uint64 {
-	var min uint64
+	var lowest uint64
 	for _, l := range logs {
 		s := l.GetSequence()
 		if s == 0 {
 			continue
 		}
-		if min == 0 || s < min {
-			min = s
+		if lowest == 0 || s < lowest {
+			lowest = s
 		}
 	}
-	return min
+
+	return lowest
 }
 
 // Largest Log.Sequence in logs, or 0 if none.
 func maxLogSequence(logs []*commonpb.Log) uint64 {
-	var max uint64
+	var highest uint64
 	for _, l := range logs {
-		if s := l.GetSequence(); s > max {
-			max = s
+		if s := l.GetSequence(); s > highest {
+			highest = s
 		}
 	}
-	return max
+
+	return highest
 }

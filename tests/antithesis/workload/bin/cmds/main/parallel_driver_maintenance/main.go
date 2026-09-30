@@ -6,11 +6,13 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {

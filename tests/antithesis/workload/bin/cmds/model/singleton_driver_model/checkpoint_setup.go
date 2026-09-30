@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -11,8 +12,9 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // setupQueryCheckpoints establishes the inherited global lifecycle baseline.
@@ -29,7 +31,7 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 		return checkpointSetupFailure(err)
 	}
 	if scheduleLog.GetPayload().GetDeleteQueryCheckpointSchedule() == nil {
-		return checkpointSetupFailure(fmt.Errorf("checkpoint schedule reset returned the wrong log"))
+		return checkpointSetupFailure(errors.New("checkpoint schedule reset returned the wrong log"))
 	}
 
 	listed, err := readCheckpointRegistry(ctx, node)
@@ -45,7 +47,7 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 			return checkpointSetupFailure(deleteErr)
 		}
 		if log.GetPayload().GetDeletedQueryCheckpoint().GetCheckpointId() != victim {
-			return checkpointSetupFailure(fmt.Errorf("checkpoint baseline deletion returned the wrong log"))
+			return checkpointSetupFailure(errors.New("checkpoint baseline deletion returned the wrong log"))
 		}
 		listed.Checkpoints = slices.DeleteFunc(listed.GetCheckpoints(), func(cp *clusterpb.QueryCheckpointInfo) bool {
 			return cp.GetCheckpointId() == victim
@@ -58,7 +60,7 @@ func setupQueryCheckpoints(ctx context.Context, node *internal.PerNodeConn, c *C
 	}
 	created := log.GetPayload().GetCreatedQueryCheckpoint()
 	if created == nil || created.GetCheckpointId() == 0 || created.GetCheckpointId() == ^uint64(0) || created.GetMaxSequence() != log.GetSequence()-1 {
-		return checkpointSetupFailure(fmt.Errorf("checkpoint baseline creation returned an invalid log"))
+		return checkpointSetupFailure(errors.New("checkpoint baseline creation returned an invalid log"))
 	}
 
 	ids, nextID, err := checkpointBaseline(listed, created.GetCheckpointId())
@@ -78,7 +80,7 @@ func applyCheckpointSetup(ctx context.Context, bucket servicepb.BucketServiceCli
 	}
 	logs := response.GetLogs()
 	if len(logs) != 1 || logs[0].GetSequence() == 0 {
-		return nil, fmt.Errorf("checkpoint setup returned no committed log")
+		return nil, errors.New("checkpoint setup returned no committed log")
 	}
 
 	return logs[0], nil

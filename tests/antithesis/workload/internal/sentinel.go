@@ -2,13 +2,15 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
 // Sentinel records a committed transaction whose survival across an operational
@@ -36,9 +38,9 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 				Ledger: ledger,
 				Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 					CreateTransaction: &servicepb.CreateTransactionPayload{
-						Postings:      []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
-						Reference:     ref,
-						Force:         true,
+						Postings:  []*commonpb.Posting{commonpb.NewPosting("world", destination, "COIN", RandomBigInt())},
+						Reference: ref,
+						Force:     true,
 					},
 				}},
 			},
@@ -50,13 +52,13 @@ func PreCommitSentinel(ctx context.Context, client servicepb.BucketServiceClient
 
 	createdTx := ExtractCreatedTransaction(resp)
 	if createdTx == nil {
-		return nil, fmt.Errorf("apply returned no CreatedTransaction")
+		return nil, errors.New("apply returned no CreatedTransaction")
 	}
 
 	return &Sentinel{
 		Ledger:    ledger,
 		Reference: ref,
-		TxID:      createdTx.Transaction.Id,
+		TxID:      createdTx.GetTransaction().GetId(),
 	}, nil
 }
 
@@ -78,10 +80,12 @@ func (s *Sentinel) Verify(ctx context.Context, client servicepb.BucketServiceCli
 	})
 	if err == nil {
 		assert.Reachable("sentinel transaction read-after-write succeeded", details)
+
 		return
 	}
 	if IsTransient(err) {
 		assert.Reachable("sentinel verify hit a transient error", details.With(Details{"error": err}))
+
 		return
 	}
 	st, _ := status.FromError(err)

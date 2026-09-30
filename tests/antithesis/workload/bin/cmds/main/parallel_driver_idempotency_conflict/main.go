@@ -5,9 +5,11 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -48,7 +50,7 @@ func main() {
 			return
 		}
 
-		details["firstTxId"] = createdTx.Transaction.Id
+		details["firstTxId"] = createdTx.GetTransaction().GetId()
 
 		// 2. Reuse the same idempotency key with a DIFFERENT payload.
 		//    This must return IDEMPOTENCY_KEY_CONFLICT.

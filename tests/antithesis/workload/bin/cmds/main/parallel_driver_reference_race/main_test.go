@@ -14,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/drivertest"
 )
@@ -71,6 +72,7 @@ func TestReferenceOracleDetectsInjectedDuplicate(t *testing.T) {
 // this does not claim that the engine committed a duplicate reference.
 type duplicateReferenceClient struct {
 	servicepb.BucketServiceClient
+
 	injectedID uint64
 	stream     *duplicateReferenceStream
 }
@@ -81,11 +83,13 @@ func (c *duplicateReferenceClient) ListTransactions(ctx context.Context, req *se
 		return nil, err
 	}
 	c.stream = &duplicateReferenceStream{ServerStreamingClient: stream, injectedID: c.injectedID}
+
 	return c.stream, nil
 }
 
 type duplicateReferenceStream struct {
 	grpc.ServerStreamingClient[commonpb.Transaction]
+
 	first      *commonpb.Transaction
 	injectedID uint64
 	injected   bool
@@ -101,6 +105,7 @@ func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
 		if s.first == nil {
 			s.first = tx
 		}
+
 		return tx, nil
 	}
 	if errors.Is(err, io.EOF) {
@@ -109,8 +114,10 @@ func (s *duplicateReferenceStream) Recv() (*commonpb.Transaction, error) {
 			duplicate := proto.Clone(s.first).(*commonpb.Transaction)
 			duplicate.Id = s.injectedID
 			s.injected = true
+
 			return duplicate, nil
 		}
 	}
+
 	return nil, err
 }

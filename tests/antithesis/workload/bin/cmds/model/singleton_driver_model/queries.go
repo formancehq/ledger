@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"sort"
 	"strconv"
@@ -110,6 +111,7 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 		}
 		if status.Code(err) == codes.NotFound {
 			c.validateLedgerNotFound(maxTicket, ledger, "ListAccounts")
+
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "account", ledger, filter, err) {
@@ -119,10 +121,12 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 			// The account-by-asset index governs this filter's outcome; a not-ready
 			// error is legal while the index is absent or ambiguous.
 			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, err)
+
 			return
 		}
 		if len(needed) > 0 {
 			c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, nil, err)
+
 			return
 		}
 
@@ -149,11 +153,13 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	if bareAsset {
 		c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, nil)
+
 		return
 	}
 
 	if len(needed) > 0 {
 		c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, accounts, nil)
+
 		return
 	}
 
@@ -227,6 +233,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		}
 		if status.Code(err) == codes.NotFound {
 			c.validateLedgerNotFound(maxTicket, ledger, "ListTransactions")
+
 			return
 		}
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
@@ -234,6 +241,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		}
 		if len(needed) > 0 {
 			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, err)
+
 			return
 		}
 
@@ -258,6 +266,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 
 	if len(needed) > 0 {
 		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, nil)
+
 		return
 	}
 
@@ -305,7 +314,7 @@ func drainStream[T any](stream grpc.ServerStreamingClient[T]) ([]*T, error) {
 	var out []*T
 	for {
 		item, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return out, nil
 		}
 		if err != nil {
@@ -378,6 +387,7 @@ func (c *Checker) validateTransactionQuery(maxTicket uint64, ledger string, filt
 		if !live {
 			return false
 		}
+
 		return txWindowMatches(ls, filter, afterID, pageSize, reverse, serverTxs)
 	}) {
 		return
@@ -1049,6 +1059,7 @@ func genTransactionFilterFree(depth int) *commonpb.QueryFilter {
 			return filterReverted(false)
 		default:
 			lo := internal.Rand().Uint64() % 256
+
 			return filterTxIDRange(lo, lo+internal.Rand().Uint64()%256)
 		}
 	}
@@ -1573,10 +1584,14 @@ func describeFieldCondition(fc *commonpb.FieldCondition) string {
 	case *commonpb.FieldCondition_IntCond:
 		ic := c.IntCond
 
+		// min/max are proto3 optional: renderBound needs the pointer to tell an
+		// unset bound ("_") from a zero one.
+		//nolint:protogetter
 		return "[" + renderBound(ic.Min, ic.GetMinExclusive(), false) + "," + renderBound(ic.Max, ic.GetMaxExclusive(), true) + "]"
 	case *commonpb.FieldCondition_UintCond:
 		uc := c.UintCond
 
+		//nolint:protogetter // see describeFieldCondition's IntCond case
 		return "u[" + renderBound(uc.Min, uc.GetMinExclusive(), false) + "," + renderBound(uc.Max, uc.GetMaxExclusive(), true) + "]"
 	default:
 		return "?"

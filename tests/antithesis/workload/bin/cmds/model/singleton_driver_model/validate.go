@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/holiman/uint256"
@@ -26,7 +27,7 @@ import (
 // validateBulkSuccess records a committed bulk and cross-checks it against the
 // forward model. Caller holds c.mu.
 func (c *Checker) validateBulkSuccess(bulk oracle.Bulk, resp *servicepb.ApplyResponse) {
-	dbg("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s typeOps=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), typeOps(bulk), bulkMeta(bulk))
+	dbgf("BULK OK: ledgers=%s reqKinds=%s logSeqs=%s typeOps=%s meta=%s", bulkLedgers(bulk), requestKinds(bulk), logSeqs(resp.GetLogs()), typeOps(bulk), bulkMeta(bulk))
 
 	c.crossCheckCommit(bulk, resp)
 	c.recordIndexCreates(bulk, resp)
@@ -117,7 +118,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	res := c.modelState.Apply(bulk)
 
 	if !res.OK {
-		dbg("MODEL FINDING: ledgers=%s server committed but model rejects (%s): kinds=%s meta=%s",
+		dbgf("MODEL FINDING: ledgers=%s server committed but model rejects (%s): kinds=%s meta=%s",
 			bulkLedgers(bulk), res.Reason, requestKinds(bulk), bulkMeta(bulk))
 		assert.Unreachable("singleton_driver_model: model rejects a server-committed bulk", internal.Details{
 			"ledgers": bulkLedgers(bulk),
@@ -132,27 +133,32 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 	logs := resp.GetLogs()
 	if !checkpointOrdersMatch(bulk, res.Orders, logs) {
 		assert.Unreachable("singleton_driver_model: checkpoint commit outside model", internal.Details{"kinds": requestKinds(bulk), "logSeqs": logSeqs(logs)})
+
 		return
 	}
 	if len(logs) != len(res.Orders) {
 		assert.Unreachable("singleton_driver_model: committed log count mismatch", internal.Details{"expected": len(res.Orders), "actual": len(logs)})
+
 		return
 	}
 	for i, order := range res.Orders {
 		entry := logs[i].GetPayload().GetApply()
 		if order.LogID != 0 && (entry.GetLog().GetId() != order.LogID || entry.GetLedgerName() != oracle.LedgerOf(bulk.Requests[i])) {
 			assert.Unreachable("singleton_driver_model: committed ledger log identity mismatch", internal.Details{"order": i, "expected": order.LogID, "actual": entry.GetLog().GetId()})
+
 			return
 		}
 		data := logs[i].GetPayload().GetApply().GetLog().GetData()
 		if (data.GetOrderSkipped() != nil) != (order.Skipped != nil) ||
 			(order.Skipped != nil && (data.GetOrderSkipped().GetReason() != order.Skipped.GetReason() || !maps.Equal(data.GetOrderSkipped().GetContext(), order.Skipped.GetContext()))) {
 			assert.Unreachable("singleton_driver_model: skipped-order response mismatch", internal.Details{"order": i, "expected": order.Skipped, "actual": data.GetOrderSkipped()})
+
 			return
 		}
 		if mode := requestedEnforcementMode(bulk.Requests[i]); mode != nil {
 			if data.GetUpdatedDefaultEnforcementMode() == nil || data.GetUpdatedDefaultEnforcementMode().GetEnforcementMode() != *mode {
 				assert.Unreachable("singleton_driver_model: enforcement-mode response mismatch", internal.Details{"order": i, "expected": mode, "actual": data.GetUpdatedDefaultEnforcementMode()})
+
 				return
 			}
 		}
@@ -168,6 +174,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 				"kind":   requestKinds(oracle.Bulk{Requests: []*servicepb.Request{req}}),
 				"error":  err.Error(),
 			})
+
 			return
 		}
 	}
@@ -193,7 +200,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		for key, vp := range order.PCV {
 			gotIn, gotOut, ok := postCommitVolume(serverPCV, key)
 			if !ok || vp.Input.Cmp(&gotIn) != 0 || vp.Output.Cmp(&gotOut) != 0 {
-				dbg("MODEL PCV MISMATCH: %s/%s model=(%s,%s) serverPresent=%v",
+				dbgf("MODEL PCV MISMATCH: %s/%s model=(%s,%s) serverPresent=%v",
 					key.Address, key.Asset, vp.Input.Dec(), vp.Output.Dec(), ok)
 				assert.Unreachable("singleton_driver_model: model post-commit volume mismatch", internal.Details{
 					"cell":     key.Address + "/" + key.Asset,
@@ -217,7 +224,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 		gotSaved := responseMetaEffect(bulk.Requests[i], logs[i])
 
 		if !metaMapEqual(order.Meta.Saved(), gotSaved) {
-			dbg("MODEL META SAVED MISMATCH: model=%s server=%s", renderMetaMap(order.Meta.Saved()), renderMetaMap(gotSaved))
+			dbgf("MODEL META SAVED MISMATCH: model=%s server=%s", renderMetaMap(order.Meta.Saved()), renderMetaMap(gotSaved))
 			assert.Unreachable("singleton_driver_model: response metadata value mismatch", internal.Details{
 				"ledger":      oracle.LedgerOf(bulk.Requests[i]),
 				"kinds":       requestKinds(bulk),
@@ -262,8 +269,8 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			if revTx.GetId() != order.TxID {
 				assert.Unreachable("singleton_driver_model: revert transaction id mismatch", internal.Details{
 					"ledger":   oracle.LedgerOf(req),
-					"modelId":  fmt.Sprintf("%d", order.TxID),
-					"serverId": fmt.Sprintf("%d", revTx.GetId()),
+					"modelId":  strconv.FormatUint(order.TxID, 10),
+					"serverId": strconv.FormatUint(revTx.GetId(), 10),
 				})
 
 				return
@@ -272,8 +279,8 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			if rt.GetRevertedTransactionId() != order.Revert.RevertedID() {
 				assert.Unreachable("singleton_driver_model: reverted transaction id mismatch", internal.Details{
 					"ledger":   oracle.LedgerOf(req),
-					"modelId":  fmt.Sprintf("%d", order.Revert.RevertedID()),
-					"serverId": fmt.Sprintf("%d", rt.GetRevertedTransactionId()),
+					"modelId":  strconv.FormatUint(order.Revert.RevertedID(), 10),
+					"serverId": strconv.FormatUint(rt.GetRevertedTransactionId(), 10),
 				})
 
 				return
@@ -297,8 +304,8 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 			if tx.GetId() != order.TxID {
 				assert.Unreachable("singleton_driver_model: transaction id mismatch", internal.Details{
 					"ledger":   oracle.LedgerOf(req),
-					"modelId":  fmt.Sprintf("%d", order.TxID),
-					"serverId": fmt.Sprintf("%d", tx.GetId()),
+					"modelId":  strconv.FormatUint(order.TxID, 10),
+					"serverId": strconv.FormatUint(tx.GetId(), 10),
 				})
 
 				return
@@ -355,6 +362,7 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 
 		if !chartResponseMatches(req, data) {
 			assert.Unreachable("singleton_driver_model: chart response mismatch", internal.Details{"order": i})
+
 			return
 		}
 		switch r := req.GetType().(type) {
@@ -419,7 +427,6 @@ func (c *Checker) crossCheckCommit(bulk oracle.Bulk, resp *servicepb.ApplyRespon
 
 				return
 			}
-
 		}
 	}
 
@@ -547,7 +554,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 			assert.Reachable("singleton_driver_model: idempotency-conflict rejection exercised", internal.Details{})
 		}
 
-		dbg("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
+		dbgf("MODEL FAIL OK: ledgers=%s kinds=%s explained by %s", bulkLedgers(failedBulk), requestKinds(failedBulk), reason)
 
 		return
 	}
@@ -563,7 +570,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 
 	postings, modelTypes, buffered := c.failureDiag(failedBulk, maxTicket)
 
-	dbg("MODEL FAIL FINDING: ledgers=%s kinds=%s postings=%s modelReason=%s modelTypes=%s %s err=%v", bulkLedgers(failedBulk), requestKinds(failedBulk), postings, modelReason, modelTypes, buffered, reqErr)
+	dbgf("MODEL FAIL FINDING: ledgers=%s kinds=%s postings=%s modelReason=%s modelTypes=%s %s err=%v", bulkLedgers(failedBulk), requestKinds(failedBulk), postings, modelReason, modelTypes, buffered, reqErr)
 	assert.Unreachable("singleton_driver_model: bulk failure not explained by any serialization", internal.Details{
 		"ledgers":     bulkLedgers(failedBulk),
 		"error":       reqErr.Error(),
@@ -584,7 +591,7 @@ func (c *Checker) validateFailure(maxTicket uint64, failedBulk oracle.Bulk, reqE
 // returning the log reference the checker needs to linearize the bulk. Caller
 // holds c.mu.
 func (c *Checker) validateEmptyCommit(bulk oracle.Bulk) {
-	dbg("BULK OK (empty): ledgers=%s kinds=%s", bulkLedgers(bulk), requestKinds(bulk))
+	dbgf("BULK OK (empty): ledgers=%s kinds=%s", bulkLedgers(bulk), requestKinds(bulk))
 
 	assert.Unreachable("singleton_driver_model: successful bulk returned no committed log", internal.Details{
 		"ledgers": bulkLedgers(bulk),
@@ -607,13 +614,14 @@ func (c *Checker) matchesModel(maxTicket uint64, label string, matcher func(orac
 	matched := false
 	c.candidateBases(maxTicket, func(base oracle.GlobalState) bool {
 		matched = matcher(base)
+
 		return matched
 	})
 
 	if matched {
-		dbg("%s OK", label)
+		dbgf("%s OK", label)
 	} else {
-		dbg("%s FINDING", label)
+		dbgf("%s FINDING", label)
 	}
 
 	return matched
@@ -637,6 +645,7 @@ func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset stri
 		if !live {
 			return !found
 		}
+
 		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
@@ -713,6 +722,7 @@ func (c *Checker) validateLedgerRead(maxTicket uint64, ledger string, serverType
 			return false
 		}
 		ls := base.Ledger(ledger)
+
 		return ledgerReadMatches(ls, serverTypes, serverMeta, mode)
 	}) {
 		return
@@ -737,6 +747,7 @@ func ledgerReadMatches(ls oracle.LedgerState, types map[string]*commonpb.Account
 func (c *Checker) validateLedgerNotFound(maxTicket uint64, ledger, operation string) {
 	if c.matchesModel(maxTicket, operation+" NOT_FOUND", func(base oracle.GlobalState) bool {
 		lc, exists := base.Lifecycle(ledger)
+
 		return !exists || lc.Deleted
 	}) {
 		return

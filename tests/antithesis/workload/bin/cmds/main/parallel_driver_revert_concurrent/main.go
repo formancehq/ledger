@@ -5,11 +5,13 @@ import (
 	"sync"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/domain"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/domain"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
@@ -21,8 +23,8 @@ func main() {
 					Ledger: ledger,
 					Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{
 						CreateTransaction: &servicepb.CreateTransactionPayload{
-							Postings:      internal.RandomPostings(),
-							Force:         true,
+							Postings: internal.RandomPostings(),
+							Force:    true,
 						},
 					}},
 				},
@@ -43,7 +45,7 @@ func main() {
 			return
 		}
 
-		txID := createdTx.Transaction.Id
+		txID := createdTx.GetTransaction().GetId()
 		details["txId"] = txID
 
 		// 2. Fire two reverts concurrently.

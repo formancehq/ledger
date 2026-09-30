@@ -44,7 +44,7 @@ func TestPickAbsentAccount(t *testing.T) {
 	c.modelState = c.modelState.Apply(bulkOf(oracletest.TxReq("world", "t-0:5", "USD/2", 10))).State
 	ls := c.modelState.Ledger("L")
 
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		ledger, addr, asset, ok := pickAbsentAccount(c.modelState, []string{"L"})
 		require.True(t, ok)
 		require.Equal(t, "L", ledger)
@@ -65,7 +65,7 @@ func TestPickLedgerReadTarget(t *testing.T) {
 	fleet := []string{"L", "L2", "L3"}
 	known := map[string]bool{"L": true, "L2": true, "L3": true}
 
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		require.False(t, known[absentLedgerName(fleet)], "absent name collided with fleet")
 
 		// 50% here just to exercise both branches; runLedgerRead/runSchemaRead use 2%/3%.

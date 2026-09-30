@@ -7,12 +7,13 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/scenario"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 // Registry holds all registered block groups.
@@ -49,6 +50,7 @@ func ForScenario(name string) []*scenario.BlockGroup {
 			})
 		}
 	}
+
 	return filtered
 }
 
@@ -65,6 +67,7 @@ func Scenarios() []string {
 			}
 		}
 	}
+
 	return names
 }
 
@@ -90,6 +93,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 					}
 					if internal.IsUnavailable(err) {
 						log.Printf("scenario_blocks: setup unavailable, retrying: %v", err)
+
 						continue
 					}
 
@@ -106,6 +110,7 @@ func RunLoop(ctx context.Context, client servicepb.BucketServiceClient, groups [
 
 	if len(allBlocks) == 0 {
 		log.Println("scenario_blocks: no blocks to run")
+
 		return
 	}
 
@@ -185,25 +190,20 @@ func emitBlockFailed(name string, hit bool, details internal.Details) {
 // isAlreadyExists checks if the gRPC error code is AlreadyExists.
 func isAlreadyExists(err error) bool {
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.AlreadyExists
 }
 
 // isFailedPrecondition checks if the gRPC error code is FailedPrecondition.
 func isFailedPrecondition(err error) bool {
 	st, ok := status.FromError(err)
+
 	return ok && st.Code() == codes.FailedPrecondition
 }
 
 // CheckPostCommitVolumes verifies volume consistency on a transaction response.
 func CheckPostCommitVolumes(resp *servicepb.ApplyResponse, details internal.Details) {
-	if resp == nil || len(resp.Logs) == 0 {
-		return
-	}
-	applyLog := resp.Logs[0].Payload.GetApply()
-	if applyLog == nil {
-		return
-	}
-	ct := applyLog.Log.Data.GetCreatedTransaction()
+	ct := internal.ExtractCreatedTransaction(resp)
 	if ct == nil {
 		return
 	}

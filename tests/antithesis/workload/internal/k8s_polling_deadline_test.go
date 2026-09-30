@@ -9,17 +9,19 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 )
 
 // pollingConn exercises the generated client and observes the context delivered
 // to its transport. Kubernetes cases use the real REST client the same way.
 type pollingConn struct {
 	grpc.ClientConnInterface
+
 	request func(context.Context) error
 }
 
@@ -31,6 +33,7 @@ func (c pollingConn) Invoke(ctx context.Context, _ string, _, reply any, _ ...gr
 	state.Leader = 1
 	state.Nodes = []*clusterpb.NodeInfo{{Id: 1, Suffrage: "Voter"}}
 	state.ClusterConfig = &commonpb.ClusterConfig{}
+
 	return nil
 }
 
@@ -54,14 +57,17 @@ func pollingCases(t *testing.T) []pollingCase {
 				if err := request(r.Context()); err != nil {
 					return nil, err
 				}
+
 				return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			}),
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		return client
 	}
+
 	return []pollingCase{
 		{"voters", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
 			return WaitForVoters(ctx, clusterClient(request), 1, timeout, nil)
@@ -74,14 +80,17 @@ func pollingCases(t *testing.T) []pollingCase {
 		}},
 		{"pod_gone", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
 			client := kubeClient(request, `{"metadata":{"uid":"replacement"}}`)
+
 			return WaitForPodGone(ctx, client, "ledger-ledger-0", "original", timeout)
 		}},
 		{"pod_ready", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
 			client := kubeClient(request, `{"status":{"conditions":[{"type":"Ready","status":"True"}]}}`)
+
 			return WaitForPodReady(ctx, client, "ledger-ledger-0", timeout)
 		}},
 		{"statefulset_ready", func(ctx context.Context, timeout time.Duration, request func(context.Context) error) bool {
 			client := kubeClient(request, `{"status":{"readyReplicas":1,"currentRevision":"rev","updateRevision":"rev"}}`)
+
 			return WaitForStatefulSetReady(ctx, client, "ledger-ledger", 1, timeout)
 		}},
 	}
@@ -101,6 +110,7 @@ func TestPollingHelpers_CancelInFlightRequest(t *testing.T) {
 					done <- tc.run(parent, 10*time.Second, func(ctx context.Context) error {
 						entered <- ctx
 						<-ctx.Done()
+
 						return ctx.Err()
 					})
 				}()
@@ -147,6 +157,7 @@ func TestPollingHelpers_ParentCancellation(t *testing.T) {
 					done <- tc.run(parent, time.Hour, func(ctx context.Context) error {
 						close(entered)
 						<-ctx.Done()
+
 						return ctx.Err()
 					})
 				}()
@@ -160,6 +171,10 @@ func TestPollingHelpers_ParentCancellation(t *testing.T) {
 	}
 }
 
+// The callback assigns the context it receives to an outer var so the
+// assertions can inspect what the helper handed its request.
+//
+//nolint:fatcontext // the assignment is the point of the test
 func TestPollingHelpers_HealthyConvergence(t *testing.T) {
 	t.Parallel()
 	for _, tc := range pollingCases(t) {
@@ -171,6 +186,7 @@ func TestPollingHelpers_HealthyConvergence(t *testing.T) {
 				if !tc.run(context.Background(), time.Minute, func(ctx context.Context) error {
 					calls++
 					requestCtx = ctx
+
 					return nil
 				}) {
 					t.Error("healthy response did not converge")
@@ -186,6 +202,10 @@ func TestPollingHelpers_HealthyConvergence(t *testing.T) {
 	}
 }
 
+// The callback assigns the context it receives to an outer var so the
+// assertions can inspect what the helper handed its request.
+//
+//nolint:fatcontext // the assignment is the point of the test
 func TestPollingHelpers_ParentDeadline(t *testing.T) {
 	t.Parallel()
 	for _, tc := range pollingCases(t) {
@@ -199,6 +219,7 @@ func TestPollingHelpers_ParentDeadline(t *testing.T) {
 				if tc.run(parent, time.Minute, func(ctx context.Context) error {
 					requestCtx = ctx
 					<-ctx.Done()
+
 					return ctx.Err()
 				}) {
 					t.Error("expired parent unexpectedly reported convergence")
@@ -226,6 +247,7 @@ func TestPollingHelpers_RejectLateConvergence(t *testing.T) {
 					timer := time.NewTimer(20 * time.Second)
 					defer timer.Stop()
 					<-timer.C
+
 					return nil
 				}) {
 					t.Error("helper reported convergence from a response delivered after its deadline")

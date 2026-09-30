@@ -13,11 +13,13 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 )
 
 type balanceSDKServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	scenario string
 	lists    atomic.Int32
 	gets     atomic.Int32
@@ -36,6 +38,7 @@ func (s *balanceSDKServer) ListAccounts(_ *servicepb.ListAccountsRequest, stream
 	if s.scenario == "empty" {
 		return nil
 	}
+
 	return stream.Send(sdkAccount("10"))
 }
 
@@ -53,6 +56,7 @@ func (s *balanceSDKServer) GetAccount(context.Context, *servicepb.GetAccountRequ
 			return sdkAccount("11"), nil
 		}
 	}
+
 	return sdkAccount("10"), nil
 }
 
@@ -62,14 +66,16 @@ func (s *balanceSDKServer) Barrier(context.Context, *servicepb.BarrierRequest) (
 		return nil, status.Error(codes.Internal, "unexpected extra barrier")
 	}
 	index := uint64(100 + call)
-	if s.scenario == "failure_branch" {
+	switch s.scenario {
+	case "failure_branch":
 		// Exercise only the existing SDK failure branch. These scripted horizons
 		// are not a reproduction of the server's barrier advancement contract.
 		index--
-	} else if s.scenario == "advanced_then_match" {
+	case "advanced_then_match":
 		// Include a real extra proposal, in addition to the barriers themselves.
 		index++
 	}
+
 	return &servicepb.BarrierResponse{CommitIndex: index}, nil
 }
 

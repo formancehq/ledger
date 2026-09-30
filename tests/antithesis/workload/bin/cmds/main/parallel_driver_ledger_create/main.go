@@ -15,9 +15,10 @@ func main() {
 	client, conn, err := internal.NewClient()
 	if err != nil {
 		log.Printf("error creating client: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	id := internal.Rand().Uint64() % 1e6
 	ledger := fmt.Sprintf("ledger-%d", id)

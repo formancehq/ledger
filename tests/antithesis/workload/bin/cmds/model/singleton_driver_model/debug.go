@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/status"
@@ -21,7 +22,7 @@ import (
 // MODEL_DEBUG=1 enables verbose per-transaction logging.
 var modelDebug = os.Getenv("MODEL_DEBUG") != ""
 
-func dbg(format string, args ...any) {
+func dbgf(format string, args ...any) {
 	if modelDebug {
 		log.Printf("[model-debug] "+format, args...)
 	}
@@ -140,6 +141,7 @@ func bulkMeta(b oracle.Bulk) string {
 			kvs = append(kvs, k+"="+oracle.MetaValueString(v))
 		}
 		sort.Strings(kvs)
+
 		return strings.Join(kvs, ",")
 	}
 
@@ -424,8 +426,9 @@ func (c *Checker) modelSchemaDump(ledger string) string {
 func logSeqs(logs []*commonpb.Log) string {
 	ids := make([]string, len(logs))
 	for i, l := range logs {
-		ids[i] = fmt.Sprintf("%d", l.GetSequence())
+		ids[i] = strconv.FormatUint(l.GetSequence(), 10)
 	}
+
 	return "[" + strings.Join(ids, ",") + "]"
 }
 

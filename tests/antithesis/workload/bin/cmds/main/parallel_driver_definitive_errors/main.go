@@ -65,6 +65,7 @@ func referenceFilterCheck(
 	if len(ids) == 0 {
 		return false, 0, true
 	}
+
 	return true, ids[0], true
 }
 

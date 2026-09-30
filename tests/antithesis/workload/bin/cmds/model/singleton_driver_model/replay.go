@@ -75,6 +75,7 @@ func runReplay(ctx context.Context, client servicepb.BucketServiceClient, c *Che
 	c.mu.Lock()
 	if len(c.replayable) == 0 {
 		c.mu.Unlock()
+
 		return
 	}
 	entry := random.RandomChoice(c.replayable)
@@ -98,6 +99,7 @@ func runReplay(ctx context.Context, client servicepb.BucketServiceClient, c *Che
 			"key":     entry.key,
 			"error":   err.Error(),
 		})
+
 		return
 	}
 
@@ -123,6 +125,7 @@ func (c *Checker) validateReplay(maxTicket uint64, entry replayEntry, resp *serv
 
 	if c.matchesModel(maxTicket, "REPLAY", func(base oracle.GlobalState) bool {
 		res := base.Apply(entry.bulk)
+
 		return res.OK && replayOrdersMatch(entry.bulk, res.Orders, resp.GetLogs())
 	}) {
 		// Coverage: prove the replay path is actually exercised — if this stops
@@ -199,6 +202,7 @@ func replayOrdersMatch(bulk oracle.Bulk, orders []oracle.OrderResult, logs []*co
 			if !order.Skipped.EqualVT(data.GetOrderSkipped()) {
 				return false
 			}
+
 			continue
 		}
 		if mode := requestedEnforcementMode(req); mode != nil {
@@ -303,5 +307,6 @@ func chartResponseMatches(req *servicepb.Request, data *commonpb.LedgerLogPayloa
 	if removed != nil {
 		return data.GetRemovedAccountType() != nil && data.GetRemovedAccountType().GetName() == *removed
 	}
+
 	return true
 }

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
@@ -11,7 +11,7 @@ import (
 // log. An absent payload is never equivalent to a false maintenance toggle.
 func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload *commonpb.LogPayload) error {
 	if expectedPreparedQuery != nil && !expectedPreparedQuery.EqualVT(payload) {
-		return fmt.Errorf("prepared-query response does not match committed change")
+		return errors.New("prepared-query response does not match committed change")
 	}
 
 	switch r := req.GetType().(type) {
@@ -22,24 +22,25 @@ func validateLifecycleLog(req *servicepb.Request, expectedPreparedQuery, payload
 			!log.GetMetadataSchema().EqualVT(lifecycleMetadataSchema(r.CreateLedger.GetInitialSchema())) ||
 			!accountTypesEqual(log.GetAccountTypes(), r.CreateLedger.GetAccountTypes()) ||
 			log.GetDefaultEnforcementMode() != r.CreateLedger.GetDefaultEnforcementMode() {
-			return fmt.Errorf("create-ledger response does not match request")
+			return errors.New("create-ledger response does not match request")
 		}
 	case *servicepb.Request_DeleteLedger:
 		log := payload.GetDeleteLedger()
 		if log == nil || log.GetName() != r.DeleteLedger.GetName() || log.GetDeletedAt() == nil {
-			return fmt.Errorf("delete-ledger response does not match request")
+			return errors.New("delete-ledger response does not match request")
 		}
 	case *servicepb.Request_PromoteLedger:
 		log := payload.GetPromoteLedger()
 		if log == nil || log.GetName() != r.PromoteLedger.GetLedger() {
-			return fmt.Errorf("promote-ledger response does not match request")
+			return errors.New("promote-ledger response does not match request")
 		}
 	case *servicepb.Request_SetMaintenanceMode:
 		log := payload.GetSetMaintenanceMode()
 		if log == nil || log.GetEnabled() != r.SetMaintenanceMode.GetEnabled() {
-			return fmt.Errorf("maintenance response does not match requested mode")
+			return errors.New("maintenance response does not match requested mode")
 		}
 	}
+
 	return nil
 }
 
@@ -68,6 +69,7 @@ func lifecycleMetadataSchema(commands []*commonpb.SetMetadataFieldTypeCommand) *
 			schema.LedgerFields[cmd.GetKey()] = field
 		}
 	}
+
 	return schema
 }
 
@@ -82,5 +84,6 @@ func accountTypesEqual(got, want map[string]*commonpb.AccountType) bool {
 			return false
 		}
 	}
+
 	return true
 }

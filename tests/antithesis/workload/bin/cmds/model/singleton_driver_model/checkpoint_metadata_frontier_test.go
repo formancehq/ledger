@@ -54,6 +54,7 @@ func TestCheckpointMetadataReadsKeepResponseFrontierWithoutLiveLedgers(t *testin
 					} else {
 						t.Errorf("the processor is blocked by a read during %s", info.FullMethod)
 					}
+
 					return next(ctx, req)
 				})
 				bucket, cluster := serveCheckpointMetadata(t, handler, handler, interceptor)
@@ -95,10 +96,12 @@ type checkpointEmptyMetadataServer struct {
 
 func (s *checkpointEmptyMetadataServer) ListQueryCheckpoints(context.Context, *clusterpb.ListQueryCheckpointsRequest) (*clusterpb.ListQueryCheckpointsResponse, error) {
 	s.metadataReads.Add(1)
+
 	return &clusterpb.ListQueryCheckpointsResponse{}, nil
 }
 
 func (s *checkpointEmptyMetadataServer) GetQueryCheckpointSchedule(context.Context, *clusterpb.GetQueryCheckpointScheduleRequest) (*clusterpb.GetQueryCheckpointScheduleResponse, error) {
 	s.metadataReads.Add(1)
+
 	return &clusterpb.GetQueryCheckpointScheduleResponse{}, nil
 }

@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -154,6 +155,7 @@ func CreateLedger(ctx context.Context, client servicepb.BucketServiceClient, nam
 	// Verify it's readable
 	_, err = client.GetLedger(ctx, &servicepb.GetLedgerRequest{Ledger: name})
 	assert.Sometimes(IsTolerated(err), "should always be able to get created ledger", details.With(Details{"error": err}))
+
 	return nil
 }
 
@@ -166,14 +168,15 @@ func ListLedgers(ctx context.Context, client servicepb.BucketServiceClient) ([]s
 	var names []string
 	for {
 		ledger, err := stream.Recv()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
-		names = append(names, ledger.Name)
+		names = append(names, ledger.GetName())
 	}
+
 	return names, nil
 }
 
@@ -194,6 +197,7 @@ func GetRandomLedger(ctx context.Context, client servicepb.BucketServiceClient) 
 		for _, prefix := range restricted {
 			if strings.HasPrefix(name, prefix) {
 				isOwned = true
+
 				break
 			}
 		}

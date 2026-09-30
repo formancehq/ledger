@@ -11,8 +11,10 @@ import (
 	"log"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -23,9 +25,10 @@ func main() {
 		conn, err := internal.NewGRPCConn()
 		if err != nil {
 			log.Printf("compaction: cannot create gRPC conn: %s", err)
+
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		clusterClient := clusterpb.NewClusterServiceClient(conn)
 
@@ -49,6 +52,7 @@ func compactPrimary(ctx context.Context, clusterClient clusterpb.ClusterServiceC
 
 	if err != nil {
 		log.Printf("compaction: primary compaction failed: %s", err)
+
 		return
 	}
 
@@ -71,6 +75,7 @@ func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServic
 
 	if err != nil {
 		log.Printf("compaction: secondary compaction failed: %s", err)
+
 		return
 	}
 
@@ -93,7 +98,7 @@ func compactSecondary(ctx context.Context, clusterClient clusterpb.ClusterServic
 
 func verifyReadable(ctx context.Context, client servicepb.BucketServiceClient, ledger string, details internal.Details) {
 	// Stats should work.
-	stats, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: ledger})
+	_, err := client.GetLedgerStats(ctx, &servicepb.GetLedgerStatsRequest{Ledger: ledger})
 	if err != nil {
 		if internal.IsTransient(err) {
 			return
@@ -103,8 +108,6 @@ func verifyReadable(ctx context.Context, client servicepb.BucketServiceClient, l
 
 		return
 	}
-
-	assert.AlwaysOrUnreachable(stats.GetTransactionCount() >= 0, "stats must be valid after compaction", details)
 
 	// Read a well-known account.
 	_, err = client.GetAccount(ctx, &servicepb.GetAccountRequest{

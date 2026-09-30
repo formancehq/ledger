@@ -5,7 +5,9 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -17,9 +19,10 @@ func main() {
 	conn, err := internal.NewGRPCConn()
 	if err != nil {
 		log.Printf("error creating connection: %s", err)
+
 		return
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client := clusterpb.NewClusterServiceClient(conn)
 
@@ -38,6 +41,7 @@ func main() {
 	currentLeader := state.GetLeader()
 	if currentLeader == 0 {
 		log.Println("no leader elected, skipping transfer")
+
 		return
 	}
 
@@ -54,6 +58,7 @@ func main() {
 
 	if targetID == 0 {
 		log.Println("no non-leader voter found, skipping transfer")
+
 		return
 	}
 
@@ -91,6 +96,7 @@ func main() {
 		stateAfter, err = client.GetClusterState(ctx, &clusterpb.GetClusterStateRequest{})
 		if err != nil {
 			internal.LogCleanupError("get cluster state after leadership transfer", err)
+
 			return
 		}
 

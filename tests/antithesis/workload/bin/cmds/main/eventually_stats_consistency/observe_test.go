@@ -43,6 +43,7 @@ func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
 					if values := md.Get("x-consistency"); len(values) != 1 || values[0] != "stale" {
 						wrongConsistency.Store(true)
 					}
+
 					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 7}, nil
 				},
 				statsFn: func(ctx context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
@@ -50,6 +51,7 @@ func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
 						return &commonpb.LedgerStats{ReferenceCount: tt.marker}, nil
 					}
 					targetReads.Add(1)
+
 					return &commonpb.LedgerStats{LogCount: 2, PostingCount: tt.postings, RevertCount: tt.reverts}, nil
 				},
 			}
@@ -60,6 +62,7 @@ func TestAwaitUsageIndependentWitnessAndExactCounters(t *testing.T) {
 				if waits == 3 {
 					return context.DeadlineExceeded
 				}
+
 				return nil
 			})
 			require.Equal(t, tt.converge, result.Converged)
@@ -97,16 +100,22 @@ func TestAwaitUsageRecoversFromLagAndTransientError(t *testing.T) {
 						if transient {
 							return nil, status.Error(codes.Unavailable, "replica restarting")
 						}
+
 						return &commonpb.LedgerStats{}, nil
 					}
 					if req.GetLedger() == "witness" {
 						return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 					}
 					targetReads.Add(1)
+
 					return &commonpb.LedgerStats{LogCount: 1, PostingCount: 1}, nil
 				},
 			})
-			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error { released.Store(true); return nil })
+			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
+				released.Store(true)
+
+				return nil
+			})
 			require.True(t, result.Converged, result.Error)
 			require.Equal(t, 2, result.Attempts)
 			require.Equal(t, int64(1), targetReads.Load())
@@ -126,8 +135,10 @@ func TestAwaitUsageRejectsDisappearingWitness(t *testing.T) {
 				if markerReads.Add(1)%2 == 1 {
 					return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 				}
+
 				return &commonpb.LedgerStats{}, nil
 			}
+
 			return &commonpb.LedgerStats{LogCount: 1, PostingCount: 1}, nil
 		},
 	})
@@ -148,17 +159,23 @@ func TestAwaitUsageRetainsErrorsAndIncarnationMismatch(t *testing.T) {
 					if scenario == req.GetLedger()+" incarnation" {
 						id = 2
 					}
+
 					return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: id}, nil
 				},
 				statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 					if req.GetLedger() == "witness" {
 						return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 					}
+
 					return nil, status.Error(codes.Internal, "corrupt usage record")
 				},
 			})
 			var waited bool
-			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error { waited = true; return errors.New("must not wait") })
+			result := awaitUsage(context.Background(), client, &commonpb.LedgerInfo{Name: "witness", Id: 1}, map[string]expectedLedger{"target": {ID: 1, Counts: counts{Logs: 1, Postings: 1}}}, func(context.Context) error {
+				waited = true
+
+				return errors.New("must not wait")
+			})
 			require.False(t, result.Converged)
 			require.False(t, waited)
 			if scenario == "unexpected error" {
@@ -178,12 +195,14 @@ func TestAwaitUsageRetainsMismatchWhenLaterRPCFails(t *testing.T) {
 			if unavailable.Load() {
 				return nil, status.Error(codes.Unavailable, "replica stopped responding")
 			}
+
 			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
 		statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {
 			if req.GetLedger() == "witness" {
 				return &commonpb.LedgerStats{ReferenceCount: 1}, nil
 			}
+
 			return &commonpb.LedgerStats{LogCount: 1}, nil
 		},
 	})
@@ -191,6 +210,7 @@ func TestAwaitUsageRetainsMismatchWhenLaterRPCFails(t *testing.T) {
 		if unavailable.Swap(true) {
 			return context.DeadlineExceeded
 		}
+
 		return nil
 	})
 	require.False(t, result.Converged)
@@ -210,6 +230,7 @@ func TestAwaitUsageAllowsAFullSweepWithinConvergenceWindow(t *testing.T) {
 			if !ok || time.Until(deadline) < 30*time.Second {
 				truncatedBudget.Store(true)
 			}
+
 			return &commonpb.LedgerInfo{Name: req.GetLedger(), Id: 1}, nil
 		},
 		statsFn: func(_ context.Context, req *servicepb.GetLedgerStatsRequest) (*commonpb.LedgerStats, error) {

@@ -6,18 +6,18 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/antithesishq/antithesis-sdk-go/assert"
+	"github.com/antithesishq/antithesis-sdk-go/random"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/antithesishq/antithesis-sdk-go/random"
-
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"github.com/formancehq/ledger/v3/tests/oracle"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 // LOGS is the only target whose universe comes from the read index rather than
@@ -81,14 +81,14 @@ func genLogUintCond() *commonpb.UintCondition {
 	cond := &commonpb.UintCondition{}
 
 	if oneIn(2) {
-		min := internal.Rand().Uint64() % 32
-		cond.Min = &min
+		lower := internal.Rand().Uint64() % 32
+		cond.Min = &lower
 		cond.MinExclusive = oneIn(2)
 	}
 
 	if oneIn(2) {
-		max := 8 + internal.Rand().Uint64()%64
-		cond.Max = &max
+		upper := 8 + internal.Rand().Uint64()%64
+		cond.Max = &upper
 		cond.MaxExclusive = oneIn(2)
 	}
 
@@ -536,6 +536,7 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	maxTicket := responseFrontier()
 	if status.Code(err) == codes.NotFound {
 		c.validateLedgerNotFound(maxTicket, ledger, "ListLogs")
+
 		return
 	}
 
@@ -632,6 +633,7 @@ func (c *Checker) validateLogQuery(ctx context.Context, client servicepb.BucketS
 		if !live {
 			return false
 		}
+
 		return logOutcomeLegal(ls, ledger, filter, needed, errKind, page, afterSeq, pageSize)
 	})
 
@@ -756,22 +758,6 @@ func (c *Checker) modelLogWindow(ledger string, filter *commonpb.QueryFilter, af
 	defer c.mu.Unlock()
 
 	return logWindow(c.modelState.Ledger(ledger), ledger, filter, afterSeq, pageSize)
-}
-
-// equalUint64 compares two id sequences elementwise; a nil and an empty slice
-// are the same empty page.
-func equalUint64(a, b []uint64) bool {
-	if len(a) != len(b) {
-		return false
-	}
-
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-
-	return true
 }
 
 // recheckLogIDs re-reads the ledger's logs unfiltered after the finding, at a

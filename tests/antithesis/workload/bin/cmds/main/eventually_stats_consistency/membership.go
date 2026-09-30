@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -49,6 +50,7 @@ func activeReplicas(ctx context.Context, source *internal.PerNodeConn, candidate
 		replicas = append(replicas, &conn)
 	}
 	sort.Slice(replicas, func(i, j int) bool { return replicas[i].NodeID < replicas[j].NodeID })
+
 	return replicas, nil
 }
 
@@ -70,5 +72,6 @@ func selectSource(ctx context.Context, candidates internal.PerNodeConns) (*inter
 			break
 		}
 	}
+
 	return nil, lastErr
 }

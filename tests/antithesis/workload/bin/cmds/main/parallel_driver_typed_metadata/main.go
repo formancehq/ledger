@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
-	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
-	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
+	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
 func main() {
@@ -73,7 +76,7 @@ func main() {
 								},
 							},
 							Metadata: commonpb.MetadataFromGoMap(map[string]string{
-								metaKey: fmt.Sprintf("%d", metaValue),
+								metaKey: strconv.FormatInt(metaValue, 10),
 							}),
 						},
 					}},
@@ -85,7 +88,7 @@ func main() {
 		}
 
 		// 4. Create a prepared query filtering by int range on this key.
-		queryName := fmt.Sprintf("typed-q-%s", metaKey)
+		queryName := "typed-q-" + metaKey
 		minVal := int64(0)
 		maxVal := int64(999)
 
@@ -129,6 +132,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError(fmt.Sprintf("execute prepared query %q", queryName), err)
+
 			return
 		}
 
@@ -140,6 +144,7 @@ func main() {
 		})
 		if err != nil {
 			internal.LogCleanupError("get metadata schema status", err)
+
 			return
 		}
 

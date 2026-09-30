@@ -13,11 +13,13 @@ import (
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal/sdktest"
 )
 
 type sentinelSDKServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	code  codes.Code
 	calls atomic.Int32
 }
@@ -30,6 +32,7 @@ func (s *sentinelSDKServer) GetTransaction(_ context.Context, request *servicepb
 	if s.code != codes.OK {
 		return nil, status.Error(s.code, "sentinel read fixture")
 	}
+
 	return &servicepb.GetTransactionResponse{Transaction: &commonpb.Transaction{Id: 42}}, nil
 }
 

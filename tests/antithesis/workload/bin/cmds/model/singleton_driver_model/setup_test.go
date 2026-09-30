@@ -27,14 +27,11 @@ func TestSetupLedgersCanRemainBlockedBeforeFirstOutcome(t *testing.T) {
 	}()
 	t.Cleanup(server.Stop)
 
-	dialCtx, cancelDial := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelDial()
-	conn, err := grpc.DialContext(dialCtx, "bufconn",
+	conn, err := grpc.NewClient("passthrough:///bufconn",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return listener.Dial()
 		}),
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, conn.Close()) })
@@ -72,11 +69,13 @@ func requireSignal(t *testing.T, signal <-chan struct{}, message string) {
 
 type blockingSetupServer struct {
 	servicepb.UnimplementedBucketServiceServer
+
 	applyEntered chan struct{}
 }
 
 func (s *blockingSetupServer) Apply(ctx context.Context, _ *servicepb.ApplyRequest) (*servicepb.ApplyResponse, error) {
 	close(s.applyEntered)
 	<-ctx.Done()
+
 	return nil, ctx.Err()
 }

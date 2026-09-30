@@ -5,9 +5,11 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
+
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+
 	"github.com/formancehq/ledger/v3/tests/antithesis/workload/internal"
 )
 
@@ -41,7 +43,7 @@ func main() {
 								Amount:      commonpb.NewUint256FromUint64(fundAmount),
 								Asset:       asset,
 							}},
-							Force:         true,
+							Force: true,
 						},
 					}},
 				},

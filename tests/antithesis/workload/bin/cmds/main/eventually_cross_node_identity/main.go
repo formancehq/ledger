@@ -317,7 +317,7 @@ func compareAccounts(ctx context.Context, nodes []readyNode, ledger string, inde
 			if err != nil {
 				// NotFound (account never touched) and transient errors are
 				// not divergence — skip this node for this address.
-				if !internal.IsTransient(err) && !internal.IsLedgerNotFound(err) {
+				if !internal.IsTransient(err) && !internal.IsNotFound(err) {
 					log.Printf("composer: GetAccount(%s/%s) on %s: %s", ledger, addr, n.conn.Addr, err)
 				}
 
@@ -388,7 +388,7 @@ func compareAuditHashes(ctx context.Context, nodes []readyNode, driver servicepb
 		entry, err := n.conn.Bucket.GetAuditEntry(staleCtx, &servicepb.GetAuditEntryRequest{Sequence: seq})
 		if err != nil {
 			// NotFound on a node = applied-index skew; skip.
-			if !internal.IsTransient(err) && !internal.IsLedgerNotFound(err) {
+			if !internal.IsTransient(err) && !internal.IsNotFound(err) {
 				log.Printf("composer: GetAuditEntry(seq=%d) on %s: %s", seq, n.conn.Addr, err)
 			}
 

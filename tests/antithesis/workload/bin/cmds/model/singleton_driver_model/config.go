@@ -34,6 +34,7 @@ var typePool = func() []uint8 {
 	for i := range out {
 		out[i] = uint8(i)
 	}
+
 	return out
 }()
 
@@ -56,6 +57,7 @@ var metaKeyPool = func() []uint8 {
 	for i := range out {
 		out[i] = uint8(i)
 	}
+
 	return out
 }()
 
