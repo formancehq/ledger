@@ -320,7 +320,7 @@
       "v3": [
         "GET /v3/{ledgerName}/stats"
       ],
-      "notes": "No `accounts` count. Returns `transactionCount`, `logCount` and usage counters."
+      "notes": "No account count. Returns `transactionCount`, `logCount` and usage counters."
     },
     "HEAD /v2/{ledger}/transactions": {
       "operationId": "v2CountTransactions",
