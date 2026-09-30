@@ -28,6 +28,7 @@ type unauthBootstrapServer struct {
 
 type transientCanceledBootstrapServer struct {
 	clusterbootstrappb.UnimplementedClusterBootstrapServiceServer
+
 	calls atomic.Int32
 }
 
