@@ -191,7 +191,7 @@ func createSucceededRun(t *testing.T, ns string, backup *ledgerv1alpha1.Backup, 
 				ledgerv1alpha1.LabelBackupRunType: string(ledgerv1alpha1.BackupRunTypeFull),
 			},
 			OwnerReferences: []metav1.OwnerReference{{
-				APIVersion: "ledger.formance.com/v1alpha1",
+				APIVersion: "ledger-next.formance.com/v1alpha1",
 				Kind:       "Backup",
 				Name:       backup.Name,
 				UID:        backup.UID,
@@ -225,7 +225,7 @@ func pokeBackup(ns, name string) error {
 	if backup.Annotations == nil {
 		backup.Annotations = map[string]string{}
 	}
-	backup.Annotations["ledger.formance.com/poke"] = time.Now().Format(time.RFC3339Nano)
+	backup.Annotations["ledger-next.formance.com/poke"] = time.Now().Format(time.RFC3339Nano)
 
 	return k8sClient.Update(ctx, &backup)
 }

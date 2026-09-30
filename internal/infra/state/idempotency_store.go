@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/zeebo/blake3"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // HashIdempotencyKey returns a 128-bit hash of the idempotency key string,
@@ -116,8 +116,8 @@ func (s *IdempotencyStore) Reset() {
 // restart at different moments. Removing stale entries is exclusively the
 // job of the Raft-replicated IdempotencyEviction command, which uses a
 // deterministic cutoff embedded in the proposal.
-func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+func (s *IdempotencyStore) RestoreFromStore(reader dal.KVReader) error {
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempKeys + 1},
 	})
@@ -163,8 +163,8 @@ func (s *IdempotencyStore) RestoreFromStore(reader dal.PebbleReader) error {
 //
 // This is called on the leader OUTSIDE the FSM apply path. The returned
 // hashes are embedded in the Raft proposal so the FSM apply is write-only.
-func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffMicros uint64, maxKeys int) ([][]byte, []byte, error) {
-	iter, err := reader.NewIter(&pebble.IterOptions{
+func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.KVReader, cutoffMicros uint64, maxKeys int) ([][]byte, []byte, error) {
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx},
 		UpperBound: []byte{dal.ZoneIdempotency, dal.SubIdempTimeIdx + 1},
 	})
@@ -220,7 +220,7 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 // the timestamp level: bounding by timestamp + 1 alone is unsafe because if
 // the scan stops mid-timestamp, the unscanned siblings sharing that
 // expires_at would have their time-index entry deleted but their main key
-// (not in pebbleKeyHashes) would survive — orphaning them forever. The
+// (not in scannedKeyHashes) would survive — orphaning them forever. The
 // DeleteRange upper bound is lex-next(lastScannedTimeIndexKey) which is
 // lex-strictly-less than any unscanned sibling.
 //
@@ -237,33 +237,33 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.PebbleReader, cutoffM
 // This dedup matters because the leader-side scheduler bounds proposeTechnical
 // with a context timeout: if Raft accepts a proposal but the FSM apply lags
 // past that timeout, the scheduler logs the error and on the next tick
-// re-scans the same expired Pebble entries (the first proposal has not yet
+// re-scans the same expired storage entries (the first proposal has not yet
 // applied), then submits a second proposal with the same hashes. Both apply
 // in series; the map gate keeps the second apply a no-op.
-func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
+func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, scannedKeyHashes [][]byte) (int, error) {
 	evicted := 0
 
 	// Walk the pre-scanned hashes and evict each from the in-memory map
-	// alongside its Pebble main key. Two important properties:
+	// alongside its primary-store main key. Two important properties:
 	//
-	//   * We iterate over `pebbleKeyHashes`, NOT over `s.entries`. When the
+	//   * We iterate over `scannedKeyHashes`, NOT over `s.entries`. When the
 	//     leader scan caps at maxEvictionBatchSize, the proposal only
 	//     covers the K oldest expired hashes; the remaining expired
-	//     entries must stay in the map (and in Pebble) so the next tick's
+	//     entries must stay in the map (and in storage) so the next tick's
 	//     scan finds them. Evicting them from the map here, while their
 	//     Pebble main keys still exist, would orphan them: the next apply
 	//     would see them absent from the map and skip the delete
 	//     (see the dedup rule below).
 	//
 	//   * For each scanned hash, the delete is gated on "still present in
-	//     the map". Cache and Pebble stay in sync (entries enter via Put,
+	//     the map". Cache and the primary store stay in sync (entries enter via Put,
 	//     exit here, and RestoreFromStore rebuilds the map from Pebble), so
 	//     a hash absent from the map at apply time was already evicted by a
 	//     previous apply — re-deleting is redundant and would over-count.
 	//     This keeps a scheduler retry that re-submits the same hashes
 	//     (after Raft accepted the first proposal but its apply had not yet
 	//     landed) a clean no-op.
-	for _, keyHash := range pebbleKeyHashes {
+	for _, keyHash := range scannedKeyHashes {
 		u128 := attributes.U128FromBytes(keyHash)
 
 		value, ok := s.entries[u128]
@@ -311,9 +311,9 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	// that key with a 0x00 byte appended — strictly greater than the
 	// key itself but strictly less than any longer key with the same
 	// prefix; this guarantees we never touch a time-index entry whose
-	// main key is not in pebbleKeyHashes. DeleteRange is idempotent
+	// main key is not in scannedKeyHashes. DeleteRange is idempotent
 	// over an already-empty range, so this step needs no per-key dedup.
-	if len(pebbleKeyHashes) > 0 && len(lastScannedTimeIndexKey) > 0 {
+	if len(scannedKeyHashes) > 0 && len(lastScannedTimeIndexKey) > 0 {
 		rangeEnd := make([]byte, len(lastScannedTimeIndexKey)+1)
 		copy(rangeEnd, lastScannedTimeIndexKey)
 		// rangeEnd[len(lastScannedTimeIndexKey)] is already 0x00 from make.
@@ -376,17 +376,17 @@ func SaveIdempotencyKey(batch *dal.WriteSession, key string, value *commonpb.Ide
 
 // LoadIdempotencyKey reads an idempotency key from Pebble under prefix 0x03.
 // Returns nil if the key does not exist.
-func LoadIdempotencyKey(reader dal.PebbleReader, key string) (*commonpb.IdempotencyKeyValue, error) {
+func LoadIdempotencyKey(reader dal.KVReader, key string) (*commonpb.IdempotencyKeyValue, error) {
 	keyHash := HashIdempotencyKey(key)
 
-	pebbleKey := make([]byte, 2+16)
-	pebbleKey[0] = dal.ZoneIdempotency
-	pebbleKey[1] = dal.SubIdempKeys
-	copy(pebbleKey[2:], keyHash[:])
+	storageKey := make([]byte, 2+16)
+	storageKey[0] = dal.ZoneIdempotency
+	storageKey[1] = dal.SubIdempKeys
+	copy(storageKey[2:], keyHash[:])
 
-	val, closer, err := reader.Get(pebbleKey)
+	val, closer, err := reader.Get(storageKey)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil
 		}
 

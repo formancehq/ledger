@@ -212,7 +212,7 @@ func validateHealthThresholds(block, resume float64) error {
 	return nil
 }
 
-// persistConfig writes the given configuration to Pebble.
+// persistConfig writes the given configuration to RocksDB.
 func persistConfig(store *dal.Store, cfg *commonpb.PersistedConfig) error {
 	batch := store.OpenWriteSession()
 

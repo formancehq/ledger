@@ -9,13 +9,12 @@ import (
 	"slices"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -677,7 +676,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 	snap := b.readStore.NewSnapshot()
 	defer func() { _ = snap.Close() }()
 
-	fsmHandle, err := b.pebbleStore.NewReadHandle()
+	fsmHandle, err := b.primaryStore.NewReadHandle()
 	if err != nil {
 		return false, fmt.Errorf("opening FSM snapshot for schema rewrite: %w", err)
 	}
@@ -712,7 +711,7 @@ func (b *Builder) processSchemaRewrite(task *schemaRewriteTask, maxEntries int, 
 		lowerBound = rmapPrefix
 	}
 
-	iter, err := snap.NewIter(&pebble.IterOptions{
+	iter, err := snap.NewIter(&kv.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upper,
 	})
@@ -1338,7 +1337,7 @@ func (b *Builder) completeBackfill(task *backfillTask) error {
 // overhead during catch-up. Processing continues until the deadline is reached
 // or EOF. Existence writes are skipped.
 func (b *Builder) processBackfill(ctx context.Context, stop <-chan struct{}, task *backfillTask, deadline time.Time) error {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for backfill: %w", err)
 	}
@@ -1646,7 +1645,7 @@ func (b *Builder) purgeBackfillTaskGeneration(task *backfillTask) error {
 // is a pure function of stored state — independent of what the rmap currently
 // holds (which may be a lossy projection from a prior retype).
 func (b *Builder) fetchStoredMetadataValue(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	ledgerName string,
 	targetType commonpb.TargetType,
 	key string,

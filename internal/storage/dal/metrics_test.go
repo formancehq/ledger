@@ -1,95 +1,37 @@
 package dal
 
 import (
-	"errors"
+	"context"
 	"testing"
-	"time"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-func TestStatusFromErr(t *testing.T) {
+func TestStore_RegisterMetrics(t *testing.T) {
 	t.Parallel()
 
-	t.Run("nil error returns ok", func(t *testing.T) {
-		t.Parallel()
-		require.Equal(t, "ok", statusFromErr(nil))
-	})
-
-	t.Run("non-nil error returns error", func(t *testing.T) {
-		t.Parallel()
-		require.Equal(t, "error", statusFromErr(errors.New("something")))
-	})
-}
-
-func TestNewMetricsListener(t *testing.T) {
-	t.Parallel()
-
-	meter := noop.NewMeterProvider().Meter("test")
-	listener := NewMetricsListener(meter, NewWriteStallState())
-	require.NotNil(t, listener)
-	require.NotNil(t, listener.FlushEnd)
-	require.NotNil(t, listener.CompactionEnd)
-	require.NotNil(t, listener.WriteStallBegin)
-	require.NotNil(t, listener.WriteStallEnd)
-}
-
-func TestMetricsListener_Callbacks(t *testing.T) {
-	t.Parallel()
-
-	meter := noop.NewMeterProvider().Meter("test")
-	listener := NewMetricsListener(meter, NewWriteStallState())
-
-	// Exercise FlushEnd callback (should not panic)
-	listener.FlushEnd(pebble.FlushInfo{
-		Reason:   "test",
-		Duration: 42 * time.Millisecond,
-	})
-
-	// Exercise FlushEnd with error
-	listener.FlushEnd(pebble.FlushInfo{
-		Reason: "test-err",
-		Err:    errors.New("flush failed"),
-	})
-
-	// Exercise CompactionEnd callback
-	listener.CompactionEnd(pebble.CompactionInfo{
-		Reason:   "test",
-		Duration: 100 * time.Millisecond,
-	})
-
-	// Exercise CompactionEnd with error
-	listener.CompactionEnd(pebble.CompactionInfo{
-		Reason: "test-err",
-		Err:    errors.New("compact failed"),
-	})
-
-	// Exercise WriteStallBegin/End cycle
-	listener.WriteStallBegin(pebble.WriteStallBeginInfo{
-		Reason: "memtable",
-	})
-	listener.WriteStallEnd()
-
-	// Exercise WriteStallEnd without a preceding Begin
-	listener.WriteStallEnd()
-
-	// Exercise nested stall begin (second begin while first is still active)
-	listener.WriteStallBegin(pebble.WriteStallBeginInfo{
-		Reason: "first-stall",
-	})
-	listener.WriteStallBegin(pebble.WriteStallBeginInfo{
-		Reason: "second-stall",
-	})
-	listener.WriteStallEnd()
+	s := newTestStore(t)
+	reader := sdkmetric.NewManualReader()
+	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.Background())) })
+	meter := provider.Meter("test")
+	registration, err := s.RegisterMetrics(meter)
+	require.NoError(t, err)
+	require.NotNil(t, registration)
+	var collected metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &collected))
+	require.NotEmpty(t, collected.ScopeMetrics)
+	require.NotEmpty(t, collected.ScopeMetrics[0].Metrics)
+	require.NoError(t, registration.Unregister())
 }
 
 func TestStore_GetMetrics(t *testing.T) {
 	t.Parallel()
 
 	s := newTestStore(t)
-
 	metrics := s.GetMetrics()
 	require.NotNil(t, metrics)
+	require.NotNil(t, metrics.BlockCacheUsageBytes)
 }

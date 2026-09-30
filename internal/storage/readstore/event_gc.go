@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 type eventGCIterator interface {
@@ -34,7 +34,7 @@ type eventGCIterator interface {
 //     the group has no event in (watermark, P];
 //   - a latest-below-watermark DEL decides the same verdict as no event at
 //     all ("not matching"), so the whole dead group is reclaimed.
-func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budget int) (pruned int, next []byte, err error) {
+func GCEventZone(db *kv.DB, zone byte, resume []byte, watermark uint64, budget int) (pruned int, next []byte, err error) {
 	zonePrefix := []byte{zone}
 
 	lower := zonePrefix
@@ -42,7 +42,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 		lower = resume
 	}
 
-	iter, err := db.NewIter(&pebble.IterOptions{
+	iter, err := db.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: IncrementBytes(zonePrefix),
 	})
@@ -54,7 +54,7 @@ func GCEventZone(db *pebble.DB, zone byte, resume []byte, watermark uint64, budg
 	return gcEventZoneWithIterator(db, iter, watermark, budget)
 }
 
-func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint64, budget int) (pruned int, next []byte, err error) {
+func gcEventZoneWithIterator(db *kv.DB, iter eventGCIterator, watermark uint64, budget int) (pruned int, next []byte, err error) {
 	batch := db.NewBatch()
 	defer func() { _ = batch.Close() }()
 
@@ -193,7 +193,7 @@ func gcEventZoneWithIterator(db *pebble.DB, iter eventGCIterator, watermark uint
 	}
 
 	if pruned > 0 {
-		if err := batch.Commit(pebble.NoSync); err != nil {
+		if err := batch.Commit(kv.NoSync); err != nil {
 			return 0, nil, err
 		}
 	}

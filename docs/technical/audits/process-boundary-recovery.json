@@ -26,7 +26,7 @@
     "internal/storage/dal/batch*.go",
     "internal/storage/dal/store*.go",
     "internal/storage/dal/sync_wal_test.go",
-    "internal/storage/pebblecfg/**",
+    "internal/storage/rocksdbcfg/**",
     "internal/storage/readstore/store*.go",
     "internal/storage/readstore/read_lease*.go",
     "internal/storage/usagestore/store*.go",

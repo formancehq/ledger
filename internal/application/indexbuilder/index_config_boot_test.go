@@ -83,8 +83,8 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	// Reopen both durable stores before starting the request. No in-memory
 	// registry or request survives the restart. Path returns the same parent
 	// directory that readstore.New expects, containing the readindex database.
-	mainDir, readDir := b.pebbleStore.DataDir(), b.readStore.Path()
-	require.NoError(t, b.pebbleStore.Close())
+	mainDir, readDir := b.primaryStore.DataDir(), b.readStore.Path()
+	require.NoError(t, b.primaryStore.Close())
 	mainClosed = true
 	require.NoError(t, b.readStore.Close())
 	readClosed = true
@@ -96,7 +96,7 @@ func TestBootInitPreservesAddressQueryPinnedBeforeDrop(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, readStore.Close()) })
 	b = NewBuilder(mainStore, readStore, attributes.New(), b.logger, noop.NewMeterProvider().Meter("test"), DefaultBatchSize)
 	b.notifications = signal.NewNotifications()
-	c := ctrl.NewDefaultController(nil, b.pebbleStore, b.logger, b.attrs, b.readStore, nil, noop.NewMeterProvider().Meter("test"))
+	c := ctrl.NewDefaultController(nil, b.primaryStore, b.logger, b.attrs, b.readStore, nil, noop.NewMeterProvider().Meter("test"))
 	filter := &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_Address{Address: &commonpb.AddressMatch{Match: &commonpb.AddressMatch_HardcodedPrefix{HardcodedPrefix: "t-3:"}}}}
 	observed := &bootQueryWaitContext{Context: query.WithReadBarrierHorizon(ctx, 3), waiting: make(chan struct{})}
 	type result struct {
@@ -214,7 +214,7 @@ func (c *bootQueryWaitContext) Done() <-chan struct{} {
 // including the AppliedProposal coverage required by the real posting fold.
 func commitBootQueryState(t *testing.T, b *Builder, horizon uint64, logs []*commonpb.Log, mutate func(*dal.WriteSession)) {
 	t.Helper()
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	if mutate != nil {
 		mutate(batch)
 	}

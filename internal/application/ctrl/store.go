@@ -150,7 +150,7 @@ func buildAccountVolumes(volEntries []attributes.ComputedEntry[*raftcmdpb.Volume
 // When diagLogger is non-nil, each Pebble entry is logged with its raft index
 // and attribute type to help diagnose snapshot divergence issues.
 func scanAccount(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	attrs *attributes.Attributes,
 	ledgerName string,
 	address string,

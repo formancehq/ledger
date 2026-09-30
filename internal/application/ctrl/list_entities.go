@@ -21,18 +21,18 @@ import (
 // iterates — see the comment on listEntities for why the resolver
 // MUST share the iteration snapshot.
 type entityListParams[T interface{ ~string | ~uint64 }] struct {
-	target       commonpb.QueryTarget
-	ledgerName   string
-	pageSize     uint32
-	after        T
-	filter       *commonpb.QueryFilter
-	reverse      bool
-	schema       map[string]*commonpb.MetadataFieldSchema
-	info         *commonpb.LedgerInfo
-	profile      *query.QueryProfile
-	pebbleReader *dal.ReadHandle
+	target     commonpb.QueryTarget
+	ledgerName string
+	pageSize   uint32
+	after      T
+	filter     *commonpb.QueryFilter
+	reverse    bool
+	schema     map[string]*commonpb.MetadataFieldSchema
+	info       *commonpb.LedgerInfo
+	profile    *query.QueryProfile
+	mainReader *dal.ReadHandle
 	// releaseHold drops the reclaim-floor reservation OpenQueryHandle took
-	// before pebbleReader was opened. Alignment hands it back the moment the
+	// before mainReader was opened. Alignment hands it back the moment the
 	// read's own pin exists; an unaligned read never needed it.
 	releaseHold   func()
 	indexRegistry indexes.Lookup
@@ -45,7 +45,7 @@ type entityListParams[T interface{ ~string | ~uint64 }] struct {
 	// at which metadata / exists index leaves resolve their event groups.
 	pin uint64
 	// horizonKeep is filled in by listEntities: it trims read-index iteration
-	// back to pebbleReader's horizon, since the aligned index snapshot may
+	// back to mainReader's horizon, since the aligned index snapshot may
 	// have folded entities committed after the main handle (see
 	// query.AlignedIndexSnapshot). nil admits everything.
 	horizonKeep func([]byte) (bool, error)
@@ -61,7 +61,7 @@ type entityListResult struct {
 // It returns the raw entity ID bytes along with the last indexed raft index for
 // cross-store consistency.
 //
-// The function takes a Pebble snapshot for the iteration and builds
+// The function takes a read-index snapshot for the iteration and builds
 // `params.indexVersionFor` from THAT snapshot. Callers must not set
 // the field themselves — a resolver constructed against the live store
 // would race with a concurrent atomic version switch and hand the
@@ -80,7 +80,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 
 	// Alignment is owed only to a read that actually consults the read index
 	// (query.AlignmentOwed); here that also covers newReverseIterator, which
-	// iterates params.pebbleReader like compileUniverse does.
+	// iterates params.mainReader like compileUniverse does.
 	if !query.AlignmentOwed(params.filter, params.target) {
 		params.releaseHold()
 
@@ -89,16 +89,16 @@ func listEntities[T interface{ ~string | ~uint64 }](
 
 		// No index leaves, so no version to resolve and no pin to resolve it
 		// at; and no index-ahead membership to trim, since every row comes
-		// from params.pebbleReader itself.
+		// from params.mainReader itself.
 		params.indexVersionFor = readStore.SnapshotVersionResolver(snap, params.ledgerName)
 
 		return listWithoutIndex(snap, params)
 	}
 
-	// The snapshot's fold cursor covers everything params.pebbleReader sees,
+	// The snapshot's fold cursor covers everything params.mainReader sees,
 	// so index leaves cannot lag the main-store leaves and enrichment
 	// (EN-1748); withinHorizon trims the other direction.
-	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.pebbleReader, params.ledgerName, params.releaseHold)
+	snap, mainSeq, releaseLease, err := query.AlignedIndexSnapshot(ctx, readStore, params.mainReader, params.ledgerName, params.releaseHold)
 	if err != nil {
 		return result, err
 	}
@@ -107,7 +107,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 	defer func() { _ = snap.Close() }()
 
 	params.indexVersionFor = readStore.PinnedVersionResolver(snap, params.ledgerName, mainSeq)
-	params.horizonKeep = query.MainHorizonKeep(params.target, params.pebbleReader, snap, params.ledgerName, mainSeq)
+	params.horizonKeep = query.MainHorizonKeep(params.target, params.mainReader, snap, params.ledgerName, mainSeq)
 	params.pin = mainSeq
 
 	if params.reverse {
@@ -127,7 +127,7 @@ func listEntities[T interface{ ~string | ~uint64 }](
 // TRANSACTIONS page whose complete filter tree reads the main store. Split out
 // so the aligned path above keeps one exit and this one cannot accidentally
 // acquire a lease or a pin.
-func listWithoutIndex[T interface{ ~string | ~uint64 }](snap dal.PebbleReader, params entityListParams[T]) (entityListResult, error) {
+func listWithoutIndex[T interface{ ~string | ~uint64 }](snap dal.KVReader, params entityListParams[T]) (entityListResult, error) {
 	var result entityListResult
 
 	var err error
@@ -144,14 +144,14 @@ func listWithoutIndex[T interface{ ~string | ~uint64 }](snap dal.PebbleReader, p
 }
 
 // listAscending returns entities in natural ascending order using the compiled iterator.
-func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
+func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.KVReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
 	compiled, err := query.Compile(
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
-		params.pebbleReader, params.pin,
+		params.mainReader, params.pin,
 	)
 	if err != nil {
 		return domain.WrapCompileError(err)
@@ -180,9 +180,9 @@ func listAscending[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReade
 	return nil
 }
 
-// listDescUnfiltered uses reverse iteration on the Pebble source of truth
+// listDescUnfiltered uses reverse iteration on the main-store source of truth
 // (accounts, transactions, logs).
-func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
+func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.KVReader, params entityListParams[T], out *[][]byte) error {
 	var before []byte
 
 	var zero T
@@ -220,27 +220,27 @@ func listDescUnfiltered[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 // ReverseIterator carries Close, so there is no per-call-site closer shim and
 // no branch that closes a raw leaf out from under the wrapper it handed back
 // (EN-1966).
-func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T]) (iter readstore.ReverseIterator, label, kind, bucket string, err error) {
+func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.KVReader, params entityListParams[T]) (iter readstore.ReverseIterator, label, kind, bucket string, err error) {
 	switch params.target {
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		it, itErr := readstore.NewPebbleReverseTxIterator(params.pebbleReader, params.ledgerName)
+		it, itErr := readstore.NewReverseTxIterator(params.mainReader, params.ledgerName)
 		if itErr != nil {
 			return nil, "", "", "", fmt.Errorf("creating reverse tx iterator: %w", itErr)
 		}
 
 		return it,
-			fmt.Sprintf("PebbleReverseTxIterator(%s)", params.ledgerName),
-			"PebbleReverseTx", "pebble:txupdate", nil
+			fmt.Sprintf("ReverseTxIterator(%s)", params.ledgerName),
+			"MainStoreReverseTx", "main:txupdate", nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		it, itErr := readstore.NewPebbleReverseAccountIterator(params.pebbleReader, params.ledgerName)
+		it, itErr := readstore.NewReverseAccountIterator(params.mainReader, params.ledgerName)
 		if itErr != nil {
 			return nil, "", "", "", fmt.Errorf("creating reverse account iterator: %w", itErr)
 		}
 
 		return it,
-			fmt.Sprintf("PebbleReverseAccountIterator(%s)", params.ledgerName),
-			"PebbleReverseAccount", "pebble:attributes", nil
+			fmt.Sprintf("ReverseAccountIterator(%s)", params.ledgerName),
+			"MainStoreReverseAccount", "main:attributes", nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		kb := dal.NewKeyBuilder()
@@ -261,7 +261,7 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 
 		return rev,
 			fmt.Sprintf("ReverseLedgerLogIterator(%s)", params.ledgerName),
-			"ReverseLedgerLog", "pebble:llog", nil
+			"ReverseLedgerLog", "index:llog", nil
 
 	default:
 		return nil, "", "", "", fmt.Errorf("unsupported target for reverse: %v", params.target)
@@ -282,14 +282,14 @@ func newReverseIterator[T interface{ ~string | ~uint64 }](indexReader dal.Pebble
 // prefix of ids >= after, which is the same set PaginateReverse skips by
 // seeking to the first entity <= before and stepping over an exact match, so
 // the wire cursor keeps its meaning.
-func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.PebbleReader, params entityListParams[T], out *[][]byte) error {
+func listDescFiltered[T interface{ ~string | ~uint64 }](indexReader dal.KVReader, params entityListParams[T], out *[][]byte) error {
 	kb := dal.NewKeyBuilder()
 
 	compiled, err := query.CompileReverse(
 		indexReader, kb, params.filter,
 		params.target,
 		params.ledgerName, nil, params.schema, params.info, params.indexRegistry, params.indexVersionFor, params.profile,
-		params.pebbleReader, params.pin,
+		params.mainReader, params.pin,
 	)
 	if err != nil {
 		return domain.WrapCompileError(err)

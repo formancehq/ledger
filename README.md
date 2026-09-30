@@ -2,13 +2,16 @@
 
 Distributed ledger system using the Raft consensus protocol to ensure data consistency across a cluster of nodes. The system uses a **single Raft group** to manage all ledgers and their transactions, providing strong consistency and simplified operations.
 
+Ledger v3 uses RocksDB for new data directories. The pre-release Pebble format
+has no migration path.
+
 ## Key Features
 
 | Feature                      | Description                                                     |
 | ---------------------------- | --------------------------------------------------------------- |
 | **Distributed Consensus**    | Uses etcd/raft for strong consistency across cluster nodes      |
 | **Single Raft Architecture** | All ledgers managed by one Raft group for atomic operations     |
-| **Pebble Storage**           | High-performance LSM-tree storage engine (CockroachDB), pure Go |
+| **RocksDB Storage**          | LSM-tree storage engine for primary data and projections        |
 | **Numscript Support**        | Full support for Numscript transaction scripting                |
 | **Idempotency**              | Built-in idempotency key support for safe retries               |
 | **Bulk Operations**          | Process multiple transactions in a single request               |
@@ -37,7 +40,7 @@ Distributed ledger system using the Raft consensus protocol to ensure data consi
 ├───────────────────┤  ├───────────────────┤  ├───────────────────┤
 │ FSM (All Ledgers) │  │ FSM (All Ledgers) │  │ FSM (All Ledgers) │
 ├───────────────────┤  ├───────────────────┤  ├───────────────────┤
-│  Store (Pebble)   │  │  Store (Pebble)   │  │  Store (Pebble)   │
+│  Store (RocksDB)  │  │  Store (RocksDB)  │  │  Store (RocksDB)  │
 └───────────────────┘  └───────────────────┘  └───────────────────┘
 ```
 

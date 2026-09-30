@@ -1,20 +1,20 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "ledger-operator.fullname" . }}
+  name: {{ include "ledger-next-operator.fullname" . }}
   labels:
-    {{- include "ledger-operator.labels" . | nindent 4 }}
+    {{- include "ledger-next-operator.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      {{- include "ledger-operator.selectorLabels" . | nindent 6 }}
+      {{- include "ledger-next-operator.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "ledger-operator.selectorLabels" . | nindent 8 }}
+        {{- include "ledger-next-operator.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "ledger-operator.serviceAccountName" . }}
+      serviceAccountName: {{ include "ledger-next-operator.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

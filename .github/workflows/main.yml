@@ -1,5 +1,11 @@
 name: Default
 on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number used for SHA-pinned candidate image tags
+        required: true
+        type: number
   merge_group:
   push:
     branches:
@@ -201,8 +207,21 @@ jobs:
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Run in-memory model checker (3-node cluster, rolling restarts)
+        env:
+          KEEP_WORKDIR: "1"
         run: >
           nix develop --command just test-model-cluster 180
+      - name: Upload model failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: model-failure-diagnostics
+          path: |
+            ${{ runner.temp }}/nix-shell.*/model-test.*/driver.log
+            ${{ runner.temp }}/nix-shell.*/model-test.*/server-*.log
+            ${{ runner.temp }}/nix-shell.*/model-test.*/assertions.json
+          retention-days: 3
+          if-no-files-found: warn
 
   Coverage:
     if: always()
@@ -270,13 +289,15 @@ jobs:
           dissociate: true
       - name: Setup Env
         uses: ./.github/actions/default
-      - run: >
-          nix develop --command go build ./...
-      - name: Cross-compile ledgerctl for Windows
-        run: >
-          nix develop --command bash -c "mkdir -p build &&
-          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o build/ledgerctl-windows-amd64.exe ./cmd/ledgerctl &&
-          CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -o build/ledgerctl-windows-arm64.exe ./cmd/ledgerctl"
+      - name: Build all packages
+        run: nix develop --command just build-packages
+      - name: Build Linux server
+        run: nix develop --command just build
+      - name: Build Linux CLI
+        run: nix develop --command just build-client
+      # Windows cross-builds require a Windows C/C++ toolchain and RocksDB 11.1+
+      # headers/libraries for each target architecture; CGO_ENABLED=0 cannot
+      # compile grocksdb. Restore this target only with those prerequisites.
       - name: Build operator
         run: >
           nix develop --command bash -c "cd misc/operator && go build ./..."
@@ -362,8 +383,9 @@ jobs:
     # reviewer can deploy the PR build for smoke tests before merge.
     # The label is opt-in (apply manually on the PR) — every push to a
     # labeled PR republishes the image under a SHA-pinned tag, so no two
-    # PRs ever fight for the same tag.
-    if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-images')
+    # PRs ever fight for the same tag. Manual qualification uses the selected
+    # branch SHA and the same mandatory test gates, even while the PR base moves.
+    if: (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'build-images')) || github.event_name == 'workflow_dispatch'
     needs:
       [
         Dirty,
@@ -401,7 +423,7 @@ jobs:
           # Default checkout on `pull_request` produces a synthetic merge
           # commit. Pin to the PR HEAD so the image tag matches the
           # commit the contributor actually pushed.
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Setup Env
         uses: ./.github/actions/default
       - name: Set up Docker Buildx
@@ -415,8 +437,8 @@ jobs:
       - name: Compute image tag
         id: tag
         run: |
-          short=$(echo "${{ github.event.pull_request.head.sha }}" | cut -c1-7)
-          tag="pr-${{ github.event.pull_request.number }}-${short}"
+          short=$(echo "${{ github.event.pull_request.head.sha || github.sha }}" | cut -c1-7)
+          tag="pr-${{ github.event.pull_request.number || inputs.pr_number }}-${short}"
           image="${IMAGE_REPOSITORY}:${tag}"
           operator_image="${OPERATOR_IMAGE_REPOSITORY}:${tag}"
           echo "tag=${tag}"     >> "$GITHUB_OUTPUT"

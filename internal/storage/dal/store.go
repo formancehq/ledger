@@ -11,12 +11,11 @@ import (
 	"runtime"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/vfs"
-	"github.com/cockroachdb/pebble/v2/wal"
+	"github.com/linxGnu/grocksdb"
 	"go.opentelemetry.io/otel/metric"
 	"google.golang.org/protobuf/proto"
 
@@ -24,16 +23,19 @@ import (
 	"github.com/formancehq/invariants"
 
 	"github.com/formancehq/ledger/v3/internal/pkg/cursor"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
-// Pebble database has been closed. This prevents panics during shutdown races.
+// RocksDB database has been closed. This prevents panics during shutdown races.
 var ErrStoreClosed = errors.New("store closed")
+
+var ErrNoCompleteCheckpoint = errors.New("no complete checkpoint")
 
 const (
 	liveDir = "live"
 	// liveStagingDir is where RestoreCheckpoint builds the new database
-	// before publishing it. Hard-link, pebble.Open, persisted-config
+	// before publishing it. Hard-link, kv.Open, persisted-config
 	// rewrite, flush, and re-checkpoint all happen inside `live.staging/`.
 	// Only once every post-open step succeeds do we `rename(live.staging,
 	// live)` — that rename is the single atomic commit point of the
@@ -58,8 +60,9 @@ const (
 	incomingCheckpointDir = "incoming-checkpoint"
 )
 
-// ScanLatestCheckpointID scans the checkpoints directory and returns the highest
-// numeric checkpoint ID found and whether any checkpoint exists.
+// ScanLatestCheckpointID returns the highest fully published checkpoint. A
+// numeric directory without a readiness marker may be left by a crash while
+// RocksDB is still building it and must never be used to recover live/.
 func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err error) {
 	dir := filepath.Join(dataDir, checkpointsDir)
 
@@ -72,6 +75,7 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 		return 0, false, fmt.Errorf("reading checkpoints directory: %w", err)
 	}
 
+	var incomplete bool
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -84,14 +88,63 @@ func ScanLatestCheckpointID(dataDir string) (latestID uint64, found bool, err er
 			// editor scratch files) instead of failing boot.
 			continue
 		}
+		if !CheckpointDirReady(filepath.Join(dir, entry.Name())) {
+			incomplete = true
+
+			continue
+		}
 
 		if !found || id > latestID {
 			latestID = id
 			found = true
 		}
 	}
+	if !found && incomplete {
+		return 0, false, fmt.Errorf("%w in %s", ErrNoCompleteCheckpoint, dir)
+	}
 
 	return latestID, found, nil
+}
+
+// reconcileCheckpointReplacements repairs an interrupted replacement of a
+// checkpoint during RestoreCheckpoint. The old checkpoint remains under
+// .previous until the new directory is ready and published.
+func reconcileCheckpointReplacements(dataDir string) error {
+	parent := filepath.Join(dataDir, checkpointsDir)
+	entries, err := os.ReadDir(parent)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading checkpoints for replacement recovery: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if !entry.IsDir() || !strings.HasSuffix(name, ".previous") {
+			continue
+		}
+		base := strings.TrimSuffix(name, ".previous")
+		if _, err := strconv.ParseUint(base, 10, 64); err != nil {
+			continue
+		}
+		oldPath := filepath.Join(parent, name)
+		publishedPath := filepath.Join(parent, base)
+		if !CheckpointDirReady(publishedPath) {
+			if err := os.RemoveAll(publishedPath); err != nil {
+				return fmt.Errorf("removing incomplete replacement checkpoint: %w", err)
+			}
+			if err := os.Rename(oldPath, publishedPath); err != nil {
+				return fmt.Errorf("recovering previous checkpoint: %w", err)
+			}
+		} else if err := os.RemoveAll(oldPath); err != nil {
+			return fmt.Errorf("removing previous checkpoint after publish: %w", err)
+		}
+		if err := FsyncDir(parent); err != nil {
+			return fmt.Errorf("syncing recovered checkpoint directory: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // ValidateFreshRestoreTarget reports whether dataDir is safe to restore into,
@@ -117,16 +170,26 @@ func ValidateFreshRestoreTarget(dataDir string) error {
 		}
 	}
 
-	latestID, hasCheckpoint, err := ScanLatestCheckpointID(dataDir)
-	if err != nil {
-		return fmt.Errorf("scanning data directory: %w", err)
-	}
-
-	if !hasCheckpoint {
+	entries, err := os.ReadDir(filepath.Join(dataDir, checkpointsDir))
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-
-	if latestID != 0 {
+	if err != nil {
+		return fmt.Errorf("reading checkpoints directory: %w", err)
+	}
+	var numeric []uint64
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if id, parseErr := strconv.ParseUint(entry.Name(), 10, 64); parseErr == nil {
+			numeric = append(numeric, id)
+		}
+	}
+	if len(numeric) == 0 {
+		return nil
+	}
+	if len(numeric) != 1 || numeric[0] != 0 {
 		return fmt.Errorf("restore requires a fresh data directory: checkpoints already exist in %s", dataDir)
 	}
 
@@ -137,35 +200,34 @@ func ValidateFreshRestoreTarget(dataDir string) error {
 	return nil
 }
 
-// Store is a Pebble implementation of dal.Store
+// Store is the RocksDB-backed main storage implementation.
 // It stores balances and account metadata.
 type Store struct {
 	dbMu              sync.RWMutex // protects DB lifecycle (RestoreCheckpoint, Close)
 	snapshotMu        sync.Mutex   // serializes checkpoint creation (currentCheckPoint counter)
-	db                *pebble.DB
-	opts              *pebble.Options
+	db                *kv.DB
+	opts              kv.Options
 	logger            logging.Logger
 	dataDir           string
 	currentCheckPoint uint64
 	oldestCheckpoint  uint64
 	maxCheckpoints    int
 	stallState        *WriteStallState
-	iopsCounters      *IOPSCounters
 
 	queryCheckpointMu       sync.Mutex
 	queryCheckpointReaders  map[uint64]uint64
 	deletedQueryCheckpoints map[uint64]struct{}
 }
 
-// getDB returns the current pebble.DB.
+// getDB returns the current kv.DB.
 // Callers that create iterators (NewIter) must hold
 // dbMu.RLock to prevent RestoreCheckpoint/Close from closing the DB
 // between the read and the iterator creation.
-func (s *Store) getDB() *pebble.DB {
+func (s *Store) getDB() *kv.DB {
 	return s.db
 }
 
-// WriteStallWaitCh returns a channel that blocks while Pebble is in a write stall.
+// WriteStallWaitCh returns a channel that blocks while RocksDB is in a write stall.
 // When not stalled, the channel is already closed (non-blocking).
 // Safe to call on stores opened read-only (returns a pre-closed channel).
 func (s *Store) WriteStallWaitCh() <-chan struct{} {
@@ -179,7 +241,7 @@ func (s *Store) WriteStallWaitCh() <-chan struct{} {
 	return s.stallState.WaitCh()
 }
 
-// IsWriteStalled returns true if Pebble is currently in a write stall.
+// IsWriteStalled returns true if RocksDB is currently in a write stall.
 // Safe to call on stores opened read-only (always returns false).
 func (s *Store) IsWriteStalled() bool {
 	if s.stallState == nil {
@@ -189,7 +251,7 @@ func (s *Store) IsWriteStalled() bool {
 	return s.stallState.IsStalled()
 }
 
-// Key prefixes for Pebble storage. Every key starts with a 2-byte prefix:
+// Key prefixes for main storage. Every key starts with a 2-byte prefix:
 // [zone_byte][sub_prefix_byte][...payload...].
 //
 // Zone bytes (first byte of every key):
@@ -204,7 +266,7 @@ func (s *Store) IsWriteStalled() bool {
 //	0x08  ClusterPersistent  — durable node/cluster-local state, discarded on cross-cluster restore.
 //	0x09..0xFF                — reserved for future zones.
 
-// Zone bytes — first byte of every Pebble key.
+// Zone bytes — first byte of every main-store key.
 const (
 	ZoneAttributes  byte = 0x01
 	ZoneCache       byte = 0x02
@@ -355,7 +417,7 @@ const (
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
 // These must be BELOW all valid address-character bytes (lowest is '0' = 0x30)
-// so that Pebble key order matches lexicographic address order.
+// so that RocksDB key order matches lexicographic address order.
 const (
 	CanonicalKeySepVolume      byte = 0x00
 	CanonicalKeySepMetadata    byte = 0x01
@@ -364,7 +426,7 @@ const (
 
 // LedgerNameFixedSize is the fixed-width (zero-padded) block reserved for the
 // ledger name in every ledger-scoped canonical key. Fixed width lets the
-// Pebble Comparer split keys at a constant offset (bloom prefix, range
+// RocksDB Comparer split keys at a constant offset (bloom prefix, range
 // bounds, ImmediateSuccessor) without parsing a length prefix on every
 // comparison. Callers MUST validate the upstream name length against this
 // limit to avoid silent truncation collisions.
@@ -377,10 +439,10 @@ const LedgerNameFixedSize = invariants.LedgerNameMaxLength
 
 // PrefixUpperBound returns the smallest key strictly greater than every key
 // having prefix as a prefix — the exclusive upper bound of a prefix scan.
-// Returns nil when prefix is empty or all 0xFF, which Pebble reads as "no upper
+// Returns nil when prefix is empty or all 0xFF, which RocksDB reads as "no upper
 // bound", the correct answer when the prefix runs to the end of the key space.
 //
-// Use this, never a run of 0xFF bytes appended to the prefix. Pebble's
+// Use this, never a run of 0xFF bytes appended to the prefix. RocksDB's
 // IterOptions.UpperBound is EXCLUSIVE, so appending eight 0xFF bytes to a
 // sequence-keyed prefix produces a bound byte-identical to the key at
 // math.MaxUint64 and silently drops exactly that row. That is not a theoretical
@@ -422,87 +484,38 @@ func NewStore(
 	meter metric.Meter,
 	cfg Config,
 ) (*Store, error) {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
+		return nil, fmt.Errorf("creating storage directory: %w", err)
+	}
 	stallState := NewWriteStallState()
 
-	opts := &pebble.Options{
-		Logger:             NewPebbleLogger(logger),
-		FormatMajorVersion: pebble.FormatNewest,
-		EventListener:      NewMetricsListener(meter, stallState),
-		// 1) Absorb more writes before flush => fewer SST files, fewer compactions.
-		MemTableSize:                cfg.MemTableSize,
-		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
-
-		// 2) Control L0 pressure (main source of compactions/churn in write-heavy workloads).
-		L0CompactionThreshold: cfg.L0CompactionThreshold,
-		L0StopWritesThreshold: cfg.L0StopWritesThreshold,
-		LBaseMaxBytes:         cfg.LBaseMaxBytes,
-		Cache:                 pebble.NewCache(cfg.CacheSize),
-
-		// 3) Table sizes and compression (per-level, configurable).
-		TargetFileSizes: cfg.BuildTargetFileSizes(),
-		Levels:          cfg.BuildLevels(),
-
-		// 4) Smooth IO during flush/compactions.
-		BytesPerSync:    cfg.BytesPerSync,
-		WALBytesPerSync: cfg.WALBytesPerSync,
-
-		// 5) Compaction concurrency: OK but not too high (otherwise you saturate IO).
-		CompactionConcurrencyRange: func() (int, int) {
-			n := cfg.MaxConcurrentCompactions
-
-			return n, n
-		},
-
-		// 6) WAL configuration
-		WALMinSyncInterval: func() time.Duration { return cfg.WALMinSyncInterval },
-		DisableWAL:         cfg.DisableWAL,
-	}
-
-	// 7) WAL failover: automatically switch WAL writes to a secondary directory
-	// when the primary disk has high latency. Pebble monitors latency and
-	// switches back when the primary is healthy again.
 	if cfg.WALFailoverDir != "" {
-		if err := os.MkdirAll(cfg.WALFailoverDir, 0o750); err != nil {
-			return nil, fmt.Errorf("creating WAL failover directory: %w", err)
-		}
-
-		opts.WALFailover = &pebble.WALFailoverOptions{
-			Secondary: wal.Dir{
-				FS:      vfs.Default,
-				Dirname: cfg.WALFailoverDir,
-			},
-			// Use Pebble defaults for all thresholds:
-			// - UnhealthyOperationLatencyThreshold: 100ms
-			// - PrimaryDirProbeInterval: 1s
-			// - HealthyProbeLatencyThreshold: 25ms
-			// - HealthyInterval: 15s
-			// - ElevatedWriteStallThresholdLag: 60s
-		}
+		return nil, errors.New("RocksDB does not support automatic WAL failover (walFailoverDir)")
 	}
-
-	// 8) VFS wrapper for IOPS counting.
-	iopsCounters := &IOPSCounters{}
-	opts.FS = NewMetricsFS(vfs.Default, iopsCounters)
-
-	// 9) Enable columnar blocks (required for value separation, also improves scans).
-	opts.Experimental.EnableColumnarBlocks = func() bool { return true }
-
-	// 10) Value separation: store large values in blob files to reduce compaction IO.
+	if cfg.WALMinSyncInterval != 0 {
+		return nil, errors.New("RocksDB does not support walMinSyncInterval")
+	}
 	if cfg.ValueSeparation.Enabled {
-		vs := cfg.ValueSeparation
-		opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
-			return pebble.ValueSeparationPolicy{
-				Enabled:               true,
-				MinimumSize:           vs.MinimumSize,
-				MaxBlobReferenceDepth: vs.MaxBlobReferenceDepth,
-				RewriteMinimumAge:     vs.RewriteMinimumAge,
-				TargetGarbageRatio:    vs.TargetGarbageRatio,
-			}
-		}
+		return nil, errors.New("RocksDB value separation requires separate blob-file qualification")
 	}
+	if cfg.DisableWAL {
+		return nil, errors.New("disabling the WAL is not supported for Ledger's durable store")
+	}
+	opts := kv.Options{CacheSize: uint64(cfg.CacheSize), Configure: func(o *grocksdb.Options) {
+		o.SetWriteBufferSize(cfg.MemTableSize)
+		o.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
+		o.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
+		o.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
+		o.SetMaxBytesForLevelBase(uint64(cfg.LBaseMaxBytes))
+		o.SetTargetFileSizeBase(uint64(cfg.TargetFileSize))
+		o.SetCompressionPerLevel(cfg.RocksDBCompression())
+		o.SetBytesPerSync(uint64(cfg.BytesPerSync))
+		o.SetWALBytesPerSync(uint64(cfg.WALBytesPerSync))
+		o.SetMaxBackgroundJobs(cfg.MaxConcurrentCompactions + 1)
+	}}
 
 	var (
-		db  *pebble.DB
+		db  *kv.DB
 		err error
 	)
 
@@ -514,9 +527,12 @@ func NewStore(
 	if err := reconcileLiveAfterRestore(dataDir, logger); err != nil {
 		return nil, fmt.Errorf("reconciling live directory after restore: %w", err)
 	}
+	if err := reconcileCheckpointReplacements(dataDir); err != nil {
+		return nil, fmt.Errorf("reconciling checkpoint replacements: %w", err)
+	}
 
 	// With incremental 0xFF cache persistence, the live/ directory is always
-	// up-to-date after each Pebble batch commit. On restart we open it directly
+	// up-to-date after each RocksDB batch commit. On restart we open it directly
 	// — no checkpoint hard-linking needed. Checkpoints are only used for
 	// follower sync (SynchronizeWithLeader) and as a safety fallback.
 	//
@@ -527,7 +543,7 @@ func NewStore(
 	// Scan the checkpoints directory to find the latest checkpoint ID.
 	// The ID is derived from the highest-numbered directory in checkpoints/.
 	latestCheckpointID, hasCheckpoint, err := ScanLatestCheckpointID(dataDir)
-	if err != nil {
+	if err != nil && (liveDirErr != nil || !errors.Is(err, ErrNoCompleteCheckpoint)) {
 		return nil, fmt.Errorf("scanning checkpoints: %w", err)
 	}
 
@@ -543,6 +559,9 @@ func NewStore(
 			if err = HardLink(checkpointPath, liveDir); err != nil {
 				return nil, fmt.Errorf("hard linking checkpoint to live directory: %w", err)
 			}
+			if err := os.Remove(filepath.Join(liveDir, checkpointReadyMarker)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return nil, fmt.Errorf("removing checkpoint marker from live directory: %w", err)
+			}
 		} else {
 			logger.Infof("No live directory found, creating new database in %s", liveDir)
 		}
@@ -552,27 +571,15 @@ func NewStore(
 
 	openStart := time.Now()
 
-	db, err = pebble.Open(liveDir, opts)
+	db, err = kv.Open(liveDir, opts)
 	if err != nil {
-		return nil, fmt.Errorf("opening pebble database: %w", err)
+		return nil, fmt.Errorf("opening RocksDB database: %w", err)
 	}
 
-	m := db.Metrics()
 	logger.WithFields(map[string]any{
-		"duration":          time.Since(openStart).String(),
-		"l0FileCount":       m.Levels[0].TablesCount,
-		"l0Size":            m.Levels[0].TablesSize,
-		"l1FileCount":       m.Levels[1].TablesCount,
-		"l1Size":            m.Levels[1].TablesSize,
-		"memTableCount":     m.MemTable.Count,
-		"memTableSize":      m.MemTable.Size,
-		"compactionCount":   m.Compact.Count,
-		"compactionDebt":    m.Compact.InProgressBytes,
-		"compactionEstDebt": m.Compact.EstimatedDebt,
-		"walFilesCount":     m.WAL.Files,
-		"walSize":           m.WAL.Size,
-		"totalLevelsSize":   m.DiskSpaceUsage(),
-	}).Infof("Pebble database opened — LSM state")
+		"duration": time.Since(openStart).String(),
+		"stats":    db.Property("rocksdb.stats"),
+	}).Infof("RocksDB database opened")
 
 	// Calculate the oldest checkpoint that should exist
 	// based on latest checkpoint and max checkpoints configuration
@@ -583,23 +590,22 @@ func NewStore(
 
 	store := &Store{
 		opts:                    opts,
-		logger:                  logger.WithField("cmp", "pebble"),
+		logger:                  logger.WithField("cmp", "rocksdb"),
 		dataDir:                 dataDir,
 		currentCheckPoint:       latestCheckpointID,
 		oldestCheckpoint:        oldestCheckpoint,
 		maxCheckpoints:          cfg.MaxCheckpoints,
 		stallState:              stallState,
-		iopsCounters:            iopsCounters,
 		queryCheckpointReaders:  make(map[uint64]uint64),
 		deletedQueryCheckpoints: make(map[uint64]struct{}),
 	}
 
-	if _, err = iopsCounters.RegisterMetrics(meter); err != nil {
+	store.db = db
+	if _, err = store.RegisterMetrics(meter); err != nil {
 		_ = db.Close()
 
-		return nil, fmt.Errorf("registering IOPS metrics: %w", err)
+		return nil, fmt.Errorf("registering RocksDB metrics: %w", err)
 	}
-	store.db = db
 
 	// Clean up any orphaned backup checkpoints from a previous crash
 	store.cleanupTemporaryCheckpoints()
@@ -615,7 +621,7 @@ func (s *Store) DataDir() string {
 	return s.dataDir
 }
 
-// Flush forces a flush of Pebble's memtables to SSTs on disk.
+// Flush forces a flush of RocksDB's memtables to SSTs on disk.
 func (s *Store) Flush() error {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
@@ -628,15 +634,15 @@ func (s *Store) Flush() error {
 	return db.Flush()
 }
 
-// SyncWAL forces an fsync of Pebble's WAL. After this call returns, every
+// SyncWAL forces an fsync of RocksDB's WAL. After this call returns, every
 // batch.Commit(NoSync) issued before SyncWAL was invoked is durable on disk.
 // It does not flush memtables to SSTs — strictly a WAL fsync.
 //
 // Used by node.doMaintenance to establish the durability invariant
-// "WAL snapshot index <= durable Pebble applied index" before creating a
+// "WAL snapshot index <= durable RocksDB applied index" before creating a
 // Raft WAL snapshot or compacting the Raft WAL. Without it, a power loss
 // could leave the WAL snapshot referencing entries that were only in
-// Pebble's unsynced memtable, and a subsequent Compact could erase those
+// RocksDB's unsynced memtable, and a subsequent Compact could erase those
 // entries from the WAL too — making them unrecoverable from any source.
 func (s *Store) SyncWAL() error {
 	s.dbMu.RLock()
@@ -647,10 +653,10 @@ func (s *Store) SyncWAL() error {
 		return ErrStoreClosed
 	}
 
-	return db.LogData(nil, &pebble.WriteOptions{Sync: true})
+	return db.SyncWAL()
 }
 
-// WarmSystemKeys preloads the system/config key zones into Pebble's block
+// WarmSystemKeys preloads the system/config key zones into RocksDB's block
 // cache. This covers [0xE0, 0xF1) and [0xF2, 0xFF) — everything except the
 // bulky attributes zone (0xF1) which contains volumes and metadata. This is
 // fast (few keys) and should run synchronously before NewMachine so that FSM
@@ -695,7 +701,7 @@ func (s *Store) WarmSystemKeys() {
 }
 
 // WarmBlockCache iterates the attributes zone [ZoneAttributes, ZoneAttributes+1) to preload
-// Pebble's block cache. This is the heavyweight warmup (volumes, metadata,
+// RocksDB's block cache. This is the heavyweight warmup (volumes, metadata,
 // etc.) and should run in the background after servers are listening.
 func (s *Store) WarmBlockCache() {
 	start := time.Now()
@@ -712,18 +718,16 @@ func (s *Store) WarmBlockCache() {
 		return
 	}
 
-	m := db.Metrics()
 	s.logger.WithFields(map[string]any{
 		"duration":        time.Since(start).String(),
 		"keys":            keys,
-		"blockCacheSize":  m.BlockCache.Size,
-		"blockCacheCount": m.BlockCache.Count,
+		"blockCacheUsage": db.Property("rocksdb.block-cache-usage"),
 	}).Infof("Block cache warmup complete (attributes zone)")
 }
 
 // warmRange iterates [lower, upper) reading every value to populate the block cache.
-func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
-	iter, err := db.NewIter(&pebble.IterOptions{
+func (s *Store) warmRange(db *kv.DB, lower, upper byte) (int64, error) {
+	iter, err := db.NewIter(&kv.IterOptions{
 		LowerBound: []byte{lower},
 		UpperBound: []byte{upper},
 	})
@@ -736,7 +740,13 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	var keys int64
 
 	for iter.First(); iter.Valid(); iter.Next() {
-		if _, err := iter.ValueAndErr(); err != nil {
+		if err := iter.Error(); err != nil {
+			return keys, err
+		}
+		if iter.Value() == nil {
+			continue
+		}
+		if err := iter.Error(); err != nil {
 			return keys, fmt.Errorf("warmup value read error at key %d: %w", keys, err)
 		}
 
@@ -750,31 +760,9 @@ func (s *Store) warmRange(db *pebble.DB, lower, upper byte) (int64, error) {
 	return keys, nil
 }
 
-// CloseSafe runs a Pebble close, turning a panic out of it into an error.
-// In Pebble v2.1.x, DB.Close panics with "element has outstanding references"
-// in genericcache/shard.Close when a file cache reference is still held.
-//
-// This is caused by a caller retaining a Pebble read resource past the lock
-// that protects the DB's lifetime, not by anything internal to Pebble. The
-// known instance was (*Store).Get handing back Pebble's closer — a live
-// *pebble.Iterator on an SST-backed lookup — after releasing dbMu.RLock
-// (EN-2072); see the PebbleGetter contract in reader.go.
-//
-// An earlier version of this comment blamed a race in Pebble's
-// collectTableStats goroutine. That explanation is wrong: DB.Close waits on
-// d.mu.tableStats.loading (db.go:1716) and workers gate on d.closed
-// (table_stats.go:78), so a stats worker can neither start after close nor
-// still be running when the file cache is closed. The upstream PRs it cited
-// (5813, 5854) fix unrelated problems — a shutdown hang and a leaked
-// range-deletion iterator holding block memory, not a file cache reference.
-//
-// This remains a containment net, not a fix: a recovered panic leaves the rest
-// of DB.Close unrun (objProvider.Close and the checks after it), and DB.Close
-// accumulates errors as it goes, so reaching the panic does not prove the
-// earlier steps succeeded. The directory lock is not among the steps left
-// unrun: DB.Close releases it (db.go:1737) before it closes the file cache
-// (db.go:1807), where this panic originates, so a recovered close panic never
-// leaves the directory locked. Fix the offending caller; do not rely on this.
+// CloseSafe turns a Go panic during DB close into an error for restore rollback.
+// Native RocksDB faults are not recoverable through this wrapper; callers must
+// release iterators and snapshots before closing the underlying database.
 func CloseSafe(closeFn func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -785,7 +773,7 @@ func CloseSafe(closeFn func() error) (err error) {
 	return closeFn()
 }
 
-// Close closes the Pebble database.
+// Close closes the RocksDB database.
 func (s *Store) Close() error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
@@ -824,18 +812,27 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 
 	newCheckpointID := s.currentCheckPoint + 1
 
-	checkpointDir := filepath.Join(s.dataDir, "checkpoints", strconv.FormatUint(newCheckpointID, 10))
+	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(newCheckpointID, 10))
+	if err := os.MkdirAll(filepath.Dir(checkpointDir), 0o755); err != nil {
+		return 0, fmt.Errorf("creating checkpoints directory: %w", err)
+	}
 	if err := os.RemoveAll(checkpointDir); err != nil {
 		return 0, fmt.Errorf("removing checkpoint directory: %w", err)
 	}
 
 	removeOldDone := time.Now()
 
-	if err := db.Checkpoint(checkpointDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(checkpointDir); err != nil {
 		return 0, fmt.Errorf("creating checkpoint: %w", err)
 	}
+	if err := MarkCheckpointReady(checkpointDir); err != nil {
+		return 0, fmt.Errorf("marking checkpoint ready: %w", err)
+	}
+	if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+		return 0, fmt.Errorf("syncing checkpoints directory: %w", err)
+	}
 
-	pebbleCheckpointDone := time.Now()
+	storeCheckpointDone := time.Now()
 
 	// Clean up old checkpoints beyond the configured maximum
 	// Note: it can fail, leaving old checkpoints on disk
@@ -845,11 +842,11 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	}
 
 	s.logger.WithFields(map[string]any{
-		"checkpoint":       newCheckpointID,
-		"total":            time.Since(snapshotStart).String(),
-		"removeOld":        removeOldDone.Sub(snapshotStart).String(),
-		"pebbleCheckpoint": pebbleCheckpointDone.Sub(removeOldDone).String(),
-		"cleanup":          time.Since(pebbleCheckpointDone).String(),
+		"checkpoint":      newCheckpointID,
+		"total":           time.Since(snapshotStart).String(),
+		"removeOld":       removeOldDone.Sub(snapshotStart).String(),
+		"storeCheckpoint": storeCheckpointDone.Sub(removeOldDone).String(),
+		"cleanup":         time.Since(storeCheckpointDone).String(),
 	}).Infof("Snapshot created")
 	s.currentCheckPoint = newCheckpointID
 
@@ -934,7 +931,7 @@ func (s *Store) GetCurrentCheckpointID() uint64 {
 	return s.currentCheckPoint
 }
 
-// CreateTemporaryCheckpoint creates a Pebble checkpoint in the tmp/<name> directory.
+// CreateTemporaryCheckpoint creates a RocksDB checkpoint in the tmp/<name> directory.
 // Unlike CreateSnapshot, this does not modify currentCheckPoint,
 // or interfere with the Raft snapshot lifecycle in any way.
 // The caller must call RemoveTemporaryCheckpoint when the checkpoint is no longer needed.
@@ -959,7 +956,7 @@ func (s *Store) CreateTemporaryCheckpoint(name string) (string, error) {
 		return "", ErrStoreClosed
 	}
 
-	if err := db.Checkpoint(path, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(path); err != nil {
 		return "", fmt.Errorf("creating temporary checkpoint %q: %w", name, err)
 	}
 
@@ -988,15 +985,15 @@ func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
 	return path, true
 }
 
-// queryCheckpointsDir is the directory where query checkpoint Pebble snapshots are stored.
+// queryCheckpointsDir is the directory where query checkpoint RocksDB snapshots are stored.
 const queryCheckpointsDir = "query-checkpoints"
 
-// CreateQueryCheckpoint creates a Pebble checkpoint for query purposes at
+// CreateQueryCheckpoint creates a RocksDB checkpoint for query purposes at
 // {dataDir}/query-checkpoints/{id}/main/. These are self-contained snapshots
 // created by the FSM when a CreateQueryCheckpointOrder is applied via Raft.
 //
 // Readers poll the final path concurrently, so it must never hold an
-// intermediate state. pebble.DB.Checkpoint writes the MANIFEST — which is what
+// intermediate state. kv.DB.Checkpoint writes the MANIFEST — which is what
 // makes a directory openable — before it copies the WAL files, and
 // WithFlushedWAL syncs the WAL rather than flushing the memtable, so a
 // directory caught between those steps opens cleanly while missing every
@@ -1020,7 +1017,7 @@ func (s *Store) CreateQueryCheckpoint(id uint64) (_ string, err error) {
 	dir := filepath.Join(base, "main")
 	tmpDir := dir + ".tmp"
 
-	// pebble.Checkpoint refuses an existing destination.
+	// kv.Checkpoint refuses an existing destination.
 	if CheckpointDirReady(dir) {
 		return dir, nil
 	}
@@ -1090,7 +1087,7 @@ func (s *Store) checkpointQueryTemp(tmpDir string) error {
 		return ErrStoreClosed
 	}
 
-	if err := db.Checkpoint(tmpDir, pebble.WithFlushedWAL()); err != nil {
+	if err := db.Checkpoint(tmpDir); err != nil {
 		return fmt.Errorf("creating query checkpoint: %w", err)
 	}
 
@@ -1285,9 +1282,15 @@ func (s *Store) ActivateIncomingRestore() (uint64, error) {
 	if err := os.RemoveAll(targetDir); err != nil {
 		return 0, fmt.Errorf("removing target checkpoint directory: %w", err)
 	}
+	if err := MarkCheckpointReady(incomingDir); err != nil {
+		return 0, fmt.Errorf("marking incoming checkpoint ready: %w", err)
+	}
 
 	if err := os.Rename(incomingDir, targetDir); err != nil {
 		return 0, fmt.Errorf("moving incoming checkpoint to %d: %w", newID, err)
+	}
+	if err := FsyncDir(targetParent); err != nil {
+		return 0, fmt.Errorf("syncing activated checkpoint: %w", err)
 	}
 
 	// Reserve the ID so the background goroutine skips it.
@@ -1405,7 +1408,7 @@ func reconcileLiveAfterRestore(dataDir string, logger logging.Logger) error {
 //  2. Read the current node's persisted-config from the live DB.
 //  3. Close the live DB and rename live/ -> live.discard/ (atomic, O(1)).
 //  4. Hard-link the checkpoint into a fresh live.staging/.
-//  5. Open live.staging/ as a Pebble DB.
+//  5. Open live.staging/ as a RocksDB DB.
 //  6. Re-write the preserved config, flush, and re-checkpoint.
 //  7. rename live.staging/ -> live/. THIS is the atomic commit point.
 //  8. Remove live.discard/.
@@ -1434,12 +1437,20 @@ func reconcileLiveAfterRestore(dataDir string, logger logging.Logger) error {
 func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
+	if err := reconcileCheckpointReplacements(s.dataDir); err != nil {
+		return err
+	}
 
 	checkpointDir := filepath.Join(s.dataDir, checkpointsDir, strconv.FormatUint(checkpointID, 10))
+	replacementDir := checkpointDir + ".replacement"
+	previousDir := checkpointDir + ".previous"
 
 	// Verify the checkpoint exists
 	if _, err := os.Stat(checkpointDir); err != nil {
 		return fmt.Errorf("checkpoint %d not found: %w", checkpointID, err)
+	}
+	if !CheckpointDirReady(checkpointDir) {
+		return fmt.Errorf("checkpoint %d is incomplete", checkpointID)
 	}
 
 	liveDirectory := filepath.Join(s.dataDir, liveDir)
@@ -1455,6 +1466,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 	if err := os.RemoveAll(discardDirectory); err != nil {
 		return fmt.Errorf("clearing stale live.discard directory: %w", err)
+	}
+	if err := os.RemoveAll(replacementDir); err != nil {
+		return fmt.Errorf("clearing stale checkpoint replacement: %w", err)
 	}
 
 	// Step 2: preserve this node's persisted-config from the live DB.
@@ -1477,10 +1491,9 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 		}
 
 		if closeErr := CloseSafe(oldDB.Close); closeErr != nil {
-			// Pebble v2.1.x panics here if a caller still holds a read
-			// resource on this DB (see CloseSafe). Log and continue — the
-			// old data is stale and being replaced. The rename in step 3
-			// still works regardless of close cleanliness.
+			// The old database is being replaced; surface the close failure
+			// while retaining the restore rollback path.
+
 			s.logger.WithFields(map[string]any{
 				"error": closeErr,
 			}).Errorf("Error closing old database during checkpoint restore (continuing)")
@@ -1523,19 +1536,33 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 				"error": err,
 			}).Errorf("Removing partial live.staging directory during rollback (continuing)")
 		}
+		if _, err := os.Stat(previousDir); err == nil {
+			if err := os.RemoveAll(checkpointDir); err != nil {
+				return fmt.Errorf("rollback failed removing replacement checkpoint: %w; original error: %w", err, reason)
+			}
+			if err := os.Rename(previousDir, checkpointDir); err != nil {
+				return fmt.Errorf("rollback failed restoring previous checkpoint: %w; original error: %w", err, reason)
+			}
+			if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+				return fmt.Errorf("rollback failed syncing restored checkpoint: %w; original error: %w", err, reason)
+			}
+		}
+		_ = os.RemoveAll(replacementDir)
 
 		// Revert live.discard/ -> live/. Atomic.
 		if _, statErr := os.Stat(discardDirectory); statErr == nil {
 			if err := os.Rename(discardDirectory, liveDirectory); err != nil {
 				return fmt.Errorf("rollback failed (could not restore live from live.discard): %w; original error: %w", err, reason)
 			}
+			if err := FsyncDir(s.dataDir); err != nil {
+				return fmt.Errorf("rollback failed syncing live directory: %w; original error: %w", err, reason)
+			}
 		}
 
 		// Reopen the original DB so the Store stays usable.
 		// FileCache must be cleared for the same reason as below.
-		s.opts.FileCache = nil
 
-		revivedDB, openErr := pebble.Open(liveDirectory, s.opts)
+		revivedDB, openErr := kv.Open(liveDirectory, s.opts)
 		if openErr != nil {
 			return fmt.Errorf("rollback failed (could not reopen original live): %w; original error: %w", openErr, reason)
 		}
@@ -1544,20 +1571,21 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 
 		return reason
 	}
+	if err := FsyncDir(s.dataDir); err != nil {
+		return rollback(fmt.Errorf("syncing live.discard publish: %w", err))
+	}
 
 	// Step 4: hard-link the checkpoint into a fresh live.staging/.
 	if err := HardLink(checkpointDir, stagingDirectory); err != nil {
 		return rollback(fmt.Errorf("hard linking checkpoint to live.staging directory: %w", err))
 	}
+	if err := os.Remove(filepath.Join(stagingDirectory, checkpointReadyMarker)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return rollback(fmt.Errorf("removing checkpoint marker from staging directory: %w", err))
+	}
 
-	// Step 5: open the staged database. Clear FileCache so pebble.Open
-	// creates a fresh one. The first Open mutates opts.FileCache in-place;
-	// reusing the stale pointer causes a panic in shard.Close ("element
-	// has outstanding references") because the old FileCache was already
-	// closed when the old DB was closed.
-	s.opts.FileCache = nil
+	// Step 5: open the staged RocksDB database with fresh native options.
 
-	newDB, err := pebble.Open(stagingDirectory, s.opts)
+	newDB, err := kv.Open(stagingDirectory, s.opts)
 	if err != nil {
 		return rollback(fmt.Errorf("opening staged database: %w", err))
 	}
@@ -1567,7 +1595,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Step 6: re-write this node's persisted config and re-checkpoint
 	// (still inside the staging directory).
 	if preservedConfig != nil {
-		if err := newDB.Set([]byte{ZoneClusterPersistent, SubGlobPersistedConfig}, preservedConfig, pebble.Sync); err != nil {
+		if err := newDB.Set([]byte{ZoneClusterPersistent, SubGlobPersistedConfig}, preservedConfig, kv.Sync); err != nil {
 			return rollback(fmt.Errorf("re-writing persisted config after checkpoint restore: %w", err))
 		}
 
@@ -1575,19 +1603,30 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 			return rollback(fmt.Errorf("flushing persisted config after checkpoint restore: %w", err))
 		}
 
-		if err := os.RemoveAll(checkpointDir); err != nil {
-			return rollback(fmt.Errorf("removing old checkpoint dir for re-checkpoint: %w", err))
+		if err := newDB.Checkpoint(replacementDir); err != nil {
+			return rollback(fmt.Errorf("creating replacement checkpoint with preserved config: %w", err))
 		}
-
-		if err := newDB.Checkpoint(checkpointDir); err != nil {
-			return rollback(fmt.Errorf("re-creating checkpoint with preserved config: %w", err))
+		if err := MarkCheckpointReady(replacementDir); err != nil {
+			return rollback(fmt.Errorf("marking replacement checkpoint ready: %w", err))
+		}
+		if err := os.Rename(checkpointDir, previousDir); err != nil {
+			return rollback(fmt.Errorf("preserving source checkpoint before replacement: %w", err))
+		}
+		if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+			return rollback(fmt.Errorf("syncing previous checkpoint: %w", err))
+		}
+		if err := os.Rename(replacementDir, checkpointDir); err != nil {
+			return rollback(fmt.Errorf("publishing replacement checkpoint: %w", err))
+		}
+		if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+			return rollback(fmt.Errorf("syncing replacement checkpoint: %w", err))
 		}
 	}
 
 	// Step 7: PUBLISH. The atomic rename is the single commit point of
 	// the restore. The DB has been opened on stagingDirectory; once we
 	// rename the directory out from under it, subsequent file operations
-	// inside pebble (compactions, flushes) will follow the inode they
+	// inside RocksDB (compactions, flushes) will follow the inode they
 	// already hold open, but new opens must use the new path. So we
 	// close the staging DB, do the rename, then reopen on liveDirectory.
 	//
@@ -1595,8 +1634,8 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// point — it is cheap (warm OS cache, no compactions) and only
 	// happens once per restore.
 	if closeErr := CloseSafe(newDB.Close); closeErr != nil {
-		// Same Pebble v2.1.x caveat as above: log and continue. The on-
-		// disk state is durable (Flush + Checkpoint above already synced).
+		// The checkpoint is durable; report a close failure while proceeding
+		// to the atomic publish step.
 		s.logger.WithFields(map[string]any{
 			"error": closeErr,
 		}).Errorf("Error closing staging DB before publish rename (continuing)")
@@ -1607,14 +1646,15 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	if err := os.Rename(stagingDirectory, liveDirectory); err != nil {
 		return rollback(fmt.Errorf("publishing live.staging to live: %w", err))
 	}
+	if err := FsyncDir(s.dataDir); err != nil {
+		return fmt.Errorf("syncing published live directory: %w", err)
+	}
 
 	// Restore committed — past this point any failure is non-fatal for
 	// correctness; the worst case is a stale live.discard/ that boot
 	// will sweep up.
 
-	s.opts.FileCache = nil
-
-	publishedDB, err := pebble.Open(liveDirectory, s.opts)
+	publishedDB, err := kv.Open(liveDirectory, s.opts)
 	if err != nil {
 		// We renamed staging to live so the new state is durable, but
 		// we cannot reopen it in-process. Surface the error; the next
@@ -1623,6 +1663,11 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	}
 
 	s.db = publishedDB
+	if err := os.RemoveAll(previousDir); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Removing previous checkpoint after successful restore (will be cleaned up on next boot)")
+	} else if err := FsyncDir(filepath.Dir(checkpointDir)); err != nil {
+		s.logger.WithFields(map[string]any{"error": err}).Errorf("Syncing checkpoint cleanup after restore")
+	}
 
 	// Step 8: drop the rollback target.
 	if err := os.RemoveAll(discardDirectory); err != nil {
@@ -1673,9 +1718,9 @@ func WithResetFunc(fn func(proto.Message)) ProtoCursorOption {
 	return func(c *protoCursorConfig) { c.resetFunc = fn }
 }
 
-// ProtoCursor implements Cursor[T] for Pebble where T is a proto.Message pointer.
+// ProtoCursor implements Cursor[T] for RocksDB where T is a proto.Message pointer.
 type ProtoCursor[T proto.Message] struct {
-	iter      *pebble.Iterator
+	iter      *kv.Iterator
 	started   bool
 	elemTyp   reflect.Type
 	reuse     bool
@@ -1684,7 +1729,7 @@ type ProtoCursor[T proto.Message] struct {
 	item      T // reused when reuse=true
 }
 
-func NewProtoCursor[T proto.Message](iter *pebble.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
+func NewProtoCursor[T proto.Message](iter *kv.Iterator, opts ...ProtoCursorOption) *ProtoCursor[T] {
 	var cfg protoCursorConfig
 	for _, o := range opts {
 		o(&cfg)
@@ -1763,8 +1808,8 @@ func (c *ProtoCursor[T]) Close() error {
 	return nil
 }
 
-// ReadProto reads a protobuf message from Pebble. Returns the zero value of T if not found.
-func ReadProto[T proto.Message](reader PebbleGetter, key []byte) (T, error) {
+// ReadProto reads a protobuf message from RocksDB. Returns the zero value of T if not found.
+func ReadProto[T proto.Message](reader KVGetter, key []byte) (T, error) {
 	var zero T
 
 	val, err := GetValue(reader, key)
@@ -1789,7 +1834,7 @@ func ReadProto[T proto.Message](reader PebbleGetter, key []byte) (T, error) {
 }
 
 // ScanZone returns a ProtoCursor over all entries in a [zone][sub] prefix range.
-func ScanZone[T proto.Message](reader PebbleReader, zone, sub byte, opts ...ProtoCursorOption) (*ProtoCursor[T], error) {
+func ScanZone[T proto.Message](reader KVReader, zone, sub byte, opts ...ProtoCursorOption) (*ProtoCursor[T], error) {
 	lowerBound := []byte{zone, sub}
 	upperBound := ZonePrefixUpperBound(zone, sub)
 
@@ -1802,7 +1847,7 @@ func ScanZone[T proto.Message](reader PebbleReader, zone, sub byte, opts ...Prot
 }
 
 // CollectZone scans a [zone][sub] range and returns all proto entries as a slice.
-func CollectZone[T proto.Message](reader PebbleReader, zone, sub byte) ([]T, error) {
+func CollectZone[T proto.Message](reader KVReader, zone, sub byte) ([]T, error) {
 	c, err := ScanZone[T](reader, zone, sub)
 	if err != nil {
 		return nil, err
@@ -1813,7 +1858,7 @@ func CollectZone[T proto.Message](reader PebbleReader, zone, sub byte) ([]T, err
 
 // ReadLastEntry reads the last entry in a [zone][sub] prefix range using iter.Last().
 // Returns the zero value of T if no entries exist.
-func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, error) {
+func ReadLastEntry[T proto.Message](reader KVReader, zone, sub byte) (T, error) {
 	var zero T
 
 	kb := NewKeyBuilder()
@@ -1821,7 +1866,7 @@ func ReadLastEntry[T proto.Message](reader PebbleReader, zone, sub byte) (T, err
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	// Bound by the next sub-prefix, not by a synthetic MaxUint64 key. Pebble's
+	// Bound by the next sub-prefix, not by a synthetic MaxUint64 key. RocksDB's
 	// upper bound is exclusive, so [zone][sub][MaxUint64] must remain visible:
 	// recovery uses it to detect and reject an exhausted persisted sequence
 	// instead of falling back to a lower/reusable next value (EN-1860).
@@ -1889,6 +1934,7 @@ func HardLink(srcDir, dstDir string) error {
 		return err
 	}
 
+	dirs := []string{tmpDir}
 	err = filepath.WalkDir(srcDir, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -1918,13 +1964,27 @@ func HardLink(srcDir, dstDir string) error {
 			}
 
 			_ = os.Chmod(dstPath, info.Mode().Perm())
+			dirs = append(dirs, dstPath)
 
-			return fsyncDir(dstPath)
+			return nil
 
 		case info.Mode().Type() == 0: // regular file
-			err := os.Link(path, dstPath)
-			if err != nil {
-				return fmt.Errorf("hardlink %s -> %s: %w", path, dstPath, err)
+			if rel == "LOCK" {
+				// RocksDB opens this file with an advisory lock. Sharing its inode
+				// makes independent database directories contend for the same lock.
+				return nil
+			}
+
+			// RocksDB SST and blob files are immutable. Metadata, WAL and log
+			// files can change after opening the destination and need their own
+			// inode even when both directories are on the same filesystem.
+			ext := filepath.Ext(path)
+			if ext == ".sst" || ext == ".ldb" || ext == ".blob" {
+				if err := os.Link(path, dstPath); err != nil {
+					return fmt.Errorf("hardlink %s -> %s: %w", path, dstPath, err)
+				}
+			} else if err := copyCheckpointFile(path, dstPath, info.Mode().Perm()); err != nil {
+				return err
 			}
 
 			_ = os.Chmod(dstPath, info.Mode().Perm())
@@ -1951,8 +2011,10 @@ func HardLink(srcDir, dstDir string) error {
 		return fmt.Errorf("walk: %w", err)
 	}
 
-	if err := fsyncDir(tmpDir); err != nil {
-		return err
+	for _, dir := range slices.Backward(dirs) {
+		if err := fsyncDir(dir); err != nil {
+			return err
+		}
 	}
 
 	if err := fsyncDir(parent); err != nil {
@@ -1964,6 +2026,34 @@ func HardLink(srcDir, dstDir string) error {
 	}
 
 	return fsyncDir(parent)
+}
+
+func copyCheckpointFile(src, dst string, mode fs.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("opening checkpoint file %s: %w", src, err)
+	}
+	defer func() { _ = in.Close() }()
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return fmt.Errorf("creating checkpoint file %s: %w", dst, err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+
+		return fmt.Errorf("copying checkpoint file %s: %w", src, err)
+	}
+	if err := out.Sync(); err != nil {
+		_ = out.Close()
+
+		return fmt.Errorf("syncing checkpoint file %s: %w", dst, err)
+	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("closing checkpoint file %s: %w", dst, err)
+	}
+
+	return nil
 }
 
 // fsyncDir fsyncs a directory so its entries are durably recorded. On Windows, it's a no-op.
@@ -1988,8 +2078,8 @@ func fsyncDir(dir string) error {
 	return nil
 }
 
-// Checkpoint creates a Pebble checkpoint at destDir with flushed WAL.
-// This is a thin wrapper around pebble.DB.Checkpoint used for testing
+// Checkpoint creates a RocksDB checkpoint at destDir after a durable flush.
+// This is a thin wrapper around kv.DB.Checkpoint used for testing
 // and backup operations that need a standalone copy of the database.
 func (s *Store) Checkpoint(destDir string) error {
 	s.dbMu.RLock()
@@ -2000,5 +2090,5 @@ func (s *Store) Checkpoint(destDir string) error {
 		return ErrStoreClosed
 	}
 
-	return db.Checkpoint(destDir, pebble.WithFlushedWAL())
+	return db.Checkpoint(destDir)
 }

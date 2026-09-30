@@ -275,12 +275,12 @@ type RaftStatus struct {
 	State              string                   `protobuf:"bytes,1,opt,name=state,proto3" json:"state,omitempty"`                                                                                  // Current Raft state (Leader, Follower, Candidate, PreCandidate)
 	Term               uint64                   `protobuf:"fixed64,2,opt,name=term,proto3" json:"term,omitempty"`                                                                                  // Current term
 	Leader             uint64                   `protobuf:"varint,3,opt,name=leader,proto3" json:"leader,omitempty"`                                                                               // ID of the current leader (0 if no leader)
-	Applied            uint64                   `protobuf:"fixed64,4,opt,name=applied,proto3" json:"applied,omitempty"`                                                                            // Raft-layer cursor: bumped when the local MsgStorageApplyResp is Step()-ed back into rawNode by the orchestrate goroutine. Under AsyncStorageWrites the response fires from runCommitter AFTER CommitPreparedBatch succeeds, so `applied` tracks FSM-durable state closely (unlike the old sync Advance-immediately-after-Submit path, which could sit whole batches ahead of Pebble).
+	Applied            uint64                   `protobuf:"fixed64,4,opt,name=applied,proto3" json:"applied,omitempty"`                                                                            // Raft-layer cursor: bumped when the local MsgStorageApplyResp is Step()-ed back into rawNode by the orchestrate goroutine. Under AsyncStorageWrites the response fires from runCommitter AFTER CommitPreparedBatch succeeds, so `applied` tracks FSM-durable state closely (unlike the old sync Advance-immediately-after-Submit path, which could sit whole batches ahead of storage).
 	Commit             uint64                   `protobuf:"fixed64,5,opt,name=commit,proto3" json:"commit,omitempty"`                                                                              // Index of the last committed entry
 	LastIndex          uint64                   `protobuf:"fixed64,6,opt,name=last_index,json=lastIndex,proto3" json:"last_index,omitempty"`                                                       // Index of the last entry in the log
 	Vote               uint64                   `protobuf:"varint,7,opt,name=vote,proto3" json:"vote,omitempty"`                                                                                   // ID of the node that received the vote (0 if no vote)
 	Progress           map[uint64]*ProgressInfo `protobuf:"bytes,8,rep,name=progress,proto3" json:"progress,omitempty" protobuf_key:"varint,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Progress information for each node
-	LastPersistedIndex uint64                   `protobuf:"fixed64,9,opt,name=last_persisted_index,json=lastPersistedIndex,proto3" json:"last_persisted_index,omitempty"`                          // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, inside CommitPreparedBatch after pb.batch.Commit() returns. Reads served from Pebble (stale-consistency GetAccount, cross-node identity oracles, audit reads) SHOULD gate on this because it is what "Pebble has the data" means by definition — no need to reason about the Raft state machine at all. Under AsyncStorageWrites the two cursors advance in lockstep (publishApplied fires just before runCommitter emits MsgStorageApplyResp, so `last_persisted_index` reaches N a few µs before `applied` does), but keep this field distinct: it names an FSM-durability property, not a Raft-consensus one, and remains the correct entry point for anything that assumes the Pebble batch is on disk.
+	LastPersistedIndex uint64                   `protobuf:"fixed64,9,opt,name=last_persisted_index,json=lastPersistedIndex,proto3" json:"last_persisted_index,omitempty"`                          // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, inside CommitPreparedBatch after the main-store batch commit returns. Reads served from the main store (stale-consistency GetAccount, cross-node identity oracles, audit reads) SHOULD gate on this because it means the store has the data. Under AsyncStorageWrites the two cursors advance in lockstep (publishApplied fires just before runCommitter emits MsgStorageApplyResp, so `last_persisted_index` reaches N a few µs before `applied` does), but keep this field distinct: it names an FSM-durability property, not a Raft-consensus one.
 	unknownFields      protoimpl.UnknownFields
 	sizeCache          protoimpl.SizeCache
 }
@@ -495,11 +495,11 @@ func (x *ClusterState) GetNodeVersion() string {
 	return ""
 }
 
-// IndexProgress tracks the index builder's position relative to Pebble.
+// IndexProgress tracks the index builder's position relative to the main store.
 type IndexProgress struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
-	LastIndexedSequence uint64                 `protobuf:"fixed64,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"` // Pebble progress cursor
-	PebbleLastSequence  uint64                 `protobuf:"fixed64,2,opt,name=pebble_last_sequence,json=pebbleLastSequence,proto3" json:"pebble_last_sequence,omitempty"`    // latest Pebble log sequence
+	LastIndexedSequence uint64                 `protobuf:"fixed64,1,opt,name=last_indexed_sequence,json=lastIndexedSequence,proto3" json:"last_indexed_sequence,omitempty"` // Read-index progress cursor
+	StorageLastSequence uint64                 `protobuf:"fixed64,2,opt,name=storage_last_sequence,json=storageLastSequence,proto3" json:"storage_last_sequence,omitempty"` // Latest main-store log sequence
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -541,9 +541,9 @@ func (x *IndexProgress) GetLastIndexedSequence() uint64 {
 	return 0
 }
 
-func (x *IndexProgress) GetPebbleLastSequence() uint64 {
+func (x *IndexProgress) GetStorageLastSequence() uint64 {
 	if x != nil {
-		return x.PebbleLastSequence
+		return x.StorageLastSequence
 	}
 	return 0
 }
@@ -2070,10 +2070,10 @@ const file_cluster_proto_rawDesc = "" +
 	"\x0eindex_progress\x18\b \x01(\v2\x16.cluster.IndexProgressR\rindexProgress\x12<\n" +
 	"\x0ecluster_config\x18\t \x01(\v2\x15.common.ClusterConfigR\rclusterConfig\x12!\n" +
 	"\fnode_version\x18\n" +
-	" \x01(\tR\vnodeVersion\"u\n" +
+	" \x01(\tR\vnodeVersion\"w\n" +
 	"\rIndexProgress\x122\n" +
-	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x120\n" +
-	"\x14pebble_last_sequence\x18\x02 \x01(\x06R\x12pebbleLastSequence\"n\n" +
+	"\x15last_indexed_sequence\x18\x01 \x01(\x06R\x13lastIndexedSequence\x122\n" +
+	"\x15storage_last_sequence\x18\x02 \x01(\x06R\x13storageLastSequence\"n\n" +
 	"\fSyncProgress\x12\x16\n" +
 	"\x06status\x18\x01 \x01(\tR\x06status\x12%\n" +
 	"\x0ebytes_received\x18\x02 \x01(\x06R\rbytesReceived\x12\x1f\n" +

@@ -25,7 +25,7 @@ func mirrorPointKey(kb *dal.KeyBuilder, sub byte, ledgerName string) []byte {
 
 // ReadMirrorStatus returns the last sync error for a mirror ledger.
 // Returns nil if no error is recorded.
-func ReadMirrorStatus(reader dal.PebbleGetter, ledgerName string) (*commonpb.MirrorSyncError, error) {
+func ReadMirrorStatus(reader dal.KVGetter, ledgerName string) (*commonpb.MirrorSyncError, error) {
 	kb := dal.NewKeyBuilder()
 	key := mirrorPointKey(kb, dal.SubPLMirrorStatus, ledgerName)
 
@@ -39,7 +39,7 @@ func ReadMirrorStatus(reader dal.PebbleGetter, ledgerName string) (*commonpb.Mir
 
 // ReadMirrorSourceHead returns the latest known v2 source log count for a mirror ledger.
 // Returns 0 if no source head has been persisted yet.
-func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerName string) (uint64, error) {
+func ReadMirrorSourceHead(reader dal.KVGetter, ledgerName string) (uint64, error) {
 	kb := dal.NewKeyBuilder()
 	key := mirrorPointKey(kb, dal.SubPLMirrorSourceHead, ledgerName)
 
@@ -57,7 +57,7 @@ func ReadMirrorSourceHead(reader dal.PebbleGetter, ledgerName string) (uint64, e
 // the boundary is the sole durable ingestion-position authority (EN-1513).
 func ReadMirrorSyncProgress(
 	ctx context.Context,
-	reader dal.PebbleGetter,
+	reader dal.KVGetter,
 	boundaries *attributes.Attribute[*raftcmdpb.LedgerBoundaries],
 	ledgerName string,
 ) (*commonpb.MirrorSyncProgress, error) {
@@ -108,7 +108,7 @@ func ReadMirrorSyncProgress(
 }
 
 // ReadMirrorLedgers returns all ledgers in MIRROR mode.
-func ReadMirrorLedgers(ctx context.Context, reader dal.PebbleReader) ([]*commonpb.LedgerInfo, error) {
+func ReadMirrorLedgers(ctx context.Context, reader dal.KVReader) ([]*commonpb.LedgerInfo, error) {
 	cursor, err := ReadLedgers(ctx, reader)
 	if err != nil {
 		return nil, fmt.Errorf("reading ledgers: %w", err)

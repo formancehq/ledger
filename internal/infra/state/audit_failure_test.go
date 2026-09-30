@@ -848,7 +848,7 @@ var describableScanDirs = map[string]string{
 // would need a hand-maintained
 // exclusion list for the Err* types in this package that are NOT Describable
 // (ErrNodeOutOfSync, ErrInvalidEntryIndex, ErrDoubleEntryInvariantViolated,
-// ErrVolumeCachePebbleDivergence). The method-set predicate needs neither.
+// ErrVolumeCacheStorageDivergence). The method-set predicate needs neither.
 func TestBuildAuditFailureCoversEveryDescribable(t *testing.T) {
 	t.Parallel()
 

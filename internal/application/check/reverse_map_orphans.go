@@ -10,13 +10,13 @@ import (
 	"strconv"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/indexes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -87,11 +87,11 @@ func observeReverseMapRow[K comparable](buckets map[K]*reverseMapAggregate, key 
 // oracle term compareReverseMapOrphans compares it against.
 type reverseMapOrphanScope struct {
 	// reader is the primary-store snapshot the index registry is read from.
-	reader dal.PebbleReader
+	reader dal.KVReader
 	// peer is the peer read-index snapshot, pinned by Check() BEFORE the primary
 	// one so the peer cursor can never appear ahead. nil when no readstore is
 	// attached.
-	peer *pebble.Snapshot
+	peer *kv.Snapshot
 	// lastSequence is the last log sequence the replay verified.
 	lastSequence uint64
 	// Every oracle term below is frozen at lastSequence, which is why the pass
@@ -263,7 +263,7 @@ func (c *Checker) compareReverseMapOrphans(
 
 	lower := []byte{readstore.PrefixReverseMap}
 
-	iter, err := scope.peer.NewIter(&pebble.IterOptions{
+	iter, err := scope.peer.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: readstore.IncrementBytes(lower),
 	})
@@ -406,7 +406,7 @@ func (c *Checker) compareReverseMapOrphans(
 // every unseen registry entry would turn its live rmap rows into false
 // positives.
 func (c *Checker) collectIndexedFields(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	callback func(*servicepb.CheckStoreEvent),
 ) (map[domain.IndexKey]struct{}, bool) {
 	iter, err := c.attrs.Index.NewStreamingIter(reader, nil)

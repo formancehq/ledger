@@ -45,6 +45,8 @@ cmd/bench/cpu.prof
 
 # Build directory (generated files, benchmark results, etc.)
 build/
+.release-prebuilt/
+dist/
 
 # K6 outputs
 summary.json

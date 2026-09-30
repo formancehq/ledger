@@ -247,9 +247,9 @@ func (w *Worker) processLogs(ctx context.Context) {
 		default:
 		}
 
-		// Pause while Pebble is in a write stall to let compaction catch up.
+		// Pause while RocksDB is in a write stall to let compaction catch up.
 		if w.store.IsWriteStalled() {
-			w.logger.Infof("Pausing mirror ingestion: Pebble write stall in progress")
+			w.logger.Infof("Pausing mirror ingestion: RocksDB write stall in progress")
 
 			select {
 			case <-ctx.Done():
@@ -297,7 +297,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	batchStart := time.Now()
 	attrs := metric.WithAttributes(w.ledgerAttr)
 
-	// Load the applied boundary from Pebble once; subsequent batches use the
+	// Load the applied boundary from RocksDB once; subsequent batches use the
 	// in-memory snapshot. This single read serves BOTH the source position and
 	// nextTxID — LedgerBoundaries carries both (EN-1513).
 	if !w.boundariesLoaded {
@@ -570,7 +570,7 @@ func (w *Worker) processBatch(ctx context.Context) (bool, error) {
 	w.batchTotal.Add(ctx, 1, attrs, metric.WithAttributes(attribute.String("status", "success")))
 	w.batchDuration.Record(ctx, time.Since(batchStart).Microseconds(), attrs)
 
-	// Advance the in-memory position so the next batch skips the Pebble read.
+	// Advance the in-memory position so the next batch skips the RocksDB read.
 	// Only reached after BOTH Raft acceptance and successful FSM application.
 	w.lastAppliedV2LogID = lastV2LogID
 	w.prefetchCh = nextPrefetchCh

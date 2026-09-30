@@ -71,7 +71,7 @@ func writeSigningConfig(t *testing.T, store *dal.Store, requireSignatures bool) 
 // a real Pebble snapshot, so a handle opened before the writes sees an empty
 // store and every expected row reads as missing — a fixture bug that looks
 // exactly like a compare bug.
-func openSigningReader(t *testing.T, store *dal.Store) dal.PebbleReader {
+func openSigningReader(t *testing.T, store *dal.Store) dal.KVReader {
 	t.Helper()
 
 	handle, err := store.NewReadHandle()
@@ -84,7 +84,7 @@ func openSigningReader(t *testing.T, store *dal.Store) dal.PebbleReader {
 // collectSigningErrors runs the comparison and returns the errors it emitted, in
 // emission order. Every event a signing finding produces is an error event, so a
 // non-error event is a bug rather than something to filter out.
-func collectSigningErrors(t *testing.T, verifier *signingVerifier, reader dal.PebbleReader) []*servicepb.CheckStoreError {
+func collectSigningErrors(t *testing.T, verifier *signingVerifier, reader dal.KVReader) []*servicepb.CheckStoreError {
 	t.Helper()
 
 	var got []*servicepb.CheckStoreError

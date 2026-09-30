@@ -8,14 +8,14 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// RegisterMetrics registers Pebble-internal metrics for the usage store.
+// RegisterMetrics registers RocksDB metrics for the usage store.
 // Mirrors readstore.Store.RegisterMetrics with a "usagestore." namespace so
 // operators can see LSM state, cache hit rates, and memtable pressure per
 // secondary store.
 func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 	levelBytes, err := m.Int64ObservableGauge(
 		"usagestore.level.bytes",
-		metric.WithDescription("Total bytes in each Pebble level"),
+		metric.WithDescription("Total bytes in each RocksDB level"),
 		metric.WithUnit("By"),
 	)
 	if err != nil {
@@ -50,16 +50,22 @@ func (s *Store) RegisterMetrics(m metric.Meter) (metric.Registration, error) {
 	}
 
 	return m.RegisterCallback(func(_ context.Context, o metric.Observer) error {
-		metrics := s.db.Metrics()
-
-		for i, level := range metrics.Levels {
-			o.ObserveInt64(levelBytes, level.TablesSize,
-				metric.WithAttributes(attribute.Int("level", i)))
+		levelSizes := map[int]int64{}
+		for _, file := range s.db.GetLiveFilesMetaData() {
+			levelSizes[file.Level] += file.Size
 		}
-
-		o.ObserveInt64(memtableBytes, int64(metrics.MemTable.Size))
-		o.ObserveInt64(cacheHits, metrics.BlockCache.Hits)
-		o.ObserveInt64(cacheMisses, metrics.BlockCache.Misses)
+		for level, size := range levelSizes {
+			o.ObserveInt64(levelBytes, size, metric.WithAttributes(attribute.Int("level", level)))
+		}
+		if size, ok := s.db.GetIntProperty("rocksdb.cur-size-all-mem-tables"); ok {
+			o.ObserveInt64(memtableBytes, int64(size))
+		}
+		if hits, ok := s.db.GetIntProperty("rocksdb.block-cache-hit"); ok {
+			o.ObserveInt64(cacheHits, int64(hits))
+		}
+		if misses, ok := s.db.GetIntProperty("rocksdb.block-cache-miss"); ok {
+			o.ObserveInt64(cacheMisses, int64(misses))
+		}
 
 		return nil
 	}, levelBytes, memtableBytes, cacheHits, cacheMisses)

@@ -556,7 +556,7 @@ func NewClusterStateListReader(s []*ClusterState) ClusterStateListReader {
 // Call Mutate() to obtain a mutable clone.
 type IndexProgressReader interface {
 	GetLastIndexedSequence() uint64
-	GetPebbleLastSequence() uint64
+	GetStorageLastSequence() uint64
 	Mutate() *IndexProgress
 }
 
@@ -566,8 +566,8 @@ func (r *indexProgressReadonly) GetLastIndexedSequence() uint64 {
 	return (*IndexProgress)(r).GetLastIndexedSequence()
 }
 
-func (r *indexProgressReadonly) GetPebbleLastSequence() uint64 {
-	return (*IndexProgress)(r).GetPebbleLastSequence()
+func (r *indexProgressReadonly) GetStorageLastSequence() uint64 {
+	return (*IndexProgress)(r).GetStorageLastSequence()
 }
 
 func (r *indexProgressReadonly) Mutate() *IndexProgress {

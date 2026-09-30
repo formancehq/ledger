@@ -7,9 +7,9 @@ import (
 
 // This file declares the narrow capability interfaces that callers should
 // receive instead of the full *Store. Each interface scopes one specific use
-// of the main Pebble store; together they make the structural invariants
-// "no Pebble reads on the hot path" (I1) and "no Pebble writes outside the
-// hot path or declared lifecycle paths" (I2) compiler-enforced for any code
+// of the primary store; together they make the structural invariants
+// "no primary-store reads on the hot path" (I1) and "no primary-store writes
+// outside the hot path or declared lifecycle paths" (I2) compiler-enforced for any code
 // that uses these capabilities instead of a raw *Store.
 //
 // *Store implements every capability interface declared below; consumers are
@@ -44,7 +44,7 @@ type WriteSessionFactory interface {
 //
 // Intended consumer: the FSM in CommitPreparedBatch.
 type SentinelFactory interface {
-	Run(fn func(r PebbleReader) error) error
+	Run(fn func(r KVReader) error) error
 	IsEnabled() bool
 }
 
@@ -122,8 +122,8 @@ func NewSentinelFactory(store *Store, enabled bool) SentinelFactory {
 
 type disabledSentinelFactory struct{}
 
-func (disabledSentinelFactory) Run(_ func(PebbleReader) error) error { return nil }
-func (disabledSentinelFactory) IsEnabled() bool                      { return false }
+func (disabledSentinelFactory) Run(_ func(KVReader) error) error { return nil }
+func (disabledSentinelFactory) IsEnabled() bool                  { return false }
 
 type enabledSentinelFactory struct {
 	store *Store
@@ -131,7 +131,7 @@ type enabledSentinelFactory struct {
 
 func (enabledSentinelFactory) IsEnabled() bool { return true }
 
-func (e enabledSentinelFactory) Run(fn func(PebbleReader) error) error {
+func (e enabledSentinelFactory) Run(fn func(KVReader) error) error {
 	// Use a snapshot handle (not a direct one) so the sentinel view is pinned
 	// to the DB state right after the just-completed batch commit. Even though
 	// runCommitter serialises commits today, the snapshot is cheap and keeps

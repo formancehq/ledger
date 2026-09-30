@@ -1,7 +1,7 @@
 package readstore
 
 import (
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // DumpAuditIndexKeysForTest returns a copy of every audit-index key currently
@@ -9,7 +9,7 @@ import (
 func (s *Store) DumpAuditIndexKeysForTest() [][]byte {
 	lower := AuditIndexPrefix()
 	upper := prefixUpperBound(lower)
-	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := s.db.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return nil
 	}

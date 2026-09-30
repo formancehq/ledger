@@ -18,7 +18,7 @@ local rows = panels.withIDs([
   import 'sections/transport.libsonnet',
   import 'sections/ready_loop.libsonnet',
   import 'sections/applier.libsonnet',
-  import 'sections/pebble.libsonnet',
+  import 'sections/rocksdb.libsonnet',
   import 'sections/read_index.libsonnet',
   import 'sections/caching.libsonnet',
   import 'sections/bloom.libsonnet',

@@ -97,7 +97,7 @@ func Module() fx.Option {
 		// our code creates is renamed according to --metrics-naming.
 		// The decorator has no per-meter allowlist: anything the
 		// application requests from this provider (admission, cache,
-		// bloom, raft.*, pebble.*, numscript, …) goes through the
+		// bloom, raft.*, rocksdb.*, numscript, …) goes through the
 		// rewrite in `prom` mode. OTel semantic-convention auto-
 		// instrumentation (go.*, process.*, system.*, http.*) targets
 		// the *global* MeterProvider, which we leave as the raw SDK
@@ -136,8 +136,8 @@ func Module() fx.Option {
 				store, err := dal.NewStore(
 					cfg.DataDir,
 					logger,
-					meterProvider.Meter("pebble.runtime_store"),
-					cfg.PebbleConfig,
+					meterProvider.Meter("rocksdb.runtime_store"),
+					cfg.RocksDBConfig,
 				)
 				if err != nil {
 					return nil, err
@@ -214,14 +214,14 @@ func Module() fx.Option {
 					localResponses,
 				)
 			},
-			// Recovery owns the Pebble read capability for boot/post-sync rehydrate.
+			// Recovery owns the RocksDB read capability for boot/post-sync rehydrate.
 			// The FSM Machine never holds this capability — the structural guarantee
 			// of I1 depends on Recovery being the sole holder.
 			//
 			// We hydrate the Machine here (RecoverState) so the rest of the wiring
 			// — applier, node, background workers — observes the FSM at its
 			// recovered state. NewMachine deliberately skips this step so it does
-			// not perform any Pebble read itself.
+			// not perform any RocksDB read itself.
 			func(machine *state.Machine, store *dal.Store) (*state.Recovery, error) {
 				recovery := state.NewRecovery(machine, store)
 				if err := recovery.RecoverState(); err != nil {
@@ -235,7 +235,7 @@ func Module() fx.Option {
 			func(machine *state.Machine, recovery *state.Recovery, store *dal.Store) *state.Synchronizer {
 				return state.NewSynchronizer(machine, recovery, dal.NewIncomingRestoreFactory(store))
 			},
-			// PeerStore persists Raft cluster membership in Pebble under
+			// PeerStore persists Raft cluster membership in RocksDB under
 			// [ZoneClusterPersistent][SubGlobPeers] (EN-1413). Membership wraps it
 			// with the in-memory cache, owns the transport / service-pool
 			// wiring, and exposes the OnSnapshotInstalled /
@@ -508,14 +508,14 @@ func Module() fx.Option {
 			func(n *node.Node) mirror.Proposer {
 				return n
 			},
-			// Read index store (Pebble) — always enabled
+			// Read index store (RocksDB) — always enabled
 			func(cfg Config, logger logging.Logger) (*readstore.Store, error) {
 				dir := cfg.ReadIndexConfig.Dir
 				if dir == "" {
 					dir = filepath.Join(cfg.DataDir, "read-indexes")
 				}
 
-				return readstore.New(dir, logger, cfg.ReadIndexConfig.PebbleConfig)
+				return readstore.New(dir, logger, cfg.ReadIndexConfig.RocksDBConfig)
 			},
 			// Index builder — tails the Raft log to populate the read index
 			func(store *dal.Store, rs *readstore.Store, attrs *attributes.Attributes, logger logging.Logger, meterProvider metric.MeterProvider, cfg Config) *indexbuilder.Builder {
@@ -531,7 +531,7 @@ func Module() fx.Option {
 					store, rs, logger, meterProvider.Meter("audit.index"),
 				)
 			},
-			// Usage store (Pebble) — dedicated secondary store for the
+			// Usage store (RocksDB) — dedicated secondary store for the
 			// usagebuilder projections. Kept physically separate from the
 			// readstore so an operational reset is just a directory drop and
 			// the builder re-derives every counter from the audit chain.
@@ -725,7 +725,7 @@ func Module() fx.Option {
 			},
 			// Bloom-rebuild dispatcher: the Machine signals on its
 			// BloomRebuildCh when a cluster-config change requires a rebuild;
-			// Recovery (which owns the Pebble reader) consumes that signal and
+			// Recovery (which owns the RocksDB reader) consumes that signal and
 			// invokes StartAsyncBloomPopulate. Without this dispatcher, the
 			// Machine would have to hold a reader itself, which would
 			// re-introduce the I1 hot-path read leak.
@@ -908,7 +908,7 @@ func Module() fx.Option {
 						// cannot be reordered behind a later transition. The
 						// managers only update their desired generation here;
 						// their lifecycle-owned loops perform the potentially
-						// slow Pebble reconciliation asynchronously.
+						// slow RocksDB reconciliation asynchronously.
 						handleLeadershipChangeEvent(e, eventsManager, mirrorManager, logger)
 					case node.LeaderReadyEvent:
 						proposeClusterConfigIfNeeded(n, builder, store, cfg, logger)
@@ -971,14 +971,14 @@ func Module() fx.Option {
 					scheduler := state.NewIdempotencyEvictionScheduler(
 						logger,
 						raftNode.IsLeader,
-						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
+						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, scannedKeyHashes [][]byte) {
 							proposal := commands.NewCommand()
 							proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentIdempotencyEvict)
 							proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 								Kind: &raftcmdpb.TechnicalUpdate_IdempotencyEviction{
 									IdempotencyEviction: &raftcmdpb.IdempotencyEviction{
 										CutoffMicros:            cutoffMicros,
-										PebbleKeyHashes:         pebbleKeyHashes,
+										KeyHashes:               scannedKeyHashes,
 										LastScannedTimeIndexKey: lastScannedTimeIndexKey,
 									},
 								},
@@ -987,7 +987,7 @@ func Module() fx.Option {
 							// cancelled by Stop(). No bounded timeout: a
 							// timeout firing after Raft has accepted the
 							// proposal would force a retry on the next tick
-							// with the same Pebble main-key hashes; the
+							// with the same RocksDB main-key hashes; the
 							// applied FSM uses SingleDelete, whose
 							// write-once/delete-once contract forbids
 							// re-deleting an already-deleted key.
@@ -1035,13 +1035,13 @@ func Module() fx.Option {
 					},
 				})
 			},
-			// Register Pebble read index metrics and unregister on stop.
+			// Register RocksDB read index metrics and unregister on stop.
 			func(lc fx.Lifecycle, rs *readstore.Store, meterProvider metric.MeterProvider) error {
 				registerReadStoreMetricsLifecycle(lc, rs, meterProvider)
 
 				return nil
 			},
-			// Register Pebble usage store metrics and unregister on stop.
+			// Register RocksDB usage store metrics and unregister on stop.
 			func(lc fx.Lifecycle, us *usagestore.Store, meterProvider metric.MeterProvider) error {
 				registerUsageStoreMetricsLifecycle(lc, us, meterProvider)
 
@@ -1339,12 +1339,16 @@ func tryAddLearner(ctx context.Context, cfg Config, tlsCfg TLSConfig, logger log
 				return nil
 			}
 
-			// Unavailable is transient (no leader, node syncing, etc.) — retry.
-			if ok && st.Code() == codes.Unavailable {
+			// A connection can close during a network fault before the local
+			// startup context is cancelled. Treat that peer's Canceled or
+			// DeadlineExceeded response like Unavailable and try another peer.
+			// A cancelled startup context must still abort promptly.
+			if ok && (st.Code() == codes.Unavailable ||
+				(ctx.Err() == nil && (st.Code() == codes.Canceled || st.Code() == codes.DeadlineExceeded))) {
 				logger.WithFields(map[string]any{
 					"peer":  peer.ID,
 					"error": err,
-				}).Infof("JoinAsLearner unavailable, will retry")
+				}).Infof("JoinAsLearner transient failure, will retry")
 
 				continue
 			}
@@ -1443,7 +1447,7 @@ func generateAuditKey() ([]byte, error) {
 	return key, nil
 }
 
-// proposeClusterConfigIfNeeded reads the persisted cluster state from Pebble
+// proposeClusterConfigIfNeeded reads the persisted cluster state from RocksDB
 // and proposes an update if the CLI-desired config differs. Called when the
 // node becomes leader and the FSM is caught up (LeaderReadyEvent).
 func proposeClusterConfigIfNeeded(n *node.Node, builder *plan.Builder, store *dal.Store, cfg Config, logger logging.Logger) {

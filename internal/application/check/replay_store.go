@@ -11,17 +11,18 @@ import (
 	"os"
 	"sort"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
+	"github.com/linxGnu/grocksdb"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	domainreplay "github.com/formancehq/ledger/v3/internal/domain/replay"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
-// Pebble key prefixes for the replay store.
+// Key prefixes for the replay store.
 const (
 	replayPrefixVolume      = 'V'
 	replayPrefixMetadata    = 'M'
@@ -47,12 +48,12 @@ const (
 	txOpBatch      = 0x05 // [txOpBatch][(uint32 len)(op)]* — ordered ops deferred by a partial merge (includesBase=false)
 )
 
-// replayStore is a temporary Pebble DB that stores replay state (volumes,
+// replayStore is a temporary RocksDB database that stores replay state (volumes,
 // metadata, transactions) on disk instead of in memory. This prevents OOM
-// with large datasets and uses Pebble merge operators to avoid read-modify-write
+// with large datasets and uses RocksDB merge operators to avoid read-modify-write
 // during replay — all writes are append-only.
 type replayStore struct {
-	db                    *pebble.DB
+	db                    *kv.DB
 	tempDir               string
 	purgedAccounts        map[domain.AccountKey]struct{}
 	purgedVolumes         map[domain.VolumeKey]struct{}
@@ -65,16 +66,13 @@ func newReplayStore() (*replayStore, error) {
 		return nil, fmt.Errorf("creating temp dir: %w", err)
 	}
 
-	db, err := pebble.Open(dir, &pebble.Options{
-		Logger:       dal.DiscardPebbleLogger(),
-		DisableWAL:   true,
-		MemTableSize: 16 << 20, // 16 MB
-		Merger:       replayMerger,
-	})
+	db, err := kv.Open(dir, kv.Options{MergeOperator: replayMerger, Configure: func(options *grocksdb.Options) {
+		options.SetWriteBufferSize(16 << 20)
+	}})
 	if err != nil {
 		_ = os.RemoveAll(dir)
 
-		return nil, fmt.Errorf("opening temp pebble: %w", err)
+		return nil, fmt.Errorf("opening temp RocksDB: %w", err)
 	}
 
 	return &replayStore{
@@ -91,6 +89,22 @@ func (s *replayStore) Close() error {
 	_ = os.RemoveAll(s.tempDir)
 
 	return err
+}
+
+// The adapter folds replay operands in Go to avoid the native merge callback
+// ownership crash in the current grocksdb binding.
+func (s *replayStore) merge(key, value []byte) error {
+	return s.db.Merge(key, value, kv.NoSync)
+}
+
+func (s *replayStore) deleteRange(lower, upper []byte) error {
+	batch := s.db.NewBatch()
+	defer func() { _ = batch.Close() }()
+	if err := batch.DeleteRange(lower, upper, kv.NoSync); err != nil {
+		return err
+	}
+
+	return batch.Commit(kv.NoSync)
 }
 
 // replayKey builds a prefixed key: [prefix][canonicalKey].
@@ -114,7 +128,7 @@ func (s *replayStore) deleteKey(key []byte) error {
 		return fmt.Errorf("invariant: tombstone on replay transaction key %x would break the txOpBatch deferral", key)
 	}
 
-	return s.db.Delete(key, pebble.NoSync)
+	return s.db.Delete(key, kv.NoSync)
 }
 
 // deleteLedgerData removes every replay row scoped to the ledger, mirroring
@@ -135,7 +149,7 @@ func (s *replayStore) deleteLedgerData(ledgerName string) error {
 		end := replayKey(prefix, pad[:])
 		end[len(end)-1]++
 
-		if err := s.db.DeleteRange(start, end, pebble.NoSync); err != nil {
+		if err := s.deleteRange(start, end); err != nil {
 			return fmt.Errorf("deleting replay rows (prefix=%c) for ledger %q: %w", prefix, ledgerName, err)
 		}
 	}
@@ -183,7 +197,7 @@ func (s *replayStore) AddVolumeDelta(canonicalKey []byte, inputDelta, outputDelt
 		return fmt.Errorf("marshaling volume delta: %w", err)
 	}
 
-	return s.db.Merge(key, data, pebble.NoSync)
+	return s.merge(key, data)
 }
 
 // getVolume reads the current accumulated volume for a canonical key.
@@ -193,7 +207,7 @@ func (s *replayStore) GetVolume(canonicalKey []byte) (*raftcmdpb.VolumePair, err
 
 	val, closer, err := s.db.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil
 		}
 
@@ -252,7 +266,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 
 	val, closer, err := s.db.Get(oldKey)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil // nothing to move
 		}
 
@@ -262,7 +276,7 @@ func (s *replayStore) MoveMetadata(oldCanonicalKey, newCanonicalKey []byte) erro
 	_ = closer.Close()
 
 	newKey := replayKey(replayPrefixMetadata, newCanonicalKey)
-	if err := s.db.Set(newKey, valCopy, pebble.NoSync); err != nil {
+	if err := s.db.Set(newKey, valCopy, kv.NoSync); err != nil {
 		return err
 	}
 
@@ -290,14 +304,14 @@ func (s *replayStore) SetMetadata(canonicalKey []byte, value *commonpb.MetadataV
 	data[0] = metaFlagSet
 	copy(data[1:], encoded)
 
-	return s.db.Set(key, data, pebble.NoSync)
+	return s.db.Set(key, data, kv.NoSync)
 }
 
 // deleteMetadata marks a metadata key as deleted in the replay store (pure write).
 func (s *replayStore) DeleteMetadata(canonicalKey []byte) error {
 	key := replayKey(replayPrefixMetadata, canonicalKey)
 
-	return s.db.Set(key, []byte{metaFlagDeleted}, pebble.NoSync)
+	return s.db.Set(key, []byte{metaFlagDeleted}, kv.NoSync)
 }
 
 func (s *replayStore) PurgeAccount(ledger, account string, collector domainreplay.ExclusionCollector) error {
@@ -315,7 +329,7 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 		upper := append([]byte(nil), prefix...)
 		upper[len(upper)-1]++
 		if collector != nil && spec.replayPrefix == replayPrefixVolume {
-			iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+			iter, err := s.db.NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: upper})
 			if err != nil {
 				return err
 			}
@@ -338,7 +352,7 @@ func (s *replayStore) PurgeAccount(ledger, account string, collector domainrepla
 				return err
 			}
 		}
-		if err := s.db.DeleteRange(prefix, upper, pebble.NoSync); err != nil {
+		if err := s.deleteRange(prefix, upper); err != nil {
 			return err
 		}
 	}
@@ -367,7 +381,7 @@ func (s *replayStore) Accounts(ledger string) ([]string, error) {
 		lower := append([]byte{spec.prefix}, domain.LedgerScopedPrefix(ledger)...)
 		upper := append([]byte(nil), lower...)
 		upper[len(upper)-1]++
-		iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+		iter, err := s.db.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 		if err != nil {
 			return nil, err
 		}
@@ -417,7 +431,7 @@ func (s *replayStore) AccountHasNonZeroVolume(ledger, account string) (bool, err
 	upper := append([]byte(nil), prefix...)
 	upper[len(upper)-1]++
 
-	iter, err := s.db.NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: upper})
+	iter, err := s.db.NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: upper})
 	if err != nil {
 		return false, err
 	}
@@ -494,7 +508,7 @@ func (s *replayStore) CreateTransaction(canonicalKey []byte, seq uint64, timesta
 	off += 4
 	copy(buf[off:], postingsBytes)
 
-	return s.db.Merge(key, buf, pebble.NoSync)
+	return s.merge(key, buf)
 }
 
 // SetTransactionReference records an expected reference→txID assignment.
@@ -507,7 +521,7 @@ func (s *replayStore) SetTransactionReference(ledgerName, reference string, txID
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], txID)
 
-	return s.db.Set(key, buf[:], pebble.NoSync)
+	return s.db.Set(key, buf[:], kv.NoSync)
 }
 
 // SetDefaultEnforcementMode is a no-op here because the enforcement mode lives
@@ -529,7 +543,7 @@ func (s *replayStore) SetRevertedBy(canonicalKey []byte, revertTxID uint64, reve
 		binary.BigEndian.PutUint64(buf[10:], revertedAt.GetData())
 	}
 
-	return s.db.Merge(key, buf, pebble.NoSync)
+	return s.merge(key, buf)
 }
 
 // SaveTxMetadata records a metadata upsert on a transaction via merge (no read).
@@ -554,7 +568,7 @@ func (s *replayStore) SaveTxMetadata(canonicalKey []byte, metadata map[string]*c
 		buf[1+len(metaKey)] = 0x00
 		copy(buf[1+len(metaKey)+1:], valueBytes)
 
-		if err := s.db.Merge(key, buf, pebble.NoSync); err != nil {
+		if err := s.merge(key, buf); err != nil {
 			return err
 		}
 	}
@@ -570,7 +584,7 @@ func (s *replayStore) DeleteTxMetadata(canonicalKey []byte, metaKey string) erro
 	buf[0] = txOpDeleteMeta
 	copy(buf[1:], metaKey)
 
-	return s.db.Merge(key, buf, pebble.NoSync)
+	return s.merge(key, buf)
 }
 
 // SetMetadataFieldType / RemoveMetadataFieldType are no-ops here: the schema
@@ -609,9 +623,9 @@ func (s *replayStore) RemoveAccountType(string, string) error {
 	return nil
 }
 
-// newPrefixIter creates a Pebble iterator scoped to a single prefix byte.
-func (s *replayStore) newPrefixIter(prefix byte) (*pebble.Iterator, error) {
-	return s.db.NewIter(&pebble.IterOptions{
+// newPrefixIter creates a RocksDB iterator scoped to a single prefix byte.
+func (s *replayStore) newPrefixIter(prefix byte) (*kv.Iterator, error) {
+	return s.db.NewIter(&kv.IterOptions{
 		LowerBound: []byte{prefix},
 		UpperBound: []byte{prefix + 1},
 	})
@@ -620,22 +634,73 @@ func (s *replayStore) newPrefixIter(prefix byte) (*pebble.Iterator, error) {
 // --- Merge operators ---
 
 // replayMerger dispatches to volume or transaction merger based on key prefix.
-var replayMerger = &pebble.Merger{
-	Name: "checker-replay",
-	Merge: func(key, value []byte) (pebble.ValueMerger, error) {
-		if len(key) == 0 {
-			return nil, errors.New("empty key in merge")
-		}
+// RocksDB presents operands oldest first. An existing value is an absolute
+// base; a partial merge never sees that base and must keep transaction deltas
+// deferred in txOpBatch form.
+var replayMerger grocksdb.MergeOperator = replayMergeOperator{}
 
-		switch key[0] {
-		case replayPrefixVolume:
-			return newVolumeMerger(value)
-		case replayPrefixTransaction:
-			return newTxMerger(value)
-		default:
-			return nil, fmt.Errorf("unexpected merge prefix: %c", key[0])
+type replayMergeOperator struct{}
+
+func (replayMergeOperator) Name() string { return "checker-replay" }
+
+type replayValueMerger interface {
+	MergeNewer([]byte) error
+	Finish(bool) ([]byte, io.Closer, error)
+}
+
+func newReplayValueMerger(key, value []byte) (replayValueMerger, error) {
+	if len(key) == 0 {
+		return nil, errors.New("empty key in merge")
+	}
+	switch key[0] {
+	case replayPrefixVolume:
+		return newVolumeMerger(value)
+	case replayPrefixTransaction:
+		return newTxMerger(value)
+	default:
+		return nil, fmt.Errorf("unexpected merge prefix: %c", key[0])
+	}
+}
+
+func mergeReplayValues(key, base []byte, operands [][]byte, includesBase bool) ([]byte, bool) {
+	if len(operands) == 0 {
+		return nil, false
+	}
+	first := operands[0]
+	if base != nil {
+		first = base
+	}
+	merger, err := newReplayValueMerger(key, first)
+	if err != nil {
+		return nil, false
+	}
+	if base != nil {
+		for _, operand := range operands {
+			if err := merger.MergeNewer(operand); err != nil {
+				return nil, false
+			}
 		}
-	},
+	} else {
+		for _, operand := range operands[1:] {
+			if err := merger.MergeNewer(operand); err != nil {
+				return nil, false
+			}
+		}
+	}
+	result, closer, err := merger.Finish(includesBase)
+	if closer != nil {
+		_ = closer.Close()
+	}
+
+	return result, err == nil
+}
+
+func (replayMergeOperator) FullMerge(key, existingValue []byte, operands [][]byte) ([]byte, bool) {
+	return mergeReplayValues(key, existingValue, operands, true)
+}
+
+func (replayMergeOperator) PartialMerge(key, leftOperand, rightOperand []byte) ([]byte, bool) {
+	return mergeReplayValues(key, nil, [][]byte{leftOperand, rightOperand}, false)
 }
 
 // --- Volume merger: additive accumulation ---

@@ -3,15 +3,14 @@ package readstore
 import (
 	"slices"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ReversePrefixIterator iterates over keys matching a prefix in descending
 // order within the read index. It extracts entity IDs from the key suffix.
 type ReversePrefixIterator struct {
-	iter         *pebble.Iterator
+	iter         *kv.Iterator
 	prefix       []byte
 	entityOffset int
 	entityLen    int
@@ -33,14 +32,14 @@ type ReversePrefixIterator struct {
 // given prefix in reverse order. entityOffset is the byte position where the
 // entity ID starts, entityLen is 0 for variable-length or 8 for fixed-length.
 func NewReversePrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,
 ) (*ReversePrefixIterator, error) {
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -60,7 +59,7 @@ func NewReversePrefixIterator(
 // fold-sequence gate armed at pin — the descending twin of
 // NewStampGatedPrefixIterator.
 func NewStampGatedReversePrefixIterator(
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	prefix []byte,
 	entityOffset int,
 	entityLen int,

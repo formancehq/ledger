@@ -15,22 +15,22 @@ func TestValidateSpec_NameLengthBoundary(t *testing.T) {
 	t.Parallel()
 
 	// The headless Service name is the tightest derived label:
-	// len("ledger-" + name + "-headless") = 16 + len(name) must stay <= 63,
-	// so a CR name of 47 chars is the longest accepted (47+16 = 63).
-	name47 := strings.Repeat("a", 47)
-	name48 := strings.Repeat("a", 48)
+	// len("ledger-next-" + name + "-headless") = 21 + len(name) must stay <= 63,
+	// so a CR name of 42 chars is the longest accepted (42+21 = 63).
+	name42 := strings.Repeat("a", 42)
+	name43 := strings.Repeat("a", 43)
 
-	require.Len(t, headlessServiceName(name47), dns1035LabelMaxLength)
+	require.Len(t, headlessServiceName(name42), dns1035LabelMaxLength)
 
 	require.NoError(t, validateSpec(&ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: name47},
-	}), "a 47-char name yields a 63-char headless Service name and must be accepted")
+		ObjectMeta: metav1.ObjectMeta{Name: name42},
+	}), "a 42-char name yields a 63-char headless Service name and must be accepted")
 
 	err := validateSpec(&ledgerv1alpha1.Cluster{
-		ObjectMeta: metav1.ObjectMeta{Name: name48},
+		ObjectMeta: metav1.ObjectMeta{Name: name43},
 	})
-	require.Error(t, err, "a 48-char name overflows the 63-char DNS-1035 limit and must be rejected")
-	assert.Contains(t, err.Error(), headlessServiceName(name48))
+	require.Error(t, err, "a 43-char name overflows the 63-char DNS-1035 limit and must be rejected")
+	assert.Contains(t, err.Error(), headlessServiceName(name43))
 }
 
 func TestValidateClusterConfig_AcceptsNilAndEmpty(t *testing.T) {

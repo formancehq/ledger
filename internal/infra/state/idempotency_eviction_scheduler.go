@@ -18,9 +18,9 @@ const maxEvictionBatchSize = 10000
 // expires_at is at or before it and embeds the cutoff and key hashes in the Raft
 // proposal so all nodes apply the same deterministic eviction.
 //
-// The scheduler pre-scans the Pebble time index on the leader side to collect
+// The scheduler pre-scans the RocksDB time index on the leader side to collect
 // expired key hashes (up to maxEvictionBatchSize per tick). These hashes are
-// included in the proposal so the FSM apply path is write-only (no Pebble reads).
+// included in the proposal so the FSM apply path is write-only (no RocksDB reads).
 //
 // proposeFn receives a context derived from the scheduler's stop signal —
 // callers should propagate it to their Raft propose so a Stop() cancels an
@@ -32,7 +32,7 @@ const maxEvictionBatchSize = 10000
 type IdempotencyEvictionScheduler struct {
 	logger      logging.Logger
 	isLeader    func() bool
-	proposeFn   func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte)
+	proposeFn   func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, scannedKeyHashes [][]byte)
 	store       dal.BackgroundScanner
 	idempotency *IdempotencyStore
 	interval    time.Duration
@@ -41,14 +41,14 @@ type IdempotencyEvictionScheduler struct {
 
 // NewIdempotencyEvictionScheduler creates a new scheduler.
 // proposeFn is called with a stop-cancelled context, the cutoff timestamp,
-// the full Pebble time-index key of the last scanned entry (used as the
+// the full RocksDB time-index key of the last scanned entry (used as the
 // exact DeleteRange upper bound), and the pre-scanned key hashes to submit
 // via Raft. The ctx is cancelled when Stop() is invoked, which is the
 // scheduler's sole shutdown signal.
 func NewIdempotencyEvictionScheduler(
 	logger logging.Logger,
 	isLeader func() bool,
-	proposeFn func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte),
+	proposeFn func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, scannedKeyHashes [][]byte),
 	store dal.BackgroundScanner,
 	idempotency *IdempotencyStore,
 	interval time.Duration,
@@ -95,7 +95,7 @@ func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
 
 			cutoff := uint64(time.Now().UnixMicro())
 
-			// Pre-scan Pebble time index on the leader to collect expired key hashes.
+			// Pre-scan RocksDB time index on the leader to collect expired key hashes.
 			// The hashes are included in the Raft proposal so the FSM apply is write-only.
 			// Batching is bounded by maxEvictionBatchSize to avoid oversized Raft commands.
 			handle, err := s.store.NewDirectReadHandle()
@@ -118,7 +118,7 @@ func (s *IdempotencyEvictionScheduler) loop(ctx context.Context) {
 				continue
 			}
 
-			s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, pebbleKeys=%d", cutoff, len(hashes))
+			s.logger.Debugf("Proposing idempotency eviction with cutoff=%d, scannedKeys=%d", cutoff, len(hashes))
 			s.proposeFn(ctx, cutoff, lastScannedKey, hashes)
 		}
 	}

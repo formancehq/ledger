@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/spf13/cobra"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
@@ -16,14 +15,15 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // NewDumpCommand creates the store dump command.
 func NewDumpCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dump <data-dir>",
-		Short: "Dump the entire contents of a Pebble store (offline)",
-		Long: `Open a Pebble data directory in read-only mode and print every key-value pair.
+		Short: "Dump the entire contents of a RocksDB store (offline)",
+		Long: `Open a RocksDB data directory in read-only mode and print every key-value pair.
 Values are decoded based on key prefix where possible (logs, attributes, config, etc.).
 This is an offline operation — the server must not be running.`,
 		Args: cobra.ExactArgs(1),
@@ -43,17 +43,16 @@ func runDump(cmd *cobra.Command, args []string) error {
 	limit, _ := cmd.Flags().GetInt("limit")
 	raw, _ := cmd.Flags().GetBool("raw")
 
-	db, err := pebble.Open(dataDir, &pebble.Options{
-		Logger:   dal.DiscardPebbleLogger(),
+	db, err := kv.Open(dataDir, kv.Options{
 		ReadOnly: true,
 	})
 	if err != nil {
-		return fmt.Errorf("opening pebble at %s: %w", dataDir, err)
+		return fmt.Errorf("opening RocksDB at %s: %w", dataDir, err)
 	}
 
 	defer func() { _ = db.Close() }()
 
-	var iterOpts pebble.IterOptions
+	var iterOpts kv.IterOptions
 	if prefixHex != "" {
 		prefixBytes, decErr := hex.DecodeString(prefixHex)
 		if decErr != nil {

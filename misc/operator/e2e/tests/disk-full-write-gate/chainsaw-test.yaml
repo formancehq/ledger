@@ -11,7 +11,7 @@ spec:
       try:
         - script:
             content: |
-              docker exec ledger-e2e-control-plane sh -c '
+              docker exec ledger-next-e2e-control-plane sh -c '
                 mkdir -p /mnt/tiny-data &&
                 (mountpoint -q /mnt/tiny-data || mount -t tmpfs -o size=64m,mode=0777 tmpfs /mnt/tiny-data) &&
                 rm -rf /mnt/tiny-data/* &&
@@ -24,8 +24,8 @@ spec:
       cleanup:
         - script:
             content: |
-              kubectl delete cluster disk-gate -n $NAMESPACE --ignore-not-found=true
-              docker exec ledger-e2e-control-plane sh -c 'umount /mnt/tiny-data 2>/dev/null || true'
+              kubectl delete clusters.ledger-next.formance.com disk-gate -n $NAMESPACE --ignore-not-found=true
+              docker exec ledger-next-e2e-control-plane sh -c 'umount /mnt/tiny-data 2>/dev/null || true'
             timeout: 60s
 
     # 2. Deploy the 1-replica Cluster and wait for it to be Ready.

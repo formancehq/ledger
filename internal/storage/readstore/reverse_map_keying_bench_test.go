@@ -6,9 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 const (
@@ -141,7 +140,7 @@ func BenchmarkReverseMapKeyingMultiFieldInsert(b *testing.B) {
 							}
 						}
 
-						if err := batch.Commit(pebble.NoSync); err != nil {
+						if err := batch.Commit(kv.NoSync); err != nil {
 							b.Fatal(err)
 						}
 						if err := batch.Close(); err != nil {
@@ -156,7 +155,7 @@ func BenchmarkReverseMapKeyingMultiFieldInsert(b *testing.B) {
 	}
 }
 
-func benchmarkReverseMapPointLookups(b *testing.B, db *pebble.DB, keys [][]byte, fieldsPerEntity int) {
+func benchmarkReverseMapPointLookups(b *testing.B, db *kv.DB, keys [][]byte, fieldsPerEntity int) {
 	b.Helper()
 
 	iteration := 0
@@ -189,7 +188,7 @@ func benchmarkReverseMapPointLookups(b *testing.B, db *pebble.DB, keys [][]byte,
 
 func benchmarkReverseMapRewriteScan(
 	b *testing.B,
-	db *pebble.DB,
+	db *kv.DB,
 	layout reverseMapBenchmarkLayout,
 	target reverseMapBenchmarkTarget,
 	field string,
@@ -209,7 +208,7 @@ func benchmarkReverseMapRewriteScan(
 	b.ResetTimer()
 
 	for b.Loop() {
-		iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+		iter, err := db.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -249,7 +248,7 @@ func benchmarkReverseMapRewriteScan(
 
 func benchmarkReverseMapPurgeFieldPlan(
 	b *testing.B,
-	db *pebble.DB,
+	db *kv.DB,
 	layout reverseMapBenchmarkLayout,
 	target reverseMapBenchmarkTarget,
 	field string,
@@ -277,7 +276,7 @@ func benchmarkReverseMapPurgeFieldPlan(
 			}
 			totalTombstones++
 		} else {
-			iter, err := db.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+			iter, err := db.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -321,12 +320,13 @@ func openReverseMapBenchmarkDB(
 	target reverseMapBenchmarkTarget,
 	fields []string,
 	versions []uint32,
-) *pebble.DB {
+) *kv.DB {
 	b.Helper()
 
 	db := openEmptyReverseMapBenchmarkDB(b)
 	kb := dal.NewKeyBuilder()
 	batch := db.NewBatch()
+	batchBytes := 0
 
 	for entityID := range reverseMapBenchmarkEntities {
 		entity := target.entity(entityID)
@@ -337,9 +337,11 @@ func openReverseMapBenchmarkDB(
 					b.Fatal(err)
 				}
 
-				if batch.Len() >= 16<<20 {
+				batchBytes += len(key) + len(reverseMapBenchmarkValue)
+				if batchBytes >= 16<<20 {
 					commitReverseMapBenchmarkBatch(b, batch)
 					batch = db.NewBatch()
+					batchBytes = 0
 				}
 			}
 		}
@@ -353,15 +355,10 @@ func openReverseMapBenchmarkDB(
 	return db
 }
 
-func openEmptyReverseMapBenchmarkDB(b *testing.B) *pebble.DB {
+func openEmptyReverseMapBenchmarkDB(b *testing.B) *kv.DB {
 	b.Helper()
 
-	db, err := pebble.Open(b.TempDir(), &pebble.Options{
-		Comparer:           ReadStoreComparer,
-		DisableWAL:         true,
-		FormatMajorVersion: pebble.FormatNewest,
-		MemTableSize:       64 << 20,
-	})
+	db, err := kv.Open(b.TempDir(), kv.Options{})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -374,13 +371,11 @@ func openEmptyReverseMapBenchmarkDB(b *testing.B) *pebble.DB {
 	return db
 }
 
-func commitReverseMapBenchmarkBatch(b *testing.B, batch *pebble.Batch) {
+func commitReverseMapBenchmarkBatch(b *testing.B, batch *kv.Batch) {
 	b.Helper()
 
-	if batch.Len() > 0 {
-		if err := batch.Commit(pebble.NoSync); err != nil {
-			b.Fatal(err)
-		}
+	if err := batch.Commit(kv.NoSync); err != nil {
+		b.Fatal(err)
 	}
 	if err := batch.Close(); err != nil {
 		b.Fatal(err)

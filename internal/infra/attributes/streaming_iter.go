@@ -3,10 +3,10 @@ package attributes
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // StreamingIter is a pull-based iterator over computed attribute entries.
@@ -25,7 +25,7 @@ import (
 //	if err := iter.Err(); err != nil { return err }
 type StreamingIter[V proto.Message] struct {
 	ab         accumulatorBase[V]
-	iter       *pebble.Iterator
+	iter       *kv.Iterator
 	started    bool
 	flushed    bool
 	current    *ComputedEntry[V]
@@ -38,7 +38,7 @@ type StreamingIter[V proto.Message] struct {
 // canonical keys sharing the given prefix. Pass nil for the full attribute space
 // of this attribute type.
 // Thread-safe: allocates its own iterator and buffer for concurrent access.
-func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix []byte) (*StreamingIter[V], error) {
+func (a *Attribute[V]) NewStreamingIter(reader dal.KVReader, canonicalPrefix []byte) (*StreamingIter[V], error) {
 	// Bounds include the attrType byte so Pebble only scans entries of this type.
 	// Lower: [0xF1][attrType][canonicalPrefix]
 	lowerBound := make([]byte, 2+len(canonicalPrefix))
@@ -58,7 +58,7 @@ func (a *Attribute[V]) NewStreamingIter(reader dal.PebbleReader, canonicalPrefix
 		upperBound = []byte{dal.ZoneAttributes, a.prefix + 1}
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})

@@ -15,7 +15,7 @@ func NewSecondaryMetricsCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "metrics",
 		Short:             "Get secondary store metrics",
-		Long:              "Retrieve and display metrics from the secondary (read index) Pebble store via gRPC",
+		Long:              "Retrieve and display metrics from the secondary (read index) RocksDB store via gRPC",
 		RunE:              runSecondaryMetrics,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,

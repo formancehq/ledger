@@ -40,7 +40,7 @@ const ed25519PublicKeySize = 32
 // Backward-compatible: values of exactly 32 bytes have no parent (root keys).
 // Rows whose value is too short to hold a public key are skipped and reported
 // in the malformed slice rather than decoded.
-func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, []MalformedSigningKeyRow, error) {
+func ReadSigningKeys(reader dal.KVReader) (map[string]SigningKeyEntry, []MalformedSigningKeyRow, error) {
 	lowerBound := []byte{dal.ZoneGlobal, dal.SubGlobSigningKey}
 	upperBound := []byte{dal.ZoneGlobal, dal.SubGlobSigningKey + 1}
 
@@ -96,7 +96,7 @@ func ReadSigningKeys(reader dal.PebbleReader) (map[string]SigningKeyEntry, []Mal
 
 // ReadSigningKeysCursor returns a cursor over all registered signing keys.
 // The number of keys is always small, so we load them all and use a slice cursor.
-func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor.Cursor[*commonpb.SigningKey], error) {
+func ReadSigningKeysCursor(ctx context.Context, reader dal.KVReader) (cursor.Cursor[*commonpb.SigningKey], error) {
 	_, span := queryTracer.Start(ctx, "query.list_signing_keys")
 	defer span.End()
 
@@ -122,7 +122,7 @@ func ReadSigningKeysCursor(ctx context.Context, reader dal.PebbleReader) (cursor
 
 // ReadSigningConfig loads the require-signatures flag from the given reader.
 // Returns false if the config key does not exist.
-func ReadSigningConfig(reader dal.PebbleGetter) (bool, error) {
+func ReadSigningConfig(reader dal.KVGetter) (bool, error) {
 	v, err := dal.ReadBool(reader, []byte{dal.ZoneGlobal, dal.SubGlobSigningConfig})
 	if err != nil {
 		return false, fmt.Errorf("loading signing config: %w", err)

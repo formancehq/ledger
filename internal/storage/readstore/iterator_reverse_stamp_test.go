@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestReversePrefixIteratorStampVisibility(t *testing.T) {
@@ -18,7 +19,7 @@ func TestReversePrefixIteratorStampVisibility(t *testing.T) {
 			s := newTestStore(t)
 			prefix := []byte("stamp/")
 			for entity, stamp := range map[string]uint64{"a": 9, "b": 11, "c": 10, "d": 12} {
-				require.NoError(t, s.DB().Set(append(append([]byte(nil), prefix...), entity...), binary.BigEndian.AppendUint64(nil, stamp), pebble.NoSync))
+				require.NoError(t, s.DB().Set(append(append([]byte(nil), prefix...), entity...), binary.BigEndian.AppendUint64(nil, stamp), kv.NoSync))
 			}
 			it, err := NewStampGatedReversePrefixIterator(s.DB(), prefix, len(prefix), 0, 10)
 			require.NoError(t, err)
@@ -48,8 +49,8 @@ func TestReversePrefixIteratorMalformedStamp(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			s := newTestStore(t)
 			prefix := []byte("stamp/")
-			require.NoError(t, s.DB().Set([]byte("stamp/b"), []byte{1}, pebble.NoSync))
-			require.NoError(t, s.DB().Set([]byte("stamp/a"), binary.BigEndian.AppendUint64(nil, 1), pebble.NoSync))
+			require.NoError(t, s.DB().Set([]byte("stamp/b"), []byte{1}, kv.NoSync))
+			require.NoError(t, s.DB().Set([]byte("stamp/a"), binary.BigEndian.AppendUint64(nil, 1), kv.NoSync))
 			it, err := NewStampGatedReversePrefixIterator(s.DB(), prefix, len(prefix), 0, 10)
 			require.NoError(t, err)
 			defer it.Close()

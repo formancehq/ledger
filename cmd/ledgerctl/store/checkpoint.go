@@ -14,8 +14,8 @@ func NewCheckpointCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "checkpoint",
 		Aliases:           []string{"cp"},
-		Short:             "Create a Pebble checkpoint",
-		Long:              "Create a Pebble checkpoint of the current live database state via gRPC. Useful after compaction to persist the compacted state across restarts.",
+		Short:             "Create a RocksDB checkpoint",
+		Long:              "Create a RocksDB checkpoint of the current live database state via gRPC. Useful after compaction to persist the compacted state across restarts.",
 		RunE:              runCheckpoint,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,

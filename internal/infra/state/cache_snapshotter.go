@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
@@ -23,6 +22,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	storagekv "github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // parseLeanValue decodes a persisted cache lean value from the ZoneCache
@@ -86,9 +86,9 @@ func putAttributeIfAbsent[V any](
 // cacheSnapshotSlot captures the persist/restore logic for a single cache type.
 // Implemented by protoSnapshotSlot[V] for proto-backed caches.
 type cacheSnapshotSlot interface {
-	// CacheType returns the Pebble attribute prefix byte for this cache type.
+	// CacheType returns the RocksDB attribute prefix byte for this cache type.
 	CacheType() byte
-	// Persist writes all entries from the given generation to the Pebble batch.
+	// Persist writes all entries from the given generation to the RocksDB batch.
 	Persist(batch *dal.WriteSession, genByte byte, genIndex int) error
 	// RestoreEntry returns a function that restores a single entry into the given generation.
 	RestoreEntry(genIndex int) func(u128 attributes.U128, rawValue []byte) error
@@ -292,13 +292,13 @@ func newProtoSnapshotSlot[V interface {
 }
 
 // CacheSnapshotter handles persisting and restoring the in-memory cache
-// (generations, reversions, bloom filters) to/from Pebble under the 0xFF prefix.
+// (generations, reversions, bloom filters) to/from RocksDB under the 0xFF prefix.
 // Extracted from Machine to isolate pure IO serialization logic.
 //
 // The snapshotter does NOT retain a dal.RecoveryReader: Machine holds a
 // snapshotter as a hot-path field (for MirrorPreload, which is a pure
 // write operation), so a reader stored here would re-introduce indirect
-// Pebble-read access from the hot path. Reader-bearing methods
+// RocksDB-read access from the hot path. Reader-bearing methods
 // (RestoreFromStore, StartAsyncBloomPopulate, hasPersistedBloomBlocks) accept
 // the reader as a parameter and are only called from non-hot-path contexts
 // (Recovery, bootstrap).
@@ -422,7 +422,7 @@ func persistLeanProtoEntries[V interface {
 	return nil
 }
 
-// RestoreFromStore rebuilds the in-memory cache from Pebble (0xFF prefix).
+// RestoreFromStore rebuilds the in-memory cache from RocksDB (0xFF prefix).
 // Called on restart (when store is up to date) and after follower sync.
 //
 // The cache-level meta key ([0xFF][CacheMetaKey]) and per-generation meta keys
@@ -452,8 +452,8 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 
 	defer func() { _ = reader.Close() }()
 
-	// Rebuild the idempotency bridge from Pebble. The Reset above cleared the
-	// in-memory map, but the underlying Pebble entries survive snapshot
+	// Rebuild the idempotency bridge from RocksDB. The Reset above cleared the
+	// in-memory map, but the underlying RocksDB entries survive snapshot
 	// restoration — without this scan the FSM would re-accept already-applied
 	// idempotent operations until the bridge naturally refilled, breaking the
 	// at-most-once guarantee. See issue #300.
@@ -461,7 +461,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 		return fmt.Errorf("restoring idempotency bridge: %w", err)
 	}
 
-	// Rebuild the backup-jobs map from Pebble — same rationale as
+	// Rebuild the backup-jobs map from RocksDB — same rationale as
 	// Idempotency above. Active jobs survive across snapshot/restore and
 	// the in-memory map must match what's on disk before the FSM accepts
 	// a new BackupOrderStart.
@@ -490,7 +490,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 		}
 
 		currentGen = meta.GetCurrentGeneration()
-	case errors.Is(err, pebble.ErrNotFound):
+	case errors.Is(err, storagekv.ErrNotFound):
 		// The meta key is written on rotation, so absence means either a
 		// young store still in generation 0, or a store whose applied index
 		// is real but whose cache zone carries no meta — a restored store
@@ -548,9 +548,9 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	s.logger.WithFields(map[string]any{
 		"duration":          time.Since(restoreStart).String(),
 		"currentGeneration": s.registry.Cache.CurrentGeneration(),
-	}).Infof("Restored cache from Pebble")
+	}).Infof("Restored cache from RocksDB")
 
-	// Restore bloom filters: load persisted blocks from Pebble, then replay
+	// Restore bloom filters: load persisted blocks from RocksDB, then replay
 	// cache gen0+gen1 entries to fill the gap since the last rotation flush.
 	// If no persisted blocks exist (first boot), fall back to a full attribute scan.
 	// On the persisted-blocks (restart) path, restoreBloomFilters runs the
@@ -566,7 +566,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 	return nil
 }
 
-// restoreGeneration restores a single cache generation from Pebble.
+// restoreGeneration restores a single cache generation from RocksDB.
 // genByte is the byte position in 0xFF keys; genIndex selects the
 // in-memory generation to populate (0=gen0, 1=gen1).
 //
@@ -574,7 +574,7 @@ func (s *CacheSnapshotter) RestoreFromStore(store dal.RecoveryReader) error {
 // rotation. When absent, BaseIndex defaults to 0 (the pre-rotation value) and
 // we still iterate the per-entry rows that mergeSimpleWithCache emits every
 // batch.
-func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte byte, genIndex int) error {
+func (s *CacheSnapshotter) restoreGeneration(reader dal.KVReader, genByte byte, genIndex int) error {
 	// Read generation metadata if present.
 	baseIndex := uint64(0)
 
@@ -596,7 +596,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 		}
 
 		baseIndex = genMeta.GetBaseIndex()
-	case errors.Is(err, pebble.ErrNotFound):
+	case errors.Is(err, storagekv.ErrNotFound):
 		// Per-generation meta is only written on rotation; before the first
 		// rotation it is legitimately absent and BaseIndex stays 0. Only
 		// ErrNotFound is treated as absence.
@@ -610,7 +610,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 		s.registry.Cache.BaseIndex.Gen1 = baseIndex
 	}
 
-	// Restore each cache type by iterating over its Pebble prefix.
+	// Restore each cache type by iterating over its RocksDB prefix.
 	// All entries use lean format: [8-byte tag LE][1-byte flag][raw value proto bytes].
 	for _, slot := range s.slots {
 		restoreFn := slot.RestoreEntry(genIndex)
@@ -618,7 +618,7 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 		lower := []byte{dal.ZoneCache, genByte, slot.CacheType()}
 		upper := []byte{dal.ZoneCache, genByte, slot.CacheType() + 1}
 
-		iter, err := reader.NewIter(&pebble.IterOptions{
+		iter, err := reader.NewIter(&storagekv.IterOptions{
 			LowerBound: lower,
 			UpperBound: upper,
 		})
@@ -684,13 +684,13 @@ func (s *CacheSnapshotter) restoreGeneration(reader dal.PebbleReader, genByte by
 // where gen is one of the two live generation bytes and slotCode is a
 // registered cache slot. The valid slot set is derived from s.slots so this
 // stays in lock-step with the persist side (no second hardcoded list).
-func (s *CacheSnapshotter) validateCacheNamespace(reader dal.PebbleReader, gen0Byte, gen1Byte byte) error {
+func (s *CacheSnapshotter) validateCacheNamespace(reader dal.KVReader, gen0Byte, gen1Byte byte) error {
 	validSlot := make(map[byte]struct{}, len(s.slots))
 	for _, slot := range s.slots {
 		validSlot[slot.CacheType()] = struct{}{}
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&storagekv.IterOptions{
 		LowerBound: []byte{dal.ZoneCache},
 		UpperBound: []byte{dal.ZoneCache + 1},
 	})
@@ -744,7 +744,7 @@ func (s *CacheSnapshotter) validateCacheNamespace(reader dal.PebbleReader, gen0B
 	return nil
 }
 
-// restoreBloomFilters publishes a ready bloom on top of Pebble's
+// restoreBloomFilters publishes a ready bloom on top of RocksDB's
 // persisted state. On a simple restart (persisted bloom blocks exist),
 // the rebuild runs SYNCHRONOUSLY before this function returns: the cost
 // is bounded (O(blocks) + O(cache gen0+gen1)) and running it inline
@@ -803,11 +803,11 @@ func (s *CacheSnapshotter) restoreBloomFilters(store dal.RecoveryReader) error {
 		return nil
 	}
 
-	return s.runBloomTaskSync(store, "restore from Pebble blocks", s.bloomFilters.RestoreFromStore)
+	return s.runBloomTaskSync(store, "restore from RocksDB blocks", s.bloomFilters.RestoreFromStore)
 }
 
 // StartAsyncBloomPopulate interrupts any running bloom task and launches a
-// new one that populates the bloom filters from a full Pebble attribute scan.
+// new one that populates the bloom filters from a full RocksDB attribute scan.
 // Used on first boot and after bloom config changes. The reader is captured
 // by the goroutine; the snapshotter itself does not retain it.
 func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, reason string) {
@@ -818,7 +818,7 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 	}
 	if s.bloomPaused {
 		// Do not retain store on the snapshotter: Recovery remains the sole
-		// owner of Pebble read capability. One pending full population is enough
+		// owner of RocksDB read capability. One pending full population is enough
 		// regardless of how many rebuild signals arrive while paused.
 		s.bloomPopulatePending = true
 		s.bloomPopulateReason = reason
@@ -832,7 +832,7 @@ func (s *CacheSnapshotter) StartAsyncBloomPopulate(store dal.RecoveryReader, rea
 // in the calling goroutine using the provided context. Shared between
 // runBloomTask (wraps it in a SingleTaskExecutor) and runBloomTaskSync
 // (drives it inline on the boot path).
-func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.PebbleReader) error) error {
+func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.RecoveryReader, reason string, epoch uint64, loadFn func(context.Context, dal.KVReader) error) error {
 	start := time.Now()
 
 	// Hold dbMu.RLock for the entire bloom load to prevent RestoreCheckpoint
@@ -884,7 +884,7 @@ func (s *CacheSnapshotter) runBloomTaskBody(ctx context.Context, store dal.Recov
 // It interrupts any in-flight task, captures the current epoch, and runs
 // loadFn via the SingleTaskExecutor. See runBloomTaskBody for the actual
 // load + replay + SetReady sequence.
-func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) {
+func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.KVReader) error) {
 	s.bloomExecutor.Interrupt()
 
 	s.logger.WithFields(map[string]any{
@@ -904,7 +904,7 @@ func (s *CacheSnapshotter) runBloomTask(store dal.RecoveryReader, reason string,
 // background context. By the time it returns, the bloom is ready (or
 // the call errored out), so the caller can safely begin work that
 // relies on bloom completeness -- in particular replayWAL.
-func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.PebbleReader) error) error {
+func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason string, loadFn func(context.Context, dal.KVReader) error) error {
 	s.bloomExecutor.Interrupt()
 
 	s.logger.WithFields(map[string]any{
@@ -917,7 +917,7 @@ func (s *CacheSnapshotter) runBloomTaskSync(store dal.RecoveryReader, reason str
 }
 
 // hasPersistedBloomBlocks reports whether any persisted bloom block keys exist
-// in Pebble. It returns an error on any read/iterator failure: a probe failure
+// in RocksDB. It returns an error on any read/iterator failure: a probe failure
 // must never be silently converted into "no blocks" (first-boot), which would
 // let recovery republish a ready bloom filter from an unreadable database and
 // mask corruption (EN-1527).
@@ -932,7 +932,7 @@ func (s *CacheSnapshotter) hasPersistedBloomBlocks(store dal.RecoveryReader) (bo
 	lower := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom}
 	upper := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1}
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&storagekv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -986,7 +986,7 @@ func (s *CacheSnapshotter) replayBloomFromCache(ctx context.Context) error {
 }
 
 // Pause stops the current bloom task and rejects new starts until Resume.
-// It is used while a checkpoint replaces the Pebble contents.
+// It is used while a checkpoint replaces the RocksDB contents.
 func (s *CacheSnapshotter) Pause() {
 	s.bloomMu.Lock()
 	s.bloomPaused = true

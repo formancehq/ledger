@@ -189,7 +189,7 @@ func parityLogIDs() []uint64 {
 // universe scans. Without them the universe shape compares an empty
 // descending drain against an empty ascending reference and passes for a
 // reason unrelated to direction: the index event rows above feed the filtered
-// leaves, not PebbleAccountIterator, which reads the attributes zone.
+// leaves, not AccountIterator, which reads the attributes zone.
 func seedParityAccountVolumes(t *testing.T, batch *dal.WriteSession, kb *dal.KeyBuilder) {
 	t.Helper()
 
@@ -643,7 +643,7 @@ func parityCases() []parityCase {
 		{"empty and (universe)", andFilter()},
 		// The bounded id range is the leaf this matrix exists for: it is the
 		// only compiled descending path that reaches
-		// NewPebbleReverseTxRangeIterator.
+		// NewReverseTxRangeIterator.
 		{"tx id range (streaming leaf)", txIDRangeFilter(lo+2, hi-2)},
 		{"tx id range open above", txIDRangeFilter(lo+5, ^uint64(0))},
 		{"tx id equality", txIDEqualFilter(lo + 3)},

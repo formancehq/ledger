@@ -797,7 +797,7 @@ func defaultReadinessProbe() *corev1.Probe {
 // defaultStartupProbe returns a startup probe that gives the process up to
 // 5 minutes (failureThreshold 30 * periodSeconds 10) to finish initialising.
 // This prevents the liveness probe from killing pods that are warming up a
-// large Pebble database on cold start.
+// large RocksDB database on cold start.
 func defaultStartupProbe() *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{

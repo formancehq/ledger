@@ -74,7 +74,7 @@ func runRestart(cmd *cobra.Command, opts *cmdutil.Options, f *restartFlags, args
 	if ledger.Spec.PodAnnotations == nil {
 		ledger.Spec.PodAnnotations = make(map[string]string)
 	}
-	ledger.Spec.PodAnnotations["ledger.formance.com/restartedAt"] = time.Now().Format(time.RFC3339)
+	ledger.Spec.PodAnnotations["ledger-next.formance.com/restartedAt"] = time.Now().Format(time.RFC3339)
 
 	spinner, _ := pterm.DefaultSpinner.Start("Triggering rolling restart...")
 

@@ -3,11 +3,12 @@ package dal
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func newTestStore(t *testing.T) *Store {
@@ -71,10 +72,10 @@ func TestBatch_CommitFailureRetainsBatch(t *testing.T) {
 	t.Parallel()
 
 	path := t.TempDir()
-	db, err := pebble.Open(path, &pebble.Options{})
+	db, err := kv.Open(path, kv.Options{})
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
-	db, err = pebble.Open(path, &pebble.Options{ReadOnly: true})
+	db, err = kv.Open(path, kv.Options{ReadOnly: true})
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, db.Close()) })
 
@@ -83,7 +84,7 @@ func TestBatch_CommitFailureRetainsBatch(t *testing.T) {
 	owned := batch.batch
 
 	err = batch.Commit()
-	require.ErrorIs(t, err, pebble.ErrReadOnly)
+	require.Error(t, err, "RocksDB rejects writes through a read-only handle")
 	require.ErrorContains(t, err, "committing write session")
 	require.False(t, batch.committed)
 	require.Same(t, owned, batch.batch)
@@ -96,7 +97,7 @@ func TestBatch_CommitFailureRetainsBatch(t *testing.T) {
 // can compare batch reuse against an omitted Close without inspecting pooled
 // objects or making nondeterministic sync.Pool reuse a test assertion.
 func BenchmarkBatch_Commit(b *testing.B) {
-	db, err := pebble.Open(b.TempDir(), &pebble.Options{})
+	db, err := kv.Open(b.TempDir(), kv.Options{})
 	require.NoError(b, err)
 	b.Cleanup(func() { require.NoError(b, db.Close()) })
 	key := []byte("key1")
@@ -219,7 +220,7 @@ func TestBatch_DeleteRange(t *testing.T) {
 
 	// Delete range [bbb, ddd)
 	batch2 := s.OpenWriteSession()
-	require.NoError(t, batch2.DeleteRange([]byte("bbb"), []byte("ddd"), pebble.NoSync))
+	require.NoError(t, batch2.DeleteRange([]byte("bbb"), []byte("ddd"), kv.NoSync))
 	require.NoError(t, batch2.Commit())
 
 	// "aaa" should exist
@@ -341,7 +342,7 @@ func TestBatch_RawSetAfterCommit(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
-	err := batch.Set([]byte("key"), []byte("val"), pebble.NoSync)
+	err := batch.Set([]byte("key"), []byte("val"), kv.NoSync)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already committed")
 }
@@ -353,7 +354,7 @@ func TestBatch_RawDeleteRangeAfterCommit(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Commit())
 
-	err := batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync)
+	err := batch.DeleteRange([]byte("a"), []byte("z"), kv.NoSync)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "already committed")
 }
@@ -394,11 +395,11 @@ func TestBatch_MutationsAfterCancel(t *testing.T) {
 	batch := s.OpenWriteSession()
 	require.NoError(t, batch.Cancel())
 
-	require.ErrorContains(t, batch.Set([]byte("k"), []byte("v"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.Set([]byte("k"), []byte("v"), kv.NoSync), "cancelled")
 	require.ErrorContains(t, batch.SetBytes([]byte("k"), []byte("v")), "cancelled")
 	require.ErrorContains(t, batch.DeleteKey([]byte("k")), "cancelled")
 	require.ErrorContains(t, batch.SingleDeleteKey([]byte("k")), "cancelled")
-	require.ErrorContains(t, batch.DeleteRange([]byte("a"), []byte("z"), pebble.NoSync), "cancelled")
+	require.ErrorContains(t, batch.DeleteRange([]byte("a"), []byte("z"), kv.NoSync), "cancelled")
 	require.ErrorContains(t, batch.DeleteRangeNoSync([]byte("a"), []byte("z")), "cancelled")
 }
 
@@ -516,5 +517,5 @@ func BenchmarkBatch_1000(b *testing.B)  { benchmarkBatchCommit(b, 1000) }
 func BenchmarkBatch_10000(b *testing.B) { benchmarkBatchCommit(b, 10000) }
 
 // TestBatch_NewIter was removed: WriteSession no longer exposes NewIter.
-// Reads from Pebble while writes are pending must go through a ReadHandle
+// Reads from RocksDB while writes are pending must go through a ReadHandle
 // obtained via *Store.NewReadHandle / NewDirectReadHandle.

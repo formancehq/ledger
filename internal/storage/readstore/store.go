@@ -11,24 +11,25 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/linxGnu/grocksdb"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
-// Config is the Pebble configuration for the read index store.
-// It uses the same tunables as the primary store (pebblecfg.Config).
-type Config = pebblecfg.Config
+// Config contains the read index storage tunables.
+// It uses the same tunables as the primary store (rocksdbcfg.Config).
+type Config = rocksdbcfg.Config
 
 // ErrReadProjectionFailed reports that the normal read projection stopped on
 // a terminal local invariant failure and can no longer certify new horizons.
 var ErrReadProjectionFailed = errors.New("read projection failed")
 
-// DefaultConfig returns the default Pebble configuration for the read index.
+// DefaultConfig returns the default RocksDB configuration for the read index.
 // These defaults are intentionally smaller than the primary DAL store because
 // the read index is a derived view that can be rebuilt from the Raft log.
 func DefaultConfig() Config {
@@ -42,15 +43,15 @@ func DefaultConfig() Config {
 		TargetFileSize:              64 << 20,  // 64MB
 		BytesPerSync:                512 << 10, // 512KB
 		MaxConcurrentCompactions:    1,
-		Compression:                 pebblecfg.DefaultLevelCompression(),
+		Compression:                 rocksdbcfg.DefaultLevelCompression(),
 	}
 }
 
-// Store wraps a Pebble database for the read-side inverted indexes.
-// It is safe for concurrent use: Pebble supports concurrent readers
+// Store wraps a RocksDB database for the read-side inverted indexes.
+// It is safe for concurrent use: RocksDB supports concurrent readers
 // and writers without a global write lock.
 type Store struct {
-	db     *pebble.DB
+	db     *kv.DB
 	logger logging.Logger
 	dir    string
 
@@ -134,7 +135,7 @@ func WithPromotionFlushForTest(wrap func(flush func() error) error) Option {
 	}
 }
 
-// New opens or creates a Pebble database at the given directory for the read index.
+// New opens or creates a RocksDB database at the given directory for the read index.
 func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Store, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("creating read store directory: %w", err)
@@ -150,58 +151,28 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 	logger.WithFields(map[string]any{
 		"path":     dbPath,
 		"fileSize": fileSize,
-	}).Infof("Opening Pebble read index")
+	}).Infof("Opening RocksDB read index")
 
 	openStart := time.Now()
 
-	cache := pebble.NewCache(cfg.CacheSize)
-	defer cache.Unref()
-
-	opts := &pebble.Options{
-		Logger:             dal.NewPebbleLogger(logger),
-		FormatMajorVersion: pebble.FormatNewest,
-		// Custom comparer: splits keys at [prefix][ledger\x00] boundary
-		// so bloom filters are built on ledger-scoped prefixes, enabling
-		// SeekPrefixGE to skip SSTables that don't contain the target ledger.
-		Comparer: ReadStoreComparer,
-		// The read index is a derived view rebuilt from the Raft log.
-		// We can safely disable WAL: on crash the index builder simply
-		// replays from its last progress cursor.
-		DisableWAL:                  true,
-		MemTableSize:                cfg.MemTableSize,
-		MemTableStopWritesThreshold: cfg.MemTableStopWritesThreshold,
-		L0CompactionThreshold:       cfg.L0CompactionThreshold,
-		L0StopWritesThreshold:       cfg.L0StopWritesThreshold,
-		LBaseMaxBytes:               cfg.LBaseMaxBytes,
-		BytesPerSync:                cfg.BytesPerSync,
-		CompactionConcurrencyRange: func() (int, int) {
-			n := cfg.MaxConcurrentCompactions
-
-			return n, n
-		},
-		Cache:           cache,
-		TargetFileSizes: cfg.BuildTargetFileSizes(),
-		Levels:          cfg.BuildLevels(),
-	}
-
-	db, err := pebble.Open(dbPath, opts)
+	opts := kv.Options{ComparatorName: readStoreComparerName, CacheSize: uint64(cfg.CacheSize), DisableWAL: true, Configure: func(o *grocksdb.Options) {
+		o.SetWriteBufferSize(cfg.MemTableSize)
+		o.SetMaxWriteBufferNumber(cfg.MemTableStopWritesThreshold)
+		o.SetLevel0FileNumCompactionTrigger(cfg.L0CompactionThreshold)
+		o.SetLevel0StopWritesTrigger(cfg.L0StopWritesThreshold)
+		o.SetMaxBytesForLevelBase(uint64(cfg.LBaseMaxBytes))
+		o.SetTargetFileSizeBase(uint64(cfg.TargetFileSize))
+		o.SetBytesPerSync(uint64(cfg.BytesPerSync))
+		o.SetMaxBackgroundJobs(cfg.MaxConcurrentCompactions + 1)
+		o.SetCompressionPerLevel(cfg.RocksDBCompression())
+	}}
+	db, err := kv.Open(dbPath, opts)
 	if err != nil {
-		return nil, fmt.Errorf("opening Pebble read index: %w", err)
+		return nil, fmt.Errorf("opening RocksDB read index: %w", err)
 	}
-
-	m := db.Metrics()
 	logger.WithFields(map[string]any{
-		"duration":          time.Since(openStart).String(),
-		"l0FileCount":       m.Levels[0].TablesCount,
-		"l0Size":            m.Levels[0].TablesSize,
-		"l1FileCount":       m.Levels[1].TablesCount,
-		"l1Size":            m.Levels[1].TablesSize,
-		"memTableCount":     m.MemTable.Count,
-		"memTableSize":      m.MemTable.Size,
-		"compactionCount":   m.Compact.Count,
-		"compactionEstDebt": m.Compact.EstimatedDebt,
-		"totalLevelsSize":   m.DiskSpaceUsage(),
-	}).Infof("Pebble read index opened — LSM state")
+		"duration": time.Since(openStart).String(),
+	}).Infof("RocksDB read index opened")
 
 	s := &Store{
 		db:      db,
@@ -219,16 +190,12 @@ func New(dir string, logger logging.Logger, cfg Config, options ...Option) (*Sto
 	return s, nil
 }
 
-// OpenReadOnly opens a Pebble read index at dirPath in read-only mode.
+// OpenReadOnly opens a RocksDB read index at dirPath in read-only mode.
 // The caller must call Close() when done.
 func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
-	db, err := pebble.Open(dirPath, &pebble.Options{
-		Logger:   dal.NewPebbleLogger(logger),
-		Comparer: ReadStoreComparer,
-		ReadOnly: true,
-	})
+	db, err := kv.Open(dirPath, kv.Options{ReadOnly: true, ComparatorName: readStoreComparerName})
 	if err != nil {
-		return nil, fmt.Errorf("opening read-only Pebble read index at %s: %w", dirPath, err)
+		return nil, fmt.Errorf("opening read-only RocksDB read index at %s: %w", dirPath, err)
 	}
 
 	s := &Store{
@@ -244,17 +211,13 @@ func OpenReadOnly(dirPath string, logger logging.Logger) (*Store, error) {
 	return s, nil
 }
 
-// CreateCheckpoint creates a Pebble checkpoint of the read index at destDir.
-// The read index has WAL disabled, so committed batches may exist only in a
-// memtable. Flush it first: otherwise Pebble has neither an SST nor a WAL file
-// to link and a ready checkpoint can silently omit the progress certificates
-// and projection rows that its creator just waited for. The flush goes through
-// the promotion marks so a promotion it makes durable also stops being refused;
-// the builder goroutine is the only caller (single-writer contract). With no
-// mark pending that path is a no-op and the store flushes directly, so a test
-// store built with WithPromotionFlushForTest only sees its wrap here while a
-// promotion is in flight.
+// CreateCheckpoint flushes pending promotions and the read index before
+// creating a RocksDB checkpoint. The explicit flush keeps the existing
+// serving-transition contract even though RocksDB also retains WAL writes.
 func (s *Store) CreateCheckpoint(destDir string) error {
+	if err := os.MkdirAll(filepath.Dir(destDir), 0o755); err != nil {
+		return fmt.Errorf("creating read index checkpoint parent: %w", err)
+	}
 	if err := s.serving.Flush(); err != nil {
 		return fmt.Errorf("flushing pending index promotions before checkpoint: %w", err)
 	}
@@ -266,24 +229,24 @@ func (s *Store) CreateCheckpoint(destDir string) error {
 	return s.db.Checkpoint(destDir)
 }
 
-// Close closes the underlying Pebble database.
+// Close closes the underlying RocksDB database.
 func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// DB returns the underlying Pebble database for creating batches.
-func (s *Store) DB() *pebble.DB {
+// DB returns the underlying RocksDB database for creating batches.
+func (s *Store) DB() *kv.DB {
 	return s.db
 }
 
-// NewBatch creates a dal.WriteSession backed by the read store's Pebble DB.
+// NewBatch creates a dal.WriteSession backed by the read store's RocksDB DB.
 func (s *Store) NewBatch() *dal.WriteSession {
 	return dal.NewWriteSessionFromDB(s.db)
 }
 
 // NewSnapshot returns a consistent snapshot for reads.
 // The caller must call snap.Close() when done.
-func (s *Store) NewSnapshot() *pebble.Snapshot {
+func (s *Store) NewSnapshot() *kv.Snapshot {
 	return s.db.NewSnapshot()
 }
 
@@ -299,10 +262,10 @@ func (s *Store) ReadProgress() (uint64, error) {
 }
 
 // ReadProgressFrom is the snapshot-aware variant of ReadProgress: it reads
-// from an arbitrary PebbleGetter (typically a *pebble.Snapshot taken via
+// from an arbitrary KVGetter (typically a *kv.Snapshot taken via
 // NewSnapshot()) instead of the live DB, so multi-step readers can pin a
 // consistent view.
-func (s *Store) ReadProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) ReadProgressFrom(reader dal.KVGetter) (uint64, error) {
 	return progressCursor.Read(reader)
 }
 
@@ -319,7 +282,7 @@ func (s *Store) ReadRaftProgress() (uint64, error) {
 
 // ReadRaftProgressFrom reads the normal projection certificate from a pinned
 // snapshot, so the certificate and index rows come from one Pebble view.
-func (s *Store) ReadRaftProgressFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) ReadRaftProgressFrom(reader dal.KVGetter) (uint64, error) {
 	return readRaftCursor.Read(reader)
 }
 
@@ -337,7 +300,7 @@ func (s *Store) LastIndexedSequence() (uint64, error) {
 // LastIndexedSequenceFrom is the snapshot-aware variant. Callers that hold
 // a snapshot for a multi-step read must use this form so the value stays
 // pinned to the snapshot rather than advancing under their feet.
-func (s *Store) LastIndexedSequenceFrom(reader dal.PebbleGetter) (uint64, error) {
+func (s *Store) LastIndexedSequenceFrom(reader dal.KVGetter) (uint64, error) {
 	return s.ReadProgressFrom(reader)
 }
 
@@ -525,7 +488,7 @@ func (s *Store) DeleteBackfillProgress(key []byte) error {
 	copy(fullKey, prefix)
 	copy(fullKey[len(prefix):], key)
 
-	return s.db.Delete(fullKey, pebble.NoSync)
+	return s.db.Delete(fullKey, kv.NoSync)
 }
 
 // DeleteBackfillProgressInBatch removes a backfill cursor inside an existing
@@ -726,12 +689,12 @@ func (s *Store) WriteIndexVersionState(batch *dal.WriteSession, ledgerName strin
 // Per CLAUDE.md invariant #7, callers MUST NOT collapse a non-nil err
 // into "absent" — a transient I/O error masquerading as `index still
 // building` would lie to the client indefinitely.
-func ReadIndexVersionStateFrom(reader dal.PebbleGetter, ledgerName, canonicalID string) (IndexVersionState, bool, error) {
+func ReadIndexVersionStateFrom(reader dal.KVGetter, ledgerName, canonicalID string) (IndexVersionState, bool, error) {
 	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
 
 	v, closer, err := reader.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return IndexVersionState{}, false, nil
 		}
 
@@ -766,7 +729,7 @@ func (s *Store) ReadIndexVersionState(ledgerName, canonicalID string) (IndexVers
 // Returns (0, error) on a real Pebble I/O failure; (0, nil) when no
 // version state has been written yet (caller should translate to
 // ErrIndexBuilding at query boundaries).
-func (s *Store) SnapshotVersionResolver(reader dal.PebbleGetter, ledgerName string) IndexVersionResolver {
+func (s *Store) SnapshotVersionResolver(reader dal.KVGetter, ledgerName string) IndexVersionResolver {
 	return s.PinnedVersionResolver(reader, ledgerName, 0)
 }
 
@@ -823,7 +786,7 @@ type IndexVersionResolver func(canonical string) (ResolvedIndexVersion, bool, er
 // activation or past the last log it received, and for a pin-less read,
 // which nothing bounds to that keyspace. An initial build retains nothing
 // and is refused while in flight, as it always was before it first served.
-func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string, pin uint64) IndexVersionResolver {
+func (s *Store) PinnedVersionResolver(reader dal.KVGetter, ledgerName string, pin uint64) IndexVersionResolver {
 	return func(canonical string) (ResolvedIndexVersion, bool, error) {
 		state, present, err := ReadIndexVersionStateFrom(reader, ledgerName, canonical)
 		if err != nil {
@@ -876,7 +839,7 @@ func (s *Store) PinnedVersionResolver(reader dal.PebbleGetter, ledgerName string
 func (s *Store) DeleteIndexVersionState(ledgerName string, canonicalID string) error {
 	key := IndexVersionStateKey(dal.NewKeyBuilder(), ledgerName, canonicalID)
 
-	return s.db.Delete(key, pebble.NoSync)
+	return s.db.Delete(key, kv.NoSync)
 }
 
 // ReadAllIndexVersionStates returns every persisted per-index version
@@ -888,11 +851,11 @@ func (s *Store) ReadAllIndexVersionStates() ([]IndexVersionStateEntry, error) {
 
 // ReadAllIndexVersionStatesFrom reads versions through the caller's snapshot,
 // so boot can restore them at the same position as its cursor and ledger history.
-func (s *Store) ReadAllIndexVersionStatesFrom(reader dal.PebbleReader) ([]IndexVersionStateEntry, error) {
+func (s *Store) ReadAllIndexVersionStatesFrom(reader dal.KVReader) ([]IndexVersionStateEntry, error) {
 	prefix := IndexVersionStatePrefix()
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -947,18 +910,18 @@ func (s *Store) ReadAllBackfillProgress() (map[string]uint64, error) {
 }
 
 // ReadAllBackfillProgressFrom is the snapshot-aware variant of
-// ReadAllBackfillProgress. Multi-step callers hold a *pebble.Snapshot
+// ReadAllBackfillProgress. Multi-step callers hold a *kv.Snapshot
 // (via NewSnapshot()) and pass it in so every cursor in the returned
 // map is coherent with the caller's other snapshot-based reads.
-func (s *Store) ReadAllBackfillProgressFrom(reader dal.PebbleReader) (map[string]uint64, error) {
+func (s *Store) ReadAllBackfillProgressFrom(reader dal.KVReader) (map[string]uint64, error) {
 	return readAllBackfillProgress(reader)
 }
 
-func readAllBackfillProgress(reader dal.PebbleReader) (map[string]uint64, error) {
+func readAllBackfillProgress(reader dal.KVReader) (map[string]uint64, error) {
 	prefix := BackfillKeyPrefix()
 	upper := IncrementBytes(prefix)
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: upper,
 	})
@@ -1005,9 +968,9 @@ func (s *Store) ListBackfillProgress() ([]BackfillEntry, error) {
 
 // ListBackfillProgressFrom is the snapshot-aware variant of
 // ListBackfillProgress. Multi-step callers reading from a
-// *pebble.Snapshot pass it here so the per-cursor values in the
+// *kv.Snapshot pass it here so the per-cursor values in the
 // returned slice come from the same point-in-time view.
-func (s *Store) ListBackfillProgressFrom(reader dal.PebbleReader) ([]BackfillEntry, error) {
+func (s *Store) ListBackfillProgressFrom(reader dal.KVReader) ([]BackfillEntry, error) {
 	return decodeBackfillProgress(s.ReadAllBackfillProgressFrom(reader))
 }
 

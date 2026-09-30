@@ -57,14 +57,14 @@ func newBatchState() *batchState {
 // in-batch counter / template deltas already accumulated for it (they are
 // for the pre-delete incarnation and must not survive the DeleteLedger).
 //
-// commitBatch runs the DeleteRange cascade FIRST inside the Pebble batch,
+// commitBatch runs the DeleteRange cascade FIRST inside the RocksDB batch,
 // then stages the counter / template Puts on top — later batch ops shadow
 // earlier ones at commit, so if the same audit batch contains a delete
 // followed by a same-name recreate + writes, the post-recreate Puts survive
 // while every pre-batch row for the old incarnation is wiped. Combined with
 // the accumulator reset here, that yields the same net semantics as the
 // FSM's own DeleteLedger cascade (which unconditionally purges the ledger's
-// Pebble rows regardless of earlier orders in the same proposal).
+// storage rows regardless of earlier orders in the same proposal).
 func (s *batchState) markLedgerDeleted(ledger string) {
 	s.deletedLedgers[ledger] = struct{}{}
 	delete(s.counters, ledger)
@@ -119,10 +119,10 @@ func (s *batchState) empty() bool {
 // atomically alongside the cursor advance. Returns the new cursor.
 //
 // When deadline is non-zero, processing stops once the deadline has passed
-// so the caller (initial catch-up loop) can release the Pebble snapshot
+// so the caller (initial catch-up loop) can release the storage snapshot
 // between iterations.
 func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadline time.Time) (uint64, error) {
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for audit processing: %w", err)
 	}
@@ -270,7 +270,7 @@ func (b *Builder) processAuditEntries(ctx context.Context, cursor uint64, deadli
 // applyVolumeAnnotations.
 func (b *Builder) dispatchOrder(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	order *raftcmdpb.Order,
 	logSeq uint64,
 	state *batchState,
@@ -342,7 +342,7 @@ func (b *Builder) dispatchOrder(
 // travel across the mirror wire.
 func (b *Builder) dispatchMirrorIngest(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	ledger string,
 	mle *raftcmdpb.MirrorLogEntry,
 	logSeq uint64,
@@ -471,7 +471,7 @@ func applyVolumeAnnotations(ledger string, ann logVolumeAnnotations, state *batc
 // order.
 func (b *Builder) dispatchCreateTransaction(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	ledger string,
 	order *raftcmdpb.CreateTransactionOrder,
 	logSeq uint64,
@@ -535,7 +535,7 @@ func (b *Builder) dispatchCreateTransaction(
 // purged volumes and newly-created volumes live on the produced log.
 func (b *Builder) dispatchRevertTransaction(
 	ctx context.Context,
-	handle dal.PebbleGetter,
+	handle dal.KVGetter,
 	ledger string,
 	logSeq uint64,
 	state *batchState,
@@ -587,7 +587,7 @@ type logVolumeAnnotations struct {
 // readLog fetches the log at logSeq and returns its posting count plus the
 // three disjoint volume-annotation lists. Empty when the log does not exist
 // or carries no transaction / annotation.
-func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq uint64) (logVolumeAnnotations, error) {
+func (b *Builder) readLog(ctx context.Context, handle dal.KVGetter, logSeq uint64) (logVolumeAnnotations, error) {
 	log, err := query.ReadLogBySequence(ctx, handle, logSeq)
 	if err != nil {
 		return logVolumeAnnotations{}, fmt.Errorf("reading log at seq %d: %w", logSeq, err)
@@ -640,10 +640,10 @@ func (b *Builder) readLog(ctx context.Context, handle dal.PebbleGetter, logSeq u
 }
 
 // commitBatch applies the accumulated counter / template deltas to the
-// usagestore and advances the cursor — all in a single Pebble batch commit.
+// usagestore and advances the cursor — all in a single RocksDB batch commit.
 //
 // Ordering inside the batch: DeleteRange cascade FIRST, then counter /
-// template Puts. Pebble batches apply operations in enqueue order at commit,
+// template Puts. RocksDB batches apply operations in enqueue order at commit,
 // so any Put on a key inside a DeleteRange range enqueued earlier still lands
 // (later ops shadow earlier ones). Combined with markLedgerDeleted clearing
 // in-batch counters for the deleted ledger, this yields the correct semantic
@@ -663,7 +663,7 @@ func (b *Builder) commitBatch(state *batchState, cursor uint64) error {
 	}
 
 	// Counter deltas: read-modify-write against the usagestore. Not the
-	// FSM's Pebble — invariant #3 does not apply here.
+	// FSM's primary store — invariant #3 does not apply here.
 	for ledger, counters := range state.counters {
 		// If this batch also deleted the ledger, the DeleteRange enqueued
 		// above logically zeroes every counter for the recycled name. But

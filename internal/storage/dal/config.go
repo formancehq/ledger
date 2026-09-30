@@ -3,12 +3,10 @@ package dal
 import (
 	"time"
 
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
-// ValueSeparationConfig controls Pebble's value separation feature.
-// When enabled, large values are stored in external blob files instead of
-// inline in SSTables, reducing compaction IO for write-heavy workloads.
+// ValueSeparationConfig describes an unsupported legacy option.
 type ValueSeparationConfig struct {
 	// Enabled controls whether value separation is active.
 	// Requires columnar blocks (automatically enabled when this is true).
@@ -38,10 +36,10 @@ type ValueSeparationConfig struct {
 	TargetGarbageRatio float64 `yaml:"targetGarbageRatio"`
 }
 
-// Config contains all configurable options for Pebble storage.
+// Config contains the primary RocksDB storage options.
 // All sizes are in bytes unless otherwise specified.
 type Config struct {
-	pebblecfg.Config `yaml:",inline"`
+	rocksdbcfg.Config `yaml:",inline"`
 
 	// WALBytesPerSync is the number of bytes written to the WAL before syncing.
 	// Default: 1MB (1 << 20)
@@ -67,28 +65,18 @@ type Config struct {
 	// Default: 10
 	MaxCheckpoints int `yaml:"maxCheckpoints"`
 
-	// WALFailoverDir is the secondary WAL directory for automatic failover
-	// when the primary disk experiences high latency. When set, Pebble monitors
-	// WAL write latency and switches to this directory if the primary becomes
-	// unhealthy (>100ms operation latency by default). It probes the primary
-	// every second and fails back when healthy for 15s.
-	//
-	// Useful in cloud environments where EBS/PD volumes have unpredictable
-	// latency spikes. Set to a path on a different physical volume (or tmpfs)
-	// for best results.
-	//
-	// Default: "" (disabled)
+	// WALFailoverDir is an unsupported legacy option.
 	WALFailoverDir string `yaml:"walFailoverDir"`
 
-	// ValueSeparation controls Pebble's value separation (blob files) feature.
+	// ValueSeparation is an unsupported legacy option.
 	ValueSeparation ValueSeparationConfig `yaml:"valueSeparation"`
 }
 
-// DefaultConfig returns the default Pebble configuration.
+// DefaultConfig returns the default RocksDB configuration.
 // These defaults are tuned for write-heavy workloads.
 func DefaultConfig() Config {
 	return Config{
-		Config: pebblecfg.Config{
+		Config: rocksdbcfg.Config{
 			MemTableSize:                256 << 20, // 256MB
 			MemTableStopWritesThreshold: 6,
 			L0CompactionThreshold:       4,
@@ -98,7 +86,7 @@ func DefaultConfig() Config {
 			TargetFileSize:              256 << 20,  // 256MB
 			BytesPerSync:                1 << 20,    // 1MB
 			MaxConcurrentCompactions:    2,
-			Compression:                 pebblecfg.DefaultLevelCompression(),
+			Compression:                 rocksdbcfg.DefaultLevelCompression(),
 		},
 		WALBytesPerSync:    1 << 20, // 1MB
 		WALMinSyncInterval: 0,       // immediate sync

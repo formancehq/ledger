@@ -1366,7 +1366,7 @@ func (x *SaveNumscriptOrder) GetVersion() string {
 	return ""
 }
 
-// CreateQueryCheckpointOrder triggers a physical Pebble checkpoint via Raft.
+// CreateQueryCheckpointOrder triggers a physical RocksDB checkpoint via Raft.
 // The FSM commits the current batch and the Applier creates snapshots of both
 // the main store and read index, enabling point-in-time queries.
 // The checkpoint ID is assigned sequentially by the FSM, not the caller.
@@ -1452,8 +1452,8 @@ func (x *DeleteQueryCheckpointOrder) GetCheckpointId() uint64 {
 	return 0
 }
 
-// QueryCheckpointState stores metadata for a query checkpoint in Pebble.
-// The actual data lives in physical Pebble checkpoint directories.
+// QueryCheckpointState stores metadata for a query checkpoint in RocksDB.
+// The actual data lives in physical RocksDB checkpoint directories.
 type QueryCheckpointState struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	CheckpointId       uint64                 `protobuf:"fixed64,1,opt,name=checkpoint_id,json=checkpointId,proto3" json:"checkpoint_id,omitempty"`
@@ -4407,13 +4407,13 @@ func (x *BackupOrderFail) GetMessage() string {
 
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
 // All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
-// The leader pre-scans the Pebble time index and includes the key hashes so
-// that the FSM apply path is write-only (no Pebble reads).
+// The leader pre-scans the RocksDB time index and includes the key hashes so
+// that the FSM apply path is write-only (no primary-store reads).
 type IdempotencyEviction struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	CutoffMicros    uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
-	PebbleKeyHashes [][]byte               `protobuf:"bytes,2,rep,name=pebble_key_hashes,json=pebbleKeyHashes,proto3" json:"pebble_key_hashes,omitempty"` // 16-byte key hashes pre-scanned by leader
-	// last_scanned_time_index_key is the full 26-byte time-index Pebble key of
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	CutoffMicros uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
+	KeyHashes    [][]byte               `protobuf:"bytes,2,rep,name=key_hashes,json=keyHashes,proto3" json:"key_hashes,omitempty"` // 16-byte key hashes pre-scanned by leader
+	// last_scanned_time_index_key is the full 26-byte time-index storage key of
 	// the last entry the leader scanned: [zone(1)][sub(1)][created_at(8)][hash(16)].
 	// The FSM uses it as the DeleteRange upper bound bumped by 0x00 (lex-next),
 	// so the range delete includes exactly the scanned entries — never an
@@ -4461,9 +4461,9 @@ func (x *IdempotencyEviction) GetCutoffMicros() uint64 {
 	return 0
 }
 
-func (x *IdempotencyEviction) GetPebbleKeyHashes() [][]byte {
+func (x *IdempotencyEviction) GetKeyHashes() [][]byte {
 	if x != nil {
-		return x.PebbleKeyHashes
+		return x.KeyHashes
 	}
 	return nil
 }
@@ -4831,7 +4831,7 @@ type ExecutionPlan struct {
 	CacheEpoch uint64 `protobuf:"fixed64,2,opt,name=cache_epoch,json=cacheEpoch,proto3" json:"cache_epoch,omitempty"`
 	// Coverage entries produced by admission. Each entry declares that the
 	// FSM apply path may access the key; entries with a `value` field set
-	// additionally seed the FSM cache with the Pebble-loaded value at
+	// additionally seed the FSM cache with the RocksDB-loaded value at
 	// admission time. Every entry feeds the FSM-side state.Plan coverage
 	// set, so the admission layer is the single source of truth for what
 	// the FSM may read (and delete) during apply.
@@ -4907,7 +4907,7 @@ func (x *ExecutionPlan) GetIdempotencyKeys() []*ReloadIdempotencyKey {
 
 // AttributeCoverage declares the FSM apply path may access `id` under
 // `attr_code`. When `value` is set, the FSM's MirrorPreload seeds the
-// cache with it (CacheMiss + Pebble-load-hit at admission); when unset,
+// cache with it (CacheMiss + RocksDB-load-hit at admission); when unset,
 // the entry is coverage-only and Preload skips it — AttributeCache.Get's
 // gen0→gen1 fallback and KeyStore.Tombstone's lazy Gen0-tombstone
 // fabrication handle reads and deletes without a preemptive promote pass.
@@ -5110,7 +5110,7 @@ func (x *ReloadIdempotencyKey) GetValue() *commonpb.IdempotencyKeyValue {
 	return nil
 }
 
-// CacheGenerationMeta stores per-generation metadata in Pebble.
+// CacheGenerationMeta stores per-generation metadata in RocksDB.
 type CacheGenerationMeta struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	BaseIndex     uint64                 `protobuf:"fixed64,1,opt,name=base_index,json=baseIndex,proto3" json:"base_index,omitempty"`
@@ -5155,7 +5155,7 @@ func (x *CacheGenerationMeta) GetBaseIndex() uint64 {
 	return 0
 }
 
-// CacheSnapshotMeta stores cache-level metadata in Pebble.
+// CacheSnapshotMeta stores cache-level metadata in RocksDB.
 type CacheSnapshotMeta struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	CurrentGeneration uint64                 `protobuf:"fixed64,1,opt,name=current_generation,json=currentGeneration,proto3" json:"current_generation,omitempty"`
@@ -5699,10 +5699,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x11segments_uploaded\x18\x06 \x01(\x04R\x10segmentsUploaded\"B\n" +
 	"\x0fBackupOrderFail\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x06R\x05jobId\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xa4\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x97\x01\n" +
 	"\x13IdempotencyEviction\x12#\n" +
-	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12*\n" +
-	"\x11pebble_key_hashes\x18\x02 \x03(\fR\x0fpebbleKeyHashes\x12<\n" +
+	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12\x1d\n" +
+	"\n" +
+	"key_hashes\x18\x02 \x03(\fR\tkeyHashes\x12<\n" +
 	"\x1blast_scanned_time_index_key\x18\x03 \x01(\fR\x17lastScannedTimeIndexKey\"\xad\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +

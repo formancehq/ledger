@@ -22,7 +22,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 
 	const (
 		crName    = "my-ledger"
-		namespace = "ledger-v3"
+		namespace = "ledger-next-v3"
 	)
 
 	makeService := func(name string, selector map[string]string) *corev1.Service {
@@ -39,7 +39,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 	}
 
 	baselineSelector := map[string]string{
-		"app.kubernetes.io/name":     "ledger",
+		"app.kubernetes.io/name":     "ledger-next",
 		"app.kubernetes.io/instance": crName,
 	}
 
@@ -67,7 +67,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 		},
 		{
 			name:             "AdditionalLabels diverges from existing Service selector",
-			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
+			additionalLabels: map[string]string{"app.formance.com/service": "ledger-next-v3"},
 			objects: []client.Object{
 				makeService(resourceName(crName), baselineSelector),
 			},
@@ -75,7 +75,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 		},
 		{
 			name:             "AdditionalLabels diverges from existing StatefulSet selector",
-			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
+			additionalLabels: map[string]string{"app.formance.com/service": "ledger-next-v3"},
 			objects: []client.Object{
 				makeSTS(baselineSelector),
 			},
@@ -83,7 +83,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 		},
 		{
 			name:             "override of default key drifts every existing object",
-			additionalLabels: map[string]string{"app.kubernetes.io/name": "ledger-v3"},
+			additionalLabels: map[string]string{"app.kubernetes.io/name": "ledger-next-v3"},
 			objects: []client.Object{
 				makeService(resourceName(crName), baselineSelector),
 				makeSTS(baselineSelector),
@@ -97,7 +97,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			// selector is irrelevant. Regression guard for the NumaryBot
 			// finding on PR #578.
 			name:             "disabled HeadlessService is not checked for drift",
-			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
+			additionalLabels: map[string]string{"app.formance.com/service": "ledger-next-v3"},
 			headlessEnabled:  &headlessDisabled,
 			objects: []client.Object{
 				makeService(headlessServiceName(crName), baselineSelector),
@@ -108,7 +108,7 @@ func TestValidateSelectorImmutability(t *testing.T) {
 			// ingressGrpc is disabled the Service will be GC'd, so we
 			// don't gate the reconcile on its selector.
 			name:             "disabled GrpcService is not checked for drift",
-			additionalLabels: map[string]string{"app.formance.com/service": "ledger-v3"},
+			additionalLabels: map[string]string{"app.formance.com/service": "ledger-next-v3"},
 			ingressGrpc:      &ledgerv1alpha1.IngressGrpcSpec{Enabled: false},
 			objects: []client.Object{
 				makeService(grpcServiceName(crName), baselineSelector),
@@ -162,7 +162,7 @@ func TestPruneDisabledOptionalServices_RunsBeforeDriftGuard(t *testing.T) {
 
 	const (
 		crName    = "my-ledger"
-		namespace = "ledger-v3"
+		namespace = "ledger-next-v3"
 	)
 
 	scheme := runtime.NewScheme()
@@ -174,7 +174,7 @@ func TestPruneDisabledOptionalServices_RunsBeforeDriftGuard(t *testing.T) {
 	headlessSvc := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{Name: headlessServiceName(crName), Namespace: namespace},
 		Spec: corev1.ServiceSpec{Selector: map[string]string{
-			"app.kubernetes.io/name":     "ledger",
+			"app.kubernetes.io/name":     "ledger-next",
 			"app.kubernetes.io/instance": crName,
 		}},
 	}
@@ -208,7 +208,7 @@ func TestPruneDisabledOptionalServices_PrunesGrpcIngress(t *testing.T) {
 
 	const (
 		crName    = "my-ledger"
-		namespace = "ledger-v3"
+		namespace = "ledger-next-v3"
 	)
 
 	scheme := runtime.NewScheme()

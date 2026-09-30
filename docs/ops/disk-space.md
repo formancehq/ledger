@@ -49,7 +49,7 @@ Key design decisions:
 
 Each node runs a `diskusage.Collector` that periodically samples the disk usage of two volumes:
 - **WAL volume**: The Raft write-ahead log directory
-- **Data volume**: The application data directory (Pebble storage)
+- **Data volume**: The application data directory (RocksDB storage)
 
 The collector publishes used bytes and total capacity together as one coherent
 sample for each volume. Health checks and peer RPCs therefore cannot combine
@@ -176,14 +176,14 @@ The Grafana dashboard includes panels for disk usage visualization. See the `mis
 ### Volume Sizing
 
 - **WAL volume**: Size based on maintenance interval, compaction margin, and write throughput. The WAL grows between maintenance cycles and is compacted periodically, retaining at least `compactionMargin` entries.
-- **Data volume**: Size based on total data retention. Pebble compaction reclaims space over time, but peak usage can be higher during compaction.
+- **Data volume**: Size based on total data retention. RocksDB compaction reclaims space over time, but peak usage can be higher during compaction.
 
 ### Operational Response
 
 When the cluster becomes unhealthy due to disk space:
 
 1. **Immediate**: Investigate which node and volume exceeded the threshold (check logs)
-2. **Short-term**: Increase volume size (Kubernetes PVC resize if supported) or trigger a manual Pebble compaction
+2. **Short-term**: Increase volume size (Kubernetes PVC resize if supported) or trigger a manual RocksDB compaction
 3. **Long-term**: Adjust volume sizing, add monitoring alerts at lower thresholds (e.g., 70%), or implement data retention policies
 
 ## Deleted Ledger Data Retention
@@ -211,7 +211,7 @@ an ingest on a tombstoned ledger is already rejected — as `LEDGER_NOT_FOUND`
 rather than `LEDGER_DELETED`, since the boundary lookup fails first.
 
 A write accepted before the tombstone existed is purged with everything else.
-A write accepted *after* it would not have been. The purge is a Pebble range
+A write accepted *after* it would not have been. The purge is a RocksDB range
 delete issued in the deleting apply, and a range tombstone only shadows keys
 written before it, so rows landing in a later apply survive it: unreachable
 through the read API, and reclaimed only if the ledger is deleted a second

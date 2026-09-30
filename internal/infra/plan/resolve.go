@@ -157,8 +157,8 @@ func resolveCoverage[T interface {
 	nextIndex, boundary, cacheEpoch uint64,
 	attrCache *cache.AttributeCache[T],
 	loader *preload.AttributeLoader[T],
-	getValue func(reader dal.PebbleGetter, canonicalKey []byte) (T, error),
-	store dal.PebbleGetter,
+	getValue func(reader dal.KVGetter, canonicalKey []byte) (T, error),
+	store dal.KVGetter,
 	attrCode byte,
 	tracker []attributes.U128,
 	bloomFilter *bloom.Filter,
@@ -275,7 +275,7 @@ func resolveCoverage[T interface {
 				var zero T
 				hasValue := any(result.Value) != any(zero)
 
-				// Track bloom false positives: MayContain said "maybe" but Pebble
+				// Track bloom false positives: MayContain said "maybe" but storage
 				// had nothing. Only counts loads we actually performed (FromLoad).
 				if result.FromLoad && !hasValue && bloomFilter != nil {
 					bloomFilter.RecordFalsePositive()

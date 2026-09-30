@@ -14,7 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/transport"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
-	"github.com/formancehq/ledger/v3/internal/storage/pebblecfg"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 )
 
 // AuthFlagConfig captures the authentication flag values without runtime objects.
@@ -99,16 +99,16 @@ type HealthConfig struct {
 	ClockSkewThreshold  time.Duration
 }
 
-// ReadIndexConfig holds configuration for the Pebble read index store.
+// ReadIndexConfig holds configuration for the RocksDB read index store.
 type ReadIndexConfig struct {
-	Dir          string           // empty = default (<data-dir>/read-indexes/)
-	BatchSize    int              // log entries per Pebble batch commit (0 = default 1000)
-	PebbleConfig pebblecfg.Config // Pebble tunables for the read index
+	Dir           string            // empty = default (<data-dir>/read-indexes/)
+	BatchSize     int               // log entries per RocksDB batch commit (0 = default 1000)
+	RocksDBConfig rocksdbcfg.Config // RocksDB tunables for the read index
 }
 
 // AuditIndexConfig holds configuration for the audit secondary index worker.
 type AuditIndexConfig struct {
-	BatchSize int  // audit entries per Pebble batch (0 = default 1000)
+	BatchSize int  // audit entries per RocksDB batch (0 = default 1000)
 	Disabled  bool // ops kill switch
 }
 
@@ -152,7 +152,7 @@ type Config struct {
 	GRPCPort               int
 	TransportConfig        node.TransportConfig
 	DataDir                string
-	PebbleConfig           dal.Config
+	RocksDBConfig          dal.Config
 	HealthConfig           HealthConfig
 	ClusterID              string
 	AdmissionMetrics       bool

@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/domain/analysis"
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // CompactAccountIterator yields CompactAccount values by merging Volume and
@@ -25,7 +24,7 @@ type CompactAccountIterator struct {
 
 // compactSubIter iterates one attribute type, collecting all entries per account.
 type compactSubIter struct {
-	iter      *pebble.Iterator
+	iter      *kv.Iterator
 	ledgerLen int  // length of "ledger\x00" in canonical key
 	attrType  byte // dal.SubAttrVolume or dal.SubAttrMetadata
 	sepByte   byte // canonical key separator for this type
@@ -48,7 +47,7 @@ type compactSubIter struct {
 
 // NewCompactAccountIterator creates an iterator that yields CompactAccount
 // values by scanning Volume and Metadata attribute ranges for the given ledger.
-func NewCompactAccountIterator(reader dal.PebbleReader, ledgerName string) (*CompactAccountIterator, error) {
+func NewCompactAccountIterator(reader dal.KVReader, ledgerName string) (*CompactAccountIterator, error) {
 	vIter, err := newCompactSubIter(reader, dal.SubAttrVolume, dal.CanonicalKeySepVolume, ledgerName, dal.LedgerNameFixedSize)
 	if err != nil {
 		return nil, err
@@ -64,7 +63,7 @@ func NewCompactAccountIterator(reader dal.PebbleReader, ledgerName string) (*Com
 	return &CompactAccountIterator{v: *vIter, m: *mIter}, nil
 }
 
-func newCompactSubIter(reader dal.PebbleReader, attrType, sepByte byte, ledgerName string, ledgerLen int) (*compactSubIter, error) {
+func newCompactSubIter(reader dal.KVReader, attrType, sepByte byte, ledgerName string, ledgerLen int) (*compactSubIter, error) {
 	// Bounds: [0xF1][attrType][ledgerName padded 64B] → successor (last byte +1).
 	lowerBound := make([]byte, 2+dal.LedgerNameFixedSize)
 	lowerBound[0] = dal.ZoneAttributes

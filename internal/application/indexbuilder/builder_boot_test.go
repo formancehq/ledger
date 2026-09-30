@@ -14,21 +14,21 @@ func TestBootInit_PropagatesError(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
-	require.NoError(t, b.pebbleStore.Close())
+	require.NoError(t, b.primaryStore.Close())
 
 	_, _, err := b.bootInit(context.Background())
 	require.Error(t, err)
 }
 
-// TestBootInit_Success returns the persisted cursor and pebbleLast on a healthy
-// store (empty store: cursor 0, pebbleLast 0).
+// TestBootInit_Success returns the persisted cursor and storageLast on a healthy
+// store (empty store: cursor 0, storageLast 0).
 func TestBootInit_Success(t *testing.T) {
 	t.Parallel()
 
 	b := newTestBuilderWithStore(t)
 
-	cursor, pebbleLast, err := b.bootInit(context.Background())
+	cursor, storageLast, err := b.bootInit(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), cursor)
-	require.Equal(t, uint64(0), pebbleLast)
+	require.Equal(t, uint64(0), storageLast)
 }

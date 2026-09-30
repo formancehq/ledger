@@ -52,7 +52,7 @@ func TestRun_RefusesStartWhenGapExceedsWALRetention(t *testing.T) {
 
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "durability gap exceeds WAL retention")
-	require.Contains(t, err.Error(), "Pebble applied=0")
+	require.Contains(t, err.Error(), "RocksDB applied=0")
 }
 
 // TestRun_AllowsOutOfSyncRecoveryPastGap verifies EN-1431: when the same

@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 )
 
-// Compact performs an online compaction of the Pebble read index.
-// Unlike Pebble, Pebble compaction is online and does not require closing
-// the database. Returns (sizeBefore, sizeAfter, err).
+// Compact performs an online compaction of the RocksDB read index without
+// closing the database. Returns (sizeBefore, sizeAfter, err).
 func (s *Store) Compact(ctx context.Context) (sizeBefore, sizeAfter int64, err error) {
 	dbPath := filepath.Join(s.dir, "readindex")
 

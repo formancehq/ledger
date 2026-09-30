@@ -1725,14 +1725,14 @@ func (m *IdempotencyEviction) CloneVT() *IdempotencyEviction {
 	}
 	r := new(IdempotencyEviction)
 	r.CutoffMicros = m.CutoffMicros
-	if rhs := m.PebbleKeyHashes; rhs != nil {
+	if rhs := m.KeyHashes; rhs != nil {
 		tmpContainer := make([][]byte, len(rhs))
 		for k, v := range rhs {
 			tmpBytes := make([]byte, len(v))
 			copy(tmpBytes, v)
 			tmpContainer[k] = tmpBytes
 		}
-		r.PebbleKeyHashes = tmpContainer
+		r.KeyHashes = tmpContainer
 	}
 	if rhs := m.LastScannedTimeIndexKey; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
@@ -5108,11 +5108,11 @@ func (this *IdempotencyEviction) EqualVT(that *IdempotencyEviction) bool {
 	if this.CutoffMicros != that.CutoffMicros {
 		return false
 	}
-	if len(this.PebbleKeyHashes) != len(that.PebbleKeyHashes) {
+	if len(this.KeyHashes) != len(that.KeyHashes) {
 		return false
 	}
-	for i, vx := range this.PebbleKeyHashes {
-		vy := that.PebbleKeyHashes[i]
+	for i, vx := range this.KeyHashes {
+		vy := that.KeyHashes[i]
 		if string(vx) != string(vy) {
 			return false
 		}
@@ -9723,11 +9723,11 @@ func (m *IdempotencyEviction) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1a
 	}
-	if len(m.PebbleKeyHashes) > 0 {
-		for iNdEx := len(m.PebbleKeyHashes) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.PebbleKeyHashes[iNdEx])
-			copy(dAtA[i:], m.PebbleKeyHashes[iNdEx])
-			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.PebbleKeyHashes[iNdEx])))
+	if len(m.KeyHashes) > 0 {
+		for iNdEx := len(m.KeyHashes) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.KeyHashes[iNdEx])
+			copy(dAtA[i:], m.KeyHashes[iNdEx])
+			i = protohelpers.EncodeVarint(dAtA, i, uint64(len(m.KeyHashes[iNdEx])))
 			i--
 			dAtA[i] = 0x12
 		}
@@ -12549,8 +12549,8 @@ func (m *IdempotencyEviction) SizeVT() (n int) {
 	if m.CutoffMicros != 0 {
 		n += 9
 	}
-	if len(m.PebbleKeyHashes) > 0 {
-		for _, b := range m.PebbleKeyHashes {
+	if len(m.KeyHashes) > 0 {
+		for _, b := range m.KeyHashes {
 			l = len(b)
 			n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 		}
@@ -22729,7 +22729,7 @@ func (m *IdempotencyEviction) UnmarshalVT(dAtA []byte) error {
 			iNdEx += 8
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field PebbleKeyHashes", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field KeyHashes", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -22756,8 +22756,8 @@ func (m *IdempotencyEviction) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.PebbleKeyHashes = append(m.PebbleKeyHashes, make([]byte, postIndex-iNdEx))
-			copy(m.PebbleKeyHashes[len(m.PebbleKeyHashes)-1], dAtA[iNdEx:postIndex])
+			m.KeyHashes = append(m.KeyHashes, make([]byte, postIndex-iNdEx))
+			copy(m.KeyHashes[len(m.KeyHashes)-1], dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {

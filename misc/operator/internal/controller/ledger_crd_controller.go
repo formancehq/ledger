@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	ledgerFinalizer = "ledger.formance.com/finalizer"
+	ledgerFinalizer = "ledger-next.formance.com/finalizer"
 	clusterGRPCPort = 8888
 	ledgerContainer = "ledger"
 	// errSubstrIdempotencyConflict is the stable prefix of ErrIdempotencyKeyConflict.Error().
@@ -51,15 +51,15 @@ const (
 )
 
 var clusterGVR = schema.GroupVersionResource{
-	Group:    "ledger.formance.com",
+	Group:    "ledger-next.formance.com",
 	Version:  "v1alpha1",
 	Resource: "clusters",
 }
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=ledgers/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=ledgers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=ledgers/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=ledgers/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=clusters,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods/exec,verbs=create
 

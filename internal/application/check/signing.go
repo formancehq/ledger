@@ -193,7 +193,7 @@ func (v *signingVerifier) descendantsOf(keyID string) []string {
 // Public-key bytes never appear in a message. The key ID plus the name of the
 // diverging field identifies the problem completely, and the material is
 // sensitive-adjacent.
-func (v *signingVerifier) compare(reader dal.PebbleReader, callback func(*servicepb.CheckStoreEvent)) error {
+func (v *signingVerifier) compare(reader dal.KVReader, callback func(*servicepb.CheckStoreEvent)) error {
 	stored, malformed, err := query.ReadSigningKeys(reader)
 	if err != nil {
 		return fmt.Errorf("reading the stored signing keys: %w", err)

@@ -35,7 +35,7 @@ func TestBuildNetworkPolicySpec_DefaultCIDR(t *testing.T) {
 	spec := buildNetworkPolicySpec(ls)
 
 	// PodSelector matches the Cluster.
-	assert.Equal(t, "ledger", spec.PodSelector.MatchLabels[labelName])
+	assert.Equal(t, "ledger-next", spec.PodSelector.MatchLabels[labelName])
 	assert.Equal(t, "test", spec.PodSelector.MatchLabels[labelInstance])
 
 	// Egress-only policy.
@@ -77,7 +77,7 @@ func TestBuildNetworkPolicySpec_InterNodeRule(t *testing.T) {
 	require.Len(t, interNode.To, 1)
 	require.NotNil(t, interNode.To[0].PodSelector)
 	assert.Equal(t, "inter", interNode.To[0].PodSelector.MatchLabels[labelInstance])
-	assert.Equal(t, "ledger", interNode.To[0].PodSelector.MatchLabels[labelName])
+	assert.Equal(t, "ledger-next", interNode.To[0].PodSelector.MatchLabels[labelName])
 
 	// Default ports: raft=7777, grpc=8888, http=9000.
 	require.Len(t, interNode.Ports, 3)

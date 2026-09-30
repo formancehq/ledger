@@ -23,7 +23,7 @@ misc/devenv/monitoring-dashboards/
 │       ├── transport.libsonnet
 │       ├── ready_loop.libsonnet
 │       ├── applier.libsonnet
-│       ├── pebble.libsonnet
+│       ├── rocksdb.libsonnet
 │       ├── read_index.libsonnet
 │       ├── caching.libsonnet
 │       ├── bloom.libsonnet
@@ -136,8 +136,8 @@ VictoriaMetrics with `OTLP_NORMALIZE=true` deployments fall in
 this category.
 
 Every metric the server emits — `admission.*`, `cache.*`, `wal.*`,
-`raft.*` (our instrumentation of etcd-raft), `pebble.*` (our
-instrumentation of Pebble) — gains a `ledger_` prefix in the `prom`
+`raft.*` (our instrumentation of etcd-raft), `rocksdb.*` (native
+properties sampled by Ledger) — gains a `ledger_` prefix in the `prom`
 variant. See [../../../docs/ops/monitoring.md](../../../docs/ops/monitoring.md)
 for the rationale. OTel semantic-convention auto-instrumentation
 (`go.*`, `process.*`, `system.*`, `http.*`) is emitted via the

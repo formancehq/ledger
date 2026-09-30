@@ -44,7 +44,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-operator-sink-e2e
+                name: ledger-next-operator-sink-e2e
               status:
                 readyReplicas: 1
 
@@ -53,9 +53,9 @@ spec:
         - script:
             content: |
               set -eu
-              POD_UID=$(kubectl get pod ledger-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              SPEC_HASH=$(kubectl get statefulset ledger-operator-sink-e2e -n "$NAMESPACE" \
-                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              POD_UID=$(kubectl get pod ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              SPEC_HASH=$(kubectl get statefulset ledger-next-operator-sink-e2e -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger-next\.formance\.com/spec-hash}')
               test -n "$POD_UID"
               test -n "$SPEC_HASH"
               kubectl annotate namespace "$NAMESPACE" \
@@ -72,7 +72,7 @@ spec:
             content: |
               set -eu
               for i in $(seq 1 45); do
-                SINK=$(kubectl get eventsink primary -n "$NAMESPACE" -o json)
+                SINK=$(kubectl get eventsinks.ledger-next.formance.com primary -n "$NAMESPACE" -o json)
                 if echo "$SINK" | jq -e '(.status.conditions // []) | any(.type == "Synced" and .status == "True")' >/dev/null && \
                    echo "$SINK" | jq -e '.metadata.finalizers | length > 0' >/dev/null; then
                   echo "PROOF: EventSink is ready and has a cleanup finalizer"
@@ -96,9 +96,9 @@ spec:
               set -eu
               INITIAL_UID=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-pod-uid}')
               INITIAL_HASH=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-spec-hash}')
-              CURRENT_UID=$(kubectl get pod ledger-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              CURRENT_HASH=$(kubectl get statefulset ledger-operator-sink-e2e -n "$NAMESPACE" \
-                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              CURRENT_UID=$(kubectl get pod ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              CURRENT_HASH=$(kubectl get statefulset ledger-next-operator-sink-e2e -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger-next\.formance\.com/spec-hash}')
               test "$CURRENT_UID" = "$INITIAL_UID" || {
                 echo "FAIL: EventSink creation replaced the pod ($INITIAL_UID -> $CURRENT_UID)"
                 exit 1
@@ -132,13 +132,13 @@ spec:
         - script:
             content: |
               set -eu
-              kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+              kubectl exec ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl ledgers create \
                   --name operator-sink-e2e \
                   --server 127.0.0.1:8888 \
                   --insecure \
                   --auth-token "$CLUSTER_SECRET"'
-              kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+              kubectl exec ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl transactions create \
                   --ledger operator-sink-e2e \
                   --posting world,bank,1000,USD \
@@ -181,10 +181,10 @@ spec:
             timeout: 90s
             content: |
               set -eu
-              EXPECTED_OWNER=$(kubectl get eventsink primary -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              EXPECTED_OWNER=$(kubectl get eventsinks.ledger-next.formance.com primary -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
               test -n "$EXPECTED_OWNER"
               for i in $(seq 1 30); do
-                STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+                STATUS=$(kubectl exec ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                   /bin/sh -c './ledgerctl events list \
                     --json \
                     --server 127.0.0.1:8888 \
@@ -214,7 +214,7 @@ spec:
             content: |
               set -eu
               for i in $(seq 1 45); do
-                SINK=$(kubectl get eventsink primary -n "$NAMESPACE" -o json)
+                SINK=$(kubectl get eventsinks.ledger-next.formance.com primary -n "$NAMESPACE" -o json)
                 if echo "$SINK" | jq -e '(.status.cursor | tonumber) > 0 and (.status.error == null or .status.error == "")' >/dev/null; then
                   echo "PROOF: EventSink status has an advanced cursor and no delivery error"
                   exit 0
@@ -249,7 +249,7 @@ spec:
             content: |
               set -eu
               for i in $(seq 1 45); do
-                STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+                STATUS=$(kubectl exec ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                   /bin/sh -c './ledgerctl events list \
                     --json \
                     --server 127.0.0.1:8888 \
@@ -271,9 +271,9 @@ spec:
               set -eu
               INITIAL_UID=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-pod-uid}')
               INITIAL_HASH=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.annotations.e2e-sink-initial-spec-hash}')
-              CURRENT_UID=$(kubectl get pod ledger-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
-              CURRENT_HASH=$(kubectl get statefulset ledger-operator-sink-e2e -n "$NAMESPACE" \
-                -o jsonpath='{.spec.template.metadata.annotations.ledger\.formance\.com/spec-hash}')
+              CURRENT_UID=$(kubectl get pod ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -o jsonpath='{.metadata.uid}')
+              CURRENT_HASH=$(kubectl get statefulset ledger-next-operator-sink-e2e -n "$NAMESPACE" \
+                -o jsonpath='{.spec.template.metadata.annotations.ledger-next\.formance\.com/spec-hash}')
               test "$CURRENT_UID" = "$INITIAL_UID"
               test "$CURRENT_HASH" = "$INITIAL_HASH"
               echo "PROOF: EventSink update kept the pod and StatefulSet template"
@@ -284,7 +284,7 @@ spec:
             timeout: 90s
             content: |
               set -eu
-              kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+              kubectl exec ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                 /bin/sh -c './ledgerctl transactions create \
                   --ledger operator-sink-e2e \
                   --posting world,bank,1000,USD \
@@ -315,9 +315,9 @@ spec:
             timeout: 90s
             content: |
               set -eu
-              kubectl delete eventsink primary -n "$NAMESPACE" --wait=false
+              kubectl delete eventsinks.ledger-next.formance.com primary -n "$NAMESPACE" --wait=false
               for i in $(seq 1 45); do
-                if ! kubectl get eventsink primary -n "$NAMESPACE" >/dev/null 2>&1; then
+                if ! kubectl get eventsinks.ledger-next.formance.com primary -n "$NAMESPACE" >/dev/null 2>&1; then
                   echo "PROOF: EventSink finalizer completed cleanup"
                   exit 0
                 fi
@@ -333,7 +333,7 @@ spec:
             content: |
               set -eu
               for i in $(seq 1 45); do
-                STATUS=$(kubectl exec ledger-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
+                STATUS=$(kubectl exec ledger-next-operator-sink-e2e-0 -n "$NAMESPACE" -c ledger -- \
                   /bin/sh -c './ledgerctl events list \
                     --json \
                     --server 127.0.0.1:8888 \

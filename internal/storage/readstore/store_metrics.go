@@ -1,94 +1,45 @@
 package readstore
 
 import (
+	"maps"
+	"math"
+	"slices"
+
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 )
 
-// GetMetrics returns the current Pebble metrics for the read index as a proto message.
-func (s *Store) GetMetrics() *servicepb.PebbleMetrics {
-	m := s.db.Metrics()
-
-	result := &servicepb.PebbleMetrics{
-		BlockCache: &servicepb.BlockCacheMetrics{
-			Size:   m.BlockCache.Size,
-			Count:  m.BlockCache.Count,
-			Hits:   m.BlockCache.Hits,
-			Misses: m.BlockCache.Misses,
-		},
-		Compact: &servicepb.CompactMetrics{
-			Count:            m.Compact.Count,
-			DefaultCount:     m.Compact.DefaultCount,
-			DeleteOnlyCount:  m.Compact.DeleteOnlyCount,
-			ElisionOnlyCount: m.Compact.ElisionOnlyCount,
-			MoveCount:        m.Compact.MoveCount,
-			ReadCount:        m.Compact.ReadCount,
-			RewriteCount:     m.Compact.RewriteCount,
-			MultiLevelCount:  m.Compact.MultiLevelCount,
-			EstimatedDebt:    m.Compact.EstimatedDebt,
-			InProgressBytes:  m.Compact.InProgressBytes,
-			NumInProgress:    m.Compact.NumInProgress,
-			MarkedFiles:      int32(m.Compact.MarkedFiles),
-		},
-		Flush: &servicepb.FlushMetrics{
-			Count:              m.Flush.Count,
-			NumInProgress:      m.Flush.NumInProgress,
-			AsIngestCount:      m.Flush.AsIngestCount,
-			AsIngestTableCount: m.Flush.AsIngestTableCount,
-			AsIngestBytes:      m.Flush.AsIngestBytes,
-		},
-		MemTable: &servicepb.MemTableMetrics{
-			Size:        m.MemTable.Size,
-			Count:       m.MemTable.Count,
-			ZombieSize:  m.MemTable.ZombieSize,
-			ZombieCount: m.MemTable.ZombieCount,
-		},
-		Snapshots: &servicepb.SnapshotsMetrics{
-			Count:          int32(m.Snapshots.Count),
-			EarliestSeqNum: uint64(m.Snapshots.EarliestSeqNum),
-			PinnedKeys:     m.Snapshots.PinnedKeys,
-			PinnedSize:     m.Snapshots.PinnedSize,
-		},
-		Table: &servicepb.TableMetrics{
-			ZombieSize:  m.Table.ZombieSize,
-			ZombieCount: m.Table.ZombieCount,
-		},
-		TableCache: &servicepb.TableCacheMetrics{
-			Size:   m.FileCache.Size,
-			Count:  m.FileCache.TableCount,
-			Hits:   m.FileCache.Hits,
-			Misses: m.FileCache.Misses,
-		},
-		Wal: &servicepb.WALMetrics{
-			Files:         m.WAL.Files,
-			ObsoleteFiles: m.WAL.ObsoleteFiles,
-			Size:          m.WAL.Size,
-			BytesIn:       m.WAL.BytesIn,
-			BytesWritten:  m.WAL.BytesWritten,
-		},
-		Keys: &servicepb.KeysMetrics{
-			RangeKeySetsCount: m.Keys.RangeKeySetsCount,
-			TombstoneCount:    m.Keys.TombstoneCount,
-		},
-		DiskSpaceUsage: m.DiskSpaceUsage(),
+// GetMetrics returns the RocksDB properties available for the read index.
+func (s *Store) GetMetrics() *servicepb.StorageMetrics {
+	raw := s.db.Raw()
+	result := &servicepb.StorageMetrics{}
+	if size, ok := raw.GetIntProperty("rocksdb.block-cache-usage"); ok {
+		result.BlockCacheUsageBytes = &size
+	}
+	if debt, ok := raw.GetIntProperty("rocksdb.estimate-pending-compaction-bytes"); ok {
+		result.PendingCompactionBytes = &debt
+	}
+	if size, ok := raw.GetIntProperty("rocksdb.cur-size-all-mem-tables"); ok {
+		result.MemtableSizeBytes = &size
+	}
+	if count, ok := raw.GetIntProperty("rocksdb.num-snapshots"); ok {
+		result.SnapshotCount = &count
 	}
 
-	for i, level := range m.Levels {
-		result.Levels = append(result.Levels, &servicepb.LevelMetrics{
-			Level:           int32(i),
-			NumFiles:        level.TablesCount,
-			Size:            level.TablesSize,
-			Score:           level.Score,
-			BytesIn:         level.TableBytesIn,
-			BytesIngested:   level.TableBytesIngested,
-			BytesMoved:      level.TableBytesMoved,
-			BytesRead:       level.TableBytesRead,
-			BytesCompacted:  level.TableBytesCompacted,
-			BytesFlushed:    level.TableBytesFlushed,
-			TablesCompacted: level.TablesCompacted,
-			TablesFlushed:   level.TablesFlushed,
-			TablesIngested:  level.TablesIngested,
-			TablesMoved:     level.TablesMoved,
-		})
+	levels := map[int]*servicepb.StorageLevelMetrics{}
+	for _, file := range raw.GetLiveFilesMetaData() {
+		if file.Level < 0 || file.Level > math.MaxInt32 || file.Size < 0 {
+			continue
+		}
+		level := levels[file.Level]
+		if level == nil {
+			level = &servicepb.StorageLevelMetrics{Level: int32(file.Level)}
+			levels[file.Level] = level
+		}
+		level.NumFiles++
+		level.SizeBytes += uint64(file.Size)
+	}
+	for _, level := range slices.Sorted(maps.Keys(levels)) {
+		result.Levels = append(result.Levels, levels[level])
 	}
 
 	return result

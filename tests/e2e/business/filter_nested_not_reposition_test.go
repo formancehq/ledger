@@ -97,7 +97,7 @@ var _ = Describe("Nested-NOT filter reposition", Ordered, func() {
 	})
 
 	// On the TRANSACTIONS target an address leaf compiles to
-	// NotIterator{universe: PebbleTxIterator, child: AddressTxIterator} — the
+	// NotIterator{universe: TxIterator, child: AddressTxIterator} — the
 	// materialized-union iterator whose SeekGE must be an absolute reposition.
 	// These two specs pin the compile-path reachability (no other e2e builds an
 	// AddressTxIterator); the absolute-seek conformance itself is pinned by the

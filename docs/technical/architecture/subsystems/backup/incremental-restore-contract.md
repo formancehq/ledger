@@ -35,7 +35,7 @@ proposals do not. `RebuildDelta` stores the folded value before staging is
 activated, so the first destination proposal cannot acquire a timestamp older
 than a restored audit entry.
 
-A full checkpoint carries the Pebble state at its log and audit sequence
+A full checkpoint carries the RocksDB state at its log and audit sequence
 boundaries. Incremental backup segments after that boundary carry raw log,
 audit-entry, audit-item, and applied-proposal rows. `ApplyExports` restores those
 rows, then `RebuildDelta` reconstructs the derived state that the live FSM wrote

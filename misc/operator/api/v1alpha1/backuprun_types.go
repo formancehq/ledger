@@ -27,9 +27,9 @@ const (
 // Labels and annotations used to associate BackupRun resources with their parent.
 const (
 	// LabelBackup carries the name of the parent Backup.
-	LabelBackup = "ledger.formance.com/backup"
+	LabelBackup = "ledger-next.formance.com/backup"
 	// LabelBackupRunType carries the BackupRunType of the run.
-	LabelBackupRunType = "ledger.formance.com/backup-type"
+	LabelBackupRunType = "ledger-next.formance.com/backup-type"
 )
 
 // BackupRunSpec defines the desired state of a BackupRun.

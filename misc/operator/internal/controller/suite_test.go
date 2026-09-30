@@ -36,7 +36,7 @@ var (
 // testOperatorNamespace is the fixed namespace the Credentials
 // reconciler treats as the operator's own — where every canonical seed
 // Secret is created. Provisioned once in TestMain.
-const testOperatorNamespace = "ledger-operator-system"
+const testOperatorNamespace = "ledger-next-operator-system"
 
 func TestMain(m *testing.M) {
 	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
@@ -52,6 +52,7 @@ func TestMain(m *testing.M) {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths: []string{
 			filepath.Join("..", "..", "config", "crd", "bases"),
+			filepath.Join("testdata", "coexistence"),
 		},
 		Scheme: scheme,
 	}

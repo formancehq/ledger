@@ -1,4 +1,4 @@
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: my-cluster
@@ -12,7 +12,7 @@ spec:
     enabled: true
     type: hard
     topologyKey: kubernetes.io/hostname
-  pebble:
+  rocksdb:
     memTableSize: 256Mi
     cacheSize: 1Gi
   persistence:

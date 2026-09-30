@@ -75,7 +75,7 @@ func TestZonePrefixUpperBound(t *testing.T) {
 }
 
 // TestZonePrefixUpperBound_IncludesMaxUint64Suffix is the regression this helper
-// exists for. Pebble's iterator upper bound is EXCLUSIVE, so the bound this
+// exists for. The iterator upper bound is EXCLUSIVE, so the bound this
 // codebase used to build — the two-byte prefix followed by an eight-byte 0xFF
 // run — is byte-identical to the key whose sequence suffix is math.MaxUint64 and
 // silently drops exactly that row. Every sequence-keyed scan in the store was

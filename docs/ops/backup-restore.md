@@ -4,7 +4,7 @@
 
 The ledger provides a two-tier backup and restore pipeline:
 
-1. **Full backup** (`store backup`) — captures a complete Pebble checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
+1. **Full backup** (`store backup`) — captures a complete RocksDB checkpoint (all SST files). Forwarded to the leader (SST numbering is node-local). Done infrequently.
 2. **Incremental backup** (`store incremental-backup`) — exports only new log and audit entries since the last backup. Forwarded to the leader: the FSM owns a per-destination lock so only one backup runs against the same destination at a time, and only the leader can push Raft proposals. Done frequently.
 
 A restore combines the latest checkpoint with any incremental exports to reconstruct the full state.
@@ -27,7 +27,7 @@ All backup/restore commands accept the same provider flags; only the `--driver` 
 The operator's `Backup` resource can schedule full and incremental S3 backups:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Backup
 metadata:
   name: production
@@ -158,7 +158,7 @@ manifest, is not a usable backup.
 │ 1a. FULL BACKUP (running cluster, leader only)                         │
 │                                                                        │
 │    ledgerctl store backup --driver s3 --s3-bucket my-bucket            │
-│    ─► Leader: create Pebble checkpoint                                │
+│    ─► Leader: create RocksDB checkpoint                               │
 │    ─► Leader: diff SSTs against previous checkpoint                   │
 │    ─► Leader: upload new/changed files, clean old exports             │
 │    ─► Leader: write manifest (checkpoint + empty exports)             │
@@ -188,7 +188,7 @@ manifest, is not a usable backup.
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ 3. BOOTSTRAP (restart without --restore)                               │
 │                                                                        │
-│    Node detects RESTORED marker → recovers FSM state from Pebble      │
+│    Node detects RESTORED marker → recovers FSM state from RocksDB      │
 │    → creates WAL snapshot → removes marker → normal Raft startup       │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -233,9 +233,9 @@ ledgerctl store backup --driver azure --azure-account-name myaccount --azure-acc
 
 The `store backup` command calls the `ClusterService.Backup` gRPC RPC (unary). If connected to a follower, the request is transparently forwarded to the leader.
 
-#### Step 1: Direct Pebble Checkpoint
+#### Step 1: Direct RocksDB Checkpoint
 
-The leader creates a **temporary Pebble checkpoint** — a point-in-time filesystem snapshot using hardlinks. Because boundaries (nextTransactionId, nextLogId per ledger) are written to Pebble on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
+The leader creates a **temporary RocksDB checkpoint** — a point-in-time filesystem snapshot. Because boundaries (nextTransactionId, nextLogId per ledger) are written to RocksDB on every committed entry, the checkpoint is immediately consistent without requiring Raft consensus or FSM gating. Backup does not block writes.
 
 #### Step 2: Diff Against Previous Manifest
 
@@ -243,7 +243,7 @@ The backup reads the previous manifest from storage (if any) and computes a diff
 - **New/changed files**: SST files that are new or have changed size are uploaded.
 - **Stale files**: Files present in the old manifest but not in the current checkpoint are deleted.
 
-SST files in Pebble are immutable — same filename means same content. This makes the diff very efficient.
+SST files in RocksDB are immutable — same filename means same content. This makes the diff very efficient.
 
 #### Step 3: Upload and Manifest
 
@@ -257,10 +257,10 @@ The temporary checkpoint is removed from the leader's filesystem after the backu
 
 ### Backup Preparation on Restore
 
-Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one Pebble entry (no per-index history to fold):
+Backup preparation is performed on the **restore side** (during `FinalizeRestore` or `store bootstrap`), not during backup. It resets cluster-local and checkpoint-era zones and leaves the attribute zone **byte-for-byte intact** — there is no attribute compaction, because each canonical key holds exactly one RocksDB entry (no per-index history to fold):
 
 1. **Preserve lastAppliedIndex as the genesis boundary**: The checkpoint's applied index is kept (a genesis checkpoint at index 0 gets the fallback boundary 1; MaxUint64 is refused). The restored bootstrap plants its WAL snapshot at this index, so the new log starts just above it and any fresh peer is routed through the snapshot → checkpoint-sync path (plain log replay from index 1 would land on an empty store and miss the restored state). The boundary labels the new log's start — it is NOT the restored state's provenance: incremental exports are sequence-keyed and never advance it, so after a full + incremental restore the state is newer than the boundary.
-2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored Pebble store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
+2. **Mark query-checkpoint metadata as restored**: Physical query-checkpoint directories are not part of the restored RocksDB store. Surviving rows are marked `restored_from_backup`; rows rebuilt from incremental logs receive the same marker. The read-index builder uses it to keep source-cluster Raft indexes out of destination-cluster progress certificates.
 3. **Wipe the cluster-transient zone**: In-flight-only tracking (e.g. running backup jobs) has no meaning on the restored cluster.
 4. **Wipe the cluster-persistent zone**: One range delete removes source node/cluster identity, Raft peers, removed-member tombstones and stale Bloom blocks. The destination re-seeds its identity and membership and rebuilds Bloom from attributes. The restored genesis boundary is written back to this zone after the delete in the same batch.
 5. **Clear the cache zone**: Checkpoint-era cache rows predate the delta replayed into the attribute zone; the restored node boots with a cold cache and re-seeds from the rebuilt attribute zone on first touch.
@@ -279,7 +279,7 @@ validation does not authenticate a coordinated rewrite of key and history.
 
 ### What the Backup Contains
 
-The backup is a complete Pebble database that contains:
+The backup is a complete RocksDB database that contains:
 
 | Zone | Prefix | Contents |
 |------|--------|----------|
@@ -292,7 +292,7 @@ The backup is a complete Pebble database that contains:
 | Cluster transient | `0x07` | Backup jobs, removed on cross-cluster restore |
 | Cluster persistent | `0x08` | Source applied index, node/cluster identity, Raft members and removal tombstones, Bloom blocks; removed on cross-cluster restore except for the rewritten genesis boundary |
 
-This changes the physical Pebble layout. An older pre-release store is rejected
+This changes the physical RocksDB layout. An older pre-release store is rejected
 at startup through its old boot anchor; take a new backup with the matching
 binary before recovery. See the [key-by-key restore classification](../technical/architecture/subsystems/backup/README.md#global-key-lifetimes-en-1415).
 
@@ -304,19 +304,19 @@ sequenceDiagram
     participant Client as ledgerctl
     participant Follower as Follower Node
     participant Leader as Raft Leader
-    participant Pebble
+    participant RocksDB
     participant Storage as S3
 
     Client->>Follower: Backup RPC
     Follower->>Leader: Forward to leader
 
-    Leader->>Pebble: CreateTemporaryCheckpoint("backup")
+    Leader->>RocksDB: CreateTemporaryCheckpoint("backup")
     Leader->>Storage: Read previous manifest
     Leader->>Leader: Compute diff (new/changed/stale)
     Leader->>Storage: Upload new/changed files
     Leader->>Storage: Delete stale files
     Leader->>Storage: Write updated manifest
-    Leader->>Pebble: Remove tmp/backup
+    Leader->>RocksDB: Remove tmp/backup
 
     Leader->>Client: Response (files uploaded, deleted, total, duration)
 ```
@@ -360,9 +360,9 @@ The `store incremental-backup` command calls the `ClusterService.IncrementalBack
 1. **Forward**: A request hitting a follower is transparently forwarded to the leader.
 2. **Start**: The leader proposes a `BackupOrder.Start` through Raft. A duplicate destination is rejected with `FailedPrecondition` (`ErrBackupInProgress`); a duplicate `job_id` with `FailedPrecondition` (`ErrBackupJobIDCollision`).
 3. **Read manifest**: Reads the existing manifest from S3 to determine the last exported sequences.
-4. **Snapshot**: Takes a `ReadHandle` (Pebble snapshot) for point-in-time consistency.
+4. **Snapshot**: Takes a `ReadHandle` (RocksDB snapshot) for point-in-time consistency.
 5. **Determine delta**: Compares current sequences against the manifest's last exported sequences.
-6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw Pebble range scan, writing them as a KV stream binary format to S3 segments. Each segment streams through an `io.Pipe` into a multipart upload, so memory stays bounded and a single object can exceed the 5 GB single-`PutObject` limit. A range whose serialized entries exceed `--backup-max-segment-bytes` (default 4Gi) is split into multiple segments at sequence boundaries. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
+6. **Stream entries**: Iterates new log entries (`{0x04, 0x01}` prefix) and audit entries (`{0x04, 0x02}` prefix) via raw RocksDB range scan, writing them as a KV stream binary format to S3 segments. Each segment streams through an `io.Pipe` into a multipart upload, so memory stays bounded and a single object can exceed the 5 GB single-`PutObject` limit. A range whose serialized entries exceed `--backup-max-segment-bytes` (default 4Gi) is split into multiple segments at sequence boundaries. Progress proposals were dropped from the FSM lifecycle: liveness is observed in-memory on the leader via the orchestrator's executor registry rather than inferred from progress staleness.
 7. **Update manifest**: Appends new export segments to the manifest.
 8. **Complete / Fail**: The leader proposes the terminal order under a bounded background context (so a client disconnect does not strand the destination lock).
 
@@ -481,7 +481,7 @@ The transfer is detached from the initiating RPC, not from the restore-mode
 application. After any configured shutdown grace period, restore shutdown
 rejects new restore RPCs and cancels any active download, stops the HTTP health
 server and then gRPC, joins admitted RPCs and the download job, and finally
-closes the retained staging Pebble store. Explicit
+closes the retained staging RocksDB store. Explicit
 `CancelDownload` keeps its client-facing behavior: it cancels only the selected
 job, waits for a bounded drain, and leaves the restore-mode application running
 so the operator can retry.
@@ -519,7 +519,7 @@ ledgerctl restore validate
 |------|----------|-------------|
 | `--timeout` | No | Request timeout (default: 50s) |
 
-Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only Pebble database and runs the full integrity checker (`check.Checker`). The checker performs three passes:
+Calls `RestoreService.ValidateRestore` (server-streaming). The server opens the staging directory as a read-only RocksDB database and runs the full integrity checker (`check.Checker`). The checker performs three passes:
 
 1. **Log sequence verification**: Iterates all logs from sequence 1 to the last sequence. Verifies sequence continuity (no gaps).
 
@@ -656,7 +656,7 @@ ledgerctl store bootstrap --driver s3 --s3-bucket my-bucket --s3-region us-east-
 1. **Fresh directory guard**: Scans the target data directory's `checkpoints/` subdirectory for existing checkpoints using `ScanLatestCheckpointID()`. Refuses to overwrite.
 2. **Download**: Reads the manifest from the configured backend, downloads all checkpoint files and export segments into `{data-dir}/restore-staging/`.
 3. **Apply exports**: If the manifest contains incremental export segments, applies them to the staging database and rebuilds derived state.
-4. **Preview**: Opens the staging as a read-only Pebble database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
+4. **Preview**: Opens the staging as a read-only RocksDB database, reads metadata (last applied index, timestamp, ledger list), and displays a summary table.
 5. **Validate** (optional): If `--validate` is set, runs the full integrity checker (`check.Checker`) -- the same checker used by `store check` and `restore validate`. Execution failures or reported integrity errors abort bootstrap before confirmation, preparation, and finalization. Without this flag, bootstrap skips Checker entirely.
 6. **Confirm**: Unless `--yes` is set, prompts for user confirmation.
 7. **Prepare**: Prepares attributes for backup (Global-zone resets: applied index preserved as the genesis boundary — the restored genesis' WAL-snapshot index — persisted config stripped, persisted bloom blocks dropped); the attribute zone is left intact.
@@ -704,7 +704,7 @@ ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./data --bootstrap --
 On startup, the node detects the `RESTORED` marker in `NewNode()`:
 
 1. WAL is empty (first start) AND `RESTORED` marker exists:
-   - Calls `fsm.RecoverState()` to recover in-memory FSM counters from Pebble:
+   - Calls `fsm.RecoverState()` to recover in-memory FSM counters from RocksDB:
      - `nextLedgerID` from the highest existing ledger ID
      - `nextSequenceID` from the last log sequence
      - `lastAuditHash` and `nextAuditSequenceID` from the last audit entry
@@ -739,7 +739,7 @@ The `RESTORED` file is a JSON file written to the data directory during `Finaliz
 
 | Guarantee | Mechanism |
 |-----------|-----------|
-| **Consistent snapshot** | Backup checkpoint is created as a direct Pebble checkpoint. Boundaries are always up-to-date in Pebble (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
+| **Consistent snapshot** | Backup checkpoint is created as a direct RocksDB checkpoint. Boundaries are always up-to-date in RocksDB (written on every commit), so the checkpoint is consistent without Raft consensus or FSM gating. |
 | **Incremental efficiency** | SST files are immutable — same name means same content. Only new/changed files are uploaded; stale files are deleted. |
 | **Self-contained on restore** | During restore finalize, the applied index is preserved as the genesis boundary and persisted config and bloom blocks are reset (Global-zone); the attribute zone is preserved byte-for-byte. The new log's index space starts at the boundary; nothing depends on the original cluster's later Raft indices. |
 | **Data integrity (content)** | `ValidateRestore` runs the full integrity checker: log sequence continuity, volume balance verification, metadata consistency. |
@@ -793,11 +793,11 @@ ledger run --node-id 1 --cluster-id prod-ledger --data-dir ./fresh-data --bootst
 | `internal/adapter/grpc/server_restore.go` | RestoreService gRPC implementation |
 | `internal/bootstrap/module_restore.go` | Minimal fx module for restore mode |
 | `internal/pkg/tarutil/extract.go` | Shared tar extraction utility |
-| `internal/storage/dal/store_readonly.go` | Read-only Pebble store opener |
+| `internal/storage/dal/store_readonly.go` | Read-only RocksDB store opener |
 | **Offline Bootstrap** | |
 | `cmd/ledgerctl/store/bootstrap.go` | `store bootstrap` CLI command (offline) |
 | **Post-Restore Bootstrap** | |
 | `internal/infra/node/restored_marker.go` | RESTORED marker read/write/remove |
-| `internal/infra/state/machine.go` | `RecoverState()` — FSM state recovery from Pebble |
+| `internal/infra/state/machine.go` | `RecoverState()` — FSM state recovery from RocksDB |
 | **Integrity Checker** | |
 | `internal/application/check/checker.go` | Hash chain, volumes, metadata verification |

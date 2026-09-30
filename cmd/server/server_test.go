@@ -26,6 +26,22 @@ func TestLoadBloomConfigIncludesLedgerMetadata(t *testing.T) {
 	require.Equal(t, 0.01, cfg.GetBloomLedgerMetadata().GetFpRate())
 }
 
+func TestRocksDBFlags(t *testing.T) {
+	t.Parallel()
+
+	cmd := NewRunCommand()
+	require.NotNil(t, cmd.Flags().Lookup("rocksdb-cache-size"))
+	require.NotNil(t, cmd.Flags().Lookup("rocksdb-compression"))
+	require.NotNil(t, cmd.Flags().Lookup("read-index-cache-size"))
+	require.Nil(t, cmd.Flags().Lookup("pebble-cache-size"))
+
+	require.NoError(t, cmd.Flags().Set("node-id", "1"))
+	require.NoError(t, cmd.Flags().Set("rocksdb-cache-size", "128Mi"))
+	cfg, err := LoadConfig(context.Background(), cmd)
+	require.NoError(t, err)
+	require.Equal(t, int64(128<<20), cfg.RocksDBConfig.CacheSize)
+}
+
 // TestLoadConfig_ZeroPreservedForSentinelFlags pins the fix for #324.
 // Several flags document `0` as a meaningful sentinel (disable /
 // never expire). The pre-fix helpers swallowed any value-zero through

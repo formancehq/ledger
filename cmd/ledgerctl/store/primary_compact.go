@@ -14,8 +14,8 @@ func NewPrimaryCompactCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:               "compact",
 		Aliases:           []string{"gc"},
-		Short:             "Compact the primary Pebble store",
-		Long:              "Trigger a synchronous prefix-by-prefix compaction of the primary Pebble store via gRPC",
+		Short:             "Compact the primary RocksDB store",
+		Long:              "Trigger a synchronous prefix-by-prefix compaction of the primary RocksDB store via gRPC",
 		RunE:              runPrimaryCompact,
 		Args:              cobra.ExactArgs(0),
 		ValidArgsFunction: cobra.NoFileCompletions,

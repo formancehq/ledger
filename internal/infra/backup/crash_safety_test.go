@@ -35,7 +35,7 @@ func saveNextLedgerIDForBackupTest(t *testing.T, batch *dal.WriteSession, nextID
 // provides the interface-conformant surface and free call recording; this struct
 // holds the extra observations those tests assert on and cannot be expressed
 // with plain gomock expectations, because the number, keys and relative order of
-// the Put/Delete calls are driven by Pebble's checkpoint internals and are not
+// the Put/Delete calls are driven by RocksDB's checkpoint internals and are not
 // knowable at test-authoring time:
 //
 //   - ops records the ordered sequence of "put <key>" / "del <key>" so a test can
@@ -249,13 +249,13 @@ func TestRunBackup_ManifestWrittenAfterUploadsAndBeforeAnyDelete(t *testing.T) {
 }
 
 // TestRunBackup_NeverOverwritesManifestReferencedObject is the immutability
-// regression (MAJOR bug found in review of PR #1543): a Pebble checkpoint
+// regression (MAJOR bug found in review of PR #1543): a RocksDB checkpoint
 // contains a MANIFEST-NNNNNN file that keeps the SAME local name but GROWS
 // between checkpoints. With name-keyed storage keys, the second full backup
 // re-uploaded data/MANIFEST-NNNNNN in place — overwriting an object the
 // currently published backup manifest still referenced, BEFORE the manifest
 // swap. A crash in that window left the previous backup pointing at corrupt
-// Pebble metadata.
+// RocksDB metadata.
 //
 // With content-addressed keys, a file whose bytes change lands on a new key, so
 // no object a published manifest references is ever overwritten in place. This
@@ -285,7 +285,7 @@ func TestRunBackup_NeverOverwritesManifestReferencedObject(t *testing.T) {
 	keys1 := checkpointKeySet(manifest1)
 
 	// Mutate + compact so the checkpoint's file set changes — most notably
-	// Pebble's MANIFEST-NNNNNN, which keeps the same local name but grows in
+	// RocksDB's MANIFEST-NNNNNN, which keeps the same local name but grows in
 	// place. This is the exact trigger that made the pre-fix (name-keyed) code
 	// overwrite a manifest-referenced object.
 	mutate := store.OpenWriteSession()
@@ -444,7 +444,7 @@ func TestRunIncrementalBackup_SegmentUploadFailureLeavesManifestUntouched(t *tes
 // rounds of (write new logs/audits → incremental backup), accumulating export
 // segments in one manifest. Applying every accumulated segment onto a store
 // that already holds the pre-checkpoint content (here reproduced by log replay,
-// since raw SST checkpoint files cannot be ingested into a fresh Pebble store
+// since raw SST checkpoint files cannot be ingested into a fresh RocksDB store
 // via a WriteSession) and rebuilding must reconstruct every post-checkpoint
 // ledger across all incrementals. The end-to-end variant, including the opaque
 // SST checkpoint restore, lives in tests/e2e/cluster/restore_test.go.

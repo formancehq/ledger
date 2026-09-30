@@ -4,7 +4,7 @@
 
 Indexed entity-list reads go through four stages: a **Raft `ReadIndex`** barrier
 for linearizability, a fixed main-store horizon, per-projection **Raft progress**
-waits, coordinated **Pebble snapshots**, and a **composable iterator pipeline**.
+waits, coordinated **RocksDB snapshots**, and a **composable iterator pipeline**.
 The result is streamed back through gRPC with cursor-based pagination. Point
 reads and main-store-only queries use their own single main-store handle and do
 not wait for projections they do not consult.
@@ -20,8 +20,8 @@ sequenceDiagram
     participant N as Node<br/>(ReadIndex)
     participant Raft as Raft peers
     participant FSM
-    participant Main as Pebble<br/>(main store)
-    participant Index as Pebble<br/>(read store)
+    participant Main as RocksDB<br/>(main store)
+    participant Index as RocksDB<br/>(read store)
 
     C->>G: ListAccounts(filter, cursor)
     G->>G: Auth + consistency selection
@@ -80,7 +80,7 @@ was used.
 1. Call `node.ReadIndex(ctx)` — Raft sends a heartbeat round-trip to confirm quorum and returns the current commit index.
 2. `fsm.WaitForApplied(commitIndex)` — block until the local FSM has applied every entry up to that commit index.
 
-Once both succeed, the local Pebble snapshot reflects state at least as fresh as the moment the request reached the cluster. This guarantees **linearizable reads on any node**: a read started after a successful write returns at least that write's effects, regardless of which node serves the read.
+Once both succeed, the local RocksDB snapshot reflects state at least as fresh as the moment the request reached the cluster. This guarantees **linearizable reads on any node**: a read started after a successful write returns at least that write's effects, regardless of which node serves the read.
 
 If the node is syncing or otherwise unable to confirm `ReadIndex`, the call fails — callers either retry or forward to the leader.
 
@@ -102,7 +102,7 @@ read now aligns automatically against the exact main snapshot it will use:
 The indexer captures its own bounded main-store snapshot and publishes `H` only
 after processing every native item visible in it. Intermediate batches advance
 only the native cursor; the terminal projection writes and certificate are one
-atomic Pebble batch. Raft entries that emit no log or audit item still advance
+atomic RocksDB batch. Raft entries that emit no log or audit item still advance
 the certificate. Native log/audit cursors remain separate because folds,
 history resolution, and trimming use them.
 
@@ -121,7 +121,7 @@ the version it replaced (a retype retains it) or, for an initial build, refused 
 building (`INDEX_BUILDING`, `Unavailable`, retryable) until the flush completes —
 see [indexer / Changing a Metadata Key's Type](../indexer/indexer.md#changing-a-metadata-keys-type-setmetadatafieldtype).
 
-## Pebble snapshot
+## RocksDB snapshot
 
 The query and audit read paths report distinct Antithesis safety properties
 when a main snapshot violates `H >= R`, preserving their existing errors.
@@ -135,7 +135,7 @@ unarmed build, which makes the compiler discard the call and its details map
 rather than merely skipping them.
 See the [assertion catalog and applicability](../../../contributing/antithesis-assertions.md).
 
-`store.NewReadHandle()` returns a Pebble snapshot. Within one controller request,
+`store.NewReadHandle()` returns a RocksDB snapshot. Within one controller request,
 main-store leaves and enrichment all use that **one** handle. Read-index
 iterators use a separate snapshot certified at the main handle's applied-index
 horizon. The projection may be ahead, so `query.MainHorizonKeep` still trims by
@@ -146,9 +146,9 @@ cursor. The detailed per-target rules live in
 The main handle and reclamation reservation live with the returned cursor; the
 projection snapshot and read lease are released after index iteration.
 
-The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the Pebble snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
+The cursor carries only the exclusive resume position (for example, an account address or transaction ID); it does not identify or retain the RocksDB snapshot. Within one request/page, results are served under the coordinated consistency contract described above: main-store leaves and enrichment reflect that request's single pin, subject to the per-target cross-store exceptions — ACCOUNTS membership is served as folded, so a page may include index members absent from the pinned main store. Because the cursor does not retain that snapshot state, there is no general snapshot-consistency guarantee across separate pages. Inserts, deletes, or updates committed between requests may therefore affect later pages according to the documented cursor ordering and filtering semantics. Duplications or omissions across pages under concurrent writes are not, by themselves, evidence of a product defect unless an API contract explicitly promises a cross-page snapshot.
 
-Multiple concurrent readers share snapshots cheaply (Pebble's snapshot is a versioned reference, not a copy).
+Multiple concurrent readers share snapshots cheaply (RocksDB's snapshot is a versioned reference, not a copy).
 
 For `ListLogs`, the index snapshot and read lease remain live through
 `ReadLedgerLogsCompiled` while the page is loaded; the earlier release timing
@@ -172,14 +172,14 @@ applies to the `ListAccounts` and `ListTransactions` paths.
 
 | Operator | File | Purpose |
 |----------|------|---------|
-| `PebbleAccountIterator`, `PebbleReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one read-store prefix. Direction-specific: a Pebble cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
-| `BoundedEntityIterator` with `LedgerLogRangeIterator`/`PebbleTxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
+| `AccountIterator`, `ReverseTxIterator`, `LedgerLogIterator`, `PrefixIterator`/`ReversePrefixIterator`, … | `iterator_*.go` | Leaf scans over one main-store or read-index prefix. Direction-specific: a RocksDB cursor walked `First`/`Next` is not the one walked `Last`/`Prev`. |
+| `BoundedEntityIterator` with `LedgerLogRangeIterator`/`TxRangeIterator` wrappers | `iterator_bounded_entity.go` | Streams fixed-width entity ranges without materialization, enforcing key shape and half-open bounds. |
 | `AndIterator[D]` | `combinator_and.go` | Merge-intersect of sorted child iterators. |
 | `OrIterator[D]` | `combinator_or.go` | Merge-union. |
 | `NotIterator[D]` | `combinator_not.go` | Difference against the entity-existence index (`0x02`). |
 | `FilterIterator[D]` | `combinator_filter.go` | Predicate wrapper (for example the main-store horizon trim). |
 | `SliceIterator[D]` | `combinator_slice.go` | Borrowed view over an already sorted, materialized result. |
-| address-prefix iterator | `iterator_pebble.go` | Leaf scan with a chart-of-accounts prefix predicate. |
+| address-prefix iterator | `iterator_rocksdb.go` | Leaf scan with a chart-of-accounts prefix predicate. |
 
 The boolean combinators are **direction-parameterized, not duplicated**: each is one implementation whose only direction-dependent input is `D`'s comparator, so ascending and descending composition cannot drift apart (EN-1966). Only the leaves listed as direction-specific above have two implementations.
 
@@ -207,7 +207,7 @@ Only the first two are ordering limitations. The log-ID row is an implementation
 
 Materializing is also **not** a descending-only cost, and none of the three is a regression introduced by direction support: the ascending compiler drains the same three leaves through `materializeIterator`, and did so before this work. The descending page costs exactly the one materialization the ascending page already pays, with no second complete-result collection for the reversal. All three stay visible in the iterator tree under their own `Kind`, so [query-profile](query-profile.md) still attributes their cost.
 
-Transaction ID ranges are *not* in this table: the Pebble transaction zone is keyed by txID, so `compileTxIDConditionRev` builds a `PebbleReverseTxRangeIterator` and streams, exactly as its ascending twin does.
+Transaction ID ranges are *not* in this table: the main-store transaction attributes are keyed by txID, so `compileTxIDConditionRev` builds a `ReverseTxRangeIterator` and streams, exactly as its ascending twin does.
 
 A gate that hides rows must hide them in **both** directions. `ReversePrefixIterator` carries the same fold-sequence stamp gate as `PrefixIterator`, and `ReverseEventResolveIterator` resolves each group at the same pin as its ascending twin — walking a group backwards, the *first* event with `seq <= pin` is the latest one at or below it, which is the event the forward pass settles on. A gate present on one side only is a direction-dependent visibility bug that a whole-set parity test cannot see, because both directions are compared against the same pinned view; the registry-driven conformance suite in `internal/storage/readstore/iterator_conformance_test.go` compares each direction against the independently declared set at a pin instead.
 

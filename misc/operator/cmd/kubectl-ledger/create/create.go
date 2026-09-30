@@ -72,7 +72,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 
 	ledger := &ledgerv1alpha1.Cluster{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "ledger.formance.com/v1alpha1",
+			APIVersion: "ledger-next.formance.com/v1alpha1",
 			Kind:       "Cluster",
 		},
 		ObjectMeta: metav1.ObjectMeta{

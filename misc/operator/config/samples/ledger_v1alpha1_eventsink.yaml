@@ -1,5 +1,5 @@
 # Apply after creating the referenced Cluster and a JetStream stream for ledger.events.>.
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: EventSink
 metadata:
   name: primary

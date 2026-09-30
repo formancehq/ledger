@@ -4,10 +4,10 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // RangeIterator drains [lower, upper) forward; Seek is unimplementable on
@@ -20,7 +20,7 @@ func TestRangeIterator_DrainsForwardAndRefusesSeek(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 
 	for _, id := range []uint64{1, 2, 3} {
-		require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(AccountTxKey(kb, PrefixAccountTx, "l", "acc:1", id), nil, kv.NoSync))
 	}
 
 	prefix := AccountTxPrefix(dal.NewKeyBuilder(), PrefixAccountTx, "l", "acc:1")

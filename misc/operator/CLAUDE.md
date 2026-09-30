@@ -20,7 +20,7 @@ nix develop --command golangci-lint run
 `spec.cache.rotationThreshold` and every `spec.bloom.*` field are part of
 `computeSpecHash` (see `hash.go`). Any change to these fields:
 
-1. Bumps the `ledger.formance.com/spec-hash` pod-template annotation.
+1. Bumps the `ledger-next.formance.com/spec-hash` pod-template annotation.
 2. Triggers a `RollingUpdate` of the StatefulSet — explicit `Partition: 0`
    strategy in `reconcile_statefulset.go::buildStatefulSetSpec`.
 3. Each new pod boots with the updated env vars (mapped from CLI flags by

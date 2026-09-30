@@ -118,49 +118,81 @@ go run . run
 
 ### Operator Installation
 
-The Ledger operator manages the full lifecycle of Ledger clusters via a `Ledger` custom resource.
+The RocksDB operator manages node deployments through `Cluster` resources and logical ledgers through `Ledger` resources in `ledger-next.formance.com/v1alpha1`.
 
 ```bash
-# The chart installs the CRDs through its ledger-operator-crds dependency
+# The chart installs the CRDs through its ledger-next-operator-crds dependency
 helm dependency build misc/operator/helm/operator
-helm install ledger-operator misc/operator/helm/operator \
-  --namespace ledger \
+helm install ledger-next-operator misc/operator/helm/operator \
+  --namespace ledger-next-system \
   --create-namespace \
-  --set watchNamespace=ledger
+  --set watchNamespace=ledger-next
 ```
+
+### Coexistence with the Pebble operator
+
+Install the RocksDB chart as a **new release**, `ledger-next-operator`, in
+`ledger-next-system`. Create a dedicated workload namespace, `ledger-next`,
+when using `watchNamespace=ledger-next`. Keep the published Pebble operator and
+its `ledger.formance.com` CRDs installed. All six RocksDB resource kinds
+(`Cluster`, `Ledger`, `EventSink`, `Credentials`, `Backup`, `BackupRun`) belong to
+`ledger-next.formance.com`; references such as `clusterRef` resolve only inside
+that API group. `Credentials` remains cluster-scoped.
+
+Use fully qualified resource names with kubectl, for example
+`kubectl get clusters.ledger-next.formance.com -n ledger-next`. Do not change an
+existing Pebble CR's API group or reuse its data volumes. Pin both the operator
+image and the Ledger image to RocksDB builds; old beta Ledger images still use
+Pebble. The source-tree kubectl plugin targets the new group.
+
+The new operator uses a separate leader-election lease, `ledger-next-` workload
+names, `app.kubernetes.io/name=ledger-next` pod selectors, and
+`ledger-next.formance.com` labels, annotations and finalizers. Its credentials
+Secrets and volume-protection policies are also separate from the Pebble
+operator. Explicit user overrides of service-account names or pod labels can
+still create shared resources or overlapping selectors; prefer the defaults
+and dedicated namespaces during A/B testing.
 
 ### Creating a Ledger Cluster
 
-Create a `Ledger` custom resource:
+Create a `Cluster` custom resource and a `Ledger` that references it:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
+kind: Cluster
+metadata:
+  name: my-ledger
+  namespace: ledger-next
+spec:
+  replicas: 3
+  image:
+    repository: ghcr.io/formancehq/ledger
+    tag: <rocksdb-build-tag>
+  clusterID: rocksdb-test
+  bindAddr: "0.0.0.0:7777"
+  grpcPort: 8888
+  httpPort: 9000
+  dataDir: "/data/app"
+  walDir: "/data/raft"
+  rocksdb:
+    cacheSize: 1Gi
+  raft:
+    maintenanceInterval: "30s"
+    compactionMargin: 1000
+---
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Ledger
 metadata:
   name: my-ledger
-  namespace: ledger
+  namespace: ledger-next
 spec:
-  replicas: 3  # Must be odd for Raft
-  image:
-    repository: ghcr.io/formancehq/ledger
-    tag: latest
-  config:
-    bindAddr: "0.0.0.0:7777"
-    grpcPort: 8888
-    httpPort: 9000
-    dataDir: "/data/app"
-    walDir: "/data/raft"
-    raft:
-      maintenanceInterval: "30s"
-      compactionMargin: 1000
-      electionTick: 10
-      heartbeatTick: 1
-      maxSizePerMsg: 1048576
-      maxInflightMsgs: 256
-      tickInterval: "100ms"
+  name: my-ledger
+  clusterRef: my-ledger
 ```
 
-The operator creates and manages all sub-resources: StatefulSet, Services, Ingresses, ServiceAccount, PDB, etc.
+The operator creates the StatefulSet, Services, Ingresses, ServiceAccount,
+NetworkPolicy and associated volumes with names such as
+`ledger-next-my-ledger`.
 
 ### Main Configuration
 
@@ -215,7 +247,7 @@ spec:
 #### Custom Labels
 
 `spec.additionalLabels` is merged on top of the default selector labels
-(`app.kubernetes.io/name=ledger`, `app.kubernetes.io/instance=<cr>`) on every
+(`app.kubernetes.io/name=ledger-next`, `app.kubernetes.io/instance=<cr>`) on every
 owned resource AND on the pod template / Service selectors. Use it to escape
 an unrelated Service whose broad selector accidentally targets the ledger
 pods — override `app.kubernetes.io/name` for a discriminating value, or add
@@ -230,7 +262,7 @@ spec:
 Notes:
 
 - Colliding keys override the defaults (typical fix: rewrite
-  `app.kubernetes.io/name=ledger` to `app.kubernetes.io/name=ledger-v3`).
+  `app.kubernetes.io/name=ledger-next` to `app.kubernetes.io/name=ledger-v3`).
 - `app.kubernetes.io/managed-by` is operator-owned and dropped from the merge
   on both top-level object labels and pod-template labels.
 - Selector fields on `Service` and `StatefulSet` are immutable. Changing
@@ -518,7 +550,7 @@ a Kubernetes Secret named `pyroscope-auth` in the Cluster namespace with a
 `token` key, then reference it:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: my-ledger
@@ -683,13 +715,13 @@ config:
     compactionMargin: 1000      # Minimum WAL entries retained after compaction (default: 1000)
 ```
 
-> **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a Pebble checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
+> **Tuning maintenance interval**: The `maintenanceInterval` controls how often the background maintenance cycle runs. Each cycle creates a WAL snapshot (if new entries were applied), compacts old WAL entries, and creates a RocksDB checkpoint. Shorter intervals reduce recovery time but increase I/O overhead. The default of 30s is suitable for most workloads.
 >
 > **Tuning compaction margin**: The `compactionMargin` controls how many WAL entries are retained after compaction, allowing followers that are slightly behind to catch up without needing a full snapshot transfer. Increase this value if followers frequently fall behind.
 
 ### Configuration Safety Checks at Startup
 
-The server persists critical configuration parameters in Pebble under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
+The server persists critical configuration parameters in RocksDB under the Global zone (key `{0x06, 0x0C}`) on first boot and validates them on every subsequent boot. This prevents silent data corruption from accidentally changing critical parameters between restarts.
 
 #### Persisted Parameters
 
@@ -723,6 +755,10 @@ the audit key. Its rotation is not an implicit configuration change.
 Use `--unsafe-skip-config-validation` to bypass safety checks for `node-id` and `cluster-id` mismatches and overwrite the persisted config. **Use only for intentional migrations.** Note that `storage-schema-version` mismatches and a cluster policy missing its metadata size limits are never bypassable. See [CLI Reference](./cli.md) for flag documentation.
 
 ### Upgrading from pre-#400 clusters
+
+This historical pre-release procedure does not migrate storage to RocksDB.
+Ledger v3 now requires a fresh RocksDB data directory; no Pebble data or backup
+conversion is provided before the first stable v3 release.
 
 This refactor changes two things that are not backward-compatible with persisted state from older binaries:
 
@@ -788,7 +824,7 @@ What the keying protects against:
 
 What the keying does **not** protect against:
 
-- An attacker who has obtained the persisted Pebble store (a leaked backup, a compromised node, a malicious operator) can read the `cluster-id` directly from `PersistedConfig` and recompute the entire chain after modifying orders. The keying buys nothing in that scenario.
+- An attacker who has obtained the persisted RocksDB store (a leaked backup, a compromised node, a malicious operator) can read the `cluster-id` directly from `PersistedConfig` and recompute the entire chain after modifying orders. The keying buys nothing in that scenario.
 
 If true tamper-evidence is required (e.g., regulated audit log integrity, third-party verification of leaked backups), configure the cluster's `HashAlgorithm` to `BLAKE3` instead of `XXH3`. BLAKE3 is collision-resistant by construction, so an attacker cannot replace orders with crafted inputs that hash to the same value — but the chain itself can still be replayed from any tampered point onward unless the key is moved to an out-of-store trust anchor (HSM, environment variable, external secret). That move is out of scope for this PoC.
 
@@ -796,10 +832,10 @@ If true tamper-evidence is required (e.g., regulated audit log integrity, third-
 
 ### Horizontal Scaling
 
-To add nodes to the cluster, update the `replicas` field in the Ledger CR:
+To add nodes to the cluster, update the `replicas` field in the Cluster CR:
 
 ```bash
-kubectl patch ledgers.ledger.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
+kubectl patch clusters.ledger-next.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
 ```
 
 **Important** : The number of nodes must remain odd to avoid ties during votes.

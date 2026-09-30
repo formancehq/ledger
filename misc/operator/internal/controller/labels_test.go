@@ -22,7 +22,7 @@ func TestSelectorLabels(t *testing.T) {
 			name:     "defaults only",
 			instance: "my-ledger",
 			want: map[string]string{
-				"app.kubernetes.io/name":     "ledger",
+				"app.kubernetes.io/name":     "ledger-next",
 				"app.kubernetes.io/instance": "my-ledger",
 			},
 		},
@@ -31,14 +31,14 @@ func TestSelectorLabels(t *testing.T) {
 			instance: "my-ledger",
 			spec: ledgerv1alpha1.ClusterSpec{
 				AdditionalLabels: map[string]string{
-					"app.formance.com/service": "ledger-v3",
+					"app.formance.com/service": "ledger-next-v3",
 					"team":                     "platform",
 				},
 			},
 			want: map[string]string{
-				"app.kubernetes.io/name":     "ledger",
+				"app.kubernetes.io/name":     "ledger-next",
 				"app.kubernetes.io/instance": "my-ledger",
-				"app.formance.com/service":   "ledger-v3",
+				"app.formance.com/service":   "ledger-next-v3",
 				"team":                       "platform",
 			},
 		},
@@ -47,11 +47,11 @@ func TestSelectorLabels(t *testing.T) {
 			instance: "my-ledger",
 			spec: ledgerv1alpha1.ClusterSpec{
 				AdditionalLabels: map[string]string{
-					"app.kubernetes.io/name": "ledger-v3",
+					"app.kubernetes.io/name": "ledger-next-v3",
 				},
 			},
 			want: map[string]string{
-				"app.kubernetes.io/name":     "ledger-v3",
+				"app.kubernetes.io/name":     "ledger-next-v3",
 				"app.kubernetes.io/instance": "my-ledger",
 			},
 		},
@@ -65,13 +65,13 @@ func TestSelectorLabels(t *testing.T) {
 			spec: ledgerv1alpha1.ClusterSpec{
 				AdditionalLabels: map[string]string{
 					"app.kubernetes.io/managed-by": "evil",
-					"app.formance.com/service":     "ledger-v3",
+					"app.formance.com/service":     "ledger-next-v3",
 				},
 			},
 			want: map[string]string{
-				"app.kubernetes.io/name":     "ledger",
+				"app.kubernetes.io/name":     "ledger-next",
 				"app.kubernetes.io/instance": "my-ledger",
-				"app.formance.com/service":   "ledger-v3",
+				"app.formance.com/service":   "ledger-next-v3",
 			},
 		},
 	}
@@ -103,6 +103,6 @@ func TestCommonLabels_ManagedByIsNotOverridable(t *testing.T) {
 	}
 
 	got := commonLabels(ls)
-	require.Equal(t, "ledger-operator", got["app.kubernetes.io/managed-by"],
+	require.Equal(t, "ledger-next-operator", got["app.kubernetes.io/managed-by"],
 		"managed-by is owned by the operator and must not be overridable")
 }

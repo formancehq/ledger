@@ -31,9 +31,9 @@ becomes corrupted or out of date.`,
 		ValidArgsFunction: cobra.NoFileCompletions,
 	}
 
-	cmd.Flags().String("data-dir", "", "Pebble data directory (required)")
+	cmd.Flags().String("data-dir", "", "RocksDB data directory (required)")
 	cmd.Flags().String("read-index-dir", "", "Read index directory (default: <data-dir>/read-indexes/)")
-	cmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per Pebble batch commit (0 = default 1000)")
+	cmd.Flags().Int("audit-index-batch-size", 0, "Audit entries per storage batch commit (0 = default 1000)")
 
 	_ = cmd.MarkFlagRequired("data-dir")
 
@@ -53,21 +53,21 @@ func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 
 	logger := logging.NopZap()
 
-	spinner := cmdutil.StartSpinner("Opening Pebble store (read-only)...")
+	spinner := cmdutil.StartSpinner("Opening RocksDB store (read-only)...")
 
-	// The server keeps the live Pebble DB under <data-dir>/live (see dal.NewStore),
+	// The server keeps the live RocksDB database under <data-dir>/live (see dal.NewStore),
 	// while the read index lives at <data-dir>/read-indexes. Open the live subdir,
 	// not the data root.
-	pebbleStore, err := dal.OpenReadOnly(filepath.Join(dataDir, "live"), logger)
+	primaryStore, err := dal.OpenReadOnly(filepath.Join(dataDir, "live"), logger)
 	if err != nil {
-		spinner.Fail("Failed to open Pebble store")
+		spinner.Fail("Failed to open RocksDB store")
 
-		return cmdutil.Displayed(fmt.Errorf("opening Pebble store: %w", err))
+		return cmdutil.Displayed(fmt.Errorf("opening RocksDB store: %w", err))
 	}
 
-	defer func() { _ = pebbleStore.Close() }()
+	defer func() { _ = primaryStore.Close() }()
 
-	spinner.Success("Pebble store opened")
+	spinner.Success("RocksDB store opened")
 
 	spinner = cmdutil.StartSpinner("Opening read index store...")
 
@@ -84,7 +84,7 @@ func runRebuildAuditIndex(cmd *cobra.Command, _ []string) error {
 
 	spinner = cmdutil.StartSpinner("Rebuilding audit index...")
 
-	idx := auditindexer.New(auditindexer.Config{BatchSize: batchSize}, pebbleStore, rs, logger, noop.Meter{})
+	idx := auditindexer.New(auditindexer.Config{BatchSize: batchSize}, primaryStore, rs, logger, noop.Meter{})
 	if err := idx.Rebuild(context.Background()); err != nil {
 		spinner.Fail("Rebuild failed")
 

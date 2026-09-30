@@ -2,7 +2,7 @@
 
 ## Overview
 
-A **backup** is a snapshot of the **entire Pebble database**, exported to durable storage for disaster recovery: a manifest plus many SST segments, taken per destination via a Raft order (`Backup`), often scheduled.
+A **backup** is a snapshot of the **entire RocksDB database**, exported to durable storage for disaster recovery: a manifest plus many SST segments, taken per destination via a Raft order (`Backup`), often scheduled.
 
 Backups are Raft-coordinated so the cluster can't double-write to the same destination and so a failure mid-upload is recoverable.
 
@@ -31,13 +31,13 @@ Kubernetes runtime delivery only, not audit state or incremental restore parity.
 
 ## How a backup is taken
 
-A Pebble *checkpoint* is the engine primitive: hard-link every live SST file into a separate directory at a point in time. The checkpoint is **quasi-free** (no copy), and writes to the live database keep going untouched.
+A RocksDB *checkpoint* is the engine primitive: hard-link every immutable live SST file, copying mutable metadata into a separate directory at a point in time. The checkpoint is **quasi-free for immutable SST files** (mutable metadata is copied), and writes to the live database keep going untouched.
 
 ```mermaid
 sequenceDiagram
     participant Op as Operator / Cron
     participant FSM
-    participant Peb as Pebble
+    participant Peb as RocksDB
     participant Exec as Executor<br/>(leader)
     participant Dst as Backup destination
 
@@ -66,7 +66,7 @@ Recoverability rests on two rules, both enforced in `internal/infra/backup/manag
 
 2. **Immutability via content-addressing.** Checkpoint file objects are stored
    under **content-addressed keys** — `data/<filename>.<sha256>` — so any object
-   a published manifest references is immutable. This matters because a Pebble
+   a published manifest references is immutable. This matters because a RocksDB
    checkpoint contains a `MANIFEST-NNNNNN` file that keeps the *same local name*
    but **grows** between checkpoints. Keying by name alone, the next full backup
    would re-upload it and overwrite the object the currently published backup
@@ -116,7 +116,7 @@ requires the same access controls as the history it authenticates.
 
 The manifest itself (`internal/infra/backup/manifest.go`) records:
 
-- The Pebble checkpoint timestamp and applied Raft index.
+- The RocksDB checkpoint timestamp and applied Raft index.
 - The last audit + log sequence numbers.
 - The file map (`name → checksum → size`).
 - Any exports (incremental segments not yet rolled into a checkpoint).
@@ -127,16 +127,16 @@ A fresh backup against an empty destination is just a "full" backup with an empt
 
 ### Global key lifetimes (EN-1415)
 
-The primary Pebble store separates durable state by restore lifetime. The
+The primary RocksDB store separates durable state by restore lifetime. The
 classification applies to the **whole zone**, so a new local prefix cannot be
 silently carried into a different cluster:
 
-| Pebble keys | Cross-cluster restore | Reason |
+| RocksDB keys | Cross-cluster restore | Reason |
 |---|---|---|
 | `ZoneGlobal` / ledger info, next ledger ID, signing key/config, maintenance mode, event sink cursors/status/config, query checkpoint rows/allocator/schedule, cluster policy | Retained in the full checkpoint; mutable audited projections are rebuilt from the non-empty post-checkpoint delta | Business, governance, and delivery state follows the restored history. Query checkpoint rows are marked as restored because their physical directories are absent. |
 | `ZoneGlobal` / `SubGlobClusterConfig` | Retained | Replicated config includes the hash algorithm used to verify the audit chain and the cache epoch; dropping it could change FSM behavior after restore. It is not a node identity. |
 | `ZoneGlobal` / last applied HLC timestamp | Checkpoint value folded with the maximum timestamp of post-checkpoint audit entries | Every business proposal that advances the HLC records its effective timestamp in the audit header, including failed proposals. The next destination write must advance past the full restored history. |
-| `ZoneGlobal` / idempotency eviction cutoff | Retained as a technical scan horizon | The cutoff guards cache reinjection against already committed evictions; the in-memory map is rebuilt from Pebble. |
+| `ZoneGlobal` / idempotency eviction cutoff | Retained as a technical scan horizon | The cutoff guards cache reinjection against already committed evictions; the in-memory map is rebuilt from RocksDB. |
 | `ZoneClusterPersistent` (`0x08`) / applied index | Replaced by the restored genesis boundary after the zone delete | Source Raft indexes do not identify entries in the destination's log. The checkpoint index labels its new genesis snapshot. |
 | `ZoneClusterPersistent` / persisted node/cluster config, peers, removed-member registry, Bloom blocks | Deleted as one range | Identity and membership belong to the source cluster. The destination writes its own config and peers and rebuilds Bloom blocks from attributes. Source removal tombstones must not blacklist destination members. |
 | `ZoneClusterTransient` / backup jobs | Deleted as one range | Source in-flight jobs and their history do not coordinate destination work. |
@@ -144,18 +144,18 @@ silently carried into a different cluster:
 
 `PrepareForBackup` reads the source applied index, then stages checkpoint
 markers, both cluster-only zone deletes and the new genesis boundary in one
-Pebble batch. The boundary point write follows the zone tombstone. A failure
+RocksDB batch. The boundary point write follows the zone tombstone. A failure
 before commit leaves the store unchanged; a commit error has indeterminate
 durability, and a flush error may leave the committed preparation in the store.
 The restore caller must discard failed staging rather than activate it. This
-changes the Pebble key layout: boot validation rejects an earlier store
+changes the RocksDB key layout: boot validation rejects an earlier store
 through the old boot-anchor probe. There is no in-place migration of
 pre-release stores. In-cluster snapshot installation retains the local zone.
 
 `internal/infra/backup/restore.go` is the entry point. The flow is conceptually the inverse:
 
 1. Read the manifest from the destination.
-2. Download every SST file the manifest references into a fresh Pebble directory.
+2. Download every SST file the manifest references into a fresh RocksDB directory.
 3. Apply any incremental exports on top (`ApplyExports`).
 4. Reconstruct post-checkpoint derived state from the exported log and audit streams (`RebuildDelta`).
 5. Boot the node against the restored directory.
@@ -164,7 +164,7 @@ Each export object must terminate with its explicit stream footer and contain
 the complete sequence range advertised by the manifest. A physical EOF, an
 empty segment, or missing range boundary fails the download before the staging
 restore can be considered successful. `ApplyExports` writes large segments in
-bounded Pebble batches, so batches committed before a later read failure can
+bounded RocksDB batches, so batches committed before a later read failure can
 remain until the caller discards or retries that staging directory. The gRPC
 download job wipes staging on failure and never enables finalization; an
 offline retry with the intact immutable object safely overwrites the same raw
@@ -240,14 +240,14 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 
 ## Performance characteristics
 
-- **Pebble checkpoint is hard-link-based.** Almost no I/O cost; the live database keeps serving writes.
+- **RocksDB checkpoint is hard-link-based.** Almost no I/O cost; the live database keeps serving writes.
 - **Uploads are leader-only.** Followers are not involved. This avoids fan-out but means the leader's bandwidth caps backup throughput.
-- **Full-backup dedup is by content hash.** Each checkpoint file is sha256-hashed; a file whose content is already present on storage (same content-addressed key) is skipped. Pebble's compaction rewrites SSTs, so a heavily-churned database changes more file contents and re-uploads more than a quiet one — dedup is at whole-file granularity, there is no key-level diffing.
+- **Full-backup dedup is by content hash.** Each checkpoint file is sha256-hashed; a file whose content is already present on storage (same content-addressed key) is skipped. RocksDB's compaction rewrites SSTs, so a heavily-churned database changes more file contents and re-uploads more than a quiet one — dedup is at whole-file granularity, there is no key-level diffing.
 - **No backups during snapshot transfer.** A follower receiving a Raft snapshot is in a transient state; the leader does not initiate a backup while a follower is mid-sync.
 
 ## What backup doesn't do
 
-- **It does not provide point-in-time queries.** A backup is a *Pebble* snapshot, not a logical "as of this transaction" snapshot. For point-in-time logical reads, use [query checkpoints](../read-path/query-checkpoints.md) instead.
+- **It does not provide point-in-time queries.** A backup is a *RocksDB* snapshot, not a logical "as of this transaction" snapshot. For point-in-time logical reads, use [query checkpoints](../read-path/query-checkpoints.md) instead.
 - **It does not retain by policy.** Retention (how many manifests to keep, how long incremental segments live) is operator-driven. The system will happily back up to the same destination forever.
 
 ## Where to look in the code
@@ -256,7 +256,7 @@ The Operator's `Backup` CRD (`misc/operator/api/v1alpha1/`) wraps backups behind
 |---------|------|
 | FSM lifecycle orders (Backup, IncrementalBackup, Complete, Fail) | `misc/proto/raft_cmd.proto:431-593` |
 | FSM-side orchestration | `internal/application/backup/orchestrator.go` |
-| Backup manager (Pebble checkpoint, diff, upload) | `internal/infra/backup/manager.go:40-180` |
+| Backup manager (RocksDB checkpoint, diff, upload) | `internal/infra/backup/manager.go:40-180` |
 | Manifest | `internal/infra/backup/manifest.go` |
 | Storage abstraction (S3 / Azure) | `internal/infra/backup/storage*.go` |
 | Restore orchestration | `internal/infra/backup/restore.go` |

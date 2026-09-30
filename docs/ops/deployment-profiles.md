@@ -10,6 +10,10 @@ change them. The complete flag reference remains in the [CLI reference](./cli.md
 while this page only covers the settings that materially affect deployment
 choices.
 
+Ledger v3 uses RocksDB for its primary store and projections. The primary store
+rejects `--rocksdb-wal-failover-dir`, nonzero WAL
+minimum sync interval, enabled value separation, and disabled WAL.
+
 ## Start with the Customer Requirements
 
 Collect these inputs before sizing the cluster:
@@ -18,7 +22,7 @@ Collect these inputs before sizing the cluster:
 |-------------|--------------------|-----------------------------|
 | Availability | Is downtime acceptable? How many simultaneous failures must be tolerated? | One node for disposable environments; three nodes for production HA; five only to tolerate two voter failures. |
 | Write load | Sustained and peak transactions per second? Typical bulk size? | CPU, WAL latency, network bandwidth, and workload design. |
-| Read load | Query rate, filters, result sizes, and freshness requirement? | Main Pebble and read-index caches, indexes, and read routing. |
+| Read load | Query rate, filters, result sizes, and freshness requirement? | Main RocksDB and read-index caches, indexes, and read routing. |
 | Working set | How many accounts and assets are active in a short time window? | FSM cache rotation threshold and preload rate. |
 | Data shape | Number of postings and metadata fields per transaction? | CPU, execution-plan size, Raft payload size, and disk growth. |
 | Retention | Log and audit history is permanent in the primary store. | Disk sizing and the compression profile. |
@@ -63,15 +67,15 @@ Install the operator and its CRD dependency, then start from the maintained
 
 ```bash
 helm dependency build misc/operator/helm/operator
-helm install ledger-operator misc/operator/helm/operator \
-  --namespace ledger-system \
+helm install ledger-next-operator misc/operator/helm/operator \
+  --namespace ledger-next-system \
   --create-namespace
 ```
 
 For a three-node deployment, make scheduling and resources explicit:
 
 ```yaml
-apiVersion: ledger.formance.com/v1alpha1
+apiVersion: ledger-next.formance.com/v1alpha1
 kind: Cluster
 metadata:
   name: customer-ledger
@@ -110,7 +114,7 @@ spec:
   minAvailable: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: ledger
+      app.kubernetes.io/name: ledger-next
       app.kubernetes.io/instance: customer-ledger
 ```
 
@@ -128,10 +132,10 @@ not only steady-state traffic.
 
 | Profile | Topology | CPU | Memory | Storage | Initial configuration |
 |---------|----------|-----|--------|---------|-----------------------|
-| Local / demo | 1 node | 2 cores | 2 GiB | One local SSD volume | `GOMEMLIMIT=1800MiB`, `--pebble-cache-size=256Mi`, `--pebble-memtable-size=64Mi` |
+| Local / demo | 1 node | 2 cores | 2 GiB | One local SSD volume | `GOMEMLIMIT=1800MiB`, `--rocksdb-cache-size=256Mi`, `--rocksdb-memtable-size=64Mi` |
 | Production baseline | 3 nodes | 4 cores | 4 GiB | Persistent SSD; separate WAL and data volumes when possible | `GOMEMLIMIT=3600MiB`; application defaults |
-| High write throughput | 3 nodes | 8 cores | 4-8 GiB | Provisioned-IOPS SSD/NVMe; separate WAL and data volumes | Defaults first; bulk requests around 50 transactions; tune from queue, preload, and Pebble metrics |
-| Read-heavy | 3 nodes | 4-8 cores | 8 GiB | Fast data volume; optionally isolate the read index | `GOMEMLIMIT=7200MiB`, `--pebble-cache-size=4Gi`, start with `--read-index-cache-size=128Mi` |
+| High write throughput | 3 nodes | 8 cores | 4-8 GiB | Provisioned-IOPS SSD/NVMe; separate WAL and data volumes | Defaults first; bulk requests around 50 transactions; tune from queue, preload, and RocksDB metrics |
+| Read-heavy | 3 nodes | 4-8 cores | 8 GiB | Fast data volume; optionally isolate the read index | `GOMEMLIMIT=7200MiB`, `--rocksdb-cache-size=4Gi`, start with `--read-index-cache-size=128Mi` |
 
 The default in-memory budget is approximately 3.2 GiB per node even before
 workload-dependent gRPC buffers and transient allocations. A 512 MiB container
@@ -152,9 +156,8 @@ Use distinct paths and, for demanding workloads, distinct devices:
 | Path | Workload | Recommendation |
 |------|----------|----------------|
 | `--wal-dir` | Synchronous Raft WAL writes on the write critical path | Lowest-latency durable SSD/NVMe. Never use ephemeral storage in production. |
-| `--data-dir` | Primary Pebble store, checkpoints, and projections | High-IOPS persistent SSD with compaction headroom. |
+| `--data-dir` | Primary RocksDB store, checkpoints, and projections | High-IOPS persistent SSD with compaction headroom. |
 | `--read-index-dir` | Rebuildable query indexes | Fast persistent storage; isolation can protect the primary store from read-index I/O. Directory isolation is currently available only for CLI/VM deployments; the Operator keeps the read index on the data volume. |
-| `--pebble-wal-failover-dir` | Secondary Pebble WAL path | A different physical volume; using the same device does not provide useful failover. This extra volume is currently available only for CLI/VM deployments. |
 
 Measure disk growth during a representative test, including compactions and
 indexes, then extrapolate it over the hot-retention period. Keep projected peak
@@ -182,17 +185,16 @@ multi-region topology trade-offs and the supported responses to quorum loss.
 
 | Customer need or observed signal | Parameter or action | Trade-off / guardrail |
 |-----------------------------------|---------------------|-----------------------|
-| Memory limit below 4 GiB | Reduce `--pebble-cache-size`, then `--pebble-memtable-size`; set `GOMEMLIMIT` to about 90% of the container limit | More disk reads and flushes; watch write stalls and query latency. |
-| Read latency is high and disk reads dominate | Increase `--pebble-cache-size`; for filtered listings, increase `--read-index-cache-size` and create only the required indexes | Directly increases RSS. An index improves its matching query but adds build, storage, and write cost. |
+| Memory limit below 4 GiB | Reduce `--rocksdb-cache-size`, then `--rocksdb-memtable-size`; set `GOMEMLIMIT` to about 90% of the container limit | More disk reads and flushes; watch write stalls and query latency. |
+| Read latency is high and disk reads dominate | Increase `--rocksdb-cache-size`; for filtered listings, increase `--read-index-cache-size` and create only the required indexes | Directly increases RSS. An index improves its matching query but adds build, storage, and write cost. |
 | Admission preloads are slow and active keys are reused | Increase `--cache-rotation-threshold` from the default `1000` | Approximately linear cache-memory growth; roll the value consistently across the cluster. |
 | Workload continually creates unique accounts | Keep the cache threshold near the default and focus on fast storage | A larger cache provides little benefit without key reuse. |
-| Many Pebble lookups are for absent keys | Enable Bloom filters only for affected attribute types with a reliable distinct-key bound between rebuilds or an explicit resize policy | Filters consume fixed memory on every node and lose effectiveness when `expectedKeys` is exceeded. Do not enable them by habit. |
+| Many RocksDB lookups are for absent keys | Enable Bloom filters only for affected attribute types with a reliable distinct-key bound between rebuilds or an explicit resize policy | Filters consume fixed memory on every node and lose effectiveness when `expectedKeys` is exceeded. Do not enable them by habit. |
 | More Numscript texts than the `1024`-entry cache | First replace generated scripts with variables; only then increase `--numscript-cache-size` | Increasing the cache hides inefficient script templating and consumes memory. |
 | Propose queue fills | Use bulks, check leader CPU and WAL latency, then consider `--raft-propose-queue-capacity` | A larger queue absorbs bursts but does not increase sustainable throughput and increases latency under overload. |
-| Pebble write stalls | Check storage latency and compaction metrics; consider more IOPS or `--pebble-max-concurrent-compactions` | More compactions consume CPU, I/O, and temporary memory. |
+| RocksDB write stalls | Check storage latency and compaction metrics; consider more IOPS or `--rocksdb-max-concurrent-compactions` | More compactions consume CPU, I/O, and temporary memory. |
 | Inter-node bandwidth is constrained | Test `--grpc-compression` for Ledger's outgoing internal gRPC pools | Saves inter-node bandwidth but costs CPU and can increase latency. Client-call compression remains a client configuration decision. |
 | Followers join slowly | Increase `--snapshot-parallelism` from `4` and, for very large snapshots, `--snapshot-session-ttl` | More parallelism consumes network, disk I/O, file descriptors, and memory on both nodes. |
-| Large values cause compaction amplification | Load-test `--pebble-value-separation` | Can reduce compaction I/O but adds read amplification and blob lifecycle tuning. |
 | High-cardinality observability is expensive | Keep `--admission-metrics` disabled in steady-state high-throughput production; sample successful traces | Reduces diagnostic detail. Re-enable temporarily while investigating. |
 
 For operator-managed clusters, the flags in this table map to the following CR
@@ -200,24 +202,23 @@ fields:
 
 | CLI control | Operator field |
 |-------------|----------------|
-| `--pebble-cache-size`, `--pebble-memtable-size` | `spec.pebble.cacheSize`, `spec.pebble.memTableSize` |
-| `--read-index-cache-size` | `spec.readIndex.pebble.cacheSize` |
+| `--rocksdb-cache-size`, `--rocksdb-memtable-size` | `spec.rocksdb.cacheSize`, `spec.rocksdb.memTableSize` |
+| `--read-index-cache-size` | `spec.readIndex.rocksdb.cacheSize` |
 | `--cache-rotation-threshold` | `spec.cache.rotationThreshold` |
 | `--numscript-cache-size` | `spec.numscriptCacheSize` |
 | `--raft-propose-queue-capacity` | `spec.raft.proposeQueueCapacity` |
-| `--pebble-max-concurrent-compactions` | `spec.pebble.maxConcurrentCompactions` |
+| `--rocksdb-max-concurrent-compactions` | `spec.rocksdb.maxConcurrentCompactions` |
 | `--grpc-compression` | `spec.grpcCompression` |
 | `--snapshot-parallelism`, `--snapshot-session-ttl` | `spec.snapshot.parallelism`, `spec.snapshot.sessionTTL` |
-| `--pebble-value-separation` | `spec.pebble.valueSeparation.enabled` |
 | `--admission-metrics` | `spec.admissionMetrics` |
 
-### Choose Pebble compression from the LSM workload
+### Choose RocksDB compression from the LSM workload
 
 Compression is configured independently for the primary store and the read
-index. Each value selects the profile used when Pebble writes a new SST block
+index. Each value selects the codec used when RocksDB writes a new SST block
 at one of the seven LSM levels, from L0 through L6. It does not compress the
 WAL. A change takes effect on new flushes and compactions; existing SSTs adopt
-it gradually as Pebble rewrites them.
+it gradually as RocksDB rewrites them.
 
 Ledger's default is:
 
@@ -225,30 +226,28 @@ Ledger's default is:
 fastest,fastest,fastest,fastest,fast,fast,balanced
 ```
 
-This keeps the frequently rewritten L0-L3 levels cheap, applies adaptive
-compression to L4-L5, and spends more CPU on L6, where most long-lived data
-normally resides. Keep this default until measurements identify CPU, storage
-capacity, or storage bandwidth as the limiting resource.
+With RocksDB, this maps L0-L5 to Snappy and L6 to Zstd. Keep this default
+until measurements identify CPU, storage capacity, or bandwidth as the
+limiting resource.
 
-| Profile | Behavior with the currently pinned Pebble 2.1.4 | Workload fit | Main cost |
-|---------|-------------------------------------------------|--------------|-----------|
-| `none` | Stores blocks without block compression | Only after profiling proves that even the compression attempt is material and the data is already incompressible | Maximum disk footprint, read I/O, backup size, and compaction I/O |
-| `snappy` | Attempts Snappy for data, values, indexes, filters, and metadata, retaining blocks uncompressed when reduction is insufficient | Predictable low-CPU compatibility profile | Usually a lower compression ratio than adaptive profiles |
-| `default` | Currently the same as `snappy` in the pinned Pebble version | Acceptable when following Pebble's version-dependent default is intentional | Its meaning may change after a Pebble upgrade; use `snappy` for a stable explicit choice |
-| `fastest` | MinLZ-fastest on most architectures and Snappy on arm64; skips compression when the reduction is too small | Hot levels, CPU-bound writes, and latency-sensitive compactions | Favors CPU over disk reduction |
-| `fast` | Fastest for data and metadata blocks, Zstd level 1 for value blocks, with adaptive fallback | Warm levels containing compressible values | More CPU than `fastest`, primarily for values |
-| `balanced` | Zstd level 1 for data and value blocks, fastest for other blocks, with adaptive fallback | Cold, read-heavy data when storage bandwidth or capacity matters | Higher compaction and decompression CPU |
-| `good` | Zstd level 3 for data and value blocks, fastest for other blocks, with adaptive fallback | Deep cold levels when disk reduction is worth additional background CPU | Highest CPU cost among the adaptive profiles |
-| `zstd` | Zstd level 3 uniformly for every compressible block type | A deliberate uniform policy validated by benchmarks | Can spend CPU on hot data and non-data blocks where it has little payoff |
+| Configured profile | RocksDB codec | Workload fit |
+|--------------------|---------------|--------------|
+| `none` | None | Only after measuring compression CPU against additional disk I/O and backup size. |
+| `default`, `snappy`, `fastest`, `fast` | Snappy | Hot levels and lower compression CPU. |
+| `zstd`, `balanced`, `good` | Zstd | Colder levels when storage size or bandwidth matters. |
+
+The older adaptive distinctions between `fastest` and `fast`, or between
+`balanced` and `good`, do not apply to RocksDB. These names remain accepted by
+the current configuration, but each pair selects the same codec.
 
 Use exactly seven comma-separated values. The following starting points change
 only the levels justified by the workload:
 
 | Observed constraint | Starting profile | Why |
 |---------------------|------------------|-----|
-| Balanced production workload | `fastest,fastest,fastest,fastest,fast,fast,balanced` | Preserves Ledger's tested default. |
-| CPU-bound ingestion with healthy disk headroom | `fastest,fastest,fastest,fastest,fastest,fastest,fastest` | Reduces compaction CPU before considering `none`; `fastest` already abandons blocks that do not compress enough. |
-| Storage-bound or large read-heavy history with spare CPU | `fastest,fastest,fastest,fastest,fast,balanced,good` | Keeps hot levels cheap and concentrates stronger compression on long-lived levels. |
+| Balanced production workload | `fastest,fastest,fastest,fastest,fast,fast,balanced` | Preserves Ledger's default Snappy/Zstd split. |
+| CPU-bound ingestion with healthy disk headroom | `snappy,snappy,snappy,snappy,snappy,snappy,snappy` | Uses Snappy at every level before considering `none`. |
+| Storage-bound or large read-heavy history with spare CPU | `snappy,snappy,snappy,snappy,snappy,zstd,zstd` | Keeps hot levels on Snappy and compresses older levels with Zstd. |
 | Incompressible payloads and measured compression CPU | `none,none,none,none,none,none,none` | Use only if a representative benchmark shows an end-to-end gain after accounting for extra I/O. |
 
 For Kubernetes, configure the stores separately so an index-heavy read
@@ -256,14 +255,14 @@ workload does not force the same choice on the consensus store:
 
 ```yaml
 spec:
-  pebble:
+  rocksdb:
     compression: "fastest,fastest,fastest,fastest,fast,fast,balanced"
   readIndex:
-    pebble:
+    rocksdb:
       compression: "fastest,fastest,fastest,fastest,fast,balanced,good"
 ```
 
-Compare steady-state CPU, compaction duration, write stalls, Pebble VFS
+Compare steady-state CPU, compaction duration, write stalls, RocksDB
 operations, storage-level throughput, disk growth, backup size, and read
 latency before and after the change. Run the comparison after enough
 compaction has occurred to rewrite a representative share of the old SSTs. A
@@ -274,14 +273,14 @@ foreground latency improved.
 
 Ledger has two different Bloom-filter layers:
 
-- Pebble SSTable filters are always configured internally at 10 bits per key
-  on every LSM level. They help Pebble avoid reading irrelevant SSTables after
-  a request reaches the database and have no customer-facing sizing flag.
-- Ledger's application Bloom filters sit before Pebble in the shared
+- RocksDB SSTable filters are configured internally at 10 bits per key when
+  the block cache is enabled. They help RocksDB avoid reading irrelevant SSTs
+  after a request reaches the database and have no customer-facing sizing flag.
+- Ledger's application Bloom filters sit before RocksDB in the shared
   execution-plan preload resolver used by admission, mirror, and other
   proposal producers. They are optional and configured independently for each
   attribute type with `expectedKeys` and `fpRate`. A definite absence avoids
-  the Pebble lookup entirely.
+  the RocksDB lookup entirely.
 
 The application filters are useful only when all of the following are true:
 
@@ -313,7 +312,7 @@ at a 1% target false-positive rate and 17 bits per key at 0.1%, rounded to
 
 These figures cover the main bitset; allow additional runtime and persisted
 block-tracking overhead. Start at 1%. A false positive is safe and costs only
-the Pebble read that the filter failed to avoid, so lowering the rate is useful
+the RocksDB read that the filter failed to avoid, so lowering the rate is useful
 only when storage misses remain expensive after the 1% filter is enabled.
 
 Choose types from the actual preload workload:
@@ -352,19 +351,19 @@ Leave every other type omitted, which is equivalent to `expectedKeys: 0`.
 Changing any one setting purges the persisted Bloom namespace, rebuilds all
 enabled application filters from a full attribute scan, and temporarily sets
 the global `bloom.ready` gauge to `0`. While it is not ready, preload
-resolution safely falls back to Pebble reads. Roll out one sizing change at a
+resolution safely falls back to RocksDB reads. Roll out one sizing change at a
 time and wait for every node to report ready before judging performance.
 
 Validate ratios per attribute `type`. Validate `bloom.ready` globally for the
 whole filter set:
 
 - `bloom.negatives / bloom.lookups` is the fraction of filter checks that
-  avoid Pebble. If it remains low, disable that type.
+  avoid RocksDB. If it remains low, disable that type.
 - `bloom.false_positives / (bloom.negatives + bloom.false_positives)`
   approximates the observed false-positive rate for absent keys. Sustained
   growth above the target indicates that the cardinality assumption is stale.
 - `bloom.ready` must return to `1`; also verify that preload resolution latency
-  and Pebble VFS read operations actually fall.
+  and RocksDB read operations actually fall.
 
 See [Performance Tuning](./performance-tuning.md#54-bloom-filters),
 [Monitoring](./monitoring.md#bloom-filter-metrics), and the
@@ -395,7 +394,7 @@ store can also recompute the chain from the modified point onward. See the
 [audit hash keying threat model](./deployment.md#audit-hash-keying--threat-model)
 before making regulatory or non-repudiation claims.
 
-`--sentinel-mode` performs additional consistency checks and Pebble reads. Use it
+`--sentinel-mode` performs additional consistency checks and RocksDB reads. Use it
 for tests or targeted diagnostics unless its production overhead has been
 validated with the customer's load.
 

@@ -15,8 +15,8 @@ import (
 func TestPyroscopeCRDSecretBoundary(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
-		"../../config/crd/bases/ledger.formance.com_clusters.yaml",
-		"../../helm/crds/templates/ledger.formance.com_clusters.yaml",
+		"../../config/crd/bases/ledger-next.formance.com_clusters.yaml",
+		"../../helm/crds/templates/ledger-next.formance.com_clusters.yaml",
 	} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()

@@ -8,25 +8,25 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 )
 
-func TestIdempotencyEvictionReader_GetPebbleKeyHashes_DeepClones(t *testing.T) {
+func TestIdempotencyEvictionReader_GetKeyHashes_DeepClones(t *testing.T) {
 	t.Parallel()
 
 	h1 := []byte{0x01, 0x02}
 	h2 := []byte{0x03, 0x04}
-	ev := &raftcmdpb.IdempotencyEviction{PebbleKeyHashes: [][]byte{h1, h2}}
+	ev := &raftcmdpb.IdempotencyEviction{KeyHashes: [][]byte{h1, h2}}
 	r := ev.AsReader()
 
-	got := r.GetPebbleKeyHashes()
+	got := r.GetKeyHashes()
 	require.Len(t, got, 2)
 
 	// Mutate the outer slice: must not affect the original.
 	got[0] = []byte{0xFF}
-	require.Equal(t, []byte{0x01, 0x02}, ev.GetPebbleKeyHashes()[0])
+	require.Equal(t, []byte{0x01, 0x02}, ev.GetKeyHashes()[0])
 
 	// Mutate inner []byte: must not affect the original either (deep clone).
-	got2 := r.GetPebbleKeyHashes()
+	got2 := r.GetKeyHashes()
 	got2[1][0] = 0xEE
-	require.Equal(t, []byte{0x03, 0x04}, ev.GetPebbleKeyHashes()[1])
+	require.Equal(t, []byte{0x03, 0x04}, ev.GetKeyHashes()[1])
 	require.Equal(t, []byte{0x03, 0x04}, h2)
 }
 

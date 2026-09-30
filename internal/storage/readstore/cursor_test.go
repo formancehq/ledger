@@ -3,8 +3,9 @@ package readstore
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestUint64CursorRoundTrip(t *testing.T) {
@@ -33,9 +34,9 @@ func TestUint64CursorCorruptLength(t *testing.T) {
 	c := Uint64Cursor{key: []byte("corrupt-cursor-key")}
 
 	// The read store opens Pebble with DisableWAL, so writes must use NoSync;
-	// pebble.Sync would return "WAL disabled". NoSync is the same option the
+	// kv.Sync would return "WAL disabled". NoSync is the same option the
 	// store's own direct-DB writes (DeleteBackfillProgress) use.
-	require.NoError(t, s.db.Set(c.key, []byte{1, 2, 3}, pebble.NoSync))
+	require.NoError(t, s.db.Set(c.key, []byte{1, 2, 3}, kv.NoSync))
 
 	_, err := c.Read(s.db)
 	require.Error(t, err, "a non-8-byte value must be a hard error, not silently 0")

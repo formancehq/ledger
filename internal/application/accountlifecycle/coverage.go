@@ -45,7 +45,7 @@ func AccountsForOrders(perOrder []*plan.Coverage) (map[domain.AccountKey]struct{
 	return out, nil
 }
 
-func AddPersistedRows(reader dal.PebbleReader, account domain.AccountKey, coverage, aggregate *plan.Coverage) error {
+func AddPersistedRows(reader dal.KVReader, account domain.AccountKey, coverage, aggregate *plan.Coverage) error {
 	for _, spec := range []struct{ attrCode, separator byte }{
 		{dal.SubAttrVolume, dal.CanonicalKeySepVolume},
 		{dal.SubAttrMetadata, dal.CanonicalKeySepMetadata},

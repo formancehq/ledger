@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -105,7 +105,7 @@ func (r failingLedgerHistoryReader) Get([]byte) ([]byte, io.Closer, error) {
 	return nil, nil, r.err
 }
 
-func (r failingLedgerHistoryReader) NewIter(*pebble.IterOptions) (*pebble.Iterator, error) {
+func (r failingLedgerHistoryReader) NewIter(*kv.IterOptions) (*kv.Iterator, error) {
 	return nil, r.err
 }
 

@@ -26,7 +26,7 @@ When current code and authoritative documentation disagree, stop treating the do
 | `internal/infra/plan/**`, `internal/infra/preload/**` | `docs/technical/architecture/subsystems/fsm/` |
 | `internal/infra/cache/**`, `internal/infra/attributes/**`, `internal/infra/bloom/**` | `docs/technical/architecture/subsystems/attributes/` and relevant FSM docs |
 | `internal/application/check/**`, `internal/domain/replay/**` | `docs/technical/architecture/subsystems/checker/`, `docs/technical/architecture/audit-vs-technical-state.md` |
-| `internal/storage/dal/**`, `internal/storage/wal/**`, `internal/storage/spool/**`, `internal/storage/pebblecfg/**` | `docs/technical/architecture/subsystems/storage/` |
+| `internal/storage/dal/**`, `internal/storage/wal/**`, `internal/storage/spool/**`, `internal/storage/rocksdbcfg/**` | `docs/technical/architecture/subsystems/storage/` |
 | `internal/storage/readstore/**`, `internal/application/indexbuilder/**` | `docs/technical/architecture/subsystems/indexer/`, `docs/technical/architecture/subsystems/read-path/` |
 | `internal/storage/usagestore/**` | relevant usage-builder/subsystem docs plus `docs/technical/architecture/audit-vs-technical-state.md` when integrity/rebuild semantics change |
 | `internal/application/ctrl/**`, `internal/query/**` | `docs/technical/architecture/subsystems/read-path/` |

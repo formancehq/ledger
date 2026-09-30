@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // vtSizedBufferMarshaler is implemented by vtprotobuf-generated messages.
@@ -26,10 +27,10 @@ type vtDeterministicMarshaler interface {
 }
 
 // WriteSession provides atomic write operations on the store, backed by a
-// pebble.Batch with NoSync writes.
+// kv.Batch with NoSync writes.
 //
 // WriteSession is deliberately write-only: it does not expose Get / NewIter
-// nor implement PebbleGetter / PebbleReader. This makes the invariant "no
+// nor implement KVGetter / KVReader. This makes the invariant "no
 // Pebble reads on the FSM hot path" structural — code that only holds a
 // *WriteSession cannot read from Pebble, by the compiler.
 //
@@ -40,7 +41,7 @@ type vtDeterministicMarshaler interface {
 // released batch.
 type WriteSession struct {
 	store          *Store
-	batch          *pebble.Batch
+	batch          *kv.Batch
 	KeyBuilder     *KeyBuilder
 	protoBuffer    []byte
 	CacheBuffer    []byte // reusable buffer for 0xFF cache zone writes (tag+value)
@@ -87,7 +88,7 @@ func (s *Store) OpenWriteSession() *WriteSession {
 // NewWriteSessionFromDB creates a write-only session backed by the given Pebble
 // DB without a Store. Used by subsystems (e.g. readstore) that manage their own
 // Pebble instance.
-func NewWriteSessionFromDB(db *pebble.DB) *WriteSession {
+func NewWriteSessionFromDB(db *kv.DB) *WriteSession {
 	return &WriteSession{
 		batch:       db.NewBatch(),
 		KeyBuilder:  NewKeyBuilder(),
@@ -138,7 +139,7 @@ func (b *WriteSession) Commit() error {
 		return err
 	}
 
-	if err := b.batch.Commit(pebble.NoSync); err != nil {
+	if err := b.batch.Commit(kv.NoSync); err != nil {
 		return fmt.Errorf("committing write session: %w", err)
 	}
 
@@ -160,7 +161,7 @@ func (b *WriteSession) Commit() error {
 
 // Set writes a key-value pair.
 // Returns an error if the session has reached a terminal state.
-func (b *WriteSession) Set(key, value []byte, options *pebble.WriteOptions) error {
+func (b *WriteSession) Set(key, value []byte, options *kv.WriteOptions) error {
 	if err := b.checkActive(); err != nil {
 		return err
 	}
@@ -180,7 +181,7 @@ func (b *WriteSession) SetProto(key []byte, msg proto.Message) error {
 		return err
 	}
 
-	return b.batch.Set(key, data, pebble.NoSync)
+	return b.batch.Set(key, data, kv.NoSync)
 }
 
 // SetProtoDeterministic is the deterministic variant of SetProto: it
@@ -201,7 +202,7 @@ func (b *WriteSession) SetProtoDeterministic(key []byte, msg vtDeterministicMars
 
 	b.protoBuffer = msg.MarshalDeterministicVT(b.protoBuffer[:0])
 
-	return b.batch.Set(key, b.protoBuffer, pebble.NoSync)
+	return b.batch.Set(key, b.protoBuffer, kv.NoSync)
 }
 
 // SetBytes stores raw bytes under key with NoSync.
@@ -211,7 +212,7 @@ func (b *WriteSession) SetBytes(key, value []byte) error {
 		return err
 	}
 
-	return b.batch.Set(key, value, pebble.NoSync)
+	return b.batch.Set(key, value, kv.NoSync)
 }
 
 // DeleteKey deletes a key with NoSync.
@@ -221,7 +222,7 @@ func (b *WriteSession) DeleteKey(key []byte) error {
 		return err
 	}
 
-	return b.batch.Delete(key, pebble.NoSync)
+	return b.batch.Delete(key, kv.NoSync)
 }
 
 // SingleDeleteKey deletes a key that was written exactly once (single SET) with NoSync.
@@ -236,12 +237,12 @@ func (b *WriteSession) SingleDeleteKey(key []byte) error {
 		return err
 	}
 
-	return b.batch.SingleDelete(key, pebble.NoSync)
+	return b.batch.SingleDelete(key, kv.NoSync)
 }
 
 // DeleteRange deletes all keys in the range [start, end).
 // Returns an error if the session has reached a terminal state.
-func (b *WriteSession) DeleteRange(start, end []byte, options *pebble.WriteOptions) error {
+func (b *WriteSession) DeleteRange(start, end []byte, options *kv.WriteOptions) error {
 	if err := b.checkActive(); err != nil {
 		return err
 	}
@@ -256,5 +257,5 @@ func (b *WriteSession) DeleteRangeNoSync(start, end []byte) error {
 		return err
 	}
 
-	return b.batch.DeleteRange(start, end, pebble.NoSync)
+	return b.batch.DeleteRange(start, end, kv.NoSync)
 }

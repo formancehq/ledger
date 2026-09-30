@@ -42,7 +42,7 @@ type reverseMapFixtureInput struct {
 // the pass needs.
 type reverseMapFixture struct {
 	checker *Checker
-	reader  dal.PebbleReader
+	reader  dal.KVReader
 	schemas map[string]*commonpb.MetadataSchema
 }
 

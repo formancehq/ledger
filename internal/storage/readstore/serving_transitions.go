@@ -11,32 +11,11 @@ import (
 // operations its writer and readers need (MarkPromotion, UnmarkPromotion,
 // FlushPromotions, PromotionInFlight); the state itself stays here.
 //
-// A serving transition is a write to an index's IndexVersionState that
-// changes what queries may serve — the builder promoting a pending version
-// to current. The store has no WAL, so a committed transition lives only in
-// the memtable until Pebble flushes it: a hard kill in that window reopens
-// the store at the pre-promotion state, and a node that had already answered
-// queries under the promoted binding answers under the one before it again.
-//
-// Transitions ordered by the fold cursor do not have this problem — a rewound
-// fold re-walks the log that produced them before alignment lets a query
-// through. A promotion is not ordered by the fold: the backfill or rewrite
-// that completes it runs beside the fold, so after a rewind the fold catches
-// up while the promotion is still being redone, and the old binding serves
-// at states past the new one. Hence a promotion is made durable before it is
-// served: the builder marks the promoted version in flight before committing,
-// readers do not serve a marked version (PinnedVersionResolver falls back to
-// the version it replaced while the state retains one), and Flush clears the
-// marks once the flush has completed.
-//
-// Marks live in memory only. After a restart nothing is in flight: whatever
-// the reopened store holds was flushed by construction.
-//
-// Single-writer contract: a mark, the commit it covers, and the Flush that
-// releases it must be issued by one goroutine in that order (the builder
-// loop). Flush releases every count it captured before flushing; a mark whose
-// commit could land after the flush's memtable rotation would be released
-// without its data on disk. Readers (InFlight) may run from any goroutine.
+// A serving transition promotes an index version to current. The builder
+// marks it before committing and clears the mark after a successful flush.
+// This retains the reader admission contract across a failed flush.
+// The builder is the single writer for mark, commit and flush ordering;
+// readers may inspect marks concurrently.
 type servingTransitions struct {
 	mu sync.Mutex
 	// inFlight counts, per index and version, the promotions staged or
@@ -44,10 +23,8 @@ type servingTransitions struct {
 	// promotion that never committed cannot lift the gate an earlier,
 	// committed one still needs.
 	inFlight map[servingTransitionKey]int
-	// flush makes the owning store's memtable durable. A store built with
-	// WithPromotionFlushForTest wraps it, which is how a test drives the
-	// flush-failure path: Pebble retries a failed memtable flush internally
-	// and returns only on success, so a real store cannot produce one.
+	// flush makes committed promotions durable. Tests may wrap it to
+	// exercise the failed-flush path.
 	flush func() error
 }
 

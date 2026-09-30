@@ -27,14 +27,14 @@ func TestEnsureBackupJob_ResolvesTLSModeFromPrefixedStatefulSet(t *testing.T) {
 
 	const (
 		crName    = "my-ledger"
-		namespace = "ledger-v3"
+		namespace = "ledger-next-v3"
 	)
 
 	ls := &ledgerv1alpha1.Cluster{
 		ObjectMeta: metav1.ObjectMeta{Name: crName, Namespace: namespace},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Image: ledgerv1alpha1.ImageSpec{Repository: "ghcr.io/formancehq/ledger", Tag: "v0.0.8"},
-			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
+			TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-next-tls", CASecretKey: "ca.crt"},
 		},
 	}
 	backup := &ledgerv1alpha1.Backup{

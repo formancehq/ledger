@@ -5,11 +5,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // Exercise both production constructors against their real key layouts. In
@@ -34,21 +34,21 @@ func TestBoundedEntityIterator_ProductionConstructors(t *testing.T) {
 				)
 			}
 			for _, id := range []uint64{0, 3, 5, 9, math.MaxUint64 - 1, math.MaxUint64} {
-				require.NoError(t, s.DB().Set(key(ledger, id), nil, pebble.NoSync))
+				require.NoError(t, s.DB().Set(key(ledger, id), nil, kv.NoSync))
 			}
 			// Neighboring ledger prefixes and an overwritten entity must neither
 			// leak into this ledger nor produce duplicate IDs.
 			for _, name := range []string{"ledgeq", "ledgers"} {
-				require.NoError(t, s.DB().Set(key(name, 4), nil, pebble.NoSync))
+				require.NoError(t, s.DB().Set(key(name, 4), nil, kv.NoSync))
 			}
-			require.NoError(t, s.DB().Set(key(ledger, 5), []byte("updated"), pebble.NoSync))
+			require.NoError(t, s.DB().Set(key(ledger, 5), []byte("updated"), kv.NoSync))
 			otherKindKey := LedgerLogKey(dal.NewKeyBuilder(), ledger, 4)
 			if kind == "logs" {
 				otherKindKey = (domain.TransactionKey{LedgerName: ledger, ID: 4}).AppendBytes(
 					[]byte{dal.ZoneAttributes, dal.SubAttrTransaction},
 				)
 			}
-			require.NoError(t, s.DB().Set(otherKindKey, nil, pebble.NoSync))
+			require.NoError(t, s.DB().Set(otherKindKey, nil, kv.NoSync))
 
 			newIterator := func(t *testing.T, lower, upper []byte) EntityIterator {
 				t.Helper()
@@ -58,7 +58,7 @@ func TestBoundedEntityIterator_ProductionConstructors(t *testing.T) {
 				if kind == "logs" {
 					it, err = NewLedgerLogRangeIterator(s.DB(), dal.NewKeyBuilder(), ledger, lower, upper)
 				} else {
-					it, err = NewPebbleTxRangeIterator(s.DB(), ledger, lower, upper)
+					it, err = NewTxRangeIterator(s.DB(), ledger, lower, upper)
 				}
 				require.NoError(t, err)
 				t.Cleanup(it.Close)
@@ -137,7 +137,7 @@ func TestBoundedEntityIterator_FixedWidthSuffixAndOwnedPrefix(t *testing.T) {
 	prefix := []byte{0x70, 0x20}
 	for _, suffix := range [][]byte{{0, 1}, {0, 3}, {0, 5}, {0xff, 0xff}} {
 		key := append(append([]byte(nil), prefix...), suffix...)
-		require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+		require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 	}
 	it, err := NewBoundedEntityIterator(s.DB(), prefix, []byte{0, 2}, []byte{0, 5}, 2)
 	require.NoError(t, err)

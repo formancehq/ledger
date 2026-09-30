@@ -8,31 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
-
-type panicOnListFS struct{ vfs.FS }
-
-func (panicOnListFS) List(string) ([]string, error) {
-	panic("filesystem listing after lock acquisition")
-}
-
-func TestPebbleOpenPanicReleasesDirectoryLock(t *testing.T) {
-	t.Parallel()
-	impl := newCheckpointGateFixture(t)
-	path := impl.store.QueryCheckpointMainDir(gateCheckpointID)
-	require.PanicsWithValue(t, "filesystem listing after lock acquisition", func() {
-		_, _ = pebble.Open(path, &pebble.Options{ReadOnly: true, FS: panicOnListFS{vfs.Default}})
-	})
-	store, err := dal.OpenReadOnly(path, testLogger())
-	require.NoError(t, err, "Pebble unwinds its directory lock before propagating an open-time panic")
-	require.NoError(t, store.Close())
-}
 
 func TestCheckpointStoreCacheJoinedWaiterHonorsCancellation(t *testing.T) {
 	t.Parallel()

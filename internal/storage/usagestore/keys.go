@@ -4,9 +4,8 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-// Pebble key prefixes for the usagebuilder's dedicated secondary store.
-// All ledger-scoped keys follow [prefix][ledgerName padded 64B][...] so
-// the comparer can build bloom filters on the ledger-scoped prefix — same
+// Key prefixes for the usagebuilder's dedicated secondary store.
+// All ledger-scoped keys follow [prefix][ledgerName padded 64B][...] — same
 // pattern as the readstore.
 const (
 	// PrefixTemplate — per-template usage record.
@@ -17,8 +16,7 @@ const (
 	// Key: [0x02][ledgerName padded 64B][counterID] → uint64 BE.
 	PrefixCounter byte = 0x02
 
-	// PrefixInternal groups all non-ledger-scoped keys under a single prefix
-	// so Comparer.Split treats them uniformly (full key = prefix).
+	// PrefixInternal groups non-ledger-scoped singleton keys.
 	PrefixInternal byte = 0xFE
 
 	// SubInternalProgress — [0xFE][0x01] → last consumed log sequence (uint64 BE).

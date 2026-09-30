@@ -21,9 +21,9 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=backupruns/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=backupruns,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=backupruns/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=backupruns/finalizers,verbs=update
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods/log,verbs=get

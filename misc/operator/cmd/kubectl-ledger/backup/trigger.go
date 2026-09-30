@@ -71,7 +71,7 @@ func runTrigger(cmd *cobra.Command, opts *cmdutil.Options, f *triggerFlags, args
 
 	run := &ledgerv1alpha1.BackupRun{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "ledger.formance.com/v1alpha1",
+			APIVersion: "ledger-next.formance.com/v1alpha1",
 			Kind:       "BackupRun",
 		},
 		ObjectMeta: metav1.ObjectMeta{

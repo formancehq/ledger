@@ -4,12 +4,12 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // 0xFF cache value format (lean):
@@ -74,7 +74,7 @@ func writeCacheRaw(batch *dal.WriteSession, genByte, cacheType byte, id attribut
 
 	key := fillCacheKey(genByte, cacheType, id)
 
-	return batch.Set(key[:], batch.CacheBuffer, pebble.NoSync)
+	return batch.Set(key[:], batch.CacheBuffer, kv.NoSync)
 }
 
 // writeCacheTombstone writes a tombstone row to the current gen0 byte in 0xFF,

@@ -15,7 +15,7 @@ spec:
               apiVersion: apps/v1
               kind: StatefulSet
               metadata:
-                name: ledger-sched-cluster
+                name: ledger-next-sched-cluster
               status:
                 readyReplicas: 1
 

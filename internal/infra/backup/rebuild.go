@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/holiman/uint256"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -29,6 +28,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // RebuildDelta reconstructs derived state (attributes, system state) from logs
@@ -710,7 +710,7 @@ type proposalBoundaryReader struct {
 
 func newProposalBoundaryReader(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	replayedThrough uint64,
 	afterAuditSeq uint64,
 ) (*proposalBoundaryReader, error) {
@@ -766,7 +766,7 @@ func (r *proposalBoundaryReader) Close() error {
 // fromLogSeq.
 func seedLedgerContext(
 	ctx context.Context,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	rawLedgerTypes map[string]map[string]*commonpb.AccountType,
 	ledgerAccountTypes map[string][]accounttype.CompiledType,
 	ledgerInfos map[string]*commonpb.LedgerInfo,
@@ -1001,9 +1001,9 @@ func (w *attributeReplayWriter) RemoveAccountType(ledger string, name string) er
 }
 
 // attributeReplayWriter implements replay.Writer by writing directly to
-// Pebble attributes via Attribute[V].Set/Get/Delete.
+// RocksDB attributes via Attribute[V].Set/Get/Delete.
 //
-// Pebble batches are not indexed (see OpenWriteSession), so writes committed
+// RocksDB batches are not indexed (see OpenWriteSession), so writes committed
 // through w.batch are invisible to w.store.Get until Commit. The pending*
 // overlays make in-batch state visible to same-batch reads; both maps are
 // cleared on every batch commit alongside the batch itself.
@@ -1048,7 +1048,7 @@ type attributeReplayWriter struct {
 	// batch after the attribute commit. The per-ledger usage counters live in
 	// the usagestore peer secondary store, not here.
 	boundaries map[string]*raftcmdpb.LedgerBoundaries
-	readHandle dal.PebbleReader
+	readHandle dal.KVReader
 
 	// Reversion bitsets per ledger (ZonePerLedger/SubPLReversions). The FSM's
 	// already-reverted gate reads these — not the tx rows'
@@ -1222,14 +1222,14 @@ func (w *attributeReplayWriter) AccountHasNonZeroVolume(ledger, account string) 
 // Items with log_sequence == 0 (failed proposals, idempotent replays) and items
 // at or below fromLogSeq (already folded into the checkpoint) contribute
 // nothing.
-func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, fromLogSeq, fromAuditSeq uint64) error {
+func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.KVReader, fromLogSeq, fromAuditSeq uint64) error {
 	lower := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAuditItem).
 		PutUint64(fromAuditSeq + 1).
 		Build()
 	upper := []byte{dal.ZoneHistory, dal.SubHistoryAuditItem + 1}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{LowerBound: lower, UpperBound: upper})
+	iter, err := reader.NewIter(&kv.IterOptions{LowerBound: lower, UpperBound: upper})
 	if err != nil {
 		return fmt.Errorf("creating audit item iter: %w", err)
 	}
@@ -1331,7 +1331,7 @@ func (w *attributeReplayWriter) applyAuditOrderEffects(reader dal.PebbleReader, 
 // reads the FSM's own live/expired decision straight off the hash-chain-bound
 // audit reason, so no persisted TTL — and no ambiguous zero-value sentinel — is
 // consulted here.
-func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.PebbleReader, fromAuditSeq uint64) error {
+func (w *attributeReplayWriter) rebuildIdempotency(ctx context.Context, reader dal.KVReader, fromAuditSeq uint64) error {
 	// Business proposals advance the HLC and record their effective timestamp
 	// in the audit header, including failures. Fold the exported audit delta
 	// over the checkpoint value so the destination cannot issue an earlier

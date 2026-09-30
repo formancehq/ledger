@@ -21,8 +21,8 @@ func computeLag(indexed, sourceLast uint64) int64 {
 //	{ns}.{source}_last_sequence  - sourceLast.Load()
 //	{ns}.lag                     - max(sourceLast-indexed, 0)
 //
-// source names the upstream sequence (e.g. "audit", "pebble") so the middle
-// gauge preserves each worker's established metric name.
+// source names the upstream sequence (e.g. "audit", "storage") so the middle
+// gauge identifies the source each worker is following.
 func RegisterTailGauges(meter metric.Meter, ns, source string, indexed, sourceLast *atomic.Uint64) (metric.Registration, error) {
 	indexedGauge, err := meter.Int64ObservableGauge(ns+".last_indexed_sequence",
 		metric.WithDescription("Last sequence indexed"))

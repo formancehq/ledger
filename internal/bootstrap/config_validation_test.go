@@ -4,7 +4,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	"google.golang.org/protobuf/proto"
@@ -14,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/node"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func newTestStore(t *testing.T) *dal.Store {
@@ -295,7 +295,7 @@ func TestValidateOrPersistConfig_AnchorKeyPhysicallyPinned(t *testing.T) {
 	err = ValidateOrPersistConfig(store, cfg, logger, true)
 	require.ErrorAs(t, err, &schemaErr)
 	_, _, err = store.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func TestValidateOrPersistConfig_SchemaVersionTooOld(t *testing.T) {

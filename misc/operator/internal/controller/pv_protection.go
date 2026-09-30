@@ -15,7 +15,7 @@ import (
 // reconcileVolumeProtection brings the deletion-protection label on this
 // Cluster's PVCs and their bound PVs in line with the desired protect
 // state (spec.persistence.deletionProtection). When protect is true the
-// `ledger.formance.com/deletion-protection: enabled` label is stamped so the
+// `ledger-next.formance.com/deletion-protection: enabled` label is stamped so the
 // volume deletion-protection ValidatingAdmissionPolicyBinding selects the
 // volumes; when protect is false the label is removed and protection is lifted.
 //

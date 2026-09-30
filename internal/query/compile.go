@@ -33,16 +33,16 @@ var ErrFilterTooDeep = domain.ErrFilterTooDeep
 // read (never mutated) by every sub-function, except depth which is
 // incremented by the recursive boolean combinators.
 type compileCtx struct {
-	kb           *dal.KeyBuilder
-	pebbleReader dal.PebbleReader
-	indexReader  dal.PebbleReader
-	target       commonpb.QueryTarget
-	ledgerName   string
-	params       map[string]*commonpb.ParameterValue
-	schema       map[string]*commonpb.MetadataFieldSchema
-	info         *commonpb.LedgerInfo
+	kb          *dal.KeyBuilder
+	mainReader  dal.KVReader
+	indexReader dal.KVReader
+	target      commonpb.QueryTarget
+	ledgerName  string
+	params      map[string]*commonpb.ParameterValue
+	schema      map[string]*commonpb.MetadataFieldSchema
+	info        *commonpb.LedgerInfo
 	// indexRegistry resolves the bucket-scoped Index registry for checkIndexed.
-	// Callers wire a Pebble-backed reader (see indexes.NewPebbleReader); a nil
+	// Callers wire a Pebble-backed reader (see indexes.NewKVReader); a nil
 	// reader is treated as "no indexes registered" — every index-bound filter
 	// fails with ErrIndexNotFound, which matches the contract for callers that
 	// don't carry indexes (tests, ad-hoc compilation outside the server path).
@@ -93,7 +93,7 @@ type metadataCtx struct {
 // When profile is non-nil, each iterator is wrapped in a TrackedIterator and
 // profile.Root is set to the root of the iterator stats tree.
 func Compile(
-	indexReader dal.PebbleReader,
+	indexReader dal.KVReader,
 	kb *dal.KeyBuilder,
 	filter *commonpb.QueryFilter,
 	target commonpb.QueryTarget,
@@ -104,7 +104,7 @@ func Compile(
 	indexRegistry indexes.Lookup,
 	indexVersionFor readstore.IndexVersionResolver,
 	profile *QueryProfile,
-	pebbleReader dal.PebbleReader,
+	mainReader dal.KVReader,
 	pin uint64,
 ) (readstore.EntityIterator, error) {
 	// Reject an unsupported/unknown target at the earliest point. Without this
@@ -128,7 +128,7 @@ func Compile(
 
 	ctx := &compileCtx{
 		kb:              kb,
-		pebbleReader:    pebbleReader,
+		mainReader:      mainReader,
 		indexReader:     indexReader,
 		target:          target,
 		ledgerName:      ledgerName,
@@ -224,27 +224,27 @@ func rejectInvalidCondition(target commonpb.QueryTarget, filter *commonpb.QueryF
 func compileUniverse(ctx *compileCtx) (readstore.EntityIterator, error) {
 	switch ctx.target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		iter, err := readstore.NewPebbleAccountIterator(ctx.pebbleReader, ctx.ledgerName)
+		iter, err := readstore.NewAccountIterator(ctx.mainReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating account iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleAccountIterator(%s)", ctx.ledgerName),
-			Kind:   "PebbleAccount",
-			Prefix: "pebble:attributes",
+			Label:  fmt.Sprintf("AccountIterator(%s)", ctx.ledgerName),
+			Kind:   "MainStoreAccount",
+			Prefix: "main:attributes",
 		}), nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		iter, err := readstore.NewPebbleTxIterator(ctx.pebbleReader, ctx.ledgerName)
+		iter, err := readstore.NewTxIterator(ctx.mainReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating tx iterator: %w", err)
 		}
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleTxIterator(%s)", ctx.ledgerName),
-			Kind:   "PebbleTx",
-			Prefix: "pebble:txupdate",
+			Label:  fmt.Sprintf("TxIterator(%s)", ctx.ledgerName),
+			Kind:   "MainStoreTx",
+			Prefix: "main:txupdate",
 		}), nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
@@ -424,7 +424,7 @@ func compileNot(ctx *compileCtx, not *commonpb.NotFilter) (readstore.EntityItera
 func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition) (readstore.EntityIterator, error) {
 	// Target validity (TRANSACTIONS only) is enforced at the dispatch site by
 	// rejectInvalidCondition against the single source of truth; no local guard.
-	bs, err := ReadReversionBitset(ctx.pebbleReader, ctx.ledgerName)
+	bs, err := ReadReversionBitset(ctx.mainReader, ctx.ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("reading reversion bitset: %w", err)
 	}
@@ -432,7 +432,7 @@ func compileRevertedCondition(ctx *compileCtx, cond *commonpb.RevertedCondition)
 	revertedStats := &IteratorStats{
 		Label:  fmt.Sprintf("BitsetIterator(reversions:%s)", ctx.ledgerName),
 		Kind:   "Bitset",
-		Prefix: "pebble:reversions",
+		Prefix: "main:reversions",
 	}
 
 	if cond.GetValue() {
@@ -1068,12 +1068,12 @@ func compileAddressMatch(ctx *compileCtx, am *commonpb.AddressMatch) (readstore.
 
 func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		accountIter, err := readstore.NewPebbleAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+		accountIter, err := readstore.NewAccountPrefixIterator(ctx.mainReader, ctx.ledgerName, addrPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("creating account prefix iterator: %w", err)
 		}
 		trackedAccount := trackIterator(accountIter, ctx.profile, &IteratorStats{
-			Label: fmt.Sprintf("PebbleAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix), Kind: "PebbleAccount", Prefix: "pebble:attributes",
+			Label: fmt.Sprintf("AccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix), Kind: "MainStoreAccount", Prefix: "main:attributes",
 		})
 
 		return trackedAccount, nil
@@ -1103,7 +1103,7 @@ func compileAddressPrefix(ctx *compileCtx, addrPrefix string, role commonpb.Addr
 
 func compileAddressExact(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.EntityIterator, error) {
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+		exists, err := mainAccountExists(ctx.mainReader, ctx.ledgerName, exactAddr)
 		if err != nil {
 			return nil, fmt.Errorf("checking account existence: %w", err)
 		}
@@ -1252,7 +1252,7 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 
 	// Equality optimization: single txID -> check existence in Pebble and return slice
 	if bounds.isEquality() {
-		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerName, bounds.min)
+		exists, pErr := mainTxExists(ctx.mainReader, ctx.ledgerName, bounds.min)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking tx existence: %w", pErr)
 		}
@@ -1267,9 +1267,9 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		iter := readstore.NewSliceIterator([][]byte{txIDBytes})
 
 		return trackIterator(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("SliceIterator(pebble:%s:tx:id=%d)", ctx.ledgerName, bounds.min),
+			Label:  fmt.Sprintf("SliceIterator(main:%s:tx:id=%d)", ctx.ledgerName, bounds.min),
 			Kind:   "Slice",
-			Prefix: "pebble:txupdate",
+			Prefix: "main:txupdate",
 		}), nil
 	}
 
@@ -1286,15 +1286,15 @@ func compileTxIDCondition(ctx *compileCtx, cond *commonpb.UintCondition) (readst
 		binary.BigEndian.PutUint64(upper, bounds.max)
 	}
 
-	rangeIter, pErr := readstore.NewPebbleTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
+	rangeIter, pErr := readstore.NewTxRangeIterator(ctx.mainReader, ctx.ledgerName, lower, upper)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating tx range iterator: %w", pErr)
 	}
 
 	return trackIterator(rangeIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PebbleTxRangeIterator(%s:id range)", ctx.ledgerName),
-		Kind:   "PebbleTxRange",
-		Prefix: "pebble:txupdate",
+		Label:  fmt.Sprintf("TxRangeIterator(%s:id range)", ctx.ledgerName),
+		Kind:   "MainStoreTxRange",
+		Prefix: "main:txupdate",
 	}), nil
 }
 
@@ -1459,8 +1459,8 @@ func compileLogIdCondition(ctx *compileCtx, cond *commonpb.UintCondition) (reads
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
 		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
 
-		// Point lookup in Pebble index
-		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
+		// Point lookup in the read index
+		exists, pErr := storageKeyExists(ctx.indexReader, key)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking log existence: %w", pErr)
 		}
@@ -1602,9 +1602,9 @@ func targetTypeForQueryTarget(t commonpb.QueryTarget) commonpb.TargetType {
 
 // --- Helpers ---
 
-// pebbleAccountExists checks if at least one attribute key exists for the given
+// mainAccountExists checks if at least one attribute key exists for the given
 // account in Pebble. Checks Volume keys first (most common), falls back to Metadata.
-func pebbleAccountExists(reader dal.PebbleReader, ledgerName string, address string) (bool, error) {
+func mainAccountExists(reader dal.KVReader, ledgerName string, address string) (bool, error) {
 	// Check Volume keys: [0xF1][V][ledgerName padded 64B][address][sepVolume].
 	canonicalBase := make([]byte, dal.LedgerNameFixedSize+len(address))
 	copy(canonicalBase[:dal.LedgerNameFixedSize], ledgerName)
@@ -1650,9 +1650,9 @@ func pebbleAccountExists(reader dal.PebbleReader, ledgerName string, address str
 	return mIter.First(), nil
 }
 
-// pebbleTxExists checks if at least one attribute key exists for the given
+// mainTxExists checks if at least one attribute key exists for the given
 // transaction in Pebble. Key prefix: [0xF1][T][ledgerName padded 64B][sepTransaction][txID(8B)].
-func pebbleTxExists(reader dal.PebbleReader, ledgerName string, txID uint64) (bool, error) {
+func mainTxExists(reader dal.KVReader, ledgerName string, txID uint64) (bool, error) {
 	prefix := make([]byte, 2+dal.LedgerNameFixedSize+1+8)
 	prefix[0] = dal.ZoneAttributes
 	prefix[1] = dal.SubAttrTransaction
@@ -1672,8 +1672,8 @@ func pebbleTxExists(reader dal.PebbleReader, ledgerName string, txID uint64) (bo
 	return iter.First(), nil
 }
 
-// pebbleKeyExists checks if an exact key exists in a Pebble reader.
-func pebbleKeyExists(reader dal.PebbleReader, key []byte) (bool, error) {
+// storageKeyExists checks if an exact key exists in a storage reader.
+func storageKeyExists(reader dal.KVReader, key []byte) (bool, error) {
 	upper := readstore.IncrementBytes(key)
 
 	iter, err := dal.NewBoundedIter(reader, key, upper)

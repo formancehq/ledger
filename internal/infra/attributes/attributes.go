@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // Attribute is the implementation for all attribute types.
@@ -121,7 +121,7 @@ func (a *Attribute[V]) Set(batch *dal.WriteSession, canonicalKey []byte, value V
 
 	a.protoBuffer = valueBytes
 
-	return valueBytes, batch.Set(a.keyBuf[:pLen], valueBytes, pebble.NoSync)
+	return valueBytes, batch.Set(a.keyBuf[:pLen], valueBytes, kv.NoSync)
 }
 
 // AttrTypeLen is the size of the attribute type byte in a Pebble key: 1 byte.
@@ -138,7 +138,7 @@ const SuffixLen = AttrTypeLen
 // Key format: [KeyPrefixAttributes][attrType][canonicalKey].
 // Returns the value and any error. Returns (zero, nil) if no entry found.
 // Note: This is a read operation — allocates its own buffer for concurrent safety.
-func (a *Attribute[V]) Get(reader dal.PebbleGetter, canonicalKey []byte) (V, error) {
+func (a *Attribute[V]) Get(reader dal.KVGetter, canonicalKey []byte) (V, error) {
 	var zeroValue V
 
 	pLen := prefixLen(canonicalKey)
@@ -147,7 +147,7 @@ func (a *Attribute[V]) Get(reader dal.PebbleGetter, canonicalKey []byte) (V, err
 
 	valueBytes, closer, err := reader.Get(buf)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return zeroValue, nil
 		}
 
@@ -183,7 +183,7 @@ type ScanResult[V proto.Message] struct {
 
 // ScanEntries reads the entry for a canonical key and returns the result.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ScanEntries(reader dal.PebbleGetter, canonicalKey []byte) (*ScanResult[V], error) {
+func (a *Attribute[V]) ScanEntries(reader dal.KVGetter, canonicalKey []byte) (*ScanResult[V], error) {
 	value, err := a.Get(reader, canonicalKey)
 	if err != nil {
 		return nil, err
@@ -204,7 +204,7 @@ func (a *Attribute[V]) ScanEntries(reader dal.PebbleGetter, canonicalKey []byte)
 // This is more efficient than List + Get per key, as it uses one iterator
 // scoped to just the prefix range instead of the entire attribute space.
 // Thread-safe: allocates its own buffer for concurrent access.
-func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
+func (a *Attribute[V]) ComputeAllForPrefix(reader dal.KVReader, canonicalPrefix []byte) ([]ComputedEntry[V], error) {
 	si, err := a.NewStreamingIter(reader, canonicalPrefix)
 	if err != nil {
 		return nil, err
@@ -225,26 +225,26 @@ func (a *Attribute[V]) ComputeAllForPrefix(reader dal.PebbleReader, canonicalPre
 	return results, nil
 }
 
-// AttrTypeFromKey extracts the attribute type byte from a Pebble attribute key.
+// AttrTypeFromKey extracts the attribute type byte from a storage attribute key.
 // Key layout: [0xF1][AttrType][CanonicalKey...] — AttrType is at fixed position 1.
 // Returns (attrType, true) on success, or (0, false) if the key is too short.
-func AttrTypeFromKey(pebbleKey []byte) (byte, bool) {
-	if len(pebbleKey) <= 1+AttrTypeLen {
+func AttrTypeFromKey(storageKey []byte) (byte, bool) {
+	if len(storageKey) <= 1+AttrTypeLen {
 		return 0, false
 	}
 
-	return pebbleKey[1], true
+	return storageKey[1], true
 }
 
-// CanonicalKeyFromPebbleKey extracts the canonical key from a Pebble attribute key.
+// CanonicalKeyFromStorageKey extracts the canonical key from a storage attribute key.
 // Key layout: [0xF1][AttrType][CanonicalKey...] — canonical starts at offset 2.
 // Returns nil if the key is too short.
-func CanonicalKeyFromPebbleKey(pebbleKey []byte) []byte {
-	if len(pebbleKey) <= 1+AttrTypeLen {
+func CanonicalKeyFromStorageKey(storageKey []byte) []byte {
+	if len(storageKey) <= 1+AttrTypeLen {
 		return nil
 	}
 
-	return pebbleKey[2:]
+	return storageKey[2:]
 }
 
 // IncrementBytes increments a byte slice by 1 (treating as big-endian unsigned integer).

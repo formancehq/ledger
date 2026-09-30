@@ -35,7 +35,7 @@ const DefaultBatchSize = 1000
 // tasks atomically flip IndexVersionState.CurrentVersion in their
 // final batch — no cluster-wide IndexReady proposal is involved.
 type Builder struct {
-	pebbleStore   *dal.Store
+	primaryStore  *dal.Store
 	readStore     *readstore.Store
 	attrs         *attributes.Attributes
 	logger        logging.Logger
@@ -44,7 +44,7 @@ type Builder struct {
 	w             worker.Worker
 
 	lastIndexedSeq          atomic.Uint64
-	pebbleLastSeq           atomic.Uint64
+	storageLastSeq          atomic.Uint64
 	logsIndexed             atomic.Uint64
 	metricsRegistration     metric.Registration // tailworker gauge triplet
 	logsIndexedRegistration metric.Registration // builder-specific logs_indexed_total gauge
@@ -716,7 +716,7 @@ func (b *Builder) coerceForLedger(ledger string, target commonpb.TargetType, key
 // batchSize controls how many log entries are buffered per Pebble batch commit.
 // Use 0 for the default (DefaultBatchSize).
 func NewBuilder(
-	pebbleStore *dal.Store,
+	primaryStore *dal.Store,
 	readStore *readstore.Store,
 	attrs *attributes.Attributes,
 	logger logging.Logger,
@@ -728,7 +728,7 @@ func NewBuilder(
 	}
 
 	return &Builder{
-		pebbleStore:    pebbleStore,
+		primaryStore:   primaryStore,
 		readStore:      readStore,
 		attrs:          attrs,
 		logger:         logger.WithFields(map[string]any{"cmp": "index-builder"}),
@@ -832,16 +832,16 @@ func (b *Builder) LastIndexedSequence() uint64 {
 	return b.lastIndexedSeq.Load()
 }
 
-// PebbleLastSequence returns the last known Pebble sequence (from the atomic cache).
-func (b *Builder) PebbleLastSequence() uint64 {
-	return b.pebbleLastSeq.Load()
+// StorageLastSequence returns the last known main-store log sequence.
+func (b *Builder) StorageLastSequence() uint64 {
+	return b.storageLastSeq.Load()
 }
 
 // registerMetrics registers the shared tail-worker progress gauges plus the
 // builder-specific logs_indexed_total counter-gauge. Two registrations are
 // stored on the receiver so Stop can unregister both.
 func (b *Builder) registerMetrics() error {
-	triplet, err := tailworker.RegisterTailGauges(b.meter, "index.builder", "pebble", &b.lastIndexedSeq, &b.pebbleLastSeq)
+	triplet, err := tailworker.RegisterTailGauges(b.meter, "index.builder", "storage", &b.lastIndexedSeq, &b.storageLastSeq)
 	if err != nil {
 		return err
 	}
@@ -887,12 +887,12 @@ func (b *Builder) loop(ctx context.Context) {
 	// resets its own state, so re-running it on retry is idempotent.
 	var (
 		cursor           uint64
-		pebbleLast       uint64
+		storageLast      uint64
 		err              error
 		bootInvariantErr error
 	)
 	worker.RetryWithBackoff(stop, b.logger, func() error {
-		cursor, pebbleLast, err = b.bootInit(ctx)
+		cursor, storageLast, err = b.bootInit(ctx)
 		if errors.Is(err, errHistoryReplayInvariant) {
 			bootInvariantErr = err
 
@@ -915,13 +915,13 @@ func (b *Builder) loop(ctx context.Context) {
 	}
 
 	b.lastIndexedSeq.Store(cursor)
-	b.pebbleLastSeq.Store(pebbleLast)
+	b.storageLastSeq.Store(storageLast)
 
 	b.logger.WithFields(map[string]any{
-		"cursor":     cursor,
-		"pebbleLast": pebbleLast,
-		"gap":        int64(pebbleLast) - int64(cursor),
-		"backfills":  len(b.backfillTasks),
+		"cursor":      cursor,
+		"storageLast": storageLast,
+		"gap":         int64(storageLast) - int64(cursor),
+		"backfills":   len(b.backfillTasks),
 	}).Infof("Index builder started")
 
 	// Initial catch-up: process all pending logs before entering the main loop.
@@ -1072,14 +1072,14 @@ func (b *Builder) failHistoryReplay(err error) {
 
 // bootInit restores the indexed cursor, ledger history and active index versions
 // from one read-store snapshot, then seeds the last-known Pebble sequence. It
-// returns the recovered cursor and pebbleLast, or an error when a required
+// returns the recovered cursor and storageLast, or an error when a required
 // snapshot, cursor, history, config or read-handle operation fails. The caller
 // (loop) retries transient failures with backoff without advancing the cursor
 // against an incomplete config. History-replay invariants are terminal: loop
 // calls failHistoryReplay to mark the read projection failed and stops the
 // builder. ReadAppliedProposalProgress and query.ReadLastSequence remain
 // best-effort.
-func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint64, err error) {
+func (b *Builder) bootInit(ctx context.Context) (cursor uint64, storageLast uint64, err error) {
 	snapshot := b.readStore.NewSnapshot()
 	closeSnapshot := func(operationErr error) error {
 		closeErr := snapshot.Close()
@@ -1119,16 +1119,16 @@ func (b *Builder) bootInit(ctx context.Context) (cursor uint64, pebbleLast uint6
 	// Seed pebble last sequence. The handle is closed immediately after use
 	// to release the RLock — keeping it open would deadlock with
 	// RestoreCheckpoint (write lock) when processLogs tries to take a new RLock.
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	if err != nil {
 		return 0, 0, fmt.Errorf("creating read handle: %w", err)
 	}
 
 	if v, err := query.ReadLastSequence(handle); err == nil {
-		pebbleLast = v
+		storageLast = v
 	}
 
 	_ = handle.Close()
 
-	return cursor, pebbleLast, nil
+	return cursor, storageLast, nil
 }

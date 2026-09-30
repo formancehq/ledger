@@ -2348,11 +2348,12 @@ func (s *LedgerState) purgeZeroBalance(touched map[VolumeKey]bool, touchedAccoun
 		}
 		for key := range s.volumes.All() {
 			if key.Address == address {
-				volume, _ := s.volumes.Get(key)
 				s.volumes = s.volumes.Delete(key)
 				if touched[key] {
 					purged[key] = true
-				} else if !volume.Input.IsZero() || !volume.Output.IsZero() {
+				} else {
+					// The server annotates every persisted row removed by an
+					// account-wide purge, including an explicit {0, 0} row.
 					coveredPurged[key] = true
 				}
 			}

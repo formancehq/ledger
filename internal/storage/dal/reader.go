@@ -7,84 +7,73 @@ import (
 	"io"
 	"sync"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
-// PebbleGetter provides point-lookup access to Pebble.
-// Implemented by *pebble.DB, *pebble.Snapshot, *ReadHandle, *Store, and the
+// KVGetter provides point-lookup access to the key-value store.
+// Implemented by *kv.DB, *kv.Snapshot, *ReadHandle, *Store, and the
 // liveGetter behind (*ReadHandle).Live.
 //
-// *WriteSession deliberately does NOT implement this interface: hot-path
-// writers must not read from Pebble.
+// *WriteSession deliberately does not implement this interface: hot-path
+// writers must not read from storage.
 //
-// The returned io.Closer owns the Pebble resources backing the returned bytes,
-// which are only valid until it is closed. On an SST-backed lookup that
-// resource is a live *pebble.Iterator holding a file cache reference.
-//
-// *Store is the exception. It holds dbMu.RLock only for the duration of the
-// call, so it must not hand that resource back: the lock would already be
-// released while the reference is still outstanding, letting Close or
-// RestoreCheckpoint close the DB underneath it. Pebble then panics in
-// shard.Close with "element has outstanding references" (EN-2072). (*Store).Get
-// therefore copies the value and releases Pebble's closer before returning.
+// Callers close the returned io.Closer. The RocksDB adapter returns Go-owned
+// bytes and a no-op closer for point lookups; other KVGetter implementations
+// may use the closer to bound their result lifetime.
 //
 // Callers that need iterators, or a resource that must outlive the call, use
 // NewReadHandle()/NewDirectReadHandle() — those hold the lock for their whole
 // lifetime.
 //
-// liveGetter hands Pebble's own closer back and takes no lock of its own: it
-// borrows the lifetime of the handle that produced it, so it obeys the handle
-// rule rather than the *Store one. Every result must be closed before that
-// handle is.
-type PebbleGetter interface {
+// liveGetter borrows the lifetime of the handle that produced it and takes no
+// lock of its own. It must not be used after the handle is closed.
+type KVGetter interface {
 	Get(key []byte) ([]byte, io.Closer, error)
 }
 
-// noopCloser is returned by (*Store).Get, which owns no Pebble resource by the
-// time it returns. Callers may close it unconditionally.
+// noopCloser is returned by (*Store).Get, which owns no storage resource by
+// the time it returns. Callers may close it unconditionally.
 type noopCloser struct{}
 
 func (noopCloser) Close() error { return nil }
 
-// PebbleReader provides full read access (point lookups + iteration).
-// Implemented by *pebble.DB, *pebble.Snapshot, and *ReadHandle.
+// KVReader provides full read access (point lookups + iteration).
+// Implemented by *kv.DB, *kv.Snapshot, and *ReadHandle.
 //
 // *Store does NOT implement this interface. Callers that need iterators must
 // use NewReadHandle() or NewDirectReadHandle() — these hold dbMu.RLock for
 // their entire lifetime, preventing RestoreCheckpoint from closing the DB
 // while iterators are active.
 //
-// *WriteSession deliberately does NOT implement this interface: hot-path
-// writers must not read from Pebble.
-type PebbleReader interface {
-	PebbleGetter
-	NewIter(o *pebble.IterOptions) (*pebble.Iterator, error)
+// *WriteSession deliberately does not implement this interface: hot-path
+// writers must not read from storage.
+type KVReader interface {
+	KVGetter
+	NewIter(o *kv.IterOptions) (*kv.Iterator, error)
 }
 
-// ReadHandle provides read access to the store, optionally via a Pebble snapshot.
+// ReadHandle provides read access to the store, optionally via a RocksDB snapshot.
 // It holds dbMu.RLock for its lifetime to prevent RestoreCheckpoint/Close from
 // closing the DB while reads are in progress. The caller must call Close() when done.
 //
-// The handle does not track what it hands out: every iterator and every Get
-// closer obtained through it must be closed BEFORE Close(). Closing a snapshot
-// does not close iterators opened on it, so a child outliving the handle
-// outlives the lock too, and the DB can then be closed underneath it — which
-// panics inside Pebble (EN-2072). Holding the lock for the handle's lifetime
-// only protects children that respect that ordering.
+// The handle does not track what it hands out: every iterator obtained through
+// it must be closed before Close(). Closing a snapshot does not close its
+// iterators, so an iterator outliving the handle can access a DB after it has
+// been closed. Holding the lock protects children only while they respect that
+// ordering.
 //
 // Two modes:
-//   - Snapshot mode (NewReadHandle): point-in-time consistency via *pebble.Snapshot.
-//   - Direct mode (NewDirectReadHandle): reads from *pebble.DB directly. Iterators
-//     share the DB's keySpanCache (no per-snapshot re-initialization) and do not
-//     pin SSTs beyond iterator lifetime, so compactions are not blocked.
+//   - Snapshot mode (NewReadHandle): point-in-time consistency via *kv.Snapshot.
+//   - Direct mode (NewDirectReadHandle): reads from *kv.DB directly, without a
+//     pinned point-in-time view.
 type ReadHandle struct {
-	reader PebbleReader
-	snap   *pebble.Snapshot // nil in direct mode
-	db     *pebble.DB
+	reader KVReader
+	snap   *kv.Snapshot // nil in direct mode
+	db     *kv.DB
 	mu     *sync.RWMutex
 }
 
-// NewReadHandle creates a new ReadHandle backed by a Pebble snapshot.
+// NewReadHandle creates a new ReadHandle backed by a RocksDB snapshot.
 // It holds dbMu.RLock until Close() is called, preventing DB lifecycle
 // operations (RestoreCheckpoint, Close) from closing the DB while the
 // snapshot is in use.
@@ -104,9 +93,8 @@ func (s *Store) NewReadHandle() (*ReadHandle, error) {
 }
 
 // NewDirectReadHandle creates a ReadHandle backed by the DB directly (no snapshot).
-// Iterators share the DB's keySpanCache, avoiding the per-snapshot sync.Once
-// initialization overhead in finishInitializingIter. This does not block
-// compactions beyond each iterator's lifetime.
+// Operations do not share a pinned point-in-time view. This avoids retaining
+// a snapshot for the handle lifetime.
 //
 // Safe for sequential, forward-only readers (e.g. log tailing) where
 // point-in-time snapshot consistency is not required.
@@ -137,16 +125,16 @@ func (s *Store) NewDirectReadHandle() (*ReadHandle, error) {
 // afterwards the lock is gone and the lookup races a DB that Close or
 // RestoreCheckpoint may already have closed (EN-2072), exactly as a retained
 // iterator would.
-func (h *ReadHandle) Live() PebbleGetter {
+func (h *ReadHandle) Live() KVGetter {
 	return liveGetter{db: h.db}
 }
 
 // liveGetter serves point lookups from a store's current committed state. It
 // pins nothing, so there is no resource to release beyond each lookup's own
-// closer, and it holds no lock of its own — it is only safe for as long as
+// no-op closer, and it holds no lock of its own — it is only safe for as long as
 // the ReadHandle that produced it.
 type liveGetter struct {
-	db *pebble.DB
+	db *kv.DB
 }
 
 func (g liveGetter) Get(key []byte) ([]byte, io.Closer, error) {
@@ -157,7 +145,7 @@ func (h *ReadHandle) Get(key []byte) ([]byte, io.Closer, error) {
 	return h.reader.Get(key)
 }
 
-func (h *ReadHandle) NewIter(opts *pebble.IterOptions) (*pebble.Iterator, error) {
+func (h *ReadHandle) NewIter(opts *kv.IterOptions) (*kv.Iterator, error) {
 	return h.reader.NewIter(opts)
 }
 
@@ -171,13 +159,11 @@ func (h *ReadHandle) Close() error {
 	return nil
 }
 
-// Get performs a raw key lookup on the underlying Pebble database.
-// This makes *Store implement PebbleGetter.
+// Get performs a raw key lookup on the underlying RocksDB database.
+// This makes *Store implement KVGetter.
 //
-// The value is copied and Pebble's own closer released while dbMu.RLock is
-// still held, so the returned closer owns nothing and the bytes stay valid
-// after the DB is closed. See the PebbleGetter contract for why *Store, unlike
-// the other implementations, must not return Pebble's closer.
+// The value is copied while dbMu.RLock is held, so the returned bytes remain
+// valid after the DB is closed. The returned closer owns nothing.
 func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
@@ -189,8 +175,8 @@ func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 
 	val, closer, err := db.Get(key)
 	if err != nil {
-		// Includes pebble.ErrNotFound, which callers match on; propagate
-		// unwrapped. Pebble returns no closer alongside an error.
+		// Includes kv.ErrNotFound, which callers match on; propagate
+		// unwrapped. The adapter returns no closer alongside an error.
 		return nil, nil, err
 	}
 
@@ -204,20 +190,20 @@ func (s *Store) Get(key []byte) ([]byte, io.Closer, error) {
 	return cp, noopCloser{}, nil
 }
 
-// NewBoundedIter creates a Pebble iterator bounded by [lower, upper).
-func NewBoundedIter(reader PebbleReader, lower, upper []byte) (*pebble.Iterator, error) {
-	return reader.NewIter(&pebble.IterOptions{
+// NewBoundedIter creates a key-value iterator bounded by [lower, upper).
+func NewBoundedIter(reader KVReader, lower, upper []byte) (*kv.Iterator, error) {
+	return reader.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
 }
 
-// GetValue reads a raw value from Pebble, returning nil if not found.
+// GetValue reads a raw value from storage, returning nil if not found.
 // The returned bytes are a copy safe to use after the function returns.
-func GetValue(reader PebbleGetter, key []byte) ([]byte, error) {
+func GetValue(reader KVGetter, key []byte) ([]byte, error) {
 	val, closer, err := reader.Get(key)
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil
 		}
 
@@ -232,8 +218,8 @@ func GetValue(reader PebbleGetter, key []byte) ([]byte, error) {
 	return cp, nil
 }
 
-// ReadUint64 reads a big-endian uint64 from Pebble. Returns defaultValue if not found or too short.
-func ReadUint64(reader PebbleGetter, key []byte, defaultValue uint64) (uint64, error) {
+// ReadUint64 reads a big-endian uint64 from storage. Returns defaultValue if not found or too short.
+func ReadUint64(reader KVGetter, key []byte, defaultValue uint64) (uint64, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return 0, err
@@ -246,8 +232,8 @@ func ReadUint64(reader PebbleGetter, key []byte, defaultValue uint64) (uint64, e
 	return binary.BigEndian.Uint64(val[:8]), nil
 }
 
-// ReadUint32 reads a big-endian uint32 from Pebble. Returns defaultValue if not found or too short.
-func ReadUint32(reader PebbleGetter, key []byte, defaultValue uint32) (uint32, error) {
+// ReadUint32 reads a big-endian uint32 from storage. Returns defaultValue if not found or too short.
+func ReadUint32(reader KVGetter, key []byte, defaultValue uint32) (uint32, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return 0, err
@@ -260,8 +246,8 @@ func ReadUint32(reader PebbleGetter, key []byte, defaultValue uint32) (uint32, e
 	return binary.BigEndian.Uint32(val[:4]), nil
 }
 
-// ReadString reads a string value from Pebble. Returns "" if not found.
-func ReadString(reader PebbleGetter, key []byte) (string, error) {
+// ReadString reads a string value from storage. Returns "" if not found.
+func ReadString(reader KVGetter, key []byte) (string, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return "", err
@@ -270,8 +256,8 @@ func ReadString(reader PebbleGetter, key []byte) (string, error) {
 	return string(val), nil
 }
 
-// ReadBool reads a boolean flag from Pebble (0x01 = true). Returns false if not found.
-func ReadBool(reader PebbleGetter, key []byte) (bool, error) {
+// ReadBool reads a boolean flag from storage (0x01 = true). Returns false if not found.
+func ReadBool(reader KVGetter, key []byte) (bool, error) {
 	val, err := GetValue(reader, key)
 	if err != nil {
 		return false, err

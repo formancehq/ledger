@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // PrepareForBackup makes a checkpoint portable and restartable on a fresh
@@ -18,7 +17,7 @@ import (
 //
 // There is no attribute compaction to do: since the raft-index suffix was
 // removed from attribute keys (commit e752437eb), each canonical key holds
-// exactly one Pebble entry that Set overwrites in place, so there are no
+// exactly one RocksDB entry that Set overwrites in place, so there are no
 // versions to fold. The attribute zone is left byte-for-byte intact.
 //
 // Restore preparation retains business rows, marks query checkpoints as
@@ -28,7 +27,7 @@ import (
 // The destination reseeds its persisted identity, peers and bloom filters.
 // The removed-member registry is intentionally discarded with the source peers.
 //
-// The caller must ensure all in-memory state has been flushed to Pebble before
+// The caller must ensure all in-memory state has been flushed to RocksDB before
 // the checkpoint was taken. The backup flow achieves this by running the flush
 // and checkpoint atomically on the Raft loop.
 func PrepareForBackup(s *dal.Store) error {
@@ -62,7 +61,7 @@ func PrepareForBackup(s *dal.Store) error {
 		if err := closer.Close(); err != nil {
 			return fmt.Errorf("closing applied index read: %w", err)
 		}
-	case errors.Is(err, pebble.ErrNotFound):
+	case errors.Is(err, kv.ErrNotFound):
 		// Genesis checkpoint: the key has never been written.
 	default:
 		return fmt.Errorf("reading checkpoint applied index: %w", err)
@@ -79,7 +78,7 @@ func PrepareForBackup(s *dal.Store) error {
 
 	batch := s.OpenWriteSession()
 
-	// Query-checkpoint metadata survives in the primary Pebble store, but the
+	// Query-checkpoint metadata survives in the primary RocksDB store, but the
 	// physical main/read-index checkpoint directories do not. Mark every live
 	// row before the restored node starts so the asynchronous read-index builder
 	// never interprets a source-cluster applied index as progress in the new Raft
@@ -126,7 +125,7 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneClusterTransient},
 		[]byte{dal.ZoneClusterTransient + 1},
-		pebble.NoSync,
+		kv.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
@@ -139,7 +138,7 @@ func PrepareForBackup(s *dal.Store) error {
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneClusterPersistent},
 		[]byte{dal.ZoneClusterPersistent + 1},
-		pebble.NoSync,
+		kv.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
@@ -161,12 +160,12 @@ func PrepareForBackup(s *dal.Store) error {
 	// post-checkpoint still carries its checkpoint-era value here while the
 	// attribute zone holds the fresh one. RestoreFromStore would load the
 	// stale entries and the FSM would serve them as CacheHits — and
-	// MirrorPreload's existing-entry-wins seeding means even a fresh Pebble
+	// MirrorPreload's existing-entry-wins seeding means even a fresh RocksDB
 	// reload cannot displace them.
 	if err := batch.DeleteRange(
 		[]byte{dal.ZoneCache},
 		[]byte{dal.ZoneCache + 1},
-		pebble.NoSync,
+		kv.NoSync,
 	); err != nil {
 		_ = batch.Cancel()
 
@@ -177,7 +176,7 @@ func PrepareForBackup(s *dal.Store) error {
 		return fmt.Errorf("committing backup preparation: %w", err)
 	}
 
-	// Force a Pebble flush to ensure the resets are written to SSTs.
+	// Force a RocksDB flush to ensure the resets are written to SSTs.
 	// todo: directly commit with NoSync
 	if err := s.Flush(); err != nil {
 		return fmt.Errorf("flushing backup preparation: %w", err)

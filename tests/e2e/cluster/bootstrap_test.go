@@ -21,6 +21,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/clusterpb"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
 	"github.com/formancehq/ledger/v3/pkg/actions"
 	"github.com/formancehq/ledger/v3/pkg/testserver"
 	"github.com/formancehq/ledger/v3/tests/e2e/testutil"
@@ -288,6 +289,7 @@ var _ = Describe("Bootstrap from backup", Ordered, func() {
 		It("should have created checkpoint 0 and RESTORED marker", func() {
 			_, err := os.Stat(filepath.Join(bootstrapDataDir, "checkpoints", "0"))
 			Expect(err).To(Succeed(), "checkpoint 0 directory should exist")
+			Expect(dal.CheckpointDirReady(filepath.Join(bootstrapDataDir, "checkpoints", "0"))).To(BeTrue(), "checkpoint 0 should be published")
 
 			_, err = os.Stat(filepath.Join(bootstrapDataDir, "RESTORED"))
 			Expect(err).To(Succeed(), "RESTORED marker should exist")

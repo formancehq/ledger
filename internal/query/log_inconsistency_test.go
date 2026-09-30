@@ -7,49 +7,49 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// newGetterWithEntries returns a MockPebbleGetter that resolves every Get call
-// against the given map: hits return the bytes, misses return pebble.ErrNotFound.
-func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockPebbleGetter {
+// newGetterWithEntries returns a MockKVGetter that resolves every Get call
+// against the given map: hits return the bytes, misses return kv.ErrNotFound.
+func newGetterWithEntries(t *testing.T, entries map[string][]byte) *MockKVGetter {
 	t.Helper()
 
-	g := NewMockPebbleGetter(gomock.NewController(t))
+	g := NewMockKVGetter(gomock.NewController(t))
 	g.EXPECT().Get(gomock.Any()).DoAndReturn(func(key []byte) ([]byte, io.Closer, error) {
 		if v, ok := entries[string(key)]; ok {
 			return v, io.NopCloser(nil), nil
 		}
 
-		return nil, nil, pebble.ErrNotFound
+		return nil, nil, kv.ErrNotFound
 	}).AnyTimes()
 
 	return g
 }
 
-// newGetterAlwaysErr returns a MockPebbleGetter whose Get always fails with err.
-func newGetterAlwaysErr(t *testing.T, err error) *MockPebbleGetter {
+// newGetterAlwaysErr returns a MockKVGetter whose Get always fails with err.
+func newGetterAlwaysErr(t *testing.T, err error) *MockKVGetter {
 	t.Helper()
 
-	g := NewMockPebbleGetter(gomock.NewController(t))
+	g := NewMockKVGetter(gomock.NewController(t))
 	g.EXPECT().Get(gomock.Any()).Return(nil, nil, err).AnyTimes()
 
 	return g
 }
 
-// newGetterUnused returns a MockPebbleGetter that records no expectations —
+// newGetterUnused returns a MockKVGetter that records no expectations —
 // any Get call will fail the test. Useful when the caller must short-circuit
 // before any read happens.
-func newGetterUnused(t *testing.T) *MockPebbleGetter {
+func newGetterUnused(t *testing.T) *MockKVGetter {
 	t.Helper()
 
-	return NewMockPebbleGetter(gomock.NewController(t))
+	return NewMockKVGetter(gomock.NewController(t))
 }
 
 func ledgerLogIndexValue(seq uint64) []byte {
@@ -114,7 +114,7 @@ func TestReadLedgerLogsCompiled_MalformedLogIDBytes(t *testing.T) {
 }
 
 // TestReadLedgerLogsCompiled_IndexGetError asserts that any error from the
-// per-ledger log index lookup (including pebble.ErrNotFound — the filter
+// per-ledger log index lookup (including kv.ErrNotFound — the filter
 // index produced the logID, so a miss is structurally inconsistent) surfaces
 // as ErrIndexInconsistent rather than silently dropping the entry.
 func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
@@ -125,7 +125,7 @@ func TestReadLedgerLogsCompiled_IndexGetError(t *testing.T) {
 	_, err := ReadLedgerLogsCompiled(
 		context.Background(),
 		nil,
-		newGetterAlwaysErr(t, pebble.ErrNotFound),
+		newGetterAlwaysErr(t, kv.ErrNotFound),
 		ledgerName,
 		[][]byte{logID8(99)},
 	)

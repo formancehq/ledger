@@ -3,11 +3,11 @@ package readstore
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestWriteBatchReverseMapRangeOverlayHonorsOperationOrder(t *testing.T) {
@@ -116,7 +116,7 @@ func TestWriteBatchReverseMapRangeOverlayMatchesCommittedOrder(t *testing.T) {
 						t.Cleanup(func() { require.NoError(t, closer.Close()) })
 					}
 					if lastOperation == "delete" {
-						require.ErrorIs(t, err, pebble.ErrNotFound)
+						require.ErrorIs(t, err, kv.ErrNotFound)
 					} else {
 						require.NoError(t, err)
 						require.Equal(t, overlay, committed, "the real batch must preserve the overlay's last operation")
@@ -148,7 +148,7 @@ func TestWriteBatchSameSequenceDeleteOverridesAdd(t *testing.T) {
 	if closer != nil {
 		require.NoError(t, closer.Close())
 	}
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 	_, closer, err = store.DB().Get(MetadataIndexEventKeyV(kb, ledger, NamespaceAccount, field, 1, encoded, []byte(entity), 7, MetadataEventDel))
 	require.NoError(t, err)
 	require.NoError(t, closer.Close())

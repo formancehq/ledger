@@ -20,7 +20,7 @@ func TestReconcile_SpecHashChanges(t *testing.T) {
 
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
-		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hash-change", Namespace: ns}, sts) == nil
+		return k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-next-hash-change", Namespace: ns}, sts) == nil
 	}, "StatefulSet should be created")
 
 	initialHash := sts.Spec.Template.Annotations[annotationSpecHash]
@@ -34,7 +34,7 @@ func TestReconcile_SpecHashChanges(t *testing.T) {
 
 	// Wait for spec hash to change
 	requireEventually(t, func() bool {
-		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-hash-change", Namespace: ns}, sts); err != nil {
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: "ledger-next-hash-change", Namespace: ns}, sts); err != nil {
 			return false
 		}
 		return sts.Spec.Template.Annotations[annotationSpecHash] != initialHash
@@ -53,7 +53,7 @@ func TestReconcile_PreservesKubectlRestartedAt(t *testing.T) {
 	ls := newCluster("kubectl-restart", ns)
 	require.NoError(t, k8sClient.Create(ctx, ls))
 
-	stsName := types.NamespacedName{Name: "ledger-kubectl-restart", Namespace: ns}
+	stsName := types.NamespacedName{Name: "ledger-next-kubectl-restart", Namespace: ns}
 	sts := &appsv1.StatefulSet{}
 	requireEventually(t, func() bool {
 		return k8sClient.Get(ctx, stsName, sts) == nil

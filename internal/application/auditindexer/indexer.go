@@ -203,7 +203,7 @@ func (i *Indexer) shouldRebuildOnBoot(cursor, last uint64) bool {
 // cursor and whether at least one entry was processed.
 func (i *Indexer) processBatch(
 	ctx context.Context,
-	handle dal.PebbleReader,
+	handle dal.KVReader,
 	after uint64,
 	targetAuditSequence uint64,
 	targetAppliedIndex uint64,

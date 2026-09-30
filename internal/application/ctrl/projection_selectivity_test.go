@@ -57,7 +57,7 @@ func TestListEntitiesAppliesReverseMainStoreOnlyFilter(t *testing.T) {
 		pageSize:     10,
 		filter:       testTxIDFilter(2),
 		reverse:      true,
-		pebbleReader: handle,
+		mainReader:   handle,
 		releaseHold:  func() {},
 		afterToBytes: testUint64Bytes,
 	})
@@ -71,7 +71,7 @@ func TestListEntitiesAppliesReverseMainStoreOnlyFilter(t *testing.T) {
 		pageSize:     10,
 		filter:       &commonpb.QueryFilter{},
 		reverse:      true,
-		pebbleReader: handle,
+		mainReader:   handle,
 		releaseHold:  func() {},
 		afterToBytes: testUint64Bytes,
 	})

@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
@@ -12,6 +11,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -28,8 +28,8 @@ import (
 // the target only selects which leaves CompileReverse builds. So one target is
 // enough, and the fixture uses LOGS because the LOGS arm of compileUniverseRev
 // reads ctx.indexReader — the reader passed here — while the ACCOUNTS and
-// TRANSACTIONS arms read ctx.pebbleReader. Retargeting this test therefore
-// means supplying pebbleReader and a pin as well.
+// TRANSACTIONS arms read ctx.mainReader. Retargeting this test therefore
+// means supplying mainReader and a pin as well.
 //
 // This must stay on listDescFiltered rather than listEntities: listEntities
 // overwrites horizonKeep with query.MainHorizonKeep, which would discard the
@@ -46,7 +46,7 @@ func TestListDescFilteredStopsAtLookahead(t *testing.T) {
 
 	kb := dal.NewKeyBuilder()
 	for id := uint64(2); id <= 100; id += 2 {
-		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, pebble.NoSync))
+		require.NoError(t, rs.DB().Set(readstore.LedgerLogKey(kb, ledger, id), nil, kv.NoSync))
 	}
 
 	encode := func(id uint64) []byte { return binary.BigEndian.AppendUint64(nil, id) }

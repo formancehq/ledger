@@ -108,7 +108,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - backupruns
   - backups
@@ -124,7 +124,7 @@ rules:
   - update
   - watch
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - backupruns/finalizers
   - backups/finalizers
@@ -135,7 +135,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - backupruns/status
   - backups/status
@@ -148,7 +148,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - ledger.formance.com
+  - ledger-next.formance.com
   resources:
   - eventsinks
   verbs:

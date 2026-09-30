@@ -13,12 +13,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // Result contains statistics from a full backup run.
@@ -643,7 +642,7 @@ const maxExportSegmentBytes = 4 << 30 // 4 GiB
 func exportEntries(
 	ctx context.Context,
 	storage Storage,
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	zone, sub byte,
 	afterSeq, endSeq uint64,
 	segType string,
@@ -731,7 +730,7 @@ func uploadSegmentPart(
 	ctx context.Context,
 	storage Storage,
 	key string,
-	iter *pebble.Iterator,
+	iter *kv.Iterator,
 	maxSegmentBytes int64,
 ) (endSeq, count uint64, size int64, err error) {
 	pr, pw := io.Pipe()

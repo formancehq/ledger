@@ -330,7 +330,7 @@ func (ga *groupedAggregator) result() (*commonpb.AggregateResult, error) {
 // 2. For each account, scan volumes in Pebble via StreamingIter
 // 3. Accumulate per-asset totals.
 func AggregateVolumes(
-	pebbleReader dal.PebbleReader,
+	mainReader dal.KVReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerName string,
 	accountIter readstore.EntityIterator,
@@ -349,7 +349,7 @@ func AggregateVolumes(
 		n += copy(canonicalPrefix[n:], account)
 		canonicalPrefix[n] = dal.CanonicalKeySepVolume
 
-		iter, err := volumeAttr.NewStreamingIter(pebbleReader, canonicalPrefix)
+		iter, err := volumeAttr.NewStreamingIter(mainReader, canonicalPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("creating volume iterator for account %q: %w", account, err)
 		}
@@ -393,7 +393,7 @@ func AggregateVolumes(
 //   - sequential scan instead of N Seek hops
 //   - no double-read of the same Pebble blocks
 func AggregateAllVolumes(
-	pebbleReader dal.PebbleReader,
+	mainReader dal.KVReader,
 	volumeAttr *attributes.Attribute[*raftcmdpb.VolumePair],
 	ledgerName string,
 	opts AggregateOptions,
@@ -405,7 +405,7 @@ func AggregateAllVolumes(
 	ledgerPrefix := make([]byte, dal.LedgerNameFixedSize)
 	copy(ledgerPrefix, ledgerName)
 
-	iter, err := volumeAttr.NewStreamingIter(pebbleReader, ledgerPrefix)
+	iter, err := volumeAttr.NewStreamingIter(mainReader, ledgerPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("creating volume iterator: %w", err)
 	}

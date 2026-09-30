@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	"github.com/formancehq/ledger/v3/internal/domain/processing"
@@ -21,6 +20,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // logRowKey builds the Pebble key of one Log row. The bounds pass reads the
@@ -45,7 +45,7 @@ func highestStoredLogKey(t *testing.T, store *dal.Store) (uint64, int) {
 
 	defer func() { _ = handle.Close() }()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&kv.IterOptions{
 		LowerBound: logRowKey(0),
 		UpperBound: logPrefixUpperBound(),
 	})

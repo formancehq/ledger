@@ -58,7 +58,7 @@ func (b *Builder) initIndexConfig(ctx context.Context) (err error) {
 // initIndexConfigAfterHistory uses the same read-store snapshot as the caller's
 // history tracker and cursor. Main-store inventory is read separately and only
 // supplies replay expectations and bucket-scoped declarations.
-func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.PebbleReader) error {
+func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.KVReader) error {
 	// Reset builder-local init state so every attempt (including a retry
 	// after a partial failure) starts from a clean slate. backfillTasks
 	// and schemaRewriteTasks are slices appended to by
@@ -74,7 +74,7 @@ func (b *Builder) initIndexConfigAfterHistory(ctx context.Context, reader dal.Pe
 	b.unresolvedIndexes = make(map[string]map[string]*commonpb.Index)
 	b.pendingLedgerDeletes = make(map[string]struct{})
 
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.primaryStore.NewReadHandle()
 	if err != nil {
 		return fmt.Errorf("creating read handle for index config: %w", err)
 	}

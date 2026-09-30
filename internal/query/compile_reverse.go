@@ -22,7 +22,7 @@ import (
 // Only iterator CONSTRUCTION is duplicated here. Every predicate resolution,
 // schema validation, index-readiness gate and bound computation is the
 // ascending path's — resolveIntBounds, resolveUintBounds, requireIndexReady,
-// validateAndCoerceCondition, mergeFieldRanges, pebbleAccountExists,
+// validateAndCoerceCondition, mergeFieldRanges, mainAccountExists,
 // rejectInvalidCondition. A filter that compiles one way therefore compiles
 // the other way with the same verdict, and a semantic change lands in both.
 //
@@ -42,7 +42,7 @@ import (
 // CompileReverse translates a QueryFilter proto into a descending
 // ReverseIterator tree. Arguments mirror Compile exactly; see its doc comment.
 func CompileReverse(
-	indexReader dal.PebbleReader,
+	indexReader dal.KVReader,
 	kb *dal.KeyBuilder,
 	filter *commonpb.QueryFilter,
 	target commonpb.QueryTarget,
@@ -53,7 +53,7 @@ func CompileReverse(
 	indexRegistry indexes.Lookup,
 	indexVersionFor readstore.IndexVersionResolver,
 	profile *QueryProfile,
-	pebbleReader dal.PebbleReader,
+	mainReader dal.KVReader,
 	pin uint64,
 ) (readstore.ReverseIterator, error) {
 	// Same early target guard as Compile: an unsupported target must fail
@@ -71,7 +71,7 @@ func CompileReverse(
 
 	ctx := &compileCtx{
 		kb:              kb,
-		pebbleReader:    pebbleReader,
+		mainReader:      mainReader,
 		indexReader:     indexReader,
 		target:          target,
 		ledgerName:      ledgerName,
@@ -177,27 +177,27 @@ func compileRev(ctx *compileCtx, filter *commonpb.QueryFilter) (readstore.Revers
 func compileUniverseRev(ctx *compileCtx) (readstore.ReverseIterator, error) {
 	switch ctx.target {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		iter, err := readstore.NewPebbleReverseAccountIterator(ctx.pebbleReader, ctx.ledgerName)
+		iter, err := readstore.NewReverseAccountIterator(ctx.mainReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse account iterator: %w", err)
 		}
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleReverseAccountIterator(%s)", ctx.ledgerName),
-			Kind:   "PebbleReverseAccount",
-			Prefix: "pebble:attributes",
+			Label:  fmt.Sprintf("ReverseAccountIterator(%s)", ctx.ledgerName),
+			Kind:   "MainStoreReverseAccount",
+			Prefix: "main:attributes",
 		}), nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
-		iter, err := readstore.NewPebbleReverseTxIterator(ctx.pebbleReader, ctx.ledgerName)
+		iter, err := readstore.NewReverseTxIterator(ctx.mainReader, ctx.ledgerName)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse tx iterator: %w", err)
 		}
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleReverseTxIterator(%s)", ctx.ledgerName),
-			Kind:   "PebbleReverseTx",
-			Prefix: "pebble:txupdate",
+			Label:  fmt.Sprintf("ReverseTxIterator(%s)", ctx.ledgerName),
+			Kind:   "MainStoreReverseTx",
+			Prefix: "main:txupdate",
 		}), nil
 
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
@@ -359,7 +359,7 @@ func compileNotRev(ctx *compileCtx, not *commonpb.NotFilter) (readstore.ReverseI
 // --- Leaves ---
 
 func compileRevertedConditionRev(ctx *compileCtx, cond *commonpb.RevertedCondition) (readstore.ReverseIterator, error) {
-	bs, err := ReadReversionBitset(ctx.pebbleReader, ctx.ledgerName)
+	bs, err := ReadReversionBitset(ctx.mainReader, ctx.ledgerName)
 	if err != nil {
 		return nil, fmt.Errorf("reading reversion bitset: %w", err)
 	}
@@ -367,7 +367,7 @@ func compileRevertedConditionRev(ctx *compileCtx, cond *commonpb.RevertedConditi
 	revertedStats := &IteratorStats{
 		Label:  fmt.Sprintf("ReverseBitsetIterator(reversions:%s)", ctx.ledgerName),
 		Kind:   "Bitset",
-		Prefix: "pebble:reversions",
+		Prefix: "main:reversions",
 	}
 
 	if cond.GetValue() {
@@ -657,14 +657,14 @@ func compileAddressMatchRev(ctx *compileCtx, am *commonpb.AddressMatch) (readsto
 
 func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		accountIter, err := readstore.NewPebbleReverseAccountPrefixIterator(ctx.pebbleReader, ctx.ledgerName, addrPrefix)
+		accountIter, err := readstore.NewReverseAccountPrefixIterator(ctx.mainReader, ctx.ledgerName, addrPrefix)
 		if err != nil {
 			return nil, fmt.Errorf("creating reverse account prefix iterator: %w", err)
 		}
 		trackedAccount := trackReverse(accountIter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("PebbleReverseAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
-			Kind:   "PebbleReverseAccount",
-			Prefix: "pebble:attributes",
+			Label:  fmt.Sprintf("ReverseAccountIterator(%s:%s*)", ctx.ledgerName, addrPrefix),
+			Kind:   "MainStoreReverseAccount",
+			Prefix: "main:attributes",
 		})
 
 		return trackedAccount, nil
@@ -697,7 +697,7 @@ func compileAddressPrefixRev(ctx *compileCtx, addrPrefix string, role commonpb.A
 
 func compileAddressExactRev(ctx *compileCtx, exactAddr string, role commonpb.AddressRole) (readstore.ReverseIterator, error) {
 	if ctx.target == commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS {
-		exists, err := pebbleAccountExists(ctx.pebbleReader, ctx.ledgerName, exactAddr)
+		exists, err := mainAccountExists(ctx.mainReader, ctx.ledgerName, exactAddr)
 		if err != nil {
 			return nil, fmt.Errorf("checking account existence: %w", err)
 		}
@@ -824,7 +824,7 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 	}
 
 	if bounds.isEquality() {
-		exists, pErr := pebbleTxExists(ctx.pebbleReader, ctx.ledgerName, bounds.min)
+		exists, pErr := mainTxExists(ctx.mainReader, ctx.ledgerName, bounds.min)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking tx existence: %w", pErr)
 		}
@@ -839,9 +839,9 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 		iter := readstore.NewReverseSliceIterator([][]byte{txIDBytes})
 
 		return trackReverse(iter, ctx.profile, &IteratorStats{
-			Label:  fmt.Sprintf("ReverseSliceIterator(pebble:%s:tx:id=%d)", ctx.ledgerName, bounds.min),
+			Label:  fmt.Sprintf("ReverseSliceIterator(main:%s:tx:id=%d)", ctx.ledgerName, bounds.min),
 			Kind:   "Slice",
-			Prefix: "pebble:txupdate",
+			Prefix: "main:txupdate",
 		}), nil
 	}
 
@@ -859,15 +859,15 @@ func compileTxIDConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (rea
 		binary.BigEndian.PutUint64(upper, bounds.max)
 	}
 
-	rangeIter, pErr := readstore.NewPebbleReverseTxRangeIterator(ctx.pebbleReader, ctx.ledgerName, lower, upper)
+	rangeIter, pErr := readstore.NewReverseTxRangeIterator(ctx.mainReader, ctx.ledgerName, lower, upper)
 	if pErr != nil {
 		return nil, fmt.Errorf("creating reverse tx range iterator: %w", pErr)
 	}
 
 	return trackReverse(rangeIter, ctx.profile, &IteratorStats{
-		Label:  fmt.Sprintf("PebbleReverseTxRangeIterator(%s:id range)", ctx.ledgerName),
-		Kind:   "PebbleTxRange",
-		Prefix: "pebble:txupdate",
+		Label:  fmt.Sprintf("ReverseTxRangeIterator(%s:id range)", ctx.ledgerName),
+		Kind:   "MainStoreTxRange",
+		Prefix: "main:txupdate",
 	}), nil
 }
 
@@ -949,7 +949,7 @@ func compileLogIdConditionRev(ctx *compileCtx, cond *commonpb.UintCondition) (re
 		binary.BigEndian.PutUint64(logIDBytes, bounds.min)
 		key := readstore.LedgerLogKey(ctx.kb, ctx.ledgerName, bounds.min)
 
-		exists, pErr := pebbleKeyExists(ctx.indexReader, key)
+		exists, pErr := storageKeyExists(ctx.indexReader, key)
 		if pErr != nil {
 			return nil, fmt.Errorf("checking log existence: %w", pErr)
 		}

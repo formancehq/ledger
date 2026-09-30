@@ -43,7 +43,7 @@ panels.row('Mirror', 171, [
       { expr: 'histogram_quantile(0.95, sum(rate(mirror.propose.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'propose' },
       { expr: 'histogram_quantile(0.95, sum(rate(mirror.fsm_wait.duration_bucket{service.cluster=~"$cluster", service.node_id=~"$node"}[$__rate_interval])) by (le))', legendFormat: 'fsm_wait' },
     ], unit='µs',
-    description='p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2→v3), preload (Pebble reads), propose (Raft), and fsm_wait (FSM apply).',
+    description='p95 duration of each phase within a mirror batch: fetch (HTTP/PG source), translate (v2→v3), preload (storage reads), propose (Raft), and fsm_wait (FSM apply).',
   ),
 
   panels.timeseries(

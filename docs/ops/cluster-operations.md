@@ -212,7 +212,7 @@ In `statusOutOfSync`, the node waits for a leader to be discovered. Tick process
 
 ### Syncing State (Checkpoint Fetch)
 
-The synchronization fetches a Pebble checkpoint from the leader:
+The synchronization fetches a RocksDB checkpoint from the leader:
 
 ```
 statusOutOfSync
@@ -230,7 +230,7 @@ statusSyncing
     │     → Compare lastCheckpointID vs currentCheckpointID
     │     → If behind: restoreCheckpoint()
     │        → Stream checkpoint via SnapshotService gRPC
-    │        → Restore Pebble database from checkpoint
+    │        → Restore RocksDB database from checkpoint
     │     → Set lastAppliedIndex = snapshotIndex
     │
     │  3. replaySpool(frozenAtIndex)
@@ -288,7 +288,7 @@ Two mechanisms prevent a syncing node from becoming leader prematurely:
 
 2. **MsgTimeoutNow rejection**: If a leader tries to transfer leadership to a syncing node via `TransferLeadership` (which sends `MsgTimeoutNow` to force an immediate election), the message is silently dropped.
 
-These protections ensure a node that is still restoring its Pebble checkpoint will not become leader, even if it appears active from Raft's perspective.
+These protections ensure a node that is still restoring its RocksDB checkpoint will not become leader, even if it appears active from Raft's perspective.
 
 ## Automatic Learner Promotion
 
@@ -365,10 +365,10 @@ fi
 
 ### Scaling
 
-To add nodes, update the `replicas` field in the Ledger CR:
+To add nodes, update the `replicas` field in the Cluster CR:
 
 ```bash
-kubectl patch ledgers.ledger.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
+kubectl patch clusters.ledger-next.formance.com my-ledger --type=merge -p '{"spec":{"replicas":5}}'
 ```
 
 New pods will join the existing cluster as learners and be auto-promoted once caught up.
@@ -501,7 +501,7 @@ off-cluster backup instead. See
 
 1. `ForceRemoveNode` directly calls `rawNode.ApplyConfChange()` on the leader, bypassing the Raft log. This immediately recalculates the live quorum and can advance the live commit index before persistence.
 2. The updated `ConfState` is persisted to the WAL snapshot immediately (before the peer row is deleted, so a crash between the two heals to "voter absent, orphan address" rather than "voter present, unreachable")
-3. Membership cleanup then deletes the peer row from Pebble (`[ZoneClusterPersistent][SubGlobPeers]`), atomically writes the removed-member tombstone when the peer has an instance identity, and drops the peer from the in-memory cache + transport + service pool in lockstep
+3. Membership cleanup then deletes the peer row from RocksDB (`[ZoneClusterPersistent][SubGlobPeers]`), atomically writes the removed-member tombstone when the peer has an instance identity, and drops the peer from the in-memory cache + transport + service pool in lockstep
 4. After the command succeeds, Raft processing resumes with the reduced quorum.
 
 The live etcd/raft tracker mutation in step 1 cannot be rolled back safely. If
@@ -539,7 +539,7 @@ Some configuration parameters can be changed on a live cluster via a **rolling u
 
 | Parameter | CLI Flag | Effect of change |
 |-----------|----------|-----------------|
-| Cache rotation threshold | `--cache-rotation-threshold` | Controls how many Raft entries per cache generation. Lower = less memory, more Pebble reads. Higher = more memory, fewer preloads. |
+| Cache rotation threshold | `--cache-rotation-threshold` | Controls how many Raft entries per cache generation. Lower = less memory, more RocksDB reads. Higher = more memory, fewer preloads. |
 
 ### Immutable Parameters
 
@@ -554,7 +554,7 @@ These parameters are validated at boot and cannot be changed without `--unsafe-s
 
 Mutable config parameters are propagated through the Raft log to ensure all nodes apply the change at the same index. The mechanism:
 
-1. When a node becomes **leader**, it compares its CLI config with the persisted cluster config in Pebble.
+1. When a node becomes **leader**, it compares its CLI config with the persisted cluster config in RocksDB.
 2. If they differ, it proposes an `UpdateClusterConfig` entry through Raft.
 3. All nodes apply the config change at the same Raft index (deterministic).
 4. The change takes effect immediately -- no restart required for the nodes that already received the Raft entry.
@@ -609,10 +609,10 @@ Proposals admitted just before the config change may carry a stale `cache_epoch`
 When the rotation threshold changes, the cache boundaries shift. The FSM:
 
 1. **Resets** the in-memory cache (Gen0 and Gen1 cleared).
-2. **Purges** the persisted cache snapshot zone (0xFF) in Pebble.
+2. **Purges** the persisted cache snapshot zone (0xFF) in RocksDB.
 3. **Increments** the cache epoch (persisted in `PersistedClusterState`).
 
-After the reset, the preloader falls back to Pebble reads (0xF1 zone) for all cache misses. The cache rebuilds naturally as new entries are applied. This causes a temporary increase in Pebble reads until the cache is warm again.
+After the reset, the preloader falls back to RocksDB reads (0xF1 zone) for all cache misses. The cache rebuilds naturally as new entries are applied. This causes a temporary increase in RocksDB reads until the cache is warm again.
 
 ## Related Documentation
 

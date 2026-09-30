@@ -12,14 +12,14 @@ func TestNameHelpers(t *testing.T) {
 		got  string
 		want string
 	}{
-		{"resourceName", resourceName("foo"), "ledger-foo"},
-		{"headlessServiceName", headlessServiceName("foo"), "ledger-foo-headless"},
-		{"grpcServiceName", grpcServiceName("foo"), "ledger-foo-grpc"},
-		{"grpcIngressName", grpcIngressName("foo"), "ledger-foo-grpc"},
-		{"authKeysConfigMapName", authKeysConfigMapName("foo"), "ledger-foo-auth-keys"},
-		{"clusterSecretName", clusterSecretName("foo"), "ledger-foo-cluster-secret"},
-		{"podName-0", podName("foo", 0), "ledger-foo-0"},
-		{"podName-2", podName("foo", 2), "ledger-foo-2"},
+		{"resourceName", resourceName("foo"), "ledger-next-foo"},
+		{"headlessServiceName", headlessServiceName("foo"), "ledger-next-foo-headless"},
+		{"grpcServiceName", grpcServiceName("foo"), "ledger-next-foo-grpc"},
+		{"grpcIngressName", grpcIngressName("foo"), "ledger-next-foo-grpc"},
+		{"authKeysConfigMapName", authKeysConfigMapName("foo"), "ledger-next-foo-auth-keys"},
+		{"clusterSecretName", clusterSecretName("foo"), "ledger-next-foo-cluster-secret"},
+		{"podName-0", podName("foo", 0), "ledger-next-foo-0"},
+		{"podName-2", podName("foo", 2), "ledger-next-foo-2"},
 	}
 	for _, tt := range tests {
 		if tt.got != tt.want {
@@ -34,7 +34,7 @@ func TestNameHelpers(t *testing.T) {
 // must equal the StatefulSet name plus the ordinal.
 func TestScaleDownPodNameMatchesStatefulSet(t *testing.T) {
 	cr := "foo"
-	if got, want := podName(cr, 0), "ledger-foo-0"; got != want {
+	if got, want := podName(cr, 0), "ledger-next-foo-0"; got != want {
 		t.Fatalf("podName(%q,0) = %q, want %q", cr, got, want)
 	}
 	if got, want := podName(cr, 2), resourceName(cr)+"-2"; got != want {
@@ -45,8 +45,8 @@ func TestScaleDownPodNameMatchesStatefulSet(t *testing.T) {
 func TestServiceAccountName(t *testing.T) {
 	defaulted := &ledgerv1alpha1.Cluster{}
 	defaulted.Name = "foo"
-	if got := serviceAccountName(defaulted); got != "ledger-foo" {
-		t.Errorf("default serviceAccountName = %q, want %q", got, "ledger-foo")
+	if got := serviceAccountName(defaulted); got != "ledger-next-foo" {
+		t.Errorf("default serviceAccountName = %q, want %q", got, "ledger-next-foo")
 	}
 
 	overridden := &ledgerv1alpha1.Cluster{}
@@ -65,10 +65,10 @@ func TestBootstrapDNSConsistency(t *testing.T) {
 	cr := "foo"
 	pod0 := podName(cr, 0)
 	hls := headlessServiceName(cr)
-	if pod0 != "ledger-foo-0" {
+	if pod0 != "ledger-next-foo-0" {
 		t.Fatalf("pod0 = %q, want ledger-foo-0", pod0)
 	}
-	if hls != "ledger-foo-headless" {
+	if hls != "ledger-next-foo-headless" {
 		t.Fatalf("headless = %q, want ledger-foo-headless", hls)
 	}
 	// Both halves must derive from the same prefixed StatefulSet base.
@@ -91,7 +91,7 @@ func TestCrossCRDPodNameConsistency(t *testing.T) {
 	if clusterPod0 != ledgerCRDDialTarget {
 		t.Fatalf("cross-CRD pod-0 mismatch: %q vs %q", clusterPod0, ledgerCRDDialTarget)
 	}
-	if clusterPod0 != "ledger-foo-0" {
+	if clusterPod0 != "ledger-next-foo-0" {
 		t.Fatalf("pod-0 = %q, want ledger-foo-0", clusterPod0)
 	}
 }

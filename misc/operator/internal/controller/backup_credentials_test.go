@@ -47,7 +47,7 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 					ObjectMeta: metav1.ObjectMeta{Name: "ledger", Namespace: "test"},
 					Spec: ledgerv1alpha1.ClusterSpec{
 						Image: ledgerv1alpha1.ImageSpec{Repository: "ledger", Tag: "test"},
-						TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-tls", CASecretKey: "ca.crt"},
+						TLS:   &ledgerv1alpha1.TLSConfig{Enabled: true, SecretName: "ledger-next-tls", CASecretKey: "ca.crt"},
 					},
 				}
 				backup := &ledgerv1alpha1.Backup{
@@ -129,8 +129,8 @@ func TestBackupRunCredentialsStayInSecrets(t *testing.T) {
 func TestBackupCredentialCRDSchema(t *testing.T) {
 	t.Parallel()
 	for _, path := range []string{
-		"../../config/crd/bases/ledger.formance.com_backups.yaml",
-		"../../helm/crds/templates/ledger.formance.com_backups.yaml",
+		"../../config/crd/bases/ledger-next.formance.com_backups.yaml",
+		"../../helm/crds/templates/ledger-next.formance.com_backups.yaml",
 	} {
 		t.Run(path, func(t *testing.T) {
 			t.Parallel()

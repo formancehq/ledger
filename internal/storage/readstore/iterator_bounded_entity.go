@@ -3,16 +3,15 @@ package readstore
 import (
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // BoundedEntityIterator streams a prefix whose keys are ordered by a unique,
 // fixed-width entity suffix. It shares bounds and absolute seek semantics across
 // log and transaction ranges. It does not deduplicate multi-key entities.
 type BoundedEntityIterator struct {
-	iter       *pebble.Iterator
+	iter       *kv.Iterator
 	prefix     []byte
 	lowerBound []byte
 	idOffset   int // len(prefix)
@@ -30,7 +29,7 @@ type BoundedEntityIterator struct {
 // entity, so its length determines the extraction offset. Nil bounds are open;
 // an open upper bound uses the prefix successor to include the maximum entity.
 // entityLen must be positive; non-nil bounds must have exactly that width.
-func NewBoundedEntityIterator(reader dal.PebbleReader, prefix, lower, upper []byte, entityLen int) (*BoundedEntityIterator, error) {
+func NewBoundedEntityIterator(reader dal.KVReader, prefix, lower, upper []byte, entityLen int) (*BoundedEntityIterator, error) {
 	if entityLen <= 0 {
 		return nil, fmt.Errorf("invariant: BoundedEntityIterator entityLen must be positive, got %d", entityLen)
 	}
@@ -54,7 +53,7 @@ func NewBoundedEntityIterator(reader dal.PebbleReader, prefix, lower, upper []by
 		upperBound = IncrementBytes(prefix)
 	}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: lowerBound,
 		UpperBound: upperBound,
 	})

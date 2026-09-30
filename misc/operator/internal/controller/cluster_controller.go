@@ -37,10 +37,10 @@ type ClusterReconciler struct {
 	Recorder  record.EventRecorder
 }
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=clusters/finalizers,verbs=update
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=credentials,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=clusters,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=clusters/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=clusters/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=credentials,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch

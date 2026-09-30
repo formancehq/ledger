@@ -1,109 +1,34 @@
 package readstore
 
-import (
-	"bytes"
-	"encoding/binary"
+import "bytes"
 
-	"github.com/cockroachdb/pebble/v2"
-
-	"github.com/formancehq/ledger/v3/internal/storage/dal"
-)
-
-// readStoreComparerName is persisted in the Pebble database. Changing it
-// requires rebuilding the read index from the Raft log.
+// readStoreComparerName is persisted in RocksDB OPTIONS and must match the
+// bytewise comparator used by the offline migration tool.
 const readStoreComparerName = "formance.readstore.v2"
 
-// ledgerScopedPrefixLen is the split point for ledger-scoped keys:
-// 1 byte prefix + LedgerNameFixedSize bytes ledger name (zero-padded).
-const ledgerScopedPrefixLen = 1 + dal.LedgerNameFixedSize
+// readStoreSplit identifies the ledger-scoped prefix used for bounded scans.
+// Prefix bloom optimization can be added once the RocksDB extractor lifetime
+// is qualified; lexicographic ordering remains unchanged.
+func readStoreSplit(key []byte) int {
+	if len(key) <= 1 || key[0] == PrefixInternal {
+		return len(key)
+	}
+	if len(key) >= ledgerScopedPrefixLen {
+		return ledgerScopedPrefixLen
+	}
 
-// ReadStoreComparer is a Pebble comparer that splits keys at the
-// [prefix_byte][ledger_name padded 64B] boundary so that bloom filters are
-// built on the ledger-scoped prefix rather than the full key.
-//
-// This enables SeekPrefixGE to check bloom filters during range scans,
-// skipping entire SSTables that do not contain keys for the target ledger.
-// The benefit is proportional to the number of distinct ledgers sharing the
-// read index: with N ledgers, read amplification for per-ledger queries
-// drops by ~N×.
-//
-// Key ordering is unchanged (lexicographic bytes.Compare).
-var ReadStoreComparer = &pebble.Comparer{
-	// Ordering: unchanged from default (lexicographic byte order).
-	Compare:              bytes.Compare,
-	Equal:                bytes.Equal,
-	ComparePointSuffixes: bytes.Compare,
-	CompareRangeSuffixes: bytes.Compare,
+	return len(key)
+}
 
-	AbbreviatedKey: func(key []byte) uint64 {
-		if len(key) >= 8 {
-			return binary.BigEndian.Uint64(key)
-		}
-
-		var v uint64
-		for _, b := range key {
-			v <<= 8
-			v |= uint64(b)
-		}
-
-		return v << uint(8*(8-len(key)))
-	},
-
-	FormatKey: pebble.DefaultComparer.FormatKey,
-
-	Separator: func(dst, a, b []byte) []byte {
-		i := commonPrefixLen(a, b)
-		dst = append(dst, a...)
-
-		if i == len(a) || i == len(b) {
-			return dst
-		}
-
-		if a[i] >= b[i] {
-			return dst
-		}
-
-		// Attempt to shorten: pick the byte midway and truncate.
-		n := len(dst) - len(a)
-		if c := a[i] + 1; c < b[i] {
-			dst[n+i] = c
-
-			return dst[:n+i+1]
-		}
-
-		return dst
-	},
-
-	Successor: func(dst, a []byte) []byte {
-		for i := range a {
-			if a[i] != 0xff {
-				dst = append(dst, a[:i+1]...)
-				dst[len(dst)-1]++
-
-				return dst
-			}
-		}
-
-		return append(dst, a...)
-	},
-
-	// Split extracts the ledger-scoped prefix from a read store key.
-	//
-	// For keys following [prefix_byte][ledger_name padded 64B][...], Split
-	// returns ledgerScopedPrefixLen: 1 byte prefix + 64 bytes ledger name.
-	//
-	// For singleton keys (PrefixInternal) that have no ledger name, Split
-	// returns len(key) — the entire key is the prefix (same as the default
-	// comparer).
-	Split: readStoreSplit,
-
-	// ImmediateSuccessor returns the smallest prefix larger than the given prefix.
-	//
-	// For ledger-scoped prefixes (1+64 bytes), increment the last padding byte;
-	// validation rejects non-printable ASCII so 0xFF cannot appear, ensuring the
-	// increment never carries past the fixed-width name block.
-	//
-	// For fallback prefixes (singleton keys), append 0x00.
+// ReadStoreComparer preserves the old test contract for key ordering and
+// prefix rules while RocksDB persists the named bytewise comparator above.
+var ReadStoreComparer = struct {
+	Compare            func([]byte, []byte) int
+	Split              func([]byte) int
+	ImmediateSuccessor func([]byte, []byte) []byte
+}{
+	Compare: bytes.Compare,
+	Split:   readStoreSplit,
 	ImmediateSuccessor: func(dst, prefix []byte) []byte {
 		dst = append(dst[:0], prefix...)
 		if len(dst) == ledgerScopedPrefixLen {
@@ -112,42 +37,6 @@ var ReadStoreComparer = &pebble.Comparer{
 			return dst
 		}
 
-		// Fallback (singleton keys): append 0x00.
-		return append(dst, 0x00)
+		return append(dst, 0)
 	},
-
-	Name: readStoreComparerName,
-}
-
-// readStoreSplit returns the split point for bloom filter prefix extraction.
-func readStoreSplit(key []byte) int {
-	if len(key) <= 1 {
-		return len(key)
-	}
-
-	// Internal singleton keys (non-ledger-scoped) — full key is the prefix.
-	if key[0] == PrefixInternal {
-		return len(key)
-	}
-
-	// Ledger-scoped keys: [prefix_byte][ledger_name padded 64B][...].
-	if len(key) >= ledgerScopedPrefixLen {
-		return ledgerScopedPrefixLen
-	}
-
-	// Key shorter than expected — treat entire key as prefix (safety fallback).
-	return len(key)
-}
-
-// commonPrefixLen returns the length of the longest common prefix of a and b.
-func commonPrefixLen(a, b []byte) int {
-	n := min(len(a), len(b))
-
-	for i := range n {
-		if a[i] != b[i] {
-			return i
-		}
-	}
-
-	return n
 }

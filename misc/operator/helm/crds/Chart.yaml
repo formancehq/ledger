@@ -1,6 +1,6 @@
 apiVersion: v2
-name: ledger-operator-crds
-description: CRDs for the Ledger Kubernetes operator
+name: ledger-next-operator-crds
+description: CRDs for the Ledger next RocksDB Kubernetes operator
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

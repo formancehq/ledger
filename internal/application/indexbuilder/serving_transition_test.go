@@ -53,13 +53,13 @@ func newKillableTestBuilder(t *testing.T) (*Builder, *flushGate) {
 	t.Cleanup(func() { _ = fsm.Close() })
 
 	return &Builder{
-		indexConfig: make(map[string]*ledgerIndexConfig),
-		readStore:   store,
-		pebbleStore: fsm,
-		attrs:       attributes.New(),
-		kb:          dal.NewKeyBuilder(),
-		wb:          readstore.NewWriteBatch(),
-		logger:      noopLogger{},
+		indexConfig:  make(map[string]*ledgerIndexConfig),
+		readStore:    store,
+		primaryStore: fsm,
+		attrs:        attributes.New(),
+		kb:           dal.NewKeyBuilder(),
+		wb:           readstore.NewWriteBatch(),
+		logger:       noopLogger{},
 	}, gate
 }
 

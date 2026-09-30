@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/proposalpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -360,7 +360,7 @@ func scanAccountByAsset(t *testing.T, store *readstore.Store, ledger, assetBase 
 	t.Helper()
 
 	prefix := readstore.AccountByAssetPrefix(dal.NewKeyBuilder(), ledger, assetBase, precision)
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
+	iter, err := store.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})
@@ -792,7 +792,7 @@ func readStoreKeyExists(t *testing.T, store *readstore.Store, key []byte) bool {
 		return true
 	}
 
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, kv.ErrNotFound) {
 		return false
 	}
 
@@ -1377,7 +1377,7 @@ func TestProcessSchemaRewriteIsFieldVersionBoundedAndPersistsCursor(t *testing.T
 	// Seed the FSM-side canonical stored values for acct-003.status and
 	// acct-004.status. The schema rewrite reads from here, not from the rmap, so
 	// re-encoding is a pure function of immutable stored state.
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	for _, account := range []string{"acct-003", "acct-004"} {
 		canonicalKey := domain.MetadataKey{
 			AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
@@ -1507,7 +1507,7 @@ func assertReadStoreMissing(t *testing.T, b *Builder, key []byte) {
 		defer func() { require.NoError(t, closer.Close()) }()
 	}
 
-	require.True(t, errors.Is(err, pebble.ErrNotFound), "expected key %x to be missing, got %v", key, err)
+	require.True(t, errors.Is(err, kv.ErrNotFound), "expected key %x to be missing, got %v", key, err)
 }
 
 func TestIsHistoryLog(t *testing.T) {
@@ -1760,7 +1760,7 @@ func TestProcessSchemaRewrite_LosslessRoundTrip(t *testing.T) {
 
 	// Seed FSM canonical stored value: STRING "030" (immutable through the
 	// whole test — only the indexer's encoding view changes).
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	canonicalKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
@@ -1867,7 +1867,7 @@ func TestProcessSchemaRewrite_SkipsUncoercibleAsNullSentinel(t *testing.T) {
 	)
 
 	// FSM holds a STRING that cannot be parsed as uint64.
-	fsmBatch := b.pebbleStore.OpenWriteSession()
+	fsmBatch := b.primaryStore.OpenWriteSession()
 	canonicalKey := domain.MetadataKey{
 		AccountKey: domain.AccountKey{LedgerName: ledgerName, Account: account},
 		Key:        key,
@@ -2053,7 +2053,7 @@ func writeLogToFSM(t *testing.T, b *Builder, log *commonpb.Log) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryLog).PutUint64(log.GetSequence())
 
-	session := b.pebbleStore.OpenWriteSession()
+	session := b.primaryStore.OpenWriteSession()
 	require.NoError(t, session.SetBytes(kb.Build(), data))
 	require.NoError(t, session.Commit())
 }
@@ -2067,7 +2067,7 @@ func writeAppliedProposalToFSM(t *testing.T, b *Builder, seq, minLog, maxLog uin
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneHistory, dal.SubHistoryAppliedProposal).PutUint64(seq)
 
-	session := b.pebbleStore.OpenWriteSession()
+	session := b.primaryStore.OpenWriteSession()
 	require.NoError(t, session.SetProto(kb.Build(), &proposalpb.AppliedProposal{
 		Sequence:       seq,
 		MinLogSequence: minLog,
@@ -2370,7 +2370,7 @@ func runAccountAssetBackfill(t *testing.T, b *Builder, ledger string, globalCurs
 func mustReadHandle(t *testing.T, b *Builder) *dal.ReadHandle {
 	t.Helper()
 
-	handle, err := b.pebbleStore.NewDirectReadHandle()
+	handle, err := b.primaryStore.NewDirectReadHandle()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = handle.Close() })
 
@@ -2412,7 +2412,7 @@ func makeSavedAccountMetadataLog(seq uint64, ledger, account, key, value string)
 func countKeysWithPrefix(t *testing.T, store *readstore.Store, prefix []byte) int {
 	t.Helper()
 
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
+	iter, err := store.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})

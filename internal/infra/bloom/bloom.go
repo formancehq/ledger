@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -17,6 +16,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/infra/attributes"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // BloomConfigEnabled returns true if at least one bloom filter type has a
@@ -45,11 +45,11 @@ func BloomConfigEqual(a, b *commonpb.ClusterConfig) bool {
 }
 
 // Filter wraps a blocked bloom filter with lock-free atomic operations and
-// dirty-block tracking for incremental Pebble persistence.
+// dirty-block tracking for incremental RocksDB persistence.
 type Filter struct {
 	filter *blockedFilter
 
-	// attrCode is the AttributeCode* byte used as Pebble key component.
+	// attrCode is the AttributeCode* byte used as RocksDB key component.
 	attrCode byte
 
 	// dirty is a bitset with one bit per block, tracking which blocks have
@@ -78,7 +78,7 @@ func (f *Filter) MayContain(id attributes.U128) bool {
 }
 
 // RecordFalsePositive increments the false positive counter. Called by the
-// preloader when MayContain returned true but the Pebble Get found no value.
+// preloader when MayContain returned true but the RocksDB Get found no value.
 func (f *Filter) RecordFalsePositive() {
 	f.falsePositives.Add(context.Background(), 1)
 }
@@ -109,7 +109,7 @@ func (f *Filter) add(id attributes.U128) {
 }
 
 // PersistDirtyBlocks writes all blocks modified since the last flush to
-// the Pebble batch. Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
+// the RocksDB batch. Key format: [ZoneClusterPersistent][SubGlobBloom][attrCode][blockIndex BE 8].
 func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	for blockIdx, blk := range f.dirtyBlocks() {
 		key := make([]byte, 2+1+8)
@@ -118,7 +118,7 @@ func (f *Filter) PersistDirtyBlocks(batch *dal.WriteSession) error {
 		key[2] = f.attrCode
 		binary.BigEndian.PutUint64(key[3:], blockIdx)
 
-		if err := batch.Set(key, marshalBlock(&blk), pebble.NoSync); err != nil {
+		if err := batch.Set(key, marshalBlock(&blk), kv.NoSync); err != nil {
 			return fmt.Errorf("persisting bloom block %d: %w", blockIdx, err)
 		}
 	}
@@ -159,14 +159,14 @@ func (f *Filter) dirtyBlocks() iter.Seq2[uint64, block] {
 	}
 }
 
-// RestoreFromStore loads persisted bloom blocks from Pebble, merging them
+// RestoreFromStore loads persisted bloom blocks from RocksDB, merging them
 // into the in-memory filter via OR. This preserves bits set by concurrent
 // Add() calls from the FSM goroutine during the async restore window.
-func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
+func (f *Filter) RestoreFromStore(ctx context.Context, store dal.KVReader) error {
 	lower := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, f.attrCode}
 	upper := []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, f.attrCode + 1}
 
-	it, err := store.NewIter(&pebble.IterOptions{
+	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -186,7 +186,7 @@ func (f *Filter) RestoreFromStore(ctx context.Context, store dal.PebbleReader) e
 		// Require the exact shape, an in-range block index, and a full-length
 		// value. A malformed row was previously skipped, after which the filter
 		// was still published ready — a missing block is a false negative that
-		// suppresses a required Pebble preload. Fail closed instead so
+		// suppresses a required RocksDB preload. Fail closed instead so
 		// readiness stays false and recovery/follower-sync fails explicitly
 		// (EN-1527).
 		const bloomKeyLen = 2 + 1 + 8
@@ -496,7 +496,7 @@ func (fs *FilterSet) AddCanonicalKeys(updates *BloomUpdates) {
 	addKeys(snap.Index, updates.Indexes)
 }
 
-// PersistDirtyBlocks writes all dirty blocks from all filters to the Pebble batch.
+// PersistDirtyBlocks writes all dirty blocks from all filters to the RocksDB batch.
 // Called during cache rotation to flush bloom state atomically with the rotation.
 func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	snap := fs.filters.Load()
@@ -517,8 +517,8 @@ func (fs *FilterSet) PersistDirtyBlocks(batch *dal.WriteSession) error {
 	return nil
 }
 
-// RestoreFromStore loads all persisted bloom blocks from Pebble.
-func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.PebbleReader) error {
+// RestoreFromStore loads all persisted bloom blocks from RocksDB.
+func (fs *FilterSet) RestoreFromStore(ctx context.Context, store dal.KVReader) error {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return nil
@@ -573,7 +573,7 @@ func knownBloomAttrCodes() map[byte]struct{} {
 //
 // A clean namespace (every row belongs to an enabled filter) returns
 // (false, nil).
-func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.PebbleReader) (bool, error) {
+func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.KVReader) (bool, error) {
 	snap := fs.filters.Load()
 	if snap == nil {
 		return false, nil
@@ -588,7 +588,7 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 
 	known := knownBloomAttrCodes()
 
-	it, err := store.NewIter(&pebble.IterOptions{
+	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
 		UpperBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 	})
@@ -634,11 +634,11 @@ func (fs *FilterSet) ClassifyPersistedNamespace(ctx context.Context, store dal.P
 	return configDrift, nil
 }
 
-// PopulateFromStore scans the Pebble attribute range and inserts all existing
+// PopulateFromStore scans the RocksDB attribute range and inserts all existing
 // canonical keys into the bloom filters. Used on first boot when no persisted
 // bloom blocks exist yet.
-func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleReader) error {
-	it, err := store.NewIter(&pebble.IterOptions{
+func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.KVReader) error {
+	it, err := store.NewIter(&kv.IterOptions{
 		LowerBound: []byte{dal.ZoneAttributes},
 		UpperBound: []byte{dal.ZoneAttributes + 1},
 	})
@@ -653,9 +653,9 @@ func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleRead
 			return err
 		}
 
-		pebbleKey := it.Key()
+		storageKey := it.Key()
 
-		attrType, ok := attributes.AttrTypeFromKey(pebbleKey)
+		attrType, ok := attributes.AttrTypeFromKey(storageKey)
 		if !ok {
 			continue
 		}
@@ -665,7 +665,7 @@ func (fs *FilterSet) PopulateFromStore(ctx context.Context, store dal.PebbleRead
 			continue
 		}
 
-		canonicalKey := attributes.CanonicalKeyFromPebbleKey(pebbleKey)
+		canonicalKey := attributes.CanonicalKeyFromStorageKey(storageKey)
 		id := attributes.HashU128(canonicalKey)
 		f.Add(id)
 	}
@@ -749,7 +749,7 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 
 	negatives, _ := meter.Int64Counter(
 		"bloom.negatives",
-		metric.WithDescription("Bloom filter checks that returned definitely-not-present (Pebble Gets avoided)"),
+		metric.WithDescription("Bloom filter checks that returned definitely-not-present (RocksDB Gets avoided)"),
 	)
 
 	adds, _ := meter.Int64Counter(
@@ -759,7 +759,7 @@ func newFilter(expectedKeys uint, fpRate float64, attrCode byte, meter metric.Me
 
 	falsePositives, _ := meter.Int64Counter(
 		"bloom.false_positives",
-		metric.WithDescription("Bloom filter checks that returned maybe-present but Pebble Get found nothing"),
+		metric.WithDescription("Bloom filter checks that returned maybe-present but RocksDB Get found nothing"),
 	)
 
 	bf := newBlockedFilterOptimized(uint64(expectedKeys), fpRate)

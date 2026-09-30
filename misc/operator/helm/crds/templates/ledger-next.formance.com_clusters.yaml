@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: clusters.ledger.formance.com
+  name: clusters.ledger-next.formance.com
 spec:
-  group: ledger.formance.com
+  group: ledger-next.formance.com
   names:
     kind: Cluster
     listKind: ClusterList
@@ -2312,143 +2312,6 @@ spec:
                   programs to cache (LRU eviction).
                 format: int32
                 type: integer
-              pebble:
-                description: Pebble storage engine configuration.
-                properties:
-                  bytesPerSync:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      BytesPerSync is bytes written before sync during flush/compaction (e.g. "512Ki").
-                      Accepts Kubernetes quantity format.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  cacheSize:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      CacheSize is the block cache size (e.g. "1Gi", "512Mi").
-                      Accepts Kubernetes quantity format.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  compression:
-                    description: |-
-                      Compression is the per-level compression algorithm (L0-L6, comma-separated).
-                      Options: none, snappy, zstd, fastest, fast, balanced, good, default.
-                    type: string
-                  disableWAL:
-                    description: DisableWAL disables WAL entirely.
-                    type: boolean
-                  incrementalCompactThreshold:
-                    description: |-
-                      IncrementalCompactThreshold is the number of new log entries before
-                      triggering an incremental compaction of the new range.
-                      Default: 100000.
-                    format: int64
-                    type: integer
-                  l0CompactionThreshold:
-                    description: L0CompactionThreshold is the L0 file count to trigger
-                      compaction.
-                    format: int32
-                    type: integer
-                  l0StopWritesThreshold:
-                    description: L0StopWritesThreshold is the L0 file count before
-                      writes stop.
-                    format: int32
-                    type: integer
-                  lBaseMaxBytes:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      LBaseMaxBytes is the maximum size of L1 (e.g. "64Mi", "256Mi").
-                      Accepts Kubernetes quantity format.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  maxCheckpoints:
-                    description: |-
-                      MaxCheckpoints is the maximum number of Pebble checkpoints to keep.
-                      Default: 10.
-                    format: int32
-                    type: integer
-                  maxConcurrentCompactions:
-                    description: MaxConcurrentCompactions is the maximum concurrent
-                      compactions.
-                    format: int32
-                    type: integer
-                  memTableSize:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      MemTableSize is the MemTable size (e.g. "256Mi", "1Gi").
-                      Accepts Kubernetes quantity format.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  memTableStopWritesThreshold:
-                    description: MemTableStopWritesThreshold is the number of memtables
-                      before writes stop.
-                    format: int32
-                    type: integer
-                  targetFileSize:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      TargetFileSize is the target SST file size (e.g. "64Mi").
-                      Accepts Kubernetes quantity format.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  valueSeparation:
-                    description: ValueSeparation configuration for large value storage
-                      in blob files.
-                    properties:
-                      enabled:
-                        description: Enabled enables value separation (large values
-                          stored in blob files).
-                        type: boolean
-                      garbageRatio:
-                        description: |-
-                          GarbageRatio is the blob garbage ratio before rewrite (0.0-1.0).
-                          Default: 0.20.
-                        type: string
-                      maxDepth:
-                        description: |-
-                          MaxDepth is the max blob reference depth per SSTable.
-                          Default: 4.
-                        format: int32
-                        type: integer
-                      minSize:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        description: |-
-                          MinSize is the minimum value size for separation (e.g. "256", "1Ki").
-                          Accepts Kubernetes quantity format. Default: 256.
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      rewriteAge:
-                        description: |-
-                          RewriteAge is the minimum blob file age before rewrite.
-                          Default: 1h.
-                        type: string
-                    type: object
-                  walBytesPerSync:
-                    anyOf:
-                    - type: integer
-                    - type: string
-                    description: |-
-                      WalBytesPerSync is WAL bytes written before sync (e.g. "512Ki").
-                      Accepts Kubernetes quantity format.
-                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                    x-kubernetes-int-or-string: true
-                  walMinSyncInterval:
-                    description: WalMinSyncInterval is the minimum interval between
-                      WAL syncs.
-                    type: string
-                type: object
               persistence:
                 description: Persistence configuration for WAL and data volumes.
                 properties:
@@ -2510,7 +2373,7 @@ spec:
                       DeletionProtection opts this ledger's PVCs and bound PVs into the
                       cluster-scoped volume deletion-protection admission policy. It defaults to
                       true (protected): the operator stamps the
-                      `ledger.formance.com/deletion-protection: enabled` label on the volumes so
+                      `ledger-next.formance.com/deletion-protection: enabled` label on the volumes so
                       the policy selects them and rejects accidental DELETEs unless the object
                       carries the allow-deletion annotation. Set it explicitly to false to opt
                       out — the label is then removed and protection is lifted. The policy itself
@@ -2874,7 +2737,7 @@ spec:
                     type: integer
                   maintenanceInterval:
                     description: |-
-                      MaintenanceInterval is the interval for background WAL snapshot + Pebble checkpoint.
+                      MaintenanceInterval is the interval for background WAL snapshot + RocksDB checkpoint.
                       Default: 30s.
                     type: string
                   maxInflightMsgs:
@@ -2938,18 +2801,18 @@ spec:
                     type: object
                 type: object
               readIndex:
-                description: ReadIndex configuration for the Pebble read index store.
+                description: ReadIndex configuration for the RocksDB read index store.
                 properties:
                   batchSize:
                     description: |-
-                      BatchSize is the number of log entries per Pebble batch commit.
+                      BatchSize is the number of log entries per RocksDB batch commit.
                       Higher values amortize commit overhead but use more memory.
                       Default: 1000.
                     format: int32
                     type: integer
-                  pebble:
+                  rocksdb:
                     description: |-
-                      Pebble holds the common Pebble tunables for the read index.
+                      RocksDB holds the common RocksDB tunables for the read index.
                       Uses the same knobs as the primary store (cache size, memtable, L0 thresholds, etc.).
                     properties:
                       bytesPerSync:
@@ -3006,7 +2869,7 @@ spec:
                         x-kubernetes-int-or-string: true
                       maxCheckpoints:
                         description: |-
-                          MaxCheckpoints is the maximum number of Pebble checkpoints to keep.
+                          MaxCheckpoints is the maximum number of RocksDB checkpoints to keep.
                           Default: 10.
                         format: int32
                         type: integer
@@ -3323,6 +3186,143 @@ spec:
               restore:
                 description: Restore starts the server in restore mode.
                 type: boolean
+              rocksdb:
+                description: RocksDB storage engine configuration.
+                properties:
+                  bytesPerSync:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      BytesPerSync is bytes written before sync during flush/compaction (e.g. "512Ki").
+                      Accepts Kubernetes quantity format.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  cacheSize:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      CacheSize is the block cache size (e.g. "1Gi", "512Mi").
+                      Accepts Kubernetes quantity format.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  compression:
+                    description: |-
+                      Compression is the per-level compression algorithm (L0-L6, comma-separated).
+                      Options: none, snappy, zstd, fastest, fast, balanced, good, default.
+                    type: string
+                  disableWAL:
+                    description: DisableWAL disables WAL entirely.
+                    type: boolean
+                  incrementalCompactThreshold:
+                    description: |-
+                      IncrementalCompactThreshold is the number of new log entries before
+                      triggering an incremental compaction of the new range.
+                      Default: 100000.
+                    format: int64
+                    type: integer
+                  l0CompactionThreshold:
+                    description: L0CompactionThreshold is the L0 file count to trigger
+                      compaction.
+                    format: int32
+                    type: integer
+                  l0StopWritesThreshold:
+                    description: L0StopWritesThreshold is the L0 file count before
+                      writes stop.
+                    format: int32
+                    type: integer
+                  lBaseMaxBytes:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      LBaseMaxBytes is the maximum size of L1 (e.g. "64Mi", "256Mi").
+                      Accepts Kubernetes quantity format.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  maxCheckpoints:
+                    description: |-
+                      MaxCheckpoints is the maximum number of RocksDB checkpoints to keep.
+                      Default: 10.
+                    format: int32
+                    type: integer
+                  maxConcurrentCompactions:
+                    description: MaxConcurrentCompactions is the maximum concurrent
+                      compactions.
+                    format: int32
+                    type: integer
+                  memTableSize:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      MemTableSize is the MemTable size (e.g. "256Mi", "1Gi").
+                      Accepts Kubernetes quantity format.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  memTableStopWritesThreshold:
+                    description: MemTableStopWritesThreshold is the number of memtables
+                      before writes stop.
+                    format: int32
+                    type: integer
+                  targetFileSize:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      TargetFileSize is the target SST file size (e.g. "64Mi").
+                      Accepts Kubernetes quantity format.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  valueSeparation:
+                    description: ValueSeparation configuration for large value storage
+                      in blob files.
+                    properties:
+                      enabled:
+                        description: Enabled enables value separation (large values
+                          stored in blob files).
+                        type: boolean
+                      garbageRatio:
+                        description: |-
+                          GarbageRatio is the blob garbage ratio before rewrite (0.0-1.0).
+                          Default: 0.20.
+                        type: string
+                      maxDepth:
+                        description: |-
+                          MaxDepth is the max blob reference depth per SSTable.
+                          Default: 4.
+                        format: int32
+                        type: integer
+                      minSize:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: |-
+                          MinSize is the minimum value size for separation (e.g. "256", "1Ki").
+                          Accepts Kubernetes quantity format. Default: 256.
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      rewriteAge:
+                        description: |-
+                          RewriteAge is the minimum blob file age before rewrite.
+                          Default: 1h.
+                        type: string
+                    type: object
+                  walBytesPerSync:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    description: |-
+                      WalBytesPerSync is WAL bytes written before sync (e.g. "512Ki").
+                      Accepts Kubernetes quantity format.
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                  walMinSyncInterval:
+                    description: WalMinSyncInterval is the minimum interval between
+                      WAL syncs.
+                    type: string
+                type: object
               securityContext:
                 description: SecurityContext for the container.
                 properties:
@@ -3516,7 +3516,7 @@ spec:
               sentinelMode:
                 description: |-
                   SentinelMode enables runtime volume consistency assertions
-                  (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+                  (monotonicity, delta/posting cross-check, post-commit cache/RocksDB verification).
                 type: boolean
               service:
                 description: Service configuration for the ClusterIP service.

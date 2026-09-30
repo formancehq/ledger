@@ -22,7 +22,7 @@ import (
 //
 // Reads and attribute-cache writes both flow through `buffer` — the same
 // WriteSet that ProcessOrders will use. Attribute mutations queue in
-// `buffer.Derived` and reach the cache + Pebble at WriteSet.Merge. Any
+// `buffer.Derived` and reach the cache + RocksDB at WriteSet.Merge. Any
 // handler error short-circuits the loop before Merge, so no half-written
 // tech-update mutations leak into the cache.
 //
@@ -96,7 +96,7 @@ func (fsm *Machine) applyTechnicalUpdates(scopeFactory processing.ScopeFactory, 
 // When the rotation threshold changes, the generation boundaries shift and the
 // alternating-byte persistence scheme in 0xFF can lose data on even-generation
 // skips. Reset the cache and purge 0xFF entirely — the preloader falls back to
-// Pebble reads (0xF1) and the cache rebuilds naturally.
+// RocksDB reads (0xF1) and the cache rebuilds naturally.
 func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64, cfg *commonpb.ClusterConfig) error {
 	oldThreshold := fsm.Registry.Cache.GenerationThreshold()
 	newThreshold := cfg.GetRotationThreshold()
@@ -166,7 +166,7 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 
 	// Check if bloom filter config changed. If so, purge persisted blocks
 	// and rebuild filters with new dimensions. The preloader falls back to
-	// Pebble Gets while IsReady() returns false.
+	// RocksDB Gets while IsReady() returns false.
 	if fsm.BloomFilters != nil && !bloom.BloomConfigEqual(cfg, fsm.State.LastClusterConfig) {
 		fsm.logger.WithFields(map[string]any{
 			"raftIndex": raftIndex,
@@ -184,7 +184,7 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 		fsm.BloomFilters.Rebuild(cfg)
 
 		// Signal the bloom-rebuild dispatcher (owned by Recovery, which holds
-		// the Pebble reader) to launch async repopulation from an attribute
+		// the RocksDB reader) to launch async repopulation from an attribute
 		// scan. We do not call StartAsyncBloomPopulate directly because the
 		// hot-path Machine does not hold a reader.
 		select {
@@ -239,7 +239,7 @@ func (fsm *Machine) applyEventsSinkUpdate(batch *dal.WriteSession, update *raftc
 // applyMirrorSyncUpdate queues a per-ledger mirror source-head / status
 // update into the WriteSet. It does NOT carry the ingestion position:
 // since EN-1513 that lives solely in LedgerBoundaries.last_mirror_v2_log_id,
-// advanced by the order-apply path (processMirrorIngest). The actual Pebble
+// advanced by the order-apply path (processMirrorIngest). The actual RocksDB
 // writes happen later in buffer.Merge, which only runs when ProcessOrders +
 // ValidateTransientVolumes succeed. This gating matters because the mirror
 // worker bundles ingest orders + this TU in a single proposal (see
@@ -279,9 +279,9 @@ func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteS
 
 // applyIdempotencyEviction evicts expired idempotency keys. No log entry is produced.
 // The key hashes were pre-scanned by the leader and included in the proposal,
-// so this method is write-only — no Pebble reads occur.
+// so this method is write-only — no RocksDB reads occur.
 func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *raftcmdpb.IdempotencyEviction) error {
-	evicted, err := fsm.Registry.Idempotency.Evict(batch, eviction.GetCutoffMicros(), eviction.GetLastScannedTimeIndexKey(), eviction.GetPebbleKeyHashes())
+	evicted, err := fsm.Registry.Idempotency.Evict(batch, eviction.GetCutoffMicros(), eviction.GetLastScannedTimeIndexKey(), eviction.GetKeyHashes())
 	if err != nil {
 		return fmt.Errorf("evicting idempotency keys: %w", err)
 	}

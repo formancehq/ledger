@@ -27,7 +27,7 @@ import (
 
 // ClusterGVR is the GroupVersionResource for the Cluster CRD.
 var ClusterGVR = schema.GroupVersionResource{
-	Group:    "ledger.formance.com",
+	Group:    "ledger-next.formance.com",
 	Version:  "v1alpha1",
 	Resource: "clusters",
 }
@@ -70,7 +70,7 @@ func NewKubeClientset() (kubernetes.Interface, error) {
 // the app.kubernetes.io/instance label the operator stamps on owned resources.
 //
 // The operator-created StatefulSet, pods, and other resources are NOT named
-// after the CR directly — the operator prefixes them with "ledger-" (see
+// after the CR directly — the operator prefixes them with "ledger-next-" (see
 // misc/operator/internal/controller/names.go). Use LedgerStatefulSetName /
 // LedgerPodName when addressing those resources by name.
 const ClusterName = "ledger"
@@ -80,7 +80,7 @@ const ClusterName = "ledger"
 // they cannot collide with same-named resources from other products in the
 // same namespace. Test helpers that look up operator-created resources by
 // name must apply the same prefix.
-const resourcePrefix = "ledger-"
+const resourcePrefix = "ledger-next-"
 
 // LedgerStatefulSetName returns the StatefulSet name the operator creates for
 // the Cluster CR. It is also the prefix every pod and PVC name shares.
@@ -220,13 +220,13 @@ func nestedField(obj map[string]any, fields ...string) (any, bool, error) {
 }
 
 // LedgerPodName returns the StatefulSet pod name for the given ordinal —
-// e.g. ordinal 0 → "ledger-ledger-0". Matches the naming the operator emits
+// e.g. ordinal 0 → "ledger-next-ledger-0". Matches the naming the operator emits
 // (StatefulSet name + "-" + ordinal).
 func LedgerPodName(ordinal int) string {
 	return fmt.Sprintf("%s-%d", LedgerStatefulSetName(), ordinal)
 }
 
-// PodOrdinal extracts the ordinal from a pod name (e.g. "ledger-ledger-2" -> 2).
+// PodOrdinal extracts the ordinal from a pod name (e.g. "ledger-next-ledger-2" -> 2).
 // Returns -1 if the name does not match the StatefulSet prefix.
 func PodOrdinal(podName string) int {
 	prefix := LedgerStatefulSetName() + "-"

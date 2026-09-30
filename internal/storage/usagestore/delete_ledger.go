@@ -22,7 +22,7 @@ var ledgerScopedPrefixes = [][]byte{
 // Validation guarantees ledger names are printable ASCII only, so the last
 // padding byte is never 0xFF — incrementing it cannot carry past the
 // fixed-width name block and yields a clean exclusive upper bound.
-func DeleteLedger(batch *dal.WriteSession, ledgerName string) error {
+func DeleteLedger(batch *WriteSession, ledgerName string) error {
 	for _, prefix := range ledgerScopedPrefixes {
 		start := make([]byte, 0, len(prefix)+dal.LedgerNameFixedSize)
 		start = append(start, prefix...)

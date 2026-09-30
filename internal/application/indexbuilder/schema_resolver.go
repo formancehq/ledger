@@ -28,7 +28,7 @@ import (
 // Per-batch cost: O(distinct ledgers touched) Pebble Gets, each block-cache
 // served in steady state. The lookup is dominant only on cold batches.
 type schemaResolver struct {
-	reader dal.PebbleGetter
+	reader dal.KVGetter
 	attr   *attributes.Attribute[*commonpb.LedgerInfo]
 	cache  map[string]*commonpb.MetadataSchema
 }
@@ -37,7 +37,7 @@ type schemaResolver struct {
 // ledger attribute table. Returns nil when attrs is nil — callers tolerate
 // the nil resolver via b.coerceForLedger which surfaces it as an explicit
 // error rather than silently encoding under the raw type tag.
-func newSchemaResolver(reader dal.PebbleGetter, attrs *attributes.Attributes) *schemaResolver {
+func newSchemaResolver(reader dal.KVGetter, attrs *attributes.Attributes) *schemaResolver {
 	if attrs == nil || attrs.Ledger == nil {
 		return nil
 	}

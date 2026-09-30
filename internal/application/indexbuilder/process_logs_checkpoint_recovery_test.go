@@ -43,7 +43,7 @@ func deleteCheckpointLog(sequence, checkpointID uint64) *commonpb.Log {
 func seedCheckpointScenario(t *testing.T, b *Builder, appliedIndex uint64, logs ...*commonpb.Log) {
 	t.Helper()
 
-	batch := b.pebbleStore.OpenWriteSession()
+	batch := b.primaryStore.OpenWriteSession()
 	require.NoError(t, state.AppendLogs(batch, logs))
 	require.NoError(t, state.SetAppliedIndex(batch, appliedIndex))
 	require.NoError(t, batch.Commit())
@@ -115,7 +115,7 @@ func TestProcessLogsResumesAtCheckpointLogAfterDyingDuringMaterialization(t *tes
 	// Log 1 writes no rows, so its batch persisted no progress either: the
 	// durable cursor is anywhere before the checkpoint log, never at it.
 	require.Less(t, durableCursor(t, b), uint64(2), "the cursor must not pass the checkpoint log before the read index is marked")
-	readIndexDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	readIndexDir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 	require.False(t, dal.CheckpointDirReady(readIndexDir))
 
 	cancel()
@@ -167,7 +167,7 @@ func TestProcessLogsRecrossKeepsMarkedReadIndex(t *testing.T) {
 	cursor, err := b.processLogs(context.Background(), 0, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, uint64(2), cursor)
-	readIndexDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	readIndexDir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 	require.True(t, dal.CheckpointDirReady(readIndexDir))
 
 	// The residue of dying between the marker and the cursor commit: the
@@ -210,7 +210,7 @@ func TestProcessLogsGivesCheckpointLogsTheirOwnBatch(t *testing.T) {
 	)
 	certifyAudit(t, b, horizon)
 	// A stale directory for the deleted checkpoint, to observe the deletion.
-	deletedDir := b.pebbleStore.QueryCheckpointReadIndexDir(deletedID)
+	deletedDir := b.primaryStore.QueryCheckpointReadIndexDir(deletedID)
 	require.NoError(t, os.MkdirAll(deletedDir, 0o750))
 
 	// An expired deadline stops each call after one batch.
@@ -225,6 +225,6 @@ func TestProcessLogsGivesCheckpointLogsTheirOwnBatch(t *testing.T) {
 		require.Equal(t, wantCursor, durableCursor(t, b))
 	}
 
-	require.True(t, dal.CheckpointDirReady(b.pebbleStore.QueryCheckpointReadIndexDir(createdID)))
+	require.True(t, dal.CheckpointDirReady(b.primaryStore.QueryCheckpointReadIndexDir(createdID)))
 	require.NoDirExists(t, deletedDir)
 }

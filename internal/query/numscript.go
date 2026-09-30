@@ -14,7 +14,7 @@ import (
 // ReadNumscriptLatestVersion reads the per-name latest pointer (the greatest
 // stored semver) from the attributes zone. Returns "" if the numscript does
 // not exist.
-func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVersionValue], reader dal.PebbleGetter, ledgerName string, name string) (string, error) {
+func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVersionValue], reader dal.KVGetter, ledgerName string, name string) (string, error) {
 	val, err := attr.Get(reader, domain.NumscriptVersionKey{LedgerName: ledgerName, Name: name}.Bytes())
 	if err != nil {
 		return "", fmt.Errorf("reading numscript latest version for %q/%q: %w", ledgerName, name, err)
@@ -36,7 +36,7 @@ func ReadNumscriptLatestVersion(attr *attributes.Attribute[*commonpb.NumscriptVe
 func ReadNumscript(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	ledgerName string, name string,
 	version string,
 ) (*commonpb.NumscriptInfo, error) {
@@ -70,7 +70,7 @@ func ReadNumscript(
 func ReadAllNumscripts(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	ledgerName string,
 ) ([]*commonpb.NumscriptInfo, error) {
 	// Scan all latest pointers for this ledger.
@@ -111,7 +111,7 @@ func ReadAllNumscripts(
 func ReadAllNumscriptVersions(
 	versionAttr *attributes.Attribute[*commonpb.NumscriptVersionValue],
 	contentAttr *attributes.Attribute[*commonpb.NumscriptInfo],
-	reader dal.PebbleReader,
+	reader dal.KVReader,
 	ledgerName string, name string,
 ) (string, []*commonpb.NumscriptVersionEntry, error) {
 	latest, err := ReadNumscriptLatestVersion(versionAttr, reader, ledgerName, name)
@@ -154,13 +154,13 @@ func sortNumscriptVersions(versions []*commonpb.NumscriptVersionEntry) {
 }
 
 // readNumscriptExact does a direct Get on the exact version key in the attributes zone.
-func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleGetter, ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
+func readNumscriptExact(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.KVGetter, ledgerName string, name, version string) (*commonpb.NumscriptInfo, error) {
 	return attr.Get(reader, domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: version}.Bytes())
 }
 
 // resolvePartialVersion scans all versions for (ledger, name) from the attributes zone
 // and finds the highest matching semver.
-func resolvePartialVersion(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.PebbleReader, ledgerName string, name string, targetMajor, targetMinor uint32, depth int) (*commonpb.NumscriptInfo, error) {
+func resolvePartialVersion(attr *attributes.Attribute[*commonpb.NumscriptInfo], reader dal.KVReader, ledgerName string, name string, targetMajor, targetMinor uint32, depth int) (*commonpb.NumscriptInfo, error) {
 	// Scan all versions for this (ledger, name) by using the common prefix.
 	prefix := domain.NumscriptEntryKey{LedgerName: ledgerName, Name: name, Version: ""}.Bytes()
 

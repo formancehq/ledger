@@ -27,7 +27,7 @@ This matters for correctness, not only for tidiness:
   iterator. This is the guard the separate `SeekGE`/`SeekLE` method names used
   to provide.
 
-Only leaves whose *physical* traversal differs — a Pebble cursor walked with
+Only leaves whose *physical* traversal differs — a RocksDB cursor walked with
 `First`/`Next` versus `Last`/`Prev`, or an event group resolved in the
 opposite order — have a per-direction implementation.
 
@@ -70,7 +70,7 @@ The combinators are direction-parameterized, so the contract above holds in
 both directions by construction rather than by mirroring. What is NOT shared
 is the leaves: a leaf whose physical traversal differs has a descending twin
 (`ReversePrefixIterator`, `ReverseEventResolveIterator`,
-`ReverseBitsetIterator`, the reverse Pebble account/tx scans), and each owes
+`ReverseBitsetIterator`, the reverse RocksDB account/tx scans), and each owes
 the same contract.
 
 One rule carries over in a form worth stating explicitly, because a paged test
@@ -105,10 +105,10 @@ error.
 
 A leaf whose keys place the entity at a fixed suffix and are physically
 ordered by it — `BoundedEntityIterator` — can honour the absolute-seek
-contract *without* materializing. Its Pebble iterator is bounded by the
+contract *without* materializing. Its RocksDB iterator is bounded by the
 half-open `[lower, upper)` range resolved from the compile-time bounds, so
 both the first `Next` and every absolute `Seek` observe those bounds:
-`Seek(target)` builds `prefix + target`, Pebble clamps the probe into
+`Seek(target)` builds `prefix + target`, RocksDB clamps the probe into
 `[lower, upper)`, and the emitted entity is the first in-range one `>= target`.
 The floor cache works exactly as on the prefix leaves, and reaching the range's
 last entity (a `MaxUint64` log ID) must not wrap the following `Next` back to
@@ -121,14 +121,14 @@ The log compiler resolves a singleton lower bound at `MaxUint64` as a point
 read. The shared leaf also supports `[MaxUint64, unbounded)` directly without
 computing an exclusive successor for that ID.
 
-`NewLedgerLogRangeIterator` and `NewPebbleTxRangeIterator` are semantic
+`NewLedgerLogRangeIterator` and `NewTxRangeIterator` are semantic
 wrappers around this shared implementation. The constructor takes the reader,
 prefix, lower/upper suffixes and entity length; the prefix length determines
 the entity offset. The keyspace must contain one key per entity: ledger logs
 use `[0x09][ledger 64B][logID_BE]`, and canonical transaction attributes use
-`[0xF1][T][ledger 64B][0x02][txID_BE]`. Transaction updates replace the value at
+`[0x01][0x03][ledger 64B][0x02][txID_BE]`. Transaction updates replace the value at
 the same canonical key; there are no by-log suffix entries in this namespace.
-Both leaves therefore advance with Pebble `Next`, without computing an ID
+Both leaves therefore advance with RocksDB `Next`, without computing an ID
 successor or wrapping after `MaxUint64`. Multi-key entity indexes require a
 different, deduplicating iterator.
 
@@ -192,7 +192,7 @@ pre-EN-1965 `insertSorted` — is the same output at O(U²) element movement for
 U unique IDs, because interleaved account histories make almost every new ID
 land near the front. Appending and sorting once is O(U log U). Both variants
 materialize in full, so neither claims O(pageSize) memory, and IDs stay
-immutable 8-byte copies rather than retained Pebble key buffers.
+immutable 8-byte copies rather than retained RocksDB key buffers.
 
 `iterator_address_bench_test.go` holds the workloads that keep this honest:
 interleaved multi-account histories, an already-ascending single account (a
@@ -203,7 +203,7 @@ alongside unique IDs.
 ## The exhaustion-proof cache (`seekFloor`/`seekCeil`)
 
 `iterator_floor.go`. Without the latch, an exhausted child would be re-seeked
-by its composite parent once per merge step — a fresh Pebble seek plus
+by its composite parent once per merge step — a fresh RocksDB seek plus
 allocations, O(rows) times per query. The floor restores the O(1) fast path
 without reintroducing the latch:
 
@@ -216,14 +216,14 @@ without reintroducing the latch:
 
 Two preconditions make the proof permanent, and both are load-bearing:
 
-1. **The view is snapshot-fixed.** Every leaf holds a `pebble.Iterator`, whose
+1. **The view is snapshot-fixed.** Every leaf holds a `kv.Iterator`, whose
    view is fixed at creation; iterators are created per query. A proof can
    therefore never go stale, and the bound is never cleared. Handing these
    iterators a live, mutating view would silently violate this.
 2. **Only clean exhaustion proves anything.** `Seek` also returns false on
    I/O error (`Err()`), and an I/O-failed seek proves nothing about the view's
    contents. `seekFloor.fail`/`seekCeil.fail` take the iterator's storage
-   error and drop the proof when it is non-nil. (Pebble's error is sticky and
+   error and drop the proof when it is non-nil. (RocksDB's error is sticky and
    pagination propagates `Err()` unconditionally, so the query still fails
    loudly either way — the guard keeps the cache sound on its own terms
    rather than by leaning on that second-order property.)

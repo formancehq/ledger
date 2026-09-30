@@ -6,7 +6,6 @@ import (
 	"io"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -21,27 +20,28 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
-// countingReader wraps a dal.PebbleReader and counts physical Pebble iterator
+// countingReader wraps a dal.KVReader and counts physical Pebble iterator
 // opens (NewIter) so tests and benchmarks can assert the physical scan count
 // independently of the compiled-iterator tree recorded in query.QueryProfile.
 // profile.Root tracks only compiled filters; a fast path that silently opened
 // extra volume iterators would leave it nil while still doing per-account
 // scans, which is exactly what this counter pins down.
 type countingReader struct {
-	inner dal.PebbleReader
+	inner dal.KVReader
 	iters int
 }
 
-var _ dal.PebbleReader = (*countingReader)(nil)
+var _ dal.KVReader = (*countingReader)(nil)
 
 func (c *countingReader) Get(key []byte) ([]byte, io.Closer, error) {
 	return c.inner.Get(key)
 }
 
-func (c *countingReader) NewIter(o *pebble.IterOptions) (*pebble.Iterator, error) {
+func (c *countingReader) NewIter(o *kv.IterOptions) (*kv.Iterator, error) {
 	c.iters++
 
 	return c.inner.NewIter(o)
@@ -110,7 +110,7 @@ func TestAggregateVolumes_OpensAccountAndVolumeIterators(t *testing.T) {
 
 	// Count both account enumeration and per-account volume scans.
 	cr := &countingReader{inner: handle}
-	accountIter, err := readstore.NewPebbleAccountIterator(cr, "l")
+	accountIter, err := readstore.NewAccountIterator(cr, "l")
 	require.NoError(t, err)
 	defer accountIter.Close()
 
@@ -236,7 +236,7 @@ func BenchmarkAggregate_ScanCount(b *testing.B) {
 			b.ReportAllocs()
 			for b.Loop() {
 				cr := &countingReader{inner: fx.handle}
-				accountIter, err := readstore.NewPebbleAccountIterator(cr, "l")
+				accountIter, err := readstore.NewAccountIterator(cr, "l")
 				if err != nil {
 					b.Fatal(err)
 				}

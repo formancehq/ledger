@@ -11,10 +11,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ErrBackupInProgress rejects a BackupOrderStart whose destination
@@ -388,10 +387,10 @@ func (s *BackupJobsState) Reset() {
 // restore (within the same cluster — a cross-cluster restore wipes the
 // zone before this runs, see FinalizeRestore). Boot path only; not
 // allowed in the apply hot path.
-func (s *BackupJobsState) RestoreFromStore(reader dal.PebbleReader) error {
+func (s *BackupJobsState) RestoreFromStore(reader dal.KVReader) error {
 	prefix := []byte{dal.ZoneClusterTransient, dal.SubTransientBackupJob}
 
-	iter, err := reader.NewIter(&pebble.IterOptions{
+	iter, err := reader.NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: backupJobUpperBound(),
 	})

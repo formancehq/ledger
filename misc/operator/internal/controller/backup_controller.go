@@ -23,9 +23,9 @@ import (
 	ledgerv1alpha1 "github.com/formancehq/ledger/misc/operator/api/v1alpha1"
 )
 
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=backups,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=backups/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=ledger.formance.com,resources=backups/finalizers,verbs=update
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=backups,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=backups/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ledger-next.formance.com,resources=backups/finalizers,verbs=update
 
 const (
 	defaultSuccessfulRunsHistoryLimit int32 = 3

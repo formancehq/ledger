@@ -4621,7 +4621,7 @@ func NewBackupOrderFailListReader(s []*BackupOrderFail) BackupOrderFailListReade
 // Call Mutate() to obtain a mutable clone.
 type IdempotencyEvictionReader interface {
 	GetCutoffMicros() uint64
-	GetPebbleKeyHashes() [][]byte
+	GetKeyHashes() [][]byte
 	GetLastScannedTimeIndexKey() []byte
 	Mutate() *IdempotencyEviction
 }
@@ -4632,8 +4632,8 @@ func (r *idempotencyEvictionReadonly) GetCutoffMicros() uint64 {
 	return (*IdempotencyEviction)(r).GetCutoffMicros()
 }
 
-func (r *idempotencyEvictionReadonly) GetPebbleKeyHashes() [][]byte {
-	src := (*IdempotencyEviction)(r).GetPebbleKeyHashes()
+func (r *idempotencyEvictionReadonly) GetKeyHashes() [][]byte {
+	src := (*IdempotencyEviction)(r).GetKeyHashes()
 	if src == nil {
 		return nil
 	}

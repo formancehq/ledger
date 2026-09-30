@@ -87,6 +87,10 @@ config:
         K6_STAGES: "1m:100,5m:100,1m:0"
 ```
 
+## Pebble and RocksDB on ACME-dev
+
+See [the ACME storage comparison protocol](ACME_STORAGE_COMPARISON.md) for the matched three-node write/read campaign. Existing `Pulumi.acme.yaml` and the example above target the Pebble operator (`ledger.formance.com/v1alpha1`). A RocksDB campaign must use dedicated resources with `ledger-next.formance.com/v1alpha1` and a separately installed next operator; do not upgrade the shared Pebble operator or reuse its PVCs. Pin the operator and Ledger image digests before measuring.
+
 ## Local Usage
 
 Run tests locally without Kubernetes:

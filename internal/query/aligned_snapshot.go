@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
-	"github.com/cockroachdb/pebble/v2"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -34,7 +34,7 @@ func ReadBarrierHorizon(ctx context.Context) (uint64, bool) {
 	return h, ok
 }
 
-func mainAppliedHorizon(ctx context.Context, mainReader dal.PebbleGetter) (uint64, error) {
+func mainAppliedHorizon(ctx context.Context, mainReader dal.KVGetter) (uint64, error) {
 	horizon, err := ReadLastAppliedIndex(mainReader)
 	if err != nil {
 		return 0, fmt.Errorf("reading main-store applied index: %w", err)
@@ -168,7 +168,7 @@ func filterUsesReadIndex(filter *commonpb.QueryFilter, target commonpb.QueryTarg
 // The accepted snapshot is gated on the ledger still being live, re-read
 // through the handle's live view once the projection snapshot is open
 // (requireLedgerLive).
-func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *dal.ReadHandle, ledgerName string, releaseHold func()) (*pebble.Snapshot, uint64, func(), error) {
+func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *dal.ReadHandle, ledgerName string, releaseHold func()) (*kv.Snapshot, uint64, func(), error) {
 	mainSeq, err := ReadLastSequence(mainReader)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("reading main-store sequence: %w", err)
@@ -262,7 +262,7 @@ func AlignedIndexSnapshot(ctx context.Context, rs *readstore.Store, mainReader *
 		}
 		waited = true
 		if waitErr := rs.WaitForRaftProgress(ctx, mainAppliedIndex); waitErr != nil {
-			// The caller's context ending is the caller's answer; a Pebble
+			// The caller's context ending is the caller's answer; a storage
 			// fault reading progress is a real I/O error and must not be
 			// laundered into a freshness condition.
 			return nil, 0, nil, fmt.Errorf("waiting for read projection alignment at Raft index %d: %w", mainAppliedIndex, waitErr)
@@ -333,8 +333,8 @@ func requireLedgerLive(mainReader *dal.ReadHandle, ledgerName string) error {
 // skip wrapping).
 func MainHorizonKeep(
 	target commonpb.QueryTarget,
-	handle dal.PebbleReader,
-	indexSnap dal.PebbleGetter,
+	handle dal.KVReader,
+	indexSnap dal.KVGetter,
 	ledgerName string,
 	mainSeq uint64,
 ) func([]byte) (bool, error) {
@@ -345,7 +345,7 @@ func MainHorizonKeep(
 				return false, fmt.Errorf("horizon probe: transaction entity of unexpected length %d (want 8)", len(e))
 			}
 
-			return pebbleTxExists(handle, ledgerName, binary.BigEndian.Uint64(e))
+			return mainTxExists(handle, ledgerName, binary.BigEndian.Uint64(e))
 		}
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		kb := dal.NewKeyBuilder()

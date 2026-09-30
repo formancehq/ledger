@@ -12,56 +12,22 @@ env:
 builds:
 - binary: ledger-server
   id: ledger-server
-  tags:
-  - kafka
-  - nats
-  - clickhouse
-  - databricks
-  - s3
-  - pyroscope
-  ldflags:
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  - -extldflags=-static
-  env:
-  - CGO_ENABLED=0
+  builder: prebuilt
+  prebuilt:
+    path: .release-prebuilt/{{ .Os }}_{{ .Arch }}/ledger-server
   goos:
   - linux
-  - darwin
   goarch:
   - amd64
   - arm64
 
 - binary: ledgerctl
   id: ledgerctl
-  main: ./cmd/ledgerctl
-  ldflags:
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  - -extldflags=-static
-  env:
-  - CGO_ENABLED=0
+  builder: prebuilt
+  prebuilt:
+    path: .release-prebuilt/{{ .Os }}_{{ .Arch }}/ledgerctl
   goos:
   - linux
-  - darwin
-  goarch:
-  - amd64
-  - arm64
-
-- binary: ledgerctl
-  id: ledgerctl-windows
-  main: ./cmd/ledgerctl
-  ldflags:
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Version={{ .Version }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.Commit={{ .ShortCommit }}
-  - -X github.com/formancehq/ledger/v3/internal/pkg/version.BuildDate={{ .Date }}
-  - -extldflags=-static
-  env:
-  - CGO_ENABLED=0
-  goos:
-  - windows
   goarch:
   - amd64
   - arm64
@@ -77,19 +43,12 @@ release:
   - glob: openapi.yml
 
 archives:
-- id: ledger-unix
+- id: ledger-linux
   ids:
   - ledger-server
   - ledgerctl
   formats:
   - tar.gz
-  name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
-  wrap_in_directory: true
-- id: ledger-windows
-  ids:
-  - ledgerctl-windows
-  formats:
-  - zip
   name_template: "{{ .ProjectName }}_{{ .Os }}-{{ .Arch }}"
   wrap_in_directory: true
 

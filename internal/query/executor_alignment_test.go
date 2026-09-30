@@ -42,7 +42,7 @@ func seedPreparedQuery(t *testing.T, s *dal.Store, attrs *attributes.Attributes,
 // either side of the snapshot is observable.
 //
 // The store is embedded rather than held in a field: the type then satisfies
-// both the handle opener and dal.PebbleGetter, so this harness compiles against
+// both the handle opener and dal.KVGetter, so this harness compiles against
 // either read ordering and a mutation experiment needs no test-side edits.
 type mutatingQueryHandleStore struct {
 	*dal.Store

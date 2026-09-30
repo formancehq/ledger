@@ -9,7 +9,7 @@ import (
 // resourcePrefix is prepended to the name of every Kubernetes object the
 // operator creates, so operator-owned resources cannot collide with same-named
 // resources from other products deployed in the same namespace (EN-1319).
-const resourcePrefix = "ledger-"
+const resourcePrefix = "ledger-next-"
 
 // dns1035LabelMaxLength is the RFC 1035 label cap (63 chars) that bounds every
 // Service name and pod name the operator derives from a CR name. validateSpec

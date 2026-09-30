@@ -10,9 +10,9 @@ At startup the server logs an estimated memory breakdown and warns if it exceeds
 
 | Component | Default | CLI Flag(s) | Tunable? |
 |-----------|---------|-------------|----------|
-| [Pebble block cache](#pebble-block-cache) | 1 GiB | `--pebble-cache-size` | Yes |
-| [Pebble memtables](#pebble-memtables) | 1.5 GiB | `--pebble-memtable-size`, `--pebble-memtable-stop-writes-threshold` | Yes |
-| [Pebble read index](#pebble-read-index) | ~320 MiB | `--read-index-cache-size`, `--read-index-memtable-size` | Yes |
+| [RocksDB block cache](#rocksdb-block-cache) | 1 GiB | `--rocksdb-cache-size` | Yes |
+| [RocksDB memtables](#rocksdb-memtables) | 1.5 GiB | `--rocksdb-memtable-size`, `--rocksdb-memtable-stop-writes-threshold` | Yes |
+| [RocksDB read index](#rocksdb-read-index) | ~320 MiB | `--read-index-cache-size`, `--read-index-memtable-size` | Yes |
 | [Raft transport buffers](#raft-transport-buffers) | 10 MiB/peer | `--raft-transport-buffer-size` | Yes |
 | [FSM cache](#fsm-cache) | ~18 MiB | `--cache-rotation-threshold` | Yes |
 | [Numscript cache](#numscript-cache) | ~5 MiB | `--numscript-cache-size` | Yes |
@@ -22,13 +22,13 @@ At startup the server logs an estimated memory breakdown and warns if it exceeds
 
 ---
 
-## Pebble Block Cache
+## RocksDB Block Cache
 
-**Flag:** `--pebble-cache-size`
+**Flag:** `--rocksdb-cache-size`
 **Default:** `1Gi`
 **Type:** ByteSize
 
-Shared LRU cache for decompressed SST data blocks. Every Pebble read (point lookup or range scan) checks this cache first.
+Shared LRU cache for decompressed SST data blocks. Every RocksDB read (point lookup or range scan) checks this cache first.
 
 **Impact of changing:**
 
@@ -41,15 +41,15 @@ Shared LRU cache for decompressed SST data blocks. Every Pebble read (point look
 
 ---
 
-## Pebble Memtables
+## RocksDB Memtables
 
 **Flags:**
-- `--pebble-memtable-size` (default: `256Mi`)
-- `--pebble-memtable-stop-writes-threshold` (default: `6`)
+- `--rocksdb-memtable-size` (default: `256Mi`)
+- `--rocksdb-memtable-stop-writes-threshold` (default: `6`)
 
 **Worst-case memory:** `memtable-size * stop-writes-threshold` = 256 MiB * 6 = **1.5 GiB**
 
-Memtables are in-memory write buffers. Pebble keeps up to `stop-writes-threshold` memtables alive simultaneously (one active + frozen ones waiting for flush). When all slots are occupied, writes stall until a flush completes.
+Memtables are in-memory write buffers. RocksDB keeps up to `stop-writes-threshold` memtables alive simultaneously (one active + frozen ones waiting for flush). When all slots are occupied, writes stall until a flush completes.
 
 **Impact of changing:**
 
@@ -60,25 +60,25 @@ Memtables are in-memory write buffers. Pebble keeps up to `stop-writes-threshold
 
 **Recommendation:** The defaults (256 MiB * 6) are tuned for sustained write-heavy workloads. Reduce `memtable-size` to 128 MiB or 64 MiB on memory-constrained nodes, but expect more frequent write stalls under burst traffic.
 
-### Related Pebble Parameters
+### Related RocksDB Parameters
 
 These have indirect or minor memory impact:
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--pebble-l0-compaction-threshold` | 4 | L0 files before triggering compaction. Lower = cleaner L0, more compaction CPU |
-| `--pebble-l0-stop-writes-threshold` | 16 | L0 files before stalling writes. Higher = more tolerance, more read amplification |
-| `--pebble-lbase-max-bytes` | 2 GiB | L1 size cap. Affects compaction scheduling, not resident memory |
-| `--pebble-target-file-size` | 256 MiB | SST file size target. Larger = fewer files on disk |
-| `--pebble-max-concurrent-compactions` | 2 | Parallel compaction goroutines. Each uses temporary memory for merge buffers |
-| `--pebble-bytes-per-sync` | 1 MiB | Bytes written before fsync during flush/compaction |
-| `--pebble-wal-bytes-per-sync` | 1 MiB | WAL bytes written before fsync |
-| `--pebble-wal-min-sync-interval` | 0 | Min delay between WAL syncs (0 = immediate) |
-| `--pebble-disable-wal` | false | Disables WAL entirely (**dangerous**: data loss on crash) |
+| `--rocksdb-l0-compaction-threshold` | 4 | L0 files before triggering compaction. Lower = cleaner L0, more compaction CPU |
+| `--rocksdb-l0-stop-writes-threshold` | 16 | L0 files before stalling writes. Higher = more tolerance, more read amplification |
+| `--rocksdb-lbase-max-bytes` | 2 GiB | L1 size cap. Affects compaction scheduling, not resident memory |
+| `--rocksdb-target-file-size` | 256 MiB | SST file size target. Larger = fewer files on disk |
+| `--rocksdb-max-concurrent-compactions` | 2 | Parallel compaction goroutines. Each uses temporary memory for merge buffers |
+| `--rocksdb-bytes-per-sync` | 1 MiB | Bytes written before fsync during flush/compaction |
+| `--rocksdb-wal-bytes-per-sync` | 1 MiB | WAL bytes written before fsync |
+| `--rocksdb-wal-min-sync-interval` | 0 | Nonzero values are rejected by the RocksDB store |
+| `--rocksdb-disable-wal` | false | Enabling this is rejected for the durable primary store |
 
 ---
 
-## Pebble Read Index
+## RocksDB Read Index
 
 **Flags:**
 - `--read-index-cache-size` (default: `64Mi`)
@@ -87,9 +87,9 @@ These have indirect or minor memory impact:
 
 **Worst-case memory:** `cache-size + memtable-size * stop-writes-threshold` = 64 MiB + 64 MiB * 4 = **320 MiB**
 
-The read index is a separate Pebble database (distinct from the main data store) that holds inverted indexes for listing and query operations. It is a **derived view** rebuilt from Raft logs, so its WAL is disabled — data loss on crash is safe because the index can be reconstructed.
+The read index is a separate RocksDB database (distinct from the main data store) that holds inverted indexes for listing and query operations. It is a **derived view** rebuilt from Raft logs, so its WAL is disabled — data loss on crash is safe because the index can be reconstructed.
 
-Pebble uses lockfree memtables for writes (no exclusive write lock) and supports online compaction without requiring a close/reopen cycle.
+RocksDB supports online compaction without requiring a close/reopen cycle.
 
 **Impact of changing:**
 
@@ -104,7 +104,7 @@ Pebble uses lockfree memtables for writes (no exclusive write lock) and supports
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--read-index-dir` | `<data-dir>/read-indexes/` | Directory for the Pebble read index database |
+| `--read-index-dir` | `<data-dir>/read-indexes/` | Directory for the RocksDB read index database |
 | `--read-index-batch-size` | 1000 | Log entries per write batch. Larger = fewer flushes, more memory per batch |
 | `--read-index-l0-compaction-threshold` | 4 | L0 files before triggering compaction |
 | `--read-index-l0-stop-writes-threshold` | 12 | L0 files before stalling writes |
@@ -187,8 +187,8 @@ The 9 caches and their approximate per-entry sizes:
 
 | Direction | Effect |
 |-----------|--------|
-| Increase | More accounts served from RAM during admission (fewer Pebble preloads); higher memory; faster writes |
-| Decrease | Less memory; more Pebble reads during admission; higher write latency for active accounts that fall out of cache |
+| Increase | More accounts served from RAM during admission (fewer RocksDB preloads); higher memory; faster writes |
+| Decrease | Less memory; more RocksDB reads during admission; higher write latency for active accounts that fall out of cache |
 
 **Recommendation:** Monitor `admission.preload.duration` and `admission.preload.cache_hits`. If preload latency is high, increase the threshold. The default of 1000 works well for most workloads.
 
@@ -251,22 +251,22 @@ The server logs the current `GOMEMLIMIT` and `GOMAXPROCS` at startup. If estimat
 At boot, the server logs a line like:
 
 ```
-Memory estimate: pebbleCache=1024MiB memtables=1536MiB readIndexCache=64MiB readIndexMemtables=256MiB transport=20MiB fsmCache=18MiB goRuntime=200MiB total=3118MiB
+Memory estimate: rocksdbCache=1024MiB memtables=1536MiB readIndexCache=64MiB readIndexMemtables=256MiB transport=20MiB fsmCache=18MiB goRuntime=200MiB total=3118MiB
 ```
 
 If `GOMEMLIMIT` is set and the estimate exceeds it:
 
 ```
-WARNING: estimated memory usage (3118MiB) exceeds GOMEMLIMIT (2048MiB) — risk of OOM. Consider increasing memory limits or reducing pebble-cache-size / pebble-memtable-size.
+WARNING: estimated memory usage (3118MiB) exceeds GOMEMLIMIT (2048MiB) — risk of OOM. Consider increasing memory limits or reducing rocksdb-cache-size / rocksdb-memtable-size.
 ```
 
 ### Sizing for Kubernetes
 
 | Container memory | Recommended `GOMEMLIMIT` | Suggested tuning |
 |-----------------|--------------------------|------------------|
-| 2 GiB | 1800MiB | `--pebble-cache-size=256Mi`, `--pebble-memtable-size=64Mi` |
+| 2 GiB | 1800MiB | `--rocksdb-cache-size=256Mi`, `--rocksdb-memtable-size=64Mi` |
 | 4 GiB | 3600MiB | Defaults work |
-| 8 GiB | 7200MiB | `--pebble-cache-size=4Gi` for better read perf |
+| 8 GiB | 7200MiB | `--rocksdb-cache-size=4Gi` for better read perf |
 | 16 GiB | 14400MiB | Increase both cache and threshold for large datasets |
 
 ---
@@ -275,10 +275,10 @@ WARNING: estimated memory usage (3118MiB) exceeds GOMEMLIMIT (2048MiB) — risk 
 
 If you need to fit in a smaller memory envelope, reduce these parameters in order of impact:
 
-1. **`--pebble-cache-size`** — biggest single component (default 1 GiB). Reduce to 512 MiB or 256 MiB.
-2. **`--pebble-memtable-size`** — reduces worst-case memtable memory. Reduce to 128 MiB or 64 MiB.
-3. **`--pebble-memtable-stop-writes-threshold`** — reduce from 6 to 4. Increases write stall risk.
-4. **`--cache-rotation-threshold`** — reduce from 1000 to 500. Increases Pebble preload frequency.
+1. **`--rocksdb-cache-size`** — biggest single component (default 1 GiB). Reduce to 512 MiB or 256 MiB.
+2. **`--rocksdb-memtable-size`** — reduces worst-case memtable memory. Reduce to 128 MiB or 64 MiB.
+3. **`--rocksdb-memtable-stop-writes-threshold`** — reduce from 6 to 4. Increases write stall risk.
+4. **`--cache-rotation-threshold`** — reduce from 1000 to 500. Increases RocksDB preload frequency.
 
 The Go runtime overhead (~200 MiB) cannot be reduced via configuration.
 

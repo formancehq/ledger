@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -65,7 +65,7 @@ func scanLogDates(t *testing.T, store *readstore.Store, ledger string) [][2]uint
 	t.Helper()
 
 	prefix := readstore.LedgerLogDateRangePrefix(dal.NewKeyBuilder(), ledger)
-	iter, err := store.DB().NewIter(&pebble.IterOptions{
+	iter, err := store.DB().NewIter(&kv.IterOptions{
 		LowerBound: prefix,
 		UpperBound: readstore.IncrementBytes(prefix),
 	})

@@ -33,7 +33,7 @@ When a write operation is attempted during maintenance mode:
 
 ### Persistence and Replication
 
-- The maintenance mode flag is stored in Pebble (compound key `{0x06, 0x0B}`, within the Global zone `0x06`) and cached in-memory in `SharedState`
+- The maintenance mode flag is stored in RocksDB (compound key `{0x06, 0x0B}`, within the Global zone `0x06`) and cached in-memory in `SharedState`
 - The flag is replicated through Raft consensus (same path as signing config)
 - Changes take effect when the FSM applies the corresponding log entry
 
@@ -49,7 +49,7 @@ Write operations are rejected at **two levels** for safety:
 
 ```
 Client -> gRPC Apply() -> Admission (check maintenance mode) -> Proposal -> Raft consensus
-  -> FSM Apply (check maintenance mode again) -> WriteSet.Merge() -> Pebble + KeyStore
+  -> FSM Apply (check maintenance mode again) -> WriteSet.Merge() -> RocksDB + KeyStore
 ```
 
 ## Key Files
@@ -57,8 +57,8 @@ Client -> gRPC Apply() -> Admission (check maintenance mode) -> Proposal -> Raft
 | File | Role |
 |------|------|
 | `internal/infra/state/shared_state.go` | In-memory flag (`MaintenanceMode()`, `SetMaintenanceMode()`) |
-| `internal/query/config.go` | Pebble persistence (`ReadMaintenanceMode()`) |
-| `internal/infra/state/batch.go` | Pebble write (`SaveMaintenanceMode()`) |
+| `internal/query/config.go` | RocksDB persistence (`ReadMaintenanceMode()`) |
+| `internal/infra/state/batch.go` | RocksDB write (`SaveMaintenanceMode()`) |
 | `internal/application/admission/admission.go` | Admission-level check |
 | `internal/infra/state/machine.go` | FSM-level check (`authorizedInMaintenanceMode`) |
 | `internal/infra/state/write_set.go` | Atomic merge (persist + update SharedState) |

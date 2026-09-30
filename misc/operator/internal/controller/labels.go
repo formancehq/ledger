@@ -8,8 +8,8 @@ const (
 	labelManagedBy         = "app.kubernetes.io/managed-by"
 	labelInstance          = "app.kubernetes.io/instance"
 	labelName              = "app.kubernetes.io/name"
-	annotationSpecHash     = "ledger.formance.com/spec-hash"
-	annotationAuthKeysHash = "ledger.formance.com/auth-keys-hash"
+	annotationSpecHash     = "ledger-next.formance.com/spec-hash"
+	annotationAuthKeysHash = "ledger-next.formance.com/auth-keys-hash"
 
 	// annotationKubectlRestartedAt is stamped on the pod template by
 	// `kubectl rollout restart`. It is user-owned state, not drift: the
@@ -25,7 +25,7 @@ const (
 	// itself to this label, so a ledger opts in or out per-CR without touching the
 	// cluster-scoped policy. PVs are cluster-scoped and don't inherit PVC labels, so
 	// the operator stamps both sides explicitly.
-	labelDeletionProtection      = "ledger.formance.com/deletion-protection"
+	labelDeletionProtection      = "ledger-next.formance.com/deletion-protection"
 	labelDeletionProtectionValue = "enabled"
 
 	// volumeProtectionPVCBindingName is the fixed, release-independent name of the
@@ -36,14 +36,14 @@ const (
 	// sibling release owns the singleton — rather than trusting this release's own
 	// Helm flag. The PV binding is installed in the same bundle, so the PVC binding's
 	// presence is a sufficient proxy for the whole policy.
-	volumeProtectionPVCBindingName = "ledger-volume-protection-pvc"
+	volumeProtectionPVCBindingName = "ledger-next-volume-protection-pvc"
 )
 
 // selectorLabels returns the labels used to select pods owned by this Cluster.
 //
 // The base set is the two app.kubernetes.io/{name,instance} labels. Any entry
 // in spec.additionalLabels is merged on top and may override a default key
-// (use case: the default name=ledger is matched by an unrelated Service in
+// (use case: the default name=ledger-next is matched by an unrelated Service in
 // the namespace, so the user widens our name to "ledger-v3"). managed-by is
 // dropped from the merge here: selectorLabels feeds the StatefulSet pod
 // template labels, so accepting a user override would leak into pods and
@@ -51,7 +51,7 @@ const (
 // guarantees on top-level objects.
 func selectorLabels(ledger *ledgerv1alpha1.Cluster) map[string]string {
 	labels := map[string]string{
-		labelName:     "ledger",
+		labelName:     "ledger-next",
 		labelInstance: ledger.Name,
 	}
 	for k, v := range ledger.Spec.AdditionalLabels {
@@ -70,7 +70,7 @@ func selectorLabels(ledger *ledgerv1alpha1.Cluster) map[string]string {
 // tracks ownership across reconciles.
 func commonLabels(ledger *ledgerv1alpha1.Cluster) map[string]string {
 	labels := selectorLabels(ledger)
-	labels[labelManagedBy] = "ledger-operator"
+	labels[labelManagedBy] = "ledger-next-operator"
 
 	return labels
 }

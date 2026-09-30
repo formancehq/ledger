@@ -3,8 +3,9 @@ package readstore
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
+
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 func TestBoundedEntityIterator_RejectsInvalidWidths(t *testing.T) {
@@ -68,7 +69,7 @@ func TestBoundedEntityIterator_MalformedSuffixLatchesError(t *testing.T) {
 				seed := func(suffix []byte) {
 					t.Helper()
 					key := append(append([]byte(nil), prefix...), suffix...)
-					require.NoError(t, s.DB().Set(key, nil, pebble.NoSync))
+					require.NoError(t, s.DB().Set(key, nil, kv.NoSync))
 				}
 				if trigger != "first Next" {
 					seed([]byte{0, 1})

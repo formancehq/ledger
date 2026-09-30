@@ -16,7 +16,7 @@ panels.row('System', 0, [
       
       Higher values indicate better performance. A sudden drop may indicate:
       - Leader election in progress
-      - Storage backpressure (check Pebble write stalls)
+      - Storage backpressure (check RocksDB pending flushes, compaction debt and stopped writes)
       - Network issues between nodes
       
       See: https://github.com/formancehq/ledger/v3/blob/master/docs/metrics.md#fsm-metrics

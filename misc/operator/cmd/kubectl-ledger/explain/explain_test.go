@@ -15,7 +15,7 @@ func TestSpecFieldsNotEmpty(t *testing.T) {
 	// Verify some known top-level fields exist.
 	known := map[string]bool{
 		"replicas": false, "image": false, "clusterID": false,
-		"raft": false, "pebble": false, "persistence": false,
+		"raft": false, "rocksdb": false, "persistence": false,
 		"monitoring": false, "auth": false, "debug": false,
 		"logLevel": false,
 	}
@@ -53,9 +53,9 @@ func TestSpecFieldsRaftHasChildren(t *testing.T) {
 func TestLookupNestedPath(t *testing.T) {
 	t.Parallel()
 
-	f, ok := Lookup(SpecFields(), "pebble.valueSeparation.enabled")
+	f, ok := Lookup(SpecFields(), "rocksdb.valueSeparation.enabled")
 	if !ok {
-		t.Fatal("pebble.valueSeparation.enabled not found")
+		t.Fatal("rocksdb.valueSeparation.enabled not found")
 	}
 	if f.Type != "bool" {
 		t.Errorf("expected type bool, got %s", f.Type)

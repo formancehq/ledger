@@ -56,17 +56,23 @@ image_repository := env_var_or_default("IMAGE_REPOSITORY", "ghcr.io/formancehq/l
 # `formancehq/ledger-operator` published image.
 operator_image_repository := env_var_or_default("OPERATOR_IMAGE_REPOSITORY", "ghcr.io/formancehq/ledger-operator")
 
+# Native builds require a C/C++ toolchain and RocksDB 11.1+ (provided by nix develop).
+# GOOS/GOARCH cross-builds need matching target headers, libraries, and C/C++ compilers.
+# Compile every package, including non-entrypoint packages checked by CI.
+build-packages:
+    CGO_ENABLED=1 go build ./...
+
 # Build the server application (light: no optional deps)
 build:
-    go build -o ./build/ledger-server .
+    CGO_ENABLED=1 go build -o ./build/ledger-server .
 
 # Build the server with all optional features (Kafka, NATS, ClickHouse, S3, Pyroscope)
 build-full:
-    go build -tags "{{all_tags}}" -o ./build/ledger-server-full .
+    CGO_ENABLED=1 go build -tags "{{all_tags}}" -o ./build/ledger-server-full .
 
 # Build the client application
 build-client:
-    go build -o ./build/ledgerctl ./cmd/ledgerctl
+    CGO_ENABLED=1 go build -o ./build/ledgerctl ./cmd/ledgerctl
 
 # Run the application locally (single node)
 run:
@@ -288,12 +294,26 @@ test-schemathesis:
     bash tests/schemathesis/run.sh
 
 # Release (official, triggered by tag)
-release:
+release: _build-release-prebuilt-tag
     goreleaser release --clean
 
+# Verify archives and OCI image locally without publishing.
+release-local: _build-release-prebuilt-snapshot
+    goreleaser release --snapshot --clean
+
 # Release CI (nightly, triggered by main push)
-release-ci:
+release-ci: _build-release-prebuilt-nightly
     goreleaser release --nightly --clean
+
+# Build static Linux binaries under Alpine for both archives and OCI images.
+_build-release-prebuilt-tag:
+    bash scripts/build-release-prebuilt.sh tag
+
+_build-release-prebuilt-nightly:
+    bash scripts/build-release-prebuilt.sh nightly
+
+_build-release-prebuilt-snapshot:
+    bash scripts/build-release-prebuilt.sh snapshot
 
 # Clean build artifacts
 clean:

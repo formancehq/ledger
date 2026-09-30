@@ -10,7 +10,7 @@ Metrics are organized into several categories:
 - **Raft Consensus Metrics**: Performance of the consensus layer
 - **Transport Metrics**: Inter-node communication (reception, sending, unreachable channels)
 - **Queue Metrics**: Internal queue monitoring (propose, reception, sending)
-- **Storage Metrics**: Pebble storage engine performance
+- **Storage Metrics**: RocksDB storage engine state
 - **Storage Disk Usage**: Disk space consumption per component and volume
 
 For a complete reference, see the [Grafana Dashboard](#grafana-dashboards) section.
@@ -43,15 +43,15 @@ backends sanitises dots in names: `service.cluster` becomes
 `--metrics-naming=prom`, **every metric the server emits** is also
 prefixed with `ledger_` at emission time so they are unambiguous in a
 Prometheus instance that also scrapes other services. This includes
-the metrics we name under `raft.*` and `pebble.*` — etcd-raft and
-Pebble do not export OpenTelemetry themselves; those names are our
+the metrics we name under `raft.*` and `rocksdb.*` — etcd-raft and
+RocksDB do not export OpenTelemetry themselves; those names are our
 emissions about our integration with those libraries.
 
 | Source | OTel mode | Prom mode |
 | ------ | --------- | --------- |
 | `admission.command.duration` (we emit) | `admission.command.duration` | `ledger_admission_command_duration` |
 | `raft.fsm.logs_appended` (we emit, instruments etcd-raft) | `raft.fsm.logs_appended` | `ledger_raft_fsm_logs_appended` |
-| `pebble.flush.total` (we emit, instruments Pebble) | `pebble.flush.total` | `ledger_pebble_flush_total` |
+| `rocksdb.compaction.debt.bytes` (we emit, samples RocksDB) | `rocksdb.compaction.debt.bytes` | `ledger_rocksdb_compaction_debt_bytes` |
 | `http.server.request.duration` (OTel auto-instr) | `http.server.request.duration` | `http_server_request_duration` |
 | `go.memory.allocated` (OTel auto-instr) | `go.memory.allocated` | `go_memory_allocated` |
 | `service.cluster` (attribute) | `service.cluster` | `service_cluster` |
@@ -336,55 +336,28 @@ An `Admit` call carries one batch = one Raft command, and a batch can hold multi
 | `admission.propose_queue.load` | Histogram | 1 | Current number of in-flight proposals. High values indicate backpressure from Raft consensus. |
 | `admission.propose_queue.full` | Counter | 1 | Number of times the propose queue was full and proposals were rejected. **Alert if non-zero**. |
 
-## Pebble Storage Metrics
+## RocksDB Storage Metrics
 
-The Pebble storage driver exposes metrics via an event listener. Pebble is used for the runtime store (balances, metadata).
+Ledger samples native RocksDB properties for the primary store. These are
+gauges, not operation counters; unavailable properties are omitted.
 
-### Flush Metrics
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `rocksdb.memtable.bytes` | By | Approximate bytes in active memtables |
+| `rocksdb.memtable.immutable.count` | {table} | Immutable memtables awaiting flush |
+| `rocksdb.flush.pending` | 1 | Whether a memtable flush is pending |
+| `rocksdb.compaction.pending` | 1 | Whether a compaction is pending |
+| `rocksdb.compaction.debt.bytes` | By | Estimated bytes pending compaction |
+| `rocksdb.sst.live.bytes` | By | Bytes in live SST files |
+| `rocksdb.cache.used.bytes` | By | Bytes used by the block cache |
+| `rocksdb.snapshots.count` | {snapshot} | Unreleased RocksDB snapshots |
+| `rocksdb.write.stopped` | 1 | Whether RocksDB has stopped writes |
+| `rocksdb.background.errors` | {error} | Accumulated background errors |
 
-Flushes write data from memory (memtable) to disk (SSTable).
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `pebble.flush.total` | Counter | 1 | Number of Pebble flush operations |
-| `pebble.flush.duration.milliseconds` | Histogram | ms | Duration of Pebble flush operations (CPU + I/O time) |
-| `pebble.flush.input.bytes` | Histogram | By | Input bytes flushed from memtables to SSTables |
-
-**Attributes**:
-- `reason`: Flush reason (e.g., `capacity`, `delete_only_compaction`)
-- `status`: `ok` or `error`
-
-### Compaction Metrics
-
-Compactions merge and reorganize SSTables to optimize read performance and reclaim space.
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `pebble.compaction.total` | Counter | 1 | Number of Pebble compaction operations |
-| `pebble.compaction.duration.milliseconds` | Histogram | ms | Duration of Pebble compactions |
-
-**Attributes**:
-- `reason`: Compaction reason (e.g., `elision`, `default`, `move`)
-- `status`: `ok` or `error`
-
-### Write Stall Metrics
-
-Write stalls occur when Pebble cannot keep up with write rate due to compaction backlog.
-
-| Metric | Type | Unit | Description |
-|--------|------|------|-------------|
-| `pebble.write_stall.total` | Counter | 1 | Number of Pebble write stalls |
-| `pebble.write_stall.duration.milliseconds` | Histogram | ms | Duration of Pebble write stalls |
-| `pebble.write_stall.active` | Gauge | 1 | Whether Pebble is currently stalling writes (1/0) |
-
-**Attributes**:
-- `reason`: Stall reason (e.g., `memtable`, `l0`, `flush_slowdown`)
-
-> **Warning**: A high `pebble.write_stall.total` or `pebble.write_stall.active = 1` indicates that Pebble is experiencing backpressure. This typically means the disk cannot keep up with the write rate. Consider:
-> - Using faster storage (NVMe SSD)
-> - Increasing Pebble cache size
-> - Reducing write rate
-> - Scaling horizontally
+Alert on `rocksdb.write.stopped == 1` and investigate sustained growth in
+`rocksdb.compaction.debt.bytes` or `rocksdb.background.errors`. The former
+Pebble flush, compaction duration, write-stall counters, and VFS I/O counters
+are not emitted by this adapter.
 
 ## Storage Disk Usage Metrics
 
@@ -400,7 +373,7 @@ Filesystem-level disk usage is tracked per volume via `syscall.Statfs`. A backgr
 | Volume | Path | Description |
 |--------|------|-------------|
 | `wal` | `{walDir}/` | WAL volume containing spool + WAL data |
-| `data` | `{dataDir}/` | Data volume containing the Pebble database |
+| `data` | `{dataDir}/` | Data volume containing the RocksDB database |
 
 ## Caching & Attributes Metrics
 
@@ -439,13 +412,13 @@ The attribute cache stores computed attribute values (volumes, metadata) in memo
 
 ### Bloom Filter Metrics
 
-Bloom filters provide probabilistic key existence checks to avoid unnecessary Pebble Gets during preloading. They are configured per attribute type via `--bloom-*` flags.
+Bloom filters provide probabilistic key existence checks to avoid unnecessary RocksDB Gets during preloading. They are configured per attribute type via `--bloom-*` flags.
 
 | Metric | Type | Unit | Description |
 |--------|------|------|-------------|
 | `bloom.lookups` | Counter | 1 | Total bloom filter checks (MayContain calls) |
-| `bloom.negatives` | Counter | 1 | Checks that returned definitely-not-present (Pebble Get avoided) |
-| `bloom.false_positives` | Counter | 1 | Checks that returned maybe-present but Pebble Get found nothing |
+| `bloom.negatives` | Counter | 1 | Checks that returned definitely-not-present (RocksDB Get avoided) |
+| `bloom.false_positives` | Counter | 1 | Checks that returned maybe-present but RocksDB Get found nothing |
 | `bloom.adds` | Counter | 1 | Keys added to the bloom filter |
 | `bloom.ready` | Gauge | 1 | Readiness when reported (1 = ready, 0 = rebuilding after a configuration change); it may be absent when filters are disabled or before first population completes |
 
@@ -457,14 +430,14 @@ Bloom filters provide probabilistic key existence checks to avoid unnecessary Pe
   `type` attribute.
 
 **Key ratios**:
-- **Negative rate** = `negatives / lookups` — fraction of lookups that avoided Pebble I/O. Higher is better.
+- **Negative rate** = `negatives / lookups` — fraction of lookups that avoided RocksDB I/O. Higher is better.
 - **Observed absent-key false positive rate** = `false_positives / (negatives + false_positives)` — approximate fraction of known-absent lookups that the filter failed to reject. Compare it with the configured `fpRate` (default 1%).
 
-**Lifecycle**: Dirty Bloom blocks are persisted incrementally in Pebble. An
+**Lifecycle**: Dirty Bloom blocks are persisted incrementally in RocksDB. An
 unchanged restart restores those blocks synchronously and replays the two cache
 generations to cover recent writes. First boot, missing or stale persisted
 blocks, and configuration changes trigger a full asynchronous attribute scan.
-During a full rebuild, preloads bypass the filter and read Pebble directly, so
+During a full rebuild, preloads bypass the filter and read RocksDB directly, so
 the optimization is unavailable but false negatives are not introduced.
 `bloom.ready` is `0` during a configuration-change rebuild but may be absent
 until an initial population completes; an enabled filter set is usable only
@@ -596,16 +569,12 @@ The dashboard is organized into the following sections:
 - Gating Wait Duration
 - Readies During Gating
 
-**Pebble Section**:
-- Flush / Second
-- Flush Duration (ms)
-- Flush Input Bytes / Second
-- Compactions / Second
-- Compaction Duration (ms)
-- Compaction Errors / Second
-- Write Stall Active (max)
-- Write Stalls / Second
-- Write Stall Duration
+**RocksDB Section**:
+- Memtable Bytes and Immutable Count
+- Flush and Compaction Pending
+- Estimated Compaction Debt
+- Live SST Bytes and Cache Use
+- Write Stopped and Background Errors
 
 **Caching & Attributes Section**:
 - Numscript Cache Size
@@ -633,9 +602,9 @@ The dashboard is organized into the following sections:
    ```
    Duration: 30s
    
-2. **Pebble Write Stall Active**
+2. **RocksDB Writes Stopped**
    ```promql
-   pebble_write_stall_active == 1
+   rocksdb_write_stopped == 1
    ```
    Duration: 10s
 

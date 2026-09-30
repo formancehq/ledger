@@ -158,7 +158,7 @@ func (impl *ClusterServiceServerImpl) getClusterStateLocal(ctx context.Context) 
 	// Populate local index builder progress on ClusterState (for backward compat / single-node view)
 	localIndexProgress := &clusterpb.IndexProgress{
 		LastIndexedSequence: impl.indexBuilder.LastIndexedSequence(),
-		PebbleLastSequence:  impl.indexBuilder.PebbleLastSequence(),
+		StorageLastSequence: impl.indexBuilder.StorageLastSequence(),
 	}
 	clusterState.IndexProgress = localIndexProgress
 

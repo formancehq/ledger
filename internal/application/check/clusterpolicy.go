@@ -66,7 +66,7 @@ func (v *clusterPolicyVerifier) applyOrder(order *raftcmdpb.Order) {
 // compare reads the stored cluster policy and reports any divergence from the
 // audit-derived expectation. An incomplete fold (a truncated live range)
 // reports coverage instead of a mismatch it cannot substantiate.
-func (v *clusterPolicyVerifier) compare(reader dal.PebbleReader, callback func(*servicepb.CheckStoreEvent)) error {
+func (v *clusterPolicyVerifier) compare(reader dal.KVReader, callback func(*servicepb.CheckStoreEvent)) error {
 	stored, err := query.ReadClusterPolicy(reader)
 	if err != nil {
 		return fmt.Errorf("reading the stored cluster policy: %w", err)

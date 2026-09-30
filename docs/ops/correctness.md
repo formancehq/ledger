@@ -67,7 +67,7 @@ For each account metadata key/value encountered during replay (excluding deleted
 | `VOLUME_MISMATCH` | Account input or output volume does not match log replay |
 | `METADATA_MISMATCH` | Account metadata value does not match log replay |
 | `UNKNOWN_LEDGER` | A log references a ledger not created by any prior log |
-| `TRANSACTION_UPDATE_MISMATCH` | Transaction updates in Pebble do not match log replay |
+| `TRANSACTION_UPDATE_MISMATCH` | Transaction updates in RocksDB do not match log replay |
 
 ### CLI Usage
 
@@ -163,7 +163,7 @@ See [Clock Skew Check](../technical/architecture/subsystems/consensus/hybrid-log
 1. **Tamper detection**: With BLAKE3 (default), modifying any historical audit entry or its covered logs invalidates all subsequent hashes and an attacker cannot forge a valid chain. With XXH3, corruption is detected but a motivated attacker with direct storage access could theoretically construct collisions
 2. **Ordering proof**: The audit hash chain proves the exact ordering of all proposals (and their logs)
 3. **Determinism**: Given the same initial state and the same sequence of operations, the exact same audit hash chain is produced
-4. **Crash recovery**: The audit hash chain survives node restarts — recovered from the last audit entry in Pebble
+4. **Crash recovery**: The audit hash chain survives node restarts — recovered from the last audit entry in RocksDB
 5. **Double-entry balance**: Every merge verifies that the sum of inputs equals the sum of outputs, catching any accounting inconsistency before it is persisted
 6. **Full store verification**: The `store check` command validates the entire log sequence and all derived data (volumes, metadata) against the source of truth (logs)
 7. **Timestamp monotonicity**: The Hybrid Logical Clock guarantees that every log has a strictly increasing timestamp, even across leader changes and clock skew

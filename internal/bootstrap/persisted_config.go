@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // ConfigMismatchError is returned when a persisted configuration value differs
@@ -26,9 +26,9 @@ func (e *ConfigMismatchError) Error() string {
 	)
 }
 
-// LoadPersistedConfig reads the persisted configuration from Pebble.
+// LoadPersistedConfig reads the persisted configuration from RocksDB.
 // Returns nil if no configuration has been persisted yet (first boot).
-func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
+func LoadPersistedConfig(reader dal.KVGetter) (*commonpb.PersistedConfig, error) {
 	// Earlier development layouts stored this anchor in ZoneGlobal. Reject it
 	// even if a current anchor also exists: a mixed layout is not a first
 	// boot and must never be interpreted as a valid current store.
@@ -42,13 +42,13 @@ func LoadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, er
 
 		return nil, &SchemaVersionError{Persisted: old.GetStorageSchemaVersion(), Current: CurrentStorageSchemaVersion}
 	}
-	if !errors.Is(legacyErr, pebble.ErrNotFound) {
+	if !errors.Is(legacyErr, kv.ErrNotFound) {
 		return nil, fmt.Errorf("checking prior-schema persisted config: %w", legacyErr)
 	}
 
 	value, closer, err := reader.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return nil, nil
 		}
 

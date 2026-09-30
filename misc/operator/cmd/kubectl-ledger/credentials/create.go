@@ -51,7 +51,7 @@ func runCreate(cmd *cobra.Command, opts *cmdutil.Options, setValues []string, dr
 
 	credentials := &ledgerv1alpha1.Credentials{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: "ledger.formance.com/v1alpha1",
+			APIVersion: "ledger-next.formance.com/v1alpha1",
 			Kind:       "Credentials",
 		},
 		ObjectMeta: metav1.ObjectMeta{

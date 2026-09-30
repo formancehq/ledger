@@ -4,7 +4,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 
 	libtime "github.com/formancehq/go-libs/v5/pkg/types/time"
@@ -15,6 +14,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
 // TestDeleteLedgerData_RemovesLedgerMetadata pins the deletion cascade's
@@ -198,7 +198,7 @@ func TestClearSinkStatus(t *testing.T) {
 	kb := dal.NewKeyBuilder()
 	kb.PutZonePrefix(dal.ZoneGlobal, dal.SubGlobSinkStatus).PutString("clear-me")
 	_, _, err := s.Get(kb.Build())
-	require.ErrorIs(t, err, pebble.ErrNotFound)
+	require.ErrorIs(t, err, kv.ErrNotFound)
 }
 
 func Test_appendAuditEntries(t *testing.T) {

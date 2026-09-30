@@ -49,7 +49,7 @@ func newBenchStoreWithValue(b *testing.B, key []byte, size int) *Store {
 }
 
 // BenchmarkStoreGet measures (*Store).Get, which copies the value and releases
-// Pebble's resource under dbMu.RLock (EN-2072).
+// the DB resource under dbMu.RLock (EN-2072).
 func BenchmarkStoreGet(b *testing.B) {
 	key := []byte("bench-key")
 

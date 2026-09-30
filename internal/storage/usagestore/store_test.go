@@ -2,15 +2,20 @@ package usagestore_test
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/linxGnu/grocksdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
+	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/rocksdbcfg"
 	"github.com/formancehq/ledger/v3/internal/storage/usagestore"
 )
 
@@ -25,8 +30,8 @@ func newTestStore(t testing.TB) *usagestore.Store {
 	return s
 }
 
-// BenchmarkStoreFlushCadence compares the L0/compaction work created by
-// flushing every simulated second with the production 30-second cadence. Each
+// BenchmarkStoreFlushCadence compares elapsed time for flushing every
+// simulated second with the production 30-second cadence. Each
 // operation models five minutes at 100 active ledgers, updating all seven
 // counters and the progress cursor once per second.
 func BenchmarkStoreFlushCadence(b *testing.B) {
@@ -39,7 +44,6 @@ func BenchmarkStoreFlushCadence(b *testing.B) {
 	for _, flushEvery := range []int{1, 30} {
 		b.Run(fmt.Sprintf("flush_every_%02ds", flushEvery), func(b *testing.B) {
 			s := newTestStore(b)
-			before := s.DB().Metrics()
 
 			b.ResetTimer()
 			for iteration := range b.N {
@@ -59,12 +63,6 @@ func BenchmarkStoreFlushCadence(b *testing.B) {
 				}
 			}
 			b.StopTimer()
-
-			after := s.DB().Metrics()
-			b.ReportMetric(float64(after.Flush.Count-before.Flush.Count)/float64(b.N), "flushes/op")
-			b.ReportMetric(float64(after.Levels[0].TablesFlushed-before.Levels[0].TablesFlushed)/float64(b.N), "l0_tables/op")
-			b.ReportMetric(float64(after.Levels[0].TableBytesFlushed-before.Levels[0].TableBytesFlushed)/float64(b.N), "l0_bytes/op")
-			b.ReportMetric(float64(after.Compact.Count-before.Compact.Count)/float64(b.N), "compactions/op")
 		})
 	}
 }
@@ -296,10 +294,8 @@ func TestStore_ResetFlushesBeforeReturn(t *testing.T) {
 	require.NoError(t, batch.Commit())
 	require.NoError(t, s.Flush(), "seed the old cursor in an SST before resetting")
 
-	flushesBeforeReset := s.DB().Metrics().Flush.Count
 	require.NoError(t, s.Reset())
-	assert.Greater(t, s.DB().Metrics().Flush.Count, flushesBeforeReset,
-		"Reset must establish a new durable SST watermark before returning")
+
 	require.NoError(t, s.Close())
 
 	reopened, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
@@ -317,4 +313,144 @@ func TestStore_ResetFlushesBeforeReturn(t *testing.T) {
 	usage, err := reopened.GetTemplateUsage("l1", "t1")
 	require.NoError(t, err)
 	assert.Nil(t, usage)
+}
+
+func TestStore_CheckpointIncludesUnflushedRows(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	batch := s.NewBatch()
+	require.NoError(t, s.WriteProgress(batch, 77))
+	require.NoError(t, s.PutCounter(batch, "ledger", usagestore.CounterPosting, 9))
+	require.NoError(t, batch.Commit())
+	dest := filepath.Join(t.TempDir(), "checkpoint")
+	require.NoError(t, s.CreateCheckpoint(dest))
+	require.Error(t, s.CreateCheckpoint(dest), "existing destination must not be overwritten")
+	checkpoint, err := usagestore.OpenReadOnly(dest, logging.NopZap())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, checkpoint.Close()) }()
+	progress, err := checkpoint.ReadProgress()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(77), progress)
+	counter, err := checkpoint.GetCounter("ledger", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(9), counter)
+}
+
+func TestStore_SnapshotPinsCounterAndTemplate(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	batch := s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "ledger", usagestore.CounterPosting, 1))
+	require.NoError(t, s.PutTemplateUsage(batch, "ledger", "template", &commonpb.TemplateUsage{Count: 1}))
+	require.NoError(t, batch.Commit())
+	snapshot := s.NewSnapshot()
+	defer func() { require.NoError(t, snapshot.Close()) }()
+	batch = s.NewBatch()
+	require.NoError(t, s.PutCounter(batch, "ledger", usagestore.CounterPosting, 2))
+	require.NoError(t, s.PutTemplateUsage(batch, "ledger", "template", &commonpb.TemplateUsage{Count: 2}))
+	require.NoError(t, batch.Commit())
+	counter, err := snapshot.GetCounter("ledger", usagestore.CounterPosting)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), counter)
+	usage, err := snapshot.GetTemplateUsage("ledger", "template")
+	require.NoError(t, err)
+	assert.Equal(t, uint64(1), usage.GetCount())
+}
+
+func TestStore_BatchTerminalState(t *testing.T) {
+	t.Parallel()
+	s := newTestStore(t)
+	batch := s.NewBatch()
+	require.NoError(t, batch.SetBytes([]byte("x"), []byte("y")))
+	require.NoError(t, batch.Commit())
+	require.Error(t, batch.SetBytes([]byte("x"), []byte("z")))
+	require.Error(t, batch.Commit())
+	require.NoError(t, batch.Cancel())
+	cancelled := s.NewBatch()
+	require.NoError(t, cancelled.Cancel())
+	require.Error(t, cancelled.SetBytes([]byte("x"), []byte("z")))
+}
+
+// TestStore_LedgerPrefixBloom verifies the persisted RocksDB prefix and filter
+// configuration, then exercises a prefix-restricted iterator across two ledgers.
+func TestStore_LedgerPrefixBloom(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	s, err := usagestore.New(dir, logging.NopZap(), usagestore.DefaultConfig())
+	require.NoError(t, err)
+	batch := s.NewBatch()
+	for _, row := range []struct {
+		ledger  string
+		counter byte
+	}{
+		{"alpha", usagestore.CounterPosting},
+		{"alpha", usagestore.CounterRevert},
+		{"beta", usagestore.CounterPosting},
+	} {
+		require.NoError(t, s.PutCounter(batch, row.ledger, row.counter, 1))
+	}
+	require.NoError(t, batch.Commit())
+	require.NoError(t, s.Flush())
+
+	files, err := filepath.Glob(filepath.Join(dir, "usagedb", "OPTIONS-*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	options, err := os.ReadFile(files[len(files)-1])
+	require.NoError(t, err)
+	assert.Contains(t, string(options), "prefix_extractor=rocksdb.CappedPrefix.65")
+	assert.Contains(t, string(options), "filter_policy=bloomfilter")
+	assert.Contains(t, string(options), "whole_key_filtering=false")
+
+	ro := grocksdb.NewDefaultReadOptions()
+	ro.SetPrefixSameAsStart(true)
+	iter := s.DB().NewIterator(ro)
+	key := usagestore.CounterKey(dal.NewKeyBuilder(), "alpha", usagestore.CounterPosting)
+	iter.Seek(key)
+	var got []byte
+	for iter.Valid() {
+		got = append(got, iter.Key().Data()[len(key)-1])
+		iter.Next()
+	}
+	require.NoError(t, iter.Err())
+	assert.Equal(t, []byte{usagestore.CounterPosting, usagestore.CounterRevert}, got,
+		"prefix iterator must include both alpha counters and stop before beta")
+	iter.Close()
+	ro.Destroy()
+	require.NoError(t, s.Close())
+
+	reopened, err := usagestore.OpenReadOnly(filepath.Join(dir, "usagedb"), logging.NopZap())
+	require.NoError(t, err)
+	defer func() { require.NoError(t, reopened.Close()) }()
+	_, err = reopened.GetCounter("alpha", usagestore.CounterPosting)
+	require.NoError(t, err)
+}
+
+func TestStore_CompressionPerLevel(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	cfg := usagestore.DefaultConfig()
+	cfg.Compression[0] = rocksdbcfg.NoCompression
+	cfg.Compression[1] = rocksdbcfg.ZstdCompression
+	s, err := usagestore.New(dir, logging.NopZap(), cfg)
+	require.NoError(t, err)
+	require.NoError(t, s.Close())
+
+	files, err := filepath.Glob(filepath.Join(dir, "usagedb", "OPTIONS-*"))
+	require.NoError(t, err)
+	require.NotEmpty(t, files)
+	options, err := os.ReadFile(files[len(files)-1])
+	require.NoError(t, err)
+	var compression string
+	for line := range strings.SplitSeq(string(options), "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "compression_per_level="); ok {
+			compression = value
+
+			break
+		}
+	}
+	require.NotEmpty(t, compression)
+	codecs := strings.Split(compression, ":")
+	require.Len(t, codecs, rocksdbcfg.NumLevels)
+	assert.Equal(t, "kNoCompression", codecs[0])
+	assert.Equal(t, "kZSTD", codecs[1])
 }

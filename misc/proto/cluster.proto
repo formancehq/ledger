@@ -51,24 +51,24 @@ service ClusterService {
   }
 
   // CompactPrimary triggers a synchronous prefix-by-prefix compaction of the
-  // primary Pebble store. Node-local operation (not forwarded to leader).
+  // primary store. Node-local operation (not forwarded to leader).
   rpc CompactPrimary(CompactPrimaryRequest) returns (CompactPrimaryResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
   }
 
-  // CompactSecondary triggers an online compaction of the secondary (read index) Pebble store.
+  // CompactSecondary triggers an online compaction of the secondary (read index) store.
   // Node-local operation (not forwarded to leader).
   rpc CompactSecondary(CompactSecondaryRequest) returns (CompactSecondaryResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
   }
 
-  // CreateCheckpoint creates a Pebble checkpoint of the current live database state.
+  // CreateCheckpoint creates a storage checkpoint of the current live database state.
   // Node-local operation (not forwarded to leader).
   rpc CreateCheckpoint(CreateCheckpointRequest) returns (CreateCheckpointResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_WRITE };
   }
 
-  // Backup performs a full checkpoint backup of the Pebble store.
+  // Backup performs a full checkpoint backup of the primary store.
   // The caller specifies the storage destination (filesystem or S3) in the request.
   // The request is forwarded to the leader (SST files are node-local).
   rpc Backup(BackupRequest) returns (BackupResponse) {
@@ -82,19 +82,19 @@ service ClusterService {
   }
 
   // ListQueryCheckpoints lists all existing query checkpoints.
-  // Reads from replicated Pebble state (available on any node).
+  // Reads from replicated primary-store state (available on any node).
   rpc ListQueryCheckpoints(ListQueryCheckpointsRequest) returns (ListQueryCheckpointsResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
   }
 
   // GetQueryCheckpointInfo returns detailed information about a query checkpoint.
-  // Reads from replicated Pebble state (available on any node).
+  // Reads from replicated primary-store state (available on any node).
   rpc GetQueryCheckpointInfo(GetQueryCheckpointInfoRequest) returns (QueryCheckpointInfo) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
   }
 
   // GetQueryCheckpointSchedule returns the current automatic query checkpoint schedule.
-  // Reads from replicated Pebble state (available on any node).
+  // Reads from replicated primary-store state (available on any node).
   rpc GetQueryCheckpointSchedule(GetQueryCheckpointScheduleRequest) returns (GetQueryCheckpointScheduleResponse) {
     option (common.auth_policy) = { fixed_scope: AUTH_SCOPE_CLUSTER_READ };
   }
@@ -138,12 +138,12 @@ message RaftStatus {
   string state = 1;             // Current Raft state (Leader, Follower, Candidate, PreCandidate)
   fixed64 term = 2;              // Current term
   uint64 leader = 3;            // ID of the current leader (0 if no leader)
-  fixed64 applied = 4;           // Raft-layer cursor: bumped when the local MsgStorageApplyResp is Step()-ed back into rawNode by the orchestrate goroutine. Under AsyncStorageWrites the response fires from runCommitter AFTER CommitPreparedBatch succeeds, so `applied` tracks FSM-durable state closely (unlike the old sync Advance-immediately-after-Submit path, which could sit whole batches ahead of Pebble).
+  fixed64 applied = 4;           // Raft-layer cursor: bumped when the local MsgStorageApplyResp is Step()-ed back into rawNode by the orchestrate goroutine. Under AsyncStorageWrites the response fires from runCommitter AFTER CommitPreparedBatch succeeds, so `applied` tracks FSM-durable state closely (unlike the old sync Advance-immediately-after-Submit path, which could sit whole batches ahead of storage).
   fixed64 commit = 5;            // Index of the last committed entry
   fixed64 last_index = 6;        // Index of the last entry in the log
   uint64 vote = 7;              // ID of the node that received the vote (0 if no vote)
   map<uint64, ProgressInfo> progress = 8;  // Progress information for each node
-  fixed64 last_persisted_index = 9; // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, inside CommitPreparedBatch after pb.batch.Commit() returns. Reads served from Pebble (stale-consistency GetAccount, cross-node identity oracles, audit reads) SHOULD gate on this because it is what "Pebble has the data" means by definition — no need to reason about the Raft state machine at all. Under AsyncStorageWrites the two cursors advance in lockstep (publishApplied fires just before runCommitter emits MsgStorageApplyResp, so `last_persisted_index` reaches N a few µs before `applied` does), but keep this field distinct: it names an FSM-durability property, not a Raft-consensus one, and remains the correct entry point for anything that assumes the Pebble batch is on disk.
+  fixed64 last_persisted_index = 9; // FSM-layer durable cursor: bumped by Machine.publishApplied on the committer goroutine, inside CommitPreparedBatch after the main-store batch commit returns. Reads served from the main store (stale-consistency GetAccount, cross-node identity oracles, audit reads) SHOULD gate on this because it means the store has the data. Under AsyncStorageWrites the two cursors advance in lockstep (publishApplied fires just before runCommitter emits MsgStorageApplyResp, so `last_persisted_index` reaches N a few µs before `applied` does), but keep this field distinct: it names an FSM-durability property, not a Raft-consensus one.
 }
 
 // ClusterState represents the state of the Raft cluster
@@ -160,10 +160,10 @@ message ClusterState {
   string node_version = 10;  // Build version of the responding (local) node
 }
 
-// IndexProgress tracks the index builder's position relative to Pebble.
+// IndexProgress tracks the index builder's position relative to the main store.
 message IndexProgress {
-  fixed64 last_indexed_sequence = 1;  // Pebble progress cursor
-  fixed64 pebble_last_sequence = 2;   // latest Pebble log sequence
+  fixed64 last_indexed_sequence = 1;  // Read-index progress cursor
+  fixed64 storage_last_sequence = 2;  // Latest main-store log sequence
 }
 
 // SyncProgress tracks the progress of a checkpoint fetch on the local node.

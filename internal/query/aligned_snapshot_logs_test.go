@@ -4,12 +4,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -58,9 +58,9 @@ func TestMainHorizonKeep_Logs(t *testing.T) {
 		{
 			name:            "index entry not found",
 			entity:          logID8(logID),
-			getErr:          pebble.ErrNotFound,
+			getErr:          kv.ErrNotFound,
 			wantErrContains: "resolving log id",
-			wantErrIs:       pebble.ErrNotFound,
+			wantErrIs:       kv.ErrNotFound,
 			expectGet:       true,
 		},
 		{
@@ -93,7 +93,7 @@ func TestMainHorizonKeep_Logs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			getter := NewMockPebbleGetter(gomock.NewController(t))
+			getter := NewMockKVGetter(gomock.NewController(t))
 			closer := &horizonCloser{}
 			if tt.expectGet {
 				kb := dal.NewKeyBuilder()

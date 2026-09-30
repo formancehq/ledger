@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.21.0
-  name: ledgers.ledger.formance.com
+  name: ledgers.ledger-next.formance.com
 spec:
-  group: ledger.formance.com
+  group: ledger-next.formance.com
   names:
     kind: Ledger
     listKind: LedgerList

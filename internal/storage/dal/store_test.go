@@ -19,7 +19,7 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
 )
 
-func TestPebbleStore(t *testing.T) {
+func TestStore(t *testing.T) {
 	testStoreCommon(t, func(t *testing.T) *dal.Store {
 		tmpDir := t.TempDir()
 		ctx := logging.TestingContext()

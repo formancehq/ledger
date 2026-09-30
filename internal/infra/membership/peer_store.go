@@ -5,13 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/proto/raftcmdpb"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
-// PeerStore persists Raft cluster membership in Pebble under two adjacent
+// PeerStore persists Raft cluster membership in RocksDB under two adjacent
 // slices of the ClusterPersistent zone:
 //
 //   - [ZoneClusterPersistent][SubGlobPeers][node_id BE 8] → raftcmdpb.PeerAddress — the
@@ -30,18 +29,18 @@ import (
 // Keeping both slices on the same type lets the FSM apply of a
 // ConfChangeRemoveNode land both mutations (peer row delete + tombstone
 // write) in the same WriteSession, and lets ForceRemoveNode's leader-local
-// path do the same in a single Pebble batch (see
+// path do the same in a single RocksDB batch (see
 // Membership.UnregisterAndBlacklist).
 type PeerStore struct {
 	store *dal.Store
 }
 
-// NewPeerStore returns a PeerStore backed by the given Pebble store.
+// NewPeerStore returns a PeerStore backed by the given RocksDB store.
 func NewPeerStore(store *dal.Store) *PeerStore {
 	return &PeerStore{store: store}
 }
 
-// OpenWriteSession returns a fresh write session on the underlying Pebble
+// OpenWriteSession returns a fresh write session on the underlying RocksDB
 // store. Used by lifecycle paths that need to combine a peer mutation with
 // another mutation atomically (see EN-1045 force-remove path).
 func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
@@ -56,7 +55,7 @@ func (p *PeerStore) OpenWriteSession() *dal.WriteSession {
 // 1 byte zone + 1 byte sub-prefix + 8 bytes big-endian NodeID.
 const peerKeyLen = 1 + 1 + 8
 
-// peerKey builds the Pebble key for the given NodeID.
+// peerKey builds the RocksDB key for the given NodeID.
 func peerKey(nodeID uint64) []byte {
 	key := make([]byte, peerKeyLen)
 	key[0] = dal.ZoneClusterPersistent
@@ -74,7 +73,7 @@ func peerKeyRange() (lower, upper []byte) {
 		[]byte{dal.ZoneClusterPersistent, dal.SubGlobPeers + 1}
 }
 
-// Put writes (nodeID, raftAddr, serviceAddr, instanceID) to Pebble. Called
+// Put writes (nodeID, raftAddr, serviceAddr, instanceID) to RocksDB. Called
 // from the ConfChange apply path on AddNode / AddLearnerNode / UpdateNode.
 // instanceID may be empty for bootstrap initial-peer entries and for admin
 // AddLearner rows written before the peer boots — those rows get refreshed
@@ -121,7 +120,7 @@ func (p *PeerStore) DeleteInSession(session *dal.WriteSession, nodeID uint64) er
 	return nil
 }
 
-// LoadAll iterates every peer entry in Pebble and returns a map keyed by
+// LoadAll iterates every peer entry in RocksDB and returns a map keyed by
 // NodeID. Called from NewNode at boot to seed node.peerAddresses (lifecycle
 // read, not FSM hot path).
 //
@@ -137,7 +136,7 @@ func (p *PeerStore) LoadAll() (map[uint64]ConfChangeContext, error) {
 
 	lower, upper := peerKeyRange()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -191,12 +190,12 @@ const (
 	removedReasonConsensus = "consensus"
 
 	// removedReasonForce tags entries written by ForceRemoveNode's
-	// leader-local Pebble batch (bypasses the log; followers converge
+	// leader-local RocksDB batch (bypasses the log; followers converge
 	// via next snapshot).
 	removedReasonForce = "force"
 )
 
-// removedMemberKey builds the Pebble key for (nodeID, instanceID). Panics
+// removedMemberKey builds the RocksDB key for (nodeID, instanceID). Panics
 // on wrong-length instanceID — an invariant violation the caller must
 // catch before reaching here (instanceID is the identity we blacklist on,
 // silently truncating or padding would produce wrong keys).
@@ -278,7 +277,7 @@ func (p *PeerStore) IsRemoved(nodeID uint64, instanceID []byte) (bool, error) {
 
 	_, closer, err := handle.Get(removedMemberKey(nodeID, instanceID))
 	if err != nil {
-		if errors.Is(err, pebble.ErrNotFound) {
+		if errors.Is(err, kv.ErrNotFound) {
 			return false, nil
 		}
 
@@ -302,7 +301,7 @@ func (p *PeerStore) LoadAllRemoved() ([]*raftcmdpb.RemovedMemberEntry, error) {
 
 	lower, upper := removedMemberKeyRange()
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})
@@ -348,7 +347,7 @@ func (p *PeerStore) AnyRemovedForNodeID(nodeID uint64) (bool, error) {
 
 	lower, upper := removedMemberNodeIDPrefix(nodeID)
 
-	iter, err := handle.NewIter(&pebble.IterOptions{
+	iter, err := handle.NewIter(&kv.IterOptions{
 		LowerBound: lower,
 		UpperBound: upper,
 	})

@@ -81,7 +81,7 @@ func (r *recordingPool) RemovePeer(id uint64) error {
 	return nil
 }
 
-// newTestPeerStore returns a fresh PeerStore backed by an in-memory Pebble
+// newTestPeerStore returns a fresh PeerStore backed by an in-memory RocksDB
 // store in a temp directory, cleaned up at test end.
 func newTestPeerStore(t *testing.T) *PeerStore {
 	t.Helper()
@@ -100,7 +100,7 @@ func newTestPeerStore(t *testing.T) *PeerStore {
 // testSelfNodeID / testSelfRaftAddr / testSelfServiceAddr identify the
 // synthetic "self" used by Membership tests. Kept far away from the
 // peer IDs the tests exercise (1, 2, 3, 7, ...) so a `self.NodeID`
-// row in Pebble never collides with the peers under assertion.
+// row in RocksDB never collides with the peers under assertion.
 const (
 	testSelfNodeID      = 42
 	testSelfRaftAddr    = "self:7777"
@@ -108,7 +108,7 @@ const (
 )
 
 // newTestMembership returns a Membership backed by a fresh in-memory
-// Pebble store and noop transport/pool, in the post-Start state so
+// RocksDB store and noop transport/pool, in the post-Start state so
 // that Set / Remove / Rehydrate exercise the wire path (against the
 // noops). Tests that need the pre-Start behavior should construct
 // NewMembership directly.
@@ -222,7 +222,7 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 // the "ConfChange lost across snapshot install" scenario: the FSM, in
 // PrepareEntries, invokes this handler for every EntryConfChange* with
 // the in-flight WriteSession. The peer mutation lands in the same
-// Pebble batch as the surrounding business writes — atomic, idempotent
+// RocksDB batch as the surrounding business writes — atomic, idempotent
 // across spool/WAL replay.
 //
 // The FSM handler writes ONLY to the supplied batch (no cache/transport
@@ -231,7 +231,7 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 // therefore pins the three relevant transition types (Add / AddLearner
 // / Remove) and the PromoteLearner payload no-op (correlation-only
 // context) by asserting
-// the Pebble write via LoadAll after commit, and asserts that the
+// the RocksDB write via LoadAll after commit, and asserts that the
 // in-memory cache is NOT touched by the handler.
 func TestMembership_WriteConfChange(t *testing.T) {
 	t.Parallel()
@@ -251,7 +251,7 @@ func TestMembership_WriteConfChange(t *testing.T) {
 	require.NoError(t, err)
 
 	// apply runs the handler on a fresh WriteSession + commits it, so
-	// the test exercises the same Pebble write path the FSM uses.
+	// the test exercises the same RocksDB write path the FSM uses.
 	apply := func(t *testing.T, cc *raftpb.ConfChangeV2, v2 bool) {
 		t.Helper()
 
@@ -329,8 +329,8 @@ func TestMembership_WriteConfChange(t *testing.T) {
 
 // TestMembership_OnSnapshotInstalled exercises the EN-1413 async-
 // snapshot-install fix. The Applier's OnSnapshotInstalled hook fires
-// AFTER the leader's Pebble checkpoint has been swapped in. This test
-// simulates that swap by mutating Pebble out-of-band, then invokes the
+// AFTER the leader's RocksDB checkpoint has been swapped in. This test
+// simulates that swap by mutating RocksDB out-of-band, then invokes the
 // hook and asserts the in-memory peer-address cache picks up the new
 // contents.
 func TestMembership_OnSnapshotInstalled(t *testing.T) {
@@ -346,13 +346,13 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 	m.Start()
 	require.Equal(t, "old:1", m.PeerAddresses()[7].RaftAddress)
 
-	// Simulate a leader checkpoint restore: Pebble now has peers 1 + 3,
+	// Simulate a leader checkpoint restore: RocksDB now has peers 1 + 3,
 	// and no peer 7 (the source cluster A has been replaced by cluster B).
 	require.NoError(t, ps.Delete(7))
 	require.NoError(t, ps.Put(1, "new:1", "new:2", nil))
 	require.NoError(t, ps.Put(3, "new:3", "new:4", nil))
 
-	// Hook fires: cache must catch up to the new Pebble state.
+	// Hook fires: cache must catch up to the new RocksDB state.
 	m.OnSnapshotInstalled()
 
 	got := m.PeerAddresses()
@@ -366,15 +366,15 @@ func TestMembership_OnSnapshotInstalled(t *testing.T) {
 }
 
 // TestMembership_RehydrateAfterReplay covers the EN-1413 follow-up gap:
-// WAL replay applies ConfChange entries to Pebble via WriteConfChange
+// WAL replay applies ConfChange entries to RocksDB via WriteConfChange
 // (FSM hot path) but does NOT touch the in-memory cache — finishReady,
 // which owns that side effect on the normal Ready path, never runs for
 // replayed entries. NewNode therefore calls Rehydrate after
-// RecoverAndReplay so the recovered cache + transport match Pebble
+// RecoverAndReplay so the recovered cache + transport match RocksDB
 // before the Raft node starts.
 //
 // This simulates the scenario: cache and transports loaded at boot from
-// Pebble (peers 7 and 9), then "WAL replay" mutates Pebble out-of-band (peer
+// RocksDB (peers 7 and 9), then "WAL replay" mutates RocksDB out-of-band (peer
 // 7's endpoints change, peer 9 is removed, and peers 1 and 3 are added), then
 // Rehydrate must catch all three in-memory views up.
 func TestMembership_RehydrateAfterReplay(t *testing.T) {
@@ -397,7 +397,7 @@ func TestMembership_RehydrateAfterReplay(t *testing.T) {
 	require.Equal(t, "removed:2", servicePool.peers[9])
 
 	// Simulate WAL replay: WriteConfChange wrote these rows directly to
-	// Pebble without touching the cache.
+	// RocksDB without touching the cache.
 	require.NoError(t, ps.Put(7, "after:7", "after:8", nil))
 	require.NoError(t, ps.Delete(9))
 	require.NoError(t, ps.Put(1, "after:1", "after:2", nil))
@@ -546,7 +546,7 @@ func TestMembership_ReconcileAgainstConfState(t *testing.T) {
 // (all local propose paths emit single-Add batches; joint consensus
 // isn't used), and cc.Context can only address a single peer. Silently
 // degrading (dropping the address for every added node) would leave
-// voters recorded in ConfState with no dialable Pebble row — a
+// voters recorded in ConfState with no dialable RocksDB row — a
 // downstream corruption that's hard to trace. Fail loudly instead.
 func TestWalkConfChangeContexts_MultiAddInvariant(t *testing.T) {
 	t.Parallel()

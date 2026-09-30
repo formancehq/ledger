@@ -18,7 +18,7 @@ func TestSentinelFactory_Disabled_NoopRunDoesNotInvokeCallback(t *testing.T) {
 	factory := NewSentinelFactory(s, false)
 
 	called := false
-	err := factory.Run(func(PebbleReader) error {
+	err := factory.Run(func(KVReader) error {
 		called = true
 
 		return errors.New("must not be invoked")
@@ -36,8 +36,8 @@ func TestSentinelFactory_Enabled_RunPassesSnapshotReader(t *testing.T) {
 
 	factory := NewSentinelFactory(s, true)
 
-	var got PebbleReader
-	err := factory.Run(func(r PebbleReader) error {
+	var got KVReader
+	err := factory.Run(func(r KVReader) error {
 		got = r
 
 		return nil
@@ -56,7 +56,7 @@ func TestSentinelFactory_Enabled_PropagatesCallbackError(t *testing.T) {
 	factory := NewSentinelFactory(s, true)
 
 	sentinel := errors.New("simulated check failure")
-	err := factory.Run(func(PebbleReader) error {
+	err := factory.Run(func(KVReader) error {
 		return sentinel
 	})
 	require.ErrorIs(t, err, sentinel)

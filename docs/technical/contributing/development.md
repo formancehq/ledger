@@ -52,7 +52,7 @@ ledger/
 │   ├── query/             # CQRS read-side queries
 │   ├── storage/           # Storage layer
 │   │   ├── dal/           # Data access layer (Pebble)
-│   │   ├── pebblecfg/    # Pebble configuration
+│   │   ├── rocksdbcfg/    # Pebble configuration
 │   │   ├── readstore/    # Read-side store
 │   │   ├── spool/         # Spool for sync buffering (Raft entries)
 │   │   └── wal/           # Write-ahead log (etcd/raft)

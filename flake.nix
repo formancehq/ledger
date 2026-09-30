@@ -43,6 +43,19 @@
     {
       devShells = forEachSupportedSystem ({ pkgs, pkgs-unstable, system }:
         let
+          # The pinned nixpkgs ships RocksDB 10; grocksdb v1.11.1 uses C API added in 11.1.
+          rocksdb_11 = pkgs.rocksdb.overrideAttrs (old: rec {
+            version = "11.1.2";
+            src = pkgs.fetchFromGitHub {
+              owner = "facebook";
+              repo = "rocksdb";
+              tag = "v${version}";
+              hash = "sha256-gZ3epZY9gbrX/pzHc4YpoSqWkKcRLlw41ERGNO3UOvg=";
+            };
+            cmakeFlags = old.cmakeFlags ++ [
+              "-DWITH_TESTS=0"
+            ];
+          });
           stablePackages = with pkgs; [
             acli
             go_1_27
@@ -58,6 +71,7 @@
             kubernetes-helm
             nodejs_22
             python314
+            rocksdb_11
             trufflehog
             uv
             vhs
@@ -85,6 +99,7 @@
             packages = stablePackages ++ unstablePackages ++ otherPackages;
 
             shellHook = ''
+              export CGO_ENABLED=1
               # Auto-configure envtest assets for operator integration tests.
               # setup-envtest downloads etcd + kube-apiserver on first run and caches them.
               if [ -z "$KUBEBUILDER_ASSETS" ]; then

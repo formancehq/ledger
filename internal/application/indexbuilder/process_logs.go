@@ -11,12 +11,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2"
-
 	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/query"
 	"github.com/formancehq/ledger/v3/internal/storage/dal"
+	"github.com/formancehq/ledger/v3/internal/storage/kv"
 	"github.com/formancehq/ledger/v3/internal/storage/readstore"
 )
 
@@ -52,7 +51,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		return cursor, err
 	}
 
-	handle, err := b.pebbleStore.NewReadHandle()
+	handle, err := b.primaryStore.NewReadHandle()
 	if err != nil {
 		return cursor, fmt.Errorf("creating read handle for log processing: %w", err)
 	}
@@ -530,7 +529,7 @@ func (b *Builder) processLogs(ctx context.Context, cursor uint64, deadline time.
 		// before signalling LogCommitted). This avoids opening a Pebble iterator
 		// and deserializing a protobuf just to read a counter.
 		if cached := b.notifications.LastSequence.Load(); cached > 0 {
-			b.pebbleLastSeq.Store(cached)
+			b.storageLastSeq.Store(cached)
 		}
 
 		// Periodic progress logging for long catch-up runs.
@@ -732,7 +731,7 @@ func (b *Builder) purgeCommittedAccountAssetIndexes(cfg *ledgerIndexConfig, ledg
 		}
 		for _, account := range accounts {
 			prefix := readstore.AssetsByAccountPrefix(b.kb, ledger, account)
-			iter, err := b.readStore.DB().NewIter(&pebble.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
+			iter, err := b.readStore.DB().NewIter(&kv.IterOptions{LowerBound: prefix, UpperBound: readstore.IncrementBytes(prefix)})
 			if err != nil {
 				return err
 			}
@@ -883,7 +882,7 @@ const checkpointLinkRetries = 5
 // so a restarted builder crosses it again and lands here: an unmarked residue is
 // discarded and rebuilt, a marked directory is left as is.
 func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64) (err error) {
-	finalDir := b.pebbleStore.QueryCheckpointReadIndexDir(checkpointID)
+	finalDir := b.primaryStore.QueryCheckpointReadIndexDir(checkpointID)
 
 	// Already materialized on this replica (redundant call). Nothing to do.
 	if dal.CheckpointDirReady(finalDir) {
@@ -898,7 +897,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 
 	tmpDir := finalDir + ".tmp"
 
-	// pebble.Checkpoint fails with ErrExist if the target already exists, so the
+	// kv.Checkpoint fails with ErrExist if the target already exists, so the
 	// temp dir must not linger from a previous crashed attempt.
 	if err := os.RemoveAll(tmpDir); err != nil {
 		return fmt.Errorf("clearing stale temp checkpoint %d: %w", checkpointID, err)
@@ -986,7 +985,7 @@ func (b *Builder) createReadIndexCheckpoint(checkpointID, auditGeneration uint64
 // FSM. The shared DAL lease gate makes this duplicate trigger idempotent and
 // prevents either component from being removed under an acquired reader.
 func (b *Builder) deleteReadIndexCheckpoint(checkpointID uint64) {
-	if err := b.pebbleStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
+	if err := b.primaryStore.DeleteQueryCheckpointFiles(checkpointID); err != nil {
 		b.logger.WithFields(map[string]any{
 			"error":        err,
 			"checkpointID": checkpointID,
@@ -1476,7 +1475,7 @@ func (b *Builder) markLedgerDeletedInBatch(name string) {
 // (true, nil) on hit. Mirrors reverseMapValue's committed-read path.
 func (b *Builder) readstoreKeyExists(key []byte) (bool, error) {
 	_, closer, err := b.readStore.DB().Get(key)
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, kv.ErrNotFound) {
 		return false, nil
 	}
 	if err != nil {
@@ -1500,7 +1499,7 @@ func (b *Builder) reverseMapValue(reverseKey []byte) ([]byte, error) {
 	}
 
 	val, closer, err := b.readStore.DB().Get(reverseKey)
-	if errors.Is(err, pebble.ErrNotFound) {
+	if errors.Is(err, kv.ErrNotFound) {
 		return nil, nil
 	}
 	if err != nil {

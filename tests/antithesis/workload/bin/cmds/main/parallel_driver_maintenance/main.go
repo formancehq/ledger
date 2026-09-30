@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"google.golang.org/grpc/codes"
@@ -22,6 +23,21 @@ func main() {
 		if err := internal.CreateLedger(ctx, client, ledger); err != nil {
 			return
 		}
+
+		// On normal returns, restore writes even after an ambiguous enable or
+		// an interrupted operation. The eventual oracle also resets the gate
+		// because process termination does not run Go defers.
+		defer func() {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if _, err := client.Apply(cleanupCtx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
+				Type: &servicepb.Request_SetMaintenanceMode{
+					SetMaintenanceMode: &servicepb.SetMaintenanceModeRequest{Enabled: false},
+				},
+			})); err != nil {
+				log.Printf("disable maintenance during shutdown: %v", err)
+			}
+		}()
 
 		// Enable maintenance mode.
 		_, err := client.Apply(ctx, servicepb.UnsignedApplyRequest("", &servicepb.Request{
