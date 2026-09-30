@@ -318,7 +318,8 @@ func ledgerctlCommand(serverAddr, tlsMode string, args ...string) []string {
 	// value) cannot be interpreted by /bin/sh -- defense-in-depth even when
 	// the producer already URL-encodes the value. serverAddr and the
 	// TLS-flag fragment stay unquoted because they contain intentional
-	// shell-expanded variables ($POD_NAME, $POD_NAMESPACE, $TLS_CA_CERT_FILE);
+	// shell-expanded variables ($POD_NAME, $POD_NAMESPACE, $GRPC_PORT,
+	// $TLS_CA_CERT_FILE);
 	// both are produced by trusted internal helpers, never from user input.
 	quoted := make([]string, len(args))
 	for i, arg := range args {

@@ -602,9 +602,8 @@ func (r *VolumeExpansionReconciler) readPodDiskUsage(
 	ledger *ledgerv1alpha1.Cluster,
 	pod, tlsMode string,
 ) (podDiskUsage, error) {
-	serverAddr := podSelfServerAddr(headlessServiceName(ledger.Name), ledger.Spec.GrpcPort)
 	result, err := podExecWithTimeout(ctx, r.Config, r.Clientset, ledger.Namespace, pod, ledgerContainer,
-		ledgerctlCommand(serverAddr, tlsMode, "cluster", "disk-usage", "--json"),
+		volumeDiskUsageCommand(ledger.Name, tlsMode),
 	)
 	if err != nil {
 		return podDiskUsage{}, fmt.Errorf("reading disk usage from %s: %w", pod, err)
@@ -616,6 +615,15 @@ func (r *VolumeExpansionReconciler) readPodDiskUsage(
 	}
 
 	return usage, nil
+}
+
+func volumeDiskUsageCommand(ledgerName, tlsMode string) []string {
+	// The command runs inside the target pod. Its GRPC_PORT is the actual
+	// listener port, even when a rejected Cluster spec or a partial rollout
+	// differs from the pod that is still serving.
+	serverAddr := fmt.Sprintf("$POD_NAME.%s.$POD_NAMESPACE.svc.cluster.local:$GRPC_PORT", headlessServiceName(ledgerName))
+
+	return ledgerctlCommand(serverAddr, tlsMode, "cluster", "disk-usage", "--json")
 }
 
 func (r *VolumeExpansionReconciler) patchPVCGroup(

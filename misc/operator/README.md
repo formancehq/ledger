@@ -237,7 +237,9 @@ rejects the selected volume when collection failed, the sample is older than
 one minute, its observation time is missing, or total capacity is zero. The
 replica set is read from the live StatefulSet rather than the Cluster spec, so
 a rejected Cluster update cannot leave a running replica outside the expansion
-group.
+group. The measurement command expands `GRPC_PORT` inside each target pod, so
+an invalid Cluster update or a partial rollout cannot redirect it to a port
+that pod does not serve. TLS mode comes from the live StatefulSet.
 
 ```yaml
 apiVersion: ledger.formance.com/v1alpha1

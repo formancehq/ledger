@@ -187,6 +187,7 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
 		Spec: ledgerv1alpha1.ClusterSpec{
 			Replicas: &rejectedSpecReplicas,
+			GrpcPort: 9999,
 			Persistence: ledgerv1alpha1.PersistenceSpec{
 				Data: ledgerv1alpha1.VolumeSpec{
 					AutoExpansion: &ledgerv1alpha1.VolumeAutoExpansionSpec{Enabled: true, MaximumSize: &maximum},
@@ -194,6 +195,11 @@ func TestVolumeExpansionReconcilerExpandsAllLiveReplicas(t *testing.T) {
 			},
 		},
 	}
+	// The rejected desired port must not enter the real measurement command.
+	command := volumeDiskUsageCommand(ledger.Name, tlsModeDisabled)
+	require.Len(t, command, 3)
+	require.Contains(t, command[2], `--server "$POD_NAME.ledger-test-headless.$POD_NAMESPACE.svc.cluster.local:$GRPC_PORT"`)
+	require.NotContains(t, command[2], ":9999")
 	objects := []runtime.Object{
 		ledger,
 		&appsv1.StatefulSet{
