@@ -36,6 +36,19 @@ At 30/15, RocksDB's second measured write p99 was 32.30 ms versus 16.55 ms in it
 
 The same run's storage microbenchmarks (five alternating samples per engine) found RocksDB 108% slower for 5-entry batches, 103% slower for 100-entry batches, and 66% slower for 1,000-entry batches. A 4 KiB point lookup was 24% slower, while 64- and 512-byte lookups were 12% and 17% faster, respectively; the populated account reverse-map lookup was 90% faster. These fixture-level results identify code paths to profile, but their ratios must not be applied to the HTTP results.
 
+The [comparison run 36661203464](https://github.com/formancehq/ledger/actions/runs/36661203464) used RocksDB commit `59788cf7a5b69b3ac240fd414efcd2cc296642a6` and the same Pebble baseline. All eight measured HTTP runs again had zero request errors and dropped iterations. The two-run arithmetic means were:
+
+| Offered load | Metric | Pebble | RocksDB | Delta |
+| --- | --- | ---: | ---: | ---: |
+| 30 writes/s + 15 reads/s | Write p99 | 13.64 ms | 14.83 ms | +8.8% |
+| 30 writes/s + 15 reads/s | Read p99 | 12.06 ms | 12.45 ms | +3.3% |
+| 30 writes/s + 15 reads/s | Mean sampled RSS | 152.5 MiB | 140.6 MiB | -7.8% |
+| 50 writes/s + 25 reads/s | Write p99 | 12.24 ms | 14.06 ms | +14.9% |
+| 50 writes/s + 25 reads/s | Read p99 | 11.62 ms | 12.16 ms | +4.6% |
+| 50 writes/s + 25 reads/s | Mean sampled RSS | 182.7 MiB | 153.1 MiB | -16.2% |
+
+On the same run's five-sample microbenchmarks, RocksDB batch writes were 121% slower for 5 entries, 81% slower for 100 entries, and 41% slower for 1,000 entries; a standalone batch commit was 51% slower. The HTTP write p99 varies materially between campaigns, while the batch microbenchmarks consistently favor Pebble. Neither observation justifies claiming performance equivalence or extrapolating a production throughput limit. Profile the batch path and repeat under a representative three-node load before setting an acceptance threshold.
+
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
 
 ```bash
