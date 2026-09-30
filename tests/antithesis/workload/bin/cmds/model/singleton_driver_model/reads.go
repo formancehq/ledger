@@ -53,10 +53,15 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	// property it cares about if the server-side default ever changes.
 	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
 
+	// Colour collapse is a result-stage fold: every colour of an asset is summed
+	// into the uncolored bucket.
+	collapsed := oneIn(3)
+
 	responseFrontier := c.beginResponseFrontier()
 	acct, err := client.GetAccount(readCtx, &servicepb.GetAccountRequest{
-		Ledger:  ledger,
-		Address: addr,
+		Ledger:         ledger,
+		Address:        addr,
+		CollapseColors: collapsed,
 	})
 	// High-water at the read's response: only bulks dispatched by now could be
 	// reflected in what the server returned. Captured before validation so later
@@ -68,7 +73,7 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 		}
 		// NotFound = no entries server-side; validate as no volumes / no metadata.
 		if status.Code(err) == codes.NotFound {
-			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, false)
+			c.validateAccountRead(maxTicket, ledger, addr, asset, nil, true, nil, false, collapsed)
 
 			return
 		}
@@ -83,7 +88,12 @@ func runRead(ctx context.Context, client servicepb.BucketServiceClient, c *Check
 	}
 
 	gotVols, wellFormed := accountVolumeSet(acct)
-	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata(), true)
+	c.validateAccountRead(maxTicket, ledger, addr, asset, gotVols, wellFormed, acct.GetMetadata(), true, collapsed)
+
+	if collapsed && len(gotVols) > 0 {
+		// Coverage: a colour-collapsed account read matched the folded model.
+		assert.Reachable("singleton_driver_model: colour-collapsed account read validated", internal.Details{"ledger": ledger})
+	}
 }
 
 // isShutdownError reports whether err is a context cancellation/deadline — what

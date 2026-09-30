@@ -1203,10 +1203,14 @@ func removeRequest(ledger, name string) *servicepb.Request {
 	}
 }
 
+// idempotencyKeyNamespace prefixes every key this driver mints, so a prefix
+// query on it selects the whole run and nothing a neighbouring workload wrote.
+const idempotencyKeyNamespace = "model-"
+
 // Fresh unique key per Request. The server caches log refs by
 // (key, order), making gRPC retries of non-idempotent actions safe.
 func idempotencyKey() string {
-	return fmt.Sprintf("model-%016x%016x", internal.Rand().Uint64(), internal.Rand().Uint64())
+	return fmt.Sprintf("%s%016x%016x", idempotencyKeyNamespace, internal.Rand().Uint64(), internal.Rand().Uint64())
 }
 
 // Concrete address matching pattern; variable segments get random

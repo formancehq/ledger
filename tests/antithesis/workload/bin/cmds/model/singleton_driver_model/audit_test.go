@@ -34,6 +34,17 @@ func committedStateWithSequences(t *testing.T, sequences ...uint64) oracle.Globa
 	return res.State
 }
 
+// metadataLogs is the committed-log record committedStateWithSequences builds:
+// one account-metadata save per sequence, in order, on ledger L.
+func metadataLogs(sequences ...uint64) map[uint64]committedLog {
+	out := make(map[uint64]committedLog, len(sequences))
+	for i, seq := range sequences {
+		out[seq] = committedLog{ledger: "L", id: uint64(i + 1), kind: "saved_metadata"}
+	}
+
+	return out
+}
+
 // singleOrderBulks is the boundary record for a run of one-order bulks, each
 // committing at one sequence — the shape committedStateWithSequences builds.
 func singleOrderBulks(sequences ...uint64) map[uint64]committedBulk {
@@ -167,7 +178,7 @@ func TestValidateAuditPageKnownEntriesAreStillOwed(t *testing.T) {
 		ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42, 43, 44),
 		inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{},
 		rejections: map[rejectedBulk]struct{}{}, knownAudit: map[uint64]auditEntry{},
-		committedBulks: singleOrderBulks(42, 43, 44),
+		committedBulks: singleOrderBulks(42, 43, 44), committedLogs: metadataLogs(42, 43, 44),
 	}
 	e42 := auditEntry{seq: 3, ledgers: []string{"L"}, orderCount: 1, minLog: 42, maxLog: 42}
 	e43 := auditEntry{seq: 4, ledgers: []string{"L"}, orderCount: 1, minLog: 43, maxLog: 43}
@@ -210,7 +221,7 @@ func TestValidateAuditPageKnownEntriesMustCertainlyMatch(t *testing.T) {
 		ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42),
 		inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{},
 		rejections: map[rejectedBulk]struct{}{}, knownAudit: map[uint64]auditEntry{},
-		committedBulks: singleOrderBulks(42),
+		committedBulks: singleOrderBulks(42), committedLogs: metadataLogs(42),
 	}
 
 	// Log 42 is an account-metadata save, so its entry is an add_metadata order.
@@ -341,7 +352,7 @@ func TestValidateAuditPageOrderTypesAndLogCoverage(t *testing.T) {
 	t.Parallel()
 
 	// Two account-metadata logs at 42 and 44 (kind saved_metadata → add_metadata).
-	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42, 44), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, rejections: map[rejectedBulk]struct{}{}, committedBulks: singleOrderBulks(42, 43, 44)}
+	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42, 44), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, rejections: map[rejectedBulk]struct{}{}, committedBulks: singleOrderBulks(42, 43, 44), committedLogs: metadataLogs(42, 43, 44)}
 	e42 := auditEntry{seq: 3, ledgers: []string{"L"}, orderCount: 1, minLog: 42, maxLog: 42}
 	e44 := auditEntry{seq: 5, ledgers: []string{"L"}, orderCount: 1, minLog: 44, maxLog: 44}
 
@@ -368,7 +379,7 @@ func TestValidateAuditPageReverseTail(t *testing.T) {
 	t.Parallel()
 
 	// Logs at 42 and 44; 43 is a hole inside the learned range.
-	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42, 44), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, rejections: map[rejectedBulk]struct{}{{ledgers: "L", orders: 1, reason: "VALIDATION"}: {}}, committedBulks: singleOrderBulks(42, 43, 44)}
+	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42, 44), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, rejections: map[rejectedBulk]struct{}{{ledgers: "L", orders: 1, reason: "VALIDATION"}: {}}, committedBulks: singleOrderBulks(42, 43, 44), committedLogs: metadataLogs(42, 44)}
 
 	newest := auditEntry{seq: 5, ledgers: []string{"L"}, orderCount: 1, minLog: 44, maxLog: 44}
 	older := auditEntry{seq: 3, ledgers: []string{"L"}, orderCount: 1, minLog: 42, maxLog: 42}
@@ -401,7 +412,7 @@ func TestValidateAuditPageReverseTail(t *testing.T) {
 func TestValidateAuditPageSetupEraAndLedgerLevelLogs(t *testing.T) {
 	t.Parallel()
 
-	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, committedBulks: singleOrderBulks(42, 43)}
+	c := &Checker{ledgerNames: []string{"L"}, modelState: committedStateWithSequences(t, 42), inflight: map[uint64]oracle.Bulk{}, ledgerLogSeqs: map[uint64]ledgerLogRecord{}, committedBulks: singleOrderBulks(42, 43), committedLogs: metadataLogs(42)}
 
 	setup := auditEntry{seq: 1, ledgers: []string{"L"}, orderCount: 1, minLog: 2, maxLog: 2}
 	require.Empty(t, c.validateAuditPage(0, []auditEntry{setup}, false, nil, 50, 0, "").finding, "below the first learned sequence is setup")
@@ -440,4 +451,47 @@ func saveLedgerMetaReqL(ledger string) *servicepb.Request {
 	return &servicepb.Request{Type: &servicepb.Request_SaveLedgerMetadata{
 		SaveLedgerMetadata: &servicepb.SaveLedgerMetadataRequest{Ledger: ledger, Metadata: map[string]*commonpb.MetadataValue{"k": {Type: &commonpb.MetadataValue_StringValue{StringValue: "v"}}}},
 	}}
+}
+
+// requestLogKind names the accepted order, so every kind the token table maps
+// has a request shape that produces it — otherwise an order-type filter judges
+// the entry against an empty set and rejects a page the server served right.
+func TestRequestLogKindCoversEveryAuditToken(t *testing.T) {
+	t.Parallel()
+
+	apply := func(action *servicepb.LedgerAction) *servicepb.Request {
+		return &servicepb.Request{Type: &servicepb.Request_Apply{
+			Apply: &servicepb.LedgerApplyRequest{Action: action},
+		}}
+	}
+
+	reqs := []*servicepb.Request{
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{}}),
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_RevertTransaction{}}),
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddMetadata{}}),
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_DeleteMetadata{}}),
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_AddAccountType{}}),
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_RemoveAccountType{}}),
+		apply(&servicepb.LedgerAction{Data: &servicepb.LedgerAction_SetDefaultEnforcementMode{}}),
+		{Type: &servicepb.Request_SetMetadataFieldType{}},
+		{Type: &servicepb.Request_RemoveMetadataFieldType{}},
+		{Type: &servicepb.Request_CreateIndex{}},
+		{Type: &servicepb.Request_DropIndex{}},
+		{Type: &servicepb.Request_AddAccountType{}},
+		{Type: &servicepb.Request_RemoveAccountType{}},
+		{Type: &servicepb.Request_SetDefaultEnforcementMode{}},
+		{Type: &servicepb.Request_SaveLedgerMetadata{}},
+		{Type: &servicepb.Request_DeleteLedgerMetadata{}},
+	}
+
+	produced := map[string]bool{}
+	for _, req := range reqs {
+		kind := requestLogKind(req)
+		require.NotEmpty(t, kind, "%T names no kind", req.GetType())
+		produced[auditOrderTypeOfKind[kind]] = true
+	}
+
+	for kind, token := range auditOrderTypeOfKind {
+		require.True(t, produced[token], "no request produces kind %q", kind)
+	}
 }

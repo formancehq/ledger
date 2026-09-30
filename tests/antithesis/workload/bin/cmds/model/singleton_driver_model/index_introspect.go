@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -33,11 +35,13 @@ import (
 // reason, and nothing documents pending_version > current_version as an
 // invariant, so neither relation is asserted.
 func runIndexIntrospection(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
-	switch random.RandomChoice([]uint8{0, 1, 2}) {
+	switch random.RandomChoice([]uint8{0, 1, 2, 3}) {
 	case 0:
 		runIndexList(ctx, client, c)
 	case 1:
 		runIndexGet(ctx, client, c)
+	case 2:
+		runIndexListFleet(ctx, client, c)
 	default:
 		runIndexEntryStatus(ctx, client, c)
 	}
@@ -73,11 +77,10 @@ func pickIntrospectIndex(c *Checker, ledger string) *commonpb.IndexID {
 	return all[internal.Rand().Intn(len(all))].id
 }
 
-// runIndexList streams a ledger's registry entries and checks the canonical set
-// against the model. SCOPE_LEDGER filters on an exact ledger match and its only
-// orphan skipping is for entries of deleted ledgers, which the never-deleted
-// fleet cannot produce — so the served set is the ledger's whole registry and an
-// equality check is exact.
+// runIndexList streams one ledger's registry entries and checks the canonical
+// set against the model. SCOPE_LEDGER filters on an exact ledger match and
+// answers NotFound for a ledger the bucket does not hold, so a served listing is
+// that ledger's whole registry and an equality check is exact.
 func runIndexList(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
 
@@ -107,10 +110,16 @@ func runIndexList(ctx context.Context, client servicepb.BucketServiceClient, c *
 			return
 		}
 
-		if absent && status.Code(err) == codes.NotFound {
-			// Coverage: SCOPE_LEDGER on an unknown ledger must say NotFound rather
-			// than answer with an empty listing.
-			assert.Reachable("singleton_driver_model: index listing on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+		if status.Code(err) == codes.NotFound {
+			if absent {
+				// Coverage: SCOPE_LEDGER on an unknown ledger must say NotFound
+				// rather than answer with an empty listing.
+				assert.Reachable("singleton_driver_model: index listing on an absent ledger returned NotFound", internal.Details{"ledger": ledger})
+
+				return
+			}
+
+			c.validateLedgerNotFound(maxTicket, ledger, "ListIndexes")
 
 			return
 		}
@@ -194,11 +203,154 @@ func indexSetEqual(ls oracle.LedgerState, served map[string]bool) bool {
 	return declared == len(served)
 }
 
+// runIndexListFleet streams the registry across the whole bucket, in one of the
+// two scopes that take no ledger. SCOPE_BUCKET keeps only entries with an empty
+// ledger; SCOPE_ALL keeps every entry whose owning ledger still exists, so a
+// deleted ledger's entries must be gone from it.
+//
+// The model declares no bucket-scoped index of its own, so the bucket arm is
+// one-sided: it pins the scope's own contract (every entry ledger-less) without
+// claiming to know the set. The ledger-scoped half of SCOPE_ALL is exact — it
+// must be the union of the live fleet's registries, ledger by ledger.
+func runIndexListFleet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
+	bucketScope := oneIn(2)
+	scope := servicepb.ListIndexesRequest_SCOPE_ALL
+	if bucketScope {
+		scope = servicepb.ListIndexesRequest_SCOPE_BUCKET
+	}
+
+	c.mu.Lock()
+	readID := c.registerRead()
+	c.mu.Unlock()
+	defer c.finishRead(readID)
+
+	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+
+	stream, err := client.ListIndexes(readCtx, &servicepb.ListIndexesRequest{Scope: scope})
+
+	var entries []*commonpb.Index
+	if err == nil {
+		entries, err = drainStream(stream)
+	}
+
+	maxTicket := c.ticketSeq.Load()
+
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+
+		assert.Unreachable("singleton_driver_model: bucket-wide ListIndexes returned unexpected error", internal.Details{
+			"scope": scope.String(),
+			"error": err.Error(),
+		})
+
+		return
+	}
+
+	// Entries partitioned by owning ledger; "" is the bucket-scoped slot.
+	byLedger := map[string]map[string]bool{}
+
+	for _, idx := range entries {
+		if idx.GetId() == nil {
+			assert.Unreachable("singleton_driver_model: bucket-wide index listing served an entry with no id", internal.Details{"scope": scope.String()})
+
+			return
+		}
+
+		owner := idx.GetLedger()
+		if bucketScope && owner != "" {
+			assert.Unreachable("singleton_driver_model: bucket-scoped index listing served a ledger's entry", internal.Details{
+				"ledger": owner,
+				"index":  indexes.Canonical(idx.GetId()),
+			})
+
+			return
+		}
+
+		canonical := indexes.Canonical(idx.GetId())
+		if byLedger[owner] == nil {
+			byLedger[owner] = map[string]bool{}
+		}
+
+		if byLedger[owner][canonical] {
+			assert.Unreachable("singleton_driver_model: bucket-wide index listing repeated an entry", internal.Details{
+				"scope":  scope.String(),
+				"ledger": owner,
+				"index":  canonical,
+			})
+
+			return
+		}
+
+		byLedger[owner][canonical] = true
+	}
+
+	if bucketScope {
+		// Coverage: the bucket scope answered with only ledger-less entries.
+		assert.Reachable("singleton_driver_model: bucket-scoped index listing validated", internal.Details{"count": len(entries)})
+
+		return
+	}
+
+	if !c.matchesModel(maxTicket, "INDEXLISTALL", func(base oracle.GlobalState) bool {
+		live := base.LiveLedgers()
+		for _, ledger := range live {
+			if !indexSetEqual(base.Ledger(ledger), byLedger[ledger]) {
+				return false
+			}
+		}
+
+		// A ledger the base does not hold live must contribute nothing.
+		for owner := range byLedger {
+			if owner != "" && !slices.Contains(live, owner) {
+				return false
+			}
+		}
+
+		return true
+	}) {
+		assert.Unreachable("singleton_driver_model: bucket-wide index listing outside model", internal.Details{
+			"ledgers": len(byLedger),
+			"entries": len(entries),
+			"served":  describeIndexOwners(byLedger),
+		})
+
+		return
+	}
+
+	// Coverage: the fleet-wide scope named every live ledger's registry and no
+	// deleted ledger's.
+	assert.Reachable("singleton_driver_model: fleet-wide index listing validated", internal.Details{"entries": len(entries)})
+}
+
+// describeIndexOwners renders a served bucket-wide listing as sorted
+// "ledger=count" entries for a finding.
+func describeIndexOwners(byLedger map[string]map[string]bool) string {
+	parts := make([]string, 0, len(byLedger))
+	for owner, set := range byLedger {
+		parts = append(parts, fmt.Sprintf("%s=%d", owner, len(set)))
+	}
+	slices.Sort(parts)
+
+	return "[" + strings.Join(parts, ",") + "]"
+}
+
 // runIndexGet reads one registry entry by id.
 func runIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, absent := pickLedgerReadTarget(c.ledgerNames, 2)
 	id := pickIntrospectIndex(c, ledger)
 	canonical := indexes.Canonical(id)
+
+	// An empty ledger addresses the bucket-scoped slot rather than a ledger's,
+	// so it is a different registry key, not a malformed request. The workload
+	// registers nothing there, so the lookup must miss — never answer with a
+	// ledger's entry that happens to share the canonical id.
+	if oneIn(8) {
+		runBucketIndexGet(ctx, client, c, id, canonical)
+
+		return
+	}
 
 	c.mu.Lock()
 	readID := c.registerRead()
@@ -236,6 +388,53 @@ func runIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *C
 			"found":  found,
 		})
 	}
+}
+
+// runBucketIndexGet looks an id up in the bucket-scoped slot, which no ledger
+// owns. The model declares nothing there, so the only legal outcomes are
+// NotFound or an entry that is itself ledger-less — a ledger's entry surfacing
+// here would mean the two keyspaces had been conflated.
+func runBucketIndexGet(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, id *commonpb.IndexID, canonical string) {
+	c.mu.Lock()
+	readID := c.registerRead()
+	c.mu.Unlock()
+	defer c.finishRead(readID)
+
+	readCtx := metadata.AppendToOutgoingContext(ctx, "x-consistency", "linearizable")
+
+	idx, err := client.GetIndex(readCtx, &servicepb.GetIndexRequest{Id: id})
+	if err != nil {
+		if internal.IsTransient(err) || isShutdownError(err) {
+			return
+		}
+
+		if status.Code(err) == codes.NotFound {
+			// Coverage: the bucket-scoped slot is a keyspace of its own, and a
+			// ledger's index is not reachable through it.
+			assert.Reachable("singleton_driver_model: bucket-scoped index lookup returned NotFound", internal.Details{"index": canonical})
+
+			return
+		}
+
+		assert.Unreachable("singleton_driver_model: bucket-scoped index lookup returned unexpected error", internal.Details{
+			"index": canonical,
+			"error": err.Error(),
+		})
+
+		return
+	}
+
+	if idx.GetLedger() != "" {
+		assert.Unreachable("singleton_driver_model: bucket-scoped index lookup answered with a ledger's entry", internal.Details{
+			"index":        canonical,
+			"servedLedger": idx.GetLedger(),
+		})
+
+		return
+	}
+
+	// Coverage: the bucket slot served an entry it owns.
+	assert.Reachable("singleton_driver_model: bucket-scoped index lookup validated", internal.Details{"index": indexes.Canonical(idx.GetId())})
 }
 
 // runIndexEntryStatus reads one index's status view. Only the registry entry it

@@ -590,7 +590,11 @@ func runLogQuery(ctx context.Context, client servicepb.BucketServiceClient, c *C
 	case rolled:
 		cursor = malformed
 	case oneIn(2):
-		afterSeq = internal.Rand().Uint64() % 16
+		// A ledger-local log id, aimed at the log the ledger actually holds so
+		// the resume lands inside the range rather than always in its first
+		// page: a few below the model's head, and occasionally far past it so
+		// the empty tail is exercised too.
+		afterSeq = c.rollLogResumeID(ledger)
 		cursor = pageToken(strconv.FormatUint(afterSeq, 10))
 	}
 
@@ -966,4 +970,25 @@ func diagnosticDetail(value string, err error) string {
 	}
 
 	return value
+}
+
+// rollLogResumeID picks a ledger-local log id to resume a ListLogs page at.
+// Mostly just inside the ledger's committed head so the skip lands in the middle
+// of the range; one roll in eight lands past everything it holds, which must
+// serve an empty page rather than wrap. Acquires c.mu.
+func (c *Checker) rollLogResumeID(ledger string) uint64 {
+	c.mu.Lock()
+	rows := c.modelState.Ledger(ledger).LogRows()
+	c.mu.Unlock()
+
+	var head uint64
+	for _, row := range rows {
+		head = max(head, row.ID)
+	}
+
+	if head == 0 || oneIn(8) {
+		return head + 1 + internal.Rand().Uint64()%16
+	}
+
+	return 1 + internal.Rand().Uint64()%head
 }

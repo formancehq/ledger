@@ -71,11 +71,22 @@ type Checker struct {
 	// by mu.
 	ledgerLogSeqs map[uint64]ledgerLogRecord
 
+	// committedLogs maps the global sequence of every committed log to what the
+	// model knows about it. The audit trail is permanent while a deleted ledger's
+	// rows leave the state, so the trail keeps naming sequences the live model no
+	// longer holds. Guarded by mu.
+	committedLogs map[uint64]committedLog
+
 	// committedBulks maps the first log sequence of each committed bulk to its
 	// boundaries. One bulk is one audit entry, so these are the only log ranges a
 	// success entry may name: without them a fabricated entry merging two adjacent
 	// bulks, or naming part of one, satisfies every other check. Guarded by mu.
 	committedBulks map[uint64]committedBulk
+
+	// ledgerIdentities maps each ledger to the id and creation timestamp its
+	// creation log reported. The model assigns neither, so this is the only
+	// record a read of those two fields can be held to. Guarded by mu.
+	ledgerIdentities map[string]ledgerIdentity
 
 	// knownAudit is a lower bound on the audit trail: entries the server served
 	// on a page that validated. Audit history is permanent, so a remembered entry
@@ -224,8 +235,10 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		ambiguousBulks:             map[uint64]oracle.Bulk{},
 		reservedLedgerCreates:      map[string]uint64{},
 		ledgerLogSeqs:              map[uint64]ledgerLogRecord{},
+		ledgerIdentities:           map[string]ledgerIdentity{},
 		knownAudit:                 map[uint64]auditEntry{},
 		committedBulks:             map[uint64]committedBulk{},
+		committedLogs:              map[uint64]committedLog{},
 		rejections:                 map[rejectedBulk]struct{}{},
 
 		indexCreateSeq: map[string]map[string]uint64{},
@@ -466,6 +479,74 @@ func (c *Checker) recordCommittedBulk(bulk oracle.Bulk, logs []*commonpb.Log) {
 	}
 
 	c.committedBulks[minSeq] = committedBulk{minSeq: minSeq, maxSeq: maxSeq, orders: uint32(len(bulk.Requests))}
+
+	for i, req := range bulk.Requests {
+		if i >= len(logs) {
+			break
+		}
+
+		seq := logs[i].GetSequence()
+		if seq == 0 {
+			continue
+		}
+
+		apply := logs[i].GetPayload().GetApply()
+		c.committedLogs[seq] = committedLog{
+			ledger: apply.GetLedgerName(),
+			id:     apply.GetLog().GetId(),
+			kind:   requestLogKind(req),
+		}
+
+		if created := logs[i].GetPayload().GetCreateLedger(); created != nil {
+			c.ledgerIdentities[created.GetName()] = ledgerIdentity{
+				id:        created.GetId(),
+				createdAt: created.GetCreatedAt(),
+			}
+		}
+	}
+}
+
+// requestLogKind names the order a request carries, the way the audit index
+// keys it: the accepted intent's payload variant. An order apply skipped is
+// still the order that was accepted, so the skip does not change its kind.
+func requestLogKind(req *servicepb.Request) string {
+	switch r := req.GetType().(type) {
+	case *servicepb.Request_Apply:
+		switch r.Apply.GetAction().GetData().(type) {
+		case *servicepb.LedgerAction_CreateTransaction:
+			return "created_transaction"
+		case *servicepb.LedgerAction_RevertTransaction:
+			return "reverted_transaction"
+		case *servicepb.LedgerAction_AddMetadata:
+			return "saved_metadata"
+		case *servicepb.LedgerAction_DeleteMetadata:
+			return "deleted_metadata"
+		case *servicepb.LedgerAction_AddAccountType:
+			return "added_account_type"
+		case *servicepb.LedgerAction_RemoveAccountType:
+			return "removed_account_type"
+		case *servicepb.LedgerAction_SetDefaultEnforcementMode:
+			return "updated_default_enforcement_mode"
+		default:
+			return ""
+		}
+	case *servicepb.Request_SetMetadataFieldType:
+		return "set_metadata_field_type"
+	case *servicepb.Request_RemoveMetadataFieldType:
+		return "removed_metadata_field_type"
+	case *servicepb.Request_CreateIndex:
+		return "create_index"
+	case *servicepb.Request_DropIndex:
+		return "drop_index"
+	case *servicepb.Request_AddAccountType:
+		return "added_account_type"
+	case *servicepb.Request_RemoveAccountType:
+		return "removed_account_type"
+	case *servicepb.Request_SetDefaultEnforcementMode:
+		return "updated_default_enforcement_mode"
+	default:
+		return ledgerLogKindOf(req)
+	}
 }
 
 // learnLedgerLogSequences records the sequences of a committed bulk's logs

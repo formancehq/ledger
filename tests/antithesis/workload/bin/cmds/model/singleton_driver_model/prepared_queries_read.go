@@ -224,8 +224,9 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		return
 	}
 
-	requestedPageSize, pageSize := queryPageSize()
-	noteClampedPageSize(requestedPageSize, pageSize)
+	// The executor echoes the page size it was asked for, so this path asks for
+	// one the server serves unchanged.
+	_, pageSize := queryPageSize()
 	reverse := mode == commonpb.QueryMode_QUERY_MODE_LIST && oneIn(2)
 
 	c.mu.Lock()
@@ -241,7 +242,7 @@ func runExecutePreparedQuery(ctx context.Context, client servicepb.BucketService
 		Ledger:     ledger,
 		QueryName:  name,
 		Parameters: params,
-		PageSize:   uint32(requestedPageSize),
+		PageSize:   uint32(pageSize),
 		Mode:       mode,
 		Reverse:    reverse,
 	})

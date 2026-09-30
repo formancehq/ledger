@@ -727,6 +727,26 @@ func runIndexReadinessPoller(ctx context.Context, c *Checker, conns internal.Per
 	}
 }
 
+// indexStatusViolation names what is internally inconsistent about an index
+// status, or "" when nothing is. lag is derived from the other two counters in
+// the same response (controller GetIndexStatus), so it is an exact identity —
+// the only relation between them that holds, since the indexed sequence and the
+// log sequence are read from two different snapshots and either may lead.
+func indexStatusViolation(resp *servicepb.GetIndexStatusResponse) string {
+	lastIndexed, lastLog := resp.GetLastIndexedSequence(), resp.GetLastLogSequence()
+
+	want := uint64(0)
+	if lastLog > lastIndexed {
+		want = lastLog - lastIndexed
+	}
+
+	if resp.GetLag() != want {
+		return "lag is not the distance between the log and the index"
+	}
+
+	return ""
+}
+
 // reconcileIndexes polls every replica's GetIndexStatus for each ledger holding a
 // tracked index and promotes/demotes each index by whether every replica reports
 // it live. A replica that is unreachable this tick counts as not-ready, so a
@@ -764,6 +784,24 @@ func reconcileIndexes(ctx context.Context, c *Checker, conns internal.PerNodeCon
 				}
 
 				continue
+			}
+
+			if violation := indexStatusViolation(resp); violation != "" {
+				assert.Unreachable("singleton_driver_model: index status is not self-consistent", internal.Details{
+					"ledger":        ledger,
+					"node":          pc.NodeID,
+					"violation":     violation,
+					"lastIndexed":   resp.GetLastIndexedSequence(),
+					"lastLog":       resp.GetLastLogSequence(),
+					"lag":           resp.GetLag(),
+					"indexFileSize": resp.GetIndexFileSize(),
+				})
+			}
+
+			if resp.GetIndexFileSize() > 0 {
+				// Coverage: a replica reported the size of a read index it has
+				// actually written.
+				assert.Reachable("singleton_driver_model: index status reported a materialised index file", internal.Details{"ledger": ledger})
 			}
 
 			nodeOK[i] = true

@@ -642,14 +642,14 @@ func liveLedgerState(base oracle.GlobalState, ledger string) (oracle.LedgerState
 // is legal iff some candidate base holds both the picked (gotIn, gotOut, found)
 // volume cell and exactly the server's metadata for the address. Both must hold
 // on the SAME base — the read is one atomic snapshot.
-func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found bool) {
+func (c *Checker) validateAccountRead(maxTicket uint64, ledger, addr, asset string, serverVols map[assetColor]oracle.VolumePair, wellFormed bool, serverMeta map[string]*commonpb.MetadataValue, found, collapsed bool) {
 	if wellFormed && c.matchesModel(maxTicket, "READ", func(base oracle.GlobalState) bool {
 		ls, live := liveLedgerState(base, ledger)
 		if !live {
 			return !found
 		}
 
-		return accountVolumesMatch(ls, addr, serverVols) && metadataMatches(ls, addr, serverMeta)
+		return accountVolumesMatch(ls, addr, serverVols, collapsed) && metadataMatches(ls, addr, serverMeta)
 	}) {
 		return
 	}
@@ -678,21 +678,38 @@ func (k assetColor) String() string { return k.Asset + "|" + k.Color }
 // zero-balance row the base's purge sweep removed) and a base cell the server
 // omitted are both mismatches. Seeks to addr's key range — O(log n + cells of
 // addr), not a table walk (this runs per candidate base).
-func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[assetColor]oracle.VolumePair) bool {
-	cells := 0
+func accountVolumesMatch(ls oracle.LedgerState, addr string, got map[assetColor]oracle.VolumePair, collapsed bool) bool {
+	want := map[assetColor]oracle.VolumePair{}
+
 	for k, vp := range ls.Volumes().From(oracle.VolumeKey{Address: addr}) {
 		if k.Address != addr {
 			break
 		}
 
-		g, ok := got[assetColor{Asset: k.Asset, Color: k.Color}]
+		key := assetColor{Asset: k.Asset, Color: k.Color}
+		if collapsed {
+			// Every colour of an asset is summed into the uncolored bucket.
+			key = assetColor{Asset: k.Asset}
+		}
+
+		acc := want[key]
+		acc.Input.Add(&acc.Input, &vp.Input)
+		acc.Output.Add(&acc.Output, &vp.Output)
+		want[key] = acc
+	}
+
+	if len(want) != len(got) {
+		return false
+	}
+
+	for key, vp := range want {
+		g, ok := got[key]
 		if !ok || g.Input.Cmp(&vp.Input) != 0 || g.Output.Cmp(&vp.Output) != 0 {
 			return false
 		}
-		cells++
 	}
 
-	return cells == len(got)
+	return true
 }
 
 // metadataMatches reports whether ls holds exactly serverMeta for addr — same

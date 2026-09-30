@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -188,10 +190,12 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 			// checks readiness before the precision, so an overflow probe reaches
 			// here only through a not-ready error.
 			c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, nil, next, err)
+
 			return
 		}
 		if len(needed) > 0 {
 			c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, nil, next, err)
+
 			return
 		}
 
@@ -228,11 +232,13 @@ func runAccountQuery(ctx context.Context, client servicepb.BucketServiceClient, 
 
 	if bareAsset {
 		c.validateAssetAccountQuery(maxTicket, ledger, filter, cursor, pageSize, reverse, accounts, next, nil)
+
 		return
 	}
 
 	if len(needed) > 0 {
 		c.validateIndexedAccountQuery(maxTicket, ledger, filter, needed, cursor, pageSize, reverse, accounts, next, nil)
+
 		return
 	}
 
@@ -254,6 +260,10 @@ func (c *Checker) sampleAccountFieldSeeds(ledger string) []fieldSeed {
 func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	ledger, _ := pickLedgerReadTarget(c.liveLedgerNamesSnapshot(), 0)
 	filter := genTransactionFilter(c.sampleTxFilterSeeds(ledger))
+	unsupportedBuiltin := false
+	if probe, rolledProbe := rollUnsupportedBuiltinField(); rolledProbe {
+		filter, unsupportedBuiltin = probe, true
+	}
 	needed := map[string]struct{}{}
 	neededIndexCanonicals(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS, needed)
 	invalidTarget := filterInvalidForTarget(filter, commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS)
@@ -326,11 +336,15 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 
 			return
 		}
+		if handleUnsupportedBuiltinError(unsupportedBuiltin, ledger, filter, err) {
+			return
+		}
 		if handleInvalidTargetError(invalidTarget, "transaction", ledger, filter, err) {
 			return
 		}
 		if len(needed) > 0 {
 			c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, nil, next, err)
+
 			return
 		}
 
@@ -352,6 +366,16 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 		return
 	}
 
+	if unsupportedBuiltin {
+		assert.Unreachable("singleton_driver_model: unsupported builtin uint field returned results", internal.Details{
+			"ledger": ledger,
+			"filter": describeFilter(filter),
+			"rows":   len(txs),
+		})
+
+		return
+	}
+
 	if invalidTarget {
 		assert.Unreachable("singleton_driver_model: target-invalid transaction query returned results", internal.Details{
 			"ledger": ledger,
@@ -364,6 +388,7 @@ func runTransactionQuery(ctx context.Context, client servicepb.BucketServiceClie
 
 	if len(needed) > 0 {
 		c.validateIndexedTransactionQuery(maxTicket, ledger, filter, needed, afterID, pageSize, reverse, txs, next, nil)
+
 		return
 	}
 
@@ -412,6 +437,55 @@ func pageToken(key string) string {
 	}
 
 	return pagecursor.Cursor{Key: key}.Encode()
+}
+
+// unsupportedBuiltinFields are the TransactionBuiltinIndex values that name a
+// real index but not a uint64 one, so a BuiltinUintCondition cannot be built
+// over them. resolveTxTimestampArm refuses them; nothing may serve a page.
+var unsupportedBuiltinFields = []commonpb.TransactionBuiltinIndex{
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_REFERENCE,
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_ADDRESS,
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_SOURCE_ADDRESS,
+	commonpb.TransactionBuiltinIndex_TX_BUILTIN_INDEX_DESTINATION_ADDRESS,
+}
+
+// rollUnsupportedBuiltinField returns a range filter over a builtin field that
+// carries no uint64 order, one read in twenty-four.
+func rollUnsupportedBuiltinField() (*commonpb.QueryFilter, bool) {
+	if !oneIn(24) {
+		return nil, false
+	}
+
+	lo, hi := uint64(1), uint64(1_000_000)
+
+	return &commonpb.QueryFilter{Filter: &commonpb.QueryFilter_BuiltinUint{BuiltinUint: &commonpb.BuiltinUintCondition{
+		Field: random.RandomChoice(unsupportedBuiltinFields),
+		Cond:  &commonpb.UintCondition{Min: &lo, Max: &hi},
+	}}}, true
+}
+
+// handleUnsupportedBuiltinError validates the answer to a range over a builtin
+// field with no uint64 order: a compilation rejection, never a page. Returns
+// true when it has fully handled err.
+func handleUnsupportedBuiltinError(unsupported bool, ledger string, filter *commonpb.QueryFilter, err error) bool {
+	if !unsupported {
+		return false
+	}
+
+	if status.Code(err) == codes.InvalidArgument {
+		// Coverage: a builtin range the compiler has no index arm for is refused.
+		assert.Reachable("singleton_driver_model: unsupported builtin uint field rejected", internal.Details{"ledger": ledger})
+
+		return true
+	}
+
+	assert.Unreachable("singleton_driver_model: unsupported builtin uint field returned unexpected error", internal.Details{
+		"ledger": ledger,
+		"filter": describeFilter(filter),
+		"error":  fmt.Sprint(err),
+	})
+
+	return true
 }
 
 // drainStream reads a server stream to exhaustion, returning every item in
@@ -776,6 +850,13 @@ func accountUniverse(ls oracle.LedgerState) []string {
 // and the same metadata. metadataMatches is shared with the single GetAccount
 // read.
 func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account) bool {
+	return accountMatchesCollapsed(ls, addr, serverAcct, false)
+}
+
+// accountMatchesCollapsed is accountMatches for a read that asked the server to
+// collapse colours: every colour of an asset is then summed into the uncolored
+// bucket, so the model folds the same way before comparing.
+func accountMatchesCollapsed(ls oracle.LedgerState, addr string, serverAcct *commonpb.Account, collapsed bool) bool {
 	if !metadataMatches(ls, addr, serverAcct.GetMetadata()) {
 		return false
 	}
@@ -793,16 +874,6 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		return false
 	}
 
-	model := map[assetColor]oracle.VolumePair{}
-	for k, vp := range ls.Volumes().All() {
-		if k.Address == addr {
-			model[assetColor{Asset: k.Asset, Color: k.Color}] = vp
-		}
-	}
-
-	// One entry per (asset, color), per the list's contract. A repeat would
-	// collapse into this map and be counted once, so the exact comparison below
-	// would never see it.
 	server := map[assetColor]struct{ in, out uint256.Int }{}
 	for _, av := range serverAcct.GetVolumes() {
 		var in, out uint256.Int
@@ -825,18 +896,12 @@ func accountMatches(ls oracle.LedgerState, addr string, serverAcct *commonpb.Acc
 		server[key] = struct{ in, out uint256.Int }{in, out}
 	}
 
-	if len(model) != len(server) {
-		return false
+	got := make(map[assetColor]oracle.VolumePair, len(server))
+	for key, v := range server {
+		got[key] = oracle.VolumePair{Input: v.in, Output: v.out}
 	}
 
-	for key, vp := range model {
-		sv, ok := server[key]
-		if !ok || vp.Input.Cmp(&sv.in) != 0 || vp.Output.Cmp(&sv.out) != 0 {
-			return false
-		}
-	}
-
-	return true
+	return accountVolumesMatch(ls, addr, got, collapsed)
 }
 
 // txRecordView is the subset of oracle's (unexported) transaction record that
@@ -1237,13 +1302,33 @@ func rollOpenOrExclusive(cond *commonpb.UintCondition) {
 		cond.Min = nil
 	} else {
 		cond.MinExclusive = oneIn(4)
+		if oneIn(16) {
+			cond.Min = uintExtremum()
+		}
 	}
 
 	if oneIn(4) {
 		cond.Max = nil
 	} else {
 		cond.MaxExclusive = oneIn(4)
+		if oneIn(16) {
+			cond.Max = uintExtremum()
+		}
 	}
+}
+
+// uintExtremum returns 0 or MaxUint64, the two values where the server's
+// half-open [min, max+1) normalisation has nowhere to go: `> MaxUint64` collapses
+// to the empty range and `<= MaxUint64` drops the bound entirely, while `< 0` is
+// empty and `>= 0` is no bound at all (see resolveUintBounds, applyMinExclusiveUint
+// and applyMaxInclusiveUint).
+func uintExtremum() *uint64 {
+	v := uint64(math.MaxUint64)
+	if oneIn(2) {
+		v = 0
+	}
+
+	return &v
 }
 
 // genTransactionFilterFree rolls a non-nil index-free transactions filter: a
@@ -1744,6 +1829,14 @@ func describeFilter(f *commonpb.QueryFilter) string {
 				field := "audit:" + strings.TrimPrefix(x.Audit.GetField().String(), "AUDIT_FIELD_")
 				if uc := x.Audit.GetUintCond(); uc != nil {
 					return field + describeUintBounds(uc)
+				}
+
+				if p, isPrefix := x.Audit.GetCondition().(*commonpb.AuditCondition_StringPrefix); isPrefix {
+					return field + "^=" + p.StringPrefix
+				}
+
+				if param := x.Audit.GetStringCond().GetParam(); param != "" {
+					return field + "=$" + param
 				}
 
 				return field + "=" + x.Audit.GetStringCond().GetHardcoded()
