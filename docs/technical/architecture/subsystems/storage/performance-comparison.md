@@ -49,6 +49,19 @@ The [comparison run 36661203464](https://github.com/formancehq/ledger/actions/ru
 
 On the same run's five-sample microbenchmarks, RocksDB batch writes were 121% slower for 5 entries, 81% slower for 100 entries, and 41% slower for 1,000 entries; a standalone batch commit was 51% slower. The HTTP write p99 varies materially between campaigns, while the batch microbenchmarks consistently favor Pebble. Neither observation justifies claiming performance equivalence or extrapolating a production throughput limit. Profile the batch path and repeat under a representative three-node load before setting an acceptance threshold.
 
+The [comparison run 36669545346](https://github.com/formancehq/ledger/actions/runs/36669545346) measured the current RocksDB commit `0a336a65e2e73abf200e2f84094ed6291216f1a2` against the same Pebble baseline. The two-run arithmetic means were:
+
+| Offered load | Metric | Pebble | RocksDB | Delta |
+| --- | --- | ---: | ---: | ---: |
+| 30 writes/s + 15 reads/s | Write p99 | 12.02 ms | 13.04 ms | +8.5% |
+| 30 writes/s + 15 reads/s | Read p99 | 11.60 ms | 11.97 ms | +3.3% |
+| 30 writes/s + 15 reads/s | Mean sampled RSS | 158.2 MiB | 140.6 MiB | -11.1% |
+| 50 writes/s + 25 reads/s | Write p99 | 12.56 ms | 13.14 ms | +4.6% |
+| 50 writes/s + 25 reads/s | Read p99 | 11.56 ms | 11.82 ms | +2.3% |
+| 50 writes/s + 25 reads/s | Mean sampled RSS | 185.5 MiB | 152.0 MiB | -18.1% |
+
+All eight HTTP runs had zero request failures and dropped iterations. On the same commit, five-sample storage microbenchmarks found RocksDB batch writes 122% slower for 5 entries, 64% slower for 100 entries, and 32% slower for 1,000 entries. These results support a modest latency penalty at the offered HTTP rates in this repeat, but the earlier campaign variation and limited repetitions prevent a claim of statistical equivalence or a production capacity estimate.
+
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
 
 ```bash
