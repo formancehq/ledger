@@ -472,7 +472,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		return
 	}
 
-	serverRows, modelRows := c.preparedPageDiag(call, after, cur)
+	serverRows, modelRows, rowDiag := c.preparedPageDiag(call, after, cur)
 
 	assert.Unreachable("singleton_driver_model: prepared query page outside model", internal.Details{
 		"ledger":       call.ledger,
@@ -488,6 +488,7 @@ func (c *Checker) validateExecuteList(maxTicket uint64, call preparedCall, after
 		"rows":         len(cur.GetAccountData()) + len(cur.GetTransactionData()) + len(cur.GetLogData()),
 		"serverRows":   serverRows,
 		"modelRows":    modelRows,
+		"rowDiag":      rowDiag,
 		"modelQueries": c.modelPreparedQueries(call.ledger),
 	})
 }
@@ -928,7 +929,7 @@ func describeAggregate(agg *commonpb.AggregateResult) string {
 // preparedPageDiag renders the page the server returned and the page the
 // COMMITTED model state predicts for it, so a finding names the divergence
 // instead of only reporting that one exists. Acquires c.mu.
-func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) (string, string) {
+func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonpb.PreparedQueryCursor) (string, string, string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -936,17 +937,17 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 
 	stored, exists := ls.PreparedQuery(call.name)
 	if !exists {
-		return preparedServerRows(cur), "<query absent from committed state>"
+		return preparedServerRows(cur), "<query absent from committed state>", ""
 	}
 
 	bound, resolved := substituteParams(stored.GetFilter(), call.params)
 	if !resolved {
-		return preparedServerRows(cur), "<parameters unresolved against committed filter>"
+		return preparedServerRows(cur), "<parameters unresolved against committed filter>", ""
 	}
 
 	switch stored.GetTarget() {
 	case commonpb.QueryTarget_QUERY_TARGET_ACCOUNTS:
-		return preparedServerRows(cur), strings.Join(preparedAccountProbe(ls, bound, string(after), call.pageSize), ",")
+		return preparedServerRows(cur), strings.Join(preparedAccountProbe(ls, bound, string(after), call.pageSize), ","), ""
 	case commonpb.QueryTarget_QUERY_TARGET_TRANSACTIONS:
 		rows := preparedTransactionWindowRows(ls, bound, after)
 		ids := make([]uint64, 0, len(rows))
@@ -955,7 +956,7 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 				ids = append(ids, row.id)
 			}
 		}
-		return preparedServerRows(cur), joinUint64(ids)
+		return preparedServerRows(cur), joinUint64(ids), ""
 	case commonpb.QueryTarget_QUERY_TARGET_LOGS:
 		rows := preparedLogWindowRows(ls, call.ledger, bound, after)
 		ids := make([]uint64, 0, len(rows))
@@ -964,10 +965,74 @@ func (c *Checker) preparedPageDiag(call preparedCall, after []byte, cur *commonp
 				ids = append(ids, row.id)
 			}
 		}
-		return preparedServerRows(cur), joinUint64(ids)
+		return preparedServerRows(cur), joinUint64(ids), preparedLogPageDiag(call.ledger, rows, cur)
 	default:
-		return preparedServerRows(cur), "<non-executable target>"
+		return preparedServerRows(cur), "<non-executable target>", ""
 	}
+}
+
+// preparedLogPageDiag names the first difference that the ID-only page
+// rendering cannot show. It uses the committed model solely for diagnostics;
+// matchesModel remains the verdict across all candidate response frontiers.
+func preparedLogPageDiag(ledger string, rows []logWindowRow, cur *commonpb.PreparedQueryCursor) string {
+	page := serverLogRows(cur.GetLogData())
+	for _, got := range page {
+		index := -1
+		for i, row := range rows {
+			if row.id == got.id {
+				index = i
+				break
+			}
+		}
+		if index < 0 {
+			return fmt.Sprintf("id=%d absent from committed model window", got.id)
+		}
+		if fields := preparedLogRowDifferences(ledger, rows[index], got); fields != "" {
+			return fmt.Sprintf("id=%d differs in %s", got.id, fields)
+		}
+	}
+
+	remaining, required := 0, 0
+	for _, row := range rows {
+		if len(page) == 0 || row.id > page[len(page)-1].id {
+			remaining++
+			if row.required {
+				required++
+			}
+		}
+	}
+	return fmt.Sprintf("rows match committed model by ID/content; hasMore=%t nextPresent=%t remainingPossible=%d remainingRequired=%d",
+		cur.GetHasMore(), cur.GetNext() != "", remaining, required)
+}
+
+func preparedLogRowDifferences(ledger string, want logWindowRow, got serverLogRow) string {
+	var fields []string
+	if got.ledger != ledger {
+		fields = append(fields, "ledger")
+	}
+	if got.kind != want.kind {
+		fields = append(fields, "kind")
+	}
+	if want.payload != "" && got.payload != want.payload {
+		fields = append(fields, "payload")
+	}
+	if (want.tx == nil) != (got.tx == nil) ||
+		(want.tx != nil && got.tx != nil && !logTxMatches(want.tx, got.tx)) {
+		fields = append(fields, "transaction")
+	}
+	if got.revertsID != want.revertsID {
+		fields = append(fields, "revertsID")
+	}
+	if want.sequence != 0 && got.sequence != want.sequence {
+		fields = append(fields, "sequence")
+	}
+	if got.purged != want.purged || got.newKept != want.newKept || got.ephemeral != want.ephemeral {
+		fields = append(fields, "volumeAnnotations")
+	}
+	if want.date != nil && (!got.hasDate || got.date != want.date.GetData()) {
+		fields = append(fields, "date")
+	}
+	return strings.Join(fields, ",")
 }
 
 // preparedServerRows renders a page's keys, whichever target it carries.
