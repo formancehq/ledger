@@ -316,15 +316,13 @@ def main():
 def _report_events(events):
     """Report runner events and require proof that checks actually succeeded.
 
-    Network errors are tolerated only after a later execution completes real
-    checks successfully, proving that the runner recovered before finishing.
+    Every execution error fails the run. A later successful execution does not
+    prove that the failed request and its conformance checks were retried.
     """
     has_failures = False
     has_errors = False
     tested_count = 0
     successful_execution_count = 0
-    recovered_network_error_count = 0
-    pending_network_error_count = 0
     finished = False
 
     for event in events:
@@ -357,16 +355,9 @@ def _report_events(events):
                         print(f"    FAIL: {check_result.name}: {check_result.message}{detail}")
 
             if event.result.has_errors:
-                # Distinguish real server errors from transient network errors
-                is_network_error = bool(event.result.errors) and all(
-                    _is_network_error(error) for error in event.result.errors
-                )
-                if is_network_error:
-                    pending_network_error_count += 1
-                else:
-                    has_errors = True
-                    for error in event.result.errors:
-                        print(f"    ERROR: {error}", file=sys.stderr)
+                has_errors = True
+                for error in event.result.errors:
+                    print(f"    ERROR: {method} {path}: {error}", file=sys.stderr)
 
             if (
                 not event.result.has_failures
@@ -374,14 +365,12 @@ def _report_events(events):
                 and any(check.value is Status.success for check in event.result.checks)
             ):
                 successful_execution_count += 1
-                recovered_network_error_count += pending_network_error_count
-                pending_network_error_count = 0
 
         elif isinstance(event, Finished):
             finished = True
             print("=" * 60)
             passed = event.passed_count
-            errored = event.errored_count - recovered_network_error_count
+            errored = event.errored_count
             print(
                 f"Tested {tested_count} endpoint(s) | "
                 f"Passed: {passed} | "
@@ -389,19 +378,6 @@ def _report_events(events):
                 f"Errored: {errored} | "
                 f"Skipped: {event.skipped_count}"
             )
-            if recovered_network_error_count > 0:
-                print(
-                    "  (ignored "
-                    f"{recovered_network_error_count} recovered transient network "
-                    "error(s))"
-                )
-            if pending_network_error_count > 0:
-                has_errors = True
-                print(
-                    f"  ERROR: {pending_network_error_count} transient network "
-                    "error(s) were not followed by a successful check execution",
-                    file=sys.stderr,
-                )
             if successful_execution_count == 0:
                 has_errors = True
                 print(
@@ -417,27 +393,6 @@ def _report_events(events):
         print("ERROR: Schemathesis runner ended without a Finished event", file=sys.stderr)
         return 1
     return 1 if has_failures or has_errors else 0
-
-
-def _is_network_error(error):
-    """Check if an error is a transient network error (connection reset, etc.).
-
-    These occur intermittently due to HTTP connection pooling and the Go
-    server's connection lifecycle. The reporter still requires a later
-    successful check execution as proof that the runner recovered.
-    """
-    error_str = str(error)
-    network_indicators = [
-        "ConnectionResetError",
-        "Connection reset by peer",
-        "Connection broken",
-        "ChunkedEncodingError",
-        "ConnectionRefusedError",
-        "ConnectionAbortedError",
-        "BrokenPipeError",
-        "network_other",
-    ]
-    return any(indicator in error_str for indicator in network_indicators)
 
 
 if __name__ == "__main__":
