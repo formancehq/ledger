@@ -24,7 +24,7 @@ import (
 // readLastAppliedIndex reads the last applied Raft index directly from PebbleReader.
 // Defined here to avoid importing state (which imports attributes, creating a cycle).
 func readLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
-	get, closer, err := reader.Get([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex})
+	get, closer, err := reader.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex})
 	if err != nil {
 		if errors.Is(err, pebble.ErrNotFound) {
 			return 0, nil
@@ -48,7 +48,7 @@ func setAppliedIndex(b *dal.WriteSession, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
 
-	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, value)
+	return b.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, value)
 }
 
 // createTarFromDir creates a tar archive of dirPath and writes it to the given writer.
@@ -158,10 +158,9 @@ func TestPrepareForBackupPreservesAttributesByteForByte(t *testing.T) {
 	require.Equal(t, before, after, "attribute zone must be byte-for-byte identical after PrepareForBackup")
 }
 
-// TestPrepareForBackupResetsGlobalZone asserts the Global-zone preparation:
-// applied index preserved as the genesis boundary, persisted config deleted,
-// persisted bloom blocks dropped.
-func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
+// TestPrepareForBackupResetsClusterPersistentZone asserts the entire local
+// zone is dropped, including a future sub-prefix unknown to this code.
+func TestPrepareForBackupResetsClusterPersistentZone(t *testing.T) {
 	t.Parallel()
 
 	tmpDir := t.TempDir()
@@ -172,8 +171,12 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 
 	batch := s.OpenWriteSession()
 	require.NoError(t, setAppliedIndex(batch, 200))
-	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig}, []byte("node+cluster")))
-	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00}, []byte("stale-block")))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig}, []byte("node+cluster")))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, 0x00}, []byte("stale-block")))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, 0xFE}, []byte("future-local")))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, 0xFE}, []byte("future-business")))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig}, []byte("replicated-config")))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobRemovedMembers, 0x01}, []byte("source-tombstone")))
 	checkpointKey := dal.NewKeyBuilder().
 		PutZonePrefix(dal.ZoneGlobal, dal.SubGlobQueryCheckpoint).
 		PutUint64(7).
@@ -186,7 +189,7 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	// restore path must drop these so the booting node does not dial
 	// the wrong pods.
 	require.NoError(t, batch.SetBytes(
-		append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
+		append([]byte{dal.ZoneClusterPersistent, dal.SubGlobPeers},
 			0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07),
 		[]byte("stale-peer-7"),
 	))
@@ -199,13 +202,25 @@ func TestPrepareForBackupResetsGlobalZone(t *testing.T) {
 	require.Equal(t, uint64(200), idx,
 		"the checkpoint's applied index must be preserved as the genesis boundary — the WAL-snapshot index the restored FSM genesis occupies")
 
-	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
+	_, _, err = s.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted config must be deleted")
 
-	_, _, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobBloom, 0x00})
+	_, _, err = s.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom, 0x00})
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted bloom blocks must be dropped")
+	_, _, err = s.Get([]byte{dal.ZoneClusterPersistent, 0xFE})
+	require.ErrorIs(t, err, pebble.ErrNotFound, "the entire local zone must be dropped")
+	value, closer, err := s.Get([]byte{dal.ZoneGlobal, 0xFE})
+	require.NoError(t, err)
+	require.Equal(t, []byte("future-business"), value)
+	require.NoError(t, closer.Close())
+	value, closer, err = s.Get([]byte{dal.ZoneGlobal, dal.SubGlobClusterConfig})
+	require.NoError(t, err)
+	require.Equal(t, []byte("replicated-config"), value)
+	require.NoError(t, closer.Close())
+	_, _, err = s.Get([]byte{dal.ZoneClusterPersistent, dal.SubGlobRemovedMembers, 0x01})
+	require.ErrorIs(t, err, pebble.ErrNotFound, "source removed-member tombstones must not survive")
 
-	_, _, err = s.Get(append([]byte{dal.ZoneGlobal, dal.SubGlobPeers},
+	_, _, err = s.Get(append([]byte{dal.ZoneClusterPersistent, dal.SubGlobPeers},
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x07))
 	require.ErrorIs(t, err, pebble.ErrNotFound, "persisted Raft peers must be dropped (EN-1413)")
 
@@ -270,7 +285,7 @@ func TestPrepareForBackupRejectsMalformedAppliedIndex(t *testing.T) {
 	t.Cleanup(func() { _ = s.Close() })
 
 	batch := s.OpenWriteSession()
-	require.NoError(t, batch.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, []byte{0x01, 0x02, 0x03}))
+	require.NoError(t, batch.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, []byte{0x01, 0x02, 0x03}))
 	require.NoError(t, batch.Commit())
 
 	err = PrepareForBackup(s)

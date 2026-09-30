@@ -231,8 +231,8 @@ func TestCacheSnapshotter_EN1527_RestoreRejectsMalformedBloomBlock(t *testing.T)
 		handle, err := dataStore.NewDirectReadHandle()
 		require.NoError(t, err)
 		iter, err := handle.NewIter(&pebble.IterOptions{
-			LowerBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom},
-			UpperBound: []byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+			LowerBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+			UpperBound: []byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 		})
 		require.NoError(t, err)
 		require.True(t, iter.First(), "a persisted bloom row must exist")

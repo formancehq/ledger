@@ -204,7 +204,7 @@ func TestPeerStore_LoadAllEmpty(t *testing.T) {
 }
 
 // TestPeerStore_KeyEncodingIsScoped pins the key layout to
-// [ZoneGlobal][SubGlobPeers][BE 8] so a future global-prefix addition (or
+// [ZoneClusterPersistent][SubGlobPeers][BE 8] so a future global-prefix addition (or
 // a stray Put with a colliding sub-prefix) is caught by the test instead
 // of silently entangling with peer iteration.
 func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
@@ -212,7 +212,7 @@ func TestPeerStore_KeyEncodingIsScoped(t *testing.T) {
 
 	k := peerKey(0x0102030405060708)
 	require.Equal(t, []byte{
-		dal.ZoneGlobal,
+		dal.ZoneClusterPersistent,
 		dal.SubGlobPeers,
 		0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
 	}, k)

@@ -436,11 +436,12 @@ func SetAppliedIndex(b *dal.WriteSession, index uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, index)
 
-	return b.SetBytes([]byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, value)
+	return b.SetBytes([]byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, value)
 }
 
-// SetLastAppliedTimestamp writes the last applied HLC timestamp to the batch.
-func setLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
+// StoreLastAppliedTimestamp writes the last applied HLC timestamp to the batch.
+// Restore replay also uses it to fold post-checkpoint audit timestamps.
+func StoreLastAppliedTimestamp(b *dal.WriteSession, timestamp uint64) error {
 	value := make([]byte, 8)
 	binary.BigEndian.PutUint64(value, timestamp)
 

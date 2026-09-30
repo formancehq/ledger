@@ -202,7 +202,7 @@ func TestStore_RestoreCheckpoint_PreservesPersistedConfig(t *testing.T) {
 	s := newTestStore(t)
 
 	// Write a persisted config key (simulates node identity)
-	configKey := []byte{ZoneGlobal, SubGlobPersistedConfig}
+	configKey := []byte{ZoneClusterPersistent, SubGlobPersistedConfig}
 	configVal := []byte(`{"nodeId":"node-1","clusterId":"cluster-1"}`)
 
 	batch := s.OpenWriteSession()

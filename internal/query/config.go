@@ -10,7 +10,7 @@ import (
 // ReadLastAppliedIndex returns the last applied Raft index from the given reader.
 // Returns 0 if not found.
 func ReadLastAppliedIndex(reader dal.PebbleGetter) (uint64, error) {
-	return dal.ReadUint64(reader, []byte{dal.ZoneGlobal, dal.SubGlobLastAppliedIndex}, 0)
+	return dal.ReadUint64(reader, []byte{dal.ZoneClusterPersistent, dal.SubGlobLastAppliedIndex}, 0)
 }
 
 // ReadLastAppliedTimestamp returns the last applied HLC timestamp (microseconds since epoch) from the given reader.
@@ -66,7 +66,7 @@ func ReadClusterPolicy(reader dal.PebbleGetter) (*commonpb.ClusterPolicy, error)
 // adapter and CLI code can read ClusterID from an opened store without
 // pulling in the composition root (which would create an import cycle).
 func ReadPersistedConfig(reader dal.PebbleGetter) (*commonpb.PersistedConfig, error) {
-	cfg, err := dal.ReadProto[*commonpb.PersistedConfig](reader, []byte{dal.ZoneGlobal, dal.SubGlobPersistedConfig})
+	cfg, err := dal.ReadProto[*commonpb.PersistedConfig](reader, []byte{dal.ZoneClusterPersistent, dal.SubGlobPersistedConfig})
 	if err != nil {
 		return nil, fmt.Errorf("loading persisted config: %w", err)
 	}

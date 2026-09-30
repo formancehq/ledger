@@ -176,8 +176,8 @@ func (fsm *Machine) applyClusterConfig(batch *dal.WriteSession, raftIndex uint64
 
 		// Purge all persisted bloom blocks.
 		if err := batch.DeleteRangeNoSync(
-			[]byte{dal.ZoneGlobal, dal.SubGlobBloom},
-			[]byte{dal.ZoneGlobal, dal.SubGlobBloom + 1},
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom},
+			[]byte{dal.ZoneClusterPersistent, dal.SubGlobBloom + 1},
 		); err != nil {
 			return fmt.Errorf("purging bloom blocks: %w", err)
 		}

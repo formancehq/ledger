@@ -12080,8 +12080,9 @@ func (x *LedgerStats) GetLogCount() uint64 {
 }
 
 // PersistedConfig stores critical configuration parameters that must not change
-// between restarts with existing data. Stored at Pebble key {0x06, 0x0C}
-// (Global zone, SubGlobPersistedConfig).
+// between restarts with existing data. Stored at Pebble key {0x08, 0x0C}
+// (ZoneClusterPersistent, SubGlobPersistedConfig). The old {0x06, 0x0C}
+// anchor from earlier development layouts is detected and rejected at boot.
 type PersistedConfig struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	NodeId               uint64                 `protobuf:"varint,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
