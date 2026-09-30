@@ -138,8 +138,8 @@ send [USD/2 *] (
 			Expect(err).To(HaveOccurred())
 			info := actions.ExtractGRPCErrorInfo(err)
 			Expect(info).NotTo(BeNil(), "error must carry error info: %v", err)
-			Expect(info.Reason).To(Equal(domain.ErrReasonValidation),
-				"send-all from unbounded-overdraft source must be a compile-time validation error, got %q", info.Reason)
+			Expect(info.Reason).To(Equal(domain.ErrReasonNumscriptCompileError),
+				"send-all from unbounded-overdraft source must be a compile-time error, got %q", info.Reason)
 		})
 	})
 

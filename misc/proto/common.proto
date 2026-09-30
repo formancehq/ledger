@@ -1326,6 +1326,13 @@ enum ErrorReason {
   // Submit the revert in a later batch.
   ERROR_REASON_REVERT_TARGET_CREATED_IN_BATCH = 70;
   ERROR_REASON_SINK_CONTROLLER_MISMATCH = 71;
+  // ERROR_REASON_NUMSCRIPT_COMPILE_ERROR: a script that parsed and resolved
+  // cannot run on the Numscript VM — a static-semantics error the compiler's
+  // typechecker catches, a feature used without its flag, an unsupported
+  // construct, exceeded VM capacity, or a var value that does not bind.
+  // Deterministic for a given script and vars (Kind=Validation); rejected at
+  // admission, never proposed.
+  ERROR_REASON_NUMSCRIPT_COMPILE_ERROR = 72;
 }
 
 // IdempotencyFailure captures a definitive business rejection so a retried key

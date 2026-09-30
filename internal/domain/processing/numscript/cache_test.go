@@ -3,12 +3,12 @@ package numscript
 import (
 	"testing"
 
-	numscriptlib "github.com/formancehq/numscript"
-	"go.opentelemetry.io/otel/attribute"
-
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
+	numscriptlib "github.com/formancehq/numscript"
 
 	"github.com/formancehq/ledger/v3/internal/domain"
 )

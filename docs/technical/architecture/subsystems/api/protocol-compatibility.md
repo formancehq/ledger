@@ -231,8 +231,9 @@ mismatch, an undeclared variable, an unknown function or var type, `oneof` or
 a mid-script `balance()` without its feature flag, a send-all from an
 unbounded-overdraft source — used to pass admission, reach apply, and fail
 there as `ERROR_REASON_NUMSCRIPT_RUNTIME` (`KindInternal`). It now fails
-at admission as `ErrNumscriptCompile`, `ERROR_REASON_VALIDATION`
-(`KindValidation`), and such an order no longer produces a proposal, a failure
+at admission as `ErrNumscriptCompile` with the new
+`ERROR_REASON_NUMSCRIPT_COMPILE_ERROR` (`KindValidation`, detail in the
+`details` metadata key, like `NUMSCRIPT_PARSE_ERROR`), and such an order no longer produces a proposal, a failure
 log, or an audit entry. The one exception is a `latest` script reference under
 an idempotency key: admission forwards it as preload-unavailable (see
 [admission idempotency](../admission/idempotency.md)), so the FSM replays the

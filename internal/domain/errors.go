@@ -260,6 +260,7 @@ const (
 	ErrReasonBalanceNotFound               = "BALANCE_NOT_FOUND"
 	ErrReasonBalanceNotPreloaded           = "BALANCE_NOT_PRELOADED"
 	ErrReasonNumscriptParseError           = "NUMSCRIPT_PARSE_ERROR"
+	ErrReasonNumscriptCompileError         = "NUMSCRIPT_COMPILE_ERROR"
 	ErrReasonValidation                    = "VALIDATION"
 	ErrReasonAuditDisabled                 = "AUDIT_DISABLED"
 	ErrReasonSinkAlreadyExists             = "SINK_ALREADY_EXISTS"
@@ -1355,20 +1356,25 @@ func (e *ErrNumscriptParse) Metadata() map[string]string {
 }
 
 // ErrNumscriptCompile — a script that parsed and resolved cannot run on the
-// Numscript VM, the only execution engine: the compiler does not support a
-// construct yet, the program exceeds the VM's capacity (register banks,
-// program size), or a var value does not bind to the program's variable
-// layout. Deterministic for a given script and vars, so it is a freezable
-// validation rejection. It reuses the generic VALIDATION reason (the message
-// carries the detail), like the other numscript validation sentinels.
+// Numscript VM, the only execution engine: a static-semantics error caught by
+// the compiler's typechecker (Parse checks syntax only), a feature used
+// without its flag, a construct the compiler does not support yet, a program
+// that exceeds the VM's capacity (register banks, program size), or a var
+// value that does not bind to the program's variable layout. Deterministic for
+// a given script and vars, so it is a freezable validation rejection. It has
+// its own reason, the compile-time counterpart of NUMSCRIPT_PARSE_ERROR, so a
+// client can tell a bad script from any other validation failure without
+// matching the message.
 type ErrNumscriptCompile struct {
 	Detail string
 }
 
-func (e *ErrNumscriptCompile) Error() string             { return "numscript compile error: " + e.Detail }
-func (*ErrNumscriptCompile) Kind() ErrorKind             { return KindValidation }
-func (*ErrNumscriptCompile) Reason() string              { return ErrReasonValidation }
-func (*ErrNumscriptCompile) Metadata() map[string]string { return nil }
+func (e *ErrNumscriptCompile) Error() string { return "numscript compile error: " + e.Detail }
+func (*ErrNumscriptCompile) Kind() ErrorKind { return KindValidation }
+func (*ErrNumscriptCompile) Reason() string  { return ErrReasonNumscriptCompileError }
+func (e *ErrNumscriptCompile) Metadata() map[string]string {
+	return map[string]string{"details": e.Detail}
+}
 
 // ErrDependencyDiscoveryFailed is returned when admission cannot discover all
 // dependencies needed to preload a Numscript transaction before proposal.
