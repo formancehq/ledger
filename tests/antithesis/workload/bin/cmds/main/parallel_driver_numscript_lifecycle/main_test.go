@@ -21,9 +21,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
-
-	logging "github.com/formancehq/go-libs/v5/pkg/observe/log"
-	ledgergrpc "github.com/formancehq/ledger/v3/internal/adapter/grpc"
 )
 
 // Exercise the production list handler and real gRPC trailers, rather than

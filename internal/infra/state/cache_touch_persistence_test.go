@@ -86,7 +86,7 @@ func TestPreload_RejectsAliasedAttrCodeBeforeIdempotencyRestore(t *testing.T) {
 	u128, tag := attributes.MakeKey(domain.LedgerKey{Name: "L"}.Bytes())
 	plan := &raftcmdpb.ExecutionPlan{
 		LastPersistedIndex: machine.Registry.Cache.BaseIndex.Gen0,
-		IdempotencyKeys:    []*raftcmdpb.ReloadIdempotencyKey{{Key: "must-remain-absent", Value: &commonpb.IdempotencyKeyValue{FirstLogSequence: 1}}},
+		IdempotencyKeys:    []*raftcmdpb.ReloadIdempotencyKey{{Key: "must-remain-absent", Value: &internalcommonpb.IdempotencyKeyValue{FirstLogSequence: 1}}},
 		Attributes: []*raftcmdpb.AttributeCoverage{{
 			Id:       &raftcmdpb.AttributeID{Id: u128[:], Tag: tag},
 			AttrCode: uint32(dal.SubAttrLedger) + 256,

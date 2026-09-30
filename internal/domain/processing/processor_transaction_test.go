@@ -1166,9 +1166,9 @@ func TestProcessCreateTransaction_Numscript_CompetingMetadataErrors(t *testing.T
 		expectGetLedger(mockStore, domain.LedgerKey{Name: "test-ledger"}, (&commonpb.LedgerInfo{Name: "test-ledger", Id: 1}).AsReader(), nil).AnyTimes()
 		mockStore.EXPECT().GetDate().Return((&commonpb.Timestamp{Data: 1234567890}).AsReader()).AnyTimes()
 		setupNumscriptVolumeMocks(mockStore)
-		request := &servicepb.Request{Type: &servicepb.Request_Apply{Apply: &servicepb.LedgerApplyRequest{
+		request := &commonpb.Request{Type: &commonpb.Request_Apply{Apply: &commonpb.LedgerApplyRequest{
 			Ledger: "test-ledger",
-			Action: &servicepb.LedgerAction{Data: &servicepb.LedgerAction_CreateTransaction{CreateTransaction: &servicepb.CreateTransactionPayload{
+			Action: &commonpb.LedgerAction{Data: &commonpb.LedgerAction_CreateTransaction{CreateTransaction: &commonpb.CreateTransactionPayload{
 				Script: &commonpb.Script{Plain: script, Vars: map[string]string{"poison": "safe\x00poison"}},
 			}}},
 		}}}
