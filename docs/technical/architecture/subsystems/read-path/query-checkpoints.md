@@ -87,7 +87,9 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
      DAL deletion gate marks the checkpoint deleted and invokes the cache's
      eviction hook under the same mutex. Active readers retain their leases;
      their last release closes the pair before the files are removed. Idle
-     expiry and count eviction also close the pair. Every close runs in the
+     expiry and count eviction also close the pair. Idle timers carry a
+     generation so a callback delayed past reacquisition cannot close a newly
+     refreshed idle period. Every close runs in the
      same critical section that removes the entry. A reader that acquired its
      filesystem lease before deletion but has not entered the cache yet checks
      deletion state after opening; if the hook saw no entry, this check marks

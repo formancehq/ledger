@@ -337,3 +337,32 @@ func TestCheckpointStoreCacheBoundsIdlePairs(t *testing.T) {
 		cache.evict(id)
 	}
 }
+
+func TestCheckpointStoreCacheRejectsOldIdleTimer(t *testing.T) {
+	t.Parallel()
+	impl := newCheckpointGateFixture(t)
+	var cache checkpointStoreCache
+	var opens atomic.Int64
+	open := realOpener(t, impl, &opens)
+	id := gateCheckpointID
+	_, _, release, err := cache.acquire(t.Context(), id, testLogger(), open)
+	require.NoError(t, err)
+	release()
+	cache.mu.Lock()
+	entry := cache.entries[id]
+	oldGeneration := entry.idleGeneration
+	cache.mu.Unlock()
+
+	_, _, release, err = cache.acquire(t.Context(), id, testLogger(), open)
+	require.NoError(t, err)
+	release()
+	// A callback that had already started before Stop may reach the mutex
+	// after the second release installed a fresh timer.
+	cache.evictIdle(id, entry, oldGeneration)
+	require.Contains(t, cache.entries, id)
+	_, _, release, err = cache.acquire(t.Context(), id, testLogger(), open)
+	require.NoError(t, err)
+	release()
+	require.Equal(t, int64(1), opens.Load())
+	cache.evict(id)
+}

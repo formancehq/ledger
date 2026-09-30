@@ -54,10 +54,12 @@ type checkpointStoreEntry struct {
 
 	logger logging.Logger
 
-	refs    int
-	idleAt  time.Time
-	timer   *time.Timer
-	deleted bool
+	refs   int
+	idleAt time.Time
+	timer  *time.Timer
+	// Fences an already-running callback from an earlier idle period.
+	idleGeneration uint64
+	deleted        bool
 }
 
 // openCheckpointDirs opens a checkpoint's main store and read index read-only.
@@ -109,6 +111,7 @@ func (c *checkpointStoreCache) acquire(ctx context.Context, id uint64, logger lo
 		c.entries[id] = entry
 	}
 	entry.refs++
+	entry.idleGeneration++
 	if entry.timer != nil {
 		entry.timer.Stop()
 		entry.timer = nil
@@ -196,7 +199,9 @@ func (c *checkpointStoreCache) release(id uint64, entry *checkpointStoreEntry) {
 		return
 	}
 	entry.idleAt = time.Now()
-	entry.timer = time.AfterFunc(checkpointStoreIdleTTL, func() { c.evictIdle(id, entry) })
+	entry.idleGeneration++
+	generation := entry.idleGeneration
+	entry.timer = time.AfterFunc(checkpointStoreIdleTTL, func() { c.evictIdle(id, entry, generation) })
 	c.trimIdle()
 }
 
@@ -213,10 +218,10 @@ func (c *checkpointStoreCache) evict(id uint64) {
 	}
 }
 
-func (c *checkpointStoreCache) evictIdle(id uint64, entry *checkpointStoreEntry) {
+func (c *checkpointStoreCache) evictIdle(id uint64, entry *checkpointStoreEntry, generation uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if entry.refs == 0 && c.entries[id] == entry {
+	if entry.refs == 0 && c.entries[id] == entry && entry.idleGeneration == generation {
 		c.closeEntry(id, entry)
 	}
 }
