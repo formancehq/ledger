@@ -249,7 +249,8 @@ func TestBackupFailureProjectionFlipAfterCheckpoint(t *testing.T) {
 	// deliberately absent from the exported audit/log delta.
 	proposal := &raftcmdpb.Proposal{
 		Id: 2, Date: &commonpb.Timestamp{Data: 1700000002},
-		ExecutionPlan: &raftcmdpb.ExecutionPlan{},
+		ExecutionPlan:  &raftcmdpb.ExecutionPlan{},
+		CallerSnapshot: commands.SystemCallerSnapshot(commands.ComponentClusterConfig),
 		TechnicalUpdates: []*raftcmdpb.TechnicalUpdate{{Kind: &raftcmdpb.TechnicalUpdate_ClusterConfig{
 			ClusterConfig: &commonpb.ClusterConfig{RotationThreshold: 1000,
 				FailureProjectionVersion: state.FailureProjectionVersionV1},
