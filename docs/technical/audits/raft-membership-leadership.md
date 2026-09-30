@@ -20,6 +20,8 @@ through the complete transition:
   and the voter/learner `ConfState` that governs the operation;
 - logical request identity, leader-local proposal/correlation identity, and Raft
   message identity. They are not interchangeable;
+- discovered peer endpoint, outbound connection attempt, priority stream, and
+  outstanding liveness probe identity and deadline;
 - node status (`normal`, snapshotting, syncing/out-of-sync, stopped, or terminal)
   and the exact gate controlling proposal, ReadIndex, campaign, transfer, and
   serving behavior;
@@ -127,6 +129,21 @@ receive duplicate or delayed protocol messages; that fact does not make an API
 mutation idempotent. Trace stream authentication, peer/connection replacement,
 term checks, unreachable reporting, proposal identity, forwarding metadata, and
 the response path before claiming duplication or false acknowledgement.
+
+For silent transport failure, record the old connection's last successful probe,
+the next scheduled probe, its matching response or deadline, any blocked send,
+the attempt cancellation, and the subsequent dial target. A one-way TCP
+blackhole may leave the socket and gRPC stream open; the recovery claim requires
+an observed replacement connection to the current endpoint and delivery of a
+Raft message, not only a closed socket or a fired timer. Check that probing
+still runs while priority queues stay nonempty and that a valid delayed pong
+renews the deadline. Stale, duplicate, or mismatched pongs must not do so.
+Only the high-priority stream carries these probes: its pong establishes that
+stream's liveness, not independent progress on medium or low streams. The
+regression in `internal/infra/node/transport_blackhole_test.go` exercises the
+blackhole, redial, and message delivery path; its sustained-traffic and
+delayed-pong cases guard against false recovery decisions. A full voter-quorum
+recovery claim still needs a cluster-level partition and commit check.
 
 For quorum-certified reads, this domain owns leader/quorum certification and the
 wait until the returned index is locally applied. The read-projection audit owns
