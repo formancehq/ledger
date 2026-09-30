@@ -44,9 +44,9 @@ func (generation *leaderReadyGeneration) run(
 		return err
 	}
 
-	// Linearize readiness publication against leadership loss. Cancellation
-	// happens before cancelAndWait takes this lock, so a loss that starts after
-	// WaitForApplied succeeds but before publication still wins this race.
+	// Recheck cancellation after the FSM wait, before publishing readiness.
+	// cancelAndWait joins done, ensuring publication and its synchronous
+	// callback finish before the leadership-loss transition is published.
 	generation.mu.Lock()
 	defer generation.mu.Unlock()
 
@@ -63,7 +63,8 @@ func (generation *leaderReadyGeneration) run(
 func (generation *leaderReadyGeneration) cancelAndWait() {
 	generation.cancel()
 	close(generation.lost)
-	// run closes done only after releasing the publication lock, so this joins
-	// both the waiter and any readiness callback that linearized first.
+	// run closes done only after publication and its synchronous callback
+	// finish. This join orders them before the leadership-loss transition;
+	// cancelAndWait does not acquire the publication lock.
 	<-generation.done
 }

@@ -354,7 +354,11 @@ func (fsm *Machine) WaitForApplied(ctx context.Context, targetIndex uint64) erro
 	go func() {
 		select {
 		case <-ctx.Done():
+			// Serialize cancellation with the ctx.Err()/Cond.Wait sequence so
+			// the wakeup cannot be lost before the waiter enters the wait queue.
+			fsm.appliedMu.Lock()
 			fsm.appliedCond.Broadcast()
+			fsm.appliedMu.Unlock()
 		case <-done:
 		}
 	}()

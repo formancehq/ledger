@@ -155,18 +155,18 @@ preceding entry is committed and locally applied. `WaitLeaderReady` exposes
 this generation-specific gate to admission, and `LeaderReadyEvent` lets
 bootstrap reconcile persisted cluster configuration only after the same gate.
 
-Each acquisition owns a cancellable readiness generation. Readiness
-publication and generation cancellation are mutually exclusive: after the FSM
-wait succeeds, publication takes the generation lock and rechecks cancellation
-before emitting the event and releasing admission. Leadership loss cancels the
-generation, crosses the same lock, and joins its waiter before publishing the
-loss event. Therefore, if loss begins after the FSM target is applied but
-before readiness publication, cancellation wins and the old generation can
-neither emit `LeaderReadyEvent` nor release admission. Its leadership-loss
-signal wakes requests already waiting on that generation with `ErrNotLeader`.
-If publication already linearized, loss waits for its synchronous observer
-callback to finish before publishing the loss transition. A later acquisition
-always installs a new independent generation.
+Each acquisition owns a cancellable readiness generation. After the FSM
+wait succeeds, the waiter rechecks cancellation before emitting the event and
+releasing admission. Leadership loss cancels the generation and joins its
+waiter through `done` before publishing the loss event. Cancellation observed
+by the recheck prevents the old generation from emitting `LeaderReadyEvent`
+or releasing admission. Cancellation can also arrive after the recheck;
+in that case, the join ensures readiness publication and its synchronous
+observer callback finish before the loss transition is published. The join
+provides this ordering; `cancelAndWait` does not acquire the publication lock.
+The leadership-loss signal wakes requests already waiting on that generation
+with `ErrNotLeader`. A later acquisition always installs a new independent
+generation.
 
 A failed FSM wait completes the background waiter without marking the
 generation ready, so admission remains blocked until its request context is
