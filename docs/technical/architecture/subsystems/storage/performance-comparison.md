@@ -21,6 +21,19 @@ The [comparison run 36646581438](https://github.com/formancehq/ledger/actions/ru
 
 All eight measured runs completed without request errors or dropped iterations. Each 30/15 run completed roughly 2,700 writes and 1,350 reads; each 50/25 run completed roughly 4,500 writes and 2,250 reads. A previous [30/15 campaign](https://github.com/formancehq/ledger/actions/runs/36644657060) also had zero errors or drops and near-equal p99 latencies. The [100/50 campaign](https://github.com/formancehq/ledger/actions/runs/36645788901) saturated Pebble during warmup, so it provides no engine comparison. Two runs per engine are too few to claim statistical equivalence, and these offered rates do not establish either engine's maximum sustainable throughput.
 
+The [comparison run 36652942406](https://github.com/formancehq/ledger/actions/runs/36652942406) repeated the same protocol on RocksDB commit `f554b70f87b1d19b49261767aa7e8094b2c58516`. It found a materially slower 30/15 latency result despite zero errors or dropped iterations. The table again uses the arithmetic mean of two measured runs per engine.
+
+| Offered load | Metric | Pebble | RocksDB | Delta |
+| --- | --- | ---: | ---: | ---: |
+| 30 writes/s + 15 reads/s | Write p99 | 14.59 ms | 24.42 ms | +67.4% |
+| 30 writes/s + 15 reads/s | Read p99 | 12.32 ms | 17.45 ms | +41.7% |
+| 30 writes/s + 15 reads/s | Mean sampled RSS | 152.7 MiB | 140.3 MiB | -8.1% |
+| 50 writes/s + 25 reads/s | Write p99 | 12.79 ms | 13.46 ms | +5.3% |
+| 50 writes/s + 25 reads/s | Read p99 | 11.73 ms | 12.02 ms | +2.5% |
+| 50 writes/s + 25 reads/s | Mean sampled RSS | 182.5 MiB | 154.4 MiB | -15.4% |
+
+At 30/15, RocksDB's second measured write p99 was 32.30 ms versus 16.55 ms in its first run; its second warmup was already slower. The Pebble repeats were 15.54 and 13.64 ms. The available server logs show no write-stall or request-error explanation. This run cannot establish the cause or a stable engine penalty, but it rules out claiming latency equivalence from the earlier close results. Qualification needs more repetitions and CPU, I/O, and compaction tracing on the same runner before a performance acceptance decision.
+
 The same run's storage microbenchmarks (five alternating samples per engine) found RocksDB 108% slower for 5-entry batches, 103% slower for 100-entry batches, and 66% slower for 1,000-entry batches. A 4 KiB point lookup was 24% slower, while 64- and 512-byte lookups were 12% and 17% faster, respectively; the populated account reverse-map lookup was 90% faster. These fixture-level results identify code paths to profile, but their ratios must not be applied to the HTTP results.
 
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
