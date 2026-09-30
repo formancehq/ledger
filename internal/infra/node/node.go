@@ -322,6 +322,13 @@ type pendingRemoval struct {
 	committedIndex uint64
 }
 
+// Each committed removal has its own apply barrier. A node ID can be removed
+// again before an earlier removal's local FSM apply has completed.
+type pendingRemovalKey struct {
+	nodeID         uint64
+	committedIndex uint64
+}
+
 type pendingConfChange struct {
 	nodeID        uint64
 	expectedTypes []raftpb.ConfChangeType
@@ -400,7 +407,7 @@ type Node struct {
 	// re-admitted while its durable tombstone is still queued in the async FSM
 	// applier. Entries are admission-only node-local guards; committed apply is
 	// still deterministic and the replicated tombstone remains authoritative.
-	pendingRemovals SyncMap[uint64, *pendingRemoval]
+	pendingRemovals SyncMap[pendingRemovalKey, *pendingRemoval]
 
 	// confChangeMu serializes external ConfChange operations (AddLearner,
 	// RemoveNode, PromoteLearner) so that only one proposal is in-flight at a
@@ -3014,19 +3021,19 @@ func (node *Node) waitForRemovalApplied(ctx context.Context, nodeID uint64, inst
 // observation time and starts lifecycle-bound cleanup immediately. This makes
 // protection independent of whether the originating RPC is still waiting.
 func (node *Node) trackCommittedRemoval(nodeID uint64, instanceID []byte, committedIndex uint64) (*pendingRemoval, error) {
+	key := pendingRemovalKey{nodeID: nodeID, committedIndex: committedIndex}
 	pending := &pendingRemoval{
 		instanceID:     bytes.Clone(instanceID),
 		committedIndex: committedIndex,
 	}
 
-	actual, loaded := node.pendingRemovals.LoadOrStore(nodeID, pending)
+	actual, loaded := node.pendingRemovals.LoadOrStore(key, pending)
 	if loaded {
-		if actual.committedIndex != committedIndex || !bytes.Equal(actual.instanceID, instanceID) {
+		if !bytes.Equal(actual.instanceID, instanceID) {
 			return nil, fmt.Errorf(
-				"invariant: committed removal for node %d at index %d conflicts with pending removal at index %d",
+				"invariant: committed removal for node %d at index %d has conflicting instance IDs",
 				nodeID,
 				committedIndex,
-				actual.committedIndex,
 			)
 		}
 
@@ -3058,7 +3065,8 @@ func (node *Node) verifyAndClearPendingRemoval(nodeID uint64, pending *pendingRe
 		return false, err
 	}
 
-	return node.pendingRemovals.CompareAndDelete(nodeID, pending), nil
+	key := pendingRemovalKey{nodeID: nodeID, committedIndex: pending.committedIndex}
+	return node.pendingRemovals.CompareAndDelete(key, pending), nil
 }
 
 // schedulePendingRemovalCleanup keeps the admission barrier independent from
@@ -3119,9 +3127,15 @@ func (node *Node) schedulePendingRemovalCleanup(nodeID uint64, pending *pendingR
 // failing closed is required because an apply delay must never let the removed
 // live pod rejoin. The replicated tombstone is authoritative after that point.
 func (node *Node) isRemovalPending(nodeID uint64, instanceID []byte) bool {
-	pending, ok := node.pendingRemovals.Load(nodeID)
-
-	return ok && bytes.Equal(pending.instanceID, instanceID)
+	pending := false
+	node.pendingRemovals.Range(func(key pendingRemovalKey, removal *pendingRemoval) bool {
+		if key.nodeID == nodeID && bytes.Equal(removal.instanceID, instanceID) {
+			pending = true
+			return false
+		}
+		return true
+	})
+	return pending
 }
 
 // ForceRemoveNode removes a node from the Raft cluster by directly applying a
