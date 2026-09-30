@@ -21,40 +21,40 @@ import (
 	"github.com/formancehq/ledger/v3/internal/storage/kv"
 )
 
-// ErrVolumeCachePebbleDivergence is returned when the cache volume does not
-// match what was persisted to Pebble, indicating a cache/storage inconsistency.
+// ErrVolumeCacheStorageDivergence is returned when the cache volume does not
+// match what was persisted to the primary store, indicating a cache/storage inconsistency.
 //
 // Like every sentinel failure and diagnostic it names the full
 // (ledger, account, asset, color) identity: color is part of what makes a
 // volume key unique, so leaving it out merges two distinct offenders into one
 // indistinguishable message.
-type ErrVolumeCachePebbleDivergence struct {
-	Key          domain.VolumeKey
-	CacheInput   string
-	CacheOutput  string
-	PebbleInput  string
-	PebbleOutput string
-	RaftIndex    uint64
+type ErrVolumeCacheStorageDivergence struct {
+	Key           domain.VolumeKey
+	CacheInput    string
+	CacheOutput   string
+	StorageInput  string
+	StorageOutput string
+	RaftIndex     uint64
 }
 
-func (e *ErrVolumeCachePebbleDivergence) Error() string {
+func (e *ErrVolumeCacheStorageDivergence) Error() string {
 	return fmt.Sprintf(
-		"cache/pebble volume divergence for %q/%s/%s/%s at raft index %d: cache(input=%s, output=%s) != pebble(input=%s, output=%s)",
+		"cache/storage volume divergence for %q/%s/%s/%s at raft index %d: cache(input=%s, output=%s) != storage(input=%s, output=%s)",
 		e.Key.LedgerName, e.Key.Account, e.Key.Asset, e.Key.Color, e.RaftIndex,
-		e.CacheInput, e.CacheOutput, e.PebbleInput, e.PebbleOutput,
+		e.CacheInput, e.CacheOutput, e.StorageInput, e.StorageOutput,
 	)
 }
 
 // deduplicateVolumeUpdates collects volume updates from all ApplyResults and
 // keeps only the latest update per canonical key. When multiple raft entries in
 // the same ApplyEntries batch modify the same volume, only the last entry's
-// value is persisted in Pebble (earlier entries are deleted by mergeSimple's
+// value is persisted in storage (earlier entries are deleted by mergeSimple's
 // DeleteAt). Results are iterated in order so later entries naturally overwrite
 // earlier ones.
 //
 // Volumes purged by ephemeral purge in a later entry are excluded: the purge
-// deletes the Pebble entry written by the earlier entry, so verifying the
-// earlier entry's expected value would fail with "volume missing from pebble".
+// deletes the storage entry written by the earlier entry, so verifying the
+// earlier entry's expected value would fail with "volume missing from storage".
 // Ledger deletion likewise removes all volume writes at or before its result,
 // including writes in the same proposal: Merge stages its deletion cascade last.
 // The result index matters: same-name recreation is rejected, so a later write
@@ -84,7 +84,7 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 		}
 
 		// Remove volumes that were purged by this entry's ephemeral purge.
-		// A purge deletes the Pebble entry, which may have been written by
+		// A purge deletes the storage entry, which may have been written by
 		// an earlier entry in this same batch.
 		for _, key := range r.purgedVolumeKeys {
 			if idx, ok := seen[key]; ok {
@@ -106,9 +106,9 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 	return compact
 }
 
-// verifyPostCommitVolumes reads back volumes from Pebble after batch commit
+// verifyPostCommitVolumes reads back volumes from storage after batch commit
 // and compares them with the expected values from the Merge (update.New).
-// This catches bugs where Pebble diverges from what the FSM intended to write.
+// This catches bugs where storage diverges from what the FSM intended to write.
 //
 // We use update.New (the value written during Merge) instead of reading from
 // the cache because cache generation rotations during a batch can evict entries
@@ -117,7 +117,7 @@ func deduplicateVolumeUpdates(results []ApplyResult) []attributes.Update[domain.
 //
 // After the fix/checkpoint-commit-race refactor, all main-store writes go
 // through a single runCommitter goroutine, and the sentinel reads from a
-// Pebble snapshot pinned to the post-commit moment of THIS batch. Any
+// storage snapshot pinned to the post-commit moment of THIS batch. Any
 // divergence reported here must therefore be a genuine FSM determinism bug
 // (cache value vs. serialized batch value computed differently for the same
 // key) — NOT a race between two concurrent commit paths. The earlier
@@ -131,14 +131,14 @@ func verifyPostCommitVolumes(
 	logger logging.Logger,
 ) error {
 	for _, update := range volumeUpdates {
-		// Read from Pebble (the committed value)
-		pebbleValue, err := volumeAttr.Get(store, update.CanonicalKey)
+		// Read from storage (the committed value)
+		storageValue, err := volumeAttr.Get(store, update.CanonicalKey)
 		if err != nil {
-			return fmt.Errorf("reading volume from pebble for verification: %w", err)
+			return fmt.Errorf("reading volume from storage for verification: %w", err)
 		}
 
-		if pebbleValue == nil {
-			assert.Unreachable("committed volume is present in pebble", map[string]any{
+		if storageValue == nil {
+			assert.Unreachable("committed volume is present in storage", map[string]any{
 				"ledger":         update.Key.LedgerName,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
@@ -155,20 +155,20 @@ func verifyPostCommitVolumes(
 				"raftIndex":    raftIndex,
 				"canonicalKey": hex.EncodeToString(update.CanonicalKey),
 				"id":           fmt.Sprintf("%x", update.ID),
-			}).Errorf("SENTINEL DIAG: volume missing from pebble after commit")
+			}).Errorf("SENTINEL DIAG: volume missing from storage after commit")
 
-			return fmt.Errorf("volume missing from pebble after commit for %q/%s/%s/%s at raft index %d (canonicalKey=%x)",
+			return fmt.Errorf("volume missing from storage after commit for %q/%s/%s/%s at raft index %d (canonicalKey=%x)",
 				update.Key.LedgerName, update.Key.Account, update.Key.Asset, update.Key.Color,
 				raftIndex, update.CanonicalKey)
 		}
 
-		// Compare Pebble value with the expected value from Merge
-		pebbleInput := pebbleValue.GetInput().ToBigInt()
-		pebbleOutput := pebbleValue.GetOutput().ToBigInt()
+		// Compare the stored value with the expected value from Merge
+		storageInput := storageValue.GetInput().ToBigInt()
+		storageOutput := storageValue.GetOutput().ToBigInt()
 		expectedInput := update.New.GetInput().ToBigInt()
 		expectedOutput := update.New.GetOutput().ToBigInt()
 
-		if pebbleInput.Cmp(expectedInput) != 0 || pebbleOutput.Cmp(expectedOutput) != 0 {
+		if storageInput.Cmp(expectedInput) != 0 || storageOutput.Cmp(expectedOutput) != 0 {
 			// Log full diagnostic before asserting.
 			//
 			// Genuine FSM bug — not a race. Single committer + snapshot read
@@ -183,32 +183,32 @@ func verifyPostCommitVolumes(
 				"color":          update.Key.Color,
 				"expectedInput":  expectedInput.String(),
 				"expectedOutput": expectedOutput.String(),
-				"pebbleInput":    pebbleInput.String(),
-				"pebbleOutput":   pebbleOutput.String(),
+				"storageInput":   storageInput.String(),
+				"storageOutput":  storageOutput.String(),
 				"raftIndex":      raftIndex,
 				"canonicalKey":   hex.EncodeToString(update.CanonicalKey),
 				"id":             fmt.Sprintf("%x", update.ID),
-			}).Errorf("SENTINEL DIAG: cache/pebble volume divergence (FSM determinism bug)")
+			}).Errorf("SENTINEL DIAG: cache/storage volume divergence (FSM determinism bug)")
 
-			assert.Unreachable("cache pebble volume divergence", map[string]any{
+			assert.Unreachable("cache storage volume divergence", map[string]any{
 				"ledger":         update.Key.LedgerName,
 				"account":        update.Key.Account,
 				"asset":          update.Key.Asset,
 				"color":          update.Key.Color,
 				"expectedInput":  expectedInput.String(),
 				"expectedOutput": expectedOutput.String(),
-				"pebbleInput":    pebbleInput.String(),
-				"pebbleOutput":   pebbleOutput.String(),
+				"storageInput":   storageInput.String(),
+				"storageOutput":  storageOutput.String(),
 				"raftIndex":      raftIndex,
 			})
 
-			return &ErrVolumeCachePebbleDivergence{
-				Key:          update.Key,
-				CacheInput:   expectedInput.String(),
-				CacheOutput:  expectedOutput.String(),
-				PebbleInput:  pebbleInput.String(),
-				PebbleOutput: pebbleOutput.String(),
-				RaftIndex:    raftIndex,
+			return &ErrVolumeCacheStorageDivergence{
+				Key:           update.Key,
+				CacheInput:    expectedInput.String(),
+				CacheOutput:   expectedOutput.String(),
+				StorageInput:  storageInput.String(),
+				StorageOutput: storageOutput.String(),
+				RaftIndex:     raftIndex,
 			}
 		}
 	}
@@ -677,10 +677,10 @@ func dumpPerAccountVolumes(
 	}).Errorf("VOLUME DUMP: total accounts dumped for imbalanced asset")
 }
 
-// dumpCacheVsPebbleCoherence compares the in-memory volume cache (gen0 + gen1)
-// against the 0xFF Pebble cache zone. Logs the sizes and any keys that are in
+// dumpCacheVsStorageCoherence compares the in-memory volume cache (gen0 + gen1)
+// against the 0xFF storage cache zone. Logs the sizes and any keys that are in
 // one but not the other. Called only on sentinel check failure.
-func dumpCacheVsPebbleCoherence(
+func dumpCacheVsStorageCoherence(
 	store dal.KVReader,
 	c *cache.Cache,
 	raftIndex uint64,
@@ -695,11 +695,11 @@ func dumpCacheVsPebbleCoherence(
 	memGen1 := c.Volumes.Gen1().Size()
 
 	// Count 0xFF entries for each gen byte
-	pebbleGen0 := countCacheZoneEntries(store, gen0Byte, dal.SubAttrVolume)
-	pebbleGen1 := countCacheZoneEntries(store, gen1Byte, dal.SubAttrVolume)
+	storageGen0 := countCacheZoneEntries(store, gen0Byte, dal.SubAttrVolume)
+	storageGen1 := countCacheZoneEntries(store, gen1Byte, dal.SubAttrVolume)
 
 	// Count 0xF1 attribute entries (ground truth)
-	pebbleAttr := countAttributeEntries(store, dal.SubAttrVolume)
+	storageAttr := countAttributeEntries(store, dal.SubAttrVolume)
 
 	logger.WithFields(map[string]any{
 		"raftIndex":         raftIndex,
@@ -708,20 +708,20 @@ func dumpCacheVsPebbleCoherence(
 		"gen1Base":          c.BaseIndex.Gen1,
 		"memGen0":           memGen0,
 		"memGen1":           memGen1,
-		"pebbleGen0_0xFF":   pebbleGen0,
-		"pebbleGen1_0xFF":   pebbleGen1,
-		"pebbleAttr_0xF1":   pebbleAttr,
+		"storageGen0_0xFF":  storageGen0,
+		"storageGen1_0xFF":  storageGen1,
+		"storageAttr_0xF1":  storageAttr,
 		"memTotal":          memGen0 + memGen1,
-		"pebbleTotal_0xFF":  pebbleGen0 + pebbleGen1,
-	}).Errorf("CACHE COHERENCE: volume cache vs Pebble sizes")
+		"storageTotal_0xFF": storageGen0 + storageGen1,
+	}).Errorf("CACHE COHERENCE: volume cache vs Storage sizes")
 
 	// Find keys in memory but NOT in 0xFF (the smoking gun for the bug)
-	inMemNotInPebble := 0
+	inMemNotInStorage := 0
 
 	for id := range c.Volumes.Gen0().Iter() {
 		if !cacheZoneHasKey(store, gen0Byte, dal.SubAttrVolume, id) {
-			inMemNotInPebble++
-			if inMemNotInPebble <= 10 {
+			inMemNotInStorage++
+			if inMemNotInStorage <= 10 {
 				logger.WithFields(map[string]any{
 					"id":  fmt.Sprintf("%x", id),
 					"gen": "gen0",
@@ -732,8 +732,8 @@ func dumpCacheVsPebbleCoherence(
 
 	for id := range c.Volumes.Gen1().Iter() {
 		if !cacheZoneHasKey(store, gen1Byte, dal.SubAttrVolume, id) {
-			inMemNotInPebble++
-			if inMemNotInPebble <= 10 {
+			inMemNotInStorage++
+			if inMemNotInStorage <= 10 {
 				logger.WithFields(map[string]any{
 					"id":  fmt.Sprintf("%x", id),
 					"gen": "gen1",
@@ -743,7 +743,7 @@ func dumpCacheVsPebbleCoherence(
 	}
 
 	logger.WithFields(map[string]any{
-		"inMemNotInPebble": inMemNotInPebble,
+		"inMemNotInStorage": inMemNotInStorage,
 	}).Errorf("CACHE COHERENCE: summary (keys in memory but missing from 0xFF)")
 }
 

@@ -44,7 +44,7 @@ func TestAttrTypeFromKey(t *testing.T) {
 	})
 }
 
-func TestCanonicalKeyFromPebbleKey(t *testing.T) {
+func TestCanonicalKeyFromStorageKey(t *testing.T) {
 	t.Parallel()
 
 	t.Run("valid key extracts canonical", func(t *testing.T) {
@@ -57,7 +57,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 		key[1] = 0x42 // attr type
 		copy(key[2:], canonical)
 
-		result := CanonicalKeyFromPebbleKey(key)
+		result := CanonicalKeyFromStorageKey(key)
 		require.Equal(t, canonical, result)
 	})
 
@@ -65,7 +65,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 		t.Parallel()
 
 		key := make([]byte, 1)
-		result := CanonicalKeyFromPebbleKey(key)
+		result := CanonicalKeyFromStorageKey(key)
 		require.Nil(t, result)
 	})
 
@@ -73,7 +73,7 @@ func TestCanonicalKeyFromPebbleKey(t *testing.T) {
 		t.Parallel()
 
 		key := make([]byte, 1+SuffixLen)
-		result := CanonicalKeyFromPebbleKey(key)
+		result := CanonicalKeyFromStorageKey(key)
 		require.Nil(t, result)
 	})
 }

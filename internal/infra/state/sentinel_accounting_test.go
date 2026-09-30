@@ -213,7 +213,7 @@ func TestVerifyPostCommitVolumes(t *testing.T) {
 	}{
 		{"missing", nil, "volume missing from pebble after commit"},
 		{"matching", sentinelVolume("a", "USD", "", 0, 0, 10, 0).New, ""},
-		{"mismatched", sentinelVolume("a", "USD", "", 0, 0, 11, 0).New, "cache/pebble volume divergence"},
+		{"mismatched", sentinelVolume("a", "USD", "", 0, 0, 11, 0).New, "cache/storage volume divergence"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

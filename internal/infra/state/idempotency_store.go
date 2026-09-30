@@ -220,7 +220,7 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.KVReader, cutoffMicro
 // the timestamp level: bounding by timestamp + 1 alone is unsafe because if
 // the scan stops mid-timestamp, the unscanned siblings sharing that
 // expires_at would have their time-index entry deleted but their main key
-// (not in pebbleKeyHashes) would survive — orphaning them forever. The
+// (not in scannedKeyHashes) would survive — orphaning them forever. The
 // DeleteRange upper bound is lex-next(lastScannedTimeIndexKey) which is
 // lex-strictly-less than any unscanned sibling.
 //
@@ -237,19 +237,19 @@ func (s *IdempotencyStore) ScanExpiredKeyHashes(reader dal.KVReader, cutoffMicro
 // This dedup matters because the leader-side scheduler bounds proposeTechnical
 // with a context timeout: if Raft accepts a proposal but the FSM apply lags
 // past that timeout, the scheduler logs the error and on the next tick
-// re-scans the same expired Pebble entries (the first proposal has not yet
+// re-scans the same expired storage entries (the first proposal has not yet
 // applied), then submits a second proposal with the same hashes. Both apply
 // in series; the map gate keeps the second apply a no-op.
-func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) (int, error) {
+func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, lastScannedTimeIndexKey []byte, scannedKeyHashes [][]byte) (int, error) {
 	evicted := 0
 
 	// Walk the pre-scanned hashes and evict each from the in-memory map
-	// alongside its Pebble main key. Two important properties:
+	// alongside its primary-store main key. Two important properties:
 	//
-	//   * We iterate over `pebbleKeyHashes`, NOT over `s.entries`. When the
+	//   * We iterate over `scannedKeyHashes`, NOT over `s.entries`. When the
 	//     leader scan caps at maxEvictionBatchSize, the proposal only
 	//     covers the K oldest expired hashes; the remaining expired
-	//     entries must stay in the map (and in Pebble) so the next tick's
+	//     entries must stay in the map (and in storage) so the next tick's
 	//     scan finds them. Evicting them from the map here, while their
 	//     Pebble main keys still exist, would orphan them: the next apply
 	//     would see them absent from the map and skip the delete
@@ -263,7 +263,7 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	//     This keeps a scheduler retry that re-submits the same hashes
 	//     (after Raft accepted the first proposal but its apply had not yet
 	//     landed) a clean no-op.
-	for _, keyHash := range pebbleKeyHashes {
+	for _, keyHash := range scannedKeyHashes {
 		u128 := attributes.U128FromBytes(keyHash)
 
 		value, ok := s.entries[u128]
@@ -311,9 +311,9 @@ func (s *IdempotencyStore) Evict(batch *dal.WriteSession, cutoffMicros uint64, l
 	// that key with a 0x00 byte appended — strictly greater than the
 	// key itself but strictly less than any longer key with the same
 	// prefix; this guarantees we never touch a time-index entry whose
-	// main key is not in pebbleKeyHashes. DeleteRange is idempotent
+	// main key is not in scannedKeyHashes. DeleteRange is idempotent
 	// over an already-empty range, so this step needs no per-key dedup.
-	if len(pebbleKeyHashes) > 0 && len(lastScannedTimeIndexKey) > 0 {
+	if len(scannedKeyHashes) > 0 && len(lastScannedTimeIndexKey) > 0 {
 		rangeEnd := make([]byte, len(lastScannedTimeIndexKey)+1)
 		copy(rangeEnd, lastScannedTimeIndexKey)
 		// rangeEnd[len(lastScannedTimeIndexKey)] is already 0x00 from make.

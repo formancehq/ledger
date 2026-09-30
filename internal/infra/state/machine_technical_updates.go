@@ -283,7 +283,7 @@ func (fsm *Machine) applyMirrorSyncUpdate(scope processing.Scope, buffer *WriteS
 // The key hashes were pre-scanned by the leader and included in the proposal,
 // so this method is write-only — no Pebble reads occur.
 func (fsm *Machine) applyIdempotencyEviction(batch *dal.WriteSession, eviction *raftcmdpb.IdempotencyEviction) error {
-	evicted, err := fsm.Registry.Idempotency.Evict(batch, eviction.GetCutoffMicros(), eviction.GetLastScannedTimeIndexKey(), eviction.GetPebbleKeyHashes())
+	evicted, err := fsm.Registry.Idempotency.Evict(batch, eviction.GetCutoffMicros(), eviction.GetLastScannedTimeIndexKey(), eviction.GetKeyHashes())
 	if err != nil {
 		return fmt.Errorf("evicting idempotency keys: %w", err)
 	}

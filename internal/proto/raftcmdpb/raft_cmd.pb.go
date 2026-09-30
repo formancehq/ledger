@@ -4392,12 +4392,12 @@ func (x *BackupOrderFail) GetMessage() string {
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
 // All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
 // The leader pre-scans the Pebble time index and includes the key hashes so
-// that the FSM apply path is write-only (no Pebble reads).
+// that the FSM apply path is write-only (no primary-store reads).
 type IdempotencyEviction struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	CutoffMicros    uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
-	PebbleKeyHashes [][]byte               `protobuf:"bytes,2,rep,name=pebble_key_hashes,json=pebbleKeyHashes,proto3" json:"pebble_key_hashes,omitempty"` // 16-byte key hashes pre-scanned by leader
-	// last_scanned_time_index_key is the full 26-byte time-index Pebble key of
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	CutoffMicros uint64                 `protobuf:"fixed64,1,opt,name=cutoff_micros,json=cutoffMicros,proto3" json:"cutoff_micros,omitempty"`
+	KeyHashes    [][]byte               `protobuf:"bytes,2,rep,name=key_hashes,json=keyHashes,proto3" json:"key_hashes,omitempty"` // 16-byte key hashes pre-scanned by leader
+	// last_scanned_time_index_key is the full 26-byte time-index storage key of
 	// the last entry the leader scanned: [zone(1)][sub(1)][created_at(8)][hash(16)].
 	// The FSM uses it as the DeleteRange upper bound bumped by 0x00 (lex-next),
 	// so the range delete includes exactly the scanned entries — never an
@@ -4445,9 +4445,9 @@ func (x *IdempotencyEviction) GetCutoffMicros() uint64 {
 	return 0
 }
 
-func (x *IdempotencyEviction) GetPebbleKeyHashes() [][]byte {
+func (x *IdempotencyEviction) GetKeyHashes() [][]byte {
 	if x != nil {
-		return x.PebbleKeyHashes
+		return x.KeyHashes
 	}
 	return nil
 }
@@ -5682,10 +5682,11 @@ const file_raft_cmd_proto_rawDesc = "" +
 	"\x11segments_uploaded\x18\x06 \x01(\x04R\x10segmentsUploaded\"B\n" +
 	"\x0fBackupOrderFail\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x06R\x05jobId\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage\"\xa4\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\"\x97\x01\n" +
 	"\x13IdempotencyEviction\x12#\n" +
-	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12*\n" +
-	"\x11pebble_key_hashes\x18\x02 \x03(\fR\x0fpebbleKeyHashes\x12<\n" +
+	"\rcutoff_micros\x18\x01 \x01(\x06R\fcutoffMicros\x12\x1d\n" +
+	"\n" +
+	"key_hashes\x18\x02 \x03(\fR\tkeyHashes\x12<\n" +
 	"\x1blast_scanned_time_index_key\x18\x03 \x01(\fR\x17lastScannedTimeIndexKey\"\xad\x01\n" +
 	"\x10MirrorSyncUpdate\x12\x1f\n" +
 	"\vledger_name\x18\x01 \x01(\tR\n" +

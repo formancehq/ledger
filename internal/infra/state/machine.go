@@ -41,7 +41,7 @@ type Notifier interface {
 type Machine struct {
 	logger logging.Logger
 
-	// The Machine is the hot-path apply receiver: it never holds a Pebble
+	// The Machine is the hot-path apply receiver: it never holds a RocksDB
 	// read capability, never holds the incoming-restore primitives, and never
 	// holds a raw *dal.Store. Boot/recovery reads and follower-sync coordination
 	// live on the separate Recovery / Synchronizer types defined alongside this
@@ -53,7 +53,7 @@ type Machine struct {
 	// fileArtifacts lets the FSM drive the node-local file lifecycle bound to
 	// applied orders: deleting query-checkpoint files when an order removes
 	// their metadata. The surface is not a read capability and does not give
-	// access to Pebble contents.
+	// access to RocksDB contents.
 	fileArtifacts dal.QueryCheckpoints
 
 	// sentinel runs scoped post-commit reader-based checks in debug mode.
@@ -86,14 +86,14 @@ type Machine struct {
 
 	// bloomRebuildCh signals an external consumer (Recovery) that the bloom
 	// filters must be rebuilt asynchronously. The hot path cannot trigger the
-	// rebuild directly because StartAsyncBloomPopulate needs a Pebble reader
+	// rebuild directly because StartAsyncBloomPopulate needs a RocksDB reader
 	// and the Machine deliberately does not hold one — the Recovery consumer
 	// runs StartAsyncBloomPopulate with its own reader. Capacity 1 + TrySend
 	// gives "coalesce: keep latest reason" semantics.
 	bloomRebuildCh chan string
 
 	// cacheSnapshotter handles persisting/restoring cache, reversions, and bloom
-	// filters to/from Pebble (0xFF prefix).
+	// filters to/from RocksDB (0xFF prefix).
 	cacheSnapshotter *CacheSnapshotter
 
 	// BloomFilters holds per-attribute-type bloom filters for key existence checks.
@@ -107,10 +107,10 @@ type Machine struct {
 	preloadMissCounter        metric.Int64Counter
 
 	// lastPersistedIndex is the highest Raft index whose FSM batch has been
-	// committed to Pebble's memtable and WAL with pebble.NoSync. It is NOT
+	// committed to RocksDB's memtable and WAL without an explicit sync. It is NOT
 	// guaranteed durable on disk by itself: a power loss between commit and
-	// Pebble's async WAL flush would lose the corresponding entries. After
-	// recovery, fsm.LastAppliedIndex (loaded from Pebble) is the true durable
+	// RocksDB's async WAL flush would lose the corresponding entries. After
+	// recovery, fsm.LastAppliedIndex (loaded from RocksDB) is the true durable
 	// applied index — it may be less than lastPersistedIndex captured before
 	// the crash, and Raft is expected to redeliver the missing entries.
 	lastPersistedIndex atomic.Uint64
@@ -121,7 +121,7 @@ type Machine struct {
 	writeSet *WriteSet
 
 	// sentinelMode enables runtime volume consistency checks
-	// (monotonicity, delta/posting cross-check, post-commit cache/Pebble verification).
+	// (monotonicity, delta/posting cross-check, post-commit cache/RocksDB verification).
 	sentinelMode bool
 
 	// sentinelTracer points to the tracer scoped to the in-flight PrepareEntries.
@@ -153,7 +153,7 @@ type Machine struct {
 	// confChangeHandler is invoked from PrepareEntries for every
 	// EntryConfChange* in the batch. The handler receives the entry and
 	// the in-flight WriteSession so it can land its peer mutation in the
-	// SAME Pebble batch as the surrounding business writes. This keeps
+	// SAME RocksDB batch as the surrounding business writes. This keeps
 	// cluster membership atomic with FSM state and makes the spool/WAL
 	// replay path naturally idempotent — every replay of the entry
 	// re-asserts the membership row. EN-1413.
@@ -161,7 +161,7 @@ type Machine struct {
 }
 
 // NewMachine constructs the hot-path FSM. It composes pre-built sub-objects
-// (Registry, CacheSnapshotter) so the constructor reads no Pebble and keeps
+// (Registry, CacheSnapshotter) so the constructor reads no RocksDB and keeps
 // the surface focused on hot-path concerns. The bootstrap is responsible for
 // wiring those sub-objects up-front. NewMachine does NOT perform RecoverState;
 // callers must invoke Recovery.RecoverState() before the Machine applies
@@ -201,7 +201,7 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 
 	batchCommitHistogram, err := raftMeter.Int64Histogram(
 		"raft.fsm.batch_commit.duration",
-		metric.WithDescription("Time spent in PebbleDB batch.Commit() during ApplyEntries"),
+		metric.WithDescription("Time spent committing a RocksDB batch during ApplyEntries"),
 		metric.WithUnit("us"),
 		metric.WithExplicitBucketBoundaries(
 			0, 100, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000,
@@ -250,8 +250,8 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	fsm.cacheSnapshotter = cacheSnapshotter
 	fsm.writeSet = NewWriteSet(fsm)
 
-	// Recovery from Pebble is not performed here on purpose: NewMachine is the
-	// hot-path FSM constructor and must not read from Pebble. The caller (the
+	// Recovery from RocksDB is not performed here on purpose: NewMachine is the
+	// hot-path FSM constructor and must not read from RocksDB. The caller (the
 	// bootstrap, or a test helper) is responsible for wiring a Recovery and
 	// invoking recovery.RecoverState() before the Machine is asked to apply
 	// any entries.
@@ -259,10 +259,10 @@ func NewMachine(logger logging.Logger, registry *StateRegistry, cacheSnapshotter
 	return fsm, nil
 }
 
-// recoverState loads all FSM in-memory state from the Pebble data store.
+// recoverState loads all FSM in-memory state from the RocksDB data store.
 // Called on restart (via RecoverAndReplay) and after follower sync
 // (via reloadStateFromStore). The reader is supplied by the caller (Recovery
-// owns it) so the Machine itself does not hold a Pebble read capability and
+// owns it) so the Machine itself does not hold a RocksDB read capability and
 // no hot-path method can accidentally invoke this without a reader argument.
 
 func (fsm *Machine) LastPersistedIndex() uint64 {
@@ -270,14 +270,14 @@ func (fsm *Machine) LastPersistedIndex() uint64 {
 }
 
 // LastAppliedIndex returns the FSM's in-memory "currently being applied"
-// cursor. It is seeded from Pebble in RecoverState at boot and advanced by
+// cursor. It is seeded from RocksDB in RecoverState at boot and advanced by
 // `fsm.State.LastAppliedIndex++` during PrepareEntries (under fsm.mu),
 // BEFORE the matching pb.batch.Commit() persists the increment. It serves
 // three internal roles, all on the apply hot path: as the dedup watermark
 // (`entry.Index <= LastAppliedIndex → skip`), as the gap detector
 // (`entry.Index > LastAppliedIndex+1 → error`), and as the value
 // SetAppliedIndex writes into the apply batch so the next boot reads it
-// back from Pebble.
+// back from RocksDB.
 //
 // This exported getter has a SINGLE production caller: node.Run's startup
 // path, which reads it once (before node.Run starts) to seed
@@ -294,7 +294,7 @@ func (fsm *Machine) LastAppliedIndex() uint64 {
 
 // RestoreState atomically replaces the FSM-level state. The intended callers
 // are Recovery (at boot) and Synchronizer (after install-snapshot), which
-// build a fresh FSMState from Pebble via LoadFSMStateFromStore and swap it
+// build a fresh FSMState from RocksDB via LoadFSMStateFromStore and swap it
 // in here. Sub-trackers (Registry.Reversions, KeyStore,
 // SharedState, Registry.Cache settings, Registry.Idempotency) are NOT
 // touched by this method — they have their own lifecycles and the caller
@@ -325,7 +325,7 @@ func (fsm *Machine) RestoreState(s *FSMState) {
 // returns, and just before runCommitter emits the batch's
 // MsgStorageApplyResp on the response sink. That ordering makes
 // lastPersistedIndex the earliest post-commit visibility signal for the
-// batch — reads gating on it see the Pebble-durable state before raft's
+// batch — reads gating on it see the RocksDB-durable state before raft's
 // own `Applied` cursor observes the same index.
 //
 // lastPersistedIndex stays atomic for the fast-path callers that only
@@ -421,7 +421,7 @@ func (fsm *Machine) PrepareEntries(ctx context.Context, sessions dal.WriteSessio
 }
 
 // PrepareDecodedEntries processes pre-decoded Raft entries and builds a
-// Pebble batch without committing it. All in-memory state (cache,
+// RocksDB batch without committing it. All in-memory state (cache,
 // KeyStore, counters) is updated. The caller must either call
 // CommitPreparedBatch or PreparedBatch.Close.
 //
@@ -579,9 +579,9 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 
 			// EN-1413: ConfChange entries do not carry business state,
 			// but they carry cluster membership which must land in the
-			// same Pebble batch as the surrounding business writes.
+			// same RocksDB batch as the surrounding business writes.
 			// Otherwise a crash (or a snapshot restore that wipes
-			// Pebble) between the FSM commit and a separate peer-store
+			// RocksDB) between the FSM commit and a separate peer-store
 			// commit would lose the membership change. The Node
 			// registers a handler that writes the peer entry via the
 			// supplied session; replay (boot WAL replay or post-
@@ -740,7 +740,7 @@ func (fsm *Machine) PrepareDecodedEntries(ctx context.Context, sessions dal.Writ
 	return pb, nil
 }
 
-// CommitPreparedBatch commits the Pebble batch from a PreparedBatch and runs
+// CommitPreparedBatch commits the RocksDB batch from a PreparedBatch and runs
 // all post-commit side effects (sentinel checks, notifications, dispatches).
 //
 // This is the second half of the pipelining split. It does NOT hold fsm.mu
@@ -801,7 +801,7 @@ func (fsm *Machine) CommitPreparedBatch(ctx context.Context, pb *PreparedBatch) 
 				sentinelHandle, fsm.Registry.Attrs.Volume, pb.sentinelLedgerNames, pb.sentinelDeletedLedgerNames, pb.lastAppliedIndex, fsm.logger,
 			); err != nil {
 				fsm.logger.Errorf("AGGREGATED VOLUME BALANCE CHECK FAILED: %v", err)
-				dumpCacheVsPebbleCoherence(sentinelHandle, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
+				dumpCacheVsStorageCoherence(sentinelHandle, fsm.Registry.Cache, pb.lastAppliedIndex, fsm.logger)
 				pb.sentinelTracer.Dump(fsm.logger)
 
 				return fmt.Errorf("aggregated volume balance check failed: %w", err)
@@ -933,8 +933,8 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 		//
 		// (1) Eviction. Skip a value a committed IdempotencyEviction already
 		// removed between the leader's plan-build and this apply: re-injecting it
-		// leaves the map ahead of Pebble, so a restart (which rebuilds the map from
-		// Pebble) diverges from a live node at the same applied index. Eviction
+		// leaves the map ahead of RocksDB, so a restart (which rebuilds the map from
+		// RocksDB) diverges from a live node at the same applied index. Eviction
 		// status is read from the replicated eviction cutoff, NOT the HLC: an
 		// eviction is a technical-only proposal that never advances
 		// LastAppliedTimestamp, so on an idle cluster the HLC lags the eviction's
@@ -965,7 +965,7 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 	// Pre-validate every AttributeCoverage envelope before touching the
 	// cache. Without this, a forged plan with a nil/short AttributeID
 	// or an unknown attr_code would silently zero-pad through MirrorPreload,
-	// mutating both the in-memory cache and the 0xFF Pebble writes. A
+	// mutating both the in-memory cache and the 0xFF RocksDB writes. A
 	// later business rejection from the scope path commits its failure
 	// audit batch — and the cache mutations would commit with it. Run the
 	// same validation the scope path uses here, so a malformed plan is
@@ -1026,10 +1026,10 @@ func (fsm *Machine) Preload(executionPlan *raftcmdpb.ExecutionPlan, batch *dal.W
 
 		attrCode := byte(plan.GetAttrCode())
 
-		// Seed: MirrorPreload writes gen0+gen1 with the Pebble-loaded
+		// Seed: MirrorPreload writes gen0+gen1 with the RocksDB-loaded
 		// payload. Gen1-wins semantics preserve any fresher value a
 		// concurrent write may have already populated between admission's
-		// Pebble scan and apply.
+		// RocksDB scan and apply.
 		if err := fsm.cacheSnapshotter.MirrorPreload(batch, genByte, gen1Byte, plan.GetId(), attrCode, value); err != nil {
 			return err
 		}
@@ -1116,7 +1116,7 @@ func (fsm *Machine) checkStaleProposal(raftIndex uint64, proposal *raftcmdpb.Pro
 // carried.
 // planInvariantFailure extracts the typed failure wrapped in err when
 // it is a coverage / execution-plan invariant violation. Returns nil
-// when err is some other kind of error (Pebble write failure, etc.) so
+// when err is some other kind of error (RocksDB write failure, etc.) so
 // the caller can fall through to the FSM-killing path.
 //
 // Admission ships bits that don't match the AttributeCoverage slice →
@@ -1140,7 +1140,7 @@ func planInvariantFailure(err error) domain.SerializableError {
 func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *dal.WriteSession, proposal *raftcmdpb.Proposal) (*ApplyResult, error) {
 	// FSM-level safety net mirroring the admission check: a checkpoint trigger
 	// (CreateQueryCheckpoint) must be the last order. The
-	// applier relies on this so it can place a Pebble-batch boundary at this
+	// applier relies on this so it can place a RocksDB-batch boundary at this
 	// proposal — a trigger that is not last would force a mid-batch commit
 	// and race the pipelined committer. Any violation here means the
 	// admission path was bypassed (replay of a pre-fix proposal, or a future
@@ -1224,7 +1224,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			// — same model as orders: surface as a business rejection,
 			// not as an FSM-killing error. The overlay accumulated by
 			// earlier TUs is discarded with the WriteSet when the
-			// caller cancels the batch, so cache and Pebble stay in
+			// caller cancels the batch, so cache and RocksDB stay in
 			// lockstep for the next proposal. The audit chain is not
 			// extended here: TU-only proposals don't appear in the
 			// audit log at all, and a mixed proposal that fails before
@@ -1257,7 +1257,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	if len(proposal.GetOrders()) == 0 {
 		// Technical-only proposal: still drain the overlay through Merge so
 		// any tech-update writes (PutLedger, PutAccountMetadata, …) reach
-		// the cache + Pebble. With no orders there is no log to append; the
+		// the cache + RocksDB. With no orders there is no log to append; the
 		// audit-entry path is skipped entirely.
 		if err := buffer.Merge(batch, nil); err != nil {
 			return nil, fmt.Errorf("merging technical-update writes: %w", err)
@@ -1416,13 +1416,13 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	//
 	// IMPORTANT — write failure convention: `appendAuditEntries`,
 	// `appendAuditItems`, and `appendAppliedProposal` (called by the
-	// success path right after this) write into the Pebble batch. If
+	// success path right after this) write into the RocksDB batch. If
 	// any of them returns an error AFTER `State.AppendAuditEntry` has
 	// advanced the in-memory audit state, the in-memory state is ahead
 	// of what will land on disk (the caller cancels the batch). The
 	// project convention is: any such error MUST propagate out of
 	// `Applier.Run()` and crash the process — a restart reloads
-	// `LastAppliedIndex` from Pebble and Raft redelivers the missing
+	// `LastAppliedIndex` from RocksDB and Raft redelivers the missing
 	// entries (cf. the lastPersistedIndex comment above). Properly-
 	// configured nodes have no realistic way to fail here (the writes
 	// go to an in-memory memtable), so we accept this in lieu of a
@@ -1488,7 +1488,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 			return fmt.Errorf("audit sequence race for %s: peeked %d, got %d", label, entry.GetSequence(), committedSeq)
 		}
 
-		// Items live under their own Pebble keys (SubHistoryAuditItem). The
+		// Items live under their own RocksDB keys (SubHistoryAuditItem). The
 		// AuditEntry value must never carry an embedded items list: the
 		// chain does not hash entry.Items (each item is hashed via its
 		// per-item payload from the separate keys), so a non-empty
@@ -1549,7 +1549,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 		// and scope construction have diverged — an FSM invariant violation,
 		// never a business outcome. Fail loudly: write no audit failure,
 		// freeze no idempotency outcome, return no soft ApplyResult. The
-		// caller cancels the Pebble batch and propagates, so nothing commits.
+		// caller cancels the RocksDB batch and propagates, so nothing commits.
 		assert.Unreachable("proposal scope construction failed after successful Preload", map[string]any{
 			"raftIndex":  raftIndex,
 			"proposalID": proposal.GetId(),
@@ -1648,7 +1648,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// SUCCESS: write the audit entry first (advances State + writes audit
 	// + audit items to the batch), then write the AppliedProposal record
 	// (SubHistoryAppliedProposal = 0x04, after the audit entries at 0x02 /
-	// 0x03 so the ZoneHistory Pebble writes stay monotonically increasing
+	// 0x03 so the ZoneHistory RocksDB writes stay monotonically increasing
 	// on the sub-prefix dimension — preferred by the memtable skiplist).
 	//
 	// `auditEntry.GetSequence()` is set by writeAuditEntry to the
@@ -1661,7 +1661,7 @@ func (fsm *Machine) applyProposal(ctx context.Context, raftIndex uint64, batch *
 	// returns an error, the audit state has already advanced in-memory
 	// (see writeAuditEntry). The convention is to let that error
 	// propagate out of Run() and crash the process; a restart reloads
-	// from Pebble and Raft redelivers. Tracked for hardening in EN-1330.
+	// from RocksDB and Raft redelivers. Tracked for hardening in EN-1330.
 	auditEntry := auditpb.AuditEntryFromVTPool()
 	auditEntry.Outcome = &auditpb.AuditEntry_Success{Success: auditSuccess}
 	appendErr := writeAuditEntry(auditEntry, logs, "success")
@@ -1783,14 +1783,14 @@ func (fsm *Machine) Close() {
 }
 
 // StopBackgroundTasks interrupts background tasks (bloom restore) that may hold
-// Pebble iterators. Must be called during shutdown, after the Raft node tasks
-// are stopped and before the Pebble store is closed.
+// RocksDB iterators. Must be called during shutdown, after the Raft node tasks
+// are stopped and before the RocksDB store is closed.
 func (fsm *Machine) StopBackgroundTasks() {
 	fsm.cacheSnapshotter.Stop()
 }
 
 // PauseBackgroundTasks quiesces restartable background tasks while a
-// checkpoint replaces Pebble, without closing the Machine's ownership.
+// checkpoint replaces RocksDB, without closing the Machine's ownership.
 func (fsm *Machine) PauseBackgroundTasks() {
 	fsm.cacheSnapshotter.Pause()
 }
@@ -1818,7 +1818,7 @@ func drainSignalChan[T any](ch chan T) {
 
 // BloomRebuildCh returns the channel signalled when a bloom rebuild is
 // required (e.g. cluster config change). The consumer (Recovery) owns the
-// Pebble reader and invokes StartAsyncBloomPopulate; the Machine itself
+// RocksDB reader and invokes StartAsyncBloomPopulate; the Machine itself
 // holds no reader and cannot trigger the rebuild directly.
 func (fsm *Machine) BloomRebuildCh() <-chan string {
 	return fsm.bloomRebuildCh
@@ -1854,7 +1854,7 @@ func (fsm *Machine) QueryCheckpointScheduleChanged() signal.Signal {
 	return fsm.queryCheckpointScheduleChanged
 }
 
-// PreparedBatch holds an uncommitted Pebble batch and all data needed for
+// PreparedBatch holds an uncommitted RocksDB batch and all data needed for
 // the post-commit phase. Created by PrepareEntries, consumed by CommitPreparedBatch.
 // This separation enables pipelining: the applier can process batch N+1 while
 // batch N's commit is in-flight.
@@ -1907,7 +1907,7 @@ type ApplyResult struct {
 
 	// QueryCheckpointCreated holds the checkpoint ID when a CreateQueryCheckpoint
 	// order was processed. Signals ApplyEntries to split the batch and create
-	// physical Pebble checkpoints before continuing with remaining entries.
+	// physical RocksDB checkpoints before continuing with remaining entries.
 	QueryCheckpointCreated uint64
 
 	// QueryCheckpointDeleted holds the checkpoint ID when a DeleteQueryCheckpoint
@@ -1932,7 +1932,7 @@ type ApplyEntriesResult struct {
 	// Results contains one ApplyResult per processed entry that carried a proposal.
 	Results []ApplyResult
 
-	// CheckpointRequired is true when the caller must create a Pebble checkpoint
+	// CheckpointRequired is true when the caller must create a RocksDB checkpoint
 	// before resuming entry processing (after a CreateQueryCheckpoint). The
 	// triggering entry is always the last in the slice that produced this
 	// result — callers must pre-split to maintain that invariant (see

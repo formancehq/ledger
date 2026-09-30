@@ -331,7 +331,7 @@ func TestPreload_DoesNotResurrectEvictedOutcome(t *testing.T) {
 	_ = handle.Close()
 	require.Len(t, hashes, 1)
 
-	eviction := &raftcmdpb.IdempotencyEviction{CutoffMicros: expiresAt, PebbleKeyHashes: hashes, LastScannedTimeIndexKey: lastKey}
+	eviction := &raftcmdpb.IdempotencyEviction{CutoffMicros: expiresAt, KeyHashes: hashes, LastScannedTimeIndexKey: lastKey}
 
 	evictBatch := dataStore.OpenWriteSession()
 	require.NoError(t, machine.applyIdempotencyEviction(evictBatch, eviction))
@@ -570,7 +570,7 @@ func TestEviction_ReusedKeyDeletesCleanly(t *testing.T) {
 
 	evictBatch := dataStore.OpenWriteSession()
 	require.NoError(t, machine.applyIdempotencyEviction(evictBatch,
-		&raftcmdpb.IdempotencyEviction{CutoffMicros: expB, PebbleKeyHashes: hashes, LastScannedTimeIndexKey: lastKey}))
+		&raftcmdpb.IdempotencyEviction{CutoffMicros: expB, KeyHashes: hashes, LastScannedTimeIndexKey: lastKey}))
 	require.NoError(t, evictBatch.Commit())
 	require.NoError(t, dataStore.Flush())
 

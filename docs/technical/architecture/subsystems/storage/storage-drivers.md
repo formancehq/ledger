@@ -203,9 +203,8 @@ Source files: `internal/storage/dal/compact.go`.
 The DAL exports available RocksDB properties through OpenTelemetry, including
 memtable size, pending flush and compaction, live SST size, block-cache use,
 snapshot count, stopped writes, and background errors. Pebble-specific event
-and VFS counters are unavailable. The service API retains the old metrics
-protobuf envelope for compatibility, but only fields with a direct RocksDB
-meaning are populated.
+and VFS counters are unavailable. The service API exposes `StorageMetrics`
+with optional fields for the RocksDB properties the server can report.
 
 ---
 

@@ -637,12 +637,12 @@ message BackupOrderFail {
 // IdempotencyEviction is a deterministic cleanup command proposed by the leader.
 // All nodes apply it identically: entries with created_at <= cutoff_micros are removed.
 // The leader pre-scans the Pebble time index and includes the key hashes so
-// that the FSM apply path is write-only (no Pebble reads).
+// that the FSM apply path is write-only (no primary-store reads).
 message IdempotencyEviction {
   fixed64 cutoff_micros = 1;
-  repeated bytes pebble_key_hashes = 2;  // 16-byte key hashes pre-scanned by leader
+  repeated bytes key_hashes = 2;  // 16-byte key hashes pre-scanned by leader
 
-  // last_scanned_time_index_key is the full 26-byte time-index Pebble key of
+  // last_scanned_time_index_key is the full 26-byte time-index storage key of
   // the last entry the leader scanned: [zone(1)][sub(1)][created_at(8)][hash(16)].
   // The FSM uses it as the DeleteRange upper bound bumped by 0x00 (lex-next),
   // so the range delete includes exactly the scanned entries — never an

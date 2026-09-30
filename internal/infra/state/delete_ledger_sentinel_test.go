@@ -150,7 +150,7 @@ func TestDeleteLedgerSentinelDetectsSurvivorCorruption(t *testing.T) {
 			if mode == "missing" {
 				require.ErrorContains(t, err, `volume missing from pebble after commit for "live"/treasury/EUR`)
 			} else {
-				var divergence *ErrVolumeCachePebbleDivergence
+				var divergence *ErrVolumeCacheStorageDivergence
 				require.ErrorAs(t, err, &divergence)
 				require.Equal(t, key, divergence.Key)
 				require.Equal(t, "200", divergence.CacheInput)

@@ -961,14 +961,14 @@ func Module() fx.Option {
 					scheduler := state.NewIdempotencyEvictionScheduler(
 						logger,
 						raftNode.IsLeader,
-						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, pebbleKeyHashes [][]byte) {
+						func(ctx context.Context, cutoffMicros uint64, lastScannedTimeIndexKey []byte, scannedKeyHashes [][]byte) {
 							proposal := commands.NewCommand()
 							proposal.CallerSnapshot = commands.SystemCallerSnapshot(commands.ComponentIdempotencyEvict)
 							proposal.TechnicalUpdates = []*raftcmdpb.TechnicalUpdate{{
 								Kind: &raftcmdpb.TechnicalUpdate_IdempotencyEviction{
 									IdempotencyEviction: &raftcmdpb.IdempotencyEviction{
 										CutoffMicros:            cutoffMicros,
-										PebbleKeyHashes:         pebbleKeyHashes,
+										KeyHashes:               scannedKeyHashes,
 										LastScannedTimeIndexKey: lastScannedTimeIndexKey,
 									},
 								},

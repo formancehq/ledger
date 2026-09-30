@@ -386,7 +386,7 @@ type Node struct {
 	// proposalAdmissionMu makes the terminal check plus proposeCh enqueue
 	// atomic with terminal publication and its queued-proposal drain.
 	proposalAdmissionMu sync.Mutex
-	// membership owns the Raft peer-address state (Pebble + in-memory
+	// membership owns the Raft peer-address state (RocksDB + in-memory
 	// cache) and the OnSnapshotInstalled / WriteConfChange callbacks
 	// wired into Applier and Machine. EN-1413.
 	membership *membership.Membership
@@ -431,7 +431,7 @@ type Node struct {
 	leaderReady atomic.Pointer[chan struct{}]
 
 	// lastCheckpointPersistedIndex tracks the persisted index at the time of the
-	// last background Pebble checkpoint. doMaintenance skips checkpoint creation
+	// last background RocksDB checkpoint. doMaintenance skips checkpoint creation
 	// when no new entries have been persisted since the previous checkpoint,
 	// avoiding unnecessary I/O on the data volume.
 	lastCheckpointPersistedIndex uint64
@@ -487,7 +487,7 @@ func NewNode(
 			// path instead of "catching it up" by replaying the log onto an
 			// empty store, which would miss the entire restored FSM genesis.
 			// FSM counters (nextLedgerID, nextSequenceID, etc.) are recovered
-			// from Pebble before creating the WAL snapshot.
+			// from RocksDB before creating the WAL snapshot.
 			logger.WithFields(map[string]any{
 				"lastAppliedIndex":     marker.LastAppliedIndex,
 				"lastAppliedTimestamp": marker.LastAppliedTimestamp,
@@ -571,7 +571,7 @@ func NewNode(
 			// later via the AddLearner ConfChange) + every cfg.Peers
 			// entry BEFORE marking the cluster joined. This closes the
 			// crash window where a node would restart with voter IDs in
-			// the WAL ConfState but no peer addresses in Pebble — the
+			// the WAL ConfState but no peer addresses in RocksDB — the
 			// EN-1404-class failure where the bootstrap voter has no
 			// durable address.
 			if err := registerInitialPeers(membership, cfg, cfg.Bootstrap); err != nil {
@@ -606,7 +606,7 @@ func NewNode(
 			"peerCount":     len(cfg.Peers),
 		}).Infof("Restart detected: WAL already has ConfState (not a fresh start)")
 
-		// Peer addresses come from Pebble (loaded below into recoveredPeers).
+		// Peer addresses come from RocksDB (loaded below into recoveredPeers).
 		// The WAL snapshot payload no longer carries them, and we no longer
 		// scan WAL entries to overlay newer peers. The snapshot bookkeeping
 		// (FSM cache reset, snapshotIndex update) is still required on the
@@ -646,7 +646,7 @@ func NewNode(
 		}
 	}
 
-	// EN-1413: drop any Pebble peer row whose NodeID is no longer in the
+	// EN-1413: drop any RocksDB peer row whose NodeID is no longer in the
 	// durable ConfState. Covers two crash windows: an interrupted
 	// ForceRemoveNode (ConfState updated, Unregister not yet committed)
 	// and a backup that carried source-cluster peers across restore
@@ -657,7 +657,7 @@ func NewNode(
 
 	// EN-1413: upsert self unconditionally so a changed AdvertiseAddr /
 	// ServiceAdvertiseAddr (e.g. a pod restart with a new advertised
-	// endpoint) overwrites the stale Pebble row. Without this, the
+	// endpoint) overwrites the stale RocksDB row. Without this, the
 	// node's checkpoint streaming would teach peers to dial the old
 	// address. PersistInitialPeers on the fresh-start branches already
 	// writes self for Bootstrap/Restore, but the restart branch never
@@ -791,7 +791,7 @@ func NewNode(
 
 	if storeUpToDate {
 		// EN-1413: WAL replay applied ConfChange entries directly to
-		// Pebble via WriteConfChange (FSM hot path) but did NOT update
+		// RocksDB via WriteConfChange (FSM hot path) but did NOT update
 		// the in-memory Membership cache or transport — finishReady,
 		// which owns those side effects on the normal Ready path, does
 		// not run during replay. Without this catch-up the recovered
@@ -894,7 +894,7 @@ func (node *Node) maybeCompactAtStartup(ctx context.Context) error {
 }
 
 // runBackgroundMaintenance periodically creates WAL snapshots, compacts the WAL,
-// and creates Pebble checkpoints. This replaces both the old triggerSnapshot
+// and creates RocksDB checkpoints. This replaces both the old triggerSnapshot
 // mechanism (which used gating in the applier) and Store.RunBackgroundCheckpoints.
 func (node *Node) runBackgroundMaintenance(ctx context.Context, stop chan struct{}) error {
 	interval := node.config.MaintenanceInterval
@@ -935,20 +935,20 @@ func (node *Node) doMaintenance() error {
 	// Capture lastPersistedIndex BEFORE calling SyncWAL. Reading first then
 	// syncing guarantees the captured index is covered by the fsync: at the
 	// moment we read N from lastPersistedIndex the corresponding batch has
-	// already been written to Pebble's WAL (FSM publishes the index after
+	// already been written to RocksDB's WAL (FSM publishes the index after
 	// batch.Commit returns, see machine.go), so the subsequent SyncWAL makes
 	// it durable. The reverse order (sync, then read) could capture an index
 	// from a concurrent apply whose WAL record was written after our fsync.
 	capturedIndex := node.fsm.LastPersistedIndex()
 	if err := store.SyncWAL(); err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync Pebble WAL, skipping snapshot and checkpoint")
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to sync RocksDB WAL, skipping snapshot and checkpoint")
 
 		return nil
 	}
 	// Post-condition: every FSM batch with Raft index <= capturedIndex is
 	// durable on disk. It is now safe to advance the Raft WAL snapshot and
 	// to compact the Raft WAL up to capturedIndex - margin — even on power
-	// loss right after this point, Pebble can recover to >= capturedIndex.
+	// loss right after this point, RocksDB can recover to >= capturedIndex.
 
 	// 1. WAL snapshot + compact.
 	if err := node.wal.CreateSnapshot(capturedIndex, node.confState.Load(), nil); err != nil {
@@ -968,15 +968,15 @@ func (node *Node) doMaintenance() error {
 		}
 	}
 
-	// 2. Pebble checkpoint (for cold-restart DR — operator k8s bootstrap detection).
+	// 2. RocksDB checkpoint (for cold-restart DR — operator k8s bootstrap detection).
 	// Independent of step 1: failures in the WAL snapshot/compact path must not
-	// prevent the Pebble checkpoint from being attempted, and vice versa.
+	// prevent the RocksDB checkpoint from being attempted, and vice versa.
 	if capturedIndex <= node.lastCheckpointPersistedIndex {
 		return nil
 	}
 
 	if _, err := store.CreateSnapshot(); err != nil {
-		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create Pebble checkpoint")
+		node.logger.WithFields(map[string]any{"error": err}).Errorf("Background maintenance: failed to create RocksDB checkpoint")
 
 		return nil
 	}
@@ -996,12 +996,12 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	defer close(node.runDone)
 
 	// Determine the Applied index for raft.Config from the FSM's durable last
-	// applied index (read from Pebble). doMaintenance calls Store.SyncWAL
+	// applied index (read from RocksDB). doMaintenance calls Store.SyncWAL
 	// before creating each Raft WAL snapshot, so under correct operation the
-	// Raft WAL snapshot's Metadata.Index is always <= Pebble's durable
+	// Raft WAL snapshot's Metadata.Index is always <= RocksDB's durable
 	// applied index. The check below is defense-in-depth: it catches a
 	// pathological state (SyncWAL silently regressed, manual snapshot
-	// creation outside doMaintenance, Pebble bug) before Raft starts, rather
+	// creation outside doMaintenance, RocksDB bug) before Raft starts, rather
 	// than letting it manifest as silent data loss.
 	applied := node.fsm.LastAppliedIndex()
 
@@ -1015,13 +1015,13 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 		return fmt.Errorf("reading WAL first index: %w", err)
 	}
 
-	// If Pebble's durable applied index is below the WAL's first available
+	// If RocksDB's durable applied index is below the WAL's first available
 	// entry, the entries needed to catch the FSM up to walSnap.Metadata.Index
 	// are gone from the Raft WAL — but that only means data loss when the
 	// entries are also missing everywhere else. Two distinct paths reach here:
 	//
 	//  1. Genuine data loss (applier status != statusOutOfSync). The maintenance
-	//     invariant (SyncWAL before Compact) was violated; Pebble's applied truly
+	//     invariant (SyncWAL before Compact) was violated; RocksDB's applied truly
 	//     lags the WAL and no external replica has the missing entries. Refuse
 	//     to start.
 	//
@@ -1029,7 +1029,7 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	//     status == statusOutOfSync). The follower processed a MsgSnap from the
 	//     leader: etcd-raft compacted the WAL to snapshotIndex synchronously
 	//     (node.go processReady), but the async SynchronizeWithLeader that
-	//     materialises the leader's checkpoint into Pebble had not completed
+	//     materialises the leader's checkpoint into RocksDB had not completed
 	//     when the process died. RecoverAndReplay detected the gap
 	//     (LastAppliedIndex < SnapshotIndex) and flagged the applier
 	//     out-of-sync. This state is self-healing: processReady will re-trigger
@@ -1040,9 +1040,9 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	if applied+1 < walFirstIdx {
 		if node.applier.Status() != statusOutOfSync {
 			return fmt.Errorf(
-				"durability gap exceeds WAL retention: Pebble applied=%d, WAL firstIndex=%d, "+
-					"WAL snapshot=%d. The compaction margin was overrun before Pebble fsync'd. "+
-					"Restore from a Pebble checkpoint or contact ops",
+				"durability gap exceeds WAL retention: RocksDB applied=%d, WAL firstIndex=%d, "+
+					"WAL snapshot=%d. The compaction margin was overrun before RocksDB fsync'd. "+
+					"Restore from a RocksDB checkpoint or contact ops",
 				applied, walFirstIdx, walSnap.GetMetadata().GetIndex(),
 			)
 		}
@@ -1052,7 +1052,7 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 			"walFirstIndex":    walFirstIdx,
 			"walSnapshotIndex": walSnap.GetMetadata().GetIndex(),
 		}).Errorf(
-			"Pebble applied lags WAL snapshot — previous process crashed between " +
+			"RocksDB applied lags WAL snapshot — previous process crashed between " +
 				"InstallSnapshot and SynchronizeWithLeader completion; applier is " +
 				"out-of-sync, will re-sync from leader",
 		)
@@ -1067,16 +1067,16 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 		node.logger.WithFields(map[string]any{
 			"storeApplied":   applied,
 			"walSnapshotIdx": walSnap.GetMetadata().GetIndex(),
-		}).Errorf("Pebble lags WAL snapshot — SyncWAL durability invariant violated, relying on Raft replay")
+		}).Errorf("RocksDB lags WAL snapshot — SyncWAL durability invariant violated, relying on Raft replay")
 	}
 
 	// Cap applied to the WAL's durable commit index. etcd's WAL skips fsync
 	// for commit-only HardState updates (MustSync checks entries/term/vote,
 	// not commit). A crash can lose uncommitted commit advances, leaving
-	// Pebble's lastAppliedIndex ahead of the WAL's HardState.Commit. Raft
+	// RocksDB's lastAppliedIndex ahead of the WAL's HardState.Commit. Raft
 	// panics at startup if applied > committed. Capping here is safe because
 	// the FSM's ApplyEntries skips entries whose index <= lastAppliedIndex
-	// (loaded from Pebble), so re-delivered entries are no-ops.
+	// (loaded from RocksDB), so re-delivered entries are no-ops.
 	hardState, _, err := node.wal.InitialState()
 	if err != nil {
 		return fmt.Errorf("reading WAL initial state for Applied: %w", err)
@@ -1086,14 +1086,14 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 		node.logger.WithFields(map[string]any{
 			"storeApplied":     applied,
 			"walDurableCommit": hardState.GetCommit(),
-		}).Infof("Pebble applied ahead of WAL durable commit, capping Applied")
+		}).Infof("RocksDB applied ahead of WAL durable commit, capping Applied")
 
 		applied = hardState.GetCommit()
 	}
 
 	// Initialize lastCheckpointPersistedIndex from the durable applied index.
 	// Treating Applied as "at least as recent as the checkpoint we would
-	// create now" prevents a redundant Pebble checkpoint on the very first
+	// create now" prevents a redundant RocksDB checkpoint on the very first
 	// maintenance tick after restart.
 	node.lastCheckpointPersistedIndex = applied
 
@@ -1166,7 +1166,7 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 	// that opens port 9000 — starts until this closes.
 	//
 	// Blocking `ready` on FSM catch-up produced a design bug: a follower
-	// booting with an out-of-sync applier (fresh Pebble, WAL compacted past
+	// booting with an out-of-sync applier (fresh RocksDB, WAL compacted past
 	// its snapshot — see the EN-1431 series) never catches up until
 	// SynchronizeWithLeader completes, which for a 17 GiB checkpoint can
 	// take multiple minutes. During that window the HTTP server never
@@ -1190,7 +1190,7 @@ func (node *Node) run(ctx context.Context, ready func()) error {
 			node.logger.Errorf("Error stopping task pool: %v", err)
 		}
 
-		// Stop background bloom tasks that may hold Pebble iterators.
+		// Stop background bloom tasks that may hold RocksDB iterators.
 		// Must run after tasks.stop() (which stops the applier that can
 		// trigger new bloom tasks) and before the fx hook closes the DB.
 		node.fsm.StopBackgroundTasks()
@@ -1349,9 +1349,9 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 	// or this Ready has none but a previous Ready already set lastSoftState.
 	//
 	// Without this fallback, a follower that booted through node.Run's
-	// durability-gap recovery branch (Pebble empty, WAL compacted past
+	// durability-gap recovery branch (RocksDB empty, WAL compacted past
 	// snapshot) stays statusOutOfSync forever: the applier spools every
-	// MsgApp without applying to Pebble, so LastPersistedIndex never
+	// MsgApp without applying to RocksDB, so LastPersistedIndex never
 	// advances, node.Run's WaitForApplied never returns, the readiness
 	// probe never succeeds, and the Raft WAL grows unbounded (no
 	// maintenance snapshot until LastPersistedIndex moves) until the WAL
@@ -1456,14 +1456,14 @@ func (node *Node) processReady(ctx context.Context, stop chan struct{}, rd raft.
 		// statusOutOfSync and will retry automatically when a leader is detected
 		// via SoftState or on restart (isStoreUpToDate check).
 		// Skip sync if the node is shutting down — RestoreCheckpoint reopens the
-		// Pebble DB, and background tasks (bloom restore) would create iterators
+		// RocksDB DB, and background tasks (bloom restore) would create iterators
 		// that outlive the DB.Close() in the fx shutdown hook.
 		//
 		// EN-1413: SyncSnapshot only enqueues the restore on the applier
 		// and returns immediately; the actual RestoreCheckpoint runs in
 		// the applier's Run goroutine. The OnSnapshotInstalled hook wired
 		// in NewNode (node.reloadPeersFromStore) is what refreshes the
-		// peer-address cache once Pebble has been swapped — do NOT call
+		// peer-address cache once RocksDB has been swapped — do NOT call
 		// peerStore.LoadAll here, it would read the pre-restore DB.
 		if !isStopping(stop) {
 			node.applier.SyncSnapshot(node.lastSoftState.Load().Lead, stop)
@@ -1533,7 +1533,7 @@ func (node *Node) finishReady(result readyResult, stop chan struct{}) error {
 
 		// Mirror the committed ConfChange into the in-memory cache +
 		// transport so the next Raft tick already sees the new address.
-		// This precedes the asynchronous FSM submission below: Pebble may
+		// This precedes the asynchronous FSM submission below: RocksDB may
 		// still hold the previous row until WriteConfChange commits its batch.
 		// A crash in that interval is repaired by committed-WAL replay and
 		// Rehydrate. (rawNode.ApplyConfChange above makes Raft start
@@ -2361,12 +2361,12 @@ func (node *Node) GetClusterState(ctx context.Context) (*clusterpb.ClusterState,
 	// arrives a channel-hop + orchestrate Step after `LastPersistedIndex`,
 	// never before. So `LastPersistedIndex >= Applied` in this snapshot.
 	//
-	// Anything that reads from Pebble (stale-consistency GetAccount, test
+	// Anything that reads from RocksDB (stale-consistency GetAccount, test
 	// oracles, cross-node identity comparisons) SHOULD still gate on
-	// LastPersistedIndex — it is the durable-in-Pebble contract by name,
+	// LastPersistedIndex — it is the durable-in-RocksDB contract by name,
 	// which is what those readers actually need. Gating on Applied works
 	// too now, but couples the reader to a Raft-consensus cursor when the
-	// semantic they want is "is Pebble caught up".
+	// semantic they want is "is RocksDB caught up".
 	raftStatus := &clusterpb.RaftStatus{
 		State:              stateStr,
 		Term:               hardState.GetTerm(),
@@ -2739,7 +2739,7 @@ func (node *Node) AddLearner(ctx context.Context, nodeID uint64, raftAddr, servi
 		}
 
 		// EN-1045 defense against a race between JoinAsLearner admission
-		// (Pebble IsRemoved check) and RemoveNode commit: re-check the
+		// (RocksDB IsRemoved check) and RemoveNode commit: re-check the
 		// blacklist here, inside the confChangeMu-serialized path. Any
 		// prior RemoveNode has fully applied by now (retryConfChange
 		// waits for commit and records an admission barrier until apply),
@@ -2934,7 +2934,7 @@ func (node *Node) RemoveNode(ctx context.Context, nodeID uint64) error {
 
 // waitForRemovalApplied bridges the gap between Raft commit and durable FSM
 // apply. The committed entry index is the explicit durability barrier: once
-// WaitForApplied returns, the Pebble batch containing the peer deletion is
+// WaitForApplied returns, the RocksDB batch containing the peer deletion is
 // visible. When instanceID is present, that batch also contains the matching
 // RemovedMemberEntry. This avoids a wall-clock timeout whose expiry could
 // incorrectly imply that the already-committed Raft mutation failed.
@@ -3160,7 +3160,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 
 		// Look up the target peer's identity before applying the
 		// ConfChange — Membership.GetInstanceID reads the in-memory
-		// cache populated at boot from Pebble. Missing instance_id
+		// cache populated at boot from RocksDB. Missing instance_id
 		// means the peer has a row without identity (phantom learner
 		// added via admin cluster.AddLearner without ever booting, or
 		// a bootstrap initial peer that never joined). Force-removing
@@ -3182,10 +3182,10 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 		// Order matters here. ForceRemoveNode bypasses the Raft log, so
 		// there is no EntryConfChange the FSM replay can re-apply on
 		// restart to reconcile a mismatch between WAL ConfState and the
-		// Pebble peer row. Persist the ConfState first so any crash
+		// RocksDB peer row. Persist the ConfState first so any crash
 		// between the two durable writes lands on the safe side: the
 		// restored cluster has the peer removed from its voter set,
-		// with a possibly-stale (harmless) Pebble row that LoadAll picks
+		// with a possibly-stale (harmless) RocksDB row that LoadAll picks
 		// up but the raft state machine ignores. The opposite order
 		// would leave a configured voter with no dialable address.
 		// EN-1413.
@@ -3202,7 +3202,7 @@ func (node *Node) ForceRemoveNode(ctx context.Context, nodeID uint64) error {
 
 		// EN-1045: when we know the target's identity, land the
 		// blacklist entry atomically with the peer row delete in a
-		// single Pebble batch. For phantom learners without an
+		// single RocksDB batch. For phantom learners without an
 		// identity (see hasIdentity comment above), fall back to
 		// the plain peer row delete — nothing to blacklist.
 		if hasIdentity {
@@ -3391,7 +3391,7 @@ func initialJoinVoters(peers []Peer, selfID uint64) []uint64 {
 // registerInitialPeers writes cfg.Peers (and self when includeSelf is
 // true) into Membership before the WAL snapshot / CLUSTER_JOINED marker
 // lands, so a crash cannot leave a durable ConfState without the
-// matching peer addresses in Pebble (EN-1413).
+// matching peer addresses in RocksDB (EN-1413).
 //
 // includeSelf is true for Bootstrap and Restore; false for Join
 // (self's address lands later via the AddLearner ConfChange applied

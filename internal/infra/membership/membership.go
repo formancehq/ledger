@@ -32,28 +32,28 @@ type Pool interface {
 }
 
 // Membership owns the cluster's peer-address state in two views kept in
-// lockstep: the durable Pebble rows under [ZoneGlobal][SubGlobPeers] and
+// lockstep: the durable RocksDB rows under [ZoneGlobal][SubGlobPeers] and
 // the in-memory cache the transport consults on every Raft tick. All
-// mutators below go through this type — writing the Pebble key directly
+// mutators below go through this type — writing the RocksDB key directly
 // or mutating the cache from outside is a bug.
 //
 // Three mutator classes:
 //
-//   - FSM apply (Pebble only, through the FSM's session, atomic with
+//   - FSM apply (RocksDB only, through the FSM's session, atomic with
 //     the surrounding business writes): every EntryConfChange* in
 //     PrepareEntries fires WriteConfChange. NO cache or transport
 //     mutation here — the FSM hot path must stay deterministic and
-//     free of network side effects, and Pebble must be the only place
+//     free of network side effects, and RocksDB must be the only place
 //     that mutates synchronously with the batch.
 //
 //   - finishReady (cache + transport, after Raft commit observation): the Node
 //     updates the cache and wires the transport / service pool before the next
 //     Raft tick, then submits the committed entries for asynchronous FSM apply.
-//     Use Set / Remove. Pebble can briefly retain the previous row until that
+//     Use Set / Remove. RocksDB can briefly retain the previous row until that
 //     apply batch commits; committed-WAL replay plus Rehydrate repairs the gap
 //     after a crash.
 //
-//   - Lifecycle paths that bypass the FSM (cache + Pebble, own
+//   - Lifecycle paths that bypass the FSM (cache + RocksDB, own
 //     session): bootstrap's initial-peer persistence in
 //     PersistInitialPeers, and Node.ForceRemoveNode via Unregister.
 type Membership struct {
@@ -83,7 +83,7 @@ type Membership struct {
 	started bool
 }
 
-// NewMembership loads the in-memory cache from Pebble. The transport +
+// NewMembership loads the in-memory cache from RocksDB. The transport +
 // service pool are NOT wired here — see the started field's comment.
 // self is skipped from transport / pool wiring — a node never dials
 // itself — but its raft + service addresses are kept on the Membership
@@ -96,12 +96,12 @@ type Membership struct {
 func NewMembership(store *PeerStore, transport Transport, pool Pool, selfNodeID uint64, selfRaftAddr, selfServiceAddr string, selfInstanceID []byte, logger logging.Logger) (*Membership, error) {
 	addresses, err := store.LoadAll()
 	if err != nil {
-		return nil, fmt.Errorf("loading peers from pebble: %w", err)
+		return nil, fmt.Errorf("loading peers from the primary store: %w", err)
 	}
 
 	logger.WithFields(map[string]any{
 		"peerCount": len(addresses),
-	}).Infof("Loaded cluster membership from Pebble")
+	}).Infof("Loaded cluster membership from RocksDB")
 
 	return &Membership{
 		store:           store,
@@ -218,7 +218,7 @@ func (m *Membership) GetInstanceID(nodeID uint64) ([]byte, bool) {
 // service pool so the Raft transport / client RPCs can reach it on the
 // next tick. Used from finishReady once a ConfChange has been observed
 // committed, before the matching entry is submitted for asynchronous FSM
-// apply. The Pebble row may therefore lag this cache briefly; WAL replay and
+// apply. The RocksDB row may therefore lag this cache briefly; WAL replay and
 // Rehydrate restore it if the process exits before local durable apply.
 //
 // Cache mutation and transport wiring both happen inside the lock so
@@ -238,7 +238,7 @@ func (m *Membership) Set(nodeID uint64, raftAddr, serviceAddr string, instanceID
 }
 
 // Remove deletes a peer from the cache AND from the transport + service pool
-// after Raft commit observation. Pebble may still contain the row until the
+// after Raft commit observation. RocksDB may still contain the row until the
 // asynchronous FSM batch applies its deletion.
 //
 // Cache mutation and transport wiring both happen inside the lock —
@@ -252,7 +252,7 @@ func (m *Membership) Remove(nodeID uint64) {
 	m.wireRemove(nodeID)
 }
 
-// Register writes a peer through Pebble (own session) AND the cache, in
+// Register writes a peer through RocksDB (own session) AND the cache, in
 // lockstep. Used by lifecycle paths that bypass the FSM: bootstrap
 // initial-peer persistence and ForceRemoveNode (dual: Unregister).
 // instanceID is 16 bytes (EN-1045) for peers whose identity is known
@@ -270,12 +270,12 @@ func (m *Membership) Register(nodeID uint64, raftAddr, serviceAddr string, insta
 	return nil
 }
 
-// Unregister is the dual of Register: Pebble delete + cache delete.
-// Pebble first so a crash between the two leaves a state the next boot
+// Unregister is the dual of Register: RocksDB delete + cache delete.
+// RocksDB first so a crash between the two leaves a state the next boot
 // can heal from (LoadAll won't see the deleted peer).
 func (m *Membership) Unregister(nodeID uint64) error {
 	if err := m.store.Delete(nodeID); err != nil {
-		return fmt.Errorf("removing peer %d from pebble: %w", nodeID, err)
+		return fmt.Errorf("removing peer %d from the primary store: %w", nodeID, err)
 	}
 
 	m.Remove(nodeID)
@@ -284,12 +284,12 @@ func (m *Membership) Unregister(nodeID uint64) error {
 }
 
 // UnregisterAndBlacklist removes a peer AND persists a RemovedMemberEntry
-// for (nodeID, instanceID) in the same Pebble transaction. Used by
+// for (nodeID, instanceID) in the same RocksDB transaction. Used by
 // ForceRemoveNode so a still-alive removed pod cannot silently rejoin and
 // be auto-promoted (EN-1045).
 //
 // The two writes commit atomically inside a single dal.WriteSession — the
-// closest we can get given WAL and Pebble are independent stores (see
+// closest we can get given WAL and RocksDB are independent stores (see
 // docs/technical/architecture/subsystems/consensus/removed-member-registry.md).
 // Followers converge via the next snapshot they receive.
 //
@@ -343,10 +343,10 @@ func (m *Membership) PeerStore() *PeerStore {
 	return m.store
 }
 
-// ReconcileAgainstConfState drops every peer (Pebble + cache +
+// ReconcileAgainstConfState drops every peer (RocksDB + cache +
 // transport + pool) whose NodeID is not in the supplied ConfState.
 // Called by NewNode at boot once the durable ConfState is known, so
-// that stale Pebble rows left over by an interrupted ForceRemoveNode
+// that stale RocksDB rows left over by an interrupted ForceRemoveNode
 // (or carried in from a restored backup) cannot resurrect into the
 // transport as peers that the authoritative ConfState no longer contains.
 func (m *Membership) ReconcileAgainstConfState(cs *raftpb.ConfState) error {
@@ -385,11 +385,11 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 	return slices.Contains(cs.GetVoters(), nodeID) || slices.Contains(cs.GetLearners(), nodeID)
 }
 
-// Rehydrate re-reads the peer rows from Pebble, computes the diff
+// Rehydrate re-reads the peer rows from RocksDB, computes the diff
 // against the in-memory cache, publishes the new cache, and reconciles
 // the transport + service pool to match (added peers wired in, removed peers
 // wired out, address changes explicitly removed then re-added across both
-// wiring abstractions). Pebble is considered authoritative — this method does
+// wiring abstractions). RocksDB is considered authoritative — this method does
 // NOT touch self; callers
 // that need to force the local self row write it through Register or
 // the store directly before invoking Rehydrate.
@@ -397,7 +397,7 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 // Two call sites:
 //
 //   - NewNode, after Applier.RecoverAndReplay: WAL replay applied
-//     ConfChange entries to Pebble through WriteConfChange (FSM hot
+//     ConfChange entries to RocksDB through WriteConfChange (FSM hot
 //     path), but the FSM intentionally does not touch the in-memory
 //     cache — that side effect lives in finishReady, which does not
 //     run during replay. Without this catch-up the recovered node
@@ -405,7 +405,7 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 //     install or restart.
 //
 //   - OnSnapshotInstalled: a leader checkpoint restore has just
-//     overwritten Pebble; reload to match.
+//     overwritten RocksDB; reload to match.
 //
 // Locking: cache mutation AND transport/pool wiring both happen inside
 // the write lock. Releasing the lock between the two would let a
@@ -423,7 +423,7 @@ func confStateContains(cs *raftpb.ConfState, nodeID uint64) bool {
 func (m *Membership) Rehydrate() error {
 	fresh, err := m.store.LoadAll()
 	if err != nil {
-		return fmt.Errorf("loading peers from pebble: %w", err)
+		return fmt.Errorf("loading peers from the primary store: %w", err)
 	}
 
 	m.mu.Lock()
@@ -455,16 +455,16 @@ func (m *Membership) Rehydrate() error {
 
 	m.logger.WithFields(map[string]any{
 		"peerCount": len(fresh),
-	}).Infof("Rehydrated cluster membership from Pebble")
+	}).Infof("Rehydrated cluster membership from RocksDB")
 
 	return nil
 }
 
-// OnSnapshotInstalled refreshes the cache from Pebble after a leader
+// OnSnapshotInstalled refreshes the cache from RocksDB after a leader
 // checkpoint restore overwrites it AND reconciles the transport +
 // service pool to match. The leader's checkpoint may carry a stale
 // self row (e.g. our previous AdvertiseAddr before a pod restart with
-// a new endpoint), so we first overwrite the self row in Pebble with
+// a new endpoint), so we first overwrite the self row in RocksDB with
 // the locally-known truth and only then reload — that way the upcoming
 // LoadAll already returns the correct self and the next checkpoint we
 // serve carries the fresh address. Wired on Applier; runs synchronously
@@ -475,39 +475,39 @@ func (m *Membership) Rehydrate() error {
 // values and the next leadership/restart resyncs. Crashing the apply
 // loop on a transient read failure is worse than a slightly stale view.
 func (m *Membership) OnSnapshotInstalled() {
-	// Force-write the locally-authoritative self row to Pebble BEFORE
+	// Force-write the locally-authoritative self row to RocksDB BEFORE
 	// the reload, so LoadAll pulls our address rather than the leader's
 	// potentially-stale view and the next checkpoint we serve is
 	// already correct.
 	//
 	// A self-Put failure is logged but does NOT short-circuit the
 	// Rehydrate below: the checkpoint restore has already swapped
-	// Pebble to the leader's peer set, so skipping Rehydrate would
-	// leave the in-memory cache holding pre-restore peers while Pebble
-	// holds the post-restore set — a durable cache-vs-Pebble
+	// RocksDB to the leader's peer set, so skipping Rehydrate would
+	// leave the in-memory cache holding pre-restore peers while RocksDB
+	// holds the post-restore set — a durable cache-vs-RocksDB
 	// divergence that persists until the next leadership change.
-	// Better to fall through and let Rehydrate reload from Pebble
+	// Better to fall through and let Rehydrate reload from RocksDB
 	// (with the leader's possibly-stale self); the next OnSnapshot
 	// or restart will re-attempt the self-Put.
 	if err := m.store.Put(m.selfNodeID, m.selfRaftAddr, m.selfServiceAddr, m.selfInstanceID); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
-		}).Errorf("Refreshing self in Pebble before snapshot reload failed; next checkpoint we serve may carry a stale self address")
+		}).Errorf("Refreshing self in RocksDB before snapshot reload failed; next checkpoint we serve may carry a stale self address")
 	}
 
 	if err := m.Rehydrate(); err != nil {
 		m.logger.WithFields(map[string]any{
 			"error": err,
-		}).Errorf("Reloading peers from Pebble after snapshot install failed; cache left stale")
+		}).Errorf("Reloading peers from RocksDB after snapshot install failed; cache left stale")
 	}
 }
 
 // WriteConfChange is the FSM ConfChange handler: invoked from
 // PrepareEntries for every EntryConfChange* with the in-flight
-// WriteSession. It writes ONLY to the supplied Pebble batch — no cache
+// WriteSession. It writes ONLY to the supplied RocksDB batch — no cache
 // mutation, no transport/pool wiring — so the FSM hot path stays
 // deterministic and free of network side effects, and the in-memory
-// state cannot diverge from Pebble if the surrounding batch later
+// state cannot diverge from RocksDB if the surrounding batch later
 // fails to commit. Cache + transport wiring happens in Node.finishReady as soon
 // as the commit is observed, before asynchronous FSM submission, via
 // Membership.Set / Membership.Remove.

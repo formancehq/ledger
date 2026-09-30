@@ -225,26 +225,26 @@ func (a *Attribute[V]) ComputeAllForPrefix(reader dal.KVReader, canonicalPrefix 
 	return results, nil
 }
 
-// AttrTypeFromKey extracts the attribute type byte from a Pebble attribute key.
+// AttrTypeFromKey extracts the attribute type byte from a storage attribute key.
 // Key layout: [0xF1][AttrType][CanonicalKey...] — AttrType is at fixed position 1.
 // Returns (attrType, true) on success, or (0, false) if the key is too short.
-func AttrTypeFromKey(pebbleKey []byte) (byte, bool) {
-	if len(pebbleKey) <= 1+AttrTypeLen {
+func AttrTypeFromKey(storageKey []byte) (byte, bool) {
+	if len(storageKey) <= 1+AttrTypeLen {
 		return 0, false
 	}
 
-	return pebbleKey[1], true
+	return storageKey[1], true
 }
 
-// CanonicalKeyFromPebbleKey extracts the canonical key from a Pebble attribute key.
+// CanonicalKeyFromStorageKey extracts the canonical key from a storage attribute key.
 // Key layout: [0xF1][AttrType][CanonicalKey...] — canonical starts at offset 2.
 // Returns nil if the key is too short.
-func CanonicalKeyFromPebbleKey(pebbleKey []byte) []byte {
-	if len(pebbleKey) <= 1+AttrTypeLen {
+func CanonicalKeyFromStorageKey(storageKey []byte) []byte {
+	if len(storageKey) <= 1+AttrTypeLen {
 		return nil
 	}
 
-	return pebbleKey[2:]
+	return storageKey[2:]
 }
 
 // IncrementBytes increments a byte slice by 1 (treating as big-endian unsigned integer).

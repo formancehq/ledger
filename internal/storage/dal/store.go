@@ -27,7 +27,7 @@ import (
 )
 
 // ErrStoreClosed is returned when a store operation is attempted after the
-// Pebble database has been closed. This prevents panics during shutdown races.
+// RocksDB database has been closed. This prevents panics during shutdown races.
 var ErrStoreClosed = errors.New("store closed")
 
 var ErrNoCompleteCheckpoint = errors.New("no complete checkpoint")
@@ -410,7 +410,7 @@ const (
 // Canonical key separators used inside attribute canonical keys
 // to delimit volume and metadata sub-keys.
 // These must be BELOW all valid address-character bytes (lowest is '0' = 0x30)
-// so that Pebble key order matches lexicographic address order.
+// so that RocksDB key order matches lexicographic address order.
 const (
 	CanonicalKeySepVolume      byte = 0x00
 	CanonicalKeySepMetadata    byte = 0x01
@@ -419,7 +419,7 @@ const (
 
 // LedgerNameFixedSize is the fixed-width (zero-padded) block reserved for the
 // ledger name in every ledger-scoped canonical key. Fixed width lets the
-// Pebble Comparer split keys at a constant offset (bloom prefix, range
+// RocksDB Comparer split keys at a constant offset (bloom prefix, range
 // bounds, ImmediateSuccessor) without parsing a length prefix on every
 // comparison. Callers MUST validate the upstream name length against this
 // limit to avoid silent truncation collisions.
@@ -432,10 +432,10 @@ const LedgerNameFixedSize = invariants.LedgerNameMaxLength
 
 // PrefixUpperBound returns the smallest key strictly greater than every key
 // having prefix as a prefix — the exclusive upper bound of a prefix scan.
-// Returns nil when prefix is empty or all 0xFF, which Pebble reads as "no upper
+// Returns nil when prefix is empty or all 0xFF, which RocksDB reads as "no upper
 // bound", the correct answer when the prefix runs to the end of the key space.
 //
-// Use this, never a run of 0xFF bytes appended to the prefix. Pebble's
+// Use this, never a run of 0xFF bytes appended to the prefix. RocksDB's
 // IterOptions.UpperBound is EXCLUSIVE, so appending eight 0xFF bytes to a
 // sequence-keyed prefix produces a bound byte-identical to the key at
 // math.MaxUint64 and silently drops exactly that row. That is not a theoretical
@@ -614,7 +614,7 @@ func (s *Store) DataDir() string {
 	return s.dataDir
 }
 
-// Flush forces a flush of Pebble's memtables to SSTs on disk.
+// Flush forces a flush of RocksDB's memtables to SSTs on disk.
 func (s *Store) Flush() error {
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
@@ -627,15 +627,15 @@ func (s *Store) Flush() error {
 	return db.Flush()
 }
 
-// SyncWAL forces an fsync of Pebble's WAL. After this call returns, every
+// SyncWAL forces an fsync of RocksDB's WAL. After this call returns, every
 // batch.Commit(NoSync) issued before SyncWAL was invoked is durable on disk.
 // It does not flush memtables to SSTs — strictly a WAL fsync.
 //
 // Used by node.doMaintenance to establish the durability invariant
-// "WAL snapshot index <= durable Pebble applied index" before creating a
+// "WAL snapshot index <= durable RocksDB applied index" before creating a
 // Raft WAL snapshot or compacting the Raft WAL. Without it, a power loss
 // could leave the WAL snapshot referencing entries that were only in
-// Pebble's unsynced memtable, and a subsequent Compact could erase those
+// RocksDB's unsynced memtable, and a subsequent Compact could erase those
 // entries from the WAL too — making them unrecoverable from any source.
 func (s *Store) SyncWAL() error {
 	s.dbMu.RLock()
@@ -649,7 +649,7 @@ func (s *Store) SyncWAL() error {
 	return db.SyncWAL()
 }
 
-// WarmSystemKeys preloads the system/config key zones into Pebble's block
+// WarmSystemKeys preloads the system/config key zones into RocksDB's block
 // cache. This covers [0xE0, 0xF1) and [0xF2, 0xFF) — everything except the
 // bulky attributes zone (0xF1) which contains volumes and metadata. This is
 // fast (few keys) and should run synchronously before NewMachine so that FSM
@@ -693,7 +693,7 @@ func (s *Store) WarmSystemKeys() {
 }
 
 // WarmBlockCache iterates the attributes zone [ZoneAttributes, ZoneAttributes+1) to preload
-// Pebble's block cache. This is the heavyweight warmup (volumes, metadata,
+// RocksDB's block cache. This is the heavyweight warmup (volumes, metadata,
 // etc.) and should run in the background after servers are listening.
 func (s *Store) WarmBlockCache() {
 	start := time.Now()
@@ -824,7 +824,7 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 		return 0, fmt.Errorf("syncing checkpoints directory: %w", err)
 	}
 
-	pebbleCheckpointDone := time.Now()
+	storeCheckpointDone := time.Now()
 
 	// Clean up old checkpoints beyond the configured maximum
 	// Note: it can fail, leaving old checkpoints on disk
@@ -834,11 +834,11 @@ func (s *Store) CreateSnapshot() (uint64, error) {
 	}
 
 	s.logger.WithFields(map[string]any{
-		"checkpoint":       newCheckpointID,
-		"total":            time.Since(snapshotStart).String(),
-		"removeOld":        removeOldDone.Sub(snapshotStart).String(),
-		"pebbleCheckpoint": pebbleCheckpointDone.Sub(removeOldDone).String(),
-		"cleanup":          time.Since(pebbleCheckpointDone).String(),
+		"checkpoint":      newCheckpointID,
+		"total":           time.Since(snapshotStart).String(),
+		"removeOld":       removeOldDone.Sub(snapshotStart).String(),
+		"storeCheckpoint": storeCheckpointDone.Sub(removeOldDone).String(),
+		"cleanup":         time.Since(storeCheckpointDone).String(),
 	}).Infof("Snapshot created")
 	s.currentCheckPoint = newCheckpointID
 
@@ -923,7 +923,7 @@ func (s *Store) GetCurrentCheckpointID() uint64 {
 	return s.currentCheckPoint
 }
 
-// CreateTemporaryCheckpoint creates a Pebble checkpoint in the tmp/<name> directory.
+// CreateTemporaryCheckpoint creates a RocksDB checkpoint in the tmp/<name> directory.
 // Unlike CreateSnapshot, this does not modify currentCheckPoint,
 // or interfere with the Raft snapshot lifecycle in any way.
 // The caller must call RemoveTemporaryCheckpoint when the checkpoint is no longer needed.
@@ -977,10 +977,10 @@ func (s *Store) TemporaryCheckpointPath(name string) (string, bool) {
 	return path, true
 }
 
-// queryCheckpointsDir is the directory where query checkpoint Pebble snapshots are stored.
+// queryCheckpointsDir is the directory where query checkpoint RocksDB snapshots are stored.
 const queryCheckpointsDir = "query-checkpoints"
 
-// CreateQueryCheckpoint creates a Pebble checkpoint for query purposes at
+// CreateQueryCheckpoint creates a RocksDB checkpoint for query purposes at
 // {dataDir}/query-checkpoints/{id}/main/. These are self-contained snapshots
 // created by the FSM when a CreateQueryCheckpointOrder is applied via Raft.
 //
@@ -1400,7 +1400,7 @@ func reconcileLiveAfterRestore(dataDir string, logger logging.Logger) error {
 //  2. Read the current node's persisted-config from the live DB.
 //  3. Close the live DB and rename live/ -> live.discard/ (atomic, O(1)).
 //  4. Hard-link the checkpoint into a fresh live.staging/.
-//  5. Open live.staging/ as a Pebble DB.
+//  5. Open live.staging/ as a RocksDB DB.
 //  6. Re-write the preserved config, flush, and re-checkpoint.
 //  7. rename live.staging/ -> live/. THIS is the atomic commit point.
 //  8. Remove live.discard/.
@@ -1618,7 +1618,7 @@ func (s *Store) RestoreCheckpoint(checkpointID uint64) error {
 	// Step 7: PUBLISH. The atomic rename is the single commit point of
 	// the restore. The DB has been opened on stagingDirectory; once we
 	// rename the directory out from under it, subsequent file operations
-	// inside pebble (compactions, flushes) will follow the inode they
+	// inside RocksDB (compactions, flushes) will follow the inode they
 	// already hold open, but new opens must use the new path. So we
 	// close the staging DB, do the rename, then reopen on liveDirectory.
 	//
@@ -1800,7 +1800,7 @@ func (c *ProtoCursor[T]) Close() error {
 	return nil
 }
 
-// ReadProto reads a protobuf message from Pebble. Returns the zero value of T if not found.
+// ReadProto reads a protobuf message from RocksDB. Returns the zero value of T if not found.
 func ReadProto[T proto.Message](reader KVGetter, key []byte) (T, error) {
 	var zero T
 
@@ -1858,7 +1858,7 @@ func ReadLastEntry[T proto.Message](reader KVReader, zone, sub byte) (T, error) 
 	lowerBound := kb.Snapshot()
 	kb.Reset()
 
-	// Bound by the next sub-prefix, not by a synthetic MaxUint64 key. Pebble's
+	// Bound by the next sub-prefix, not by a synthetic MaxUint64 key. RocksDB's
 	// upper bound is exclusive, so [zone][sub][MaxUint64] must remain visible:
 	// recovery uses it to detect and reject an exhausted persisted sequence
 	// instead of falling back to a lower/reusable next value (EN-1860).
