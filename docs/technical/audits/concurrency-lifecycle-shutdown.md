@@ -20,10 +20,11 @@ that authorizes each operation:
 | Ordered leadership generation | node observer, event and mirror managers, backup orchestrator, leader-only reconcilers | The transition is recorded synchronously in observer order. Work that captured generation N cannot install or remove generation N+1 resources; Stop advances a terminal generation. |
 | Replicated resource identity | named sink configuration, mirror ledger incarnation/source, backup job and destination | Replacement invalidates old local ownership even if a human-readable name is reused. The successor resumes only from the replicated cursor/state promised by that subsystem. |
 | Local resource-entry identity | optional-TLS peer connection and its monitor | A monitor revalidates the exact entry under the mutation lock before restarting or deleting it; a reused peer ID does not authorize mutation of its replacement. |
+| Query-checkpoint cache entry and idle generation | one frozen main/read-index pair, shared by overlapping readers and retained briefly after the last page | Per-reader filesystem leases reject post-deletion requests. An idle timer validates its generation after reacquisition; deletion fences an entry even when it occurs between lease acquisition and cache installation. Idle expiry, capacity eviction and process shutdown close retained Pebble handles before directory removal or same-process reopening. |
 | Pending index version | index backfill/rewrite version for one ledger incarnation and canonical index identity | Completion publishes its cursor or served-version switch only while that complete identity remains current. |
 | Task invocation | bloom snapshot/epoch and cache snapshot invocation | Completion publishes only while the captured filter snapshot remains current. Interrupt joins before replacement publication. |
 | Durable cursor | indexbuilder, auditindexer, usagebuilder and tail workers | Process Stop joins the fold. Restart resumes from the subsystem's atomic durable cursor contract; leadership alone does not restart per-replica workers. |
-| Request or session context | snapshot, restore, file stream, read lease and query checkpoint | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. |
+| Request or session context | snapshot, restore, file stream, read lease and query-checkpoint reader | Cancellation and completion converge on exactly-once release and cannot publish partial or superseded output. A checkpoint reader releases its filesystem lease at request end; the shared read-only store pair has the separate cache-entry lifetime above. |
 
 Cache rotation is an FSM/cache consistency mechanism, not authority to restart
 unrelated workers. Likewise a leadership term alone is not a complete resource
@@ -97,6 +98,13 @@ At minimum, attempt to falsify these sequences with deterministic barriers:
 6. Two Stop callers observe an active worker or server while the deadline of one
    expires; verify whether the persistent shutdown request and the documented
    join still complete exactly once.
+7. A checkpoint reader takes its filesystem lease but blocks before cache
+   installation; deletion runs, then the reader opens the pair. Verify its last
+   release closes both handles before the directory is removed. Reacquire and
+   release an idle entry while an older timer callback is blocked; verify the
+   stale callback cannot close the renewed entry. Stop and restart a server in
+   one process after a checkpoint read; verify shutdown releases Pebble's
+   directory lock before the new server opens the same checkpoint.
 
 Record initial and final generations, identities, goroutine completion, resource
 close counts, proposal/publication counts and durable cursor bytes. A test using

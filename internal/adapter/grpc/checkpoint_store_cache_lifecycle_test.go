@@ -187,3 +187,20 @@ func TestCheckpointDeletionBeforeCacheInstallationClosesLeasedPair(t *testing.T)
 	releaseLease()
 	require.NoDirExists(t, filepath.Dir(mainPath))
 }
+
+func TestCheckpointStoreCacheClosesIdlePairOnStoreShutdown(t *testing.T) {
+	t.Parallel()
+	impl := newCheckpointGateFixture(t)
+	id := gateCheckpointID
+	mainPath := impl.store.QueryCheckpointMainDir(id)
+	_, _, release, err := impl.openCheckpointStores(t.Context(), id)
+	require.NoError(t, err)
+	release()
+	require.Contains(t, impl.checkpointStores.entries, id)
+
+	require.NoError(t, impl.store.Close())
+	require.NotContains(t, impl.checkpointStores.entries, id)
+	reopened, err := dal.OpenReadOnly(mainPath, testLogger())
+	require.NoError(t, err, "shutdown must release the checkpoint directory lock")
+	require.NoError(t, reopened.Close())
+}

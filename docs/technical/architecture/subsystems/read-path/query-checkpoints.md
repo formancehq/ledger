@@ -94,6 +94,11 @@ Checkpoint IDs are assigned sequentially by the FSM (1, 2, 3, ...).
      filesystem lease before deletion but has not entered the cache yet checks
      deletion state after opening; if the hook saw no entry, this check marks
      the new pair for closure at its final release.
+   - **Process shutdown drains retained pairs.** After the service server
+     stops accepting requests, the main store's Close hook closes all idle
+     checkpoint pairs and marks any still-active pair for closure on release.
+     A restarted server in the same process can then open the directory
+     without colliding with an old Pebble lock.
      Removing it first would let a reader arriving mid-close install a fresh
      entry and open the directory while Pebble still held its lock. The cost is
      that a slow close briefly delays acquisitions of other checkpoints.

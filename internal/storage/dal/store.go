@@ -156,6 +156,7 @@ type Store struct {
 	queryCheckpointReaders     map[uint64]uint64
 	deletedQueryCheckpoints    map[uint64]struct{}
 	queryCheckpointDeleteHooks []func(uint64)
+	queryCheckpointCloseHooks  []func()
 }
 
 // getDB returns the current pebble.DB.
@@ -788,6 +789,12 @@ func CloseSafe(closeFn func() error) (err error) {
 
 // Close closes the Pebble database.
 func (s *Store) Close() error {
+	s.queryCheckpointMu.Lock()
+	for _, hook := range s.queryCheckpointCloseHooks {
+		hook()
+	}
+	s.queryCheckpointMu.Unlock()
+
 	s.dbMu.Lock()
 	defer s.dbMu.Unlock()
 
@@ -1186,6 +1193,14 @@ func (s *Store) RegisterQueryCheckpointDeleteHook(hook func(uint64)) {
 	s.queryCheckpointMu.Lock()
 	defer s.queryCheckpointMu.Unlock()
 	s.queryCheckpointDeleteHooks = append(s.queryCheckpointDeleteHooks, hook)
+}
+
+// RegisterQueryCheckpointCloseHook drains retained read-only checkpoint opens
+// before this store closes during process shutdown.
+func (s *Store) RegisterQueryCheckpointCloseHook(hook func()) {
+	s.queryCheckpointMu.Lock()
+	defer s.queryCheckpointMu.Unlock()
+	s.queryCheckpointCloseHooks = append(s.queryCheckpointCloseHooks, hook)
 }
 
 // QueryCheckpointDeleting reports whether physical deletion has been admitted.

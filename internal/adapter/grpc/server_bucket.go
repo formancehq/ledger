@@ -286,7 +286,10 @@ func (impl *BucketServiceServerImpl) GetTransaction(ctx context.Context, req *se
 // pair remains briefly cached for subsequent pages; deletion or idle eviction
 // closes it. The stores are shared, so cleanup ignores every later call.
 func (impl *BucketServiceServerImpl) openCheckpointStores(ctx context.Context, checkpointID uint64) (*dal.Store, *readstore.Store, func(), error) {
-	impl.checkpointHookOnce.Do(func() { impl.store.RegisterQueryCheckpointDeleteHook(impl.checkpointStores.evict) })
+	impl.checkpointHookOnce.Do(func() {
+		impl.store.RegisterQueryCheckpointDeleteHook(impl.checkpointStores.evict)
+		impl.store.RegisterQueryCheckpointCloseHook(impl.checkpointStores.closeAll)
+	})
 	release, acquired := impl.store.AcquireQueryCheckpoint(checkpointID)
 	if !acquired {
 		return nil, nil, nil, impl.resolveMissingMarker(ctx, checkpointID)

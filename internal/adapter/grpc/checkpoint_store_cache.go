@@ -218,6 +218,20 @@ func (c *checkpointStoreCache) evict(id uint64) {
 	}
 }
 
+// closeAll drains idle opens at process shutdown. The service server stops
+// accepting requests before the main store's Close hook runs; any still-active
+// reader is marked for close at its final release.
+func (c *checkpointStoreCache) closeAll() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for id, entry := range c.entries {
+		entry.deleted = true
+		if entry.refs == 0 {
+			c.closeEntry(id, entry)
+		}
+	}
+}
+
 func (c *checkpointStoreCache) evictIdle(id uint64, entry *checkpointStoreEntry, generation uint64) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
