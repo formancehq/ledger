@@ -75,6 +75,19 @@ The [comparison run 36676394062](https://github.com/formancehq/ledger/actions/ru
 
 All eight measured runs in the successful jobs had zero request failures and dropped iterations. The first invalid warmup and the variation across campaigns reinforce that these figures do not establish performance equivalence. They are a directional single-node comparison at the stated offered rates.
 
+A [repeat on documentation-only commit `b7bd4806d`](https://github.com/formancehq/ledger/actions/runs/36678104863) used the same RocksDB code and baseline. All eight measured runs again had zero errors and dropped iterations. Its two-run means were:
+
+| Offered load | Metric | Pebble | RocksDB | Delta |
+| --- | --- | ---: | ---: | ---: |
+| 30 writes/s + 15 reads/s | Write p99 | 15.94 ms | 12.75 ms | -20.0% |
+| 30 writes/s + 15 reads/s | Read p99 | 13.29 ms | 11.92 ms | -10.3% |
+| 30 writes/s + 15 reads/s | Mean sampled RSS | 158.3 MiB | 141.5 MiB | -10.6% |
+| 50 writes/s + 25 reads/s | Write p99 | 13.31 ms | 12.31 ms | -7.5% |
+| 50 writes/s + 25 reads/s | Read p99 | 11.85 ms | 11.94 ms | +0.7% |
+| 50 writes/s + 25 reads/s | Mean sampled RSS | 184.2 MiB | 150.2 MiB | -18.5% |
+
+The first Pebble 30/15 run had a write p99 of 19.56 ms, versus 12.33 ms in its second run; RocksDB's two runs were 13.32 and 12.18 ms. This repeat reverses the prior run's latency ranking without a code change. At these rates, the data support lower sampled RocksDB RSS and substantial run-to-run latency variability, not a stable percentage penalty or a claim of parity.
+
 To repeat on a Linux machine with the repository's Nix shell and both commits available:
 
 ```bash
