@@ -564,7 +564,7 @@ func (ctrl *DefaultController) GetLedgerStats(ctx context.Context, ledgerName st
 
 	if _, err := query.GetLedgerByName(ctx, handle, ledgerName); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledgerName)
+			return nil, &domain.ErrLedgerNotFound{Name: ledgerName}
 		}
 
 		return nil, err
@@ -2010,14 +2010,13 @@ func (ctrl *DefaultController) GetNumscript(ctx context.Context, ledger, name st
 // has never been invoked on an existing ledger.
 //
 // Ledger existence is validated first so an unknown or soft-deleted ledger
-// surfaces a NotFound business error (HTTP 404) rather than a zero-valued 200 —
-// the same 404-on-missing contract as GetLedgerStats. This path returns the
-// NOT_FOUND errorCode (via NewNotFoundError); GetNumscript/ListNumscripts now
-// return the typed LEDGER_NOT_FOUND errorCode instead, but both are HTTP 404.
+// surfaces the typed LEDGER_NOT_FOUND business error (HTTP 404) rather than a
+// zero-valued 200 — the same missing-ledger contract as GetLedgerStats,
+// GetNumscript, and ListNumscripts.
 func (ctrl *DefaultController) GetTemplateUsage(ctx context.Context, ledger, name string) (*commonpb.TemplateUsage, error) {
 	if _, err := query.GetLedgerByName(ctx, ctrl.store, ledger); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, commonpb.NewNotFoundError("ledger %s not found", ledger)
+			return nil, &domain.ErrLedgerNotFound{Name: ledger}
 		}
 
 		return nil, err
