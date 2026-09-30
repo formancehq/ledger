@@ -69,3 +69,10 @@ func TestPublishedContractIsTheRegisteredPublicClosure(t *testing.T) {
 	require.Empty(t, public)
 	require.Equal(t, 55, methodCount)
 }
+
+func TestInternalCallerAttributionReasonIsAbsentFromPublicDescriptor(t *testing.T) {
+	reasons := ledgergrpc.File_common_proto.Enums().ByName("ErrorReason")
+	require.NotNil(t, reasons)
+	require.Nil(t, reasons.Values().ByName("ERROR_REASON_INVALID_CALLER_ATTRIBUTION"))
+	require.Nil(t, reasons.Values().ByNumber(72))
+}

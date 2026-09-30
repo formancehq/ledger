@@ -8,7 +8,7 @@ import (
 )
 
 // ProtocolVersion is the Ledger service protocol revision implemented by this client.
-const ProtocolVersion = "14"
+const ProtocolVersion = "15"
 
 // ProtocolMetadataKey carries the compiled revision on every business RPC.
 const ProtocolMetadataKey = "ledger-protocol-version"
