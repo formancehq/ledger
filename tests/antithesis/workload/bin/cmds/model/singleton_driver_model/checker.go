@@ -146,9 +146,11 @@ type Checker struct {
 	// create an unbounded fleet of delayed disable RPCs. Guarded by mu.
 	maintenanceEnableSeq      uint64
 	maintenanceRecoveryActive bool
+
+	// maintenanceRecoveryTicket is the in-flight ticket the recovery disable
+	// holds, so the restore pause stays blocked across the handoff from the
+	// recovery read to that write.
 	maintenanceRecoveryTicket uint64
-	ambiguousBulks            map[uint64]oracle.Bulk
-	ambiguousEnableClearSeq   uint64
 	recoveries                sync.WaitGroup
 }
 
@@ -156,14 +158,12 @@ type Checker struct {
 // when the response was received; the drain gate uses it to tell which
 // outstanding ops were dispatched after this bulk was observed.
 type observation struct {
-	ticket          uint64
-	bulk            oracle.Bulk
-	resp            *servicepb.ApplyResponse
-	err             error
-	ambiguousEnable bool
-	recoverySeq     uint64
-	observeTicket   uint64
-	processed       chan struct{}
+	ticket        uint64
+	bulk          oracle.Bulk
+	resp          *servicepb.ApplyResponse
+	err           error
+	observeTicket uint64
+	processed     chan struct{}
 }
 
 func isCheckpointCreate(bulk oracle.Bulk) bool {
@@ -232,7 +232,6 @@ func NewChecker(ledgerNames []string, schemas map[string][]*commonpb.SetMetadata
 		retypeObs:                  map[string]*retypeObservation{},
 		pendingDeleted:             map[string]struct{}{},
 		pendingPromoted:            map[string]struct{}{},
-		ambiguousBulks:             map[uint64]oracle.Bulk{},
 		reservedLedgerCreates:      map[string]uint64{},
 		ledgerLogSeqs:              map[uint64]ledgerLogRecord{},
 		ledgerIdentities:           map[string]ledgerIdentity{},

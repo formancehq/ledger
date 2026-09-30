@@ -65,7 +65,6 @@ import (
 	"github.com/antithesishq/antithesis-sdk-go/assert"
 	"github.com/antithesishq/antithesis-sdk-go/random"
 
-	"github.com/formancehq/ledger/v3/internal/domain"
 	"github.com/formancehq/ledger/v3/internal/proto/commonpb"
 	"github.com/formancehq/ledger/v3/internal/proto/servicepb"
 	"github.com/formancehq/ledger/v3/pkg/actions"
@@ -366,37 +365,30 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 
 	req := applyRequest(bulk)
-	var resp *servicepb.ApplyResponse
-	var err error
-	hadAmbiguousAttempt := false
-	provisionalMaintenanceRecoveryScheduled := false
-	var provisionalMaintenanceRecoverySeq uint64
+
+	var (
+		resp *servicepb.ApplyResponse
+		err  error
+	)
+
+	// Retry until the answer is definitive. A maintenance rejection is not one:
+	// the gate sits at admission, ahead of the FSM's idempotency replay, so a
+	// bulk whose response was lost can be refused on its retry even though it
+	// committed. Breaking there would record a committed write as one that
+	// never happened. The window always ends — a successful enable schedules
+	// its disable below, and a toggle batch is exempt from the gate — so the
+	// retry rides it out and then replays the frozen outcome under the same
+	// idempotency key.
 	for {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
 			break
 		}
-		if internal.IsMaintenanceAfterAmbiguousCommit(err) {
-			hadAmbiguousAttempt = true
-		}
-		maintenanceRejected := internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
-		if shouldScheduleMaintenanceRecovery(bulk, err, hadAmbiguousAttempt) && !provisionalMaintenanceRecoveryScheduled {
-			provisionalMaintenanceRecoverySeq = scheduleMaintenanceRecovery(ctx, client, c)
-			provisionalMaintenanceRecoveryScheduled = true
-		}
-		if maintenanceRejected {
-			if !hadAmbiguousAttempt || bulkEnablesMaintenance(bulk) {
-				break
-			}
-		}
+
 		if !internal.IsTransient(err) && !internal.IsCanceled(err) {
 			break
 		}
-		// A transport cancellation while the driver context remains live can
-		// arrive after the server committed the request. Preserve that ambiguity
-		// so a maintenance rejection on the retry schedules recovery instead of
-		// being treated as a definitive failure.
-		hadAmbiguousAttempt = hadAmbiguousAttempt || internal.IsAmbiguousCommit(err) || internal.IsCanceled(err)
+
 		select {
 		case <-ctx.Done():
 		case <-time.After(200 * time.Millisecond):
@@ -411,14 +403,12 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	// backpressure when the processor falls behind, this makes maxWorkers a real
 	// bound on the candidate search's independently committable bulks.
 	obs := observation{
-		ticket:          ticket,
-		bulk:            bulk,
-		resp:            resp,
-		err:             err,
-		ambiguousEnable: bulkEnablesMaintenance(bulk) && hadAmbiguousAttempt && internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode),
-		recoverySeq:     provisionalMaintenanceRecoverySeq,
-		observeTicket:   c.ticketSeq.Load(),
-		processed:       make(chan struct{}),
+		ticket:        ticket,
+		bulk:          bulk,
+		resp:          resp,
+		err:           err,
+		observeTicket: c.ticketSeq.Load(),
+		processed:     make(chan struct{}),
 	}
 	// Register the disable recovery before publishing the successful enable.
 	// The processor may otherwise make that enable visible to restore, which can
@@ -437,19 +427,17 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 	}
 }
 
-func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) uint64 {
+func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker) {
 	c.mu.Lock()
 	if c.maintenanceRecoveryActive {
 		if c.maintenanceRecoveryTicket != 0 {
 			c.maintenanceEnableSeq++
 		}
-		recoverySeq := c.maintenanceEnableSeq
 		c.mu.Unlock()
 
-		return recoverySeq
+		return
 	}
 	c.maintenanceEnableSeq++
-	recoverySeq := c.maintenanceEnableSeq
 	c.maintenanceRecoveryActive = true
 	recoveryID := c.registerRead()
 	c.recoveries.Add(1)
@@ -479,7 +467,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 				return
 			case <-time.After(delay):
 			}
-			dispatchMaintenanceRecovery(ctx, client, c, recoveryID, enableSeq)
+			dispatchMaintenanceRecovery(ctx, client, c, recoveryID)
 			readRegistered = false
 
 			c.mu.Lock()
@@ -494,8 +482,6 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 			c.mu.Unlock()
 		}
 	}()
-
-	return recoverySeq
 }
 
 // dispatchMaintenanceRecovery bypasses the restore pause because the recovery
@@ -504,7 +490,7 @@ func scheduleMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 // remains blocked without preventing the disable observation from draining. A
 // fresh key prevents deliberate conflict injection from turning a temporary
 // maintenance window into a permanent stall.
-func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID, recoverySeq uint64) {
+func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketServiceClient, c *Checker, recoveryID uint64) {
 	bulk := oracle.Bulk{
 		Requests:       []*servicepb.Request{actions.SetMaintenanceModeAction(false)},
 		IdempotencyKey: idempotencyKey(),
@@ -539,7 +525,6 @@ func dispatchMaintenanceRecovery(ctx context.Context, client servicepb.BucketSer
 		bulk:          bulk,
 		resp:          resp,
 		err:           err,
-		recoverySeq:   recoverySeq,
 		observeTicket: c.ticketSeq.Load(),
 		processed:     make(chan struct{}),
 	}
@@ -566,22 +551,6 @@ func bulkEnablesMaintenance(bulk oracle.Bulk) bool {
 	}
 
 	return false
-}
-
-func bulkDisablesMaintenance(bulk oracle.Bulk) bool {
-	for _, req := range bulk.Requests {
-		if toggle := req.GetSetMaintenanceMode(); toggle != nil && !toggle.GetEnabled() {
-			return true
-		}
-	}
-
-	return false
-}
-
-func shouldScheduleMaintenanceRecovery(bulk oracle.Bulk, err error, hadAmbiguousAttempt bool) bool {
-	return hadAmbiguousAttempt &&
-		bulkEnablesMaintenance(bulk) &&
-		internal.HasErrorReason(err, domain.ErrReasonMaintenanceMode)
 }
 
 // runSecondaryRead dispatches one of the read surfaces that share a single

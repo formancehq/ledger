@@ -49,22 +49,28 @@ func TestIsTolerated_LocalReadinessTimeoutIsInconclusive(t *testing.T) {
 	}
 }
 
-func TestRetryableRPCError_SurfacesMaintenance(t *testing.T) {
+func TestRetryableRPCError_RetriesMaintenance(t *testing.T) {
 	t.Parallel()
 
 	maintenance, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retryableRPCError(maintenance.Err()) {
-		t.Fatal("maintenance rejection must escape the retry loop")
+	// The gate is at admission, ahead of the FSM's idempotency replay, so a
+	// committed write can be refused on its retry. Riding the window out is
+	// what keeps that write from being recorded as never having happened.
+	if !retryableRPCError(maintenance.Err()) {
+		t.Fatal("maintenance rejection must stay in the retry loop")
 	}
 	if !retryableRPCError(status.Error(codes.Unavailable, "no leader")) {
 		t.Fatal("infrastructure unavailability must remain retryable")
 	}
+	if retryableRPCError(status.Error(codes.NotFound, "ledger missing")) {
+		t.Fatal("a business answer must still be definitive")
+	}
 }
 
-func TestRetryUnaryInterceptor_MaintenanceRequiresAmbiguousAttempt(t *testing.T) {
+func TestRetryUnaryInterceptor_RidesOutMaintenance(t *testing.T) {
 	t.Parallel()
 
 	maintenanceStatus, err := status.New(codes.Unavailable, "maintenance").WithDetails(&errdetails.ErrorInfo{Reason: domain.ErrReasonMaintenanceMode})
@@ -73,53 +79,51 @@ func TestRetryUnaryInterceptor_MaintenanceRequiresAmbiguousAttempt(t *testing.T)
 	}
 	maintenance := maintenanceStatus.Err()
 
-	tests := []struct {
-		name          string
-		errors        []error
-		wantAttempts  int
-		wantAmbiguous bool
-	}{
-		{
-			name:         "definitive unavailable then maintenance",
-			errors:       []error{status.Error(codes.Unavailable, "no leader"), maintenance},
-			wantAttempts: 2,
-		},
-		{
-			name:          "ambiguous peer close then maintenance",
-			errors:        []error{status.Error(codes.Unavailable, "grpc: the client connection is closing"), maintenance},
-			wantAttempts:  2,
-			wantAmbiguous: true,
-		},
-		{
-			name:          "ambiguous deadline then maintenance",
-			errors:        []error{status.Error(codes.DeadlineExceeded, "response lost"), maintenance},
-			wantAttempts:  2,
-			wantAmbiguous: true,
-		},
+	// The shape that dropped a committed write: the response is lost to a
+	// kill, the retry lands inside a maintenance window, and the window then
+	// closes. The interceptor must keep going and surface the success.
+	errs := []error{
+		status.Error(codes.Unavailable, "response lost"),
+		maintenance,
+		maintenance,
+		maintenance,
+		nil,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	attempts := 0
+	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
+		e := errs[attempts]
+		attempts++
 
-			attempts := 0
-			invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
-				err := tt.errors[attempts]
-				attempts++
+		return e
+	}
 
-				return err
-			}
-			err := retryUnaryInterceptor(len(tt.errors))(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker)
-			if attempts != tt.wantAttempts {
-				t.Fatalf("attempts = %d, want %d", attempts, tt.wantAttempts)
-			}
-			if got := IsMaintenanceAfterAmbiguousCommit(err); got != tt.wantAmbiguous {
-				t.Fatalf("IsMaintenanceAfterAmbiguousCommit() = %t, want %t", got, tt.wantAmbiguous)
-			}
-			if !HasErrorReason(err, domain.ErrReasonMaintenanceMode) {
-				t.Fatalf("final error = %v, want maintenance reason", err)
-			}
-		})
+	if err := retryUnaryInterceptor(len(errs))(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker); err != nil {
+		t.Fatalf("interceptor returned %v, want the success behind the window", err)
+	}
+
+	if attempts != len(errs) {
+		t.Fatalf("attempts = %d, want %d — every maintenance rejection must be retried", attempts, len(errs))
+	}
+}
+
+func TestRetryUnaryInterceptor_StopsOnDefinitiveError(t *testing.T) {
+	t.Parallel()
+
+	attempts := 0
+	invoker := func(context.Context, string, any, any, *grpc.ClientConn, ...grpc.CallOption) error {
+		attempts++
+
+		return status.Error(codes.NotFound, "ledger missing")
+	}
+
+	err := retryUnaryInterceptor(4)(context.Background(), "/test.Service/Apply", nil, nil, nil, invoker)
+	if status.Code(err) != codes.NotFound {
+		t.Fatalf("err = %v, want NotFound", err)
+	}
+
+	if attempts != 1 {
+		t.Fatalf("attempts = %d, want 1 — a business answer is not retried", attempts)
 	}
 }
 
