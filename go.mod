@@ -321,3 +321,5 @@ require (
 )
 
 replace github.com/antithesishq/antithesis-sdk-go => github.com/formancehq/antithesis-sdk-go v0.0.0-20260915065804-1c9afdaf8204
+
+replace github.com/cockroachdb/pebble/v2 => github.com/formancehq/pebble/v2 v2.1.7
