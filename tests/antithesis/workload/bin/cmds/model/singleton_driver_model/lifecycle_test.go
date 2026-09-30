@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -35,14 +36,17 @@ type scriptedApplyClient struct {
 }
 
 func (c *scriptedApplyClient) Apply(context.Context, *servicepb.ApplyRequest, ...grpc.CallOption) (*servicepb.ApplyResponse, error) {
+	if c.calls >= len(c.errors) {
+		// Silently answering an unscripted call would let a stray Apply pass as
+		// a success in every test sharing this client.
+		panic(fmt.Sprintf("scriptedApplyClient: unscripted Apply #%d (script has %d)", c.calls+1, len(c.errors)))
+	}
+
 	response := (*servicepb.ApplyResponse)(nil)
 	if c.calls < len(c.responses) {
 		response = c.responses[c.calls]
 	}
-	var err error
-	if c.calls < len(c.errors) {
-		err = c.errors[c.calls]
-	}
+	err := c.errors[c.calls]
 	c.calls++
 
 	return response, err

@@ -371,14 +371,9 @@ func dispatchBulk(ctx context.Context, client servicepb.BucketServiceClient, che
 		err  error
 	)
 
-	// Retry until the answer is definitive. A maintenance rejection is not one:
-	// the gate sits at admission, ahead of the FSM's idempotency replay, so a
-	// bulk whose response was lost can be refused on its retry even though it
-	// committed. Breaking there would record a committed write as one that
-	// never happened. The window always ends — a successful enable schedules
-	// its disable below, and a toggle batch is exempt from the gate — so the
-	// retry rides it out and then replays the frozen outcome under the same
-	// idempotency key.
+	// Retry until the answer is definitive. A maintenance rejection is not one
+	// (see internal.retryableRPCError): breaking there would record a committed
+	// bulk as one that never happened.
 	for {
 		resp, err = client.Apply(ctx, req)
 		if err == nil || ctx.Err() != nil {
