@@ -128,7 +128,7 @@ ledgerctl numscripts versions payment-with-fees
 | Invalid version | `NUMSCRIPT_INVALID_VERSION` | 400 | INVALID_ARGUMENT | Save version is not a full semver |
 | Version exists | `NUMSCRIPT_VERSION_ALREADY_EXISTS` | 409 | ALREADY_EXISTS | The `(name, version)` is already stored (immutable) |
 | Not found | `NUMSCRIPT_NOT_FOUND` | 404 | NOT_FOUND | Get a non-existent numscript or version |
-| Not runnable on the VM | `VALIDATION` | 400 | INVALID_ARGUMENT | A transaction's script parses and resolves but does not compile (unsupported construct, VM capacity exceeded, var value that does not bind) — `ErrNumscriptCompile` |
+| Not runnable on the VM | `NUMSCRIPT_COMPILE_ERROR` | 400 | INVALID_ARGUMENT | A transaction's script parses and resolves but does not compile (static-semantics error caught by the compiler's typechecker, feature used without its flag, unsupported construct, VM capacity exceeded, var value that does not bind) — `ErrNumscriptCompile` |
 
 ## Script References in Transactions
 
@@ -210,8 +210,10 @@ Admission also runs that artifact on a fresh VM instance to predict the
 script's effects for later orders in the same atomic batch.
 
 A script the VM cannot run is rejected at admission with
-`ErrNumscriptCompile` (`VALIDATION`, freezable): the compiler does not support
-a construct, the program exceeds the VM's capacity (register banks, program
+`ErrNumscriptCompile` (`NUMSCRIPT_COMPILE_ERROR`, `KindValidation`, freezable,
+detail in the `details` metadata key): the compiler's typechecker rejects the
+script (`Parse` checks syntax only), a feature is used without its flag, the
+compiler does not support a construct, the program exceeds the VM's capacity (register banks, program
 size), or a var value does not bind to the program's variable layout. Compile
 runs after dependency resolution, so a script resolution already rejects keeps
 its specific error — asset scaling, for instance, still fails with
