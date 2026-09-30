@@ -297,7 +297,7 @@ The setting is cluster-wide and replicated via Raft. Changing it takes effect on
 
 ### 5.6 Numscript Cache Size
 
-Default: **1024** entries. Increase if your application uses more than 1024 distinct script texts (monitor `numscript.cache.size` gauge). In practice, most applications have fewer than 10 distinct scripts.
+Default: **1024** entries. Increase if your application uses more than 1024 distinct script texts (monitor the `numscript.cache.size` gauge; its `cache` attribute reports the parsed-script side and the compiled VM-artifact side separately, each bounded by this size). In practice, most applications have fewer than 10 distinct scripts.
 
 ### 5.7. Admission Metrics
 
@@ -365,7 +365,7 @@ Current balance = `base + latest cumulative diff`. Pebble range scans are effici
 
 | Metric | What to watch | Action |
 |--------|--------------|--------|
-| `numscript.cache.size` | Approaching max (default 1024) | Increase cache size or reduce unique scripts |
+| `numscript.cache.size` | Either `cache` side (`parsed`, `compiled`) approaching max (default 1024) | Increase cache size or reduce unique scripts |
 | `admission.preload.duration` | High latency | Increase generation threshold K |
 | `admission.preload.cache_hits` | Low hit rate | Review account access patterns |
 | `raft.apply_entries.duration` p99 | > 50ms | Check disk I/O, compaction backlog |

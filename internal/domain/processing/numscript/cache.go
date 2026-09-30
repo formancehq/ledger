@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/zeebo/blake3"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	numscriptlib "github.com/formancehq/numscript"
@@ -190,7 +191,7 @@ func (c *NumscriptCache) getOrParseEntry(script string) *lruEntry {
 	elem := c.order.PushFront(entry)
 	c.cache[hash] = elem
 
-	c.recordSize(int64(c.order.Len()))
+	c.recordSize(cacheSideParsed, int64(c.order.Len()))
 
 	return entry
 }
@@ -344,6 +345,8 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 	}
 	c.compiledCache[hash] = c.compiledOrder.PushFront(entry)
 
+	c.recordSize(cacheSideCompiled, int64(c.compiledOrder.Len()))
+
 	return entry, nil
 }
 
@@ -351,7 +354,7 @@ func (c *NumscriptCache) getOrDecodeCompiled(scriptHash, programBytes []byte, va
 func (c *NumscriptCache) InitCacheMetrics(m metric.Meter) error {
 	size, err := m.Int64Gauge(
 		"numscript.cache.size",
-		metric.WithDescription("Number of scripts in the Numscript cache"),
+		metric.WithDescription("Number of entries in the Numscript cache, per side (parsed scripts, compiled VM artifacts)"),
 	)
 	if err != nil {
 		return err
@@ -362,11 +365,18 @@ func (c *NumscriptCache) InitCacheMetrics(m metric.Meter) error {
 	return nil
 }
 
-// recordSize records the current cache size.
-func (c *NumscriptCache) recordSize(size int64) {
+// Values of the numscript.cache.size "cache" attribute: the two LRUs are
+// bounded independently, so each side reports its own size.
+const (
+	cacheSideParsed   = "parsed"
+	cacheSideCompiled = "compiled"
+)
+
+// recordSize records the current size of one cache side.
+func (c *NumscriptCache) recordSize(side string, size int64) {
 	if c.sizeGauge == nil {
 		return
 	}
 
-	c.sizeGauge.Record(context.Background(), size)
+	c.sizeGauge.Record(context.Background(), size, metric.WithAttributes(attribute.String("cache", side)))
 }
