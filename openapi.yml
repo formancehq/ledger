@@ -594,13 +594,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromoteLedgerResponse'
         '400':
-          description: Ledger is not in mirror mode
+          description: The request is invalid, or the ledger is not in mirror mode (`LEDGER_NOT_IN_MIRROR_MODE`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -837,6 +835,14 @@ paths:
           description: Account address to start after (for cursor pagination, exclusive)
           schema:
             type: string
+        - name: reverse
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: |
+            Reverse the default order. Default (`false`) returns accounts in
+            alphabetical order; `true` returns reverse alphabetical order.
         - $ref: '#/components/parameters/ListFilter'
         - $ref: '#/components/parameters/QueryProfile'
       responses:
@@ -3463,6 +3469,10 @@ components:
         scriptReference:
           $ref: '#/components/schemas/ScriptReference'
           description: Reference to a numscript saved in the ledger's library. Mutually exclusive with `postings` and `script`.
+        force:
+          type: boolean
+          default: false
+          description: Skip the balance check, so the transaction commits even when a source account has insufficient funds.
 
     PostingRequest:
       type: object
