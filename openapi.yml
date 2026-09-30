@@ -5378,10 +5378,11 @@ components:
         non-null filter in the structured `QueryFilter` form and omit this field
         for match-all queries.
       oneOf:
+        - $ref: '#/components/schemas/QueryFilter'
         - type: object
           nullable: true
-          allOf:
-            - $ref: '#/components/schemas/QueryFilter'
+          enum:
+            - null
         - type: string
           description: Textual filter expression (filter grammar).
 

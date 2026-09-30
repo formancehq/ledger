@@ -6,3 +6,6 @@
 # widen fuzzing coverage.
 schemathesis==3.39.16
 hypothesis==6.156.6
+
+# Validate OpenAPI 3.0 request instances, including nullable filter branches.
+openapi-schema-validator==0.6.3
