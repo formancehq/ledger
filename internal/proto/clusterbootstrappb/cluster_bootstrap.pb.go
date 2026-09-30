@@ -108,6 +108,7 @@ type PeerInfo struct {
 	Id             uint64                 `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
 	RaftAddress    string                 `protobuf:"bytes,2,opt,name=raft_address,json=raftAddress,proto3" json:"raft_address,omitempty"`
 	ServiceAddress string                 `protobuf:"bytes,3,opt,name=service_address,json=serviceAddress,proto3" json:"service_address,omitempty"`
+	InstanceId     []byte                 `protobuf:"bytes,4,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"` // 16-byte UUID identifying this peer's WAL/PVC incarnation; required
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -161,6 +162,13 @@ func (x *PeerInfo) GetServiceAddress() string {
 		return x.ServiceAddress
 	}
 	return ""
+}
+
+func (x *PeerInfo) GetInstanceId() []byte {
+	if x != nil {
+		return x.InstanceId
+	}
+	return nil
 }
 
 type JoinAsLearnerRequest struct {
@@ -274,11 +282,13 @@ const file_cluster_bootstrap_proto_rawDesc = "" +
 	"\x17cluster_bootstrap.proto\x12\x11cluster_bootstrap\"\x11\n" +
 	"\x0fGetPeersRequest\"E\n" +
 	"\x10GetPeersResponse\x121\n" +
-	"\x05peers\x18\x01 \x03(\v2\x1b.cluster_bootstrap.PeerInfoR\x05peers\"f\n" +
+	"\x05peers\x18\x01 \x03(\v2\x1b.cluster_bootstrap.PeerInfoR\x05peers\"\x87\x01\n" +
 	"\bPeerInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x04R\x02id\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +
-	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\"\x9c\x01\n" +
+	"\x0fservice_address\x18\x03 \x01(\tR\x0eserviceAddress\x12\x1f\n" +
+	"\vinstance_id\x18\x04 \x01(\fR\n" +
+	"instanceId\"\x9c\x01\n" +
 	"\x14JoinAsLearnerRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\x04R\x06nodeId\x12!\n" +
 	"\fraft_address\x18\x02 \x01(\tR\vraftAddress\x12'\n" +

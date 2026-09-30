@@ -315,7 +315,8 @@ func RestartNodeWithInstruments(ctx context.Context, srv *ServiceWithClient, ins
 	RestartNode(ctx, srv)
 }
 
-// StopServers stops all servers in the list. Used in AfterEach/AfterAll blocks.
+// StopServers stops all servers in the list. Safe in AfterEach/AfterAll blocks
+// and DeferCleanup callbacks.
 func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	for _, server := range servers {
 		_ = server.GRPCConn.Close()
@@ -323,7 +324,7 @@ func StopServers(ctx context.Context, servers []*ServiceWithClient) {
 	for i, server := range servers {
 		By(fmt.Sprintf("Stopping node %d", i+1), func() {
 			stopCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-			DeferCleanup(cancel)
+			defer cancel()
 
 			// Dump goroutines if stop is slow to help diagnose shutdown hangs.
 			dumpTimer := time.AfterFunc(10*time.Second, func() {
