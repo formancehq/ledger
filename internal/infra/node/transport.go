@@ -782,8 +782,9 @@ type peerConnection struct {
 	// unreachableReported dedups Unreachable notifications during a drop
 	// burst so we don't saturate unreachableCh (capacity 100) when a single
 	// full send channel fires pushMessages hundreds of times per second.
-	// CAS-set on first drop, reset by sendMessages after a successful
-	// stream.Send() (peer confirmed responsive → next drop re-signals Raft).
+	// CAS-set on first drop, reset by sendMessages after gRPC buffers a
+	// write, so a subsequent drop can re-signal Raft. A successful Send
+	// does not prove delivery; the probe watchdog checks liveness.
 	unreachableReported atomic.Bool
 }
 
@@ -957,6 +958,73 @@ type priorityStream struct {
 	priorityName string
 }
 
+const (
+	transportProbeInterval   = time.Second
+	transportLivenessTimeout = 5 * time.Second
+)
+
+// connectionLiveness belongs to one stream attempt. It does not infer delivery
+// from a successful gRPC Send: that only means the message was buffered.
+type connectionLiveness struct {
+	mu          sync.Mutex
+	lastProbe   time.Time
+	probeAt     time.Time
+	probeID     uint64
+	nextProbeID uint64
+	sendAt      time.Time
+}
+
+func newConnectionLiveness() *connectionLiveness {
+	return &connectionLiveness{lastProbe: time.Now()}
+}
+
+func (l *connectionLiveness) beginSend() {
+	l.mu.Lock()
+	l.sendAt = time.Now()
+	l.mu.Unlock()
+}
+
+func (l *connectionLiveness) endSend() {
+	l.mu.Lock()
+	l.sendAt = time.Time{}
+	l.mu.Unlock()
+}
+
+func (l *connectionLiveness) beginProbe() (uint64, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.probeAt.IsZero() {
+		return 0, false
+	}
+	l.nextProbeID++
+	l.probeID = l.nextProbeID
+	l.probeAt = time.Now()
+	l.lastProbe = l.probeAt
+
+	return l.probeID, true
+}
+
+func (l *connectionLiveness) acceptPong(id uint64) (time.Duration, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.probeAt.IsZero() || id != l.probeID {
+		return 0, false
+	}
+	latency := time.Since(l.probeAt)
+	l.probeAt = time.Time{}
+
+	return latency, true
+}
+
+func (l *connectionLiveness) expired(now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return (!l.sendAt.IsZero() && now.Sub(l.sendAt) >= transportLivenessTimeout) ||
+		(!l.probeAt.IsZero() && now.Sub(l.probeAt) >= transportLivenessTimeout) ||
+		now.Sub(l.lastProbe) >= transportLivenessTimeout
+}
+
 func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn) (bool, error) {
 	client := rafttransportpb.NewRaftTransportServiceClient(grpcPeerConnection)
 
@@ -1002,13 +1070,8 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 	conn.logger.Infof("Created 3 priority streams to peer")
 
-	type ping struct {
-		at    time.Time
-		seqId uint64
-	}
-
 	pending := make(map[uint64]uint64)
-	lastPing := atomic.Value{}
+	liveness := newConnectionLiveness()
 	mu := sync.Mutex{}
 
 	// drainPendingUnreachable marks all pending peers as unreachable under the lock.
@@ -1040,6 +1103,24 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 	// Create a channel to signal when all receive goroutines have stopped
 	var receiveWg sync.WaitGroup
+	var watchdogWg sync.WaitGroup
+	watchdogWg.Go(func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-streamCtx.Done():
+				return
+			case now := <-ticker.C:
+				if liveness.expired(now) {
+					conn.logger.Errorf("Raft transport stream liveness deadline exceeded for peer %x", conn.peerID)
+					streamCancel()
+
+					return
+				}
+			}
+		}
+	})
 
 	// Start a receive goroutine for each stream
 	streams := []priorityStream{
@@ -1056,6 +1137,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 	// otherwise execute Wait before Cancel, causing a deadlock).
 	defer func() {
 		streamCancel()
+		watchdogWg.Wait()
 		receiveWg.Wait()
 	}()
 
@@ -1075,27 +1157,19 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 				switch msg := res.GetMessage().(type) {
 				case *rafttransportpb.SendMessageResponse_Pong:
-					// Only high priority stream handles pings
-					lastPingVal := lastPing.Load()
-					if lastPingVal == nil {
+					if ps.priorityName != "high" {
 						continue
 					}
-
-					lp := lastPingVal.(ping)
-					if msg.Pong.GetSeqId() != lp.seqId {
-						conn.logger.
-							WithFields(map[string]any{
-								"expected-seq-id": lp.seqId,
-								"received-seq-id": msg.Pong.GetSeqId(),
-							}).
-							Errorf("Received unexpected ping response from peer")
+					latency, matched := liveness.acceptPong(msg.Pong.GetSeqId())
+					if !matched {
+						conn.logger.Errorf("Received unmatched ping response from peer")
 
 						continue
 					}
 
 					conn.pingLatency.Record(
 						context.Background(),
-						time.Since(lp.at).Microseconds(),
+						latency.Microseconds(),
 						metric.WithAttributeSet(conn.peerAttributes),
 					)
 
@@ -1133,7 +1207,8 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 		}(ps)
 	}
 
-	pingInterval := time.NewTicker(time.Second)
+	pingInterval := time.NewTicker(transportProbeInterval)
+	defer pingInterval.Stop()
 	opts := proto.MarshalOptions{}
 
 	// sendMessages handles sending a batch of raft messages on the specified stream
@@ -1184,6 +1259,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			metric.WithAttributeSet(conn.peerAttributes),
 		)
 
+		liveness.beginSend()
 		err := stream.Send(&rafttransportpb.SendMessageRequest{
 			Message: &rafttransportpb.SendMessageRequest_Raft{
 				Raft: &rafttransportpb.RaftRequestBatch{
@@ -1191,6 +1267,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 				},
 			},
 		})
+		liveness.endSend()
 		if err != nil {
 			conn.logger.
 				WithFields(map[string]any{
@@ -1216,7 +1293,7 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 			return err
 		}
 
-		// Peer accepted the write — clear the dedup flag so a subsequent
+		// gRPC buffered the write — clear the dedup flag so a subsequent
 		// pushMessages drop re-signals Unreachable to Raft (Progress
 		// currently in Replicate can transition back to Probe if we drop
 		// again).
@@ -1286,19 +1363,20 @@ func (conn *peerConnection) handleConnection(grpcPeerConnection *grpc.ClientConn
 
 			return false, err
 		case <-pingInterval.C:
-			p := ping{
-				at:    time.Now(),
-				seqId: conn.messageID,
+			probeID, ok := liveness.beginProbe()
+			if !ok {
+				continue
 			}
-			lastPing.Store(p)
 			// Send ping on high priority stream
+			liveness.beginSend()
 			err := highStream.Send(&rafttransportpb.SendMessageRequest{
 				Message: &rafttransportpb.SendMessageRequest_Ping{
 					Ping: &rafttransportpb.PingMessage{
-						SeqId: p.seqId,
+						SeqId: probeID,
 					},
 				},
 			})
+			liveness.endSend()
 			if err != nil {
 				drainPendingUnreachable()
 
